@@ -162,8 +162,11 @@ reproduces the stream and the viewer reproduces token-level timing.
 { "step": 3, "request_id": "rq_01", "chunk": { "kind": "text", "delta": "I will" } }
 ```
 
-Chunk kinds: `text`, `thinking`, `tool_call_start` with `id` and `name`,
-`tool_call_delta` with `id` and `delta`, `tool_call_end` with `id`.
+Chunk kinds: `text`, `thinking`, `thinking_signature` with `signature`,
+`tool_call_start` with `id` and `name`, `tool_call_delta` with `id` and
+`delta`, `tool_call_end` with `id`. A `thinking_signature` chunk closes the
+current reasoning block with the provider's replay token; providers that
+issue none never send it.
 
 `assistant/message` — implemented. The assembled response for one request.
 
@@ -183,6 +186,13 @@ Chunk kinds: `text`, `thinking`, `tool_call_start` with `id` and `name`,
 `length`, every tool call in the message receives a `tool/result` with
 `is_error: true` and no execution. When `interrupted` is true, the text is
 the prefix that arrived before the failure.
+
+The message also carries `thinking`, a list of reasoning blocks
+`{ "text": "…", "signature": "…" }` assembled from `thinking` and
+`thinking_signature` chunks in order, and omitted when empty. A transport
+replays these blocks to the same model route, where a provider may require
+them for a turn that continues after a tool call, and omits them for any
+other route.
 
 ### Tools
 
@@ -307,8 +317,12 @@ redelivered when the target restarts. The target deduplicates by
 
 ### Sandbox
 
-`sandbox/denied` — implemented. An access the kernel refused, captured from
-the audit log when the kernel supports it.
+`sandbox/denied` — reserved. An access the kernel refused, captured from
+the audit log. Reading Landlock audit records requires the `CAP_AUDIT_READ`
+capability or access to the audit daemon's log, which an unprivileged foe
+process does not have, so nothing emits this event in version 1. The type
+is defined so that a privileged deployment or a later version can emit it
+and a version 1 reader will render it.
 
 ```json
 { "pid": 4120, "comm": "ruff", "path": "/etc/shadow", "access": "read" }
