@@ -68,17 +68,24 @@ headings, and `--n-font-paper` for long prose.
 | `display` | Space Grotesk | JetBrains Mono | Archivo Narrow |
 
 The typeface picker is a grouped popover: three mode headers, each over four
-faces, twelve in total, every option set as a specimen in its own face, plus
-an S, M, L size control. The default mode's two monos are self-hosted as
-woff2 files copied from zicato. The viewer performs no network fetch for any
-font: the editorial and display families resolve to their listed stacks
-when the machine has them and to system fallbacks otherwise. This is the
-one departure from zicato, which loads those families from a font service,
-and it exists because the viewer runs on loopback and in environments with
-no network.
+faces, twelve in total, plus an S, M, L size control whose three controls
+are each set at the size they select. Every option names itself in its own
+face, over one specimen line in the face that mode uses for its content. A
+technical face is a face for reading code, so its specimen is a line of
+code, `let outcome = episode.run();`; an editorial or display face sets a
+sentence, `One bounded release of work.` No specimen is a run of digits or
+a placeholder word.
 
-The brand wordmark pins to a fixed mono, `--v2-brand-mono`, independent of
-the chosen mode, so it never reflows. The wordmark reads `foe` in lowercase.
+The default mode's two monos are self-hosted as woff2 files copied from
+zicato. The viewer performs no network fetch for any font: the editorial and
+display families resolve to their listed stacks when the machine has them
+and to system fallbacks otherwise. This is the one departure from zicato,
+which loads those families from a font service, and it exists because the
+viewer runs on loopback and in environments with no network.
+
+The brand wordmark is drawn from outlined paths inside the lockup, so it
+does not follow the chosen typeface and never reflows. `--v2-brand-mono`
+sets any place that spells the product name as text.
 
 The brand mark, the wordmark's construction, and the brand accent are
 specified in [brand/README.md](brand/README.md). The brand accent is a
@@ -92,7 +99,8 @@ that animate use `font-variant-numeric: tabular-nums`.
 The top bar is sticky, blurred, and hairline-bottomed. Left to right:
 
 1. an up control that moves one level up the episode tree;
-2. the brand: the wordmark `foe` and a variant tag reading `viewer`;
+2. the brand: the lockup from [brand/README.md](brand/README.md), a variant
+   tag reading `viewer`, and the research-preview tag;
 3. breadcrumbs in mono and faint ink, from the root episode to the
    selected one;
 4. a flex spacer;
@@ -105,10 +113,41 @@ The top bar is sticky, blurred, and hairline-bottomed. Left to right:
    keyframe animation in the chrome and is disabled under
    `prefers-reduced-motion`.
 
-Theme, typeface, font size, and page scale persist in `localStorage` under
-`foe.theme`, `foe.typeface`, `foe.fontsize`, and `foe.scale`, and one
-function applies each so that every control that changes a value stays in
-step.
+The lockup is sized by height, so that the wordmark's ascenders match the
+cap height of the surrounding chrome text. It strokes in `currentColor` and
+fills its core with `--foe-accent`, which is a token separate from
+`--v2-accent` and takes `#C7791A` on a light ground and `#E8A43E` on a dark
+one. Those two values and the theme blocks are the only raw colours in the
+stylesheet.
+
+The research-preview tag states that the product is a research preview. It
+is two stacked words, `research` over `preview`, set in mono at 9.5 pixels,
+uppercase, with letter-spacing of 0.1em, in `--v2-ink-faint`, behind a
+one-pixel left border in `--v2-rule` with 7 pixels of padding. It takes no
+pointer events and no selection and carries `role="note"`, because it
+states a fact and is never a control.
+
+### Grips
+
+Every divider between two regions is a grip. A grip is a hairline in
+`--v2-rule` with a rounded 28-by-4 pill centred on it in `--v2-ink-faint`,
+which takes `--v2-accent` on hover and while dragging. Its cursor is
+`col-resize` for a vertical divider and `row-resize` for a horizontal one.
+
+A grip is focusable and carries `role="separator"` with the current size as
+`aria-valuenow`. The arrow keys move it 16 pixels, Home and End take it to
+its two limits, and a double click returns it to whatever derives it. A drag
+takes pointer capture and applies at most one size per animation frame. Each
+region declares a minimum, so no region collapses.
+
+A region whose height follows its content opens at that height and keeps
+following it until a grip sets a size. Only sizes a grip has set are stored,
+so a region left alone stays derived.
+
+Theme, typeface, font size, page scale, and pane sizes persist in
+`localStorage` under `foe.theme`, `foe.typeface`, `foe.fontsize`,
+`foe.scale`, and `foe.panes`, and one function applies each so that every
+control that changes a value stays in step.
 
 ## Figures
 

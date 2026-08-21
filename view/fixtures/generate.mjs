@@ -3,9 +3,23 @@
 // `model/request` events are written out by hand here so that the unit
 // tests can compare them with the derived-messages rule.
 //
+// The four workflow fixtures are an exception: the foe runtime writes them.
+// `workflowRun` below assembles a configuration, a scripted model program,
+// and a scripted verification program, runs the `foe` binary over them, and
+// copies the logs here with the machine's own paths replaced. A declared
+// graph has rules a hand-written log would satisfy only by accident, so the
+// fixtures come from the runtime that enforces them.
+//
 // Run with `pnpm fixtures` after changing this file.
+//
+// `retries-exhausted.jsonl` is not written here. It is a log recorded from a
+// run against a live model whose every attempt failed in transport, kept
+// verbatim so that the tests read the shapes a real provider failure
+// produces rather than shapes chosen to make them pass.
 
-import { writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -302,8 +316,445 @@ function compact() {
   return log;
 }
 
+// A parent with two children, for the trajectory pane. The surveyor
+// outlives most of the parent's own run: the parent spawns it at 2 s, keeps
+// calling tools while it is alive, and it ends 1 s before the parent does.
+// The writer, whose log is `rich.jsonl`, runs inside the same window.
+
+function overlapParent() {
+  const log = new Log(1730000000000);
+  const taskText = "Survey the crates and summarize.";
+  const spawnCall = { id: "tc_p1", name: "spawn", args: { program: "surveyor", task: "Read every crate manifest." } };
+  const writeCall = { id: "tc_p3", name: "spawn", args: { program: "writer", task: "Explain the budget rule and tighten the parser." } };
+  const readCall = { id: "tc_p2", name: "read", args: { path: "Cargo.toml" } };
+  log.ev("episode/start", {
+    id: "ep_over_parent",
+    parent_id: null,
+    fork_origin: null,
+    team_id: null,
+    program: program("lead", { model_calls: 20, tokens: 200000 }),
+    identity: "sha256:cccc",
+    task: taskText,
+    runtime,
+    sandbox: { mode: "best-effort", landlock_abi: 7 },
+  });
+  const task = log.ev("inbox/item", { source: "task", content: [text(taskText)], from: null, message_id: null });
+  const header = log.ev("request/header", { reason: "initial", system: "You lead a survey.", tools, model });
+  log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_p1", header_seq: header, consumed: [task], messages: [user(text(taskText))] }, 1000);
+  log.ev("assistant/message", { step: 1, request_id: "rq_p1", text: "Spawning a surveyor.", tool_calls: [spawnCall], stop: "tool", usage: { input: 400, output: 20, cache_read: 0 }, interrupted: false }, 900);
+  log.ev("budget/reserve", { child_id: "ep_over_child", reserved: { model_calls: 8, tokens: 80000 } });
+  log.ev("spawn/start", { child_id: "ep_over_child", program: "surveyor", context: "fresh", call_id: "tc_p1" }, 90);
+  // The parent keeps working while the child runs.
+  log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_p2", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 500);
+  log.ev("assistant/message", { step: 2, request_id: "rq_p2", text: "Reading the workspace manifest.", tool_calls: [readCall, writeCall], stop: "tool", usage: { input: 500, output: 18, cache_read: 400 }, interrupted: false }, 700);
+  log.ev("tool/result", { step: 2, call_id: "tc_p2", name: "read", value: { path: "Cargo.toml" }, rendered: "1\t[workspace]\n2\tresolver = \"2\"", is_error: false, spill: null, duration_ms: 1400, synthetic: false }, 1400);
+  log.ev("budget/reserve", { child_id: "ep_rich", reserved: { model_calls: 6, tokens: 60000 } });
+  log.ev("spawn/start", { child_id: "ep_rich", program: "writer", context: "fresh", call_id: "tc_p3" }, 90);
+  log.ev("spawn/end", { child_id: "ep_rich", outcome: { kind: "completed", value: "The parser now propagates the error." } }, 2200);
+  log.ev("budget/release", { child_id: "ep_rich", spent: { model_calls: 2, tokens: 2629 } });
+  log.ev("tool/result", { step: 2, call_id: "tc_p3", name: "spawn", value: "The parser now propagates the error.", rendered: "The parser now propagates the error.", is_error: false, spill: null, duration_ms: 2290, synthetic: false });
+  log.ev("spawn/end", { child_id: "ep_over_child", outcome: { kind: "completed", value: { crates: 8 } } }, 3800);
+  log.ev("budget/release", { child_id: "ep_over_child", spent: { model_calls: 3, tokens: 9100 } });
+  log.ev("tool/result", { step: 1, call_id: "tc_p1", name: "spawn", value: { crates: 8 }, rendered: "crates: 8", is_error: false, spill: null, duration_ms: 8000, synthetic: false });
+  log.ev("model/request", { step: 3, attempt: 1, request_id: "rq_p3", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 200);
+  log.ev("assistant/message", { step: 3, request_id: "rq_p3", text: "Eight crates.", tool_calls: [], stop: "end", usage: { input: 900, output: 6, cache_read: 800 }, interrupted: false }, 700);
+  log.ev("episode/end", { outcome: { kind: "completed", value: "Eight crates." } }, 100);
+  return log;
+}
+
+function overlapChild() {
+  // Starts 2 s after its parent and ends 1 s before it.
+  const log = new Log(1730000002000);
+  const taskText = "Read every crate manifest.";
+  const call = { id: "tc_c1", name: "bash", args: { cmd: "ls crates" } };
+  log.ev("episode/start", {
+    id: "ep_over_child",
+    parent_id: "ep_over_parent",
+    fork_origin: null,
+    team_id: null,
+    program: program("surveyor", { model_calls: 8, tokens: 80000 }),
+    identity: "sha256:dddd",
+    task: taskText,
+    runtime,
+    sandbox: { mode: "best-effort", landlock_abi: 7 },
+  });
+  const task = log.ev("inbox/item", { source: "task", content: [text(taskText)], from: null, message_id: null });
+  const header = log.ev("request/header", { reason: "initial", system: "You read manifests.", tools: tools.slice(0, 2), model });
+  log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_c1", header_seq: header, consumed: [task], messages: [user(text(taskText))] }, 800);
+  log.ev("assistant/message", { step: 1, request_id: "rq_c1", text: "", tool_calls: [call], stop: "tool", usage: { input: 200, output: 12, cache_read: 0 }, interrupted: false }, 600);
+  log.ev("tool/result", { step: 1, call_id: "tc_c1", name: "bash", value: { exit: 0 }, rendered: "cli\ncode\ncore\nlog", is_error: false, spill: null, duration_ms: 2600, synthetic: false }, 2600);
+  log.ev("compaction/start", { step: 2, covered: { first_seq: 1, last_seq: 5 }, trigger: "threshold", projected_tokens: 74000, reserved: { model_calls: 6, tokens: 70000 } }, 400);
+  log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_c2", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 900);
+  log.ev("request/retry", { step: 2, attempt: 1, cause: "rate-limit", delay_ms: 1000 }, 300);
+  log.ev("model/request", { step: 2, attempt: 2, request_id: "rq_c3", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 1000);
+  log.ev("assistant/message", { step: 2, request_id: "rq_c3", text: "Eight crates.", tool_calls: [], stop: "end", usage: { input: 260, output: 6, cache_read: 200 }, interrupted: false }, 600);
+  log.ev("episode/end", { outcome: { kind: "completed", value: { crates: 8 } } }, 100);
+  return log;
+}
+
+// The writer the parent above spawns, whose one assistant turn exercises
+// every rich rendering the conversation pane has: Markdown with a table and
+// a fenced Rust block, inline and display mathematics, an `edit` result
+// carrying a unified diff, and a `read` result carrying numbered source.
+
+function rich() {
+  const log = new Log(1730000004200);
+  const taskText = "Explain the budget rule and tighten the parser.";
+  const answer = [
+    "# Budget",
+    "",
+    "An episode stops when any limit is reached. The share a child receives is",
+    "$r = b_{\\text{parent}} / n$, and the parent keeps the rest.",
+    "",
+    "$$\\sum_{i=1}^{n} r_i \\le b_{\\text{parent}}$$",
+    "",
+    "| limit | unit | checked |",
+    "|:---|:---:|---:|",
+    "| `model_calls` | calls | before each request |",
+    "| `tokens` | tokens | after each response |",
+    "",
+    "The check itself is one comparison:",
+    "",
+    "```rust",
+    "/// Returns the remainder, or None when the limit is reached.",
+    "fn remaining(spent: u64, limit: Option<u64>) -> Option<u64> {",
+    "    let limit = limit?;",
+    "    limit.checked_sub(spent).filter(|left| *left > 0)",
+    "}",
+    "```",
+    "",
+    "See [the log format](docs/log-format.md) for the events, and note that",
+    "**every** limit is *declared* rather than inferred.",
+    "",
+    "> A limit with no declared value is unlimited.",
+    "",
+    "- read the manifest",
+    "- tighten the parser",
+    "  - add the error path",
+    "- run the tests",
+  ].join("\n");
+  const editCall = { id: "tc_r1", name: "edit", args: { path: "src/parser.rs", edits: [{ find: "lexer.run()", replace: "lexer.run()?" }] } };
+  const readCall = { id: "tc_r2", name: "read", args: { path: "src/parser.rs", offset: 1, limit: 6 } };
+  const diff = [
+    "edited src/parser.rs: 2 edit(s), +2 -2 lines",
+    "--- a/src/parser.rs",
+    "+++ b/src/parser.rs",
+    "@@ -10,6 +10,6 @@",
+    " fn parse(input: &str) -> Result<Ast> {",
+    "     let mut lexer = Lexer::new(input);",
+    "-    let tree = lexer.run();",
+    "-    Ok(tree)",
+    "+    let tree = lexer.run()?;",
+    "+    Ok(tree.finish())",
+    " }",
+    "",
+  ].join("\n");
+  const source = [
+    "1\tuse crate::ast::Ast;",
+    "2\t",
+    "3\t/// Parses one document. // 42 bytes at most",
+    "4\tpub fn parse(input: &str) -> Result<Ast> {",
+    "5\t    let mut lexer = Lexer::new(input);",
+    "6\t    let tree = lexer.run()?;",
+    "",
+  ].join("\n");
+
+  log.ev("episode/start", {
+    id: "ep_rich",
+    parent_id: "ep_over_parent",
+    fork_origin: null,
+    team_id: null,
+    program: program("writer", { model_calls: 6, tokens: 60000 }),
+    identity: "sha256:eeee",
+    task: taskText,
+    runtime,
+    sandbox: { mode: "best-effort", landlock_abi: 7 },
+  });
+  const task = log.ev("inbox/item", { source: "task", content: [text(taskText)], from: null, message_id: null });
+  const header = log.ev("request/header", { reason: "initial", system: "You explain and edit.", tools, model });
+  log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_r1", header_seq: header, consumed: [task], messages: [user(text(taskText))] });
+  log.ev("assistant/message", {
+    step: 1,
+    request_id: "rq_r1",
+    text: answer,
+    tool_calls: [editCall, readCall],
+    stop: "tool",
+    usage: { input: 800, output: 420, cache_read: 0 },
+    interrupted: false,
+  }, 1200);
+  log.ev("tool/result", { step: 1, call_id: "tc_r1", name: "edit", value: { path: "src/parser.rs", added: 2, removed: 2 }, rendered: diff, is_error: false, spill: null, duration_ms: 21, synthetic: false });
+  log.ev("tool/result", { step: 1, call_id: "tc_r2", name: "read", value: { path: "src/parser.rs", offset: 1, shown: 6, total_lines: 40, truncated: true }, rendered: source, is_error: false, spill: null, duration_ms: 3, synthetic: false });
+  const messages2 = [user(text(taskText)), assistant(answer, [editCall, readCall]), tool("tc_r1", "edit", diff), tool("tc_r2", "read", source)];
+  log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_r2", header_seq: header, consumed: [], messages: messages2 }, 300);
+  log.ev("assistant/message", { step: 2, request_id: "rq_r2", text: "The parser now propagates the error.", tool_calls: [], stop: "end", usage: { input: 1400, output: 9, cache_read: 800 }, interrupted: false }, 500);
+  log.ev("episode/end", { outcome: { kind: "completed", value: "The parser now propagates the error." } });
+  return log;
+}
+
+// The workflow fixtures, written by the runtime rather than by hand.
+//
+// The graph surveys a Python package for TODO comments, asks one model node
+// for a plan, applies it in a second model node, and checks the result. It
+// exercises what the workflow view has to draw: a node that fires twice, a
+// choice point whose labels include one the model never chose and one with
+// no successors, a node no firing ever reached, and a tool failure that a
+// recovery decision retried.
+
+/** Absolute path of the release binary that writes the logs. */
+const BINARY = join(dir, "..", "..", "target", "release", "foe");
+
+/** Paths written into the logs in place of the machine's own. */
+const PROJECT = "/home/user/project";
+const TOOLS = "/home/user/tools";
+
+/** A scripted model program: one model/request line in, model/chunk lines out. */
+const MODEL_PROGRAM = `#!/usr/bin/env python3
+"""Answers model requests for the workflow fixture.
+
+The answer is chosen from the tools the request offers and from a counter
+kept beside this file, so one run of the graph gives the same answers every
+time. A request offering \`recover\` is a recovery decision; one offering
+\`return\` is the propose node; anything else is the apply node.
+"""
+
+import json
+import os
+import sys
+
+STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state")
+
+
+def bump(name):
+    path = os.path.join(STATE, name)
+    n = int(open(path).read().strip()) if os.path.exists(path) else 0
+    open(path, "w").write(str(n + 1))
+    return n + 1
+
+
+def emit(rid, chunk):
+    sys.stdout.write(json.dumps({"type": "model/chunk", "request_id": rid, "chunk": chunk}) + "\\n")
+
+
+def call(rid, cid, name, args):
+    emit(rid, {"kind": "tool_call_start", "id": cid, "name": name})
+    emit(rid, {"kind": "tool_call_delta", "id": cid, "delta": json.dumps(args)})
+    emit(rid, {"kind": "tool_call_end", "id": cid})
+
+
+def say(rid, body):
+    for word in body.split(" "):
+        emit(rid, {"kind": "text", "delta": word + " "})
+
+
+def done(rid, stop, given, produced):
+    emit(rid, {"kind": "done", "stop": stop,
+               "usage": {"input": given, "output": produced, "cache_read": 0}})
+
+
+req = json.loads(sys.stdin.readline())
+rid = req["request_id"]
+offered = [t["name"] for t in req.get("tools") or []]
+messages = req.get("messages") or []
+
+if "recover" in offered:
+    n = bump("recover")
+    failed = json.dumps(messages).split("Node \`", 1)[1].split("\`", 1)[0]
+    call(rid, "tc_recover_%d" % n, "recover", {"action": "retry", "node": failed})
+    done(rid, "tool", 1180, 96)
+elif "return" in offered:
+    n = bump("propose")
+    plan = {"file": "src/collate.py",
+            "todo": "TODO: the pass over the manifest is quadratic",
+            "change": "widen the survey before choosing" if n == 1
+                      else "index the manifest by key and look each row up once",
+            "branch": "widen" if n == 1 else "apply"}
+    say(rid, "The survey names one TODO that a local change resolves.")
+    call(rid, "tc_return_%d" % n, "return", {"value": plan})
+    done(rid, "tool", 2400 + 900 * n, 180)
+elif len(messages) <= 1:
+    call(rid, "tc_read_%d" % bump("read"), "read", {"path": "src/collate.py"})
+    done(rid, "tool", 3100, 74)
+else:
+    say(rid, "Indexed the manifest by key so each row is looked up once, and removed the TODO comment.")
+    done(rid, "end", 4260, 210)
+`;
+
+/** A scripted verification program: one finding on its first run, none after. */
+const CHECK_PROGRAM = `#!/usr/bin/env python3
+"""Stands in for a project's checker in the workflow fixture.
+
+Prints one finding and exits 1 the first time it runs and prints none and
+exits 0 after that, so the graph meets one tool failure and the recovery
+decision that retries it.
+"""
+
+import os
+import sys
+
+path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state", "check")
+n = int(open(path).read().strip()) if os.path.exists(path) else 0
+open(path, "w").write(str(n + 1))
+
+if n == 0:
+    sys.stderr.write("src/collate.py:41: undefined name 'index'\\n")
+    sys.exit(1)
+
+sys.stdout.write("checked src: no findings\\n")
+`;
+
+/** The package the graph surveys. Both TODO comments are real matches. */
+const SOURCE = `"""Collates manifest rows into one table."""
+
+
+def collate(manifest, rows):
+    # TODO: the pass over the manifest is quadratic
+    out = []
+    for row in rows:
+        for entry in manifest:
+            if entry["key"] == row["key"]:
+                out.append({**entry, **row})
+    return out
+
+
+def summarize(table):
+    # TODO: report the widest column so the caller can pad
+    return {"rows": len(table)}
+`;
+
+/** The configuration the runtime resolves, with `root` as every path's base. */
+function workflowConfig(root) {
+  const child = (name, role, toolNames, grants, calls, extra = {}) => ({
+    name,
+    instructions: { role },
+    tools: toolNames,
+    grants,
+    budget: { model_calls: calls },
+    ...extra,
+  });
+  return {
+    version: 1,
+    name: "survey-propose-apply",
+    instructions: { role: "The ceiling of a declared workflow. Each model node carries its own instructions." },
+    tools: ["read", "grep", "edit", "bash", "check"],
+    tool_defs: {
+      check: {
+        exec: `${root}/check`,
+        cwd: `${root}/project`,
+        description: "Runs the project's checker over src and prints one finding per line; prints nothing when clean.",
+      },
+    },
+    grants: { read: [`${root}/project`], write: [`${root}/project/src`] },
+    budget: { model_calls: 30, tokens: 300000, max_episodes: 6 },
+    sandbox: { mode: "off" },
+    model: { provider: "exec", model: "scripted-answers", exec: `${root}/model` },
+    workflow: {
+      nodes: {
+        manifest: { tool: "grep", args: { pattern: "^def ", glob: "*.py" } },
+        survey: { tool: "grep", args: { pattern: "TODO", glob: "*.py" }, follows: ["manifest"], max_fires: 2 },
+        propose: {
+          model: child(
+            "propose",
+            "You receive the task of this run and the TODO comments found in a Python package, one grep match per line. Choose the one TODO that fits the task and that a small, local change can resolve, read the surrounding code, and return a plan: the file, the TODO, and the change to make. Return the branch `nothing` when no TODO is safe to resolve without more context.",
+            ["read", "grep"],
+            { read: [`${root}/project`] },
+            8,
+            {
+              done_when: {
+                returns: {
+                  type: "object",
+                  properties: { file: { type: "string" }, todo: { type: "string" }, change: { type: "string" } },
+                  required: ["file", "todo", "change"],
+                },
+              },
+            },
+          ),
+          follows: ["task", "survey"],
+          branches: { apply: ["apply"], widen: ["survey"], abandon: ["record_abandonment"], nothing: [] },
+          max_fires: 2,
+        },
+        apply: {
+          model: child(
+            "apply",
+            "You receive a plan naming a file, a TODO comment in it, and the change that resolves it. Make that change and remove the comment. Run the tests that cover the file when there are any. Finish with one sentence stating what changed.",
+            ["read", "edit", "bash"],
+            { read: [`${root}/project`], write: [`${root}/project/src`] },
+            12,
+          ),
+          follows: ["propose"],
+          max_fires: 2,
+        },
+        verify_change: { tool: "check", args: { args: [] }, follows: ["apply"], max_fires: 2, terminal: true },
+        record_abandonment: {
+          tool: "bash",
+          args: { command: "echo 'the run abandoned every TODO it surveyed'" },
+        },
+      },
+      recovery: { max_interventions: 2 },
+    },
+    task: "Resolve one TODO comment in src.",
+  };
+}
+
+/**
+ * Runs the graph and writes its four logs. Without the release binary the
+ * logs already here are left alone, so the rest of the fixtures regenerate
+ * on a machine with no Rust toolchain.
+ */
+function workflowRun() {
+  if (!existsSync(BINARY)) {
+    console.log(`${BINARY} is absent; the workflow fixtures are left as they are`);
+    console.log("build it with `cargo build --release --bin foe` to regenerate them");
+    return;
+  }
+  const root = mkdtempSync(join(tmpdir(), "foe-workflow-fixture-"));
+  try {
+    mkdirSync(join(root, "project", "src"), { recursive: true });
+    mkdirSync(join(root, "state"), { recursive: true });
+    writeFileSync(join(root, "project", "src", "collate.py"), SOURCE);
+    for (const [name, body] of [["model", MODEL_PROGRAM], ["check", CHECK_PROGRAM]]) {
+      writeFileSync(join(root, name), body);
+      chmodSync(join(root, name), 0o755);
+    }
+    const config = join(root, "config.json");
+    writeFileSync(config, JSON.stringify(workflowConfig(root), null, 2));
+    const logs = join(root, "logs");
+    const run = spawnSync(BINARY, ["--config", config, "--log-dir", logs, "--headless", "--no-open"], {
+      encoding: "utf8",
+    });
+    if (run.status !== 0) {
+      throw new Error(`${BINARY} exited with ${run.status}: ${run.stderr}`);
+    }
+    const outcome = JSON.parse(run.stdout.trim().split("\n").pop());
+    if (outcome.kind !== "completed") {
+      throw new Error(`the graph ended ${outcome.kind}: ${JSON.stringify(outcome)}`);
+    }
+    // The logs name the scratch directory in grants, tool paths, and every
+    // tool result. Two replacements put stable paths in their place; the
+    // events are otherwise the bytes the runtime wrote.
+    const settle = (text) => text.split(`${root}/project`).join(PROJECT).split(root).join(TOOLS);
+    const read = (path) => settle(readFileSync(path, "utf8"));
+    const episode = read(join(logs, "episode.jsonl"));
+    writeFileSync(join(dir, "workflow.jsonl"), episode);
+    const names = [];
+    for (const line of episode.split("\n").filter((l) => l.trim() !== "")) {
+      const event = JSON.parse(line);
+      if (event.type !== "workflow/node-start" || !event.data.child_id) continue;
+      const name = `workflow-${event.data.node.replace(/_/g, "-")}-${event.data.fire}.jsonl`;
+      writeFileSync(join(dir, name), read(join(logs, "children", event.data.child_id, "episode.jsonl")));
+      names.push(name);
+    }
+    console.log(`workflow.jsonl and ${names.join(", ")} written by ${BINARY}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 const r = root();
 r.write("root.jsonl");
 child().write("child.jsonl");
 fork(r).write("fork.jsonl");
 compact().write("compact.jsonl");
+overlapParent().write("overlap-parent.jsonl");
+overlapChild().write("overlap-child.jsonl");
+rich().write("rich.jsonl");
+workflowRun();

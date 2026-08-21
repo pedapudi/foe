@@ -4,6 +4,7 @@
 
 import { fmtInt } from "./dom.js";
 import { renderContinuation } from "./messages.js";
+import type { Mark } from "./trajectory.js";
 import { arr, num, obj, str } from "./types.js";
 import type {
   ContentBlock,
@@ -126,7 +127,15 @@ export interface Summary {
   children: Map<string, { program: string; context: string }>;
   roster: Map<string, { name: string; phase: string }>;
   seedEnd: number | null;
+  /**
+   * `episode/start.program`: the resolved configuration with the task
+   * removed. The workflow view reads its `workflow` key and the statistics
+   * view its `budget`.
+   */
+  program: Record<string, unknown>;
   lastSeq: number;
+  /** Marks the trajectory pane draws, in seq order (src/trajectory.ts). */
+  marks: Mark[];
 }
 
 export function emptySummary(id: string): Summary {
@@ -148,7 +157,9 @@ export function emptySummary(id: string): Summary {
     children: new Map(),
     roster: new Map(),
     seedEnd: null,
+    program: {},
     lastSeq: -1,
+    marks: [],
   };
 }
 
@@ -174,6 +185,8 @@ export class EpisodeFold {
   readonly rows: Row[] = [];
   readonly summary: Summary;
   private readonly byKey = new Map<string, Row>();
+  /** One line of arguments per tool call id, for the trajectory hovercard. */
+  private readonly callArgs = new Map<string, string>();
   private readonly stream: boolean;
 
   /** `stream` makes `assistant/chunk` events build a row token by token. */
@@ -196,7 +209,10 @@ export class EpisodeFold {
         s.endTime = ev.time;
         s.outcome = obj(data.outcome) as Outcome;
         const kind = str(s.outcome.kind, "unknown");
-        return this.note(ev, "outcome", outcomeLabel(s.outcome), levelFor(kind), data.outcome);
+        return [
+          ...this.settleStreams(),
+          ...this.note(ev, "outcome", outcomeLabel(s.outcome), levelFor(kind), data.outcome),
+        ];
       }
       case "seed/end":
         s.seedEnd = ev.seq;
@@ -218,10 +234,18 @@ export class EpisodeFold {
         const detail = `step ${num(data.step)} · attempt ${num(data.attempt)} · header seq ${num(
           data.header_seq,
         )}${consumed ? ` · consumed ${consumed}` : ""}`;
+        this.mark(ev, "request", `step ${num(data.step)}`, detail, 0);
         return this.note(ev, "request", detail, "info", data);
       }
       case "request/retry":
         s.retries += 1;
+        this.mark(
+          ev,
+          "retry",
+          str(data.cause, "?"),
+          `step ${num(data.step)} · attempt ${num(data.attempt)} · retry in ${num(data.delay_ms)} ms`,
+          0,
+        );
         return this.note(
           ev,
           "retry",
@@ -236,6 +260,13 @@ export class EpisodeFold {
       case "assistant/message":
         return this.message(ev, data);
       case "tool/result":
+        this.mark(
+          ev,
+          "tool",
+          str(data.name, "?"),
+          this.callArgs.get(str(data.call_id)) ?? "",
+          num(data.duration_ms),
+        );
         return this.append({
           kind: "tool",
           key: `tool:${ev.seq}`,
@@ -288,6 +319,7 @@ export class EpisodeFold {
       case "spawn/start": {
         const child = str(data.child_id);
         s.children.set(child, { program: str(data.program), context: str(data.context) });
+        this.mark(ev, "spawn", child, `${str(data.program, "?")} · ${str(data.context, "?")}`, 0);
         return this.note(
           ev,
           "spawn",
@@ -343,6 +375,7 @@ export class EpisodeFold {
         const detail = `step ${num(data.step)} · projected ${num(data.projected_tokens)} tokens · covering seq ${num(
           covered.first_seq,
         )}–${num(covered.last_seq)}`;
+        this.mark(ev, "compaction", str(data.trigger, "threshold"), detail, 0);
         return this.note(ev, "compaction", detail, "info", data);
       }
       case "compaction/summary": {
@@ -386,6 +419,7 @@ export class EpisodeFold {
     const sandbox = obj(data.sandbox);
     const origin = obj(data.fork_origin) as ForkOrigin;
     if (typeof data.id === "string") s.id = data.id;
+    s.program = program;
     s.name = str(program.name, s.id);
     s.parentId = typeof data.parent_id === "string" ? data.parent_id : null;
     s.forkOrigin =
@@ -484,7 +518,9 @@ export class EpisodeFold {
       thinking: existing ? existing.thinking : "",
       toolCalls: arr(data.tool_calls).map((c) => {
         const call = obj(c);
-        return { id: str(call.id), name: str(call.name, "?"), args: call.args, raw: "", done: true };
+        const id = str(call.id);
+        if (id) this.callArgs.set(id, argumentLine(call.args));
+        return { id, name: str(call.name, "?"), args: call.args, raw: "", done: true };
       }),
       stop: str(data.stop),
       usage: data.usage === undefined ? null : usage,
@@ -514,6 +550,29 @@ export class EpisodeFold {
       data,
       link: link || null,
     });
+  }
+
+  /**
+   * Closes every assistant row still assembling from chunks. A row is
+   * assembling until its `assistant/message` arrives, so a row still
+   * assembling when the episode ends is a stream that was cut off: the
+   * request failed before the response was assembled. It is recorded as
+   * interrupted, because that is what the log shows.
+   */
+  private settleStreams(): Patch[] {
+    const patches: Patch[] = [];
+    for (const row of this.rows) {
+      if (row.kind !== "assistant" || !row.streaming) continue;
+      row.streaming = false;
+      row.interrupted = true;
+      patches.push({ op: "update", row });
+    }
+    return patches;
+  }
+
+  /** Records one trajectory mark. Marks arrive in seq order and stay so. */
+  private mark(ev: LogEvent, kind: Mark["kind"], label: string, detail: string, durationMs: number): void {
+    this.summary.marks.push({ kind, seq: ev.seq, time: ev.time, durationMs, label, detail });
   }
 
   private append(row: Row): Patch[] {
@@ -547,6 +606,24 @@ function modelLabel(model: unknown): string {
   const provider = str(m.provider);
   const name = str(m.model);
   return provider && name ? `${provider}/${name}` : name || provider;
+}
+
+/**
+ * One line naming a tool call's arguments, for a hovercard that has room
+ * for one line. A long value is cut so that the line stays scannable.
+ */
+export function argumentLine(args: unknown, limit = 90): string {
+  const text = typeof args === "string" ? args : compactJson(args);
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length <= limit ? line : `${line.slice(0, limit - 1)}…`;
+}
+
+function compactJson(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return String(value);
+  }
 }
 
 /** Streamed arguments may be cut short; a prefix that fails to parse stays text. */

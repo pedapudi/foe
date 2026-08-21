@@ -8,14 +8,24 @@ import { clear, h } from "./dom.js";
 import { EpisodeFold } from "./fold.js";
 import type { Patch, Summary } from "./fold.js";
 import { buildTree, flatten, sharedPrefix } from "./lineage.js";
+import { loadPanes, onPanesChange, rowGrip, setTrajectoryRows, sidebarGrip } from "./panes.js";
 import { ConversationView } from "./render/conversation.js";
 import { DiffView, renderNoDiff } from "./render/diff.js";
 import { RawView } from "./render/raw.js";
+import { StatisticsView } from "./render/statistics.js";
+import { TrajectoryView } from "./render/trajectory.js";
 import { renderInfo, renderTree } from "./render/tree.js";
+import { WorkflowView } from "./render/workflow.js";
 import type { Sink } from "./source.js";
+import type { StatisticsEpisode } from "./statistics.js";
+import type { TrajectoryEpisode } from "./trajectory.js";
 import type { LogEvent } from "./types.js";
+import { declaredWorkflow, readWorkflow } from "./workflow.js";
 
-type Tab = "conversation" | "raw" | "diff";
+type Tab = "conversation" | "raw" | "diff" | "workflow" | "statistics";
+
+/** The tab each digit selects, which is also the order of the tab bar. */
+const TAB_KEYS: Tab[] = ["conversation", "raw", "diff", "workflow", "statistics"];
 
 interface EpisodeState {
   id: string;
@@ -40,24 +50,47 @@ export class App implements Sink {
   private readonly scrollMemory = new Map<HTMLElement, number>();
 
   private readonly topbar: Topbar;
+  private readonly trajectory: TrajectoryView;
+  private readonly workflow: WorkflowView;
+  private readonly statistics: StatisticsView;
   private readonly treeHost = h("div", { class: "tree-host" });
-  private readonly infoHost = h("div");
+  private readonly infoHost = h("div", { class: "details-host" });
   private readonly tabsBar: HTMLElement;
   private readonly views = h("div", { class: "views" });
   private readonly title = h("span", { class: "title" });
 
   constructor(root: HTMLElement, private readonly live: boolean) {
     this.topbar = new Topbar({ up: () => this.up(), select: (id) => this.select(id) });
+    this.trajectory = new TrajectoryView({
+      select: (id) => this.select(id),
+      reveal: (id, seq) => this.reveal(id, seq),
+    });
+    this.workflow = new WorkflowView({ select: (id) => this.select(id) });
+    this.statistics = new StatisticsView({ reveal: (id, seq) => this.reveal(id, seq) });
     this.tabsBar = h(
       "div",
       { class: "tabs", role: "tablist" },
       this.tabButton("conversation", "conversation"),
       this.tabButton("raw", "raw events"),
       this.tabButton("diff", "diff"),
+      this.tabButton("workflow", "workflow"),
+      this.tabButton("statistics", "statistics"),
       this.title,
     );
-    const treePane = h("div", { class: "pane-tree" }, h("h1", null, "episodes"), this.treeHost, this.infoHost);
-    const mainPane = h("div", { class: "pane-main" }, this.tabsBar, this.views);
+    const left = h(
+      "section",
+      { class: "column-left" },
+      h("section", { class: "pane-tree", "aria-label": "episodes" }, h("div", { class: "pane-head" }, h("h2", null, "episodes")), this.treeHost),
+      rowGrip("details", "height of the details pane"),
+      h("section", { class: "pane-details", "aria-label": "episode details" }, h("div", { class: "pane-head" }, h("h2", null, "details")), this.infoHost),
+    );
+    const right = h(
+      "section",
+      { class: "column-right" },
+      this.trajectory.el,
+      rowGrip("trajectory", "height of the trajectory pane"),
+      h("section", { class: "pane-main" }, this.tabsBar, this.views),
+    );
     const keys = h(
       "div",
       { class: "keys" },
@@ -72,16 +105,28 @@ export class App implements Sink {
       h("kbd", null, "/"),
       " filter · ",
       h("kbd", null, "1"),
-      h("kbd", null, "2"),
-      h("kbd", null, "3"),
-      " tabs",
+      "–",
+      h("kbd", null, "5"),
+      " tabs · drag or arrow a grip to resize, double click to reset",
     );
     clear(root);
     root.classList.add("foe");
-    root.append(this.topbar.el, treePane, mainPane, keys);
+    root.append(this.topbar.el, left, sidebarGrip(), right, keys);
+    loadPanes({ root, left, right });
+    onPanesChange(() => this.trajectory.resized());
     document.addEventListener("keydown", (e) => this.onKey(e));
     if (typeof ResizeObserver !== "undefined") {
-      new ResizeObserver(() => this.scheduleSidebar()).observe(this.treeHost);
+      const redraw = new ResizeObserver(() => {
+        this.scheduleSidebar();
+        this.trajectory.resized();
+      });
+      redraw.observe(this.treeHost);
+      redraw.observe(this.trajectory.el);
+      const tabs = new ResizeObserver(() => {
+        this.workflow.resized();
+        this.statistics.resized();
+      });
+      tabs.observe(this.views);
     }
     this.connection = { state: live ? "reconnecting" : "file", detail: live ? "connecting" : "file" };
     this.renderSidebar();
@@ -136,8 +181,29 @@ export class App implements Sink {
     this.selected = id;
     this.cursor = id;
     if (this.tab === "diff") this.tab = "conversation";
+    if (this.tab === "workflow" && !this.declaresWorkflow(id)) this.tab = "conversation";
     this.renderSidebar();
     this.renderMain();
+  }
+
+  /** True when the episode's program declares a graph, which the tab needs. */
+  private declaresWorkflow(id: string): boolean {
+    const summary = this.episodes.get(id)?.fold.summary;
+    return summary !== undefined && declaredWorkflow(summary.program) !== null;
+  }
+
+  /**
+   * Selects an episode and brings its conversation to one log position.
+   * A mark in the trajectory pane is clicked to reach the events it stands for.
+   */
+  reveal(id: string, seq: number): void {
+    if (!this.episodes.has(id)) return;
+    const changing = this.selected !== id || this.tab !== "conversation";
+    this.tab = "conversation";
+    this.select(id);
+    const state = this.episodes.get(id)!;
+    if (changing) requestAnimationFrame(() => state.conv.scrollToSeq(seq));
+    else state.conv.scrollToSeq(seq);
   }
 
   /** Moves the selection to the parent or fork origin of the selected episode. */
@@ -159,6 +225,9 @@ export class App implements Sink {
   }
 
   setTab(tab: Tab): void {
+    // The workflow tab exists only for an episode that declares a graph, so
+    // its key does nothing for an episode that runs the free loop.
+    if (tab === "workflow" && !(this.selected !== null && this.declaresWorkflow(this.selected))) return;
     this.tab = tab;
     this.renderMain();
   }
@@ -251,11 +320,91 @@ export class App implements Sink {
       clear(this.infoHost);
       this.infoHost.appendChild(renderInfo(s));
     }
+    // The program name arrives with `episode/start`, after the first
+    // selection is made, so the title is set on every sidebar redraw.
+    this.title.textContent = s ? `${s.name} · ${s.id}` : "";
+    const track = this.trajectoryEpisodes(roots);
+    // The trajectory region opens at the height its rows need, so a run of
+    // one episode does not open a region of mostly empty ground.
+    setTrajectoryRows(track.length, this.trajectory.chromeHeight());
+    this.trajectory.update(track, { selected: this.selected, cursor: this.cursor });
     this.topbar.setCrumbs(this.lineage());
+    this.renderTabs();
+  }
+
+  /** The episodes the trajectory pane draws, in the tree's own order. */
+  private trajectoryEpisodes(roots: ReturnType<typeof buildTree>): TrajectoryEpisode[] {
+    return flatten(roots).map(({ node, depth }) => {
+      const s = node.summary;
+      return {
+        id: s.id,
+        name: s.name,
+        depth,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        lastSeq: s.lastSeq,
+        outcome: s.outcome,
+        parentId: s.parentId,
+        forkOrigin: s.forkOrigin,
+        marks: s.marks,
+      };
+    });
   }
 
   private tabButton(tab: Tab, label: string): HTMLElement {
     return h("button", { class: "tab", type: "button", role: "tab", "data-tab": tab, onclick: () => this.setTab(tab) }, label);
+  }
+
+  /**
+   * Feeds the two tabs that derive their own view of the selected episode.
+   * Both gate on a digest of what they would draw, so this is called on
+   * every redraw and costs nothing when nothing changed.
+   */
+  private renderTabs(): void {
+    const id = this.selected ?? "";
+    // The workflow tab appears once the episode's `episode/start` has been
+    // read and declares a graph, which in live mode is after the first
+    // selection is made.
+    const declared = this.declaresWorkflow(id);
+    const button = this.tabsBar.querySelector<HTMLElement>('.tab[data-tab="workflow"]');
+    if (button) button.hidden = !declared;
+    const state = this.episodes.get(id);
+    if (!state) {
+      this.workflow.update(null, null);
+      this.statistics.update([], new Map());
+      return;
+    }
+    const summary = state.fold.summary;
+    this.workflow.update(readWorkflow(summary.program, state.fold.events), id);
+    const names = new Map<string, string>();
+    for (const s of this.summaries()) names.set(s.id, s.name === s.id ? s.id : `${s.name} ${s.id}`);
+    this.statistics.update(this.statisticsScope(id), names);
+  }
+
+  /** The selected episode followed by its descendants, each with its depth. */
+  private statisticsScope(id: string): StatisticsEpisode[] {
+    const roots = buildTree(this.summaries(), this.orderIds);
+    const found = flatten(roots).find((f) => f.node.id === id);
+    if (!found) return [];
+    const out: StatisticsEpisode[] = [];
+    const walk = (node: typeof found.node, depth: number) => {
+      const state = this.episodes.get(node.id);
+      const s = node.summary;
+      if (state) {
+        out.push({
+          id: s.id,
+          name: s.name,
+          events: state.fold.events,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          program: s.program,
+          depth,
+        });
+      }
+      for (const child of node.children) walk(child, depth + 1);
+    };
+    walk(found.node, 0);
+    return out;
   }
 
   private renderMain(): void {
@@ -264,13 +413,17 @@ export class App implements Sink {
       b.classList.toggle("active", active);
       b.setAttribute("aria-selected", active ? "true" : "false");
     }
+    this.renderTabs();
     const selected = this.selected ? this.episodes.get(this.selected) : undefined;
-    this.title.textContent = selected ? `${selected.fold.summary.name} · ${selected.id}` : "";
     let next: HTMLElement;
     if (this.tab === "diff") {
       next = this.diffElement();
     } else if (!selected) {
       next = h("div", { class: "empty" }, this.live ? "waiting for episodes" : "no episodes in this log");
+    } else if (this.tab === "workflow") {
+      next = this.workflow.el;
+    } else if (this.tab === "statistics") {
+      next = this.statistics.el;
     } else {
       next = this.tab === "raw" ? selected.raw.el : selected.conv.el;
     }
@@ -281,8 +434,15 @@ export class App implements Sink {
       current.remove();
     }
     this.views.appendChild(next);
+    // A tab has no width until it is mounted, so the two figures that fit
+    // themselves to the pane draw once they are in the page.
+    if (next === this.workflow.el) this.workflow.resized();
+    if (next === this.statistics.el) this.statistics.resized();
     const remembered = this.scrollMemory.get(next);
-    next.scrollTop = remembered === undefined ? next.scrollHeight : remembered;
+    // A dialogue opens at its end, because the last row is the newest; a
+    // figure opens at its top, because the first figure is the first to read.
+    const foot = next !== this.workflow.el && next !== this.statistics.el;
+    next.scrollTop = remembered === undefined ? (foot ? next.scrollHeight : 0) : remembered;
   }
 
   private diffElement(): HTMLElement {
@@ -347,17 +507,11 @@ export class App implements Sink {
         e.preventDefault();
         break;
       }
-      case "1":
-        this.setTab("conversation");
+      default: {
+        const tab = TAB_KEYS[Number(e.key) - 1];
+        if (tab !== undefined && /^[1-9]$/.test(e.key)) this.setTab(tab);
         break;
-      case "2":
-        this.setTab("raw");
-        break;
-      case "3":
-        this.setTab("diff");
-        break;
-      default:
-        break;
+      }
     }
   }
 }

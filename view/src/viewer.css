@@ -21,12 +21,138 @@ body {
   transition: background 0.18s ease, color 0.18s ease;
 }
 
+/* Three regions and the grips between them. The two columns and the two
+ * row splits are sized by the custom properties src/panes.ts writes; every
+ * region sets min-height 0 so that a child scrolls rather than stretching
+ * its region. */
 .foe {
   display: grid;
-  grid-template-columns: minmax(240px, 320px) 1fr;
-  grid-template-rows: auto 1fr auto;
+  grid-template-columns: var(--pane-sidebar, 300px) auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
   overflow: hidden;
+}
+
+.column-left {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto var(--pane-details, 30%);
+  min-height: 0;
+  min-width: 0;
+  background: var(--v2-panel);
+  border-right: 1px solid var(--v2-rule);
+}
+
+.column-right {
+  display: grid;
+  grid-template-rows: var(--pane-trajectory, 35%) auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ---- grips ---- */
+
+.grip {
+  position: relative;
+  background: transparent;
+  border: none;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.grip.col {
+  width: 7px;
+  cursor: col-resize;
+}
+
+.grip.row {
+  height: 7px;
+  cursor: row-resize;
+}
+
+/* The hairline the grip rides on. */
+.grip::before {
+  content: "";
+  position: absolute;
+  background: var(--v2-rule);
+}
+
+.grip.col::before {
+  inset: 0 auto 0 3px;
+  width: 1px;
+}
+
+.grip.row::before {
+  inset: 3px 0 auto 0;
+  height: 1px;
+}
+
+.grip-pill {
+  position: relative;
+  display: block;
+  border-radius: 2px;
+  background: var(--v2-ink-faint);
+  transition: background 0.12s ease;
+}
+
+.grip.col .grip-pill {
+  width: 4px;
+  height: 28px;
+}
+
+.grip.row .grip-pill {
+  width: 28px;
+  height: 4px;
+}
+
+.grip:hover .grip-pill,
+.grip:focus-visible .grip-pill,
+.grip.dragging .grip-pill {
+  background: var(--v2-accent);
+}
+
+.grip:focus-visible {
+  outline: 2px solid var(--v2-accent);
+  outline-offset: -2px;
+}
+
+/* While a grip is dragged the pointer keeps one cursor over the whole page
+ * and no text is selected under it. */
+body.resizing-col,
+body.resizing-col * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+body.resizing-row,
+body.resizing-row * {
+  cursor: row-resize !important;
+  user-select: none;
+}
+
+/* ---- pane headings ---- */
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 4px;
+  flex: none;
+}
+
+.pane-head h2 {
+  font-family: var(--v2-mono);
+  font-weight: 600;
+  font-size: calc(10px * var(--dt-font-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--v2-ink-faint);
+  margin: 0;
+}
+
+.pane-head .spacer {
+  flex: 1;
 }
 
 button,
@@ -105,7 +231,7 @@ details[open] > summary::before {
 /* ---- top bar ---- */
 
 .topbar {
-  grid-column: 1 / span 2;
+  grid-column: 1 / -1;
   position: sticky;
   top: 0;
   z-index: 6;
@@ -152,16 +278,45 @@ details[open] > summary::before {
 
 .brand {
   display: inline-flex;
-  align-items: baseline;
-  gap: 7px;
+  align-items: center;
+  gap: 8px;
   color: var(--v2-ink);
+  flex: none;
 }
 
-.wordmark {
-  font-family: var(--v2-brand-mono);
-  font-weight: 700;
-  font-size: calc(14px * var(--dt-font-scale, 1));
-  letter-spacing: 0.02em;
+/* The lockup is sized by height. At 22 pixels its wordmark's ascenders
+ * match the cap height of the surrounding chrome text. */
+.lockup {
+  display: inline-flex;
+  align-items: center;
+}
+
+.lockup svg {
+  display: block;
+  height: calc(22px * var(--dt-font-scale, 1));
+  width: auto;
+}
+
+/* The product-status tag, in the wordmark's register and never interactive. */
+.respreview {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-self: center;
+  pointer-events: none;
+  user-select: none;
+  font: 9.5px/1.25 var(--v2-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--v2-ink-faint);
+  border-left: 1px solid var(--v2-rule);
+  padding-left: 7px;
+  margin-left: 2px;
+}
+
+.respreview span {
+  white-space: nowrap;
+  display: block;
 }
 
 .variant {
@@ -308,95 +463,38 @@ details[open] > summary::before {
 
 .cd-option,
 .tf-option {
-  display: flex;
-  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 7px 12px;
+}
+
+.tf-current {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 7px;
-  border: none;
-  border-radius: 4px;
-  text-align: left;
-  color: var(--v2-ink-soft);
-  transition: background 0.12s, color 0.12s;
+  max-width: 190px;
+  overflow: hidden;
 }
 
-.cd-option:hover,
-.tf-option:hover,
-.cd-option:focus-visible,
-.tf-option:focus-visible {
-  background: var(--v2-rule-soft);
-  color: var(--v2-ink);
-  outline: none;
-}
-
-.cd-option .cd-name,
+/* Every option names itself in its own face, over one line set in the
+ * face that mode uses for its content. */
 .tf-name {
-  font-family: var(--v2-mono);
-  font-size: calc(10.5px * var(--dt-font-scale, 1));
+  font-size: calc(12.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-soft);
+  white-space: nowrap;
 }
 
-.cd-option[aria-selected="true"] .cd-name,
 .tf-option[aria-selected="true"] .tf-name {
   color: var(--v2-accent);
 }
 
-.cd-group {
-  padding: 7px 7px 3px;
-  font-family: var(--v2-mono);
-  font-size: calc(8.5px * var(--dt-font-scale, 1));
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--v2-ink-faint);
-  border-top: 1px solid var(--v2-rule-soft);
-  margin-top: 3px;
-}
-
-.cd-group:first-child {
-  border-top: none;
-  margin-top: 0;
-}
-
-.tf-option {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 3px;
-}
-
 .tf-spec {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 9px;
-  color: var(--v2-ink-soft);
-}
-
-.tf-spec-head {
-  font-size: calc(15px * var(--dt-font-scale, 1));
-  line-height: 1;
-}
-
-.tf-spec-prose {
-  font-size: calc(12px * var(--dt-font-scale, 1));
-}
-
-.tf-spec-data {
-  font-size: calc(11px * var(--dt-font-scale, 1));
-  font-variant-numeric: tabular-nums;
-}
-
-.tf-spec.sm {
-  gap: 5px;
-}
-
-.tf-spec.sm .tf-spec-head {
-  font-size: calc(12px * var(--dt-font-scale, 1));
-}
-
-.tf-spec.sm .tf-spec-prose {
-  font-size: calc(10px * var(--dt-font-scale, 1));
-}
-
-.tf-spec.sm .tf-spec-data {
-  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-size: calc(11.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .tf-foot {
@@ -422,6 +520,10 @@ details[open] > summary::before {
   border: 1px solid var(--v2-rule);
   border-radius: 5px;
   overflow: hidden;
+}
+
+.sizeseg {
+  align-items: baseline;
 }
 
 .sizeseg-btn {
@@ -581,28 +683,16 @@ details[open] > summary::before {
 /* ---- tree pane ---- */
 
 .pane-tree {
-  border-right: 1px solid var(--v2-rule);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--v2-panel);
-}
-
-.pane-tree h1 {
-  font-family: var(--v2-mono);
-  font-weight: 600;
-  font-size: calc(10px * var(--dt-font-scale, 1));
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--v2-ink-faint);
-  margin: 0;
-  padding: 8px 12px 2px;
+  min-width: 0;
 }
 
 .tree-host {
   overflow: auto;
   flex: 1 1 auto;
-  min-height: 80px;
+  min-height: 0;
 }
 
 .tree {
@@ -618,13 +708,11 @@ details[open] > summary::before {
 .tree .edge {
   fill: none;
   stroke: var(--v2-ink-faint);
-  stroke-width: 1;
-  opacity: 0.8;
+  stroke-width: 2;
 }
 
 .tree .edge.fork {
-  stroke-dasharray: 3 3;
-  opacity: 0.6;
+  stroke-dasharray: 4 4;
 }
 
 .tree .node {
@@ -633,7 +721,6 @@ details[open] > summary::before {
 
 .tree .node .hit {
   fill: transparent;
-  stroke: none;
 }
 
 .tree .node:hover .hit {
@@ -641,55 +728,55 @@ details[open] > summary::before {
 }
 
 .tree .node.cursor .hit {
-  stroke: var(--v2-ink-faint);
+  fill: var(--v2-rule-soft);
+  stroke: var(--v2-rule);
   stroke-width: 1;
-  stroke-dasharray: 2 2;
 }
 
 .tree .node.selected .hit {
+  fill: color-mix(in srgb, var(--v2-accent) 14%, transparent);
   stroke: var(--v2-accent);
-  stroke-width: 1.2;
-  stroke-dasharray: none;
+  stroke-width: 1;
 }
 
 .tree .dot {
-  fill: var(--v2-paper);
-  stroke: var(--v2-ink-faint);
-  stroke-width: 1.2;
+  fill: var(--v2-ink-faint);
 }
 
 .tree .dot.good {
   fill: var(--v2-good);
-  stroke: var(--v2-good);
 }
 
 .tree .dot.bad {
   fill: var(--v2-bad);
-  stroke: var(--v2-bad);
 }
 
 .tree .dot.caution {
   fill: var(--v2-caution);
-  stroke: var(--v2-caution);
 }
 
 .tree .dot.flat {
   fill: var(--v2-flat);
-  stroke: var(--v2-flat);
 }
 
-.tree text {
-  font-family: var(--v2-sans);
-  font-size: calc(12px * var(--dt-font-scale, 1));
+/* The first line sits at the page's base size; the second is one step
+ * down in mono, so an outcome word never crowds the program name. */
+.tree text.name {
   fill: var(--v2-ink);
+  font-family: var(--v2-sans);
+  font-size: calc(13px * var(--dt-font-scale, 1));
 }
 
-.tree text.sub,
-.tree tspan.sub {
-  font-family: var(--v2-mono);
-  font-size: calc(10px * var(--dt-font-scale, 1));
+.tree tspan.id {
   fill: var(--v2-ink-faint);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--v2-mono);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+}
+
+.tree text.sub {
+  font-family: var(--v2-mono);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+  fill: var(--v2-ink-faint);
 }
 
 .tree text.sub .good {
@@ -708,35 +795,54 @@ details[open] > summary::before {
   fill: var(--v2-flat);
 }
 
+.tree text.sub .running {
+  fill: var(--v2-ink-faint);
+}
+
+.tree text.sub .detail {
+  fill: var(--v2-ink-soft);
+}
+
 .tree .compare-box {
-  fill: var(--v2-paper);
-  stroke: var(--v2-ink-faint);
+  fill: transparent;
+  stroke: var(--v2-rule);
   stroke-width: 1;
   cursor: pointer;
 }
 
 .tree .compare-box.on {
-  fill: var(--v2-ink-soft);
-  stroke: var(--v2-ink-soft);
+  fill: var(--v2-accent);
+  stroke: var(--v2-accent);
 }
 
 .tree .compare-label {
+  fill: var(--v2-accent);
   font-family: var(--v2-mono);
   font-size: calc(9px * var(--dt-font-scale, 1));
-  fill: var(--v2-ink-faint);
+  cursor: pointer;
 }
 
 .tree .empty {
-  padding: 8px 4px;
+  padding: 16px 12px;
 }
 
 /* selected-episode details */
 
-.episode-info {
-  border-top: 1px solid var(--v2-rule);
-  padding: 8px 12px;
-  max-height: 45%;
+.pane-details {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.details-host {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
+}
+
+.episode-info {
+  padding: 0 12px 10px;
   font-size: calc(12px * var(--dt-font-scale, 1));
 }
 
@@ -755,16 +861,21 @@ details[open] > summary::before {
 .episode-info dd {
   margin: 0;
   overflow-wrap: anywhere;
+  white-space: normal;
   font-family: var(--v2-mono);
   font-size: calc(11.5px * var(--dt-font-scale, 1));
   font-variant-numeric: tabular-nums;
 }
 
+/* The task wraps in full. The pane scrolls when the whole panel exceeds
+ * it, so no box inside the panel has a scrollbar of its own. */
 .episode-info .task {
-  margin-top: 8px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--v2-rule-soft);
   color: var(--v2-ink-soft);
-  max-height: 6em;
-  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .sub {
@@ -820,6 +931,10 @@ svg.mark .fill.caution {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+}
+
+.pane-main .tabs {
+  flex: none;
 }
 
 .tabs {
@@ -882,7 +997,7 @@ svg.mark .fill.caution {
 
 .row {
   display: grid;
-  grid-template-columns: 64px 96px 1fr;
+  grid-template-columns: 52px 76px minmax(0, 1fr);
   gap: 0 10px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--v2-rule-soft);
@@ -1008,6 +1123,13 @@ svg.mark .fill.caution {
   margin-left: 6px;
   font-weight: 600;
   font-family: var(--v2-mono);
+}
+
+/* An interrupted turn reached a limit rather than failing: the request was
+ * cut off and the step continues from what arrived. */
+.marker.interrupted {
+  border-color: var(--v2-caution);
+  color: var(--v2-caution);
 }
 
 .marker.neutral {
@@ -1284,10 +1406,1160 @@ table.events td.type.error {
   grid-template-columns: 48px 64px 1fr;
 }
 
+
+/* ---- trajectory pane ---- */
+
+.pane-trajectory {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.traj-axis {
+  display: inline-flex;
+  border: 1px solid var(--v2-rule);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.traj-axis-btn {
+  border: none;
+  border-radius: 0;
+  padding: 2px 9px;
+  font-family: var(--v2-mono);
+  font-size: calc(10px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+}
+
+.traj-axis-btn + .traj-axis-btn {
+  border-left: 1px solid var(--v2-rule);
+}
+
+.traj-axis-btn.active {
+  background: var(--v2-accent);
+  color: var(--v2-paper);
+}
+
+.traj-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.traj-figure {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.traj {
+  display: block;
+}
+
+/* Structure is faint and thin; the argument of the figure is the selected
+ * row, which is the one element that takes the accent. */
+.traj .baseline {
+  stroke: var(--v2-rule);
+  stroke-width: 1;
+}
+
+.traj .tick {
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1;
+  opacity: 0.7;
+}
+
+.traj .tick-label {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.traj-edge {
+  fill: none;
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1.1;
+  opacity: 0.5;
+}
+
+.traj-edge.fork {
+  stroke-dasharray: 4 4;
+}
+
+.traj-hit {
+  fill: transparent;
+}
+
+.traj-row:hover .traj-hit {
+  fill: var(--v2-rule-soft);
+}
+
+.traj-row.cursor .traj-hit {
+  fill: var(--v2-rule-soft);
+}
+
+.traj-row.selected .traj-hit {
+  fill: color-mix(in srgb, var(--v2-accent) 10%, transparent);
+}
+
+.traj-label {
+  fill: var(--v2-ink-soft);
+  font-family: var(--v2-sans);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+  cursor: pointer;
+}
+
+.traj-row.selected .traj-label {
+  fill: var(--v2-accent);
+}
+
+.traj-id {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+}
+
+.traj-life {
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1.2;
+}
+
+.traj-row.selected .traj-life {
+  stroke: var(--v2-accent);
+}
+
+/* A running episode has no recorded end, so its bar continues as a dashed
+ * extension to the current clock reading. */
+.traj-life.running {
+  stroke-dasharray: 3 4;
+  stroke-width: 1.2;
+}
+
+.traj-mark {
+  cursor: pointer;
+}
+
+/* The tool lane sits below the lifetime line. A call short enough to draw
+ * as a hairline still has to read there, so the fill is stronger than the
+ * structure above it. */
+.traj-mark .seg {
+  fill: var(--v2-ink-soft);
+  opacity: 0.75;
+}
+
+.traj-mark:hover .seg {
+  opacity: 1;
+}
+
+.traj-mark.request .tick {
+  stroke: var(--v2-ink-soft);
+  stroke-width: 1;
+  opacity: 0.75;
+}
+
+.traj-mark.retry .glyph {
+  stroke: var(--v2-bad);
+  stroke-width: 1.3;
+  fill: none;
+}
+
+.traj-mark.compaction .glyph {
+  fill: none;
+  stroke: var(--v2-caution);
+  stroke-width: 1.2;
+}
+
+.traj-mark.spawn .glyph {
+  fill: var(--v2-paper);
+  stroke: var(--v2-ink-soft);
+  stroke-width: 1.2;
+}
+
+.traj-outcome {
+  fill: var(--v2-ink-faint);
+  stroke: none;
+}
+
+.traj-outcome path {
+  stroke: currentColor;
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.traj-outcome.good {
+  fill: var(--v2-good);
+  color: var(--v2-good);
+}
+
+.traj-outcome.bad {
+  fill: var(--v2-bad);
+  color: var(--v2-bad);
+}
+
+.traj-outcome.caution {
+  fill: var(--v2-caution);
+  color: var(--v2-caution);
+}
+
+.traj-outcome.flat {
+  fill: var(--v2-flat);
+  color: var(--v2-flat);
+}
+
+.traj-outcome .open {
+  fill: none;
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1.2;
+}
+
+/* ---- the trajectory hovercard ---- */
+
+.traj-card {
+  position: absolute;
+  z-index: 4;
+  max-width: 320px;
+  padding: 6px 9px;
+  background: var(--v2-panel);
+  border: 1px solid var(--v2-rule);
+  border-radius: 5px;
+  pointer-events: none;
+  font-family: var(--v2-mono);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
+
+.traj-card-head {
+  color: var(--v2-ink);
+}
+
+.traj-card-meta {
+  color: var(--v2-ink-faint);
+}
+
+.traj-card-detail {
+  color: var(--v2-ink-soft);
+  overflow-wrap: anywhere;
+  margin-top: 3px;
+}
+
+/* ---- the hovercard shared by the workflow and statistics figures ---- */
+
+/* Every figure that shows a number a reader could not derive by eye opens
+ * this card, which names the quantity, defines it, and gives the values it
+ * was computed from. */
+.hovercard {
+  position: absolute;
+  z-index: 4;
+  max-width: 340px;
+  padding: 6px 9px;
+  background: var(--v2-panel);
+  border: 1px solid var(--v2-rule);
+  border-radius: 5px;
+  pointer-events: none;
+  font-family: var(--v2-mono);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
+
+.hovercard-head {
+  color: var(--v2-ink);
+}
+
+.hovercard-meta {
+  color: var(--v2-ink-faint);
+  overflow-wrap: anywhere;
+}
+
+.hovercard-detail {
+  color: var(--v2-ink-soft);
+  overflow-wrap: anywhere;
+  margin-top: 3px;
+}
+
+/* ---- figure furniture, shared by the two tabs ---- */
+
+.fig-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--v2-rule);
+}
+
+.fig-head h3 {
+  margin: 0;
+  font-size: calc(11px * var(--dt-font-scale, 1));
+  font-family: var(--v2-mono);
+  font-weight: 400;
+  color: var(--v2-ink-soft);
+  text-transform: lowercase;
+}
+
+.fig-head .spacer {
+  flex: 1 1 auto;
+}
+
+.fig-legend {
+  display: flex;
+  gap: 12px;
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-mark {
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  border-top: 1.2px solid var(--v2-ink-faint);
+}
+
+.legend-mark.faint {
+  opacity: 0.35;
+}
+
+.legend-mark.chosen {
+  border-top-color: var(--v2-accent);
+}
+
+/* A caption states what to see; it is prose and holds a readable measure. */
+.fig-caption {
+  padding: 6px 12px 0;
+  max-width: 72ch;
+  color: var(--v2-ink-faint);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+  line-height: 1.5;
+}
+
+.fig-total {
+  margin-left: 10px;
+  font-family: var(--v2-mono);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+  color: var(--v2-ink-soft);
+}
+
+.fig-svg {
+  display: block;
+}
+
+/* ---- workflow tab ---- */
+
+.wf {
+  padding-bottom: 24px;
+}
+
+.wf-figure {
+  padding: 10px 0 0 0;
+  overflow-x: auto;
+}
+
+.wf-graph {
+  display: block;
+}
+
+/* Structure is faint and thin. The run is the weight over it: a traversed
+ * edge is solid and a declared one that carried nothing is faint. */
+.wf-edge {
+  fill: none;
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1.2;
+  opacity: 0.85;
+}
+
+.wf-edge.faint {
+  opacity: 0.3;
+  stroke-dasharray: 3 4;
+}
+
+.wf-end {
+  fill: none;
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1.1;
+  opacity: 0.5;
+}
+
+.wf-stub.chosen .wf-end {
+  stroke: var(--v2-accent);
+  opacity: 1;
+}
+
+/* A label sits at the end of a leader tick, fanned clear of its
+ * neighbours, and the edge it names continues past it. */
+.wf-label text {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  opacity: 0.55;
+}
+
+.wf-label .leader {
+  fill: none;
+  stroke: var(--v2-ink-faint);
+  stroke-width: 0.9;
+  opacity: 0.35;
+}
+
+/* The one accent of the figure: the label a firing chose, which is where
+ * the model's judgment entered a graph that bounds it. */
+.wf-label.chosen text {
+  fill: var(--v2-accent);
+  opacity: 1;
+}
+
+.wf-label.chosen .leader {
+  stroke: var(--v2-accent);
+  opacity: 0.8;
+}
+
+.wf-node .box {
+  fill: var(--v2-panel);
+  stroke: var(--v2-rule);
+  stroke-width: 1.1;
+}
+
+.wf-node.unfired .box {
+  fill: none;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+
+.wf-node.good .box {
+  fill: var(--v2-good-soft);
+  stroke: var(--v2-good);
+}
+
+.wf-node.bad .box {
+  fill: var(--v2-bad-soft);
+  stroke: var(--v2-bad);
+}
+
+.wf-node.terminal .box {
+  stroke-width: 1.6;
+}
+
+.wf-node .name {
+  fill: var(--v2-ink);
+  font-family: var(--v2-sans);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.wf-node.unfired .name {
+  fill: var(--v2-ink-faint);
+}
+
+.wf-node .kind,
+.wf-node .fires {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.wf-node .source .box {
+  stroke-dasharray: 4 3;
+}
+
+.wf-firing .glyph {
+  fill: var(--v2-paper);
+  stroke: var(--v2-ink-soft);
+  stroke-width: 1.2;
+}
+
+.wf-firing.linked {
+  cursor: pointer;
+}
+
+.wf-firing.linked .glyph {
+  fill: var(--v2-ink-faint);
+}
+
+.wf-firing.linked:hover .glyph {
+  fill: var(--v2-ink-soft);
+}
+
+/* The selected child episode, marked in ink rather than in the accent,
+ * which the chosen label holds. */
+.wf-firing.selected .glyph {
+  fill: var(--v2-ink);
+  stroke: var(--v2-ink);
+  stroke-width: 2;
+}
+
+.wf-recovery .glyph {
+  fill: none;
+  stroke: var(--v2-caution);
+  stroke-width: 1.2;
+}
+
+.wf-recovery-label {
+  fill: var(--v2-caution);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+}
+
+.wf-recovery-edge {
+  fill: none;
+  stroke: var(--v2-caution);
+  stroke-width: 1.1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+/* ---- statistics tab ---- */
+
+.stats {
+  padding-bottom: 32px;
+}
+
+.stats-scope {
+  display: inline-flex;
+  border: 1px solid var(--v2-rule);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.stats-scope-btn {
+  border: none;
+  border-radius: 0;
+  padding: 2px 9px;
+  font-family: var(--v2-mono);
+  font-size: calc(10px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+}
+
+.stats-scope-btn + .stats-scope-btn {
+  border-left: 1px solid var(--v2-rule);
+}
+
+.stats-scope-btn.active {
+  background: var(--v2-accent);
+  color: var(--v2-paper);
+}
+
+.stats-body {
+  padding: 4px 0 0;
+}
+
+.fig {
+  padding: 14px 12px 16px;
+  border-bottom: 1px solid var(--v2-rule-soft);
+}
+
+.fig h4 {
+  margin: 0 0 8px;
+  font-family: var(--v2-mono);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+  font-weight: 400;
+  color: var(--v2-ink-faint);
+  text-transform: lowercase;
+}
+
+.fig .fig-caption {
+  padding: 8px 0 0;
+}
+
+.fig-body {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  overflow-x: auto;
+}
+
+/* A quantity no event measured reads as absent; zero would assert a
+ * measurement that was not made. */
+.absent {
+  color: var(--v2-ink-faint);
+  font-style: italic;
+}
+
+.stats-table {
+  border-collapse: collapse;
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.stats-table th {
+  text-align: left;
+  padding: 0 14px 4px 0;
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-weight: 400;
+  color: var(--v2-ink-faint);
+}
+
+.stats-table td {
+  padding: 2px 14px 2px 0;
+  color: var(--v2-ink-soft);
+  vertical-align: middle;
+}
+
+.stats-table td.num {
+  font-family: var(--v2-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.stats-table tr:hover td {
+  color: var(--v2-ink);
+}
+
+.step-row,
+.tool-row,
+.limit-row {
+  cursor: default;
+}
+
+.step-row {
+  cursor: pointer;
+}
+
+.step-name .sub {
+  margin-left: 8px;
+}
+
+.step-row.compaction .step-name {
+  color: var(--v2-ink-faint);
+}
+
+.step-bar .rest {
+  fill: var(--v2-ink-faint);
+  opacity: 0.5;
+}
+
+.step-bar .head {
+  fill: var(--v2-ink-soft);
+  opacity: 0.75;
+}
+
+/* The slowest answered request is the row the figure argues. */
+.step-row.lead .step-bar .rest {
+  fill: var(--v2-accent);
+  opacity: 0.4;
+}
+
+.step-row.lead .step-bar .head {
+  fill: var(--v2-accent);
+  opacity: 1;
+}
+
+.tool-name {
+  font-family: var(--v2-mono);
+}
+
+.tool-bar .seg {
+  fill: var(--v2-ink-faint);
+  opacity: 0.6;
+}
+
+.tool-row:hover .seg {
+  opacity: 1;
+}
+
+.stats-table .bad {
+  color: var(--v2-bad);
+}
+
+.clock-share .seg {
+  fill: var(--v2-ink-faint);
+  opacity: 0.4;
+}
+
+.clock-share .edge {
+  stroke: var(--v2-paper);
+  stroke-width: 1;
+}
+
+.clock-share .share-label {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+}
+
+/* The largest share is what the figure argues, so it takes the accent. */
+.clock-share.lead .seg {
+  fill: var(--v2-accent);
+  opacity: 0.55;
+}
+
+.clock-share.lead .share-label {
+  fill: var(--v2-accent);
+}
+
+.clock-share:hover .seg {
+  opacity: 0.8;
+}
+
+.cache-track {
+  fill: var(--v2-ink-faint);
+  opacity: 0.2;
+}
+
+.cache-hit {
+  fill: var(--v2-accent);
+  opacity: 0.8;
+}
+
+.curve-axes .baseline {
+  stroke: var(--v2-rule);
+  stroke-width: 1;
+}
+
+.curve-axes .tick-label {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+/* The declared limit is an envelope, so it is dashed. */
+.curve-budget {
+  stroke: var(--v2-caution);
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+  opacity: 0.8;
+}
+
+.curve-budget-label {
+  fill: var(--v2-caution);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.curve .line {
+  fill: none;
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1.2;
+  opacity: 0.6;
+}
+
+.curve .dot {
+  fill: var(--v2-ink-faint);
+  cursor: pointer;
+}
+
+/* The longest series is the one the figure argues. */
+.curve.lead .line {
+  stroke: var(--v2-accent);
+  opacity: 1;
+}
+
+.curve.lead .dot {
+  fill: var(--v2-accent);
+}
+
+.stats .mark .track {
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1;
+  opacity: 0.3;
+}
+
+.stats .mark .fill {
+  stroke: var(--v2-ink-soft);
+  stroke-width: 3;
+}
+
+.stats .mark .fill.caution {
+  stroke: var(--v2-caution);
+}
+
+/* ---- Markdown ---- */
+
+/* Prose is held to a readable measure. A code block, a table, and a diff
+ * are not prose and take the width they need. */
+.md-p,
+.md-h,
+.md-list,
+.md-quote {
+  max-width: 84ch;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md-p {
+  margin: 0 0 0.65em;
+  font-family: var(--n-font-paper, var(--v2-sans));
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.md-h {
+  font-family: var(--n-font-head, var(--v2-sans));
+  color: var(--v2-ink);
+  line-height: 1.25;
+  margin: 1.1em 0 0.4em;
+}
+
+h1.md-h {
+  font-size: calc(17px * var(--dt-font-scale, 1));
+}
+
+h2.md-h {
+  font-size: calc(15px * var(--dt-font-scale, 1));
+}
+
+h3.md-h {
+  font-size: calc(13.5px * var(--dt-font-scale, 1));
+}
+
+h4.md-h,
+h5.md-h,
+h6.md-h {
+  font-size: calc(12.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-soft);
+}
+
+.md-list {
+  margin: 0 0 0.65em;
+  padding-left: 1.4em;
+  line-height: 1.55;
+}
+
+.md-list .md-list {
+  margin-bottom: 0;
+}
+
+.md-list li {
+  margin: 0.15em 0;
+}
+
+.md-quote {
+  margin: 0 0 0.65em;
+  padding: 0 0 0 10px;
+  border-left: 1px solid var(--v2-rule);
+  color: var(--v2-ink-soft);
+}
+
+.md-rule {
+  border: none;
+  border-top: 1px solid var(--v2-rule);
+  margin: 1em 0;
+}
+
+.md-code {
+  font-family: var(--v2-mono);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+  background: var(--v2-panel);
+  border: 1px solid var(--v2-rule-soft);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* A link's target is shown in its tooltip. The page runs on loopback or
+ * from a file and never navigates away from the log. */
+.md-link {
+  color: var(--v2-accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: help;
+}
+
+.md-table-scroll {
+  overflow-x: auto;
+  margin: 0 0 0.7em;
+}
+
+.md-table {
+  border-collapse: collapse;
+  font-size: calc(11.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.md-table th,
+.md-table td {
+  border: 1px solid var(--v2-rule);
+  padding: 3px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-table th {
+  color: var(--v2-ink);
+  background: var(--v2-panel);
+  font-weight: 600;
+}
+
+.md-table td {
+  color: var(--v2-ink-soft);
+}
+
+.md-table .align-center {
+  text-align: center;
+}
+
+.md-table .align-right {
+  text-align: right;
+}
+
+.md-math-block {
+  margin: 0.6em 0;
+  max-width: 84ch;
+  overflow-x: auto;
+}
+
+.math.display math {
+  font-size: 1.1em;
+}
+
+.math.invalid {
+  font-family: var(--v2-mono);
+  color: var(--v2-bad);
+}
+
+/* ---- code blocks ---- */
+
+.code-block {
+  position: relative;
+  margin: 0 0 0.7em;
+  background: var(--v2-panel);
+  border: 1px solid var(--v2-rule);
+  border-radius: 4px;
+}
+
+/* The language tag and the copy control sit over the block's top right
+ * corner, clear of the first line of code. */
+.code-bar {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-lang,
+.code-bar .copy {
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  letter-spacing: 0.06em;
+  color: var(--v2-ink-faint);
+}
+
+.code-bar .copy {
+  border: 1px solid transparent;
+  padding: 1px 5px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.code-block:hover .copy,
+.code-bar .copy:focus-visible {
+  opacity: 1;
+}
+
+.code-pre {
+  margin: 0;
+  padding: 16px 10px 8px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.code-text {
+  font-family: var(--v2-mono);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+  color: var(--v2-ink);
+  line-height: 1.45;
+}
+
+/* The five token roles. Strings and numbers are set at reduced opacity so
+ * that keywords stay the strongest colour in a block. */
+.t-string {
+  color: var(--v2-good);
+  opacity: 0.82;
+}
+
+.t-keyword {
+  color: var(--v2-accent);
+}
+
+.t-comment {
+  color: var(--v2-ink-faint);
+}
+
+.t-number {
+  color: var(--v2-caution);
+  opacity: 0.85;
+}
+
+.t-punct {
+  color: var(--v2-ink);
+}
+
+/* ---- unified diffs ---- */
+
+.diff-block {
+  margin: 0 0 0.7em;
+  border: 1px solid var(--v2-rule);
+  border-radius: 4px;
+  overflow: hidden;
+  font-family: var(--v2-mono);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.diff-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 10px;
+  background: var(--v2-panel);
+  border-bottom: 1px solid var(--v2-rule);
+  color: var(--v2-ink-soft);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+}
+
+.diff-title {
+  overflow-wrap: anywhere;
+}
+
+.diff-counts {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-counts .added {
+  color: var(--v2-good);
+}
+
+.diff-counts .removed {
+  color: var(--v2-bad);
+}
+
+.diff-lines {
+  overflow-x: auto;
+}
+
+.diff-line {
+  display: flex;
+  align-items: baseline;
+  white-space: pre;
+  line-height: 1.45;
+}
+
+.diff-num {
+  flex: none;
+  width: 3.6em;
+  padding-right: 6px;
+  text-align: right;
+  color: var(--v2-ink-faint);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.diff-mark {
+  flex: none;
+  width: 1.2em;
+  text-align: center;
+  color: var(--v2-ink-faint);
+  user-select: none;
+}
+
+.diff-text {
+  flex: 1 1 auto;
+  padding-right: 10px;
+  color: var(--v2-ink-soft);
+}
+
+.diff-line.add {
+  background: var(--v2-good-soft);
+}
+
+.diff-line.add .diff-text,
+.diff-line.add .diff-mark {
+  color: var(--v2-ink);
+}
+
+.diff-line.remove {
+  background: var(--v2-bad-soft);
+}
+
+.diff-line.remove .diff-text,
+.diff-line.remove .diff-mark {
+  color: var(--v2-ink);
+}
+
+.diff-line.file,
+.diff-line.hunk,
+.diff-line.meta {
+  color: var(--v2-ink-faint);
+}
+
+.diff-line.hunk .diff-text,
+.diff-line.file .diff-text,
+.diff-line.meta .diff-text {
+  color: var(--v2-ink-faint);
+}
+
+/* ---- numbered source ---- */
+
+.src-block {
+  margin: 0 0 0.7em;
+  border: 1px solid var(--v2-rule);
+  border-radius: 4px;
+  background: var(--v2-panel);
+  overflow: hidden;
+}
+
+.src-lines {
+  overflow-x: auto;
+  padding: 6px 0;
+}
+
+.src-line {
+  display: flex;
+  align-items: baseline;
+  white-space: pre;
+  font-family: var(--v2-mono);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+  line-height: 1.45;
+}
+
+.src-num {
+  flex: none;
+  width: 4em;
+  padding-right: 10px;
+  text-align: right;
+  color: var(--v2-ink-faint);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.src-text {
+  flex: 1 1 auto;
+  padding-right: 10px;
+  color: var(--v2-ink);
+}
+
+/* A row reached from the trajectory pane is marked until another is. */
+.row.revealed {
+  background: color-mix(in srgb, var(--v2-accent) 8%, transparent);
+}
+
 /* footer */
 
 .keys {
-  grid-column: 1 / span 2;
+  grid-column: 1 / -1;
   border-top: 1px solid var(--v2-rule);
   padding: 3px 12px;
   font-family: var(--v2-mono);

@@ -3,6 +3,7 @@
 // One function applies each setting, and every control that changes a
 // value goes through it, so the controls never disagree with the page.
 
+import { brandLockup, researchPreview } from "./brand.js";
 import { clear, h } from "./dom.js";
 
 // Preview tuples ported from zicato's ui.js COLOR_THEMES, in the order
@@ -274,20 +275,28 @@ export function buildSwatchDropdown(): HTMLElement {
   return wrap;
 }
 
-function specimen(face: (typeof TYPEFACES)[number], small: boolean): HTMLElement {
-  return h(
-    "span",
-    { class: `tf-spec${small ? " sm" : ""}`, "aria-hidden": "true" },
-    h("span", { class: "tf-spec-head", style: `font-family:${face.head}` }, "Aa"),
-    h("span", { class: "tf-spec-prose", style: `font-family:${face.sans}` }, "episode"),
-    h("span", { class: "tf-spec-data", style: `font-family:${face.mono}` }, "0123"),
-  );
+/**
+ * The one line each option sets in its own face. A technical face is a
+ * face for reading code, so its specimen is a line of code; an editorial
+ * or display face sets a sentence.
+ */
+export function specimenLine(mode: TypefaceMode): string {
+  return mode === "technical" ? "let outcome = episode.run();" : "One bounded release of work.";
+}
+
+/** The family the specimen line is set in: the mode's data face or its body face. */
+function specimenFamily(face: (typeof TYPEFACES)[number]): string {
+  return face.mode === "technical" ? face.mono : face.sans;
+}
+
+/** The face's own name, set in that face. */
+function faceName(face: (typeof TYPEFACES)[number], className: string): HTMLElement {
+  return h("span", { class: className, style: `font-family:${face.head}` }, face.label);
 }
 
 export function buildTypefacePopover(): HTMLElement {
-  const name = h("span", { class: "cd-name" });
-  const specHost = h("span");
-  const trigger = h("button", { class: "trigger", type: "button", "aria-haspopup": "listbox", "aria-expanded": "false", title: "typeface" }, specHost, name, h("span", { class: "caret" }, "▾"));
+  const nameHost = h("span", { class: "tf-current" });
+  const trigger = h("button", { class: "trigger", type: "button", "aria-haspopup": "listbox", "aria-expanded": "false", title: "typeface" }, nameHost, h("span", { class: "caret" }, "▾"));
   const list = h("div", { class: "cd-list tf-list", role: "listbox", "aria-label": "typeface" });
   const modes: TypefaceMode[] = ["technical", "editorial", "display"];
   for (const mode of modes) {
@@ -308,8 +317,8 @@ export function buildTypefacePopover(): HTMLElement {
               trigger.focus();
             },
           },
-          h("span", { class: "tf-name" }, face.label),
-          specimen(face, false),
+          faceName(face, "tf-name"),
+          h("span", { class: "tf-spec", style: `font-family:${specimenFamily(face)}`, "aria-hidden": "true" }, specimenLine(face.mode)),
         ),
       );
     }
@@ -320,7 +329,16 @@ export function buildTypefacePopover(): HTMLElement {
     FONT_SIZES.map((o) =>
       h(
         "button",
-        { class: "sizeseg-btn", type: "button", role: "radio", "data-id": o.id, title: `${o.id} text`, onclick: () => applyFontSize(o.id) },
+        {
+          class: "sizeseg-btn",
+          type: "button",
+          role: "radio",
+          "data-id": o.id,
+          title: `${o.id} text`,
+          // Each control is set at the size it selects.
+          style: `font-size:${(11 * o.scale).toFixed(1)}px`,
+          onclick: () => applyFontSize(o.id),
+        },
         o.label,
       ),
     ),
@@ -331,9 +349,8 @@ export function buildTypefacePopover(): HTMLElement {
   const sync = () => {
     const current = currentTypeface();
     const face = TYPEFACES.find((f) => f.id === current) ?? TYPEFACES[0]!;
-    name.textContent = face.label;
-    clear(specHost);
-    specHost.appendChild(specimen(face, true));
+    clear(nameHost);
+    nameHost.appendChild(faceName(face, "cd-name"));
     trigger.setAttribute("aria-expanded", wrap.classList.contains("open") ? "true" : "false");
     for (const opt of list.querySelectorAll<HTMLElement>('[role="option"]')) {
       opt.setAttribute("aria-selected", opt.dataset.id === current ? "true" : "false");
@@ -426,7 +443,7 @@ export class Topbar {
       "header",
       { class: "topbar" },
       this.up,
-      h("span", { class: "brand" }, h("span", { class: "wordmark" }, "foe"), h("span", { class: "variant" }, "viewer")),
+      h("span", { class: "brand" }, brandLockup(), h("span", { class: "variant" }, "viewer"), researchPreview()),
       this.crumbs,
       h("span", { class: "spacer" }),
       buildSwatchDropdown(),
