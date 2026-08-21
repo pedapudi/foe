@@ -178,8 +178,10 @@ pub struct SpawnRequest {
     pub program: String,
     pub task: String,
     pub context: foe_log::SpawnContext,
-    /// What to reserve from the parent's remainder; an unset dimension
-    /// takes the whole remainder. The spawner records what it granted.
+    /// What to reserve from the parent's remainder. An unset dimension
+    /// takes the amount the child program declares, and the whole
+    /// remainder when the program declares none. The spawner records what
+    /// it granted.
     pub reserve: foe_log::BudgetAmount,
     /// The tool call that starts the child, recorded in `spawn/start`.
     pub call_id: String,

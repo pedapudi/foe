@@ -20,7 +20,7 @@
 //! `budget/release` are the loop's to write around a call to
 //! [`Spawner::spawn`] and a wait on [`ChildRun`].
 
-use crate::{CapError, ChildProgram, Config, SpawnHandle, SpawnRequest, Spawner, ToolValue};
+use crate::{Budget, CapError, ChildProgram, Config, SpawnHandle, SpawnRequest, Spawner, ToolValue};
 use foe_log::seed::SeedHeader;
 use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
 use sha2::{Digest, Sha256};
@@ -168,11 +168,8 @@ impl ChildRun {
             }
             if self.rx.changed().await.is_err() {
                 let error = "the reader of the child's output ended before episode/end".to_string();
-                return Settled {
-                    outcome: Outcome::Failed { error },
-                    usage: Usage::default(),
-                    spent: BudgetAmount::default(),
-                };
+                let (usage, spent) = (Usage::default(), BudgetAmount::default());
+                return Settled { outcome: Outcome::Failed { error }, usage, spent };
             }
         }
     }
@@ -208,6 +205,17 @@ impl ProcessSpawner {
     pub fn with_launcher(mut self, argv: Vec<OsString>) -> Self {
         self.launcher = argv;
         self
+    }
+
+    /// What to reserve for a request: the amount the caller named, and the
+    /// budget the child program declares when the caller named none. A
+    /// dimension the program leaves unlimited stays unset, and the pool
+    /// grants the parent's whole remainder for it. Reserving the remainder
+    /// for every dimension would exhaust the parent while one child runs.
+    pub fn reserve_for(&self, req: &SpawnRequest) -> BudgetAmount {
+        let all = |b: &Budget| BudgetAmount { model_calls: Some(b.model_calls), tokens: b.tokens, seconds: b.seconds };
+        let declared = self.config.programs.get(&req.program).filter(|_| req.reserve.model_calls.is_none());
+        declared.map_or(req.reserve, |p| all(&p.budget))
     }
 
     /// A fresh child id. A caller that reserves budget under the id before
@@ -280,11 +288,8 @@ impl ProcessSpawner {
             let log_error =
                 |e: foe_log::LogError| CapError::Invalid(format!("seed from {}: {e}", self.log_dir.display()));
             let until = foe_log::fold::read_all(&self.log_dir).map_err(log_error)?.len() as u64;
-            let header = SeedHeader {
-                new_id: child_id.clone(),
-                parent_id: Some(self.episode_id.clone()),
-                team_id: Some(self.episode_id.clone()),
-            };
+            let lead = Some(self.episode_id.clone());
+            let header = SeedHeader { new_id: child_id.clone(), parent_id: lead.clone(), team_id: lead };
             foe_log::seed::seed(&self.log_dir, until, &dir, header).map_err(log_error)?;
         }
         let mut cmd = Command::new(&self.launcher[0]);
