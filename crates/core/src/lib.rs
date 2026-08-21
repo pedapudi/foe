@@ -22,6 +22,7 @@ pub use foe_log::{BlockedCode, Chunk, ContentBlock, Message, Outcome, StopReason
 
 pub mod budget;
 pub mod config;
+pub mod context;
 pub mod exec;
 pub mod grants;
 pub mod harness_text;
@@ -265,6 +266,8 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub done_when: Option<DoneWhen>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<ContextConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelConfig>,
     #[serde(default)]
     pub sandbox: SandboxConfig,
@@ -285,14 +288,19 @@ pub struct ToolDef {
     pub instruction: Option<String>,
     #[serde(default)]
     pub network: bool,
-    #[serde(default = "default_tool_timeout")]
+    #[serde(default = "u64_default::<120>")]
     pub timeout_seconds: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<PathBuf>,
 }
 
-fn default_tool_timeout() -> u64 {
-    120
+/// A constant default for serde's `default = "..."`, which names a function.
+fn u32_default<const N: u32>() -> u32 {
+    N
+}
+
+fn u64_default<const N: u64>() -> u64 {
+    N
 }
 
 /// A host-implemented tool as declared in the document. See docs/config.md
@@ -325,27 +333,14 @@ pub struct Budget {
     pub tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seconds: Option<u64>,
-    #[serde(default = "default_max_depth")]
+    #[serde(default = "u32_default::<1>")]
     pub max_depth: u32,
-    #[serde(default = "default_max_episodes")]
+    #[serde(default = "u32_default::<8>")]
     pub max_episodes: u32,
-    #[serde(default = "default_max_concurrent")]
+    #[serde(default = "u32_default::<4>")]
     pub max_concurrent: u32,
-    #[serde(default = "default_loop_threshold")]
+    #[serde(default = "u32_default::<3>")]
     pub loop_threshold: u32,
-}
-
-fn default_max_depth() -> u32 {
-    1
-}
-fn default_max_episodes() -> u32 {
-    8
-}
-fn default_max_concurrent() -> u32 {
-    4
-}
-fn default_loop_threshold() -> u32 {
-    3
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -353,14 +348,28 @@ fn default_loop_threshold() -> u32 {
 pub struct DoneWhen {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verify: Option<String>,
-    #[serde(default = "default_retries")]
+    #[serde(default = "u32_default::<2>")]
     pub retries: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub returns: Option<serde_json::Value>,
 }
 
-fn default_retries() -> u32 {
-    2
+/// The `context` block: whether and when the conversation is compacted.
+/// See docs/compaction.md. `window_tokens` may be omitted for a model the
+/// provider table knows; the binary resolves it before the episode starts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContextConfig {
+    #[serde(default)]
+    pub compact: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_tokens: Option<u64>,
+    #[serde(default = "u64_default::<16384>")]
+    pub reserve_tokens: u64,
+    #[serde(default = "u64_default::<20000>")]
+    pub keep_recent_tokens: u64,
+    #[serde(default = "u64_default::<2048>")]
+    pub margin_tokens: u64,
 }
 
 /// The `model` block. The provider name is opaque to this crate: which
@@ -395,21 +404,11 @@ impl ModelConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SandboxConfig {
-    #[serde(default = "default_sandbox_mode")]
+    #[serde(default)]
     pub mode: foe_log::SandboxMode,
-}
-
-impl Default for SandboxConfig {
-    fn default() -> Self {
-        Self { mode: foe_log::SandboxMode::BestEffort }
-    }
-}
-
-fn default_sandbox_mode() -> foe_log::SandboxMode {
-    foe_log::SandboxMode::BestEffort
 }
 
 /// A child program: a configuration without `version`, `task`, `model`, or
@@ -428,6 +427,8 @@ pub struct ChildProgram {
     pub budget: Budget,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub done_when: Option<DoneWhen>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<ContextConfig>,
     #[serde(default)]
     pub programs: BTreeMap<String, ChildProgram>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -1,6 +1,7 @@
 use super::*;
 use crate::exec::tests::scratch;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::time::Duration;
 
 #[derive(Default)]
@@ -135,7 +136,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     let (outcome, _) = handle.run.wait().await;
     assert!(matches!(outcome, Outcome::Completed { .. }));
     assert!(!router.has_child(&handle.child_id));
-    let kinds: Vec<&str> = seen.0.lock().unwrap().iter().map(|(_, e)| e.data.type_name()).collect::<Vec<_>>();
+    let kinds: Vec<String> = seen.0.lock().unwrap().iter().map(|(_, e)| e.data.type_name()).collect();
     assert_eq!(kinds, ["episode/start", "model/request", "assistant/message", "host/tool-call", "episode/end"]);
 }
 

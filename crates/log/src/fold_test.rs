@@ -1,4 +1,4 @@
-use crate::fold::{derive_messages, fold, read_all, read_from, validate_next};
+use crate::fold::{derive_messages, fold, read_all, read_from, render_continuation, validate_next};
 use crate::*;
 use std::path::PathBuf;
 
@@ -84,6 +84,147 @@ pub fn call(id: &str) -> ToolCall {
 
 pub fn number(datas: Vec<EventData>) -> Vec<Event> {
     datas.into_iter().enumerate().map(|(i, data)| Event { seq: i as u64, time: 1000 + i as i64, data }).collect()
+}
+
+/// A summarization request and its response, as the loop records them.
+fn summary_request(step: u32, header_seq: u64) -> EventData {
+    EventData::ModelRequest(ModelRequest {
+        step,
+        attempt: 1,
+        request_id: format!("{SUMMARY_REQUEST_PREFIX}{step}"),
+        header_seq,
+        consumed: vec![],
+        messages: vec![Message::User { content: text("transcript") }],
+    })
+}
+
+fn summary_response(step: u32, summary: &str) -> EventData {
+    let EventData::AssistantMessage(message) = assistant(step, summary, vec![], false) else { unreachable!() };
+    EventData::AssistantMessage(AssistantMessage {
+        request_id: format!("{SUMMARY_REQUEST_PREFIX}{step}"),
+        stop: StopReason::End,
+        ..message
+    })
+}
+
+fn compaction_summary(
+    step: u32,
+    first_kept_seq: u64,
+    summary_request_seq: u64,
+    summary: &str,
+    read: &[&str],
+) -> EventData {
+    let files = CompactedFiles { read: read.iter().map(|s| s.to_string()).collect(), written: vec![], edited: vec![] };
+    EventData::CompactionSummary(CompactionSummary {
+        step,
+        summary: summary.into(),
+        state: ContinuationState {
+            task: "fix it".into(),
+            done_when: "a turn with no tool calls".into(),
+            outstanding_findings: vec![],
+            files,
+            children: vec![],
+            covered: Covered { first_seq: 1, last_seq: first_kept_seq - 1 },
+            budget_remaining: BudgetAmount { model_calls: Some(4), tokens: None, seconds: None },
+        },
+        first_kept_seq,
+        summary_request_seq,
+    })
+}
+
+/// The base fixture continued through two compactions: one at step 3
+/// that keeps from the second request (seq 8), one at step 4 that keeps
+/// from the third request (seq 18). Each compaction is a start event, a
+/// header for the summarization request, the request and its response,
+/// the summary, the end, and the header restored for the next step.
+fn compacted_fixture() -> Vec<Event> {
+    let mut datas: Vec<EventData> = fixture().into_iter().map(|e| e.data).collect();
+    let start = |step| {
+        EventData::CompactionStart(CompactionStart {
+            step,
+            covered: Covered { first_seq: 1, last_seq: 7 },
+            trigger: CompactionTrigger::Threshold,
+            projected_tokens: 190_000,
+            reserved: BudgetAmount::default(),
+        })
+    };
+    let end =
+        |step| EventData::CompactionEnd { step, ok: true, usage: Usage::default(), active_estimate: 50, error: None };
+    datas.extend(vec![
+        start(3),                                                     // 11
+        header(),                                                     // 12
+        summary_request(3, 12),                                       // 13
+        summary_response(3, "first summary"),                         // 14
+        compaction_summary(3, 8, 13, "first summary", &["a"]),        // 15
+        end(3),                                                       // 16
+        header(),                                                     // 17
+        request(3, 17, vec![], vec![]),                               // 18
+        assistant(3, "done", vec![], false),                          // 19
+        start(4),                                                     // 20
+        header(),                                                     // 21
+        summary_request(4, 21),                                       // 22
+        summary_response(4, "second summary"),                        // 23
+        compaction_summary(4, 18, 22, "second summary", &["a", "b"]), // 24
+        end(4),                                                       // 25
+        header(),                                                     // 26
+        request(4, 26, vec![], vec![]),                               // 27
+    ]);
+    number(datas)
+}
+
+/// docs/log-format.md "Derived messages" after a compaction: the task
+/// verbatim, the continuation message, then the events from
+/// `first_kept_seq` on, with the items a kept request consumed included
+/// although they lie before the cut.
+#[test]
+fn derivation_after_one_compaction_opens_with_task_and_continuation() {
+    let events = compacted_fixture();
+    fold(&events).expect("the compacted fixture is a well-formed log");
+    let messages = derive_messages(&events, 18, &[]);
+    let EventData::CompactionSummary(summary) = &events[15].data else { panic!() };
+    let continuation = render_continuation(summary);
+    assert!(continuation
+        .starts_with("## Continuation state\n\ncovered: seq 1 to 7\ndone_when: a turn with no tool calls\n"));
+    assert!(continuation.contains("\noutstanding_findings: (none)\nfiles_read:\n- a\nfiles_written: (none)\n"));
+    assert!(continuation
+        .contains("\nchildren: (none)\nbudget_remaining: model_calls 4, tokens unlimited, seconds unlimited"));
+    assert!(continuation.ends_with("\n\n## Summary\n\nfirst summary"));
+    assert_eq!(messages[0], Message::User { content: text("fix it") });
+    assert_eq!(messages[1], Message::User { content: text(&continuation) });
+    assert_eq!(
+        messages[2],
+        Message::User {
+            content: vec![ContentBlock::Text { text: "hurry".into() }, ContentBlock::Text { text: "also this".into() }]
+        },
+        "the items the kept request at seq 8 consumed enter at its position"
+    );
+    assert_eq!(
+        messages[3],
+        Message::Assistant { text: "partial".into(), tool_calls: vec![call("tc_2")], thinking: vec![] }
+    );
+    assert_eq!(messages.len(), 5, "the task, the continuation, and the three kept messages");
+}
+
+#[test]
+fn derivation_after_two_compactions_uses_the_latest_summary() {
+    let events = compacted_fixture();
+    let messages = derive_messages(&events, 27, &[]);
+    let EventData::CompactionSummary(summary) = &events[24].data else { panic!() };
+    assert_eq!(messages[0], Message::User { content: text("fix it") });
+    assert_eq!(messages[1], Message::User { content: text(&render_continuation(summary)) });
+    assert_eq!(messages[2], Message::Assistant { text: "done".into(), tool_calls: vec![], thinking: vec![] });
+    assert_eq!(messages.len(), 3);
+    assert!(render_continuation(summary).contains("files_read:\n- a\n- b\n"));
+}
+
+/// A summarization request and its response contribute nothing, whether
+/// the derivation runs before or after the summary they produced.
+#[test]
+fn the_summarization_request_and_its_response_are_excluded() {
+    let events = compacted_fixture();
+    assert_eq!(derive_messages(&events, 15, &[]), derive_messages(&events, 11, &[]));
+    let later = derive_messages(&events, 20, &[]);
+    assert!(!later.iter().any(|m| matches!(m, Message::Assistant { text, .. } if text.contains("summary"))));
 }
 
 /// A hand-written fixture: task, a step with a tool call, a steer that
@@ -329,9 +470,21 @@ fn every_event_variant_round_trips() {
         EventData::TeamDelivered { message_id: "tm".into(), to: "b".into() },
         EventData::TeamTask(reserved.clone()),
         EventData::SandboxDenied { pid: 1, comm: "c".into(), path: "/p".into(), access: "read".into() },
-        EventData::CompactionStart(reserved.clone()),
-        EventData::CompactionSummary(reserved.clone()),
-        EventData::CompactionEnd(reserved.clone()),
+        EventData::CompactionStart(CompactionStart {
+            step: 3,
+            covered: Covered { first_seq: 1, last_seq: 7 },
+            trigger: CompactionTrigger::Threshold,
+            projected_tokens: 190_000,
+            reserved: BudgetAmount { model_calls: Some(3), tokens: None, seconds: None },
+        }),
+        compaction_summary(3, 8, 13, "first summary", &["a"]),
+        EventData::CompactionEnd {
+            step: 3,
+            ok: false,
+            usage: Usage::default(),
+            active_estimate: 190_000,
+            error: Some("the summary was empty".into()),
+        },
         EventData::WorkflowNodeStart(WorkflowNodeStart {
             node: "survey".into(),
             fire: 1,
@@ -365,7 +518,7 @@ fn every_event_variant_round_trips() {
     let mut seen = std::collections::BTreeSet::new();
     for data in variants {
         let name = data.type_name();
-        seen.insert(name);
+        seen.insert(name.clone());
         let event = Event { seq: 0, time: 1, data };
         let line = serde_json::to_string(&event).unwrap();
         assert!(line.contains(&format!("\"type\":\"{name}\"")), "{line}");

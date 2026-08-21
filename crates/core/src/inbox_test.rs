@@ -29,7 +29,6 @@ fn absorb_tracks_items_written_by_others_and_consume_marks_them() {
     let more = [events.as_slice(), &[event(3, EventData::InboxItem(item(InboxSource::Child, None)))]].concat();
     inbox.absorb(&more);
     assert_eq!(inbox.pending(), vec![2, 3], "a second scan sees only new events");
-    assert_eq!(inbox.get(3).map(|i| i.source), Some(InboxSource::Child));
 }
 
 #[test]

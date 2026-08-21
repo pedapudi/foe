@@ -30,15 +30,19 @@ pub fn contains(roots: &[PathBuf], path: &Path) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }
 
+/// `path` as given when absolute, or under the first root.
+fn absolute(roots: &[PathBuf], path: &Path) -> Result<PathBuf, CapError> {
+    match (path.is_absolute(), roots.first()) {
+        (true, _) => Ok(path.to_path_buf()),
+        (false, Some(root)) => Ok(root.join(path)),
+        (false, None) => Err(CapError::Denied { path: path.to_path_buf() }),
+    }
+}
+
 /// Canonicalizes `path` and checks it against `roots`. A relative path is
 /// taken against the first root.
 pub fn resolve(roots: &[PathBuf], path: &Path) -> Result<PathBuf, CapError> {
-    let absolute = match (path.is_absolute(), roots.first()) {
-        (true, _) => path.to_path_buf(),
-        (false, Some(root)) => root.join(path),
-        (false, None) => return Err(CapError::Denied { path: path.to_path_buf() }),
-    };
-    let resolved = canonicalize(&absolute)?;
+    let resolved = canonicalize(&absolute(roots, path)?)?;
     if contains(roots, &resolved) {
         Ok(resolved)
     } else {
@@ -117,11 +121,7 @@ impl Writer for RootWriter {
     /// Checks the deepest existing ancestor, so that no directory is created
     /// outside the roots through a link on the way down.
     fn create_dir_all(&self, path: &Path) -> Result<(), CapError> {
-        let absolute = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            self.roots.first().map(|r| r.join(path)).ok_or_else(|| CapError::Denied { path: path.to_path_buf() })?
-        };
+        let absolute = absolute(&self.roots, path)?;
         let mut existing = absolute.as_path();
         let mut rest = Vec::new();
         while !existing.exists() {

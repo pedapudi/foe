@@ -6,8 +6,8 @@
 
 use crate::workflow::{self, WorkflowConfig};
 use crate::{
-    grants, Budget, ChildProgram, Config, ConfigError, DoneWhen, Grants, HostToolDef, ModelConfig, SandboxConfig,
-    ToolDef,
+    grants, Budget, ChildProgram, Config, ConfigError, ContextConfig, DoneWhen, Grants, HostToolDef, ModelConfig,
+    SandboxConfig, ToolDef,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -29,6 +29,8 @@ pub struct Program {
     pub budget: Budget,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub done_when: Option<DoneWhen>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<ContextConfig>,
     /// Inherited by every child program.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelConfig>,
@@ -56,46 +58,54 @@ struct Section<'a> {
     grants: &'a Grants,
     budget: &'a Budget,
     done_when: Option<&'a DoneWhen>,
+    context: Option<&'a ContextConfig>,
     programs: &'a BTreeMap<String, ChildProgram>,
     workflow: Option<&'a WorkflowConfig>,
 }
 
+/// `Config` and `ChildProgram` name the shared keys identically; one
+/// expression borrows them from either.
+macro_rules! section {
+    ($c:expr) => {
+        Section {
+            name: &$c.name,
+            instructions: &$c.instructions,
+            tools: &$c.tools,
+            tool_defs: &$c.tool_defs,
+            host_tools: &$c.host_tools,
+            grants: &$c.grants,
+            budget: &$c.budget,
+            done_when: $c.done_when.as_ref(),
+            context: $c.context.as_ref(),
+            programs: &$c.programs,
+            workflow: $c.workflow.as_ref(),
+        }
+    };
+}
+
 impl<'a> From<&'a Config> for Section<'a> {
     fn from(c: &'a Config) -> Self {
-        Section {
-            name: &c.name,
-            instructions: &c.instructions,
-            tools: &c.tools,
-            tool_defs: &c.tool_defs,
-            host_tools: &c.host_tools,
-            grants: &c.grants,
-            budget: &c.budget,
-            done_when: c.done_when.as_ref(),
-            programs: &c.programs,
-            workflow: c.workflow.as_ref(),
-        }
+        section!(c)
     }
 }
 
 impl<'a> From<&'a ChildProgram> for Section<'a> {
     fn from(c: &'a ChildProgram) -> Self {
-        Section {
-            name: &c.name,
-            instructions: &c.instructions,
-            tools: &c.tools,
-            tool_defs: &c.tool_defs,
-            host_tools: &c.host_tools,
-            grants: &c.grants,
-            budget: &c.budget,
-            done_when: c.done_when.as_ref(),
-            programs: &c.programs,
-            workflow: c.workflow.as_ref(),
-        }
+        section!(c)
     }
 }
 
 fn invalid(key: impl Into<String>, rule: impl Into<String>) -> ConfigError {
     ConfigError::Invalid { key: key.into(), rule: rule.into() }
+}
+
+/// `Ok` when `holds`; otherwise the error naming `key` and `rule`.
+fn require(holds: bool, key: impl Into<String>, rule: impl Into<String>) -> Result<(), ConfigError> {
+    if holds {
+        Ok(())
+    } else {
+        Err(invalid(key, rule))
+    }
 }
 
 /// Parses the document text. Unknown keys and wrong types are `Parse`
@@ -112,90 +122,55 @@ pub fn load(path: &Path) -> Result<Program, ConfigError> {
 
 /// Checks every rule of docs/config.md that does not need the filesystem.
 pub fn validate(config: &Config) -> Result<(), ConfigError> {
-    if config.version != CONFIG_VERSION {
-        return Err(invalid("version", format!("is {CONFIG_VERSION}")));
-    }
-    if config.task.trim().is_empty() {
-        return Err(invalid("task", "is not empty"));
-    }
+    require(config.version == CONFIG_VERSION, "version", format!("is {CONFIG_VERSION}"))?;
+    require(!config.task.trim().is_empty(), "task", "is not empty")?;
     if let Some(model) = &config.model {
         for (key, value) in [("model.provider", &model.provider), ("model.model", &model.model)] {
-            if value.trim().is_empty() {
-                return Err(invalid(key, "is not empty"));
-            }
+            require(!value.trim().is_empty(), key, "is not empty")?;
         }
     }
     validate_section("", &Section::from(config))
 }
 
+/// `key` under `prefix` in dotted form; `key` alone at the root.
 fn key_at(prefix: &str, key: &str) -> String {
-    if prefix.is_empty() {
-        key.to_string()
-    } else {
-        format!("{prefix}.{key}")
-    }
+    format!("{prefix}.{key}").trim_start_matches('.').to_string()
 }
 
 fn require_absolute(key: &str, path: &Path) -> Result<(), ConfigError> {
-    if path.is_absolute() {
-        Ok(())
-    } else {
-        Err(invalid(key, "is an absolute path"))
-    }
+    require(path.is_absolute(), key, "is an absolute path")
 }
 
 fn validate_section(prefix: &str, s: &Section) -> Result<(), ConfigError> {
     let key = |k: &str| key_at(prefix, k);
-    if s.name.trim().is_empty() {
-        return Err(invalid(key("name"), "is not empty"));
-    }
-    if s.instructions.is_empty() {
-        return Err(invalid(key("instructions"), "has at least one entry"));
-    }
+    require(!s.name.trim().is_empty(), key("name"), "is not empty")?;
+    require(!s.instructions.is_empty(), key("instructions"), "has at least one entry")?;
     for (section, text) in s.instructions {
-        if text.trim().is_empty() {
-            return Err(invalid(key(&format!("instructions.{section}")), "is not empty"));
-        }
+        require(!text.trim().is_empty(), key(&format!("instructions.{section}")), "is not empty")?;
     }
-    if s.tools.is_empty() {
-        return Err(invalid(key("tools"), "has at least one entry"));
-    }
+    require(!s.tools.is_empty(), key("tools"), "has at least one entry")?;
     for (i, name) in s.tools.iter().enumerate() {
-        if s.tools[..i].contains(name) {
-            return Err(invalid(key(&format!("tools[{i}]")), format!("lists `{name}` once")));
-        }
+        require(!s.tools[..i].contains(name), key(&format!("tools[{i}]")), format!("lists `{name}` once"))?;
     }
-    if s.tools.iter().any(|t| t == "edit") && s.grants.write.is_empty() {
-        return Err(invalid(key("tools"), "`edit` requires a non-empty grants.write"));
-    }
-    if s.tools.iter().any(|t| t == "spawn") && s.grants.spawn.is_empty() {
-        return Err(invalid(key("tools"), "`spawn` requires a non-empty grants.spawn"));
+    for (tool, roots, field) in [("edit", s.grants.write.len(), "write"), ("spawn", s.grants.spawn.len(), "spawn")] {
+        let needs = s.tools.iter().any(|t| t == tool);
+        require(!needs || roots > 0, key("tools"), format!("`{tool}` requires a non-empty grants.{field}"))?;
     }
     for (name, def) in s.tool_defs {
         let k = |field: &str| key(&format!("tool_defs.{name}.{field}"));
         require_absolute(&k("exec"), &def.exec)?;
-        if def.description.trim().is_empty() {
-            return Err(invalid(k("description"), "is not empty"));
-        }
-        if def.timeout_seconds == 0 {
-            return Err(invalid(k("timeout_seconds"), "is greater than 0"));
-        }
+        require(!def.description.trim().is_empty(), k("description"), "is not empty")?;
+        require(def.timeout_seconds > 0, k("timeout_seconds"), "is greater than 0")?;
         if let Some(cwd) = &def.cwd {
             require_absolute(&k("cwd"), cwd)?;
         }
     }
     for (name, def) in s.host_tools {
         let k = |field: &str| key(&format!("host_tools.{name}.{field}"));
-        if def.description.trim().is_empty() {
-            return Err(invalid(k("description"), "is not empty"));
-        }
-        if !def.params.is_object() {
-            return Err(invalid(k("params"), "is a JSON Schema object"));
-        }
+        require(!def.description.trim().is_empty(), k("description"), "is not empty")?;
+        require(def.params.is_object(), k("params"), "is a JSON Schema object")?;
     }
-    if s.grants.read.is_empty() {
-        return Err(invalid(key("grants.read"), "has at least one entry"));
-    }
+    require(!s.grants.read.is_empty(), key("grants.read"), "has at least one entry")?;
     for (i, path) in s.grants.read.iter().enumerate() {
         require_absolute(&key(&format!("grants.read[{i}]")), path)?;
     }
@@ -203,38 +178,29 @@ fn validate_section(prefix: &str, s: &Section) -> Result<(), ConfigError> {
         require_absolute(&key(&format!("grants.write[{i}]")), path)?;
     }
     for (i, name) in s.grants.spawn.iter().enumerate() {
-        if !s.programs.contains_key(name) {
-            return Err(invalid(
-                key(&format!("grants.spawn[{i}]")),
-                format!("names an entry in programs; `{name}` is absent"),
-            ));
-        }
+        let rule = format!("names an entry in programs; `{name}` is absent");
+        require(s.programs.contains_key(name), key(&format!("grants.spawn[{i}]")), rule)?;
     }
     let b = s.budget;
-    if b.model_calls == 0 {
-        return Err(invalid(key("budget.model_calls"), "is greater than 0"));
-    }
-    if b.tokens == Some(0) {
-        return Err(invalid(key("budget.tokens"), "is greater than 0"));
-    }
-    if b.seconds == Some(0) {
-        return Err(invalid(key("budget.seconds"), "is greater than 0"));
-    }
-    if b.max_episodes == 0 {
-        return Err(invalid(key("budget.max_episodes"), "is at least 1, counting this episode"));
-    }
-    if b.loop_threshold < 2 {
-        return Err(invalid(key("budget.loop_threshold"), "is at least 2"));
-    }
+    require(b.model_calls > 0, key("budget.model_calls"), "is greater than 0")?;
+    require(b.tokens != Some(0), key("budget.tokens"), "is greater than 0")?;
+    require(b.seconds != Some(0), key("budget.seconds"), "is greater than 0")?;
+    require(b.max_episodes > 0, key("budget.max_episodes"), "is at least 1, counting this episode")?;
+    require(b.loop_threshold >= 2, key("budget.loop_threshold"), "is at least 2")?;
     if let Some(done) = s.done_when {
         if let Some(verify) = &done.verify {
-            if !s.tools.contains(verify) {
-                return Err(invalid(key("done_when.verify"), format!("names a tool in tools; `{verify}` is absent")));
-            }
+            let rule = format!("names a tool in tools; `{verify}` is absent");
+            require(s.tools.contains(verify), key("done_when.verify"), rule)?;
         }
-        if done.returns.as_ref().is_some_and(|r| !r.is_object()) {
-            return Err(invalid(key("done_when.returns"), "is a JSON Schema object"));
-        }
+        require(
+            done.returns.as_ref().is_none_or(|r| r.is_object()),
+            key("done_when.returns"),
+            "is a JSON Schema object",
+        )?;
+    }
+    if let Some(c) = s.context.filter(|c| c.compact) {
+        let fits = c.window_tokens.is_none_or(|w| w > c.reserve_tokens + c.keep_recent_tokens);
+        require(fits, key("context.window_tokens"), "exceeds reserve_tokens plus keep_recent_tokens")?;
     }
     for (name, child) in s.programs {
         validate_section(&key(&format!("programs.{name}")), &Section::from(child))?;
@@ -286,9 +252,7 @@ fn resolve_section(
     for (name, def) in s.tool_defs {
         let k = |field: &str| key(&format!("tool_defs.{name}.{field}"));
         let exec = canonical(k("exec"), &def.exec)?;
-        if !exec.is_file() {
-            return Err(invalid(k("exec"), "names a file"));
-        }
+        require(exec.is_file(), k("exec"), "names a file")?;
         let cwd = match &def.cwd {
             Some(cwd) => canonical(k("cwd"), cwd)?,
             None => grants.read[0].clone(),
@@ -315,6 +279,7 @@ fn resolve_section(
         grants,
         budget: s.budget.clone(),
         done_when: s.done_when.cloned(),
+        context: s.context.cloned(),
         model: inherited.0.clone(),
         sandbox: inherited.1.clone(),
         programs,

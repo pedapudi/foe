@@ -3,21 +3,25 @@
 //! Implements docs/design.md (The episode). One call to [`run`] drives one
 //! episode from its first request to its `episode/end`. The loop is the
 //! only writer of its log; the protocol layer and the spawner append
-//! through the same shared [`Log`].
+//! through the same shared [`Log`]. Before each step's request the loop
+//! consults the context policy, which may replace the oldest part of the
+//! projection with a summary; docs/compaction.md specifies that.
 
 use crate::budget::Pool;
 use crate::config::Program;
+use crate::context::{Answer, ContextPolicy, ContextState, Summarized, SummaryCall};
 use crate::harness_text as text;
 use crate::inbox::Inbox;
 use crate::registry::{Handles, Registry};
 use crate::{ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
 use foe_log::{
-    fold, seed, AssistantMessage, BlockedCode, Chunk, ContentBlock, EpisodeStart, Event, EventData, ExhaustedLimit,
-    HeaderReason, InboxItem, InboxSource, LogError, ModelRequest, Outcome, RequestHeader, RetryCause, StopReason,
-    ThinkingBlock, ToolCall, ToolResult, Usage,
+    fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
+    Event, EventData, ExhaustedLimit, HeaderReason, InboxItem, InboxSource, LogError, Message, ModelRequest, Outcome,
+    RequestHeader, RetryCause, StopReason, ThinkingBlock, ToolCall, ToolResult, ToolSchema, Usage,
+    SUMMARY_REQUEST_PREFIX,
 };
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -47,30 +51,22 @@ pub struct Log {
 }
 
 impl Log {
-    pub fn create(dir: &Path, mirror: Option<Box<dyn std::io::Write + Send>>) -> Result<Self, LogError> {
-        let writer = foe_log::append::Writer::create(dir, mirror)?;
-        Ok(Self { dir: dir.to_path_buf(), inner: Mutex::new((writer, Vec::new())) })
-    }
-
-    /// Opens a log that already has events, for example one that seeding
-    /// wrote. The mirror first receives the file as it stands, so a host
-    /// reading standard output sees the seeded prefix as well.
-    pub fn open(dir: &Path, mut mirror: Option<Box<dyn std::io::Write + Send>>) -> Result<Self, LogError> {
-        let events = fold::read_all(dir)?;
-        if let Some(mirror) = &mut mirror {
-            std::io::copy(&mut std::fs::File::open(dir.join(fold::LOG_FILE))?, mirror)?;
+    /// Creates the log, or continues one that already has events, for
+    /// example one that seeding wrote. The mirror first receives an
+    /// existing file as it stands, so a host reading standard output sees
+    /// the seeded prefix as well.
+    pub fn create_or_open(dir: &Path, mut mirror: Option<Box<dyn std::io::Write + Send>>) -> Result<Self, LogError> {
+        let file = dir.join(fold::LOG_FILE);
+        let events = if file.exists() { fold::read_all(dir)? } else { Vec::new() };
+        if let (Some(mirror), false) = (&mut mirror, events.is_empty()) {
+            std::io::copy(&mut std::fs::File::open(&file)?, mirror)?;
             mirror.flush()?;
         }
-        let writer = foe_log::append::Writer::open(dir, mirror)?;
+        let writer = match events.is_empty() {
+            true => foe_log::append::Writer::create(dir, mirror)?,
+            false => foe_log::append::Writer::open(dir, mirror)?,
+        };
         Ok(Self { dir: dir.to_path_buf(), inner: Mutex::new((writer, events)) })
-    }
-
-    pub fn create_or_open(dir: &Path, mirror: Option<Box<dyn std::io::Write + Send>>) -> Result<Self, LogError> {
-        if dir.join(fold::LOG_FILE).exists() {
-            Self::open(dir, mirror)
-        } else {
-            Self::create(dir, mirror)
-        }
     }
 
     pub fn dir(&self) -> &Path {
@@ -111,7 +107,9 @@ impl Log {
 
 /// Everything one episode needs. `start` is written when the log is empty;
 /// a seeded log keeps its own. `pool` is shared with the spawner; `run`
-/// folds the existing events into it before the first step.
+/// folds the existing events into it before the first step. `context`
+/// compacts the conversation when it outgrows the window; `None` never
+/// compacts.
 pub struct Params {
     pub log: Arc<Log>,
     pub start: EpisodeStart,
@@ -122,6 +120,7 @@ pub struct Params {
     pub pool: Arc<Mutex<Pool>>,
     /// `Some(reason)` ends the episode as `failed` with that reason.
     pub stop: watch::Receiver<Option<String>>,
+    pub context: Option<Arc<dyn ContextPolicy>>,
 }
 
 /// Appends an `inbox/item` the moment it arrives, dropping a peer message
@@ -139,12 +138,12 @@ pub fn append_inbox_item(log: &Log, item: InboxItem) -> Result<Option<Event>, Lo
 /// result first, so the log is well-formed.
 pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
     let log = params.log.clone();
-    let outcome = match Episode::new(params) {
-        Ok(mut episode) => match episode.drive().await {
-            Ok(outcome) => outcome,
-            Err(RuntimeError::Log(e)) => return Err(e.into()),
-            Err(e) => Outcome::Failed { error: e.to_string() },
-        },
+    let driven = match Episode::new(params) {
+        Ok(mut episode) => episode.drive().await,
+        Err(e) => Err(e),
+    };
+    let outcome = match driven {
+        Ok(outcome) => outcome,
         Err(RuntimeError::Log(e)) => return Err(e.into()),
         Err(e) => Outcome::Failed { error: e.to_string() },
     };
@@ -157,24 +156,22 @@ pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
     Ok(outcome)
 }
 
-enum Flow {
-    Continue,
-    End(Outcome),
+/// Which request a step issues.
+enum Request {
+    /// The step's own request, assembled from the log and the inbox.
+    Step,
+    /// A summarization request carrying these messages; attempted once.
+    Summary(Vec<Message>),
 }
 
 struct Episode {
-    log: Arc<Log>,
-    program: Program,
-    registry: Arc<Registry>,
-    handles: Handles,
-    transport: Arc<dyn Transport>,
-    pool: Arc<Mutex<Pool>>,
-    stop: watch::Receiver<Option<String>>,
+    p: Params,
     inbox: Inbox,
     header: Option<(u64, RequestHeader)>,
     step: u32,
     requests: u64,
-    history: History,
+    /// `seq` of the most recent `model/request`.
+    request_seq: u64,
     verify_attempts: u32,
     spill_dir: PathBuf,
 }
@@ -182,122 +179,146 @@ struct Episode {
 impl Episode {
     fn new(p: Params) -> Result<Self, RuntimeError> {
         if p.log.next_seq() == 0 {
-            let task = p.start.task.clone();
-            p.log.append(EventData::EpisodeStart(p.start))?;
-            p.log.append(EventData::InboxItem(InboxItem {
-                source: InboxSource::Task,
-                content: vec![ContentBlock::Text { text: task }],
-                from: None,
-                message_id: None,
-            }))?;
+            p.log.append(EventData::EpisodeStart(p.start.clone()))?;
+            p.log.append(EventData::InboxItem(item(InboxSource::Task, &p.start.task)))?;
             p.log.sync()?;
         }
         let events = p.log.events();
         let state = fold::fold(&events)?;
-        {
-            let mut pool = lock(&p.pool);
-            events.iter().for_each(|e| pool.apply(&e.data));
-        }
-        let step = events
-            .iter()
-            .filter_map(|e| match &e.data {
-                EventData::ModelRequest(r) => Some(r.step),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0);
+        events.iter().for_each(|e| lock(&p.pool).apply(&e.data));
+        let step = events.iter().rev().find_map(|e| match &e.data {
+            EventData::ModelRequest(r) => Some(r.step),
+            _ => None,
+        });
         Ok(Self {
             inbox: Inbox::from_state(&state),
             header: state.header_seq.zip(state.header),
-            step,
+            step: step.unwrap_or(0),
             requests: state.model_calls,
-            history: History::from_events(&events, p.program.budget.loop_threshold as usize),
+            request_seq: 0,
             verify_attempts: 0,
             spill_dir: p.log.dir().join("spill"),
-            log: p.log,
-            program: p.program,
-            registry: p.registry,
-            handles: p.handles,
-            transport: p.transport,
-            pool: p.pool,
-            stop: p.stop,
+            p,
         })
     }
 
     async fn drive(&mut self) -> Result<Outcome, RuntimeError> {
         loop {
-            if let Some(reason) = self.stop.borrow().clone() {
+            if let Some(reason) = self.p.stop.borrow().clone() {
                 return Ok(Outcome::Failed { error: reason });
             }
             self.step += 1;
             if let Some(limit) = self.exhausted() {
                 return Ok(Outcome::Exhausted { limit });
             }
-            self.write_header_if_changed()?;
-            let message = match self.request().await? {
-                Requested::Message(message) => message,
-                Requested::Interrupted => continue,
-                Requested::End(outcome) => return Ok(outcome),
+            if let Some(outcome) = self.compact().await? {
+                return Ok(outcome);
+            }
+            self.write_header(self.p.registry.system_prompt(&self.p.program.instructions), self.p.registry.schemas())?;
+            let message = match self.request(Request::Step).await? {
+                Answer::Message { message, .. } => message,
+                Answer::Interrupted => continue,
+                Answer::Failed(error) => {
+                    return Ok(Outcome::Failed { error: format!("model request failed: {error}") })
+                }
+                Answer::Ended(outcome) => return Ok(outcome),
             };
             let results = match self.execute(&message).await? {
                 Ok(results) => results,
                 Err(outcome) => return Ok(outcome),
             };
-            if let Flow::End(outcome) = self.settle(&message, &results).await? {
+            if let Some(outcome) = self.settle(&message, &results).await? {
                 return Ok(outcome);
             }
         }
     }
 
     fn exhausted(&self) -> Option<ExhaustedLimit> {
-        lock(&self.pool).exhausted()
+        lock(&self.p.pool).exhausted()
     }
 
     fn deadline(&self) -> Option<Instant> {
-        lock(&self.pool).deadline()
+        lock(&self.p.pool).deadline()
     }
 
-    fn append_inbox(&mut self, item: InboxItem) -> Result<(), RuntimeError> {
-        append_inbox_item(&self.log, item)?;
+    fn append_inbox(&mut self, source: InboxSource, text: &str) -> Result<(), RuntimeError> {
+        append_inbox_item(&self.p.log, item(source, text))?;
         Ok(())
     }
 
-    fn write_header_if_changed(&mut self) -> Result<(), RuntimeError> {
-        let system = self.registry.system_prompt(&self.program.instructions);
-        let tools = self.registry.schemas();
-        let model = self.transport.route();
-        let unchanged =
-            self.header.as_ref().is_some_and(|(_, h)| h.system == system && h.tools == tools && h.model == model);
-        if unchanged {
+    /// Writes `request/header` when `system`, `tools`, or the route differ
+    /// from the header in effect.
+    fn write_header(&mut self, system: String, tools: Vec<ToolSchema>) -> Result<(), RuntimeError> {
+        let model = self.p.transport.route();
+        if self.header.as_ref().is_some_and(|(_, h)| h.system == system && h.tools == tools && h.model == model) {
             return Ok(());
         }
         let reason = if self.header.is_some() { HeaderReason::Change } else { HeaderReason::Initial };
         let header = RequestHeader { reason, system, tools, model };
-        let event = self.log.append(EventData::RequestHeader(header.clone()))?;
+        let event = self.p.log.append(EventData::RequestHeader(header.clone()))?;
         self.header = Some((event.seq, header));
         Ok(())
     }
 
+    /// Consults the context policy before a step's request and records the
+    /// compaction it makes. A failed summarization leaves the projection
+    /// as it was; when that projection passes the window itself, the
+    /// episode ends as exhausted.
+    async fn compact(&mut self) -> Result<Option<Outcome>, RuntimeError> {
+        let Some(policy) = self.p.context.clone() else { return Ok(None) };
+        let remaining = lock(&self.p.pool).remaining();
+        let Some(cut) = self.p.log.with_events(|events| policy.plan(&ContextState { events, remaining })) else {
+            return Ok(None);
+        };
+        let step = self.step;
+        self.p.log.append(EventData::CompactionStart(CompactionStart {
+            step,
+            covered: cut.covered,
+            trigger: CompactionTrigger::Threshold,
+            projected_tokens: cut.projected_tokens,
+            reserved: remaining,
+        }))?;
+        let events = self.p.log.events();
+        let state = ContextState { events: &events, remaining };
+        let (ok, usage, active_estimate, error) = match policy.summarize(&state, &cut, self).await? {
+            Summarized::Ended(outcome) => return Ok(Some(outcome)),
+            Summarized::Summary { summary, usage, active_estimate } => {
+                self.p.log.append(EventData::CompactionSummary(*summary))?;
+                (true, usage, active_estimate, None)
+            }
+            Summarized::Failed { error, usage } => (false, usage, cut.projected_tokens, Some(error)),
+        };
+        self.p.log.append(EventData::CompactionEnd { step, ok, usage, active_estimate, error })?;
+        Ok((!ok && cut.exceeds_window).then_some(Outcome::Exhausted { limit: ExhaustedLimit::Tokens }))
+    }
+
     /// One model request with bounded retries. See docs/design.md "Failure
-    /// of a model request".
-    async fn request(&mut self) -> Result<Requested, RuntimeError> {
+    /// of a model request". A summarization request is attempted once.
+    async fn request(&mut self, kind: Request) -> Result<Answer, RuntimeError> {
+        let summary = matches!(kind, Request::Summary(_));
         let mut attempt = 0;
         loop {
             attempt += 1;
             if let Some(limit) = self.exhausted() {
-                return Ok(Requested::End(Outcome::Exhausted { limit }));
+                return Ok(Answer::Ended(Outcome::Exhausted { limit }));
             }
             if attempt > MAX_ATTEMPTS {
                 let message = format!("{MAX_ATTEMPTS} attempts at step {} failed", self.step);
-                return Ok(Requested::End(Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message }));
+                return Ok(Answer::Ended(Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message }));
             }
             self.requests += 1;
-            let request_id = format!("rq_{:04}", self.requests);
-            self.log.with_events(|events| self.inbox.absorb(events));
-            let consumed = self.inbox.pending();
+            let request_id = format!("{}{:04}", if summary { SUMMARY_REQUEST_PREFIX } else { "rq_" }, self.requests);
+            let (consumed, messages) = match &kind {
+                Request::Summary(messages) => (Vec::new(), messages.clone()),
+                Request::Step => {
+                    self.p.log.with_events(|events| self.inbox.absorb(events));
+                    let consumed = self.inbox.pending();
+                    let messages = self.p.log.with_events(|e| fold::derive_messages(e, u64::MAX, &consumed));
+                    (consumed, messages)
+                }
+            };
             let (header_seq, header) = self.header.clone().expect("header written before the request");
-            let messages = self.log.with_events(|events| fold::derive_messages(events, u64::MAX, &consumed));
-            self.log.append(EventData::ModelRequest(ModelRequest {
+            let event = self.p.log.append(EventData::ModelRequest(ModelRequest {
                 step: self.step,
                 attempt,
                 request_id: request_id.clone(),
@@ -305,78 +326,70 @@ impl Episode {
                 consumed: consumed.clone(),
                 messages: messages.clone(),
             }))?;
+            self.request_seq = event.seq;
             self.inbox.consume(&consumed);
-            lock(&self.pool).note_request();
+            lock(&self.p.pool).note_request();
             let body = ModelRequestBody {
                 request_id: request_id.clone(),
                 system: header.system,
                 tools: header.tools,
                 messages,
-                max_output_tokens: self.program.model.as_ref().and_then(|m| m.max_output_tokens),
+                max_output_tokens: self.p.program.model.as_ref().and_then(|m| m.max_output_tokens),
             };
-            let mut recorder = Recorder::new(self.log.clone(), self.step, request_id);
-            let transport = self.transport.clone();
+            let mut recorder = Recorder::new(self.p.log.clone(), self.step, request_id);
+            let transport = self.p.transport.clone();
             let streamed = tokio::select! {
                 _ = transport.stream(body, &mut recorder) => None,
-                reason = wait_stop(self.stop.clone()) => Some(Outcome::Failed { error: reason }),
+                reason = wait_stop(self.p.stop.clone()) => Some(Outcome::Failed { error: reason }),
                 _ = until(self.deadline()) => Some(Outcome::Exhausted { limit: ExhaustedLimit::Seconds }),
             };
             recorder.check()?;
             if let Some(outcome) = streamed {
                 if !recorder.calls.is_empty() {
-                    self.log.append(EventData::AssistantMessage(recorder.message(
-                        StopReason::Interrupted,
-                        Usage::default(),
-                        true,
-                    )))?;
+                    let message = recorder.message(StopReason::Interrupted, Usage::default(), true);
+                    self.p.log.append(EventData::AssistantMessage(message))?;
                 }
-                return Ok(Requested::End(outcome));
+                return Ok(Answer::Ended(outcome));
             }
-            let (cause, retryable) = match recorder.terminal.take() {
+            let (cause, error) = match recorder.terminal.take() {
                 Some(Chunk::Done { stop, usage }) => {
                     let message = recorder.message(stop, usage, false);
-                    self.log.append(EventData::AssistantMessage(message.clone()))?;
-                    lock(&self.pool).note_usage(usage);
-                    return Ok(Requested::Message(message));
+                    self.p.log.append(EventData::AssistantMessage(message.clone()))?;
+                    lock(&self.p.pool).note_usage(usage);
+                    return Ok(Answer::Message { message, request_seq: self.request_seq });
                 }
-                Some(Chunk::Error { message, retryable }) if recorder.calls.is_empty() && recorder.text.is_empty() => {
+                Some(Chunk::Error { message, retryable }) if recorder.calls.is_empty() => {
                     let lower = message.to_ascii_lowercase();
-                    let cause = if lower.contains("rate") || lower.contains("429") {
+                    let cause = if !recorder.text.is_empty() {
+                        RetryCause::Interrupted
+                    } else if lower.contains("rate") || lower.contains("429") {
                         RetryCause::RateLimit
                     } else {
                         RetryCause::Provider
                     };
                     if !retryable {
-                        return Ok(Requested::End(Outcome::Failed {
-                            error: format!("model request failed: {message}"),
-                        }));
+                        return Ok(Answer::Failed(message));
                     }
-                    (cause, true)
-                }
-                Some(Chunk::Error { message, retryable }) if recorder.calls.is_empty() => {
-                    if !retryable {
-                        return Ok(Requested::End(Outcome::Failed {
-                            error: format!("model request failed: {message}"),
-                        }));
-                    }
-                    (RetryCause::Interrupted, true)
+                    (cause, message)
                 }
                 Some(Chunk::Error { .. }) => {
                     let message = recorder.message(StopReason::Interrupted, Usage::default(), true);
-                    self.log.append(EventData::AssistantMessage(message.clone()))?;
+                    self.p.log.append(EventData::AssistantMessage(message.clone()))?;
                     for call in &message.tool_calls {
                         self.append_result(call, ToolValue::error(text::INTERRUPTED_RESULT), 0, true)?;
                     }
-                    return Ok(Requested::Interrupted);
+                    return Ok(Answer::Interrupted);
                 }
-                _ => (RetryCause::Transport, true),
+                _ => (RetryCause::Transport, "the stream ended without a terminal chunk".to_string()),
             };
-            debug_assert!(retryable);
+            if summary {
+                return Ok(Answer::Failed(error));
+            }
             let delay_ms = (BACKOFF_BASE_MS << (attempt - 1).min(4)).min(BACKOFF_CAP_MS);
-            self.log.append(EventData::RequestRetry { step: self.step, attempt, cause, delay_ms })?;
+            self.p.log.append(EventData::RequestRetry { step: self.step, attempt, cause, delay_ms })?;
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(delay_ms)) => {}
-                reason = wait_stop(self.stop.clone()) => return Ok(Requested::End(Outcome::Failed { error: reason })),
+                reason = wait_stop(self.p.stop.clone()) => return Ok(Answer::Ended(Outcome::Failed { error: reason })),
             }
         }
     }
@@ -398,8 +411,8 @@ impl Episode {
         }
         let deadline = self.deadline();
         let run = run_calls(
-            self.registry.clone(),
-            self.handles.clone(),
+            self.p.registry.clone(),
+            self.p.handles.clone(),
             message.tool_calls.clone(),
             self.step,
             self.spill_dir.clone(),
@@ -407,13 +420,13 @@ impl Episode {
         );
         let values = tokio::select! {
             values = run => values,
-            reason = wait_stop(self.stop.clone()) => return Ok(Err(Outcome::Failed { error: reason })),
+            reason = wait_stop(self.p.stop.clone()) => return Ok(Err(Outcome::Failed { error: reason })),
             _ = until(deadline) => return Ok(Err(Outcome::Exhausted { limit: ExhaustedLimit::Seconds })),
         };
         for (call, (value, duration_ms)) in message.tool_calls.iter().zip(values) {
             results.push(self.append_result(call, value, duration_ms, false)?);
-            if self.registry.effect(&call.name).is_some_and(|e| !e.concurrent()) {
-                self.log.sync()?;
+            if self.p.registry.effect(&call.name).is_some_and(|e| !e.concurrent()) {
+                self.p.log.sync()?;
             }
         }
         Ok(Ok(results))
@@ -428,31 +441,32 @@ impl Episode {
         synthetic: bool,
     ) -> Result<ToolResult, RuntimeError> {
         let (value, rendered, spill) = spill(&self.spill_dir, &call.id, value)?;
+        let is_error = value.get("error").is_some() && value.as_object().is_some_and(|o| o.len() == 1);
         let result = ToolResult {
             step: self.step,
             call_id: call.id.clone(),
             name: call.name.clone(),
             value,
             rendered,
-            is_error: false,
+            is_error,
             spill,
             duration_ms,
             synthetic,
         };
-        let result = ToolResult { is_error: spill_is_error(&result), ..result };
-        self.log.append(EventData::ToolResult(result.clone()))?;
+        self.p.log.append(EventData::ToolResult(result.clone()))?;
         Ok(result)
     }
 
     /// Block, looping, `done_when`, then budget. A turn that completes the
     /// task on the last permitted call completes the episode; the budget
     /// ends it only when work remains.
-    async fn settle(&mut self, message: &AssistantMessage, results: &[ToolResult]) -> Result<Flow, RuntimeError> {
+    async fn settle(
+        &mut self,
+        message: &AssistantMessage,
+        results: &[ToolResult],
+    ) -> Result<Option<Outcome>, RuntimeError> {
         match self.settle_outcome(message, results).await? {
-            Flow::Continue => Ok(match self.exhausted() {
-                Some(limit) => Flow::End(Outcome::Exhausted { limit }),
-                None => Flow::Continue,
-            }),
+            None => Ok(self.exhausted().map(|limit| Outcome::Exhausted { limit })),
             end => Ok(end),
         }
     }
@@ -461,35 +475,23 @@ impl Episode {
         &mut self,
         message: &AssistantMessage,
         results: &[ToolResult],
-    ) -> Result<Flow, RuntimeError> {
+    ) -> Result<Option<Outcome>, RuntimeError> {
         let succeeded = |name: &str| results.iter().find(|r| r.name == name && !r.is_error && !r.synthetic);
         if let Some(blocked) = succeeded(text::BLOCK_NAME) {
             let code = serde_json::from_value(blocked.value["code"].clone()).unwrap_or(BlockedCode::GoalUnreachable);
             let message = blocked.value["message"].as_str().unwrap_or_default().to_string();
-            return Ok(Flow::End(Outcome::Blocked { code, message }));
+            return Ok(Some(Outcome::Blocked { code, message }));
         }
-        let signatures = results
-            .iter()
-            .filter_map(|r| {
-                message.tool_calls.iter().find(|c| c.id == r.call_id).map(|c| signature(&c.name, &c.args, &r.value))
-            })
-            .collect();
-        self.history.push(signatures, message.text.clone());
-        let n = self.history.threshold;
-        if let Some(repeated) = self.history.looping_call() {
-            let message = format!("the call {repeated} returned an identical result in {n} consecutive steps");
-            return Ok(Flow::End(Outcome::Blocked { code: BlockedCode::LoopingToolCall, message }));
-        }
-        if self.history.looping_text() {
-            let message = format!("the assistant produced identical text in {n} consecutive steps");
-            return Ok(Flow::End(Outcome::Blocked { code: BlockedCode::LoopingReasoning, message }));
+        let threshold = self.p.program.budget.loop_threshold as usize;
+        if let Some(outcome) = self.p.log.with_events(|events| looping(events, threshold)) {
+            return Ok(Some(outcome));
         }
         let finished = message.tool_calls.is_empty() && !message.interrupted && message.stop != StopReason::Length;
-        let candidate = if self.registry.has_return() {
+        let candidate = if self.p.registry.has_return() {
             match succeeded(text::RETURN_NAME) {
                 Some(returned) => Some(returned.value["value"].clone()),
                 None if finished => {
-                    self.append_inbox(system_item(text::RETURN_REQUIRED))?;
+                    self.append_inbox(InboxSource::System, text::RETURN_REQUIRED)?;
                     None
                 }
                 None => None,
@@ -497,50 +499,43 @@ impl Episode {
         } else {
             finished.then(|| Value::String(message.text.clone()))
         };
-        let Some(candidate) = candidate else { return Ok(Flow::Continue) };
-        let Some(done) = self.program.done_when.clone().filter(|d| d.verify.is_some()) else {
-            return Ok(Flow::End(Outcome::Completed { value: candidate }));
+        let Some(candidate) = candidate else { return Ok(None) };
+        let Some(done) = self.p.program.done_when.clone().filter(|d| d.verify.is_some()) else {
+            return Ok(Some(Outcome::Completed { value: candidate }));
         };
         let verifier = done.verify.clone().unwrap_or_default();
         let findings = self
+            .p
             .registry
-            .verify(&self.handles, &candidate, self.step, self.spill_dir.clone(), self.deadline())
+            .verify(&self.p.handles, &candidate, self.step, self.spill_dir.clone(), self.deadline())
             .await
             .map_err(RuntimeError::Protocol)?;
         if findings.is_empty() {
-            return Ok(Flow::End(Outcome::Completed { value: candidate }));
+            return Ok(Some(Outcome::Completed { value: candidate }));
         }
         if self.verify_attempts >= done.retries {
             let message =
                 format!("`{verifier}` still reports {} finding(s) after {} retries", findings.len(), done.retries);
-            return Ok(Flow::End(Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, message }));
+            return Ok(Some(Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, message }));
         }
         self.verify_attempts += 1;
         let framed = text::fill(text::VERIFY_FINDINGS, &[("tool", &verifier), ("findings", &findings.join("\n"))]);
-        self.append_inbox(InboxItem {
-            source: InboxSource::Verify,
-            content: vec![ContentBlock::Text { text: framed }],
-            from: None,
-            message_id: None,
-        })?;
-        Ok(Flow::Continue)
+        self.append_inbox(InboxSource::Verify, &framed)?;
+        Ok(None)
     }
 }
 
-enum Requested {
-    Message(AssistantMessage),
-    /// An interrupted message and its synthetic results were written.
-    Interrupted,
-    End(Outcome),
+#[async_trait::async_trait]
+impl SummaryCall for Episode {
+    async fn call(&mut self, system: &str, user: String) -> Result<Answer, RuntimeError> {
+        self.write_header(system.to_string(), Vec::new())?;
+        let content = vec![ContentBlock::Text { text: user }];
+        self.request(Request::Summary(vec![Message::User { content }])).await
+    }
 }
 
-fn system_item(text: &str) -> InboxItem {
-    InboxItem {
-        source: InboxSource::System,
-        content: vec![ContentBlock::Text { text: text.into() }],
-        from: None,
-        message_id: None,
-    }
+fn item(source: InboxSource, text: &str) -> InboxItem {
+    InboxItem { source, content: vec![ContentBlock::Text { text: text.into() }], from: None, message_id: None }
 }
 
 /// Resolves with the reason once the stop signal carries one. Never
@@ -604,10 +599,6 @@ async fn run_calls(
         .into_iter()
         .map(|r| r.unwrap_or_else(|| (ToolValue::error("the tool task ended without a result"), 0)))
         .collect()
-}
-
-fn spill_is_error(result: &ToolResult) -> bool {
-    result.value.get("error").is_some() && result.value.as_object().is_some_and(|o| o.len() == 1)
 }
 
 /// Renders a value for the model and writes it to `spill/<call_id>.json`
@@ -687,12 +678,6 @@ impl Recorder {
         }
     }
 
-    fn thinking_blocks(&self) -> Vec<ThinkingBlock> {
-        let mut blocks = self.thinking.clone();
-        blocks.extend(self.open_thinking.clone().map(|text| ThinkingBlock { text, signature: None }));
-        blocks
-    }
-
     pub fn check(&mut self) -> Result<(), RuntimeError> {
         self.failure.take().map_or(Ok(()), |e| Err(e.into()))
     }
@@ -703,6 +688,7 @@ impl Recorder {
     }
 
     pub fn message(&self, stop: StopReason, usage: Usage, interrupted: bool) -> AssistantMessage {
+        let open = self.open_thinking.clone().map(|text| ThinkingBlock { text, signature: None });
         AssistantMessage {
             step: self.step,
             request_id: self.request_id.clone(),
@@ -715,7 +701,7 @@ impl Recorder {
             stop,
             usage,
             interrupted,
-            thinking: self.thinking_blocks(),
+            thinking: self.thinking.iter().cloned().chain(open).collect(),
         }
     }
 }
@@ -802,63 +788,38 @@ fn signature(name: &str, args: &Value, result: &Value) -> String {
     format!("{name} {} -> {}", crate::identity::canonical(args), crate::identity::canonical(result))
 }
 
-/// The last `threshold` steps, for detecting the two forms of lack of
-/// progress in docs/design.md "Blocking conditions the runtime detects".
-struct History {
-    threshold: usize,
-    calls: VecDeque<BTreeSet<String>>,
-    texts: VecDeque<String>,
-}
-
-impl History {
-    fn from_events(events: &[Event], threshold: usize) -> Self {
-        let mut history = Self { threshold, calls: VecDeque::new(), texts: VecDeque::new() };
-        let mut steps: BTreeMap<u32, (String, BTreeSet<String>)> = BTreeMap::new();
-        let mut args: BTreeMap<String, (String, Value)> = BTreeMap::new();
-        for event in events {
-            match &event.data {
-                EventData::AssistantMessage(m) => {
-                    steps.entry(m.step).or_default().0 = m.text.clone();
-                    for c in &m.tool_calls {
-                        args.insert(c.id.clone(), (c.name.clone(), c.args.clone()));
-                    }
-                }
-                EventData::ToolResult(r) => {
-                    if let Some((name, a)) = args.get(&r.call_id) {
-                        steps.entry(r.step).or_default().1.insert(signature(name, a, &r.value));
-                    }
-                }
-                _ => {}
+/// The two forms of lack of progress in docs/design.md "Blocking conditions
+/// the runtime detects", over the last `threshold` steps: a call signature
+/// present in every one of them, or the same non-empty assistant text in
+/// every one of them. Summarization requests are not steps.
+fn looping(events: &[Event], threshold: usize) -> Option<Outcome> {
+    let mut steps: BTreeMap<u32, (String, BTreeSet<String>)> = BTreeMap::new();
+    let mut args: BTreeMap<&str, (&str, &Value)> = BTreeMap::new();
+    for event in events {
+        match &event.data {
+            EventData::AssistantMessage(m) if !m.request_id.starts_with(SUMMARY_REQUEST_PREFIX) => {
+                steps.entry(m.step).or_default().0 = m.text.clone();
+                args.extend(m.tool_calls.iter().map(|c| (c.id.as_str(), (c.name.as_str(), &c.args))));
             }
-        }
-        for (_, (text, calls)) in steps {
-            history.push(calls, text);
-        }
-        history
-    }
-
-    fn push(&mut self, calls: BTreeSet<String>, text: String) {
-        self.calls.push_back(calls);
-        self.texts.push_back(text);
-        while self.calls.len() > self.threshold {
-            self.calls.pop_front();
-            self.texts.pop_front();
+            EventData::ToolResult(r) => {
+                if let Some((name, a)) = args.get(r.call_id.as_str()) {
+                    steps.entry(r.step).or_default().1.insert(signature(name, a, &r.value));
+                }
+            }
+            _ => {}
         }
     }
-
-    /// A call signature present in every one of the last `threshold` steps.
-    fn looping_call(&self) -> Option<&String> {
-        if self.calls.len() < self.threshold {
-            return None;
-        }
-        self.calls[0].iter().find(|s| self.calls.iter().all(|set| set.contains(*s)))
+    let recent: Vec<_> = steps.into_values().rev().take(threshold).collect();
+    let (text, calls) = recent.get(threshold - 1).and(recent.first())?;
+    if let Some(repeated) = calls.iter().find(|s| recent.iter().all(|(_, set)| set.contains(*s))) {
+        let message = format!("the call {repeated} returned an identical result in {threshold} consecutive steps");
+        return Some(Outcome::Blocked { code: BlockedCode::LoopingToolCall, message });
     }
-
-    fn looping_text(&self) -> bool {
-        self.texts.len() >= self.threshold
-            && !self.texts[0].is_empty()
-            && self.texts.iter().all(|t| *t == self.texts[0])
+    if !text.is_empty() && recent.iter().all(|(t, _)| t == text) {
+        let message = format!("the assistant produced identical text in {threshold} consecutive steps");
+        return Some(Outcome::Blocked { code: BlockedCode::LoopingReasoning, message });
     }
+    None
 }
 
 #[cfg(test)]

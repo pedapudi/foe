@@ -158,18 +158,9 @@ impl Sandbox {
     /// Starts `cmd` under this sandbox narrowed to `policy`. The domain the
     /// caller already has is kept; the policy only removes access.
     pub fn spawn_narrowed(&self, policy: &Policy, mut cmd: Command) -> Result<Child, RuntimeError> {
-        let ruleset = self.compile(policy)?;
-        std::thread::scope(|scope| {
-            scope
-                .spawn(move || {
-                    if let Some(r) = ruleset {
-                        apply(r)?;
-                    }
-                    cmd.spawn().map_err(|e| RuntimeError::Sandbox(format!("spawn {:?}: {e}", cmd.get_program())))
-                })
-                .join()
-                .map_err(|_| RuntimeError::Sandbox("the thread starting the child panicked".into()))?
-        })
+        self.run_narrowed(policy, move || {
+            cmd.spawn().map_err(|e| RuntimeError::Sandbox(format!("spawn {:?}: {e}", cmd.get_program())))
+        })?
     }
 
     /// Runs `f` on a thread restricted to `policy`, for code that must work
@@ -194,7 +185,7 @@ impl Sandbox {
         if self.abi == 0 {
             return Ok(None);
         }
-        let abi = abi_level(self.abi);
+        let abi = ABI::from(self.abi as i32);
         let err = |e: landlock::RulesetError| RuntimeError::Sandbox(e.to_string());
         let mut ruleset = Ruleset::default()
             .set_compatibility(CompatLevel::BestEffort)
@@ -256,19 +247,6 @@ fn apply(ruleset: RulesetCreated) -> Result<RulesetStatus, RuntimeError> {
 
 fn paths(list: &[&str]) -> Vec<PathBuf> {
     list.iter().map(PathBuf::from).collect()
-}
-
-fn abi_level(n: u32) -> ABI {
-    match n {
-        0 => ABI::Unsupported,
-        1 => ABI::V1,
-        2 => ABI::V2,
-        3 => ABI::V3,
-        4 => ABI::V4,
-        5 => ABI::V5,
-        6 => ABI::V6,
-        _ => ABI::V7,
-    }
 }
 
 /// The Landlock ABI of the running kernel, or 0 when Landlock is absent or

@@ -186,14 +186,17 @@ fn load(config: &Path) -> Result<foe_core::config::Program, String> {
 
 /// Resolves the program and prints it with its identity. `--json` prints one
 /// object with `identity` and `program`, which the Python package parses,
-/// and `workflow` when the program declares one: its cycles, the model
-/// nodes sharing write roots, and its terminal nodes. Without `--json`, a
-/// workflow is followed by the report docs/workflow.md "Firing" describes.
+/// `context` with the compaction policy in one line when the program
+/// compacts, and `workflow` when the program declares one: its cycles, the
+/// model nodes sharing write roots, and its terminal nodes. Without
+/// `--json`, a workflow is followed by the report docs/workflow.md
+/// "Firing" describes.
 fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
     let program = load(config)?;
     let identity = run::identity(&program)?;
     let value = program.to_value();
     let transport = program.model.as_ref().map(run::describe_transport);
+    let context = run::context_policy(&program)?.map(|policy| policy.describe());
     if json {
         let workflow = program.workflow.as_ref().map(|wf| {
             let terminal: Vec<&String> = wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k).collect();
@@ -202,11 +205,15 @@ fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
         });
         let report = serde_json::json!({
             "identity": identity.hash, "program": value, "transport": transport, "workflow": workflow,
+            "context": context,
         });
         println!("{report}");
     } else {
         println!("identity  {}", identity.hash);
         println!("model     {}", transport.as_deref().unwrap_or("answered by the host over the protocol"));
+        if let Some(context) = &context {
+            println!("context   {context}");
+        }
         println!("{}", serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?);
         if let Some(wf) = &program.workflow {
             print!("{}", foe_workflow::plan_report(wf));
@@ -316,6 +323,7 @@ mod tests {
         let keys: Vec<&str> = schema["properties"].as_object().unwrap().keys().map(String::as_str).collect();
         let expected = [
             "budget",
+            "context",
             "done_when",
             "grants",
             "host_tools",

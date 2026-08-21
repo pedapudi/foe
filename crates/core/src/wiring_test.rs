@@ -27,7 +27,7 @@ fn request(program: &str, reserve: BudgetAmount) -> SpawnRequest {
     }
 }
 
-fn types(log: &Log) -> Vec<&'static str> {
+fn types(log: &Log) -> Vec<String> {
     log.events().iter().map(|e| e.data.type_name()).collect()
 }
 
@@ -36,7 +36,7 @@ fn types(log: &Log) -> Vec<&'static str> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_spawn_reserves_records_and_releases_budget() {
     let dir = scratch("wiring", "spawn");
-    let log = Arc::new(Log::create(&dir, None).unwrap());
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
     log.append(EventData::EpisodeStart(start())).unwrap();
     let config = parent_config();
     let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));

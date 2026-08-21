@@ -72,7 +72,7 @@ pub struct Node {
     pub followed_by: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verify: Option<String>,
-    #[serde(default = "crate::default_retries")]
+    #[serde(default = "crate::u32_default::<2>")]
     pub retries: u32,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub branches: BTreeMap<String, Vec<String>>,

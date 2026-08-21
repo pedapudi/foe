@@ -51,9 +51,23 @@ pub fn seed(source: &Path, until_seq: u64, dest: &Path, header: SeedHeader) -> R
             EventData::EpisodeEnd { .. } | EventData::SeedEnd {} => continue,
             data => data.clone(),
         };
-        if let EventData::ModelRequest(request) = &mut data {
-            request.header_seq = renumber.get(&request.header_seq).copied().unwrap_or(request.header_seq);
-            request.consumed = request.consumed.iter().map(|s| renumber.get(s).copied().unwrap_or(*s)).collect();
+        let map = |s: &u64| renumber.get(s).copied().unwrap_or(*s);
+        match &mut data {
+            EventData::ModelRequest(request) => {
+                request.header_seq = map(&request.header_seq);
+                request.consumed = request.consumed.iter().map(map).collect();
+            }
+            EventData::CompactionStart(start) => {
+                start.covered =
+                    crate::Covered { first_seq: map(&start.covered.first_seq), last_seq: map(&start.covered.last_seq) };
+            }
+            EventData::CompactionSummary(summary) => {
+                summary.first_kept_seq = map(&summary.first_kept_seq);
+                summary.summary_request_seq = map(&summary.summary_request_seq);
+                let c = summary.state.covered;
+                summary.state.covered = crate::Covered { first_seq: map(&c.first_seq), last_seq: map(&c.last_seq) };
+            }
+            _ => {}
         }
         let copied = writer.append_at(data, event.time)?;
         renumber.insert(event.seq, copied.seq);

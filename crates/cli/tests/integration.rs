@@ -377,6 +377,124 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
     assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2, "one child per model firing");
 }
 
+fn done_with(stop: &str, input: u64) -> Value {
+    json!({ "kind": "done", "stop": stop, "usage": { "input": input, "output": 5, "cache_read": 0 } })
+}
+
+/// docs/compaction.md: when the projection of the next request crosses
+/// the threshold, the oldest steps are summarized through one recorded
+/// `cmp_` request under its own header, the next request opens with the
+/// task and the continuation message, and the summarization call counts
+/// against the model-call budget.
+#[test]
+fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call() {
+    let context = json!({ "compact": true, "window_tokens": 120, "reserve_tokens": 40, "keep_recent_tokens": 1, "margin_tokens": 0 });
+    let step = |id: &str, input: u64| {
+        let mut chunks = vec![text("reading")];
+        chunks.extend(call(id, "read", r#"{"path": "f.txt"}"#));
+        chunks.push(done_with("tool", input));
+        chunks
+    };
+    let narrative = "## Goal\nRead f.txt.\n\n## Progress\nRead it.\n\n## Decisions\nNone.\n\n## Open items\nNone.\n\n## Next step\nFinish.";
+    let responses = || {
+        vec![
+            step("tc_1", 10),
+            step("tc_2", 90),
+            vec![text(narrative), done_with("end", 30)],
+            vec![text("Done."), done_with("end", 20)],
+        ]
+    };
+    let dir = scratch("compaction");
+    std::fs::write(dir.join("f.txt"), "line\n").unwrap();
+    let config = config(&dir, |c| {
+        c["budget"] = json!({ "model_calls": 4 });
+        c["context"] = context.clone();
+    });
+    let (events, code) = host_run(&dir, &config, responses(), |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+    let requests: Vec<&Value> = events.iter().filter(|e| e["type"] == "model/request").collect();
+    let ids: Vec<&str> = requests.iter().map(|r| r["data"]["request_id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["rq_0001", "rq_0002", "cmp_0003", "rq_0004"], "one counter numbers every request");
+    let by_type = |t: &str| events.iter().find(|e| e["type"] == t).unwrap_or_else(|| panic!("no {t}"));
+    let start = by_type("compaction/start");
+    assert_eq!(start["data"]["step"], 3);
+    assert_eq!(start["data"]["trigger"], "threshold");
+    assert_eq!(start["data"]["projected_tokens"], 90 + 5 + 2, "input, output, and the result that followed");
+    assert_eq!(start["data"]["reserved"]["model_calls"], 2);
+    let summary = by_type("compaction/summary");
+    assert_eq!(summary["data"]["first_kept_seq"], requests[1]["seq"], "the cut is the second step's request");
+    assert_eq!(summary["data"]["summary_request_seq"], requests[2]["seq"]);
+    assert_eq!(summary["data"]["summary"], narrative);
+    assert_eq!(summary["data"]["state"]["task"], "do the thing");
+    assert_eq!(summary["data"]["state"]["files"]["read"], json!(["f.txt"]));
+    assert_eq!(
+        summary["data"]["state"]["covered"],
+        json!({ "first_seq": 1, "last_seq": requests[1]["seq"].as_u64().unwrap() - 1 })
+    );
+    assert_eq!(start["data"]["covered"], summary["data"]["state"]["covered"]);
+    let end = by_type("compaction/end");
+    assert_eq!((end["data"]["ok"].as_bool(), end["data"]["usage"]["input"].as_u64()), (Some(true), Some(30)));
+    assert!(end["data"].get("error").is_none());
+    let header_of = |request: &Value| events.iter().find(|e| e["seq"] == request["data"]["header_seq"]).unwrap();
+    let summary_header = header_of(requests[2]);
+    assert_eq!(summary_header["data"]["system"], foe_core::harness_text::COMPACTION_INSTRUCTION);
+    assert_eq!(summary_header["data"]["tools"], json!([]));
+    assert_eq!(header_of(requests[3])["data"]["tools"][0]["name"], "read", "the ordinary header returns");
+    let messages = requests[3]["data"]["messages"].as_array().unwrap();
+    assert_eq!(messages[0], json!({ "role": "user", "content": [{ "type": "text", "text": "do the thing" }] }));
+    let continuation = messages[1]["content"][0]["text"].as_str().unwrap();
+    assert!(continuation.starts_with("## Continuation state\n\ncovered: seq 1 to "), "{continuation}");
+    assert!(continuation.contains("\nfiles_read:\n- f.txt\nfiles_written: (none)\n"), "{continuation}");
+    assert!(continuation.ends_with(&format!("## Summary\n\n{narrative}")), "{continuation}");
+    assert_eq!(messages[2]["tool_calls"][0]["id"], "tc_2", "the kept suffix starts with the second step");
+    assert_eq!(messages.len(), 4);
+    let prompt = requests[2]["data"]["messages"][0]["content"][0]["text"].as_str().unwrap();
+    assert!(prompt.starts_with("# Transcript\n\n[user]\ndo the thing\n\n[assistant]\nreading\n[call read"), "{prompt}");
+    assert!(!prompt.contains("tc_2") && prompt.contains("[result read]"), "the span ends at the cut: {prompt}");
+
+    // The summarization call is the third of three permitted calls, so the
+    // step after it finds the budget spent.
+    let dir = scratch("compaction-budget");
+    std::fs::write(dir.join("f.txt"), "line\n").unwrap();
+    let mut tighter = config.clone();
+    tighter["budget"] = json!({ "model_calls": 3 });
+    let (events, code) = host_run(&dir, &tighter, responses(), |_, _| Value::Null);
+    assert_eq!(code, 3);
+    assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "exhausted", "limit": "model_calls" }));
+    assert_eq!(types(&events).iter().filter(|t| **t == "model/request").count(), 3);
+    assert!(types(&events).contains(&"compaction/end"));
+}
+
+/// docs/compaction.md "Failure keeps the previous context": a failed
+/// summarization is recorded and the episode continues with the context
+/// it had.
+#[test]
+fn a_failed_summarization_leaves_the_context_as_it_was() {
+    let dir = scratch("compaction-failed");
+    std::fs::write(dir.join("f.txt"), "line\n").unwrap();
+    let config = config(&dir, |c| {
+        c["context"] = json!({ "compact": true, "window_tokens": 120, "reserve_tokens": 40, "keep_recent_tokens": 1, "margin_tokens": 0 });
+    });
+    let mut first = vec![text("reading")];
+    first.extend(call("tc_1", "read", r#"{"path": "f.txt"}"#));
+    first.push(done_with("tool", 10));
+    let mut second = vec![text("reading")];
+    second.extend(call("tc_2", "read", r#"{"path": "f.txt"}"#));
+    second.push(done_with("tool", 90));
+    let refused = vec![json!({ "kind": "error", "message": "overloaded", "retryable": true })];
+    let last = vec![text("Done."), done_with("end", 20)];
+    let (events, code) = host_run(&dir, &config, vec![first, second, refused, last], |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+    let kinds = types(&events);
+    assert!(!kinds.contains(&"compaction/summary") && !kinds.contains(&"request/retry"), "{kinds:?}");
+    let end = events.iter().find(|e| e["type"] == "compaction/end").unwrap();
+    assert_eq!((end["data"]["ok"].as_bool(), end["data"]["error"].as_str()), (Some(false), Some("overloaded")));
+    let last = events.iter().rev().find(|e| e["type"] == "model/request").unwrap();
+    assert_eq!(last["data"]["request_id"], "rq_0004");
+    assert_eq!(last["data"]["messages"][0]["content"][0]["text"], "do the thing");
+    assert_eq!(last["data"]["messages"].as_array().unwrap().len(), 5, "task, two turns, two results: unchanged");
+}
+
 fn examples() -> Vec<(String, String)> {
     let mut found: Vec<(String, String)> = std::fs::read_dir(EXAMPLES)
         .unwrap()

@@ -152,7 +152,7 @@ impl Fixture {
         let program = resolve(&config).unwrap();
         let log_dir = self.dir.join("episode");
         std::fs::create_dir_all(&log_dir).unwrap();
-        let log = Arc::new(Log::create(&log_dir, None).unwrap());
+        let log = Arc::new(Log::create_or_open(&log_dir, None).unwrap());
         let registry = Registry::new(&program, vec![], std::mem::take(&mut self.tools)).unwrap();
         let (_stop, stop_rx) = tokio::sync::watch::channel(None);
         let responses = Responses(Mutex::new(std::mem::take(&mut self.responses).into()), Mutex::new(Vec::new()));
@@ -175,6 +175,7 @@ impl Fixture {
             transport: Arc::new(responses),
             stop: stop_rx,
             program: program.clone(),
+            context: None,
         };
         let params = WorkflowParams { episode, workflow: program.workflow.unwrap(), spawner: self.spawner.clone() };
         let outcome = run(params).await.unwrap();
@@ -371,8 +372,8 @@ async fn a_tool_error_is_recovered_by_retry() {
     assert_eq!((recovery[0].action.as_str(), recovery[0].target.as_deref()), ("retry", Some("first")));
     assert_eq!((recovery[0].cause.as_str(), recovery[0].intervention), ("tool-error", 1));
     assert_eq!(starts(&events), [("first".into(), 1), ("first".into(), 2), ("second".into(), 1)]);
-    let kinds: Vec<&str> = events.iter().map(|e| e.data.type_name()).collect();
-    assert!(kinds.contains(&"request/header") && kinds.contains(&"model/request"));
+    let kinds: Vec<String> = events.iter().map(|e| e.data.type_name()).collect();
+    assert!(kinds.iter().any(|k| k == "request/header") && kinds.iter().any(|k| k == "model/request"));
     let request = events.iter().find(|e| e.data.type_name() == "model/request").unwrap();
     let EventData::ModelRequest(request) = &request.data else { panic!() };
     assert_eq!(request.messages.len(), 1, "a recovery request carries its context alone");

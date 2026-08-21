@@ -61,8 +61,7 @@ pub fn compute(program: &Program, extra_builtins: &[ToolSpec], runtime: &Runtime
     for (name, child) in &program.programs {
         programs.insert(name.clone(), Value::String(compute(child, extra_builtins, runtime)?.hash));
     }
-    let texts: serde_json::Map<String, Value> =
-        harness_text::all().into_iter().map(|(k, v)| (k.to_string(), Value::String(v.to_string()))).collect();
+    let texts = texts(harness_text::all());
     let workflow =
         program.workflow.as_ref().map(|wf| workflow_document("workflow", wf, program, extra_builtins, runtime));
     let document = json!({
@@ -76,6 +75,12 @@ pub fn compute(program: &Program, extra_builtins: &[ToolSpec], runtime: &Runtime
         },
         "budget": program.budget,
         "done_when": program.done_when,
+        "context": program.context,
+        "compaction": {
+            "policy_version": harness_text::COMPACTION_POLICY_VERSION,
+            "state": foe_log::ContinuationState::default(),
+            "labels": foe_log::fold::STATE_LABELS,
+        },
         "programs": programs,
         "workflow": workflow.transpose()?,
         "harness_text": { "version": harness_text::VERSION, "texts": texts },
@@ -113,11 +118,12 @@ fn workflow_document(
         }
         nodes.insert(name.clone(), entry);
     }
-    let texts: serde_json::Map<String, Value> = harness_text::workflow_texts()
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), Value::String(v.to_string())))
-        .collect();
+    let texts = texts(harness_text::workflow_texts());
     Ok(json!({ "nodes": nodes, "max_interventions": wf.recovery.max_interventions, "texts": texts }))
+}
+
+fn texts(list: Vec<(&str, &str)>) -> serde_json::Map<String, Value> {
+    list.into_iter().map(|(k, v)| (k.to_string(), Value::String(v.to_string()))).collect()
 }
 
 #[cfg(test)]

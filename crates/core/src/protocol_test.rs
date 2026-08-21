@@ -11,7 +11,7 @@ fn log(name: &str) -> (Arc<Log>, std::path::PathBuf) {
     let root = tmp(name);
     let dir = root.join("episode");
     std::fs::create_dir_all(&dir).unwrap();
-    let log = Arc::new(Log::create(&dir, None).unwrap());
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
     log.append(EventData::EpisodeStart(foe_log::EpisodeStart {
         id: "ep_self".into(),
         parent_id: None,

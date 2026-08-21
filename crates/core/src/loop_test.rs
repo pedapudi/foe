@@ -43,7 +43,7 @@ impl Fixture {
         let dir = root.join("episode");
         std::fs::create_dir_all(&dir).unwrap();
         let program = program_with(&root, edit).unwrap();
-        let log = Arc::new(Log::create(&dir, None).unwrap());
+        let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
         let (stop, stop_rx) = watch::channel(None);
         Self { dir, log, program, tools: vec![], transport: Arc::new(ScriptedTransport::new(responses)), stop, stop_rx }
     }
@@ -64,6 +64,7 @@ impl Fixture {
             transport: self.transport,
             pool: Arc::new(Mutex::new(Pool::new(self.program.budget.clone()))),
             stop: self.stop_rx,
+            context: None,
         };
         let outcome = run(params).await.unwrap();
         let events = foe_log::fold::read_all(&self.dir).unwrap();
@@ -72,7 +73,7 @@ impl Fixture {
     }
 }
 
-fn types(events: &[Event]) -> Vec<&'static str> {
+fn types(events: &[Event]) -> Vec<String> {
     events.iter().map(|e| e.data.type_name()).collect()
 }
 
@@ -193,7 +194,10 @@ async fn a_failure_after_a_tool_call_started_is_recorded_as_interrupted_and_the_
     assert!(m.interrupted && m.stop == StopReason::Interrupted && m.text == "I will");
     let rs = results(&events);
     assert!(rs[0].synthetic && rs[0].is_error && rs[0].rendered == text::INTERRUPTED_RESULT);
-    assert!(!types(&events).contains(&"request/retry"), "a request that started a tool call is never retried");
+    assert!(
+        !types(&events).iter().any(|t| t == "request/retry"),
+        "a request that started a tool call is never retried"
+    );
 }
 
 #[tokio::test]
@@ -400,6 +404,7 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
         transport: Arc::new(ScriptedTransport::new(vec![turn("forked end", vec![])])),
         pool: Arc::new(Mutex::new(Pool::new(program.budget.clone()))),
         stop: stop_rx,
+        context: None,
     };
     let outcome = run(params).await.unwrap();
     assert_eq!(outcome, Outcome::Completed { value: json!("forked end") });

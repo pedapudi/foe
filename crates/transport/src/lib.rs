@@ -133,6 +133,13 @@ pub fn provider_info(name: &str) -> Option<&'static Provider> {
     providers::find(name)
 }
 
+/// The context window in tokens of the model a `model` block names, when
+/// the provider table knows it. Context compaction uses it when the
+/// configuration gives no `context.window_tokens`.
+pub fn context_window(config: &ModelConfig) -> Option<u64> {
+    provider_info(&config.provider)?.context_window(&config.model)
+}
+
 /// Resolves a `model` block: looks the provider up, fills the credential
 /// path from the convention directory when the block names none, and
 /// checks that every required option is present. Reads the Vertex

@@ -27,7 +27,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -225,15 +225,10 @@ impl ProcessSpawner {
 /// below the child is one less than below the parent.
 pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reserve: BudgetAmount) -> Config {
     let mut budget = program.budget.clone();
-    if let Some(n) = reserve.model_calls {
-        budget.model_calls = budget.model_calls.min(n);
-    }
-    if let Some(n) = reserve.tokens {
-        budget.tokens = Some(budget.tokens.map_or(n, |t| t.min(n)));
-    }
-    if let Some(n) = reserve.seconds {
-        budget.seconds = Some(budget.seconds.map_or(n, |t| t.min(n)));
-    }
+    let tighter = |own: Option<u64>, reserved: Option<u64>| reserved.map_or(own, |n| Some(own.map_or(n, |t| t.min(n))));
+    budget.model_calls = tighter(Some(budget.model_calls), reserve.model_calls).unwrap_or(budget.model_calls);
+    budget.tokens = tighter(budget.tokens, reserve.tokens);
+    budget.seconds = tighter(budget.seconds, reserve.seconds);
     budget.max_depth = budget.max_depth.min(parent.budget.max_depth.saturating_sub(1));
     Config {
         version: parent.version,
@@ -245,6 +240,7 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
         grants: program.grants.clone(),
         budget,
         done_when: program.done_when.clone(),
+        context: program.context.clone(),
         model: parent.model.clone(),
         sandbox: parent.sandbox.clone(),
         programs: program.programs.clone(),
@@ -427,11 +423,6 @@ impl Reader {
         };
         Settled { outcome, usage, spent }
     }
-}
-
-/// The directory of a child's log, for callers that know only the id.
-pub fn child_dir(parent_log_dir: &Path, child_id: &str) -> PathBuf {
-    parent_log_dir.join("children").join(child_id)
 }
 
 #[cfg(test)]

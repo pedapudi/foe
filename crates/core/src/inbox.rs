@@ -55,10 +55,6 @@ impl Inbox {
             }
         }
     }
-
-    pub fn get(&self, seq: u64) -> Option<&InboxItem> {
-        self.items.get(&seq).map(|(item, _)| item)
-    }
 }
 
 #[cfg(test)]

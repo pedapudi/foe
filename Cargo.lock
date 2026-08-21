@@ -201,6 +201,7 @@ name = "foe"
 version = "0.1.0"
 dependencies = [
  "foe-code",
+ "foe-context",
  "foe-core",
  "foe-log",
  "foe-transport",
@@ -227,6 +228,17 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "foe-context"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "foe-core",
+ "foe-log",
+ "serde_json",
  "tokio",
 ]
 

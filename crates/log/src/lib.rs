@@ -102,13 +102,23 @@ pub enum EventData {
     #[serde(rename = "sandbox/denied")]
     SandboxDenied { pid: u32, comm: String, path: String, access: String },
 
-    // ---- reserved --------------------------------------------------------
+    // ---- compaction ------------------------------------------------------
     #[serde(rename = "compaction/start")]
-    CompactionStart(serde_json::Value),
+    CompactionStart(CompactionStart),
     #[serde(rename = "compaction/summary")]
-    CompactionSummary(serde_json::Value),
+    CompactionSummary(CompactionSummary),
+    /// The summarization ended. `usage` is what the summarization response
+    /// reported, zero when none arrived. `active_estimate` is the estimated
+    /// token count of the next request. `error` states why `ok` is false.
     #[serde(rename = "compaction/end")]
-    CompactionEnd(serde_json::Value),
+    CompactionEnd {
+        step: u32,
+        ok: bool,
+        usage: Usage,
+        active_estimate: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
 
     // ---- workflows -------------------------------------------------------
     #[serde(rename = "workflow/node-start")]
@@ -122,37 +132,10 @@ pub enum EventData {
 }
 
 impl EventData {
-    /// The wire name of this event's type, as it appears in `"type"`.
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            EventData::EpisodeStart(_) => "episode/start",
-            EventData::EpisodeEnd { .. } => "episode/end",
-            EventData::SeedEnd {} => "seed/end",
-            EventData::RequestHeader(_) => "request/header",
-            EventData::ModelRequest(_) => "model/request",
-            EventData::RequestRetry { .. } => "request/retry",
-            EventData::AssistantChunk { .. } => "assistant/chunk",
-            EventData::AssistantMessage(_) => "assistant/message",
-            EventData::ToolResult(_) => "tool/result",
-            EventData::HostToolCall { .. } => "host/tool-call",
-            EventData::InboxItem(_) => "inbox/item",
-            EventData::BudgetReserve { .. } => "budget/reserve",
-            EventData::BudgetRelease { .. } => "budget/release",
-            EventData::SpawnStart { .. } => "spawn/start",
-            EventData::SpawnEnd { .. } => "spawn/end",
-            EventData::TeamRoster { .. } => "team/roster",
-            EventData::TeamMessage { .. } => "team/message",
-            EventData::TeamDelivered { .. } => "team/delivered",
-            EventData::TeamTask(_) => "team/task",
-            EventData::SandboxDenied { .. } => "sandbox/denied",
-            EventData::CompactionStart(_) => "compaction/start",
-            EventData::CompactionSummary(_) => "compaction/summary",
-            EventData::CompactionEnd(_) => "compaction/end",
-            EventData::WorkflowNodeStart(_) => "workflow/node-start",
-            EventData::WorkflowNodeEnd(_) => "workflow/node-end",
-            EventData::WorkflowRecovery(_) => "workflow/recovery",
-            EventData::WorkflowBranch(_) => "workflow/branch",
-        }
+    /// The wire name of this event's type, as it appears in `"type"`: the
+    /// variant's `serde(rename)`, read back from the serialized form.
+    pub fn type_name(&self) -> String {
+        serde_json::to_value(self).ok().and_then(|v| v["type"].as_str().map(str::to_string)).unwrap_or_default()
     }
 }
 
@@ -194,9 +177,10 @@ pub struct SandboxInfo {
     pub landlock_abi: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SandboxMode {
+    #[default]
     BestEffort,
     Required,
     Off,
@@ -493,6 +477,83 @@ pub enum MemberPhase {
     Provisioning,
     Active,
     Failed,
+}
+
+// ---- compaction payloads -------------------------------------------------------
+
+/// Request ids of summarization requests start with this. The request and
+/// its response are recorded like any other and contribute nothing to
+/// derived messages. See docs/compaction.md.
+pub const SUMMARY_REQUEST_PREFIX: &str = "cmp_";
+
+/// A contiguous range of events, both ends included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Covered {
+    pub first_seq: u64,
+    pub last_seq: u64,
+}
+
+/// Payload of `compaction/start`. `covered` is the span this compaction
+/// summarizes directly; `projected_tokens` is the projection of the next
+/// request that crossed the threshold; `reserved` is the budget remaining
+/// to the episode, which the summarization call draws on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompactionStart {
+    pub step: u32,
+    pub covered: Covered,
+    pub trigger: CompactionTrigger,
+    pub projected_tokens: u64,
+    pub reserved: BudgetAmount,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CompactionTrigger {
+    Threshold,
+}
+
+/// Payload of `compaction/summary`. `summary` is the model's narrative;
+/// `state` is built by the runtime from typed events. Events before
+/// `first_kept_seq` leave the derived message list once this is written.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CompactionSummary {
+    pub step: u32,
+    pub summary: String,
+    pub state: ContinuationState,
+    pub first_kept_seq: u64,
+    pub summary_request_seq: u64,
+}
+
+/// What the model must still honor and what the runtime knows, carried
+/// across a compaction as data rather than as model output. `task` is the
+/// task text verbatim; `done_when` renders the completion condition in one
+/// line; `outstanding_findings` holds the latest verifier report; the file
+/// lists and `children` accumulate across every compaction of the episode.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ContinuationState {
+    pub task: String,
+    pub done_when: String,
+    pub outstanding_findings: Vec<String>,
+    pub files: CompactedFiles,
+    pub children: Vec<ChildSummary>,
+    pub covered: Covered,
+    pub budget_remaining: BudgetAmount,
+}
+
+/// Paths named by `read`, `write`, and `edit` calls whose results were not
+/// errors, sorted and without duplicates.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CompactedFiles {
+    pub read: Vec<String>,
+    pub written: Vec<String>,
+    pub edited: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChildSummary {
+    pub id: String,
+    pub program: String,
+    pub outcome: Outcome,
 }
 
 // ---- workflow payloads --------------------------------------------------------

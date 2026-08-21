@@ -81,6 +81,28 @@ with your code and message. Only the nodes listed are offered. Abort when no act
 pub const WORKFLOW_RECOVERY_FAILURE: &str = "Node `{node}` failed on firing {fire}: {cause}.\n\n{detail}\n\nretry \
 and amend may name: {targets}. skip is {skip}.";
 
+/// Bumped whenever the summarization prompt, the transcript rendering, or
+/// the continuation state's fields or rendering change in meaning. Hashed
+/// into identity beside the texts. See docs/compaction.md.
+pub const COMPACTION_POLICY_VERSION: u32 = 1;
+
+/// The system prompt of a summarization request. An author cannot change
+/// it; identity hashes it.
+pub const COMPACTION_INSTRUCTION: &str = "A coding agent's conversation is being condensed so that the agent can \
+continue in a smaller context. The message holds the transcript to condense as labeled plain text, preceded by the \
+summary written at the previous condensation when there was one. Write the summary the agent will continue from, \
+folding the earlier summary into it. Use exactly these headings, in this order: Goal, Progress, Decisions, Open \
+items, Next step. State only what the transcript supports: what was asked, what was done and how it was verified, \
+what was decided and why, what remains, and the single next action. Name files, commands, symbols, and error text \
+exactly as they appear. Do not continue the conversation, call tools, or address anyone; output the summary alone.";
+
+/// The two sections of a summarization request's message, and the
+/// rendering of one transcript entry and of one tool call within it.
+pub const COMPACTION_PRIOR: &str = "# Earlier summary\n\n{summary}";
+pub const COMPACTION_TRANSCRIPT: &str = "# Transcript\n\n{transcript}";
+pub const COMPACTION_TURN: &str = "[{label}]\n{body}";
+pub const COMPACTION_CALL: &str = "[call {name} {args}]";
+
 /// The texts above that only a workflow episode shows the model. The
 /// workflow section of the identity document hashes them, so rewording one
 /// changes the identity of every workflow and of nothing else.
@@ -114,6 +136,14 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("section_separator", SECTION_SEPARATOR),
         ("tool_instructions_heading", TOOL_INSTRUCTIONS_HEADING),
         ("tool_instruction_template", TOOL_INSTRUCTION_TEMPLATE),
+        ("compaction.instruction", COMPACTION_INSTRUCTION),
+        ("compaction.prior", COMPACTION_PRIOR),
+        ("compaction.transcript", COMPACTION_TRANSCRIPT),
+        ("compaction.turn", COMPACTION_TURN),
+        ("compaction.call", COMPACTION_CALL),
+        ("continuation.message", foe_log::fold::CONTINUATION_MESSAGE),
+        ("continuation.item", foe_log::fold::STATE_ITEM),
+        ("continuation.none", foe_log::fold::STATE_NONE),
     ]
 }
 

@@ -75,6 +75,9 @@ pub struct Provider {
     pub required: &'static [(&'static str, &'static str)],
     /// Model names `foe login` offers.
     pub presets: &'static [&'static str],
+    /// Context windows in tokens by model-name prefix. The longest prefix
+    /// that matches a model name wins; a name no prefix matches is unknown.
+    pub windows: &'static [(&'static str, u64)],
     /// Sent with every request, before the credential headers.
     pub headers: &'static [(&'static str, &'static str)],
     pub verify: Verify,
@@ -89,7 +92,17 @@ impl Provider {
     pub fn hint(&self, key: &str) -> &'static str {
         self.required.iter().find(|(k, _)| *k == key).map(|(_, hint)| *hint).unwrap_or("")
     }
+
+    /// The context window of `model` in tokens, when the table knows it.
+    pub fn context_window(&self, model: &str) -> Option<u64> {
+        let known = self.windows.iter().filter(|(prefix, _)| model.starts_with(prefix));
+        known.max_by_key(|(prefix, _)| prefix.len()).map(|(_, window)| *window)
+    }
 }
+
+const CLAUDE: u64 = 200_000;
+const GPT5: u64 = 400_000;
+const GEMINI_25: u64 = 1_048_576;
 
 pub static PROVIDERS: &[Provider] = &[
     #[cfg(all(feature = "messages", feature = "api-key"))]
@@ -103,6 +116,7 @@ pub static PROVIDERS: &[Provider] = &[
         path: "/v1/messages",
         required: &[],
         presets: &["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
+        windows: &[("claude-", CLAUDE)],
         headers: &[("anthropic-version", "2023-06-01")],
         verify: Verify::GetJson("/v1/models"),
     },
@@ -117,6 +131,7 @@ pub static PROVIDERS: &[Provider] = &[
         path: "/responses",
         required: &[],
         presets: &["gpt-5", "gpt-5-mini", "gpt-5-codex"],
+        windows: &[("gpt-5", GPT5)],
         headers: &[],
         verify: Verify::GetJson("/models"),
     },
@@ -131,6 +146,7 @@ pub static PROVIDERS: &[Provider] = &[
         path: "/chat/completions",
         required: &[("base_url", "the server's origin and version prefix, for example http://127.0.0.1:11434/v1")],
         presets: &[],
+        windows: &[],
         headers: &[],
         verify: Verify::GetJson("/models"),
     },
@@ -145,6 +161,7 @@ pub static PROVIDERS: &[Provider] = &[
         path: "/chat/completions",
         required: &[],
         presets: &["anthropic/claude-opus-5", "openai/gpt-5", "google/gemini-2.5-pro"],
+        windows: &[("anthropic/claude-", CLAUDE), ("openai/gpt-5", GPT5), ("google/gemini-2.5", GEMINI_25)],
         // OpenRouter attributes traffic to the application named here.
         headers: &[("HTTP-Referer", "https://github.com/pedapudi/foe"), ("X-Title", "foe")],
         verify: Verify::GetJson("/key"),
@@ -164,6 +181,7 @@ pub static PROVIDERS: &[Provider] = &[
         path: "/codex/responses",
         required: &[],
         presets: &["gpt-5-codex", "gpt-5"],
+        windows: &[("gpt-5", GPT5)],
         headers: &[("originator", "foe"), ("OpenAI-Beta", "responses=experimental")],
         verify: Verify::None,
     },
@@ -181,6 +199,7 @@ pub static PROVIDERS: &[Provider] = &[
             ("location", "the region, for example us-east5 or global"),
         ],
         presets: &["gemini-2.5-pro", "gemini-2.5-flash", "claude-opus-5"],
+        windows: &[("gemini-2.5", GEMINI_25), ("claude-", CLAUDE)],
         headers: &[],
         verify: Verify::MintToken,
     },
@@ -195,6 +214,7 @@ pub static PROVIDERS: &[Provider] = &[
         path: "",
         required: &[("exec", "the absolute path of the program")],
         presets: &[],
+        windows: &[],
         headers: &[],
         verify: Verify::None,
     },
@@ -229,5 +249,19 @@ mod tests {
         }
         assert_eq!(find("anthropic").map(|p| p.path), Some("/v1/messages"));
         assert!(find("unknown").is_none());
+    }
+
+    #[test]
+    fn context_windows_match_by_longest_prefix_and_cover_every_preset() {
+        for provider in PROVIDERS {
+            for preset in provider.presets {
+                assert!(provider.context_window(preset).is_some(), "{}/{preset} has no context window", provider.name);
+            }
+            assert_eq!(provider.context_window("a-model-no-table-names"), None);
+        }
+        if let Some(vertex) = find("vertex") {
+            assert_eq!(vertex.context_window("gemini-2.5-flash"), Some(GEMINI_25));
+            assert_eq!(vertex.context_window("claude-sonnet-5"), Some(CLAUDE));
+        }
     }
 }

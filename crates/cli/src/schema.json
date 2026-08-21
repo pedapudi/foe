@@ -23,6 +23,7 @@
     "grants": { "$ref": "#/$defs/grants" },
     "budget": { "$ref": "#/$defs/budget" },
     "done_when": { "$ref": "#/$defs/done_when" },
+    "context": { "$ref": "#/$defs/context" },
     "model": {
       "description": "When present, foe calls the model itself. When absent, the host process answers model requests over the protocol. Every key other than provider, model, and max_output_tokens is a provider-specific option with a string value; docs/models.md lists them per provider. Does not participate in identity.",
       "type": "object",
@@ -137,6 +138,18 @@
         "returns": { "description": "A JSON Schema; the episode completes when the model calls the synthesized return tool with a conforming value.", "type": "object" }
       }
     },
+    "context": {
+      "description": "Whether and when the conversation is compacted: the oldest steps replaced in the model's context by a summary and the runtime's continuation state. docs/compaction.md specifies it. Participates in identity.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "compact": { "description": "Whether the runtime compacts the conversation when the projected next request outgrows the model's window.", "type": "boolean", "default": false },
+        "window_tokens": { "description": "The model's context window in tokens. Required when compact is true and the provider table does not know the model; must exceed reserve_tokens plus keep_recent_tokens.", "type": "integer", "minimum": 1 },
+        "reserve_tokens": { "description": "Tokens kept free below the window; compaction runs when the projected request exceeds window_tokens minus reserve_tokens.", "type": "integer", "minimum": 0, "default": 16384 },
+        "keep_recent_tokens": { "description": "Approximate size of the most recent steps kept verbatim after a compaction.", "type": "integer", "minimum": 0, "default": 20000 },
+        "margin_tokens": { "description": "Added to the projection of the next request to absorb estimation error.", "type": "integer", "minimum": 0, "default": 2048 }
+      }
+    },
     "programs": {
       "description": "Program name to a child configuration. A name listed in grants.spawn must appear here. A child's grants must be a subset of its parent's. Each child program's identity participates in the parent's.",
       "type": "object",
@@ -156,6 +169,7 @@
         "grants": { "$ref": "#/$defs/grants" },
         "budget": { "$ref": "#/$defs/budget" },
         "done_when": { "$ref": "#/$defs/done_when" },
+        "context": { "$ref": "#/$defs/context" },
         "programs": { "$ref": "#/$defs/programs" },
         "workflow": { "$ref": "#/$defs/workflow" }
       }

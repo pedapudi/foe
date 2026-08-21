@@ -238,22 +238,13 @@ impl ChildObserver for Team {
         }
         let name = self.state().member_by_id(child_id).map(|m| m.name.clone()).unwrap_or_default();
         let text = format!("{name} ({child_id}) ended: {}", render_outcome(outcome));
-        self.inbox.append(InboxItem {
-            source: InboxSource::Child,
-            content: text_content(&text),
-            from: Some(child_id.to_string()),
-            message_id: None,
-        });
+        self.inbox.append(child_item(child_id, text_content(&text)));
     }
 
     fn host_call(&self, child_id: &str, name: &str, args: &serde_json::Value) -> Option<ToolValue> {
-        let kind = match name {
-            "notify" => Kind::Notify,
-            "send" => Kind::Send,
-            "team" => Kind::Team,
-            _ => return None,
-        };
+        let kind: Kind = serde_json::from_value(serde_json::Value::String(name.to_string())).ok()?;
         let content = match kind {
+            Kind::Spawn | Kind::Steer => return None,
             Kind::Team => Vec::new(),
             _ => match arg(args, "content") {
                 Ok(text) => text_content(text),
@@ -262,33 +253,38 @@ impl ChildObserver for Team {
         };
         Some(match kind {
             Kind::Notify => {
-                let item = InboxItem {
-                    source: InboxSource::Child,
-                    content,
-                    from: Some(child_id.to_string()),
-                    message_id: None,
-                };
-                self.inbox.append(item);
+                self.inbox.append(child_item(child_id, content));
                 ToolValue::ok(serde_json::json!({ "sent": true }), "sent")
             }
-            Kind::Send => match arg(args, "to").map(|to| (to, self.send(child_id, to, content))) {
-                Ok((to, Ok(message_id))) => {
-                    ToolValue::ok(serde_json::json!({ "to": to, "message_id": message_id }), format!("sent to {to}"))
-                }
-                Ok((_, Err(e))) => ToolValue::error(format!("send: {e}")),
-                Err(e) => e,
-            },
-            Kind::Team => {
-                let state = self.state();
-                ToolValue::ok(state.roster_value(), state.roster_text())
-            }
-            Kind::Spawn | Kind::Steer => unreachable!("resolved above"),
+            Kind::Send => arg(args, "to").map_or_else(|e| e, |to| self.send_value(child_id, to, content)),
+            _ => self.roster(),
         })
+    }
+}
+
+impl Team {
+    /// The result of a `send` call: the message id, or the failure.
+    fn send_value(&self, from: &str, to: &str, content: Vec<ContentBlock>) -> ToolValue {
+        match self.send(from, to, content) {
+            Ok(id) => ToolValue::ok(serde_json::json!({ "to": to, "message_id": id }), format!("sent to {to}")),
+            Err(e) => ToolValue::error(format!("send: {e}")),
+        }
+    }
+
+    /// The result of a `team` call: the roster as rows and as text.
+    fn roster(&self) -> ToolValue {
+        let state = self.state();
+        ToolValue::ok(state.roster_value(), state.roster_text())
     }
 }
 
 fn text_content(text: &str) -> Vec<ContentBlock> {
     vec![ContentBlock::Text { text: text.to_string() }]
+}
+
+/// An inbox item a child sends its parent.
+fn child_item(child_id: &str, content: Vec<ContentBlock>) -> InboxItem {
+    InboxItem { source: InboxSource::Child, content, from: Some(child_id.to_string()), message_id: None }
 }
 
 fn render_outcome(outcome: &Outcome) -> String {
@@ -310,7 +306,9 @@ fn arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, ToolValue>
 
 // ---- tools --------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The five team tools; the serialized name is the tool name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 enum Kind {
     Spawn,
     Steer,
@@ -320,16 +318,6 @@ enum Kind {
 }
 
 impl Kind {
-    fn name(self) -> &'static str {
-        match self {
-            Kind::Spawn => "spawn",
-            Kind::Steer => "steer",
-            Kind::Notify => "notify",
-            Kind::Send => "send",
-            Kind::Team => "team",
-        }
-    }
-
     fn spec(self) -> ToolSpec {
         let string = |description: &str| serde_json::json!({ "type": "string", "description": description });
         let object = |props: serde_json::Value, required: &[&str]| serde_json::json!({ "type": "object", "properties": props, "required": required, "additionalProperties": false });
@@ -367,13 +355,7 @@ impl Kind {
             ),
             Kind::Team => ("List the roster of the team this episode belongs to.", object(serde_json::json!({}), &[]), Effect::Pure),
         };
-        ToolSpec {
-            name: self.name().to_string(),
-            description: description.to_string(),
-            instruction: None,
-            params,
-            effect,
-        }
+        ToolSpec { name: kebab(&self), description: description.to_string(), instruction: None, params, effect }
     }
 }
 
@@ -446,34 +428,21 @@ impl Tool for TeamTool {
                     Err(e) => ToolValue::error(format!("spawn: {e}")),
                 }
             }
-            Kind::Steer => {
+            Kind::Steer | Kind::Send => {
                 let (to, content) = match (arg(&args, "to"), arg(&args, "content")) {
-                    (Ok(t), Ok(c)) => (t, c),
+                    (Ok(t), Ok(c)) => (t, text_content(c)),
                     (Err(e), _) | (_, Err(e)) => return e,
                 };
-                match self.team.steer(to, text_content(content)) {
+                if self.kind == Kind::Send {
+                    return self.team.send_value(&self.team.lead_id, to, content);
+                }
+                match self.team.steer(to, content) {
                     Ok(()) => ToolValue::ok(serde_json::json!({ "to": to }), format!("sent to {to}")),
                     Err(e) => ToolValue::error(format!("steer: {e}")),
                 }
             }
             Kind::Notify => ToolValue::error("notify: this episode has no parent to notify"),
-            Kind::Send => {
-                let (to, content) = match (arg(&args, "to"), arg(&args, "content")) {
-                    (Ok(t), Ok(c)) => (t, c),
-                    (Err(e), _) | (_, Err(e)) => return e,
-                };
-                match self.team.send(&self.team.lead_id, to, text_content(content)) {
-                    Ok(message_id) => ToolValue::ok(
-                        serde_json::json!({ "to": to, "message_id": message_id }),
-                        format!("sent to {to}"),
-                    ),
-                    Err(e) => ToolValue::error(format!("send: {e}")),
-                }
-            }
-            Kind::Team => {
-                let state = self.team.state();
-                ToolValue::ok(state.roster_value(), state.roster_text())
-            }
+            Kind::Team => self.team.roster(),
         }
     }
 }

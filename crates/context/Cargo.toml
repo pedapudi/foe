@@ -1,0 +1,16 @@
+[package]
+name = "foe-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Context compaction: projects the next request, cuts at a step boundary, summarizes the rest through one recorded model call"
+
+[dependencies]
+foe-log = { path = "../log" }
+foe-core = { path = "../core" }
+serde_json.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

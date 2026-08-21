@@ -9,6 +9,7 @@
 
 use foe_core::budget::Pool;
 use foe_core::config::{resolve, Program};
+use foe_core::context::ContextPolicy;
 use foe_core::exec::LocalExecutor;
 use foe_core::grants::{RootReader, RootWriter};
 use foe_core::identity::{self, Identity};
@@ -64,6 +65,34 @@ pub fn identity(program: &Program) -> Result<Identity, String> {
 
 pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
     tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| format!("runtime: {e}"))
+}
+
+/// The compaction policy a `context` block with `compact: true` resolves
+/// to, with the window taken from the block or from the provider table for
+/// the model named. `None` when the program never compacts. An unknown
+/// model with no `window_tokens` is a construction error.
+pub fn context_policy(program: &Program) -> Result<Option<foe_context::Policy>, String> {
+    let Some(cfg) = program.context.clone().filter(|c| c.compact) else { return Ok(None) };
+    let model = program.model.as_ref();
+    let window = cfg.window_tokens.or_else(|| model.and_then(known_window)).ok_or_else(|| {
+        let named = model.map_or("the host's model".to_string(), |m| format!("{}/{}", m.provider, m.model));
+        format!(
+            "config: context.window_tokens: is required because {named} is not in the provider table; set it to \
+             the model's context window in tokens"
+        )
+    })?;
+    let max_output = model.and_then(|m| m.max_output_tokens).map_or(0, u64::from);
+    Ok(Some(foe_context::Policy::new(cfg, window, max_output, program.done_when.as_ref())))
+}
+
+#[cfg(feature = "transport")]
+fn known_window(model: &ModelConfig) -> Option<u64> {
+    foe_transport::context_window(model)
+}
+
+#[cfg(not(feature = "transport"))]
+fn known_window(_model: &ModelConfig) -> Option<u64> {
+    None
 }
 
 /// Who this episode is. A child reads its ids from the `lineage.json` its
@@ -237,6 +266,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         }
     }
     let identity = identity(&program)?;
+    let context = context_policy(&program)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
     let runtime_info = identity::runtime_info();
     let transport = match &mut program.model {
         Some(model) => Some(built_in_transport(model, &mut policy, &sandbox, &log_dir)?),
@@ -255,6 +285,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         identity,
         runtime_info,
         transport,
+        context,
         host: options.host,
     };
     let outcome = runtime()?.block_on(episode(setup))?;
@@ -281,12 +312,25 @@ struct Setup {
     identity: Identity,
     runtime_info: foe_log::RuntimeInfo,
     transport: Option<Arc<dyn Transport>>,
+    context: Option<Arc<dyn ContextPolicy>>,
     host: bool,
 }
 
 async fn episode(setup: Setup) -> Result<Outcome, String> {
-    let Setup { config, program, lineage, log_dir, sandbox, policy, viewer, identity, runtime_info, transport, host } =
-        setup;
+    let Setup {
+        config,
+        program,
+        lineage,
+        log_dir,
+        sandbox,
+        policy,
+        viewer,
+        identity,
+        runtime_info,
+        transport,
+        host,
+        context,
+    } = setup;
     let id = lineage.episode_id.clone();
     let mirror = host.then(stdout_mirror);
     let log = Arc::new(Log::create_or_open(&log_dir, mirror).map_err(|e| format!("{}: {e}", log_dir.display()))?);
@@ -343,7 +387,8 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         None => None,
     };
     let workflow = program.workflow.clone();
-    let params = Params { log, start, program, registry: Arc::new(registry), handles, transport, pool, stop };
+    let registry = Arc::new(registry);
+    let params = Params { log, start, program, registry, handles, transport, pool, stop, context };
     let outcome = match workflow {
         Some(workflow) => foe_workflow::run(WorkflowParams { episode: params, spawner, workflow }).await,
         None => loop_::run(params).await,

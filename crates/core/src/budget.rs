@@ -64,10 +64,6 @@ impl Pool {
         self.tokens += usage.input + usage.output;
     }
 
-    pub fn limits(&self) -> &Budget {
-        &self.limits
-    }
-
     /// The instant the `seconds` limit elapses, when there is one.
     pub fn deadline(&self) -> Option<Instant> {
         self.limits.seconds.map(|s| self.started + Duration::from_secs(s))
