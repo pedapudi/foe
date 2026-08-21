@@ -40,8 +40,8 @@ Standard error carries diagnostics for a person. A host never parses it.
 
 ## foe to host
 
-Every log event, in `seq` order, as written. Three event types require a
-host answer.
+Every log event, in `seq` order, as written. Two event types require a host
+answer, and one ends the exchange.
 
 ### `model/request`
 
@@ -178,6 +178,18 @@ parent can route them down.
 `episode_id` is absent or null for the root episode. A host that does not
 support children rejects configurations with a non-empty `spawn` grant; foe
 treats the `spawn` grant as unavailable and fails any spawn tool call.
+
+A child's `notify`, `send`, and `team` tools are host tools from the child's
+point of view, and the parent foe process is the host that implements them.
+A child's call to `notify` arrives at the parent as a `host/tool-call`; the
+parent appends an `inbox/item` with source `child` to its own log and
+answers with a `tool/result`. A call to `send` arrives the same way at the
+lead, which appends `team/message` to its log, delivers the message to the
+target member as an `inbox/item` with source `peer`, and appends
+`team/delivered` when the member's log has recorded it. These calls are
+never forwarded above the parent. A message from a member therefore reaches
+the lead's log through the same two line types every other host exchange
+uses.
 
 ## Versioning
 

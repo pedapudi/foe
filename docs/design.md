@@ -327,7 +327,7 @@ can record every match and show the model a count and the first twenty.
 
 ## Subagents and teams
 
-An episode with a `spawns` grant may start child episodes. A child is a
+An episode with a `spawn` grant may start child episodes. A child is a
 separate process with its own log, its own grants, and a budget reserved from
 its parent's remaining budget. The child's log header names the parent.
 
@@ -408,7 +408,8 @@ transport and the credentials, and restricting it would break the host.
 
 foe writes its log to a file and echoes every event to standard output as it
 is written. A host process that launched foe reads that stream and answers
-three kinds of request on foe's standard input.
+two kinds of request on foe's standard input: model requests and host tool
+calls.
 
 ```
    host                                          foe
