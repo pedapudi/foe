@@ -271,7 +271,7 @@ function tokenizeCode(code: string, spec: Language): Token[] {
       while (j < code.length && isWord(code[j]!)) j++;
       const word = code.slice(i, j);
       if (spec.keywords.has(word)) out.push("keyword", word);
-      else if (spec.keysAreKeywords && isKey(code, i, j, lineStart)) out.push("keyword", word);
+      else if (spec.keysAreKeywords && isKey(code, j, lineStart)) out.push("keyword", word);
       else out.push("plain", word);
       i = j;
       lineStart = false;
@@ -300,11 +300,10 @@ function tokenizeCode(code: string, spec: Language): Token[] {
 }
 
 /** A bare word that opens its line and is followed by `:` or `=` names a key. */
-function isKey(code: string, start: number, end: number, lineStart: boolean): boolean {
+function isKey(code: string, end: number, lineStart: boolean): boolean {
   if (!lineStart) return false;
   let j = end;
   while (j < code.length && (code[j] === " " || code[j] === "\t")) j++;
-  void start;
   return code[j] === ":" || code[j] === "=";
 }
 

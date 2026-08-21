@@ -115,12 +115,24 @@ function withChildren(el: HTMLElement, children: Inline[]): HTMLElement {
 // ---- mathematics ----
 
 /**
+ * Converted expressions, keyed by their source and mode. A conversation
+ * redraws whenever its episode gains an event, and every redraw rebuilds
+ * the rows it changed, so an expression is converted once and cloned
+ * afterwards.
+ */
+const converted = new Map<string, HTMLElement>();
+
+/**
  * Converts one TeX expression to MathML, which browsers lay out natively,
- * so the page ships no math font. Temml is called only for text that
- * carries a mathematics delimiter, and an expression it rejects is shown
- * as its source in mono.
+ * so the page ships no math font. Temml runs only for a text that carries
+ * a mathematics delimiter, because only such a text yields a math node,
+ * and only for an expression not already converted. An expression Temml
+ * rejects is shown as its source in mono.
  */
 export function renderMath(tex: string, display: boolean): HTMLElement {
+  const key = `${display ? "d" : "i"}:${tex}`;
+  const cached = converted.get(key);
+  if (cached) return cached.cloneNode(true) as HTMLElement;
   const host = h("span", { class: display ? "math display" : "math inline" });
   try {
     temml.render(tex, host, { displayMode: display, throwOnError: true });
@@ -129,9 +141,11 @@ export function renderMath(tex: string, display: boolean): HTMLElement {
     host.title = "this expression is not valid TeX";
     host.textContent = display ? `$$${tex}$$` : `$${tex}$`;
   }
-  return host;
+  converted.set(key, host);
+  return host.cloneNode(true) as HTMLElement;
 }
 
+/** True when a text carries a mathematics delimiter, so Temml is needed. */
 export { hasMath };
 
 // ---- code ----

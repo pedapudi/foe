@@ -284,8 +284,8 @@ details[open] > summary::before {
   flex: none;
 }
 
-/* The lockup is sized by height: at 22 pixels the wordmark's ascenders
- * match the cap height of the 14-pixel text wordmark this replaced. */
+/* The lockup is sized by height. At 22 pixels its wordmark's ascenders
+ * match the cap height of the surrounding chrome text. */
 .lockup {
   display: inline-flex;
   align-items: center;
