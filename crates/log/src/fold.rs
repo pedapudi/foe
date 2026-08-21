@@ -5,41 +5,204 @@
 //! message list for a request and finds it differs from the recorded
 //! `model/request.messages` has found a runtime defect.
 
-use crate::{Event, LogError, Message, State};
+use crate::{Event, EventData, InboxSource, LogError, Message, State};
+use std::collections::BTreeMap;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
-/// Parses every line of `episode.jsonl` under `dir`.
+/// File name of the log inside an episode directory.
+pub const LOG_FILE: &str = "episode.jsonl";
+
+/// Parses every line of `episode.jsonl` under `dir`. Succeeds on a log
+/// without `episode/end`; structural validation is left to [`fold`].
 pub fn read_all(dir: &Path) -> Result<Vec<Event>, LogError> {
-    let _ = dir;
-    todo!("owner: runtime agent")
+    let text = std::fs::read_to_string(dir.join(LOG_FILE))?;
+    parse_lines(text.as_bytes()).map(|(events, _)| events)
 }
 
 /// Parses events appended after byte offset `from`, returning them and the
-/// new offset. Used by tailing readers.
+/// new offset. Only newline-terminated lines are parsed; a trailing partial
+/// line is left for the next call. A parse error names the line counted
+/// from `from`. A missing log surfaces as an `Io` error with `NotFound`.
 pub fn read_from(dir: &Path, from: u64) -> Result<(Vec<Event>, u64), LogError> {
-    let _ = (dir, from);
-    todo!("owner: runtime agent")
+    let mut file = std::fs::File::open(dir.join(LOG_FILE))?;
+    file.seek(SeekFrom::Start(from))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    let (events, consumed) = parse_lines(&bytes)?;
+    Ok((events, from + consumed))
+}
+
+/// Parses complete lines of `bytes`; returns the events and the byte count
+/// of the lines parsed.
+fn parse_lines(bytes: &[u8]) -> Result<(Vec<Event>, u64), LogError> {
+    let mut events = Vec::new();
+    let mut consumed = 0usize;
+    for (index, line) in bytes.split_inclusive(|b| *b == b'\n').enumerate() {
+        if line.last() != Some(&b'\n') {
+            break;
+        }
+        consumed += line.len();
+        if line.iter().all(|b| b.is_ascii_whitespace()) {
+            continue;
+        }
+        let event = serde_json::from_slice(line).map_err(|source| LogError::Parse { line: index as u64, source })?;
+        events.push(event);
+    }
+    Ok((events, consumed as u64))
 }
 
 /// Folds events into [`State`]. Validates the structural rules: `seq`
 /// contiguous from 0, `episode/start` first, at most one `episode/end` and
-/// it is last, every tool call has exactly one result.
+/// it is last, at most one result per tool call and none without a call.
+/// A log that has ended must also give every tool call a result; a log
+/// still in progress may have calls awaiting their results.
 pub fn fold(events: &[Event]) -> Result<State, LogError> {
-    let _ = events;
-    todo!("owner: runtime agent")
+    let mut state = State::default();
+    let mut calls: BTreeMap<&str, bool> = BTreeMap::new();
+    for (index, event) in events.iter().enumerate() {
+        if event.seq != index as u64 {
+            return Err(LogError::Invalid { seq: event.seq, rule: "seq is contiguous from 0" });
+        }
+        validate_next(&state, event)?;
+        match &event.data {
+            EventData::AssistantMessage(message) => {
+                for call in &message.tool_calls {
+                    calls.insert(call.id.as_str(), false);
+                }
+            }
+            EventData::ToolResult(result) => match calls.get_mut(result.call_id.as_str()) {
+                None => {
+                    return Err(LogError::Invalid {
+                        seq: event.seq,
+                        rule: "tool/result names a tool call in an earlier assistant/message",
+                    })
+                }
+                Some(true) => {
+                    return Err(LogError::Invalid { seq: event.seq, rule: "exactly one tool/result per tool call" })
+                }
+                Some(settled) => *settled = true,
+            },
+            _ => {}
+        }
+        apply(&mut state, event);
+    }
+    if state.outcome.is_some() && calls.values().any(|settled| !settled) {
+        return Err(LogError::Invalid {
+            seq: events.len() as u64 - 1,
+            rule: "every tool call has a result before episode/end",
+        });
+    }
+    Ok(state)
+}
+
+/// Advances `state` by one event. Performs no validation.
+pub fn apply(state: &mut State, event: &Event) {
+    match &event.data {
+        EventData::EpisodeStart(start) => state.start = Some(start.clone()),
+        EventData::EpisodeEnd { outcome } => state.outcome = Some(outcome.clone()),
+        EventData::SeedEnd {} => state.seeded_through = Some(event.seq),
+        EventData::RequestHeader(header) => {
+            state.header_seq = Some(event.seq);
+            state.header = Some(header.clone());
+        }
+        EventData::ModelRequest(request) => {
+            state.model_calls += 1;
+            for seq in &request.consumed {
+                if let Some(entry) = state.inbox.get_mut(seq) {
+                    entry.1 = true;
+                }
+            }
+        }
+        EventData::AssistantMessage(message) => {
+            state.usage.input += message.usage.input;
+            state.usage.output += message.usage.output;
+            state.usage.cache_read += message.usage.cache_read;
+        }
+        EventData::InboxItem(item) => {
+            state.inbox.insert(event.seq, (item.clone(), false));
+        }
+        EventData::SpawnStart { child_id, .. } => {
+            state.children.insert(child_id.clone(), None);
+        }
+        EventData::SpawnEnd { child_id, outcome } => {
+            state.children.insert(child_id.clone(), Some(outcome.clone()));
+        }
+        _ => {}
+    }
 }
 
 /// Derives the message list a request at `upto_seq` would carry, by the
 /// rule in the specification. Inbox items are included when their `seq` is
 /// in `consumed_inbox` or was consumed by an earlier request.
 pub fn derive_messages(events: &[Event], upto_seq: u64, consumed_inbox: &[u64]) -> Vec<Message> {
-    let _ = (events, upto_seq, consumed_inbox);
-    todo!("owner: runtime agent")
+    let consumed: std::collections::BTreeSet<u64> = events
+        .iter()
+        .take_while(|e| e.seq < upto_seq)
+        .filter_map(|e| match &e.data {
+            EventData::ModelRequest(request) => Some(request.consumed.iter().copied()),
+            _ => None,
+        })
+        .flatten()
+        .chain(consumed_inbox.iter().copied())
+        .collect();
+    let mut messages: Vec<Message> = Vec::new();
+    for event in events.iter().take_while(|e| e.seq < upto_seq) {
+        match &event.data {
+            EventData::InboxItem(item) if consumed.contains(&event.seq) => match messages.last_mut() {
+                Some(Message::User { content }) => content.extend(item.content.iter().cloned()),
+                _ => messages.push(Message::User { content: item.content.clone() }),
+            },
+            EventData::AssistantMessage(message) => {
+                messages.push(Message::Assistant { text: message.text.clone(), tool_calls: message.tool_calls.clone() })
+            }
+            EventData::ToolResult(result) => messages.push(Message::Tool {
+                call_id: result.call_id.clone(),
+                name: result.name.clone(),
+                rendered: result.rendered.clone(),
+                is_error: result.is_error,
+            }),
+            _ => {}
+        }
+    }
+    messages
 }
 
 /// Validates one event against the preceding ones. Returns the rule
 /// violated, if any. Used by the writer before appending.
 pub fn validate_next(prior: &State, event: &Event) -> Result<(), LogError> {
-    let _ = (prior, event);
-    todo!("owner: runtime agent")
+    let seq = event.seq;
+    let invalid = |rule| Err(LogError::Invalid { seq, rule });
+    if prior.outcome.is_some() {
+        return invalid("episode/end is the last event");
+    }
+    match (&prior.start, &event.data) {
+        (None, EventData::EpisodeStart(_)) if seq == 0 => return Ok(()),
+        (None, _) => return invalid("episode/start is the first event, at seq 0"),
+        (Some(_), EventData::EpisodeStart(_)) => return invalid("exactly one episode/start per log"),
+        _ => {}
+    }
+    match &event.data {
+        EventData::InboxItem(item)
+            if item.source == InboxSource::Task
+                && (seq != 1 || prior.inbox.values().any(|(i, _)| i.source == InboxSource::Task)) =>
+        {
+            return invalid("exactly one task item per log, at seq 1");
+        }
+        EventData::ModelRequest(request) => {
+            if prior.header_seq != Some(request.header_seq) {
+                return invalid("header_seq names the request/header in effect");
+            }
+            if request.consumed.iter().any(|s| !matches!(prior.inbox.get(s), Some((_, false)))) {
+                return invalid("consumed names inbox items no earlier request consumed");
+            }
+        }
+        EventData::SeedEnd {} if prior.seeded_through.is_some() => return invalid("at most one seed/end per log"),
+        _ => {}
+    }
+    Ok(())
 }
+
+#[cfg(test)]
+#[path = "fold_test.rs"]
+pub(crate) mod tests;
