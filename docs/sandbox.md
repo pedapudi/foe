@@ -24,6 +24,8 @@ declared.
 | each `grants.read` directory | read files, list directories |
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
 | each `tool_defs` entry's `exec` file | execute and read that file |
+| the running `foe` binary, when `grants.spawn` is not empty | execute and read that file, so the episode can start children |
+| the file named by `model.api_key_file`, when present | read that file, so a child episode can read the key after inheriting this domain |
 | the episode's own log directory | read and write |
 | the loader directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib`, `/bin`, `/usr/bin`, `/usr/local/bin` | read and execute |
 | the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |
@@ -84,7 +86,9 @@ thread before the asynchronous runtime exists.
 The episode keeps:
 
 - read on its read roots, write on its write roots;
-- execute on every `tool_defs` executable;
+- execute on every `tool_defs` executable, and on its own binary when it
+  may spawn children;
+- read on the key file named by its `model` block, which its children need;
 - read and write on its own log directory, which holds its children's
   directories and its spill files;
 - the loader, system, and device paths;
@@ -99,8 +103,8 @@ The episode keeps:
 A configured executable runs under the episode's ruleset narrowed once
 more. The narrowed policy keeps the read roots, the write roots, the
 loader, system, and device paths, and execute on the one file named by the
-tool definition. It drops the log directory, execute on every other
-executable, and TCP unless the tool definition sets `network: true`.
+tool definition. It drops the log directory, the key file, execute on every
+other executable, and TCP unless the tool definition sets `network: true`.
 
 This crate forbids unsafe code, so the narrowing is applied by a short-lived
 thread rather than by a hook between fork and exec. The thread applies the

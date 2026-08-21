@@ -37,30 +37,24 @@ kernel provided:
 The first `cat` call reads `/home/user/project/README.md` and returns its
 contents with exit code 0. The second call targets `/etc/hostname`, which
 no grant covers. The executable runs under a ruleset compiled from the
-grants, the kernel refuses the open, and two events record the refusal. The
-tool result carries the exit code and the message `cat` wrote:
+grants, the kernel refuses the open, and the tool result records the
+refusal: the exit code and the message `cat` wrote.
 
 ```json
 {"seq": 12, "time": 1724200004000, "type": "tool/result", "data": {
   "step": 2, "call_id": "tc_02", "name": "cat",
-  "value": { "exit_code": 1, "stdout": "", "stderr": "/usr/bin/cat: /etc/hostname: Permission denied\n" },
-  "rendered": "exit 1\n/usr/bin/cat: /etc/hostname: Permission denied",
+  "value": { "exit_code": 1, "stdout": "", "stderr": "/usr/bin/cat: /etc/hostname: Permission denied\n", "timed_out": false, "duration_ms": 3 },
+  "rendered": "\n[stderr]\n/usr/bin/cat: /etc/hostname: Permission denied\n\n[exit code 1]",
   "is_error": false, "spill": null, "duration_ms": 3, "synthetic": false }}
 ```
 
 A non-zero exit is a result rather than an error, so `is_error` is false and
-the model reads the message. When the kernel exposes its audit log, foe also
-writes the refusal it captured there:
-
-```json
-{"seq": 13, "time": 1724200004001, "type": "sandbox/denied", "data": { "pid": 4120, "comm": "cat", "path": "/etc/hostname", "access": "read" }}
-```
-
-`pid` is the process the kernel refused, `comm` is its command name, `path`
-is the file it asked for, and `access` is the kind of access refused. The
-exact field layout of `value` for a `tool_defs` result is specified in
-`docs/tools.md`; the event envelope and the `sandbox/denied` payload are
-specified in `docs/log-format.md`.
+the model reads the message. The log format reserves a `sandbox/denied`
+event for a refusal read from the kernel's audit log; nothing emits it,
+because an unprivileged process cannot read that log, as `docs/sandbox.md`
+explains. The refusal is therefore recorded through the tool result alone.
+The field layout of `value` for a `tool_defs` result is specified in
+`docs/tools.md`.
 
 In the viewer, the sandbox line in the left pane shows `landlock 7`, and
 the second `cat` call is listed with its exit code. The episode ends

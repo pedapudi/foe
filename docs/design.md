@@ -21,6 +21,7 @@ piece.
 | [viewer.md](viewer.md) | the trajectory viewer |
 | [landscape.md](landscape.md) | the surrounding field of agent runtimes |
 | [deferred.md](deferred.md) | features with reserved event types and no implementation |
+| [design-language.md](design-language.md) | the visual language the viewer follows |
 
 ## The problem
 
@@ -349,9 +350,9 @@ its parent's remaining budget. The child's log header names the parent.
 Budget is a pool held by the root. Every spawn reserves from the parent's
 remainder, and unspent reservation returns when the child settles. No path
 through the tree can spend more than the root's total. Structural caps on
-depth, lifetime episode count, and concurrency sit beside the spend caps.
-Reaching any cap yields `Exhausted` on the child, which the parent receives as
-an ordinary result.
+depth, lifetime episode count, and concurrency sit beside the spend caps. A
+spawn that would pass any cap fails as a tool call with a result naming the
+limit, and no child starts; the model reads that result like any other.
 
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent
@@ -368,6 +369,13 @@ roster and the queue of messages between members.
    team/message   {id, from, to, content}  ──►  inbox/item {source: peer, message_id}
    team/delivered {id, to}                 ◄──  (written after the member's append)
 ```
+
+Five built-in tools serve teams. `spawn` and `steer` act on an episode's
+own children. `notify`, `send`, and `team` act on the team the episode
+belongs to: in an episode with a parent they are host tool calls that the
+parent answers, as the [protocol](protocol.md#children) describes; in a
+root, `send` and `team` act on its own roster, and `notify` fails because
+no parent exists.
 
 A message is durable in the lead's log before delivery is attempted. The
 member's receipt is recorded after the member has written the message to its
@@ -446,13 +454,14 @@ own.
 The binary has one running form and four forms that run nothing.
 
 ```
-foe "task" [--config FILE] [--no-open]      run; serve the viewer; print the outcome
-foe "task" --headless                       run; no viewer; print the outcome
-foe --config FILE --host                    run under a host; stdout is the log (protocol.md)
-foe view DIR [--serve]                      write a self-contained HTML file, or serve it
-foe plan --config FILE [--json]             resolve the program, print it and its identity
-foe tools [--config FILE]                   list tools, with sources when a config is given
-foe schema                                  print the JSON Schema for the configuration
+foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
+foe "task" --model PROVIDER/MODEL --key-file PATH        run the built-in coding configuration
+foe "task" --headless                                    run; no viewer; print the outcome
+foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
+foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
+foe plan --config FILE [--json]                          resolve the program, print it and its identity
+foe tools [--config FILE]                                list tools, with sources when a config is given
+foe schema                                               print the JSON Schema for the configuration
 ```
 
 In every running form except `--host`, standard output receives exactly one
@@ -461,9 +470,24 @@ line when the episode ends: the outcome as JSON. A shell reads it with one
 for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
 Progress goes to standard error. The log goes to the file.
 
-A task given on the command line without `--config` uses a built-in coding
-configuration: the four built-in tools, read and write on the current
-directory, and a model from a file named on the command line with `--model`.
+The log directory is `--log-dir` when given and `.foe/<episode-id>` under
+the current directory otherwise. A directory that already holds a log, as
+one seeded by a fork does, is continued. A `lineage.json` beside the log,
+which a parent writes for a child, supplies the child's id, its parent, and
+its team lead.
+
+A task given with `--config` replaces the document's own `task`. A task
+given without `--config` uses a built-in coding configuration: the tools
+`read`, `grep`, `edit`, and `bash`, read and write on the current
+directory, a budget of 40 model calls, and the model named by `--model`
+with the key read from `--key-file`; both options are then required.
+
+Without `--headless` and without `--host`, the binary serves the viewer on
+a loopback port chosen before the process restricts itself, opens it with
+`/usr/bin/xdg-open` unless `--no-open` is given, and keeps serving for
+three seconds after the episode ends so that an open page receives the
+final events. `foe view DIR --serve` serves a finished directory for as
+long as the process runs.
 
 ## The viewer
 
@@ -527,4 +551,5 @@ there is to read.
 
 ## Status
 
-Design complete. Implementation in progress. No interface is stable.
+The runtime, the binary, the viewer, and the Python package are
+implemented. No interface is stable.

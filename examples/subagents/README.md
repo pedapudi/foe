@@ -33,8 +33,9 @@ parent. No path through the tree can spend more than the root declared.
 Three structural caps sit beside the spend caps. `max_depth: 1` allows
 children and forbids grandchildren. `max_episodes: 4` allows the parent and
 three children over the life of the run. `max_concurrent: 2` allows two
-children running at once; a third `spawn` call waits. Reaching any cap ends
-the child as `exhausted`, which the parent receives as an ordinary result.
+children running at once. A `spawn` call that would pass any cap, or that
+asks for more budget than remains, returns an error result naming the limit,
+and no child starts; the model reads that result like any other.
 
 ## What to look for
 

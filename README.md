@@ -31,8 +31,8 @@ core-collapse supernova. One foe is one bounded release of work.
 
 ## Status
 
-The design and the specifications are complete. Implementation is in
-progress. No interface is stable.
+The runtime, the binary, the viewer, and the Python package are
+implemented. No interface is stable.
 
 ## Running an episode
 
@@ -56,10 +56,13 @@ with the built-in model transport.
 foe --config hello.json
 ```
 
-foe validates the document, writes `episode.jsonl` into a fresh directory,
-echoes every event to standard output, and serves a viewer on the loopback
-interface until the episode ends. The exit code is 0 when the outcome is
-completed, 2 when blocked, 3 when exhausted, and 1 when failed.
+foe validates the document, writes `episode.jsonl` under
+`.foe/<episode-id>` in the current directory or under `--log-dir`, serves a
+viewer on the loopback interface while the episode runs, and prints the
+outcome as one JSON line on standard output when it ends. The exit code is
+0 when the outcome is completed, 2 when blocked, 3 when exhausted, and 1
+when failed. Under `--host`, standard output carries the log instead and a
+host process answers model requests; see [docs/protocol.md](docs/protocol.md).
 `examples/` holds one runnable configuration per mechanism.
 
 ## Embedding
@@ -74,8 +77,8 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 Two numbers bound the runtime. The Rust source of the log, core, tool, and
 viewer crates stays under 6,000 lines, excluding tests and generated code;
 `scripts/loc.sh` counts and continuous integration fails over budget. The
-stripped release binary has a size that is measured at release and recorded
-here; until then, continuous integration fails a build over 8 MiB.
+stripped release binary measured 4,432,904 bytes on 2026-08-21 with the
+viewer bundle embedded; continuous integration fails a build over 8 MiB.
 
 ## Documents
 
@@ -91,6 +94,7 @@ here; until then, continuous integration fails a build over 8 MiB.
 | [docs/viewer.md](docs/viewer.md) | the trajectory viewer |
 | [docs/landscape.md](docs/landscape.md) | where foe sits among agent runtimes |
 | [docs/deferred.md](docs/deferred.md) | features with reserved names and no implementation |
+| [docs/design-language.md](docs/design-language.md) | the visual language the viewer follows |
 
 `docs/README.md` lists the same documents with the question each answers.
 `AGENTS.md` states the rules for changing this repository.

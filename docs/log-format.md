@@ -364,7 +364,7 @@ by the runtime, the viewer, and the Python package identically.
 An assistant message whose request failed and was discarded before any tool
 call started is never written, so it never appears.
 
-The message list is exactly what `model/request.messages` records. A reader
+The message list is the one `model/request.messages` records. A reader
 that recomputes it from the preceding events and finds a difference has found
 a runtime defect.
 

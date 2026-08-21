@@ -73,7 +73,9 @@ when that one is taken, and prints one line to standard error:
 foe viewer: http://127.0.0.1:41873/?token=3f9c…
 ```
 
-That line is the only place the token is printed. Opening the URL loads the
+That line is the only place a running episode prints the token.
+`foe view DIR --serve` additionally prints the URL as the first line of its
+standard output, for the process that started it. Opening the URL loads the
 page in live mode. The bundle then fetches `/episodes` every two seconds
 until every episode it knows about has ended, because a parent can spawn a
 child at any point before its own end, and it opens one event stream per

@@ -33,8 +33,8 @@ project and how to build it.')`, and leaves the log at
 
 ## What to look for
 
-The `request/header` event carries the model route the host reported,
-because the host owns the route. The first `model/request` has
+The `request/header` event carries the route `host`/`host`, because the
+host owns the real route and foe does not know it. The first `model/request` has
 `consumed: [1]`, the task, and one user message. The
 `assistant/chunk` events that follow are the script's chunks, recorded by
 foe as they arrived; the `assistant/message` assembled from them has one
@@ -44,4 +44,4 @@ assistant, tool. The second `assistant/message` has `stop: "end"` and no
 tool calls, so the episode ends `completed` with that text as the value.
 
 In the viewer, the conversation pane shows the same sequence, and the
-header line shows the route the host reported.
+header line shows the route `host`.
