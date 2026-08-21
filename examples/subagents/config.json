@@ -3,9 +3,9 @@
   "name": "survey-then-fix",
   "instructions": {
     "10-role": "You are a coding agent working in a Python repository.",
-    "20-delegation": "Before editing, spawn one survey child per module named in the task. Each child reports the functions in its module that the task touches. Their reports arrive as messages. Then make the change yourself."
+    "20-delegation": "Before editing, spawn one survey child per module named in the task. Each child reports the places in its module that the task touches. A report arrives as a message, and a further message arrives when the child ends. Wait for both children to end, then make the change yourself."
   },
-  "tools": ["read", "grep", "edit", "bash", "spawn"],
+  "tools": ["read", "grep", "edit", "spawn"],
   "grants": {
     "read": ["/home/user/project"],
     "write": ["/home/user/project/src"],
@@ -23,9 +23,9 @@
     "survey": {
       "name": "survey",
       "instructions": {
-        "role": "You are a read-only surveyor. Answer the question in the task by reading and searching the repository. Finish with a short list of file paths and function names."
+        "role": "You are a read-only surveyor. Answer the question in the task by reading and searching the repository. Report what you found to the episode that started you with notify, naming the file and the lines."
       },
-      "tools": ["read", "grep"],
+      "tools": ["read", "grep", "notify"],
       "grants": {
         "read": ["/home/user/project"]
       },
@@ -33,9 +33,9 @@
     }
   },
   "model": {
-    "provider": "anthropic",
-    "model": "claude-opus-5",
-    "api_key_file": "/home/user/.config/foe/anthropic.key"
+    "provider": "exec",
+    "model": "subagents-demo",
+    "exec": "/home/user/project/tools/transport.py"
   },
   "task": "Rename the configuration key `timeout` to `timeout_seconds` everywhere it is read in src/config.py and src/client.py, and update the callers."
 }
