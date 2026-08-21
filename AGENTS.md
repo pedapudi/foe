@@ -42,7 +42,8 @@ sentence on first reading.
 - Tests live beside the code they test. A specification rule that can be
   tested has a test that cites the rule.
 - Line budget: `log`, `core`, `code`, and `view` together stay under 6,000
-  lines of Rust excluding tests and generated code. `scripts/loc.sh` counts.
+  lines of Rust excluding tests and generated code, and `workflow` stays
+  under 1,000 on the same terms. `scripts/loc.sh` counts both.
 
 ## Commits
 

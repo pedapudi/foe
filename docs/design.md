@@ -523,12 +523,13 @@ not finished.
                              registry,    ├── crates/transport (feature)
                              grants,      │    built-in model clients
                              budget,      │
-                             identity,    └── crates/view ◄── view/ (browser bundle)
-                             spawn,            projection, HTTP, SSE, export
-                             teams,
-                             exec,
-                             landlock,           crates/cli ◄── all of the above
-                             protocol
+                             identity,    ├── crates/workflow
+                             spawn,       │    graph scheduling, recovery, plan report
+                             teams,       │
+                             exec,        └── crates/view ◄── view/ (browser bundle)
+                             landlock,         projection, HTTP, SSE, export
+                             protocol,
+                             workflow config     crates/cli ◄── all of the above
 
    python/foe    a thin host: builds config, runs the binary, serves the protocol
    examples/     runnable configurations, one mechanism each
@@ -536,15 +537,19 @@ not finished.
 
 `crates/log` depends on serde alone and defines every event type, including
 the reserved ones. `crates/core` depends on `crates/log`. Tools depend on
-`crates/core` for the tool trait and capability handles. Nothing depends on
-`crates/view` except the binary.
+`crates/core` for the tool trait and capability handles. `crates/workflow`
+depends on `crates/core` for the configuration types, the log, the
+registry, the budget pool, and the spawner, and runs an episode whose
+configuration declares a `workflow` in place of the loop. Nothing depends
+on `crates/view` except the binary.
 
 ## Size
 
 The Rust source across `log`, `core`, `code`, and `view` stays under 6,000
-lines, excluding tests and generated code. The browser bundle stays under
-150 KB compressed. The built-in transport and the binary are budgeted
-separately. Continuous integration enforces all three as tests.
+lines, excluding tests and generated code. The workflow executor in
+`crates/workflow` stays under 1,000 lines on the same terms. The browser
+bundle stays under 150 KB compressed. The built-in transport and the binary
+are budgeted separately. Continuous integration enforces all four as tests.
 
 The budget is a design constraint rather than an aspiration. A runtime that
 other systems embed and audit earns trust in proportion to how little of it

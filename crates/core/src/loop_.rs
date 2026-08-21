@@ -545,7 +545,7 @@ fn system_item(text: &str) -> InboxItem {
 
 /// Resolves with the reason once the stop signal carries one. Never
 /// resolves when the sender is gone, which is the case without a host.
-async fn wait_stop(mut stop: watch::Receiver<Option<String>>) -> String {
+pub async fn wait_stop(mut stop: watch::Receiver<Option<String>>) -> String {
     loop {
         if let Some(reason) = stop.borrow_and_update().clone() {
             return reason;
@@ -556,7 +556,8 @@ async fn wait_stop(mut stop: watch::Receiver<Option<String>>) -> String {
     }
 }
 
-async fn until(deadline: Option<Instant>) {
+/// Resolves at `deadline`; never resolves without one.
+pub async fn until(deadline: Option<Instant>) {
     match deadline {
         Some(d) => tokio::time::sleep_until(tokio::time::Instant::from_std(d)).await,
         None => std::future::pending().await,
