@@ -302,14 +302,16 @@ function compact() {
   return log;
 }
 
-// A parent whose child outlives most of its own run, for the trajectory
-// pane: the parent spawns at 2 s, keeps calling tools while the child is
-// alive, and the child ends 1 s before the parent does.
+// A parent with two children, for the trajectory pane. The surveyor
+// outlives most of the parent's own run: the parent spawns it at 2 s, keeps
+// calling tools while it is alive, and it ends 1 s before the parent does.
+// The writer, whose log is `rich.jsonl`, runs inside the same window.
 
 function overlapParent() {
   const log = new Log(1730000000000);
   const taskText = "Survey the crates and summarize.";
   const spawnCall = { id: "tc_p1", name: "spawn", args: { program: "surveyor", task: "Read every crate manifest." } };
+  const writeCall = { id: "tc_p3", name: "spawn", args: { program: "writer", task: "Explain the budget rule and tighten the parser." } };
   const readCall = { id: "tc_p2", name: "read", args: { path: "Cargo.toml" } };
   log.ev("episode/start", {
     id: "ep_over_parent",
@@ -330,9 +332,14 @@ function overlapParent() {
   log.ev("spawn/start", { child_id: "ep_over_child", program: "surveyor", context: "fresh", call_id: "tc_p1" }, 90);
   // The parent keeps working while the child runs.
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_p2", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 500);
-  log.ev("assistant/message", { step: 2, request_id: "rq_p2", text: "Reading the workspace manifest.", tool_calls: [readCall], stop: "tool", usage: { input: 500, output: 18, cache_read: 400 }, interrupted: false }, 700);
+  log.ev("assistant/message", { step: 2, request_id: "rq_p2", text: "Reading the workspace manifest.", tool_calls: [readCall, writeCall], stop: "tool", usage: { input: 500, output: 18, cache_read: 400 }, interrupted: false }, 700);
   log.ev("tool/result", { step: 2, call_id: "tc_p2", name: "read", value: { path: "Cargo.toml" }, rendered: "1\t[workspace]\n2\tresolver = \"2\"", is_error: false, spill: null, duration_ms: 1400, synthetic: false }, 1400);
-  log.ev("spawn/end", { child_id: "ep_over_child", outcome: { kind: "completed", value: { crates: 8 } } }, 6000);
+  log.ev("budget/reserve", { child_id: "ep_rich", reserved: { model_calls: 6, tokens: 60000 } });
+  log.ev("spawn/start", { child_id: "ep_rich", program: "writer", context: "fresh", call_id: "tc_p3" }, 90);
+  log.ev("spawn/end", { child_id: "ep_rich", outcome: { kind: "completed", value: "The parser now propagates the error." } }, 2200);
+  log.ev("budget/release", { child_id: "ep_rich", spent: { model_calls: 2, tokens: 2629 } });
+  log.ev("tool/result", { step: 2, call_id: "tc_p3", name: "spawn", value: "The parser now propagates the error.", rendered: "The parser now propagates the error.", is_error: false, spill: null, duration_ms: 2290, synthetic: false });
+  log.ev("spawn/end", { child_id: "ep_over_child", outcome: { kind: "completed", value: { crates: 8 } } }, 3800);
   log.ev("budget/release", { child_id: "ep_over_child", spent: { model_calls: 3, tokens: 9100 } });
   log.ev("tool/result", { step: 1, call_id: "tc_p1", name: "spawn", value: { crates: 8 }, rendered: "crates: 8", is_error: false, spill: null, duration_ms: 8000, synthetic: false });
   log.ev("model/request", { step: 3, attempt: 1, request_id: "rq_p3", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 200);
@@ -371,13 +378,13 @@ function overlapChild() {
   return log;
 }
 
-// An episode whose one assistant turn exercises every rich rendering the
-// conversation pane has: Markdown with a table and a fenced Rust block,
-// inline and display mathematics, an `edit` result carrying a unified
-// diff, and a `read` result carrying numbered source.
+// The writer the parent above spawns, whose one assistant turn exercises
+// every rich rendering the conversation pane has: Markdown with a table and
+// a fenced Rust block, inline and display mathematics, an `edit` result
+// carrying a unified diff, and a `read` result carrying numbered source.
 
 function rich() {
-  const log = new Log(1731000000000);
+  const log = new Log(1730000004200);
   const taskText = "Explain the budget rule and tighten the parser.";
   const answer = [
     "# Budget",
@@ -440,7 +447,7 @@ function rich() {
 
   log.ev("episode/start", {
     id: "ep_rich",
-    parent_id: null,
+    parent_id: "ep_over_parent",
     fork_origin: null,
     team_id: null,
     program: program("writer", { model_calls: 6, tokens: 60000 }),

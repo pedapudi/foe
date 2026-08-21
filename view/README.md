@@ -61,9 +61,13 @@ The fixtures are seven episode logs written by `fixtures/generate.mjs`.
 | `child.jsonl` | the spawned child, which receives a peer message |
 | `fork.jsonl` | a fork of the root seeded at seq 12 that ends blocked |
 | `compact.jsonl` | an episode compacted before its fourth request |
-| `overlap-parent.jsonl` | a parent that keeps working while its child runs |
-| `overlap-child.jsonl` | that child, which starts after the parent and ends before it, with a compaction and a retry |
-| `rich.jsonl` | one assistant turn with a table, a fenced Rust block, and inline and display mathematics, an `edit` result carrying a unified diff, and a `read` result carrying numbered source |
+| `overlap-parent.jsonl` | a parent that spawns two children and keeps working while they run |
+| `overlap-child.jsonl` | the surveyor, which starts after the parent and ends before it, with a compaction and a retry |
+| `rich.jsonl` | the writer, whose one assistant turn holds a table, a fenced Rust block, and inline and display mathematics, with an `edit` result carrying a unified diff and a `read` result carrying numbered source |
+
+`proof-light.png` and `proof-dark.png` are the static export of the
+`overlap-parent` fixture and its two children, rendered at 1512 by 792 in
+the `paper` and `monokai` themes.
 
 The `messages` list recorded in each `model/request` event is written by
 hand in the generator, so the tests compare it with the list the bundle
