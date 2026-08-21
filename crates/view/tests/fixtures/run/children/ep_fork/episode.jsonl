@@ -1,0 +1,12 @@
+{"seq":0,"time":1724200000200,"type":"episode/start","data":{"id":"ep_fork","parent_id":"ep_root","fork_origin":{"episode_id":"ep_root","seq":7},"team_id":null,"program":{"name":"fixer","budget":{"model_calls":40}},"identity":"sha256:root","task":"Fix the failing parser test.","runtime":{"version":"0.1.0","build":"unknown"},"sandbox":{"mode":"best-effort","landlock_abi":7}}}
+{"seq":1,"time":1724200000001,"type":"inbox/item","data":{"source":"task","content":[{"type":"text","text":"Fix the failing parser test."}],"from":null,"message_id":null}}
+{"seq":2,"time":1724200000002,"type":"request/header","data":{"reason":"initial","system":"You fix tests.","tools":[{"name":"read","description":"Read a file.","parameters":{"type":"object"}}],"model":{"provider":"anthropic","model":"claude-opus-5"}}}
+{"seq":3,"time":1724200000003,"type":"model/request","data":{"step":1,"attempt":1,"request_id":"rq_01","header_seq":2,"consumed":[1],"messages":[{"role":"user","content":[{"type":"text","text":"Fix the failing parser test."}]}]}}
+{"seq":4,"time":1724200000004,"type":"assistant/chunk","data":{"step":1,"request_id":"rq_01","chunk":{"kind":"text","delta":"I will read the test <first>."}}}
+{"seq":5,"time":1724200000005,"type":"assistant/message","data":{"step":1,"request_id":"rq_01","text":"I will read the test <first>.","tool_calls":[{"id":"tc_01","name":"read","args":{"path":"tests/parser_test.py"}}],"stop":"tool","usage":{"input":4120,"output":88,"cache_read":3900},"interrupted":false}}
+{"seq":6,"time":1724200000006,"type":"tool/result","data":{"step":1,"call_id":"tc_01","name":"read","value":{"lines":2},"rendered":"1\timport pytest\n2\tdef test_parse(): ...","is_error":false,"spill":null,"duration_ms":4,"synthetic":false}}
+{"seq":7,"time":1724200000207,"type":"seed/end","data":{}}
+{"seq":8,"time":1724200000208,"type":"inbox/item","data":{"source":"parent","content":[{"type":"text","text":"Try the other approach."}],"from":null,"message_id":null}}
+{"seq":9,"time":1724200000209,"type":"model/request","data":{"step":2,"attempt":1,"request_id":"rq_f2","header_seq":2,"consumed":[8],"messages":[]}}
+{"seq":10,"time":1724200000210,"type":"assistant/message","data":{"step":2,"request_id":"rq_f2","text":"Trying again.","tool_calls":[],"stop":"end","usage":{"input":4300,"output":5,"cache_read":4100},"interrupted":false}}
+{"seq":11,"time":1724200000211,"type":"episode/end","data":{"outcome":{"kind":"exhausted","limit":"model_calls"}}}

@@ -5,10 +5,11 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Log projection, HTTP and SSE server, static export"
+build = "build.rs"
 
 [dependencies]
 foe-log = { path = "../log" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["net"] }
