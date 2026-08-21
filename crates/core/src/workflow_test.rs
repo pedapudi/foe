@@ -16,7 +16,7 @@ fn graph() -> Value {
             "propose": {
                 "model": { "name": "propose", "instructions": { "r": "Propose." }, "tools": ["block"],
                            "grants": { "read": ["ROOT"] }, "budget": { "model_calls": 2 } },
-                "follows": ["manifest", "survey"],
+                "follows": ["task", "manifest", "survey"],
                 "branches": { "accept": ["derive"], "widen": ["survey"] },
                 "max_fires": 3
             },
@@ -64,8 +64,10 @@ fn the_edge_set_unions_both_forms_and_finds_cycles() {
     let inputs = wf.inputs();
     assert_eq!(inputs["survey"], vec!["manifest"], "a duplicate edge is one edge");
     assert_eq!(inputs["derive"], vec!["propose", "manifest"], "follows first, then followed_by sources");
+    assert_eq!(inputs["propose"], vec!["task", "manifest", "survey"], "the task source is an input, listed first");
     let preds = wf.predecessors();
     assert!(preds["survey"].contains("propose"), "a branch target is a successor");
+    assert!(!preds["propose"].contains("task"), "the task source orders nothing");
     let cyclic: BTreeSet<String> = ["propose", "survey"].into_iter().map(String::from).collect();
     assert_eq!(wf.on_cycles(), cyclic);
     assert!(resolve(&config).is_ok());
@@ -105,6 +107,11 @@ fn every_workflow_rule_names_its_node() {
             Box::new(|v| v["workflow"]["nodes"]["manifest"]["workflow"] = json!({ "nodes": {} })),
         ),
         ("workflow.nodes.manifest.", Box::new(|v| v["workflow"]["nodes"]["manifest"] = json!({ "follows": [] }))),
+        ("workflow.nodes.task.", Box::new(|v| v["workflow"]["nodes"]["task"] = json!({ "tool": "list" }))),
+        (
+            "workflow.nodes.manifest.followed_by",
+            Box::new(|v| v["workflow"]["nodes"]["manifest"]["followed_by"] = json!(["task"])),
+        ),
         ("workflow.nodes.propose.", Box::new(|v| v["workflow"]["nodes"]["propose"]["args"] = json!({}))),
         ("workflow.nodes.propose.max_fires", Box::new(|v| v["workflow"]["nodes"]["propose"]["max_fires"] = json!(0))),
         ("workflow.nodes.survey.max_fires", Box::new(|v| v["workflow"]["nodes"]["survey"]["max_fires"] = json!(null))),

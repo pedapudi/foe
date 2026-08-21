@@ -3,7 +3,7 @@
 //! overlap, and whether a terminal node exists. See docs/workflow.md
 //! "Firing" and "The flow guarantee, stated exactly".
 
-use foe_core::workflow::WorkflowConfig;
+use foe_core::workflow::{Node, WorkflowConfig, TASK_SOURCE};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
@@ -45,10 +45,9 @@ pub fn cycles(wf: &WorkflowConfig) -> Vec<Vec<String>> {
 pub fn write_overlaps(wf: &WorkflowConfig) -> Vec<(String, String, String, String)> {
     let nodes = crate::model_nodes(wf, "");
     let mut pairs = Vec::new();
+    let roots = |n: &Node| n.model.as_ref().map(|p| p.grants.write.clone()).unwrap_or_default();
     for (i, (a, a_node)) in nodes.iter().enumerate() {
         for (b, b_node) in &nodes[i + 1..] {
-            let roots =
-                |n: &foe_core::workflow::Node| n.model.as_ref().map(|p| p.grants.write.clone()).unwrap_or_default();
             for x in roots(a_node) {
                 for y in roots(b_node) {
                     if x.starts_with(&y) || y.starts_with(&x) {
@@ -61,10 +60,14 @@ pub fn write_overlaps(wf: &WorkflowConfig) -> Vec<(String, String, String, Strin
     pairs
 }
 
-/// The report `foe plan` prints below the program.
+/// The report `foe plan` prints below the program. The built-in `task`
+/// source is listed among the nodes when any node follows it.
 pub fn plan_report(wf: &WorkflowConfig) -> String {
     let mut out = String::from("workflow nodes\n");
     let inputs = wf.inputs();
+    if inputs.values().flatten().any(|i| i == TASK_SOURCE) {
+        writeln!(out, "  {TASK_SOURCE:<12} built-in source: the invocation task").ok();
+    }
     for (name, node) in &wf.nodes {
         let kind = match (&node.tool, &node.model) {
             (Some(tool), _) => format!("tool {tool}"),

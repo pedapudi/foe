@@ -61,7 +61,7 @@ decides, within those bounds, what to do.
                     "budget": { "model_calls": 8 },
                     "done_when": { "returns": { "type": "object", "properties": {} } }
                   },
-                  "follows": ["manifest", "survey"],
+                  "follows": ["task", "manifest", "survey"],
                   "branches": { "accept": ["derive"], "widen": ["survey"] },
                   "max_fires": 3 },
     "derive":   { "tool": "derive_patches",
@@ -74,6 +74,7 @@ decides, within those bounds, what to do.
 ```
 
 ```
+   task ────────────────────────┐
    manifest ──► survey ──► propose ──► derive ■
        │                     ▲  │
        └─────────────────────┘  └──── widen ───► survey
@@ -83,6 +84,17 @@ A `workflow` key in a configuration replaces the free loop for that
 episode. The configuration's `tools`, `grants`, `budget`, and `done_when`
 become the workflow's ceiling: every node draws from them and none exceeds
 them.
+
+The invocation task, the configuration's `task` string, enters the graph
+through one built-in source named `task`. A node that lists `task` in its
+`follows` receives the task text as a section labeled `task`, placed first
+among its sections; a tool node binds it with `{ "$node": "task" }` and
+receives the text as a JSON string. The source holds its value before the
+first firing and is produced exactly once, so it never re-fires a node and
+imposes no order: a node that follows only `task` fires at the start. A
+node that follows nothing receives no task text. `task` is a reserved name;
+a node named `task` is a construction error naming the rule. `foe plan`
+lists the source when any node follows it.
 
 ### Nodes
 
@@ -98,7 +110,7 @@ Every node has these fields.
 
 | field | type | meaning |
 |---|---|---|
-| `follows` | list of node names | the nodes whose outputs this node receives; default empty |
+| `follows` | list of node names | the nodes whose outputs this node receives, and `task` for the invocation task; default empty |
 | `followed_by` | list of node names | the same edges written from the other end; the union of both forms is the edge set |
 | `verify` | tool name | a verifier run on the node's output; non-empty findings re-fire the node with the findings attached |
 | `retries` | integer | how many times `verify` findings re-fire the node; default 2 |
@@ -128,8 +140,9 @@ sees.
 A model node is a full episode. Its `model` block is a child program in the
 sense of [config.md](config.md#programs): instructions, tools, grants,
 budget, and termination, each a subset of the workflow's. The node's inputs
-become the child's task, one section per predecessor, labeled with the
-predecessor's name and carrying its rendered output. The child runs the
+become the child's task, one section per input, labeled with the input's
+name and carrying its rendered output; the `task` section comes first when
+the node follows `task`. The child runs the
 ordinary agent loop with the ordinary tools, and its outcome value is the
 node's output.
 
@@ -171,7 +184,8 @@ the two things it may decide.
 
 A node fires when every one of its inputs has produced a value and at
 least one edge into it has carried a fresh value since this node last
-fired. A node with no edge into it fires once, at the start. An edge from a
+fired. A node with no edge into it, or with only the edge from `task`,
+fires once, at the start. An edge from a
 node without `branches` is fresh after every firing of its source; an edge
 from a node with `branches` is fresh only when the chosen label lists the
 target, or when no label lists it. A node waits while any ancestor of it
@@ -218,8 +232,9 @@ episode-level `done_when` does not apply.
 
 A model node's child episode receives, and only receives: its own
 instructions, the tools and grants its `model` block declares, the text the
-runtime contributes for every episode, and the rendered outputs of the
-nodes in its `follows` list. The child's log records all of it as its task
+runtime contributes for every episode, the rendered outputs of the nodes in
+its `follows` list, and the invocation task when `task` is among them. The
+child's log records all of it as its task
 and its inbox. A reader who wants to prove that node C never received node
 A's output checks two things: that A is not in C's `follows`, and that no
 path of `follows` edges reaches C from A through a node that forwards A's

@@ -26,7 +26,7 @@
         "model": {
           "name": "propose",
           "instructions": {
-            "role": "You receive the TODO comments found in a Python package, one grep match per line. Choose the one that a small, local change can resolve, read the surrounding code, and return a plan: the file, the TODO, and the change to make. Return the branch `nothing` when no TODO is safe to resolve without more context."
+            "role": "You receive the task of this run and the TODO comments found in a Python package, one grep match per line. Choose the one TODO that fits the task and that a small, local change can resolve, read the surrounding code, and return a plan: the file, the TODO, and the change to make. Return the branch `nothing` when no TODO is safe to resolve without more context."
           },
           "tools": ["read", "grep"],
           "grants": { "read": ["/home/user/project"] },
@@ -43,7 +43,7 @@
             }
           }
         },
-        "follows": ["survey"],
+        "follows": ["task", "survey"],
         "branches": { "apply": ["apply"], "nothing": [] }
       },
       "apply": {

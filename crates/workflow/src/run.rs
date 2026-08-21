@@ -46,14 +46,17 @@ pub struct WorkflowParams {
 pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
     let p = params.episode;
     let log = p.log.clone();
+    let text = p.start.task.clone();
     if log.next_seq() == 0 {
-        let task = p.start.task.clone();
         log.append(EventData::EpisodeStart(p.start))?;
-        let content = vec![ContentBlock::Text { text: task }];
+        let content = vec![ContentBlock::Text { text: text.clone() }];
         let item = InboxItem { source: InboxSource::Task, content, from: None, message_id: None };
         log.append(EventData::InboxItem(item))?;
         log.sync()?;
     }
+    // The task item is at seq 1 in every log (docs/log-format.md), so a
+    // firing that follows `task` names that event among its inputs.
+    let task = Produced { value: Value::String(text.clone()), rendered: text, seq: 1 };
     let shared = Arc::new(Shared {
         log: log.clone(),
         registry: p.registry,
@@ -63,6 +66,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
         stop: p.stop,
         spawner: params.spawner,
         program: p.program,
+        task,
         step: AtomicU32::new(0),
         header: Mutex::new(None),
     });
@@ -91,6 +95,8 @@ struct Shared {
     stop: watch::Receiver<Option<String>>,
     spawner: Arc<dyn Spawner>,
     program: Program,
+    /// The invocation task as the value of the `task` source, at every depth.
+    task: Produced,
     /// Counts firings, verifications, and recovery requests; a recovery
     /// request's id is drawn from it.
     step: AtomicU32,
@@ -278,7 +284,7 @@ struct Executor {
 
 impl Executor {
     fn new(shared: Arc<Shared>, prefix: String, wf: &WorkflowConfig) -> Self {
-        let sched = Scheduler::new(wf);
+        let sched = Scheduler::new(wf, shared.task.clone());
         Self { shared, prefix, wf: wf.clone(), sched, tasks: JoinSet::new(), interventions: 0, done_attempts: 0 }
     }
 
@@ -375,9 +381,7 @@ impl Executor {
         let step = self.next_step();
         let started = Instant::now();
         let mut sections: Vec<String> = inputs.iter().map(|(n, p)| section(n, &p.rendered)).collect();
-        if !findings.is_empty() {
-            sections.push(section("findings", &findings.join("\n")));
-        }
+        sections.extend((!findings.is_empty()).then(|| section("findings", &findings.join("\n"))));
         sections.extend(note.as_deref().map(|n| section("recovery", n)));
         let mut child_id = None;
         let lookup = |n: &str| inputs.iter().find(|(i, _)| i == n).map(|(_, p)| p.value.clone());
@@ -411,8 +415,7 @@ impl Executor {
                     Box::pin(async move { output_of(handle.run.wait().await.0, false) })
                 }
                 Err(e) => {
-                    let message = e.to_string();
-                    let outcome = settled_in(&message).unwrap_or(Outcome::Failed { error: message });
+                    let outcome = settled_in(&e.to_string()).unwrap_or(Outcome::Failed { error: e.to_string() });
                     Box::pin(async move { Err(Trouble::settled(outcome)) })
                 }
             }
@@ -584,10 +587,8 @@ impl Executor {
         let node = self.sched.nodes[name].clone();
         let mut eligible: BTreeSet<String> = ancestors(&self.sched.preds, name);
         eligible.insert(name.to_string());
-        let targets: Vec<String> = eligible
-            .into_iter()
-            .filter(|n| self.sched.state[n].fires < self.sched.nodes[n].max_fires.unwrap_or(1))
-            .collect();
+        let may_fire = |n: &String| self.sched.state[n].fires < self.sched.nodes[n].max_fires.unwrap_or(1);
+        let targets: Vec<String> = eligible.into_iter().filter(may_fire).collect();
         let skip = node.empty.is_some();
         let message = self.recovery_message(name, fire, &trouble, &targets, skip);
         let action = match self.decide(recover_spec(&targets, skip), message, &targets, skip).await? {

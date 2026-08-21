@@ -8,9 +8,11 @@
 //! lists it. A node is ready when it is not running, it has a fresh edge or
 //! a forced re-fire, every data input has a value, and no ancestor is
 //! running or ready ahead of it; the last condition makes a node with two
-//! inputs wait for both when a re-fire upstream refreshes them in turn.
+//! inputs wait for both when a re-fire upstream refreshes them in turn. The
+//! built-in `task` source holds its value before the first firing and is
+//! nobody's ancestor, so a node that follows only `task` fires at the start.
 
-use foe_core::workflow::{ancestors, Node, WorkflowConfig};
+use foe_core::workflow::{ancestors, Node, WorkflowConfig, TASK_SOURCE};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -49,8 +51,9 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    /// A scheduler with every node that has no predecessor marked to fire.
-    pub fn new(wf: &WorkflowConfig) -> Self {
+    /// A scheduler with every node that has no predecessor marked to fire
+    /// and `task` holding the invocation task.
+    pub fn new(wf: &WorkflowConfig, task: Produced) -> Self {
         let preds = wf.predecessors();
         let mut succs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for (target, sources) in &preds {
@@ -60,7 +63,8 @@ impl Scheduler {
         }
         let source =
             |name: &String| NodeState { forced: preds.get(name).is_none_or(BTreeSet::is_empty), ..Default::default() };
-        let state = wf.nodes.keys().map(|name| (name.clone(), source(name))).collect();
+        let mut state: BTreeMap<String, NodeState> = wf.nodes.keys().map(|name| (name.clone(), source(name))).collect();
+        state.insert(TASK_SOURCE.into(), NodeState { value: Some(task), ..Default::default() });
         Self { nodes: wf.nodes.clone(), inputs: wf.inputs(), preds, succs, state }
     }
 
@@ -75,10 +79,8 @@ impl Scheduler {
         candidates
             .iter()
             .filter(|name| {
-                ancestors(&self.preds, name)
-                    .iter()
-                    .filter(|a| a.as_str() != name.as_str())
-                    .all(|a| !self.state[a].running && !candidates.contains(a))
+                let blocks = |a: &String| a != **name && (self.state[a].running || candidates.contains(a));
+                !ancestors(&self.preds, name).iter().any(blocks)
             })
             .map(|name| (*name).clone())
             .collect()

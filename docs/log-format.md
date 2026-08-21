@@ -342,7 +342,8 @@ inside a nested workflow node is named by its path, `outer/inner`.
 `workflow/node-start` — implemented. One firing of a node begins. `fire`
 counts the node's firings from 1. `inputs` lists the `seq` of the events
 that produced the values the node receives: the `workflow/node-end` of
-each predecessor, or the `workflow/recovery` that skipped one. `child_id`
+each predecessor, the `workflow/recovery` that skipped one, or the
+`inbox/item` at seq 1 for the built-in `task` source. `child_id`
 names the child episode of a model node and is absent otherwise.
 
 ```json

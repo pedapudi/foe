@@ -232,10 +232,11 @@ fn node_starts(events: &[Value]) -> Vec<(String, u64)> {
         .collect()
 }
 
-/// docs/workflow.md "Firing", "Choice points", and "Model nodes": a tool
-/// node's value reaches a model node as a task section, the model node's
-/// returned `branch` fires only the listed successor, and a binding with a
-/// pointer reaches the terminal tool node.
+/// docs/workflow.md "The graph", "Firing", "Choice points", and "Model
+/// nodes": the invocation task and a tool node's value reach a model node
+/// as task sections, the task first; the model node's returned `branch`
+/// fires only the listed successor; and a binding with a pointer reaches
+/// the terminal tool node.
 #[test]
 fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
     let dir = scratch("workflow-nodes");
@@ -248,7 +249,7 @@ fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
         c["budget"] = json!({ "model_calls": 6 });
         c["workflow"] = json!({ "nodes": {
             "manifest": { "tool": "list" },
-            "propose": { "model": node_program("propose", &dir), "follows": ["manifest"],
+            "propose": { "model": node_program("propose", &dir), "follows": ["manifest", "task"],
                          "branches": { "accept": ["derive"], "stop": [] } },
             "derive": { "tool": "derive", "args": { "experiment": { "$node": "propose", "pointer": "/experiment" } },
                         "follows": ["propose"], "terminal": true }
@@ -279,8 +280,10 @@ fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
     let child_log = dir.join("log/children").join(child_id).join("episode.jsonl");
     let child: Vec<Value> =
         std::fs::read_to_string(&child_log).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(child[1]["type"], "inbox/item");
     let task = child[1]["data"]["content"][0]["text"].as_str().unwrap();
-    assert_eq!(task, "## manifest\n\n{\"targets\":[\"a\",\"b\"]}", "the task is one section per input");
+    assert_eq!(task, "## task\n\ndo the thing\n\n## manifest\n\n{\"targets\":[\"a\",\"b\"]}", "one section per input");
+    assert_eq!(start["data"]["inputs"][0], 1, "the task source's input is the task item at seq 1");
     let header = child.iter().find(|e| e["type"] == "request/header").unwrap();
     let returns = &header["data"]["tools"][1]["parameters"]["properties"]["value"];
     assert_eq!(returns["properties"]["branch"]["enum"], json!(["accept", "stop"]));

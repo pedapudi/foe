@@ -7,17 +7,23 @@ a recovery decision. [docs/workflow.md](../../docs/workflow.md) specifies
 the graph; this example runs one.
 
 ```
+   task ──────┐
    survey ──► propose ──► apply ■
               │
               └── nothing ──► (ends)
 ```
 
+- `task` is the built-in source carrying the invocation task, the
+  configuration's `task` string. Any node may follow it; here only
+  `propose` does, so the task text reaches the node that chooses what to
+  do and no other.
 - `survey` is a tool node. It calls the built-in `grep` with fixed
   arguments and produces the list of TODO comments in the Python files
   under the first read root. The arguments name no path, so the program's
   identity is the same in every directory.
-- `propose` is a model node. It receives the grep output as the section
-  `## survey` of its task, reads the code around a TODO it chooses, and
+- `propose` is a model node. It receives the invocation task as the
+  section `## task` and the grep output as the section `## survey` of its
+  task, reads the code around a TODO it chooses, and
   returns a plan. Its `branches` declare a choice point: the label `apply`
   fires the next node, and the label `nothing` ends the workflow with the
   plan as its value. The runtime adds `branch` to the node's `returns`
@@ -54,10 +60,11 @@ foe plan --config examples/workflow/config.json
 foe --config examples/workflow/config.json
 ```
 
-`foe plan` prints the resolved program and, below it, the graph: every
-node with its kind and inputs, every edge, every cycle with the
-`max_fires` that bounds it, every pair of model nodes whose write roots
-overlap, and the terminal node. This graph has no cycle and no overlap.
+`foe plan` prints the resolved program and, below it, the graph: the
+`task` source, every node with its kind and inputs, every edge, every
+cycle with the `max_fires` that bounds it, every pair of model nodes whose
+write roots overlap, and the terminal node. This graph has no cycle and no
+overlap.
 
 ## What to look for
 
@@ -66,7 +73,8 @@ It holds one `workflow/node-start` and one `workflow/node-end` per firing,
 in dataflow order: `survey`, then `propose`, then `apply`. The
 `node-start` of a model node names the child episode under `children/`
 whose log is that node's firing: its task is the sections built from its
-inputs, its `request/header` shows the `return` tool with the `branch`
+inputs, `## task` first for `propose`, its `request/header` shows the
+`return` tool with the `branch`
 field, and its `episode/end` carries the value the node produced.
 
 Between `propose` and `apply` a `workflow/branch` event records the label

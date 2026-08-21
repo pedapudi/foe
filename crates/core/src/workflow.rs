@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// The reserved name of the built-in source any node may follow: the
+/// invocation task, available from the start and produced exactly once.
+pub const TASK_SOURCE: &str = "task";
+
 /// A declared graph. Model node programs are kept as written; the spawner
 /// resolves each when the node fires, as it does for `programs`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,7 +87,8 @@ pub struct Node {
 }
 
 impl WorkflowConfig {
-    /// The data inputs of every node: its `follows`, then every node whose
+    /// The data inputs of every node: the `task` source first when the node
+    /// follows it, then its other `follows`, then every node whose
     /// `followed_by` names it, in name order, each listed once.
     pub fn inputs(&self) -> BTreeMap<String, Vec<String>> {
         let mut inputs: BTreeMap<String, Vec<String>> =
@@ -96,13 +101,18 @@ impl WorkflowConfig {
                 }
             }
         }
+        inputs.values_mut().for_each(|list| list.sort_by_key(|name| name != TASK_SOURCE));
         inputs
     }
 
-    /// Every edge source of every node: data inputs and branch sources alike.
+    /// Every edge source of every node: data inputs and branch sources
+    /// alike. The `task` source is absent, because it imposes no ordering.
     pub fn predecessors(&self) -> BTreeMap<String, BTreeSet<String>> {
-        let mut preds: BTreeMap<String, BTreeSet<String>> =
-            self.inputs().into_iter().map(|(name, list)| (name, list.into_iter().collect())).collect();
+        let mut preds: BTreeMap<String, BTreeSet<String>> = self
+            .inputs()
+            .into_iter()
+            .map(|(name, list)| (name, list.into_iter().filter(|i| i != TASK_SOURCE).collect()))
+            .collect();
         for (source, node) in &self.nodes {
             for target in node.branches.values().flatten() {
                 preds.entry(target.clone()).or_default().insert(source.clone());
@@ -156,6 +166,9 @@ pub fn check(
     let (inputs, cyclic) = (wf.inputs(), wf.on_cycles());
     for (name, node) in &wf.nodes {
         let key = |field: &str| format!("{prefix}.nodes.{name}.{field}");
+        if name == TASK_SOURCE {
+            return Err(invalid(key(""), "has a name other than `task`, which names the built-in source".into()));
+        }
         let kinds = [node.tool.is_some(), node.model.is_some(), node.workflow.is_some()];
         if kinds.iter().filter(|set| **set).count() != 1 || (node.args.is_some() && node.tool.is_none()) {
             let rule = "has exactly one of tool, model, and workflow, and args only with tool";
@@ -169,7 +182,7 @@ pub fn check(
             true => Ok(()),
             false => Err(invalid(key(field), format!("names a tool in tools; `{tool}` is absent"))),
         };
-        node.follows.iter().try_for_each(|t| names("follows", t))?;
+        node.follows.iter().filter(|t| *t != TASK_SOURCE).try_for_each(|t| names("follows", t))?;
         node.followed_by.iter().try_for_each(|t| names("followed_by", t))?;
         for (label, list) in &node.branches {
             list.iter().try_for_each(|t| names(&format!("branches.{label}"), t))?;

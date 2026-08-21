@@ -4,11 +4,31 @@ use serde_json::json;
 
 fn scheduler(nodes: serde_json::Value) -> Scheduler {
     let wf: WorkflowConfig = serde_json::from_value(json!({ "nodes": nodes })).unwrap();
-    Scheduler::new(&wf)
+    Scheduler::new(&wf, Produced { value: json!("run the graph"), rendered: "run the graph".into(), seq: 1 })
 }
 
 fn produced(seq: u64) -> Produced {
     Produced { value: json!({ "seq": seq }), rendered: seq.to_string(), seq }
+}
+
+/// docs/workflow.md "The graph": `task` holds the invocation task before
+/// the first firing, is listed first among a node's inputs, and orders
+/// nothing, so a node that follows only `task` fires at the start while a
+/// node that also follows another node waits for it.
+#[test]
+fn the_task_source_is_present_first_and_orders_nothing() {
+    let mut s = scheduler(json!({
+        "intro": { "tool": "t", "follows": ["task"] },
+        "join": { "tool": "t", "follows": ["intro", "task"], "terminal": true }
+    }));
+    assert_eq!(s.inputs["join"], vec!["task", "intro"]);
+    assert_eq!(s.state["task"].value.as_ref().unwrap().rendered, "run the graph");
+    assert_eq!(s.ready(), vec!["intro"], "join waits for intro; task is no ancestor of anything");
+    s.begin("intro");
+    s.finish("intro");
+    s.produced("intro", produced(2), None);
+    assert_eq!(s.ready(), vec!["join"]);
+    assert_eq!(s.nearest_model("join"), None, "the walk over predecessors never reaches task");
 }
 
 /// docs/workflow.md "Firing": a node fires when its inputs are fresh; on a

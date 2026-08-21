@@ -43,10 +43,13 @@ impl Tool for Scripted {
     }
 }
 
-struct NoSpawner;
+/// Records the task of every spawn request and starts no child.
+#[derive(Default)]
+struct NoSpawner(Mutex<Vec<String>>);
 
 impl Spawner for NoSpawner {
-    fn spawn(&self, _req: SpawnRequest) -> Result<SpawnHandle, CapError> {
+    fn spawn(&self, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
+        self.0.lock().unwrap().push(req.task);
         Err(CapError::Invalid("this test spawns nothing".into()))
     }
 }
@@ -90,6 +93,7 @@ struct Fixture {
     tools: Vec<Box<dyn Tool>>,
     calls: std::collections::BTreeMap<String, Calls>,
     responses: Vec<Vec<Chunk>>,
+    spawner: Arc<NoSpawner>,
 }
 
 impl Fixture {
@@ -104,7 +108,14 @@ impl Fixture {
             "grants": { "read": [dir] }, "budget": { "model_calls": 10 }, "task": "run the graph",
             "workflow": workflow
         });
-        Self { dir, config, tools: Vec::new(), calls: Default::default(), responses: Vec::new() }
+        Self {
+            dir,
+            config,
+            tools: Vec::new(),
+            calls: Default::default(),
+            responses: Vec::new(),
+            spawner: Default::default(),
+        }
     }
 
     /// Registers a scripted tool under `name` with the given results.
@@ -165,7 +176,7 @@ impl Fixture {
             stop: stop_rx,
             program: program.clone(),
         };
-        let params = WorkflowParams { episode, workflow: program.workflow.unwrap(), spawner: Arc::new(NoSpawner) };
+        let params = WorkflowParams { episode, workflow: program.workflow.unwrap(), spawner: self.spawner.clone() };
         let outcome = run(params).await.unwrap();
         let events = foe_log::fold::read_all(&log_dir).unwrap();
         foe_log::fold::fold(&events).expect("the log is well-formed");
@@ -251,6 +262,68 @@ async fn a_branching_cycle_fires_listed_successors_and_completes_at_the_terminal
     assert_eq!((end.node.as_str(), end.fire), ("propose", 2));
     assert_eq!(count(&events, "model/request"), 0, "no recovery was needed");
     assert_eq!(events.last().unwrap().data.type_name(), "episode/end");
+}
+
+/// docs/workflow.md "The graph": a node that follows `task` receives the
+/// invocation task as its first section whatever the order of `follows`,
+/// a tool node binds it as a string, and a recovery decision for such a
+/// node sees the same section.
+#[tokio::test]
+async fn a_node_that_follows_task_receives_it_first() {
+    let manifest = json!({ "tool": "echo", "args": { "text": { "$node": "task" } }, "follows": ["task"] });
+    let mut fx = Fixture::new(
+        "task",
+        &["echo"],
+        json!({ "nodes": {
+            "manifest": manifest,
+            "propose": { "model": { "name": "propose", "instructions": { "r": "p" }, "tools": ["block"],
+                                    "grants": { "read": [fx_root("task")] }, "budget": { "model_calls": 1 } },
+                         "follows": ["manifest", "task"], "terminal": true }
+        } }),
+    )
+    .tool("echo", vec![], 0);
+    let (outcome, events) = fx.run().await;
+    assert!(matches!(outcome, Outcome::Failed { .. }), "the spawner starts nothing: {outcome:?}");
+    assert_eq!(fx.calls("echo")[0].0, json!({ "text": "run the graph" }), "the binding yields the task text");
+    let spawned = fx.spawner.0.lock().unwrap().clone();
+    assert!(spawned[0].starts_with("## task\n\nrun the graph\n\n## manifest\n\n"), "{}", spawned[0]);
+    let EventData::WorkflowNodeStart(start) = &events
+        .iter()
+        .find(|e| matches!(&e.data, EventData::WorkflowNodeStart(s) if s.node == "manifest"))
+        .unwrap()
+        .data
+    else {
+        panic!()
+    };
+    assert_eq!(start.inputs, vec![1], "the task item at seq 1 is the input");
+
+    let mut fx = Fixture::new(
+        "task-recovery",
+        &["echo", "bad"],
+        json!({ "nodes": {
+            "manifest": manifest,
+            "check": { "tool": "bad", "follows": ["manifest", "task"], "terminal": true }
+        } }),
+    )
+    .tool("echo", vec![], 0)
+    .tool("bad", vec![ToolValue::error("no")], 0)
+    .respond(recover(json!({ "action": "abort", "code": "goal-unreachable", "message": "stop" })));
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Blocked { code: BlockedCode::GoalUnreachable, message: "stop".into() });
+    let EventData::InboxItem(item) = &events
+        .iter()
+        .find(|e| matches!(&e.data, EventData::InboxItem(i) if i.source == foe_log::InboxSource::System))
+        .unwrap()
+        .data
+    else {
+        panic!()
+    };
+    let foe_log::ContentBlock::Text { text } = &item.content[0] else { panic!() };
+    assert!(text.starts_with("## task\n\nrun the graph\n\n## manifest"), "{text}");
+}
+
+fn fx_root(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("foe-workflow-{}-{name}", std::process::id()))
 }
 
 /// docs/workflow.md "Firing": nodes with no pending dependency between

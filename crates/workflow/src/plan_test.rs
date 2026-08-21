@@ -15,7 +15,7 @@ fn the_report_names_cycles_bounds_overlaps_and_completion() {
     let wf: WorkflowConfig = serde_json::from_value(json!({ "nodes": {
         "manifest": { "tool": "list" },
         "survey": { "tool": "grep", "follows": ["manifest"], "max_fires": 3 },
-        "propose": { "model": program("propose", "/p/src"), "follows": ["manifest", "survey"],
+        "propose": { "model": program("propose", "/p/src"), "follows": ["manifest", "survey", "task"],
                      "branches": { "accept": ["derive"], "widen": ["survey"] }, "max_fires": 3 },
         "review": { "model": program("review", "/p/src/lib"), "follows": ["propose"] },
         "derive": { "tool": "derive", "follows": ["propose"], "verify": "check", "terminal": true, "empty": null }
@@ -29,6 +29,8 @@ fn the_report_names_cycles_bounds_overlaps_and_completion() {
     assert!(report.contains("propose and review: /p/src and /p/src/lib"), "{report}");
     assert!(report.contains("propose -> survey  (widen)"), "{report}");
     assert!(report.contains("verify check (retries 2)"), "{report}");
+    assert!(report.contains("  task         built-in source: the invocation task\n"), "{report}");
+    assert!(report.contains("follows task, manifest, survey"), "{report}");
     assert!(report.contains("workflow completion  terminal derive"), "{report}");
 
     let open: WorkflowConfig = serde_json::from_value(json!({ "nodes": {
@@ -40,4 +42,5 @@ fn the_report_names_cycles_bounds_overlaps_and_completion() {
     assert!(report.contains("no terminal node and no empty branch"), "{report}");
     assert!(report.contains("act -> watch -> act  bounded by max_fires act 9, watch 9"), "{report}");
     assert!(report.contains("(none)"), "no overlaps: {report}");
+    assert!(!report.contains("built-in source"), "no node follows task: {report}");
 }
