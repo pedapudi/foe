@@ -55,6 +55,10 @@ pub struct Policy {
     pub write: Vec<PathBuf>,
     /// Files that may be executed.
     pub exec: Vec<PathBuf>,
+    /// Single files readable in full: the model key file, which child
+    /// episodes read after inheriting this domain. Executables never
+    /// receive these.
+    pub read_files: Vec<PathBuf>,
     /// The episode's own log directory, readable and writable. `None` for an
     /// executable, which has no log of its own.
     pub log_dir: Option<PathBuf>,
@@ -67,13 +71,19 @@ pub struct Policy {
 
 impl Policy {
     /// The policy of an episode process: its grants, every configured
-    /// executable, its log directory, and outbound TCP only when the episode
-    /// itself holds the model transport.
+    /// executable, the running binary when it may start children, the key
+    /// file when it holds the model transport, its log directory, and
+    /// outbound TCP only when the episode itself holds the model transport.
     pub fn for_episode(config: &Config, log_dir: &Path) -> Policy {
+        let mut exec: Vec<PathBuf> = config.tool_defs.values().map(|d| d.exec.clone()).collect();
+        if !config.grants.spawn.is_empty() {
+            exec.extend(std::env::current_exe().ok());
+        }
         Policy {
             read: config.grants.read.clone(),
             write: config.grants.write.clone(),
-            exec: config.tool_defs.values().map(|d| d.exec.clone()).collect(),
+            exec,
+            read_files: config.model.iter().map(|m| m.api_key_file.clone()).collect(),
             log_dir: Some(log_dir.to_path_buf()),
             bind_tcp: Vec::new(),
             connect_tcp: config.model.is_some(),
@@ -88,6 +98,7 @@ impl Policy {
             read: self.read.clone(),
             write: self.write.clone(),
             exec: vec![exec.to_path_buf()],
+            read_files: Vec::new(),
             log_dir: None,
             bind_tcp: Vec::new(),
             connect_tcp: network,
@@ -203,6 +214,7 @@ impl Sandbox {
             (policy.read.clone(), read),
             (policy.write.clone(), write),
             (policy.exec.clone(), AccessFs::Execute | AccessFs::ReadFile),
+            (policy.read_files.clone(), BitFlags::from(AccessFs::ReadFile)),
             (policy.log_dir.iter().cloned().collect(), read | write),
             (paths(LOADER_DIRS), read | AccessFs::Execute),
             (paths(SYSTEM_READ_DIRS), read),
