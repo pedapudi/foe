@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pedapudi/foe/blob/main/docs/config.md",
+  "title": "foe configuration",
+  "description": "The configuration document of one episode. docs/config.md specifies every key; this schema mirrors it. Every path is absolute. No value is read from the environment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "instructions", "tools", "grants", "budget", "task"],
+  "properties": {
+    "version": {
+      "description": "The configuration format version. This schema describes version 1.",
+      "const": 1
+    },
+    "name": {
+      "description": "A short name for the program. Shown in the viewer and written into the log. Participates in identity.",
+      "type": "string",
+      "minLength": 1
+    },
+    "instructions": { "$ref": "#/$defs/instructions" },
+    "tools": { "$ref": "#/$defs/tools" },
+    "tool_defs": { "$ref": "#/$defs/tool_defs" },
+    "host_tools": { "$ref": "#/$defs/host_tools" },
+    "grants": { "$ref": "#/$defs/grants" },
+    "budget": { "$ref": "#/$defs/budget" },
+    "done_when": { "$ref": "#/$defs/done_when" },
+    "model": {
+      "description": "When present, foe calls the model itself. When absent, the host process answers model requests over the protocol. Does not participate in identity.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model", "api_key_file"],
+      "properties": {
+        "provider": { "type": "string", "enum": ["anthropic", "openai-compatible"] },
+        "model": { "description": "The model identifier the provider expects.", "type": "string", "minLength": 1 },
+        "api_key_file": { "description": "Absolute path to a file whose contents are the key.", "type": "string", "pattern": "^/" },
+        "base_url": { "description": "Overrides the provider's default endpoint.", "type": "string" },
+        "max_output_tokens": { "description": "Per-request output limit; the default is the provider's.", "type": "integer", "minimum": 1 }
+      }
+    },
+    "sandbox": {
+      "description": "Behavior when Landlock is unavailable. The rules themselves are compiled from grants and tool_defs. Does not participate in identity.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string", "enum": ["best-effort", "required", "off"], "default": "best-effort" }
+      }
+    },
+    "programs": { "$ref": "#/$defs/programs" },
+    "task": {
+      "description": "What this episode is to do. Written into the log as the first inbox item. Does not participate in identity.",
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "instructions": {
+      "description": "Section key to section text. Sections render into the system prompt in lexicographic order of their keys. Key and text participate in identity.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "tools": {
+      "description": "Names of the tools the model may call, in the order their schemas are sent to the model. Each name resolves against the built-in tools, then tool_defs, then host_tools. The order participates in identity.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "tool_defs": {
+      "description": "Tool name to the executable it runs. Declaring an entry is what permits the episode to execute that file. The executable is hashed into identity by content.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exec", "description"],
+        "properties": {
+          "exec": { "description": "Absolute path to the executable.", "type": "string", "pattern": "^/" },
+          "description": { "description": "What the tool does and how to call it; sent to the model in the tool schema.", "type": "string", "minLength": 1 },
+          "instruction": { "description": "When to use it; appended to the system prompt.", "type": "string" },
+          "network": { "description": "Whether the executable may open TCP connections.", "type": "boolean", "default": false },
+          "timeout_seconds": { "description": "Wall-clock limit for one invocation.", "type": "integer", "minimum": 1, "default": 120 },
+          "cwd": { "description": "Absolute working directory; the default is the first read root.", "type": "string", "pattern": "^/" }
+        }
+      }
+    },
+    "host_tools": {
+      "description": "Tool name to the specification of a tool the host process implements and answers over the protocol. The specification is in the document so that identity is computable from the document alone.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["description", "params", "effect"],
+        "properties": {
+          "description": { "description": "Sent to the model in the tool schema.", "type": "string", "minLength": 1 },
+          "instruction": { "description": "Appended to the system prompt.", "type": "string" },
+          "params": { "description": "JSON Schema for the arguments.", "type": "object" },
+          "effect": { "type": "string", "enum": ["pure", "reads", "writes", "execs", "spawns"] }
+        }
+      }
+    },
+    "grants": {
+      "description": "What the episode may reach. Paths are absolute directory prefixes; symbolic links are resolved before the check. The kinds present and the count of each participate in identity; the paths do not.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["read"],
+      "properties": {
+        "read": { "description": "Absolute directories the episode may read.", "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^/" } },
+        "write": { "description": "Absolute directories the episode may write.", "type": "array", "items": { "type": "string", "pattern": "^/" }, "default": [] },
+        "spawn": { "description": "Names from programs the episode may start.", "type": "array", "items": { "type": "string", "minLength": 1 }, "default": [] }
+      }
+    },
+    "budget": {
+      "description": "Limits for this episode and the whole tree below it. A child's budget is reserved from its parent's remainder.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_calls"],
+      "properties": {
+        "model_calls": { "description": "Maximum model requests, including retries.", "type": "integer", "minimum": 1 },
+        "tokens": { "description": "Maximum input plus output tokens across all requests; unlimited when absent.", "type": "integer", "minimum": 1 },
+        "seconds": { "description": "Wall-clock limit for the episode; unlimited when absent.", "type": "integer", "minimum": 1 },
+        "max_depth": { "description": "How many levels of child episodes may exist below this one; 0 forbids spawning.", "type": "integer", "minimum": 0, "default": 1 },
+        "max_episodes": { "description": "Lifetime count of episodes in the tree, including this one.", "type": "integer", "minimum": 1, "default": 8 },
+        "max_concurrent": { "description": "Children running at once.", "type": "integer", "minimum": 1, "default": 4 },
+        "loop_threshold": { "description": "Consecutive identical tool calls, or identical assistant turns, that end the episode as blocked.", "type": "integer", "minimum": 2, "default": 3 }
+      }
+    },
+    "done_when": {
+      "description": "When the episode is complete. When absent, the episode completes when the model produces a turn with no tool calls. verify and returns may both be present; the verifier then checks the returned value.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "verify": { "description": "Name of a tool in tools; the episode completes when the model finishes and this tool returns no findings.", "type": "string", "minLength": 1 },
+        "retries": { "description": "How many times findings are fed back.", "type": "integer", "minimum": 0, "default": 2 },
+        "returns": { "description": "A JSON Schema; the episode completes when the model calls the synthesized return tool with a conforming value.", "type": "object" }
+      }
+    },
+    "programs": {
+      "description": "Program name to a child configuration. A name listed in grants.spawn must appear here. A child's grants must be a subset of its parent's. Each child program's identity participates in the parent's.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/child_program" }
+    },
+    "child_program": {
+      "description": "A full configuration without version, task, model, or sandbox, which are inherited from the parent.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "instructions", "tools", "grants", "budget"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "instructions": { "$ref": "#/$defs/instructions" },
+        "tools": { "$ref": "#/$defs/tools" },
+        "tool_defs": { "$ref": "#/$defs/tool_defs" },
+        "host_tools": { "$ref": "#/$defs/host_tools" },
+        "grants": { "$ref": "#/$defs/grants" },
+        "budget": { "$ref": "#/$defs/budget" },
+        "done_when": { "$ref": "#/$defs/done_when" },
+        "programs": { "$ref": "#/$defs/programs" }
+      }
+    }
+  }
+}

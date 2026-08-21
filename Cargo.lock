@@ -199,8 +199,10 @@ dependencies = [
  "foe-log",
  "foe-transport",
  "foe-view",
+ "hex",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
 ]
 
