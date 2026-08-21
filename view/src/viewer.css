@@ -1092,6 +1092,33 @@ pre.text {
   margin-top: 4px;
 }
 
+/* A compaction row sits at the cut. The rows above it were summarized:
+   they stay visible, faded, with a marker in the gutter. */
+.row.compaction {
+  background: var(--v2-panel);
+}
+
+.row.compaction > .role {
+  color: var(--v2-accent);
+}
+
+.row.compaction .body > details > summary {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.conv .row:has(~ .row.compaction) {
+  opacity: 0.72;
+}
+
+.conv .row:has(~ .row.compaction) > .gutter::after {
+  content: "compacted";
+  display: block;
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  letter-spacing: 0.02em;
+}
+
 .tools-list {
   margin-top: 6px;
 }

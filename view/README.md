@@ -29,12 +29,13 @@ pnpm fixtures       # regenerates fixtures/*.jsonl from fixtures/generate.mjs
 into the matching element.
 
 The tests cover the derived-messages rule against the fixture logs, the
-episode fold, and the lineage helpers. The fixtures are three episode logs
+episode fold, and the lineage helpers. The fixtures are four episode logs
 written by `fixtures/generate.mjs`: a root episode that spawns a team member
 and survives an interrupted request, the spawned child that receives a peer
-message, and a fork of the root seeded at seq 12 that ends blocked. The
-`messages` list recorded in each `model/request` event is written by hand in
-the generator, so the tests compare it with the list the bundle derives.
+message, a fork of the root seeded at seq 12 that ends blocked, and an
+episode compacted before its fourth request. The `messages` list recorded in
+each `model/request` event is written by hand in the generator, so the tests
+compare it with the list the bundle derives.
 
 ## The page contract
 
@@ -123,9 +124,13 @@ The main pane has three tabs.
   tool calls; `interrupted: true` shows a marker. A `tool/result` shows
   `rendered` and keeps the canonical `value` behind an expander as
   pretty-printed JSON; `is_error`, `synthetic`, and `spill` show markers.
-  Every other event type, including the reserved ones and types this bundle
-  does not know, appears as a compact row with the event type as its label
-  and the payload behind an expander.
+  A `compaction/summary` is a system row inserted at its `first_kept_seq`,
+  ahead of the rows the model still sees, stating how many dialogue rows
+  the summary replaced and holding the continuation message behind an
+  expander; the rows above it are faded and marked `compacted` by the
+  stylesheet alone. Every other event type, including the reserved ones
+  and types this bundle does not know, appears as a compact row with the
+  event type as its label and the payload behind an expander.
 - **raw events**: a table of every event with seq, time, and type. The
   filter matches the seq, the type, or any text in the payload. Clicking a
   row expands its payload.
@@ -150,7 +155,11 @@ and focuses the filter, and `1`, `2`, `3` switch tabs.
 "Derived messages". An inbox item enters the list at the position of the
 `model/request` that lists its seq in `consumed`. This placement keeps a
 steering message that arrived while a tool ran after that tool's result,
-and puts the items consumed by the request being built at the end.
+and puts the items consumed by the request being built at the end. After a
+`compaction/summary`, the list opens with the task and the continuation
+message, rendered as `docs/compaction.md` specifies, and continues from the
+summary's `first_kept_seq`; a request whose id starts with `cmp_` and its
+response contribute nothing.
 
 The bundle assumes the recorded `messages` use these shapes:
 

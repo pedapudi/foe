@@ -2,7 +2,7 @@
 
 import { clear, compact, fmtDuration, fmtInt, fmtTime, h, lazyDetails, lineCount, pretty } from "../dom.js";
 import type { Child } from "../dom.js";
-import type { AssistantRow, HeaderRow, NoteRow, Patch, Row, ToolRow, UserRow } from "../fold.js";
+import type { AssistantRow, CompactionRow, HeaderRow, NoteRow, Patch, Row, ToolRow, UserRow } from "../fold.js";
 import type { ContentBlock } from "../types.js";
 
 export interface RenderContext {
@@ -24,7 +24,30 @@ export function renderRow(row: Row, ctx: RenderContext): HTMLElement {
       return renderTool(row);
     case "note":
       return renderNote(row, ctx);
+    case "compaction":
+      return renderCompaction(row);
   }
+}
+
+/**
+ * The row the conversation pane places at the cut: what the model sees from
+ * here on in place of everything above, behind an expander. Rows above it
+ * stay visible and carry the `compacted` marker from the stylesheet.
+ */
+function renderCompaction(row: CompactionRow): HTMLElement {
+  const label = `context compacted: ${row.summarized} message${row.summarized === 1 ? "" : "s"} summarized`;
+  const body = lazyDetails(
+    [h("span", null, label), h("span", { class: "meta" }, `step ${row.step} · kept from seq ${row.firstKeptSeq}`)],
+    () => h("pre", { class: "text" }, row.continuation),
+    { key: "continuation" },
+  );
+  return h(
+    "div",
+    { class: "row compaction", "data-key": row.key },
+    gutter(row),
+    h("div", { class: "role" }, "system"),
+    h("div", { class: "body" }, body),
+  );
 }
 
 function gutter(row: Row): HTMLElement {
@@ -245,12 +268,13 @@ export class ConversationView {
     for (const patch of patches) {
       if (!this.filter(patch.row)) continue;
       const fresh = renderRow(patch.row, this.ctx);
+      fresh.dataset.seq = String(patch.row.seq);
       const old = this.els.get(patch.row.key);
       if (old) {
         transferOpenState(old, fresh);
         old.replaceWith(fresh);
       } else {
-        this.list.appendChild(fresh);
+        this.list.insertBefore(fresh, this.cutBefore(patch.row));
       }
       this.els.set(patch.row.key, fresh);
     }
@@ -266,6 +290,19 @@ export class ConversationView {
         if (el && el.offsetTop < this.el.scrollTop) this.el.scrollTop += delta;
       }
     }
+  }
+
+  /**
+   * Where a new row goes: at the end, except that a compaction row goes
+   * before the first row of the kept suffix, so that the rows it replaced
+   * sit above it and the rows the model still sees sit below it.
+   */
+  private cutBefore(row: Row): HTMLElement | null {
+    if (row.kind !== "compaction") return null;
+    for (const el of this.list.children) {
+      if (Number((el as HTMLElement).dataset.seq) >= row.firstKeptSeq) return el as HTMLElement;
+    }
+    return null;
   }
 }
 

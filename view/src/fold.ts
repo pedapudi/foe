@@ -2,6 +2,8 @@
 // summary the tree pane shows. The fold is incremental: each pushed event
 // yields patches naming only the rows it created or changed.
 
+import { fmtInt } from "./dom.js";
+import { renderContinuation } from "./messages.js";
 import { arr, num, obj, str } from "./types.js";
 import type {
   ContentBlock,
@@ -82,7 +84,24 @@ export interface NoteRow extends RowBase {
   link: string | null;
 }
 
-export type Row = HeaderRow | UserRow | AssistantRow | ToolRow | NoteRow;
+/**
+ * A `compaction/summary`: from here on the model sees the task, the
+ * continuation message, and the rows from `firstKeptSeq` onward in place of
+ * everything before the cut. The conversation pane places it at the cut.
+ */
+export interface CompactionRow extends RowBase {
+  kind: "compaction";
+  step: number;
+  firstKeptSeq: number;
+  /** Dialogue rows the summary replaced: those the compaction covered. */
+  summarized: number;
+  summary: string;
+  /** The continuation message as the model receives it. */
+  continuation: string;
+  state: unknown;
+}
+
+export type Row = HeaderRow | UserRow | AssistantRow | ToolRow | NoteRow | CompactionRow;
 
 export interface Patch {
   op: "append" | "update";
@@ -319,9 +338,43 @@ export class EpisodeFold {
           "error",
           data,
         );
+      case "compaction/start": {
+        const covered = obj(data.covered);
+        const detail = `step ${num(data.step)} · projected ${num(data.projected_tokens)} tokens · covering seq ${num(
+          covered.first_seq,
+        )}–${num(covered.last_seq)}`;
+        return this.note(ev, "compaction", detail, "info", data);
+      }
+      case "compaction/summary": {
+        const covered = obj(obj(data.state).covered);
+        const first = num(covered.first_seq);
+        const last = num(covered.last_seq);
+        const dialogue = (r: Row) => r.kind === "user" || r.kind === "assistant" || r.kind === "tool";
+        return this.append({
+          kind: "compaction",
+          key: `compaction:${ev.seq}`,
+          seq: ev.seq,
+          time: ev.time,
+          step: num(data.step),
+          firstKeptSeq: num(data.first_kept_seq),
+          summarized: this.rows.filter((r) => dialogue(r) && r.seq >= first && r.seq <= last).length,
+          summary: str(data.summary),
+          continuation: renderContinuation(data),
+          state: data.state,
+        });
+      }
+      case "compaction/end": {
+        const usage = obj(data.usage);
+        const detail = data.ok === true
+          ? `step ${num(data.step)} · ${fmtInt(num(usage.input))} in / ${fmtInt(num(usage.output))} out · next request about ${fmtInt(
+              num(data.active_estimate),
+            )} tokens`
+          : `step ${num(data.step)} · failed: ${str(data.error, "?")} · context unchanged`;
+        return this.note(ev, "compaction end", detail, data.ok === true ? "info" : "error", data);
+      }
       default:
-        // Reserved types (team/task, compaction/*, workflow/*) and any type
-        // this bundle does not know render as a generic row.
+        // Reserved types (team/task, workflow/*) and any type this bundle
+        // does not know render as a generic row.
         return this.note(ev, ev.type, summarize(data), "info", data);
     }
   }

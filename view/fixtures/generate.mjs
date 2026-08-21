@@ -216,7 +216,94 @@ function fork(rootLog) {
   return log;
 }
 
+// Compacted episode: three steps, then a compaction before the fourth
+// request that keeps only the third step. The continuation message is
+// written out by hand here, in the form docs/compaction.md specifies, so
+// that the derived-messages test checks the bundle's rendering of it.
+
+function compact() {
+  const log = new Log(1724200009000);
+  const taskText = "Rename the helper and update its callers.";
+  const grepCall = { id: "tc_01", name: "grep", args: { pattern: "helper(" } };
+  const grepOut = "src/a.py:3:helper()\nsrc/b.py:9:helper()";
+  const readCall = { id: "tc_02", name: "read", args: { path: "src/a.py" } };
+  const readOut = "1\tdef helper():\n2\t    return 1";
+  const editCall = { id: "tc_03", name: "edit", args: { path: "src/a.py", edits: [{ find: "helper", replace: "load_one" }] } };
+  const editOut = "+1 -1";
+  const narrative = "## Goal\nRename `helper` and update its callers.\n\n## Progress\nFound two callers with grep; read src/a.py.\n\n## Decisions\nRename to `load_one`.\n\n## Open items\nsrc/b.py is not yet edited.\n\n## Next step\nEdit src/b.py.";
+  const state = {
+    task: taskText,
+    done_when: "a turn with no tool calls",
+    outstanding_findings: [],
+    files: { read: ["src/a.py"], written: [], edited: [] },
+    children: [],
+    covered: { first_seq: 1, last_seq: 8 },
+    budget_remaining: { model_calls: 7, tokens: 95000 },
+  };
+  const continuation = [
+    "## Continuation state",
+    "",
+    "covered: seq 1 to 8",
+    "done_when: a turn with no tool calls",
+    "outstanding_findings: (none)",
+    "files_read:\n- src/a.py",
+    "files_written: (none)",
+    "files_edited: (none)",
+    "children: (none)",
+    "budget_remaining: model_calls 7, tokens 95000, seconds unlimited",
+    "",
+    "## Summary",
+    "",
+    narrative,
+  ].join("\n");
+  const summaryTools = tools.slice(0, 2).concat([{ name: "edit", description: "Edit a file.", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } }]);
+
+  log.ev("episode/start", {
+    id: "ep_compact",
+    parent_id: null,
+    fork_origin: null,
+    team_id: null,
+    program: { ...program("rename-helper", { model_calls: 10, tokens: 100000 }), context: { compact: true, window_tokens: 4000, reserve_tokens: 500, keep_recent_tokens: 40 } },
+    identity: "sha256:cccc",
+    task: taskText,
+    runtime,
+    sandbox: { mode: "best-effort", landlock_abi: 7 },
+  });
+  const task = log.ev("inbox/item", { source: "task", content: [text(taskText)], from: null, message_id: null });
+  const header = log.ev("request/header", { reason: "initial", system: "You fix failing tests with the smallest change.", tools: summaryTools, model });
+  log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_0001", header_seq: header, consumed: [task], messages: [user(text(taskText))] });
+  log.ev("assistant/message", { step: 1, request_id: "rq_0001", text: "I will grep for callers.", tool_calls: [grepCall], stop: "tool", usage: { input: 900, output: 12, cache_read: 0 }, interrupted: false });
+  log.ev("tool/result", { step: 1, call_id: "tc_01", name: "grep", value: { matches: 2 }, rendered: grepOut, is_error: false, spill: null, duration_ms: 9, synthetic: false });
+  const messages2 = [user(text(taskText)), assistant("I will grep for callers.", [grepCall]), tool("tc_01", "grep", grepOut)];
+  log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_0002", header_seq: header, consumed: [], messages: messages2 });
+  log.ev("assistant/message", { step: 2, request_id: "rq_0002", text: "Reading a.", tool_calls: [readCall], stop: "tool", usage: { input: 1400, output: 10, cache_read: 900 }, interrupted: false });
+  log.ev("tool/result", { step: 2, call_id: "tc_02", name: "read", value: { content: "def helper():\n    return 1" }, rendered: readOut, is_error: false, spill: null, duration_ms: 3, synthetic: false });
+  const messages3 = [...messages2, assistant("Reading a.", [readCall]), tool("tc_02", "read", readOut)];
+  const kept = log.ev("model/request", { step: 3, attempt: 1, request_id: "rq_0003", header_seq: header, consumed: [], messages: messages3 });
+  log.ev("assistant/message", { step: 3, request_id: "rq_0003", text: "Editing a.", tool_calls: [editCall], stop: "tool", usage: { input: 1900, output: 30, cache_read: 1400 }, interrupted: false });
+  log.ev("tool/result", { step: 3, call_id: "tc_03", name: "edit", value: { added: 1, removed: 1 }, rendered: editOut, is_error: false, spill: null, duration_ms: 5, synthetic: false });
+
+  // Step 4 begins with a compaction: the projection of the next request
+  // crosses the threshold, the oldest two steps are summarized through a
+  // request with a cmp_ id under its own header, and the header returns.
+  log.ev("compaction/start", { step: 4, covered: { first_seq: 1, last_seq: 8 }, trigger: "threshold", projected_tokens: 3982, reserved: { model_calls: 7, tokens: 95000 } });
+  const summaryHeader = log.ev("request/header", { reason: "change", system: "A coding agent's conversation is being condensed.", tools: [], model });
+  const transcript = `# Transcript\n\n[user]\n${taskText}\n\n[assistant]\nI will grep for callers.\n[call grep {"pattern":"helper("}]\n\n[result grep]\n${grepOut}\n\n[assistant]\nReading a.\n[call read {"path":"src/a.py"}]\n\n[result read]\n${readOut}`;
+  const summaryRequest = log.ev("model/request", { step: 4, attempt: 1, request_id: "cmp_0004", header_seq: summaryHeader, consumed: [], messages: [user(text(transcript))] });
+  log.ev("assistant/chunk", { step: 4, request_id: "cmp_0004", chunk: { kind: "text", delta: narrative } });
+  log.ev("assistant/message", { step: 4, request_id: "cmp_0004", text: narrative, tool_calls: [], stop: "end", usage: { input: 700, output: 80, cache_read: 0 }, interrupted: false });
+  log.ev("compaction/summary", { step: 4, summary: narrative, state, first_kept_seq: kept, summary_request_seq: summaryRequest });
+  log.ev("compaction/end", { step: 4, ok: true, usage: { input: 700, output: 80, cache_read: 0 }, active_estimate: 260 });
+  const restored = log.ev("request/header", { reason: "change", system: "You fix failing tests with the smallest change.", tools: summaryTools, model });
+  const messages4 = [user(text(taskText)), user(text(continuation)), assistant("Editing a.", [editCall]), tool("tc_03", "edit", editOut)];
+  log.ev("model/request", { step: 4, attempt: 1, request_id: "rq_0005", header_seq: restored, consumed: [], messages: messages4 });
+  log.ev("assistant/message", { step: 4, request_id: "rq_0005", text: "Done.", tool_calls: [], stop: "end", usage: { input: 640, output: 4, cache_read: 0 }, interrupted: false });
+  log.ev("episode/end", { outcome: { kind: "completed", value: "Done." } });
+  return log;
+}
+
 const r = root();
 r.write("root.jsonl");
 child().write("child.jsonl");
 fork(r).write("fork.jsonl");
+compact().write("compact.jsonl");

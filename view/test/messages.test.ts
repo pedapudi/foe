@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { deriveAllRequests, deriveMessages } from "../src/messages.js";
 import { fixture } from "./helpers.js";
 
-for (const name of ["root.jsonl", "child.jsonl", "fork.jsonl"]) {
+for (const name of ["root.jsonl", "child.jsonl", "fork.jsonl", "compact.jsonl"]) {
   test(`recomputed messages equal model/request.messages in ${name}`, () => {
     const events = fixture(name);
     const requests = deriveAllRequests(events);
@@ -78,6 +78,28 @@ test("an inbox item enters at the position of the request that consumed it", () 
     messages.map((m) => m.role),
     ["user", "assistant", "tool", "user"],
   );
+});
+
+test("after a compaction the list opens with the task and the continuation and keeps from first_kept_seq", () => {
+  const events = fixture("compact.jsonl");
+  const summary = events.find((e) => e.type === "compaction/summary")!;
+  const next = events.find((e) => e.type === "model/request" && e.seq > summary.seq)!;
+  const messages = deriveMessages(events, next.seq);
+  assert.deepEqual(
+    messages.map((m) => m.role),
+    ["user", "user", "assistant", "tool"],
+  );
+  const [task, continuation] = messages;
+  assert.ok(task?.role === "user" && continuation?.role === "user");
+  if (task?.role === "user" && continuation?.role === "user") {
+    assert.equal(task.content[0]!.text, "Rename the helper and update its callers.");
+    assert.match(continuation.content[0]!.text!, /^## Continuation state\n\ncovered: seq 1 to 8\n/);
+    assert.match(continuation.content[0]!.text!, /files_read:\n- src\/a.py\nfiles_written: \(none\)/);
+    assert.match(continuation.content[0]!.text!, /\n\n## Summary\n\n## Goal\n/);
+  }
+  const before = deriveMessages(events, summary.seq - 1);
+  assert.equal(before.filter((m) => m.role === "assistant").length, 3, "the cmp_ response contributes nothing");
+  assert.ok(before.every((m) => m.role !== "user" || m.content[0]!.text !== undefined));
 });
 
 test("a fork's seeded prefix derives the same messages as the origin", () => {

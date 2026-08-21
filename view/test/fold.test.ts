@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EpisodeFold } from "../src/fold.js";
-import type { AssistantRow, NoteRow, Row, ToolRow, UserRow } from "../src/fold.js";
+import type { AssistantRow, CompactionRow, NoteRow, Row, ToolRow, UserRow } from "../src/fold.js";
 import { buildTree, flatten, sharedPrefix } from "../src/lineage.js";
 import { fixture } from "./helpers.js";
 
@@ -139,6 +139,23 @@ test("the fork fixture records its origin and seed boundary", () => {
   assert.equal(f.summary.seedEnd, 12);
   assert.equal(f.summary.outcome?.kind, "blocked");
   assert.equal((f.summary.outcome as { code: string }).code, "missing-capability");
+});
+
+test("a compaction becomes a row carrying the summary and the count of messages it replaced", () => {
+  const f = fold("compact.jsonl");
+  const rows_ = rows<CompactionRow>(f, "compaction");
+  assert.equal(rows_.length, 1);
+  const c = rows_[0]!;
+  assert.equal(c.step, 4);
+  assert.equal(c.firstKeptSeq, 9);
+  assert.equal(c.summarized, 5, "the task, two assistant turns, and two results lie in the covered span");
+  assert.match(c.summary, /^## Goal\n/);
+  assert.match(c.continuation, /^## Continuation state\n\ncovered: seq 1 to 8\n/);
+  const notes = rows<NoteRow>(f, "note");
+  assert.equal(notes.filter((n) => n.type === "compaction/start").length, 1);
+  assert.match(notes.find((n) => n.type === "compaction/start")!.detail, /covering seq 1–8/);
+  assert.equal(notes.find((n) => n.type === "compaction/end")!.level, "info");
+  assert.equal(f.summary.modelCalls, 5, "the summarization request counts as a model call");
 });
 
 test("the tree hangs spawned children under parent_id and forks under fork_origin", () => {
