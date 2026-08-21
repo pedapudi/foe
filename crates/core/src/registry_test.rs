@@ -207,6 +207,9 @@ async fn configured_executables_receive_args_as_argv_and_report_exit_as_data() {
     assert!(bad.is_error);
 }
 
+/// docs/config.md `done_when`: an executable verifier accepts by exiting 0
+/// with empty standard output, reports findings as lines with exit 0, and
+/// fails the verification with any other exit status.
 #[tokio::test]
 async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argument_to_a_tool() {
     let root = tmp("registry-verify");
@@ -226,6 +229,12 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     let req = executor.requests.lock().unwrap().pop().unwrap();
     assert!(req.args.is_empty(), "a verifier receives an empty argument vector");
     assert_eq!(req.stdin.as_deref(), Some(br#""line one\n\nline two""#.as_slice()));
+    let crashing = Arc::new(FakeExecutor { exit_code: 1, ..Default::default() });
+    let handles = Handles { executor: Some(crashing), ..Default::default() };
+    let error = registry.verify(&handles, &json!(""), 1, root.clone(), None).await.unwrap_err();
+    assert!(error.contains("verifier `v` failed") && error.contains("[exit code 1]"), "{error}");
+    let error = registry.verify(&handles, &json!("out"), 1, root.clone(), None).await.unwrap_err();
+    assert!(error.contains(r#""out""#), "the diagnostic carries standard output: {error}");
 
     let program = program_with(&root, |v| {
         v["tools"] = json!(["block", "check"]);

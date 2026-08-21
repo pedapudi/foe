@@ -315,7 +315,9 @@ impl Registry {
 
     /// Runs the `done_when.verify` tool on a candidate, per docs/config.md
     /// `done_when`. Returns the findings; an empty list means accepted.
-    /// `Err` means the verifier could not run, which fails the episode.
+    /// `Err` means the verifier failed rather than judged: it could not
+    /// run, a `tool_defs` executable exited with a status other than zero,
+    /// or a tool returned an error. The episode then ends as `failed`.
     pub async fn verify(
         &self,
         handles: &Handles,
@@ -347,6 +349,9 @@ impl Registry {
             req.stdin = Some(serde_json::to_vec(candidate).map_err(|e| e.to_string())?);
             let result =
                 run_blocking(executor, req).await.map_err(|e| format!("verifier `{name}` failed to run: {e}"))?;
+            if result.exit_code != Some(0) {
+                return Err(format!("verifier `{name}` failed: {}", exec.render(&result)));
+            }
             return Ok(String::from_utf8_lossy(&result.stdout)
                 .lines()
                 .filter(|l| !l.trim().is_empty())
@@ -385,6 +390,24 @@ impl ExecTool {
             stdin: None,
         }
     }
+
+    /// Standard output, then standard error when present, the exit code,
+    /// and a timeout notice: the text the model reads, and the diagnostic
+    /// of a failed verification.
+    fn render(&self, result: &ExecResult) -> String {
+        let mut rendered = String::from_utf8_lossy(&result.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        if !stderr.is_empty() {
+            rendered.push_str(&text::fill(text::EXEC_STDERR, &[("stderr", &stderr)]));
+        }
+        let code = result.exit_code.map_or("none".to_string(), |c| c.to_string());
+        rendered.push_str(&text::fill(text::EXEC_EXIT, &[("code", &code)]));
+        if result.timed_out {
+            let seconds = self.def.timeout_seconds.to_string();
+            rendered.push_str(&text::fill(text::EXEC_TIMED_OUT, &[("seconds", &seconds)]));
+        }
+        rendered
+    }
 }
 
 async fn run_blocking(executor: Arc<dyn Executor>, req: ExecRequest) -> Result<ExecResult, crate::CapError> {
@@ -415,25 +438,12 @@ impl Tool for ExecTool {
         };
         match run_blocking(executor, self.request(argv)).await {
             Ok(result) => {
-                let stdout = String::from_utf8_lossy(&result.stdout).into_owned();
-                let stderr = String::from_utf8_lossy(&result.stderr).into_owned();
-                let mut rendered = stdout.clone();
-                if !stderr.is_empty() {
-                    rendered.push_str(&text::fill(text::EXEC_STDERR, &[("stderr", &stderr)]));
-                }
-                let code = result.exit_code.map_or("none".to_string(), |c| c.to_string());
-                rendered.push_str(&text::fill(text::EXEC_EXIT, &[("code", &code)]));
-                if result.timed_out {
-                    rendered.push_str(&text::fill(
-                        text::EXEC_TIMED_OUT,
-                        &[("seconds", &self.def.timeout_seconds.to_string())],
-                    ));
-                }
                 let value = json!({
-                    "exit_code": result.exit_code, "stdout": stdout, "stderr": stderr,
-                    "timed_out": result.timed_out, "duration_ms": result.duration.as_millis() as u64,
+                    "exit_code": result.exit_code, "stdout": String::from_utf8_lossy(&result.stdout),
+                    "stderr": String::from_utf8_lossy(&result.stderr), "timed_out": result.timed_out,
+                    "duration_ms": result.duration.as_millis() as u64,
                 });
-                ToolValue { value, rendered: Some(rendered), is_error: false }
+                ToolValue { value, rendered: Some(self.render(&result)), is_error: false }
             }
             Err(e) => ToolValue::error(format!("`{}` could not start: {e}", self.spec.name)),
         }

@@ -177,10 +177,12 @@ impl Tool for Verifier {
 }
 
 /// Records every request and answers with its standard input echoed to
-/// standard output, the arguments joined on standard error, and exit 0.
+/// standard output, the arguments joined on standard error, and
+/// `exit_code`, which is 0 by default.
 #[derive(Default)]
 pub struct FakeExecutor {
     pub requests: Mutex<Vec<ExecRequest>>,
+    pub exit_code: i32,
 }
 
 impl Executor for FakeExecutor {
@@ -188,6 +190,7 @@ impl Executor for FakeExecutor {
         let stdout = req.stdin.clone().unwrap_or_default();
         let stderr = req.args.join(" ").into_bytes();
         self.requests.lock().unwrap().push(req);
-        Ok(ExecResult { exit_code: Some(0), stdout, stderr, timed_out: false, duration: Duration::from_millis(3) })
+        let exit_code = Some(self.exit_code);
+        Ok(ExecResult { exit_code, stdout, stderr, timed_out: false, duration: Duration::from_millis(3) })
     }
 }

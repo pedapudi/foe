@@ -10,14 +10,18 @@ than an error. The same entry serves as the verifier: `done_when.verify`
 names it, so the episode completes only when the model finishes and `ruff`
 prints nothing.
 
-`ruff-check` in this directory is the wrapped file. It is a three-line shell
+`ruff-check` in this directory is the wrapped file. It is a short shell
 script that runs `ruff check` over `src` with quiet, one-line output, and
 appends any arguments the model passes. A verifier is invoked with the
 candidate result as JSON on standard input and reports findings as lines on
-standard output; `ruff` reads nothing from standard input, so the same script
-answers both uses. Copy it to `/home/user/project/tools/ruff-check` and mark
-it executable. The runtime hashes the file's contents into the program's
-identity, so editing it changes the identity.
+standard output with exit status 0; any other exit status fails the
+verification and ends the episode as `failed`. `ruff` reads nothing from
+standard input and exits 1 when it finds violations, so the script maps
+that status to 0 and lets only a `ruff` failure exit non-zero. The same
+script therefore answers both uses. Copy it to
+`/home/user/project/tools/ruff-check` and mark it executable. The runtime
+hashes the file's contents into the program's identity, so editing it
+changes the identity.
 
 ## Paths to replace
 

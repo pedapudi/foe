@@ -162,25 +162,26 @@ fn a_hosted_episode_with_a_host_tool_completes() {
 }
 
 /// docs/config.md `done_when`: a configured verifier receives the candidate
-/// on standard input and its findings return to the model until it prints
-/// nothing.
+/// on standard input; findings printed with exit status 0 return to the
+/// model until it prints nothing, and any other exit status ends the
+/// episode as failed with the exit code in the error.
 #[test]
 fn a_verifier_feeds_findings_back_until_it_prints_nothing() {
-    let dir = scratch("verify");
-    let script = dir.join("check");
-    std::fs::write(
-        &script,
-        "#!/bin/sh\nstate=\"$(dirname \"$0\")/state\"\nif [ ! -f \"$state\" ]; then touch \"$state\"; echo \"one finding\"; fi\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-    let config = config(&dir, |c| {
-        c["tools"] = json!(["read", "check"]);
-        c["tool_defs"] = json!({ "check": { "exec": script, "description": "Prints one finding per line." } });
-        c["grants"]["write"] = json!([dir]);
-        c["done_when"] = json!({ "verify": "check", "retries": 2 });
-    });
-    let responses = vec![vec![text("finished"), done("end")], vec![text("finished again"), done("end")]];
+    let script_text = "#!/bin/sh\nread -r candidate\ncase \"$candidate\" in\n  *first*) echo \"one finding\" ;;\n  *crash*) exit 1 ;;\nesac\n";
+    let verifying = |name: &str| {
+        let dir = scratch(name);
+        let script = dir.join("check");
+        std::fs::write(&script, script_text).unwrap();
+        std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let config = config(&dir, |c| {
+            c["tools"] = json!(["read", "check"]);
+            c["tool_defs"] = json!({ "check": { "exec": script, "description": "Prints one finding per line." } });
+            c["done_when"] = json!({ "verify": "check", "retries": 2 });
+        });
+        (dir, config)
+    };
+    let (dir, config) = verifying("verify");
+    let responses = vec![vec![text("first draft"), done("end")], vec![text("second draft"), done("end")]];
     let (events, code) = host_run(&dir, &config, responses, |_, _| Value::Null);
     assert_eq!(code, 0);
     let kinds = types(&events);
@@ -188,6 +189,14 @@ fn a_verifier_feeds_findings_back_until_it_prints_nothing() {
     let verify = events.iter().find(|e| e["type"] == "inbox/item" && e["data"]["source"] == "verify").unwrap();
     assert!(verify["data"]["content"][0]["text"].as_str().unwrap().contains("one finding"));
     assert_eq!(events.last().unwrap()["data"]["outcome"]["kind"], "completed");
+
+    let (dir, config) = verifying("verify-crash");
+    let (events, code) = host_run(&dir, &config, vec![vec![text("crash"), done("end")]], |_, _| Value::Null);
+    assert_eq!(code, 1);
+    let outcome = &events.last().unwrap()["data"]["outcome"];
+    assert_eq!(outcome["kind"], "failed");
+    let error = outcome["error"].as_str().unwrap();
+    assert!(error.contains("verifier `check` failed") && error.contains("[exit code 1]"), "{error}");
 }
 
 /// docs/design.md "The episode": a spent model-call budget with work
