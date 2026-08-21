@@ -29,15 +29,22 @@ declared.
 | the episode's own log directory | read and write |
 | the loader directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib`, `/bin`, `/usr/bin`, `/usr/local/bin` | read and execute |
 | the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |
+| the resolved target of `/etc/resolv.conf` | read that file |
 | the device files `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty` | read and write |
 | TCP | bind: listed ports only; connect: all ports or none |
 
-The loader directories are granted so that a process can start at all: the
-kernel executes the dynamic loader from `/lib64`, the loader maps shared
-libraries from `/usr/lib`, and a script names its interpreter in `/usr/bin`.
+The loader directories let a process start: the kernel executes the dynamic
+loader from `/lib64`, the loader maps shared libraries from `/usr/lib`, and a
+script names its interpreter in `/usr/bin`.
 A file under a read root is readable and is never executable by that grant
 alone. A file outside every listed path, such as a script inside the
 project, runs only when a `tool_defs` entry names it.
+
+The resolver configuration may be a symbolic link into `/run`, which the
+system read directories do not cover. Before applying a policy, foe resolves
+`/etc/resolv.conf` and grants read access to the target file. The grant lets
+network-capable processes find provider hosts without exposing the target
+file's surrounding runtime directory.
 
 A write root grants no read access. A configuration that writes to a
 directory it also reads lists that directory under both grants, or lists a

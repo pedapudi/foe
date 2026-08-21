@@ -108,6 +108,23 @@ fn tcp_connect_is_denied_from_abi_4() {
     assert!(allowed, "connect succeeds when the policy opens TCP");
 }
 
+/// docs/sandbox.md "What is compiled": a process with outbound network
+/// access can read the resolver configuration even when `/etc/resolv.conf`
+/// is a symbolic link whose target lies outside `/etc`.
+#[test]
+fn network_policy_can_read_resolver_configuration() {
+    let Some(s) = sandbox() else { return };
+    let config: Config = serde_json::from_value(serde_json::json!({
+        "version": 1, "name": "network", "instructions": {"role": "x"}, "tools": [],
+        "grants": {"read": [], "write": []}, "budget": {"model_calls": 1},
+        "model": {"provider": "openai", "model": "m"}, "task": "t"
+    }))
+    .unwrap();
+    let policy = Policy::for_episode(&config, Path::new("/logs/ep"));
+    let read = s.run_narrowed(&policy, || std::fs::read_to_string("/etc/resolv.conf")).unwrap();
+    assert!(read.is_ok(), "/etc/resolv.conf is readable under the network policy: {read:?}");
+}
+
 #[test]
 fn tcp_bind_is_limited_to_listed_ports_from_abi_4() {
     let Some(s) = sandbox() else { return };
@@ -146,15 +163,17 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert_eq!(p.exec, vec![PathBuf::from("/usr/bin/ruff")]);
     assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
     assert!(!p.connect_tcp, "an episode without a model block holds no transport");
-    assert!(p.read_files.is_empty() && p.exec.len() == 1, "no key file and no child to start");
+    let resolver: Vec<PathBuf> = std::fs::canonicalize("/etc/resolv.conf").into_iter().collect();
+    assert_eq!(p.read_files, resolver);
+    assert_eq!(p.exec.len(), 1, "no child program to start");
     let mut with_children = config.clone();
     with_children.grants.spawn = vec!["survey".into()];
     with_children.model = Some(crate::ModelConfig::new("anthropic", "m"));
     let mut p = Policy::for_episode(&with_children, Path::new("/logs/ep"));
-    assert!(p.read_files.is_empty(), "the credential file is appended by the binary after resolution");
+    assert_eq!(p.read_files, resolver, "the credential file is appended by the binary after resolution");
     assert_eq!(p.exec.last(), std::env::current_exe().ok().as_ref(), "the binary starts children");
     assert!(p.connect_tcp);
     p.read_files.push(PathBuf::from("/keys/anthropic"));
     let tool = p.for_executable(Path::new("/bin/sh"), false);
-    assert!(tool.read_files.is_empty(), "an executable never reads the credential file");
+    assert_eq!(tool.read_files, resolver, "an executable keeps the resolver file and drops the credential file");
 }

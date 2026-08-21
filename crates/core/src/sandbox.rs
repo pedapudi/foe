@@ -55,10 +55,10 @@ pub struct Policy {
     pub write: Vec<PathBuf>,
     /// Files that may be executed.
     pub exec: Vec<PathBuf>,
-    /// Single files readable in full: the model credential file, which the
-    /// binary adds once the transport has resolved it, and which child
-    /// episodes read after inheriting this domain. Executables never
-    /// receive these.
+    /// Single files readable in full: the resolved resolver configuration,
+    /// and the model credential file that the binary adds after resolving
+    /// the transport. Executables retain the resolver file and drop the
+    /// credential file.
     pub read_files: Vec<PathBuf>,
     /// The episode's own log directory, readable and writable. `None` for an
     /// executable, which has no log of its own.
@@ -86,7 +86,7 @@ impl Policy {
             read: config.grants.read.clone(),
             write: config.grants.write.clone(),
             exec,
-            read_files: Vec::new(),
+            read_files: std::fs::canonicalize("/etc/resolv.conf").into_iter().collect(),
             log_dir: Some(log_dir.to_path_buf()),
             bind_tcp: Vec::new(),
             connect_tcp: config.model.is_some(),
@@ -101,7 +101,7 @@ impl Policy {
             read: self.read.clone(),
             write: self.write.clone(),
             exec: vec![exec.to_path_buf()],
-            read_files: Vec::new(),
+            read_files: std::fs::canonicalize("/etc/resolv.conf").into_iter().collect(),
             log_dir: None,
             bind_tcp: Vec::new(),
             connect_tcp: network,
