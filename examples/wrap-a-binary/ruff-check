@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs ruff over the project source. Arguments narrow the check to the named paths.
+# Reads nothing from standard input, so the same file serves as a done_when verifier.
+exec /home/user/project/.venv/bin/ruff check -q --output-format concise /home/user/project/src "$@"

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "fix-lint",
+  "instructions": {
+    "10-role": "You are a coding agent working in a Python repository.",
+    "20-style": "Prefer the smallest change that resolves each finding. Do not suppress findings with comments."
+  },
+  "tools": ["read", "grep", "edit", "ruff"],
+  "tool_defs": {
+    "ruff": {
+      "exec": "/home/user/project/tools/ruff-check",
+      "description": "Python linter. Usage: ruff [path ...]. Checks every file under src when given no path. Prints one finding per line as file:line:col: code message, prints nothing when clean, and exits 1 when findings exist.",
+      "instruction": "Run ruff after every edit. Finish only when ruff prints nothing."
+    }
+  },
+  "grants": {
+    "read": ["/home/user/project"],
+    "write": ["/home/user/project/src"]
+  },
+  "budget": { "model_calls": 30, "tokens": 300000, "seconds": 900 },
+  "done_when": { "verify": "ruff", "retries": 2 },
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-opus-5",
+    "api_key_file": "/home/user/.config/foe/anthropic.key"
+  },
+  "task": "Resolve every ruff finding under src without changing behavior."
+}

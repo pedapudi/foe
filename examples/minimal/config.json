@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "minimal",
+  "instructions": {
+    "role": "You are a coding agent working in a Python repository. Make the smallest change that completes the task, then run the tests."
+  },
+  "tools": ["read", "grep", "edit", "bash"],
+  "grants": {
+    "read": ["/home/user/project"],
+    "write": ["/home/user/project"]
+  },
+  "budget": { "model_calls": 20 },
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-opus-5",
+    "api_key_file": "/home/user/.config/foe/anthropic.key"
+  },
+  "task": "tests/test_parser.py::test_nested_brackets fails. Make it pass without changing the test."
+}

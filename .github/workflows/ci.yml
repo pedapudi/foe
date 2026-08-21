@@ -1,0 +1,91 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Provisional ceiling for the stripped release binary, in bytes (8 MiB).
+  # Lowered to the measured size once a release has been measured.
+  BINARY_SIZE_LIMIT: 8388608
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain pinned in rust-toolchain.toml
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Line budget
+        run: scripts/loc.sh
+
+      - name: Release build
+        run: |
+          cargo build --release -p foe
+          strip target/release/foe
+
+      - name: Binary size
+        run: |
+          size=$(stat -c %s target/release/foe)
+          echo "target/release/foe: ${size} bytes (limit ${BINARY_SIZE_LIMIT})"
+          test "${size}" -le "${BINARY_SIZE_LIMIT}"
+
+  view:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: view
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm at the version pinned in view/package.json
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: view/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: view/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and check the bundle size
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+
+      - name: Test
+        run: uv run pytest

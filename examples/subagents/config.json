@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "survey-then-fix",
+  "instructions": {
+    "10-role": "You are a coding agent working in a Python repository.",
+    "20-delegation": "Before editing, spawn one survey child per module named in the task. Each child reports the functions in its module that the task touches. Their reports arrive as messages. Then make the change yourself."
+  },
+  "tools": ["read", "grep", "edit", "bash", "spawn"],
+  "grants": {
+    "read": ["/home/user/project"],
+    "write": ["/home/user/project/src"],
+    "spawn": ["survey"]
+  },
+  "budget": {
+    "model_calls": 40,
+    "tokens": 400000,
+    "seconds": 1800,
+    "max_depth": 1,
+    "max_episodes": 4,
+    "max_concurrent": 2
+  },
+  "programs": {
+    "survey": {
+      "name": "survey",
+      "instructions": {
+        "role": "You are a read-only surveyor. Answer the question in the task by reading and searching the repository. Finish with a short list of file paths and function names."
+      },
+      "tools": ["read", "grep"],
+      "grants": {
+        "read": ["/home/user/project"]
+      },
+      "budget": { "model_calls": 8, "tokens": 60000 }
+    }
+  },
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-opus-5",
+    "api_key_file": "/home/user/.config/foe/anthropic.key"
+  },
+  "task": "Rename the configuration key `timeout` to `timeout_seconds` everywhere it is read in src/config.py and src/client.py, and update the callers."
+}

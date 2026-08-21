@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "sandbox-required",
+  "instructions": {
+    "role": "You are a coding agent. Use the cat tool to print files. Report what each tool call returned, including failures."
+  },
+  "tools": ["read", "grep", "cat"],
+  "tool_defs": {
+    "cat": {
+      "exec": "/usr/bin/cat",
+      "description": "Prints a file. Usage: cat <absolute-path>. Exits 1 with a message on standard error when the file cannot be read."
+    }
+  },
+  "grants": {
+    "read": ["/home/user/project"]
+  },
+  "budget": { "model_calls": 6, "seconds": 120 },
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-opus-5",
+    "api_key_file": "/home/user/.config/foe/anthropic.key"
+  },
+  "sandbox": { "mode": "required" },
+  "task": "Print /home/user/project/README.md with the cat tool, then print /etc/hostname with the cat tool. Report the result of each call."
+}
