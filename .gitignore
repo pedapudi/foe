@@ -10,3 +10,4 @@ __pycache__/
 /python/foe/__pycache__
 *.egg-info
 /dist
+/.claude/
