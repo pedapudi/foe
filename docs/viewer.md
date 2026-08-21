@@ -180,12 +180,13 @@ inside a bounded graph is what the figure argues. The firing mark of the
 selected child episode is drawn in heavier ink rather than in the accent.
 
 A model node's firing is a child episode. Clicking its mark selects that
-episode, exactly as clicking a mark in the trajectory does. Hovering any
-element opens a hovercard: a node names its kind, its firings, and its
-bound; an edge says whether a value crossed it; a label says whether a
-firing chose it and where it leads; a firing names its duration, the label
-it chose, and its child episode or its error; a recovery names the firing
-that failed, its cause, and the action taken.
+episode, exactly as clicking a mark in the trajectory does.
+
+Hovering any element opens a hovercard. A node names its kind, its firings,
+and its bound. An edge says whether a value crossed it. A label says
+whether a firing chose it and where it leads. A firing names its duration,
+the label it chose, and its child episode or the error it ended with. A
+recovery names the firing that failed, its cause, and the action taken.
 
 ### Laying out the graph
 

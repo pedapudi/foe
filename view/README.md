@@ -71,13 +71,13 @@ The fixtures are twelve episode logs.
 | `workflow-apply-1.jsonl` | the firing of the graph's `apply` node, a child episode that reads a file and finishes with a sentence |
 
 Seven of the twelve are literal in `generate.mjs`. The four workflow logs
-are written by the runtime: `workflowRun` assembles a configuration, a
+are written by the runtime. `workflowRun` assembles a configuration, a
 scripted model program, and a scripted verification program in a temporary
 directory, runs `target/release/foe` over them, and copies the logs here
 with that directory's path replaced by `/home/user/project` and
 `/home/user/tools`. Everything else in those four files is the bytes the
-runtime wrote, including episode ids and timestamps, which therefore change
-whenever the fixtures are regenerated; no test reads either from a literal.
+runtime wrote, episode ids and timestamps included. Those change whenever
+the fixtures are regenerated, so no test reads either from a literal.
 Regenerating without the release binary present leaves the four files as
 they are and says so, so the seven literal ones regenerate on a machine
 with no Rust toolchain.
