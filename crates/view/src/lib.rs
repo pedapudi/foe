@@ -8,8 +8,10 @@
 #![forbid(unsafe_code)]
 
 mod project;
+mod server;
 
 pub use project::{project, Node, Tree};
+pub use server::{serve, Server};
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;

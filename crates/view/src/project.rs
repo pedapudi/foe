@@ -136,6 +136,19 @@ impl Store {
         Some(node)
     }
 
+    /// Log lines of episode `id` with `seq` greater than `after`. `seq` is
+    /// contiguous from 0, so it equals the line's index.
+    pub(crate) fn lines(&self, id: &str, after: Option<u64>) -> Vec<Arc<str>> {
+        let from = after.map_or(0, |s| s as usize + 1);
+        let found = self
+            .episodes
+            .values()
+            .find(|e| e.node.as_ref().is_some_and(|n| n.id == id));
+        found
+            .map_or(&[][..], |e| e.lines.get(from..).unwrap_or_default())
+            .to_vec()
+    }
+
     /// Every log that has a start event, with its lines, in tree order.
     pub(crate) fn logs(&self) -> impl Iterator<Item = (&str, &[Arc<str>])> {
         self.episodes

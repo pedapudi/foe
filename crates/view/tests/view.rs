@@ -1,10 +1,74 @@
-//! Tests for the projection and the static export.
+//! Tests for the projection, the loopback server's token and Origin rules,
+//! server-sent-events resume and tailing, and the static export. The server
+//! is driven with blocking `std::net::TcpStream` connections on a runtime
+//! owned by each test.
 
 use foe_log::{Event, ExhaustedLimit, Outcome};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run")
+}
+
+/// Starts a server on an ephemeral port. The runtime is returned so the
+/// caller keeps it alive for the test's duration.
+fn start(dir: &Path, port: u16) -> (tokio::runtime::Runtime, SocketAddr, String) {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    let server = rt.block_on(foe_view::serve(dir, port)).unwrap();
+    let (addr, token) = (server.addr, server.token.clone());
+    rt.spawn(server.wait());
+    (rt, addr, token)
+}
+
+fn connect(addr: SocketAddr, target: &str, headers: &[(&str, &str)]) -> BufReader<TcpStream> {
+    let mut stream = TcpStream::connect(addr).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let mut req = format!("GET {target} HTTP/1.1\r\nHost: {addr}\r\n");
+    for (name, value) in headers {
+        req.push_str(&format!("{name}: {value}\r\n"));
+    }
+    req.push_str("\r\n");
+    stream.write_all(req.as_bytes()).unwrap();
+    BufReader::new(stream)
+}
+
+/// Reads the status line and the response headers, returning the status
+/// code and the header block.
+fn status(reader: &mut BufReader<TcpStream>) -> (u16, String) {
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    let code = line.split_whitespace().nth(1).unwrap().parse().unwrap();
+    let mut headers = String::new();
+    loop {
+        line.clear();
+        reader.read_line(&mut line).unwrap();
+        if line.trim_end().is_empty() {
+            return (code, headers);
+        }
+        headers.push_str(&line);
+    }
+}
+
+fn get_bytes(addr: SocketAddr, target: &str, headers: &[(&str, &str)]) -> (u16, String, Vec<u8>) {
+    let mut reader = connect(addr, target, headers);
+    let (code, head) = status(&mut reader);
+    let mut body = Vec::new();
+    reader.read_to_end(&mut body).unwrap();
+    (code, head, body)
+}
+
+fn get(addr: SocketAddr, target: &str, headers: &[(&str, &str)]) -> (u16, String) {
+    let (code, _, body) = get_bytes(addr, target, headers);
+    (code, String::from_utf8(body).unwrap())
 }
 
 const FONTS: [&str; 4] = [
@@ -21,6 +85,24 @@ fn present_fonts() -> Vec<(&'static str, Vec<u8>)> {
         .iter()
         .filter_map(|name| Some((*name, std::fs::read(dir.join(name)).ok()?)))
         .collect()
+}
+
+/// Reads one server-sent event, returning its `id` and `data` lines.
+fn next_event(reader: &mut BufReader<TcpStream>) -> (u64, String) {
+    let (mut id, mut data) = (None, None);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        reader.read_line(&mut line).unwrap();
+        let l = line.trim_end();
+        if let Some(v) = l.strip_prefix("id: ") {
+            id = Some(v.parse().unwrap());
+        } else if let Some(v) = l.strip_prefix("data: ") {
+            data = Some(v.to_string());
+        } else if let (true, Some(data)) = (l.is_empty(), &data) {
+            return (id.unwrap(), data.clone());
+        }
+    }
 }
 
 #[test]
@@ -62,6 +144,111 @@ fn project_names_the_unreadable_log() {
 }
 
 #[test]
+fn binds_an_ephemeral_port_when_the_requested_one_is_taken() {
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = taken.local_addr().unwrap().port();
+    let (_rt, addr, _) = start(&fixture(), port);
+    assert_ne!(addr.port(), port);
+    assert!(addr.ip().is_loopback());
+}
+
+#[test]
+fn rejects_missing_or_wrong_token() {
+    let (_rt, addr, token) = start(&fixture(), 0);
+    assert_eq!(get(addr, "/episodes", &[]).0, 401);
+    assert_eq!(get(addr, "/episodes", &[("X-Foe-Token", "0000")]).0, 401);
+    assert_eq!(get(addr, "/", &[]).0, 401);
+    // The query form is accepted only where a browser cannot send a header.
+    assert_eq!(get(addr, &format!("/episodes?token={token}"), &[]).0, 401);
+    let (code, body) = get(addr, "/episodes", &[("X-Foe-Token", &token)]);
+    assert_eq!(code, 200);
+    assert!(
+        body.contains("\"id\":\"ep_root\"") && body.contains("\"roots\""),
+        "{body}"
+    );
+    let (code, body) = get(addr, &format!("/?token={token}"), &[]);
+    assert_eq!(code, 200);
+    assert!(
+        body.contains("\"mode\":\"live\"") && body.contains(&token),
+        "{body}"
+    );
+    assert_eq!(get(addr, "/nothing", &[("X-Foe-Token", &token)]).0, 404);
+}
+
+#[test]
+fn rejects_foreign_origin() {
+    let (_rt, addr, token) = start(&fixture(), 0);
+    let auth = ("X-Foe-Token", token.as_str());
+    assert_eq!(
+        get(
+            addr,
+            "/episodes",
+            &[auth, ("Origin", "http://evil.example")]
+        )
+        .0,
+        403
+    );
+    assert_eq!(get(addr, "/episodes", &[auth, ("Origin", "null")]).0, 403);
+    let own = format!("http://{addr}");
+    assert_eq!(get(addr, "/episodes", &[auth, ("Origin", &own)]).0, 200);
+}
+
+#[test]
+fn sse_resumes_from_last_event_id() {
+    let (_rt, addr, token) = start(&fixture(), 0);
+    let target = format!("/events?episode=ep_root&token={token}");
+    let mut reader = connect(addr, &target, &[]);
+    let (code, head) = status(&mut reader);
+    assert_eq!(code, 200);
+    assert!(head.contains("Content-Type: text/event-stream"), "{head}");
+    let (id, data) = next_event(&mut reader);
+    assert_eq!(id, 0);
+    assert!(data.contains("\"type\":\"episode/start\""), "{data}");
+
+    let mut reader = connect(addr, &target, &[("Last-Event-ID", "5")]);
+    assert_eq!(status(&mut reader).0, 200);
+    let (id, data) = next_event(&mut reader);
+    assert_eq!(id, 6);
+    let event: Event = serde_json::from_str(&data).unwrap();
+    assert_eq!(event.seq, 6);
+    assert_eq!(next_event(&mut reader).0, 7);
+}
+
+#[test]
+fn sse_delivers_events_appended_while_connected() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(format!("../../target/foe-view-tail-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let lines: Vec<String> = std::fs::read_to_string(fixture().join("episode.jsonl"))
+        .unwrap()
+        .lines()
+        .map(str::to_string)
+        .collect();
+    let log = dir.join("episode.jsonl");
+    std::fs::write(&log, format!("{}\n{}\n", lines[0], lines[1])).unwrap();
+
+    let (_rt, addr, token) = start(&dir, 0);
+    let mut reader = connect(addr, &format!("/events?episode=ep_root&token={token}"), &[]);
+    assert_eq!(status(&mut reader).0, 200);
+    assert_eq!(next_event(&mut reader).0, 0);
+    assert_eq!(next_event(&mut reader).0, 1);
+
+    // A partial line is not an event until its newline arrives.
+    let mut file = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+    let (head, tail) = lines[2].split_at(20);
+    file.write_all(head.as_bytes()).unwrap();
+    file.flush().unwrap();
+    std::thread::sleep(Duration::from_millis(600));
+    file.write_all(format!("{tail}\n").as_bytes()).unwrap();
+    file.flush().unwrap();
+    let (id, data) = next_event(&mut reader);
+    assert_eq!(id, 2);
+    assert!(data.contains("\"type\":\"request/header\""), "{data}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn export_contains_every_event() {
     let html = foe_view::export(&fixture()).unwrap();
     assert!(html.contains("\"mode\":\"static\""));
@@ -95,6 +282,36 @@ fn export_contains_every_event() {
     }
     assert_eq!(html.matches("\"type\":\"episode/start\"").count(), 3);
     assert!(html.contains("\"tree\":{\"roots\":[{\"id\":\"ep_root\""));
+}
+
+#[test]
+fn serves_embedded_fonts_to_header_token_only() {
+    let (_rt, addr, token) = start(&fixture(), 0);
+    let auth = ("X-Foe-Token", token.as_str());
+    for (name, bytes) in present_fonts() {
+        let (code, head, body) = get_bytes(addr, &format!("/fonts/{name}"), &[auth]);
+        assert_eq!(code, 200, "{name}");
+        assert!(
+            head.contains("Content-Type: font/woff2") && head.contains("immutable"),
+            "{head}"
+        );
+        assert_eq!(body, bytes, "{name}");
+        assert_eq!(
+            get(addr, &format!("/fonts/{name}?token={token}"), &[]).0,
+            401
+        );
+    }
+    assert_eq!(get(addr, "/fonts/Missing.woff2", &[auth]).0, 404);
+    for name in FONTS
+        .iter()
+        .filter(|n| !present_fonts().iter().any(|(p, _)| p == *n))
+    {
+        assert_eq!(
+            get(addr, &format!("/fonts/{name}"), &[auth]).0,
+            404,
+            "{name}"
+        );
+    }
 }
 
 #[test]
