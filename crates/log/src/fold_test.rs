@@ -332,9 +332,35 @@ fn every_event_variant_round_trips() {
         EventData::CompactionStart(reserved.clone()),
         EventData::CompactionSummary(reserved.clone()),
         EventData::CompactionEnd(reserved.clone()),
-        EventData::WorkflowNodeStart(reserved.clone()),
-        EventData::WorkflowNodeEnd(reserved.clone()),
-        EventData::WorkflowRecovery(reserved),
+        EventData::WorkflowNodeStart(WorkflowNodeStart {
+            node: "survey".into(),
+            fire: 1,
+            inputs: vec![4],
+            child_id: Some("ep_1".into()),
+        }),
+        EventData::WorkflowNodeEnd(WorkflowNodeEnd {
+            node: "survey".into(),
+            fire: 1,
+            value: reserved,
+            rendered: "r".into(),
+            error: None,
+            duration_ms: 2,
+        }),
+        EventData::WorkflowBranch(WorkflowBranch {
+            node: "propose".into(),
+            fire: 1,
+            label: "accept".into(),
+            successors: vec!["derive".into()],
+        }),
+        EventData::WorkflowRecovery(WorkflowRecovery {
+            node: "derive".into(),
+            fire: 1,
+            cause: "tool-error".into(),
+            action: "retry".into(),
+            target: Some("survey".into()),
+            note: None,
+            intervention: 1,
+        }),
     ];
     let mut seen = std::collections::BTreeSet::new();
     for data in variants {
@@ -347,5 +373,5 @@ fn every_event_variant_round_trips() {
         assert_eq!(back, event);
         assert_eq!(serde_json::to_string(&back).unwrap(), line);
     }
-    assert_eq!(seen.len(), 26, "one of each event type, reserved ones included");
+    assert_eq!(seen.len(), 27, "one of each event type, reserved ones included");
 }

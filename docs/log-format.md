@@ -332,13 +332,52 @@ and a version 1 reader will render it.
 { "pid": 4120, "comm": "ruff", "path": "/etc/shadow", "access": "read" }
 ```
 
+### Workflows
+
+These events appear in the log of an episode whose configuration declares
+a `workflow`, which [workflow.md](workflow.md) specifies. Each firing of a
+model node is a child episode under `children/` with its own log. All four
+are reserved: their data shapes are fixed so that a version 1 reader
+renders them, and nothing emits them until the workflow executor ships.
+
+`workflow/node-start` — reserved. One firing of a node begins. `fire`
+counts the node's firings from 1. `inputs` lists the `seq` of the events
+that produced the values the node receives: the `workflow/node-end` of
+each predecessor, or the `workflow/recovery` that skipped one. `child_id`
+names the child episode of a model node and is absent otherwise.
+
+```json
+{ "node": "survey", "fire": 1, "inputs": [4], "child_id": "ep_9c21" }
+```
+
+`workflow/node-end` — reserved. The firing ended. `value` is the node's
+canonical output and `rendered` the text its successors receive. When the
+firing failed, `error` states why and `value` is null.
+
+```json
+{ "node": "survey", "fire": 1, "value": {}, "rendered": "…", "duration_ms": 1200 }
+```
+
+`workflow/branch` — reserved. A node with `branches` chose a label.
+
+```json
+{ "node": "propose", "fire": 1, "label": "accept", "successors": ["derive"] }
+```
+
+`workflow/recovery` — reserved. A recovery decision was made and applied.
+`cause` names what failed, `action` is `retry`, `amend`, `skip`, or
+`abort`, `target` names the node a retry or amend re-fires, `note` carries
+the text an amend appends, and `intervention` counts decisions in this
+episode from 1.
+
+```json
+{ "node": "derive", "fire": 1, "cause": "tool-error", "action": "retry", "target": "survey", "intervention": 1 }
+```
+
 ### Reserved
 
 `compaction/start`, `compaction/summary`, `compaction/end` — context
 summarization.
-
-`workflow/node-start`, `workflow/node-end`, `workflow/recovery` — declared
-dataflow graphs.
 
 ## Derived messages
 
@@ -407,7 +446,8 @@ in version 1. A supervising episode routes on it.
 | `missing-capability` | the task needs a tool or grant the program lacks |
 | `verification-unsatisfiable` | `done_when` retries were spent with findings still present |
 | `child-blocked` | a child episode was blocked and the parent cannot proceed |
-| `recovery-exhausted` | request retries were spent |
+| `recovery-exhausted` | request retries were spent, or a workflow reached a recovery bound |
+| `recovery-failed` | a workflow's recovery decision itself failed |
 
 The model reports `goal-unreachable`, `ambiguous-task`, and
 `missing-capability` by calling the built-in `block` tool with the code and a
