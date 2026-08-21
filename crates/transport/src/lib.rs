@@ -1,11 +1,12 @@
 //! Built-in model clients, used when a configuration has a `model` block.
 //!
-//! [`Anthropic`] implements [`foe_core::Transport`] for the Anthropic
-//! Messages API. It streams the response and translates provider events
-//! into the chunk vocabulary of `docs/protocol.md`, which the runtime
-//! records unchanged.
+//! Two clients implement [`foe_core::Transport`]: [`Anthropic`] for the
+//! Anthropic Messages API and [`OpenAiCompatible`] for the OpenAI Chat
+//! Completions API and the local servers and proxies that speak it. Both
+//! stream the response and translate provider events into the chunk
+//! vocabulary of `docs/protocol.md`, which the runtime records unchanged.
 //!
-//! What the client guarantees:
+//! What both clients guarantee:
 //!
 //! - The API key comes from the file named by `model.api_key_file` and from
 //!   nowhere else. No environment variable is read, including proxy
@@ -18,8 +19,11 @@
 //!   4xx status is not. A `Retry-After` header is carried in the error
 //!   message as `retry_after_ms=N`.
 //!
-//! `model.base_url` for Anthropic is the origin, `https://api.anthropic.com`,
-//! and the client appends `/v1/messages`.
+//! `model.base_url` follows each provider's own convention. For Anthropic
+//! it is the origin, `https://api.anthropic.com`, and the client appends
+//! `/v1/messages`. For OpenAI-compatible servers it includes the version
+//! prefix, `https://api.openai.com/v1` or `http://127.0.0.1:11434/v1`, and
+//! the client appends `/chat/completions`.
 //!
 //! The HTTP work runs on a blocking thread; `stream` forwards chunks to the
 //! caller's sink as they arrive.
@@ -29,15 +33,17 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use foe_core::Chunk;
+use foe_core::{Chunk, ModelConfig, Provider, Transport};
 
 pub mod anthropic;
 mod http;
+pub mod openai;
 mod sse;
 #[cfg(test)]
 mod testserver;
 
 pub use anthropic::Anthropic;
+pub use openai::OpenAiCompatible;
 
 /// Why a client could not be constructed. Every variant names the
 /// configuration key involved.
@@ -47,6 +53,27 @@ pub enum TransportError {
     ApiKeyFile { path: PathBuf, reason: String },
     #[error("model.base_url: {url}: {reason}")]
     BaseUrl { url: String, reason: String },
+}
+
+/// Builds the client a `model` block names. Reads the key file once, here;
+/// a construction error is therefore reported before any request.
+pub fn from_config(config: &ModelConfig) -> Result<Box<dyn Transport>, TransportError> {
+    let api_key = read_api_key(&config.api_key_file)?;
+    let base_url = config.base_url.as_deref();
+    Ok(match config.provider {
+        Provider::Anthropic => Box::new(Anthropic::new(
+            &config.model,
+            api_key,
+            base_url,
+            config.max_output_tokens,
+        )?),
+        Provider::OpenaiCompatible => Box::new(OpenAiCompatible::new(
+            &config.model,
+            api_key,
+            base_url,
+            config.max_output_tokens,
+        )?),
+    })
 }
 
 /// Reads the key file. Trailing whitespace, including the newline most
@@ -277,6 +304,16 @@ mod tests {
         dir.join(name)
     }
 
+    fn config(path: &Path, provider: Provider) -> ModelConfig {
+        ModelConfig {
+            provider,
+            model: "m".into(),
+            api_key_file: path.to_path_buf(),
+            base_url: None,
+            max_output_tokens: None,
+        }
+    }
+
     #[test]
     fn key_file_trailing_newline_is_trimmed() {
         let path = scratch("key-with-newline");
@@ -294,15 +331,34 @@ mod tests {
         assert!(err.starts_with("model.api_key_file: "), "{err}");
         assert!(err.ends_with("file is empty"), "{err}");
         let missing = scratch("key-missing-does-not-exist");
-        let err = read_api_key(&missing).unwrap_err().to_string();
+        let err = from_config(&config(&missing, Provider::Anthropic))
+            .err()
+            .expect("a missing key file fails")
+            .to_string();
         assert!(err.starts_with("model.api_key_file: "), "{err}");
         assert!(err.contains("key-missing-does-not-exist"), "{err}");
     }
 
     #[test]
+    fn from_config_selects_the_provider_route() {
+        let path = scratch("key-route");
+        std::fs::write(&path, "k").unwrap();
+        let t = from_config(&config(&path, Provider::Anthropic)).unwrap();
+        assert_eq!(t.route().provider, "anthropic");
+        assert_eq!(t.route().model, "m");
+        let t = from_config(&config(&path, Provider::OpenaiCompatible)).unwrap();
+        assert_eq!(t.route().provider, "openai-compatible");
+    }
+
+    #[test]
     fn bad_base_url_names_the_key() {
-        let err = parse_base_url("https://api.anthropic.com", Some("localhost:11434/v1"))
-            .unwrap_err()
+        let path = scratch("key-url");
+        std::fs::write(&path, "k").unwrap();
+        let mut cfg = config(&path, Provider::OpenaiCompatible);
+        cfg.base_url = Some("localhost:11434/v1".into());
+        let err = from_config(&cfg)
+            .err()
+            .expect("a bad base url fails")
             .to_string();
         assert_eq!(
             err,
