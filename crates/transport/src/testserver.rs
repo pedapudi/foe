@@ -69,15 +69,49 @@ impl Reply {
         }
     }
 
+    /// A complete event stream, one chunk per event, as providers send it.
+    pub fn sse(transcript: &str) -> Reply {
+        Reply::chunked(200, events(transcript)).with_header("content-type", "text/event-stream")
+    }
+
+    /// The first `count` events of a stream, after which the connection
+    /// drops without the chunked terminator.
+    pub fn sse_cut_after(transcript: &str, count: usize) -> Reply {
+        let pieces = events(transcript).into_iter().take(count).collect();
+        Reply::chunked_then_close(200, pieces).with_header("content-type", "text/event-stream")
+    }
+
     pub fn with_header(mut self, name: &str, value: &str) -> Reply {
         self.headers.push((name.to_string(), value.to_string()));
         self
     }
 }
 
+/// Splits a transcript at blank lines and re-attaches the event separator.
+fn events(transcript: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let bytes = transcript.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'\n' && bytes[i + 1] == b'\n' {
+            out.push(&transcript[start..i + 2]);
+            start = i + 2;
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    if start < transcript.len() {
+        out.push(&transcript[start..]);
+    }
+    out
+}
+
 /// One request as the server saw it.
 #[derive(Debug, Clone)]
 pub struct Recorded {
+    pub method: String,
     pub path: String,
     pub headers: Vec<(String, String)>,
     pub body: String,
@@ -89,6 +123,10 @@ impl Recorded {
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case(name))
             .map(|(_, v)| v.as_str())
+    }
+
+    pub fn json(&self) -> serde_json::Value {
+        serde_json::from_str(&self.body).expect("request body is JSON")
     }
 }
 
@@ -136,7 +174,8 @@ fn serve_one(mut stream: TcpStream, reply: Reply, recorded: &Mutex<Vec<Recorded>
     let mut line = String::new();
     reader.read_line(&mut line).expect("request line");
     let mut parts = line.split_whitespace();
-    let path = parts.nth(1).unwrap_or("").to_string();
+    let method = parts.next().unwrap_or("").to_string();
+    let path = parts.next().unwrap_or("").to_string();
     let mut headers = Vec::new();
     loop {
         line.clear();
@@ -156,6 +195,7 @@ fn serve_one(mut stream: TcpStream, reply: Reply, recorded: &Mutex<Vec<Recorded>
     let mut body = vec![0; length];
     reader.read_exact(&mut body).expect("request body");
     recorded.lock().expect("requests lock").push(Recorded {
+        method,
         path,
         headers,
         body: String::from_utf8(body).expect("utf-8 body"),
