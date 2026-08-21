@@ -1407,7 +1407,6 @@ table.events td.type.error {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  border-bottom: none;
 }
 
 .traj-axis {
@@ -1774,7 +1773,12 @@ h6.md-h {
 
 .md-math-block {
   margin: 0.6em 0;
+  max-width: 84ch;
   overflow-x: auto;
+}
+
+.math.display math {
+  font-size: 1.1em;
 }
 
 .math.invalid {
