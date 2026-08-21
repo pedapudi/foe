@@ -8,8 +8,8 @@ the sources are authoritative.
 | source | defines |
 |---|---|
 | `zicato/docs/design/DESIGN-LANGUAGE.md` | the colour role contract, the sixteen themes, the three typeface modes, the top bar, the pickers, the line-art figure conventions, the render discipline |
-| `zicato/src/zicato/dashboard/static/css/variants/T/console4.css` | the authoritative per-theme token blocks and the typeface token map; the only place raw hex appears |
-| `zicato/src/zicato/dashboard/static/js/variants/T/ui.js` | the swatch preview tuples and the picker behavior |
+| `zicato/src/zicato/dashboard/static/css/console.css` | the authoritative per-theme token blocks and the typeface token map; the only place raw hex appears |
+| `zicato/src/zicato/dashboard/static/js/ui.js` and `typefacedropdown.js` | the swatch preview tuples and the picker behavior |
 | `zicato/src/zicato/dashboard/static/fonts/` | the self-hosted woff2 files for the default typeface mode |
 | `diastil/docs/HOUSE-STYLE.md` | the drawing register for figures |
 
@@ -44,7 +44,7 @@ Three rules govern their use.
 - Panels are bounded by `--v2-rule`. No panel carries an accent-coloured
   left rail or border; the accent is reserved for signal.
 
-The sixteen themes are copied from `console4.css` without modification:
+The sixteen themes are copied from `console.css` without modification:
 `monokai` (default), `solarized-dark`, `solarized-light`, `google-light`,
 `google-dark`, `lunaria-light`, `lunaria-eclipse`, `belafonte-day`,
 `belafonte-night`, `paper`, `zenburn`, `selenized-black`, `relaxed`,
