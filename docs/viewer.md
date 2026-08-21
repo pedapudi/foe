@@ -11,15 +11,18 @@ a replay that has not finished.
 
 ## What the viewer shows
 
-Below the top bar the page has three regions.
+Below the top bar the page has four regions.
 
 - The **episodes** region, at the top of the left column, lists episodes as
   a tree by lineage.
 - The **details** region, below it, describes the selected episode.
 - The **trajectory** region, at the top of the right column, draws when
   each episode ran and what it did.
-- Below the trajectory sit the **conversation**, **raw events**, and
-  **diff** tabs for the selected episode.
+- The **main** region, below the trajectory, holds one tab at a time for
+  the selected episode: **conversation**, **raw events**, **diff**,
+  **workflow**, and **statistics**. The digits `1` to `5` select them in
+  that order. The workflow tab is present only for an episode whose
+  program declares a graph; the other four are always present.
 
 Every divider between two regions is a grip that resizes them, by drag, by
 the arrow keys, or to a limit with Home and End; a double click returns a
@@ -130,6 +133,170 @@ selects its episode and brings the conversation to that log position, where
 the row is marked until another is.
 Clicking a row label selects that episode, and `j` and `k` move between
 rows.
+
+## The workflow view
+
+The workflow tab draws the graph an episode declares and the run that went
+through it, in one figure. Both halves are drawn, because the argument of a
+declared workflow is that the graph bounds what the model may do while the
+model chooses freely inside it: a figure of the firings alone would show
+the choices and lose the bound.
+
+The declaration comes from `episode/start`, whose `program` is the resolved
+configuration with the task removed and whose `workflow` key holds the node
+declaration that [workflow.md](workflow.md) specifies. The run comes from
+`workflow/node-start`, `workflow/node-end`, `workflow/branch`, and
+`workflow/recovery` in the same log.
+
+| what is drawn | where it comes from |
+|---|---|
+| a box per declared node, with its name and its kind | `workflow.nodes` |
+| an edge per declared edge | each node's `follows` and `followed_by`, the built-in `task` source, and each `branches` label's successors |
+| a label per declared branch label | each node's `branches` |
+| a mark per firing, along the bottom of its node's box | `workflow/node-start` |
+| a fire count on the box | the number of `workflow/node-start` events for that node |
+| a glyph, an action, and a cause where a recovery happened | `workflow/recovery` |
+
+Weight over that structure is what the run did.
+
+- A node that never fired is drawn in neutral ink inside a dashed outline,
+  so that its absence from the run is visible.
+- An edge that carried a value is solid; an edge declared and never
+  traversed is faint and dashed. An edge carried a value when a
+  `workflow/node-start` on its target lists, among its `inputs`, the `seq`
+  of an event the source produced, or when a `workflow/branch` on its
+  source names its target among the successors of the chosen label.
+- Every declared label of a choice point is drawn, whether or not a firing
+  chose it. A label with no successor is drawn as a short stub ending in a
+  small open square, because the workflow ends along that path.
+- A node takes its outcome direction from its last `workflow/node-end`: an
+  error is `--v2-bad`, a clean end is `--v2-good`, and a node still running
+  or never fired is neutral.
+- A node that fired more than once carries its fire count, because a cycle
+  bounded by `max_fires` is legal.
+
+The labels a firing chose carry the figure's one accent, because the choice
+inside a bounded graph is what the figure argues. The firing mark of the
+selected child episode is drawn in heavier ink rather than in the accent.
+
+A model node's firing is a child episode. Clicking its mark selects that
+episode, exactly as clicking a mark in the trajectory does. Hovering any
+element opens a hovercard: a node names its kind, its firings, and its
+bound; an edge says whether a value crossed it; a label says whether a
+firing chose it and where it leads; a firing names its duration, the label
+it chose, and its child episode or its error; a recovery names the firing
+that failed, its cause, and the action taken.
+
+### Laying out the graph
+
+`src/workflow.ts` computes the layout as a pure function of the graph and
+the pane's width and returns positions; `src/render/workflow.ts` draws
+them. No force simulation is involved, so the same workflow always draws
+the same way.
+
+A depth-first walk from the nodes with no incoming edge, taking sources and
+successors in name order, names every edge that closes a cycle. Rank is
+then the longest path of the remaining edges that reaches a node, and the
+column at each rank is ordered by name. An edge that closes a cycle is
+routed under the rows and drawn from right to left. The built-in `task`
+source imposes no order on the graph, so it stands alone in a column ahead
+of every node.
+
+The gap between two columns holds the branch labels of the left one and is
+never narrower than the longest of them needs. A pane too narrow for the
+figure shrinks the boxes to their minimum; below that the figure keeps its
+own width and the pane scrolls it sideways.
+
+## The statistics view
+
+The statistics tab draws six figures over the selected episode, or over
+that episode together with every episode under it. A control in the tab's
+header switches between the two, because a child spends from the budget
+pool its root holds: the tree is the scope a declared limit actually
+bounds. Every quantity is derived in the browser from events the log
+already carries.
+
+Two rules govern the presentation.
+
+- Every figure states the arithmetic behind a number a reader could not
+  derive by eye. Hovering it opens a hovercard giving the quantity's
+  definition and the values it was computed from, so a cache hit rate of
+  4.3 percent shows the 2,560 and the 60,041 behind it.
+- A quantity no event in the scope measured is shown as absent rather than
+  as zero. A run with no cache-read figure has no hit rate, and drawing it
+  as zero percent would assert a measurement that was not made. A share
+  short of the whole never rounds to the whole either: a run that spent
+  99.76 percent of its wall clock inside model requests reads 99.8 percent.
+
+### The quantities
+
+A step is one `model/request` and the answer it received, matched by
+`request_id`. A retried attempt is a step of its own, and a compaction's
+own summarization call, whose `request_id` starts with `cmp_`, is a step
+marked as such.
+
+| quantity | definition |
+|---|---|
+| time to first token | milliseconds from a step's `model/request` to the first `assistant/chunk` of that request whose `chunk.kind` is not `error`. A request answered only by an error produced no token, so the quantity is absent for it. |
+| total latency | milliseconds from a step's `model/request` to its `assistant/message`. Absent for a request no message answered. |
+| output rate | the step's `usage.output` divided by its total latency in seconds. |
+| input tokens per step | the step's `usage.input`. |
+| model time | the total, over every step, of the interval from its `model/request` to the last event that request produced: its `assistant/message`, or its last `assistant/chunk` when no message came. |
+| tool time | the total of `duration_ms` over every `tool/result`. |
+| retry backoff | the total of `delay_ms` over every `request/retry`. |
+| wall clock | the scope root's `episode/start` to its `episode/end`, or to the current clock while it runs. |
+| unaccounted time | the wall clock less model time, tool time, and retry backoff. |
+| cache hit rate | the total of `usage.cache_read` divided by the total of `usage.input`, both over every `assistant/message` in the scope. Absent when no answer reported a cache-read figure. |
+| tool calls by name | `tool/result` events grouped by `name`, each with its count, the total of its `duration_ms`, and its error count. |
+
+Budget consumption is counted the way the runtime's own pool counts it, so
+that the figure and the runtime never disagree.
+
+| limit in `program.budget` | what is counted against it |
+|---|---|
+| `model_calls` | one per `model/request`, retried attempts included |
+| `tokens` | `usage.input` plus `usage.output` over every `assistant/message` |
+| `seconds` | the scope root's wall clock |
+| `max_episodes` | the episodes in the scope, the root itself included |
+| `max_depth` | the deepest lineage below the scope's root |
+
+A limit the program does not declare has no row. `max_concurrent` and
+`loop_threshold` have no row either: neither bounds a quantity the log
+accumulates, so neither has a consumption to draw.
+
+### The figures
+
+**Where the wall clock went** is one bar divided into model time, tool
+time, retry backoff, and unaccounted time, with the largest share accented
+because which share dominates is what the figure argues. When the episodes
+of the scope ran at the same time the intervals sum past the wall clock;
+the bar then divides by that sum and says so, rather than drawing a share
+above one.
+
+**Context growth** plots input tokens against step position, one line per
+episode of the scope, with the longest line accented. The declared token
+limit is a dashed envelope across the plot, and the top of the plot is the
+larger of that limit and the highest point. Context growth against a
+declared limit is what decides whether a run completes, and the curve makes
+visible what a total conceals. A compaction's own call is left out, because
+its input is the summarization prompt rather than the context.
+
+**Per step** is one row per step with its time to first token, its total
+latency, its output rate, and a bar whose filled head is the wait for the
+first token and whose tail is the wait for the whole answer. The slowest
+answered step is accented. Clicking a row brings the conversation to that
+request.
+
+**Cache reads** is one proportion bar of cache-read tokens against total
+input tokens, or the absent word when no answer reported the figure.
+
+**Budget** is one row per declared limit with what the scope spent, the
+share of the limit, and a hairline mark of that share which takes
+`--v2-caution` once the limit is reached.
+
+**Tool calls** is one row per tool name with its call count, the total
+duration its results report, its error count, and a bar of that duration
+against the longest.
 
 ## Rendering text
 

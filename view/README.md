@@ -49,9 +49,10 @@ pnpm fixtures       # regenerates fixtures/*.jsonl from fixtures/generate.mjs
 into the matching element.
 
 The tests cover the derived-messages rule, the episode fold, the lineage
-helpers, the trajectory layout, the pane sizes, the Markdown parser, the
-syntax tokenizer, and the unified diff reader. Each of those modules is pure
-and reads no document, so the tests run under `node --test` with no browser.
+helpers, the trajectory layout, the workflow graph and its layout, the
+statistics, the pane sizes, the Markdown parser, the syntax tokenizer, and
+the unified diff reader. Each of those modules is pure and reads no
+document, so the tests run under `node --test` with no browser.
 
 The fixtures are twelve episode logs.
 
@@ -198,7 +199,7 @@ mark opens a hovercard; clicking one selects that episode and brings the
 conversation to that log position. `src/trajectory.ts` holds the placement
 rules and `src/render/trajectory.ts` draws them.
 
-The main region has three tabs.
+The main region has five tabs.
 
 - **conversation**: one row per event that contributes to the dialogue.
   The latest `request/header` appears as a collapsed system prompt row, with
@@ -226,6 +227,18 @@ The main region has three tabs.
   suffixes follow side by side. Two episodes share a prefix when one is a
   fork of the other or both descend by forking from a common origin; the
   shared length is the smallest seed boundary on the path between them.
+- **workflow**: the graph the episode declares, drawn with the run over it.
+  Every declared node, edge, and branch label is drawn whether or not the
+  run reached it; what fired is solid, accented, and coloured by outcome
+  direction. Present only for an episode whose program declares a graph.
+  `src/workflow.ts` reads the graph and places it and
+  `src/render/workflow.ts` draws it.
+- **statistics**: six figures over the selected episode, or over that
+  episode and its descendants. Every number a reader could not derive by
+  eye carries a hovercard with its definition and the values behind it, and
+  a quantity no event measured reads as absent rather than as zero.
+  `src/statistics.ts` derives the quantities and places the figures and
+  `src/render/statistics.ts` draws them.
 
 New events patch only the rows they create or change. Scroll position
 follows the end while the reader is at the end and stays put otherwise.
@@ -235,8 +248,9 @@ changes.
 
 Keyboard: `j` and `k` move the cursor through the episode rows, `Enter`
 selects the cursor, `c` marks the cursor for comparison, `/` opens the raw
-events tab and focuses the filter, and `1`, `2`, `3` switch tabs. A focused
-grip answers the arrow keys, Home, and End.
+events tab and focuses the filter, and `1` to `5` switch tabs in the order
+the tab strip lists them. A focused grip answers the arrow keys, Home, and
+End.
 
 ## Rendering Markdown, code, diffs, and mathematics
 
@@ -322,6 +336,8 @@ src/chrome.ts                 top bar, pickers, persisted settings
 src/brand.ts                  the lockup and the research-preview tag
 src/panes.ts                  region sizes, the grips, and their persistence
 src/trajectory.ts             where every mark of the timeline goes
+src/workflow.ts               a declared graph, its run, and its layout
+src/statistics.ts             every quantity the statistics tab shows
 src/source.ts                 static and live event sources
 src/fold.ts                   one episode log to rows, a summary, and marks
 src/messages.ts               the derived-messages rule
@@ -329,6 +345,9 @@ src/lineage.ts                the tree and the shared fork prefix
 src/render/conversation.ts    the dialogue rows
 src/render/trajectory.ts      the timeline figure
 src/render/tree.ts            the episode tree and the details panel
+src/render/workflow.ts        the declared graph with the run over it
+src/render/statistics.ts      the six statistics figures
+src/render/hovercard.ts       the hovercard both figures state numbers in
 src/render/raw.ts             the raw events table
 src/render/diff.ts            two forked episodes side by side
 src/render/markdown.ts        the Markdown parser
