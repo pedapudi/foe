@@ -47,7 +47,8 @@ pub fn head(lines: &[&str], max_lines: usize, max_bytes: usize) -> Cut {
     Cut { start: 0, end }
 }
 
-/// The longest suffix of `lines` within both limits.
+/// The longest suffix of `lines` within both limits. Only `bash` keeps a tail.
+#[cfg(any(feature = "exec", test))]
 pub fn tail(lines: &[&str], max_lines: usize, max_bytes: usize) -> Cut {
     let mut bytes = 0;
     let mut start = lines.len();
