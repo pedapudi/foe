@@ -21,6 +21,7 @@ piece.
 | [sandbox.md](sandbox.md) | how grants compile into kernel restrictions |
 | [viewer.md](viewer.md) | the trajectory viewer |
 | [landscape.md](landscape.md) | the surrounding field of agent runtimes |
+| [evaluation.md](evaluation.md) | runtime conformance checks and the model-backed benchmark protocol |
 | [deferred.md](deferred.md) | features with reserved event types and no implementation |
 | [workflow.md](workflow.md) | declared dataflow graphs, choice points, and recovery |
 | [compaction.md](compaction.md) | when and how the model's context is compacted, and what survives the cut |

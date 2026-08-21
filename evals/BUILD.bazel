@@ -1,0 +1,48 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+sh_binary(
+    name = "score-trace",
+    srcs = ["trace_quality.py"],
+)
+
+sh_binary(
+    name = "runtime-evals",
+    srcs = ["run_runtime_evals.py"],
+    args = ["--foe", "$(rootpath //:foe)"],
+    data = [
+        "scripted_transport.py",
+        "trace_quality.py",
+        "//:foe",
+    ],
+)
+
+sh_test(
+    name = "trace_quality_test",
+    srcs = ["run_unit_tests.sh"],
+    data = [
+        "trace_quality.py",
+        "trace_quality_test.py",
+    ],
+    size = "small",
+)
+
+sh_test(
+    name = "runtime_evals_test",
+    srcs = ["run_runtime_evals.py"],
+    args = ["--foe", "$(rootpath //:foe)"],
+    data = [
+        "scripted_transport.py",
+        "trace_quality.py",
+        "//:foe",
+    ],
+    size = "small",
+)
+
+test_suite(
+    name = "conformance_tests",
+    tests = [
+        ":runtime_evals_test",
+        ":trace_quality_test",
+    ],
+)

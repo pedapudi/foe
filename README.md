@@ -112,6 +112,19 @@ sh examples/minimal/run.sh          # or: bazel run //examples/minimal
 bazel test //examples/...           # every example at once
 ```
 
+## Evaluation
+
+The dependency-free conformance suite runs deterministic episodes through the
+built binary. It checks authority denial, reconstructable evidence, all four
+outcome variants, shared child budgets, workflow provenance, and compaction:
+
+```sh
+bazel test //evals:conformance_tests
+```
+
+The suite requires no model credential. [docs/evaluation.md](docs/evaluation.md)
+specifies the conformance checks and the model-backed benchmark protocol.
+
 ## Embedding
 
 A host program launches the binary, reads the log from standard output, and
@@ -135,6 +148,7 @@ measuring and fails a build over 8 MiB.
 |---|---|
 | [docs/build.md](docs/build.md) | how to install, build with Bazel, run the end-to-end demos, and use Cargo for Rust development |
 | [docs/design.md](docs/design.md) | what foe guarantees and the structure that delivers it |
+| [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |
