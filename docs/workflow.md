@@ -50,10 +50,13 @@ decides, within those bounds, what to do.
     "manifest": { "tool": "list_mutation_points" },
     "survey":   { "tool": "grep",
                   "args": { "pattern": { "$node": "manifest", "pointer": "/top_symbol" } },
-                  "follows": ["manifest"] },
+                  "follows": ["manifest"],
+                  "max_fires": 3 },
     "propose":  { "model": {
+                    "name": "propose",
                     "instructions": { "10-role": "Propose one experiment grounded in the survey." },
                     "tools": ["read", "grep"],
+                    "grants": { "read": ["/home/user/project"] },
                     "budget": { "model_calls": 8 },
                     "done_when": { "returns": { "type": "object", "properties": {} } }
                   },
@@ -110,9 +113,10 @@ edge. The graph is the union. Duplicate edges are not an error.
 
 `args` is the argument object for the call. A value of the form
 `{ "$node": NAME }` is replaced by that node's canonical output; with
-`"pointer"`, by the value at that JSON Pointer within it. NAME must appear
-in `follows`. No other substitution exists. A tool node has no judgment of
-its own; when its call fails, recovery decides.
+`"pointer"`, by the value at that JSON Pointer within it. NAME must be one
+of the node's inputs: a name in its `follows`, or a node whose
+`followed_by` names it. No other substitution exists. A tool node has no
+judgment of its own; when its call fails, recovery decides.
 
 ### Model nodes
 
@@ -274,8 +278,8 @@ When a bound is reached, the episode ends as `blocked` with
 decision that itself fails ends the episode with `recovery-failed`.
 Recovery never recurses: a failure inside a recovery decision is terminal.
 
-`"recovery": false` at the workflow level disables it; a node failure then
-ends the episode with the node's outcome.
+`"recovery": { "enabled": false }` at the workflow level disables it; a
+node failure then ends the episode with the node's outcome.
 
 ## Agency, summarized
 

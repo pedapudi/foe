@@ -248,6 +248,7 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
         model: parent.model.clone(),
         sandbox: parent.sandbox.clone(),
         programs: program.programs.clone(),
+        workflow: program.workflow.clone(),
         task,
     }
 }

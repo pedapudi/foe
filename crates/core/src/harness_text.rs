@@ -58,9 +58,44 @@ pub const SECTION_SEPARATOR: &str = "\n\n";
 pub const TOOL_INSTRUCTIONS_HEADING: &str = "# Tool instructions";
 pub const TOOL_INSTRUCTION_TEMPLATE: &str = "## {name}\n\n{instruction}";
 
-/// Every constant above, by name, in a fixed order. Identity hashes this
-/// list together with the result text seeding writes, which lives in the
-/// log crate.
+/// Frames one section of a workflow node's task: a predecessor's name and
+/// its rendered output, or `findings` and `recovery` with their text. See
+/// docs/workflow.md "Model nodes".
+pub const WORKFLOW_SECTION: &str = "## {name}\n\n{body}";
+
+pub const RECOVER_NAME: &str = "recover";
+pub const RECOVER_DESCRIPTION: &str = "Choose the one action the workflow performs after the failure described in \
+the message. Call it exactly once.";
+
+/// The system prompt of a workflow recovery decision. An author cannot
+/// change it; identity hashes it. See docs/workflow.md "Recovery".
+pub const WORKFLOW_RECOVERY_INSTRUCTION: &str = "A node of a declared workflow failed, and you decide how the \
+workflow proceeds. The message shows the failed node's inputs, its output or error, any verifier findings, and \
+the nodes you may act on. Respond with one call to `recover`. `retry` re-fires the named node and everything \
+downstream of it; `amend` does the same and appends your note to that node's inputs as a section labeled \
+`recovery`; `skip` lets the failed node contribute its declared empty value; `abort` ends the episode as blocked \
+with your code and message. Only the nodes listed are offered. Abort when no action can let the workflow complete.";
+
+/// The section of a recovery message that states the failure and what may
+/// be done about it.
+pub const WORKFLOW_RECOVERY_FAILURE: &str = "Node `{node}` failed on firing {fire}: {cause}.\n\n{detail}\n\nretry \
+and amend may name: {targets}. skip is {skip}.";
+
+/// The texts above that only a workflow episode shows the model. The
+/// workflow section of the identity document hashes them, so rewording one
+/// changes the identity of every workflow and of nothing else.
+pub fn workflow_texts() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("section", WORKFLOW_SECTION),
+        ("recover.description", RECOVER_DESCRIPTION),
+        ("recovery.instruction", WORKFLOW_RECOVERY_INSTRUCTION),
+        ("recovery.failure", WORKFLOW_RECOVERY_FAILURE),
+    ]
+}
+
+/// Every constant above except the workflow texts, by name, in a fixed
+/// order. Identity hashes this list together with the result text seeding
+/// writes, which lives in the log crate.
 pub fn all() -> Vec<(&'static str, &'static str)> {
     vec![
         ("block.description", BLOCK_DESCRIPTION),

@@ -6,7 +6,8 @@
 //! absent. Computing it reads the executables named in `tool_defs` to hash
 //! their content, executes nothing, and opens no socket.
 
-use crate::config::Program;
+use crate::config::{resolve_node_program, Program};
+use crate::workflow::WorkflowConfig;
 use crate::{harness_text, registry, ConfigError, ToolSpec};
 use foe_log::RuntimeInfo;
 use serde_json::{json, Value};
@@ -62,6 +63,8 @@ pub fn compute(program: &Program, extra_builtins: &[ToolSpec], runtime: &Runtime
     }
     let texts: serde_json::Map<String, Value> =
         harness_text::all().into_iter().map(|(k, v)| (k.to_string(), Value::String(v.to_string()))).collect();
+    let workflow =
+        program.workflow.as_ref().map(|wf| workflow_document("workflow", wf, program, extra_builtins, runtime));
     let document = json!({
         "name": program.name,
         "instructions": program.instructions,
@@ -74,11 +77,47 @@ pub fn compute(program: &Program, extra_builtins: &[ToolSpec], runtime: &Runtime
         "budget": program.budget,
         "done_when": program.done_when,
         "programs": programs,
+        "workflow": workflow.transpose()?,
         "harness_text": { "version": harness_text::VERSION, "texts": texts },
         "runtime": runtime,
     });
     let hash = format!("sha256:{}", sha256_hex(canonical(&document).as_bytes()));
     Ok(Identity { hash, document })
+}
+
+/// The workflow part of the identity document: everything docs/workflow.md
+/// "Identity" lists, with each model node's program reduced to its hash.
+fn workflow_document(
+    prefix: &str,
+    wf: &WorkflowConfig,
+    parent: &Program,
+    extra_builtins: &[ToolSpec],
+    runtime: &RuntimeInfo,
+) -> Result<Value, ConfigError> {
+    let inputs = wf.inputs();
+    let mut nodes = serde_json::Map::new();
+    for (name, node) in &wf.nodes {
+        let key = format!("{prefix}.nodes.{name}");
+        let mut entry = serde_json::to_value(node)?;
+        let fields = entry.as_object_mut().expect("a node serializes to an object");
+        fields.remove("followed_by");
+        fields.insert("follows".into(), json!(inputs[name]));
+        fields.insert("max_fires".into(), json!(node.max_fires.unwrap_or(1)));
+        if let Some(child) = &node.model {
+            let program = resolve_node_program(&format!("{key}.model"), parent, child)?;
+            fields.insert("model".into(), json!(compute(&program, extra_builtins, runtime)?.hash));
+        }
+        if let Some(inner) = &node.workflow {
+            let inner = workflow_document(&format!("{key}.workflow"), inner, parent, extra_builtins, runtime)?;
+            fields.insert("workflow".into(), inner);
+        }
+        nodes.insert(name.clone(), entry);
+    }
+    let texts: serde_json::Map<String, Value> = harness_text::workflow_texts()
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), Value::String(v.to_string())))
+        .collect();
+    Ok(json!({ "nodes": nodes, "max_interventions": wf.recovery.max_interventions, "texts": texts }))
 }
 
 #[cfg(test)]

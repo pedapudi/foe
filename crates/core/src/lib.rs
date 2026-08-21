@@ -37,6 +37,7 @@ pub mod team;
 #[path = "fixtures_test.rs"]
 mod test_util;
 pub mod wiring;
+pub mod workflow;
 
 // ---- tools --------------------------------------------------------------------
 
@@ -269,6 +270,9 @@ pub struct Config {
     pub sandbox: SandboxConfig,
     #[serde(default)]
     pub programs: BTreeMap<String, ChildProgram>,
+    /// A declared graph that replaces the free loop. See docs/workflow.md.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<workflow::WorkflowConfig>,
     pub task: String,
 }
 
@@ -413,6 +417,8 @@ pub struct ChildProgram {
     pub done_when: Option<DoneWhen>,
     #[serde(default)]
     pub programs: BTreeMap<String, ChildProgram>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<workflow::WorkflowConfig>,
 }
 
 // ---- errors --------------------------------------------------------------------

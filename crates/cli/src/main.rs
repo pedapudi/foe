@@ -286,6 +286,7 @@ mod tests {
             "tool_defs",
             "tools",
             "version",
+            "workflow",
         ];
         assert_eq!(keys, expected);
     }
