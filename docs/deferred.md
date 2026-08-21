@@ -19,6 +19,8 @@ Workflow graphs are not implemented. Reserved event types: `workflow/node-start`
 `workflow/node-end`, `workflow/recovery`, each carrying an unconstrained JSON
 object. No configuration key is reserved.
 
+The full specification is [workflow.md](workflow.md).
+
 ## Context compaction
 
 Context compaction replaces a prefix of the conversation with a summary when

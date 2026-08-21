@@ -15,6 +15,7 @@ specify one piece each.
 | [viewer.md](viewer.md) | what the viewer shows and how it is served and exported |
 | [landscape.md](landscape.md) | what other agent runtimes do and where foe differs |
 | [deferred.md](deferred.md) | the features with reserved event types or keys and no implementation |
+| [workflow.md](workflow.md) | how a declared graph of nodes runs, where the model keeps its judgment inside it, and how failures are recovered |
 | [design-language.md](design-language.md) | the visual language the viewer follows |
 
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the

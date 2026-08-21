@@ -115,6 +115,8 @@ pub enum EventData {
     WorkflowNodeEnd(serde_json::Value),
     #[serde(rename = "workflow/recovery")]
     WorkflowRecovery(serde_json::Value),
+    #[serde(rename = "workflow/branch")]
+    WorkflowBranch(serde_json::Value),
 }
 
 impl EventData {
@@ -147,6 +149,7 @@ impl EventData {
             EventData::WorkflowNodeStart(_) => "workflow/node-start",
             EventData::WorkflowNodeEnd(_) => "workflow/node-end",
             EventData::WorkflowRecovery(_) => "workflow/recovery",
+            EventData::WorkflowBranch(_) => "workflow/branch",
         }
     }
 }

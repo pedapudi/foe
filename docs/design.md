@@ -21,6 +21,7 @@ piece.
 | [viewer.md](viewer.md) | the trajectory viewer |
 | [landscape.md](landscape.md) | the surrounding field of agent runtimes |
 | [deferred.md](deferred.md) | features with reserved event types and no implementation |
+| [workflow.md](workflow.md) | declared dataflow graphs, choice points, and recovery |
 | [design-language.md](design-language.md) | the visual language the viewer follows |
 
 ## The problem
