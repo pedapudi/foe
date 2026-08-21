@@ -6,10 +6,21 @@ license.workspace = true
 repository.workspace = true
 description = "Built-in coding tools: read, grep, edit, bash"
 
+[features]
+default = ["exec"]
+# The `bash` tool. A build without this feature contains no code that starts a process.
+exec = []
+
 [dependencies]
 foe-core = { path = "../core" }
-foe-log = { path = "../log" }
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
+async-trait.workspace = true
+grep-searcher = "0.1"
+grep-regex = "0.1"
+grep-matcher = "0.1"
+ignore = "0.4"
+
+[dev-dependencies]
 tokio.workspace = true
+tempfile = "3"
