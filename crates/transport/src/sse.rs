@@ -73,32 +73,14 @@ mod tests {
     fn parses_named_and_unnamed_events() {
         let events = all("event: ping\ndata: {\"type\":\"ping\"}\n\ndata: a\ndata: b\n\n");
         assert_eq!(events.len(), 2);
-        assert_eq!(
-            events[0],
-            Event {
-                name: "ping".into(),
-                data: "{\"type\":\"ping\"}".into()
-            }
-        );
-        assert_eq!(
-            events[1],
-            Event {
-                name: String::new(),
-                data: "a\nb".into()
-            }
-        );
+        assert_eq!(events[0], Event { name: "ping".into(), data: "{\"type\":\"ping\"}".into() });
+        assert_eq!(events[1], Event { name: String::new(), data: "a\nb".into() });
     }
 
     #[test]
     fn ignores_comments_crlf_and_events_without_data() {
         let events = all(": keep-alive\r\n\r\nevent: orphan\r\n\r\ndata:[DONE]\r\n\r\n");
-        assert_eq!(
-            events,
-            vec![Event {
-                name: String::new(),
-                data: "[DONE]".into()
-            }]
-        );
+        assert_eq!(events, vec![Event { name: String::new(), data: "[DONE]".into() }]);
     }
 
     #[test]

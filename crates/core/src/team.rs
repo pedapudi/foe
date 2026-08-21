@@ -15,13 +15,9 @@
 //! docs/protocol.md "Children".
 
 use crate::spawn::{ChildObserver, Router};
-use crate::{
-    CallCtx, CapError, Effect, HostToolDef, SpawnHandle, SpawnRequest, Spawner, Tool, ToolSpec,
-    ToolValue,
-};
+use crate::{CallCtx, CapError, Effect, HostToolDef, SpawnHandle, SpawnRequest, Spawner, Tool, ToolSpec, ToolValue};
 use foe_log::{
-    BudgetAmount, ContentBlock, Event, EventData, InboxItem, InboxSource, MemberPhase, Outcome,
-    SpawnContext,
+    BudgetAmount, ContentBlock, Event, EventData, InboxItem, InboxSource, MemberPhase, Outcome, SpawnContext,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -78,9 +74,7 @@ impl TeamState {
     /// Messages queued and never delivered; redelivered when the target
     /// restarts.
     pub fn undelivered(&self) -> impl Iterator<Item = &Queued> {
-        self.queue
-            .iter()
-            .filter(|m| !self.delivered.contains(&m.message_id))
+        self.queue.iter().filter(|m| !self.delivered.contains(&m.message_id))
     }
 
     fn roster_value(&self) -> serde_json::Value {
@@ -94,11 +88,8 @@ impl TeamState {
         if self.roster.is_empty() {
             return "no members".to_string();
         }
-        let rows: Vec<String> = self
-            .roster
-            .iter()
-            .map(|m| format!("{}\t{}\t{}", m.name, m.member_id, kebab(&m.phase)))
-            .collect();
+        let rows: Vec<String> =
+            self.roster.iter().map(|m| format!("{}\t{}\t{}", m.name, m.member_id, kebab(&m.phase))).collect();
         rows.join("\n")
     }
 }
@@ -107,34 +98,22 @@ impl TeamState {
 /// seeding, which precede `seed/end`, belong to that log's episode and are
 /// skipped.
 pub fn fold(events: &[Event]) -> TeamState {
-    let live_from = events
-        .iter()
-        .rev()
-        .find(|e| matches!(e.data, EventData::SeedEnd {}))
-        .map_or(0, |e| e.seq + 1);
+    let live_from = events.iter().rev().find(|e| matches!(e.data, EventData::SeedEnd {})).map_or(0, |e| e.seq + 1);
     let mut state = TeamState::default();
     for event in events.iter().filter(|e| e.seq >= live_from) {
         match &event.data {
-            EventData::TeamRoster {
-                member_id,
-                name,
-                description,
-                phase,
-            } => match state.roster.iter_mut().find(|m| m.member_id == *member_id) {
-                Some(m) => m.phase = *phase,
-                None => state.roster.push(Member {
-                    member_id: member_id.clone(),
-                    name: name.clone(),
-                    description: description.clone(),
-                    phase: *phase,
-                }),
-            },
-            EventData::TeamMessage {
-                message_id,
-                from,
-                to,
-                content,
-            } => state.queue.push(Queued {
+            EventData::TeamRoster { member_id, name, description, phase } => {
+                match state.roster.iter_mut().find(|m| m.member_id == *member_id) {
+                    Some(m) => m.phase = *phase,
+                    None => state.roster.push(Member {
+                        member_id: member_id.clone(),
+                        name: name.clone(),
+                        description: description.clone(),
+                        phase: *phase,
+                    }),
+                }
+            }
+            EventData::TeamMessage { message_id, from, to, content } => state.queue.push(Queued {
                 message_id: message_id.clone(),
                 from: from.clone(),
                 to: to.clone(),
@@ -172,20 +151,8 @@ pub struct Team {
 }
 
 impl Team {
-    pub fn new(
-        lead_id: String,
-        log: Arc<dyn LeadLog>,
-        inbox: Arc<dyn InboxSink>,
-        router: Arc<Router>,
-    ) -> Self {
-        Team {
-            lead_id,
-            log,
-            inbox,
-            router,
-            roster_lock: Mutex::new(()),
-            messages: AtomicU64::new(0),
-        }
+    pub fn new(lead_id: String, log: Arc<dyn LeadLog>, inbox: Arc<dyn InboxSink>, router: Arc<Router>) -> Self {
+        Team { lead_id, log, inbox, router, roster_lock: Mutex::new(()), messages: AtomicU64::new(0) }
     }
 
     pub fn state(&self) -> TeamState {
@@ -193,17 +160,10 @@ impl Team {
     }
 
     /// Starts a child and records it in the roster as provisioning.
-    pub fn spawn(
-        &self,
-        spawner: &dyn Spawner,
-        req: SpawnRequest,
-        name: &str,
-    ) -> Result<SpawnHandle, CapError> {
+    pub fn spawn(&self, spawner: &dyn Spawner, req: SpawnRequest, name: &str) -> Result<SpawnHandle, CapError> {
         let _guard = self.roster_lock.lock().unwrap();
         if self.state().member(name).is_some() {
-            return Err(CapError::Invalid(format!(
-                "a member named {name} already exists"
-            )));
+            return Err(CapError::Invalid(format!("a member named {name} already exists")));
         }
         let description = req.task.clone();
         let handle = spawner.spawn(req)?;
@@ -219,15 +179,9 @@ impl Team {
     /// Writes an inbox item to a member, addressed by roster name.
     pub fn steer(&self, name: &str, content: Vec<ContentBlock>) -> Result<(), CapError> {
         let state = self.state();
-        let member = state
-            .member(name)
-            .ok_or_else(|| CapError::Invalid(format!("no member named {name}")))?;
-        let item = InboxItem {
-            source: InboxSource::Parent,
-            content,
-            from: Some(self.lead_id.clone()),
-            message_id: None,
-        };
+        let member = state.member(name).ok_or_else(|| CapError::Invalid(format!("no member named {name}")))?;
+        let item =
+            InboxItem { source: InboxSource::Parent, content, from: Some(self.lead_id.clone()), message_id: None };
         self.router.send_inbox(&member.member_id, &item)
     }
 
@@ -238,27 +192,15 @@ impl Team {
             .member_by_id(member_id)
             .map(|m| (m.name.clone(), m.description.clone()))
             .unwrap_or_else(|| (member_id.to_string(), String::new()));
-        self.log.append(EventData::TeamRoster {
-            member_id: member_id.to_string(),
-            name,
-            description,
-            phase,
-        });
+        self.log.append(EventData::TeamRoster { member_id: member_id.to_string(), name, description, phase });
     }
 
     /// Queues a message from one member to another and attempts delivery. A
     /// failed delivery leaves the message queued without a delivery record;
     /// the fold reports it as undelivered.
-    fn send(
-        &self,
-        from: &str,
-        to_name: &str,
-        content: Vec<ContentBlock>,
-    ) -> Result<String, CapError> {
+    fn send(&self, from: &str, to_name: &str, content: Vec<ContentBlock>) -> Result<String, CapError> {
         let state = self.state();
-        let target = state
-            .member(to_name)
-            .ok_or_else(|| CapError::Invalid(format!("no member named {to_name}")))?;
+        let target = state.member(to_name).ok_or_else(|| CapError::Invalid(format!("no member named {to_name}")))?;
         let message_id = format!("tm_{:02}", self.messages.fetch_add(1, Ordering::SeqCst) + 1);
         self.log.append(EventData::TeamMessage {
             message_id: message_id.clone(),
@@ -285,11 +227,7 @@ impl ChildObserver for Team {
                 if matches!(outcome, Outcome::Failed { .. }) {
                     self.set_phase(child_id, MemberPhase::Failed);
                 }
-                let name = self
-                    .state()
-                    .member_by_id(child_id)
-                    .map(|m| m.name.clone())
-                    .unwrap_or_default();
+                let name = self.state().member_by_id(child_id).map(|m| m.name.clone()).unwrap_or_default();
                 let text = format!("{name} ({child_id}) ended: {}", render_outcome(outcome));
                 self.inbox.append(InboxItem {
                     source: InboxSource::Child,
@@ -300,10 +238,7 @@ impl ChildObserver for Team {
             }
             EventData::InboxItem(item) if item.source == InboxSource::Peer => {
                 if let Some(id) = &item.message_id {
-                    self.log.append(EventData::TeamDelivered {
-                        message_id: id.clone(),
-                        to: child_id.to_string(),
-                    });
+                    self.log.append(EventData::TeamDelivered { message_id: id.clone(), to: child_id.to_string() });
                 }
             }
             _ => {}
@@ -336,10 +271,9 @@ impl ChildObserver for Team {
                 ToolValue::ok(serde_json::json!({ "sent": true }), "sent")
             }
             Kind::Send => match arg(args, "to").map(|to| (to, self.send(child_id, to, content))) {
-                Ok((to, Ok(message_id))) => ToolValue::ok(
-                    serde_json::json!({ "to": to, "message_id": message_id }),
-                    format!("sent to {to}"),
-                ),
+                Ok((to, Ok(message_id))) => {
+                    ToolValue::ok(serde_json::json!({ "to": to, "message_id": message_id }), format!("sent to {to}"))
+                }
                 Ok((_, Err(e))) => ToolValue::error(format!("send: {e}")),
                 Err(e) => e,
             },
@@ -353,9 +287,7 @@ impl ChildObserver for Team {
 }
 
 fn text_content(text: &str) -> Vec<ContentBlock> {
-    vec![ContentBlock::Text {
-        text: text.to_string(),
-    }]
+    vec![ContentBlock::Text { text: text.to_string() }]
 }
 
 fn render_outcome(outcome: &Outcome) -> String {
@@ -368,16 +300,11 @@ fn render_outcome(outcome: &Outcome) -> String {
 }
 
 fn kebab(value: &impl serde::Serialize) -> String {
-    serde_json::to_value(value)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_string))
-        .unwrap_or_default()
+    serde_json::to_value(value).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
 }
 
 fn arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, ToolValue> {
-    args.get(key)
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ToolValue::error(format!("{key}: a string is required")))
+    args.get(key).and_then(|v| v.as_str()).ok_or_else(|| ToolValue::error(format!("{key}: a string is required")))
 }
 
 // ---- tools --------------------------------------------------------------------
@@ -403,8 +330,7 @@ impl Kind {
     }
 
     fn spec(self) -> ToolSpec {
-        let string =
-            |description: &str| serde_json::json!({ "type": "string", "description": description });
+        let string = |description: &str| serde_json::json!({ "type": "string", "description": description });
         let object = |props: serde_json::Value, required: &[&str]| serde_json::json!({ "type": "object", "properties": props, "required": required, "additionalProperties": false });
         let (description, params, effect) = match self {
             Kind::Spawn => (
@@ -455,13 +381,7 @@ impl Kind {
 pub fn tools(team: Arc<Team>) -> Vec<Box<dyn Tool>> {
     [Kind::Spawn, Kind::Steer]
         .into_iter()
-        .map(|kind| {
-            Box::new(TeamTool {
-                spec: kind.spec(),
-                kind,
-                team: team.clone(),
-            }) as Box<dyn Tool>
-        })
+        .map(|kind| Box::new(TeamTool { spec: kind.spec(), kind, team: team.clone() }) as Box<dyn Tool>)
         .collect()
 }
 
@@ -508,28 +428,18 @@ impl Tool for TeamTool {
                 let context = match args.get("context").and_then(|v| v.as_str()) {
                     None | Some("fresh") => SpawnContext::Fresh,
                     Some("fork") => SpawnContext::Fork,
-                    Some(other) => {
-                        return ToolValue::error(format!(
-                            "context: {other} is neither fresh nor fork"
-                        ))
-                    }
+                    Some(other) => return ToolValue::error(format!("context: {other} is neither fresh nor fork")),
                 };
-                let name = args
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(&program)
-                    .to_string();
+                let name = args.get("name").and_then(|v| v.as_str()).unwrap_or(&program).to_string();
                 // The loop's spawner fills in the amount it reserved.
-                let req = SpawnRequest {
-                    program: program.clone(),
-                    task,
-                    context,
-                    reserve: BudgetAmount::default(),
-                };
+                let req = SpawnRequest { program: program.clone(), task, context, reserve: BudgetAmount::default() };
                 match self.team.spawn(spawner.as_ref(), req, &name) {
                     Ok(handle) => ToolValue::ok(
                         serde_json::json!({ "child_id": handle.child_id, "name": name, "program": program }),
-                        format!("started {name} ({}) running {program}; its result will arrive as a message from it", handle.child_id),
+                        format!(
+                            "started {name} ({}) running {program}; its result will arrive as a message from it",
+                            handle.child_id
+                        ),
                     ),
                     Err(e) => ToolValue::error(format!("spawn: {e}")),
                 }
@@ -540,9 +450,7 @@ impl Tool for TeamTool {
                     (Err(e), _) | (_, Err(e)) => return e,
                 };
                 match self.team.steer(to, text_content(content)) {
-                    Ok(()) => {
-                        ToolValue::ok(serde_json::json!({ "to": to }), format!("sent to {to}"))
-                    }
+                    Ok(()) => ToolValue::ok(serde_json::json!({ "to": to }), format!("sent to {to}")),
                     Err(e) => ToolValue::error(format!("steer: {e}")),
                 }
             }
@@ -588,26 +496,13 @@ mod tests {
     }
 
     fn roster(seq: u64, id: &str, name: &str, phase: MemberPhase) -> Event {
-        event(
-            seq,
-            EventData::TeamRoster {
-                member_id: id.into(),
-                name: name.into(),
-                description: String::new(),
-                phase,
-            },
-        )
+        event(seq, EventData::TeamRoster { member_id: id.into(), name: name.into(), description: String::new(), phase })
     }
 
     fn message(seq: u64, id: &str, to: &str) -> Event {
         event(
             seq,
-            EventData::TeamMessage {
-                message_id: id.into(),
-                from: "ep_a".into(),
-                to: to.into(),
-                content: vec![],
-            },
+            EventData::TeamMessage { message_id: id.into(), from: "ep_a".into(), to: to.into(), content: vec![] },
         )
     }
 
@@ -619,21 +514,12 @@ mod tests {
             roster(3, "ep_a", "reviewer", MemberPhase::Active),
             message(4, "tm_01", "ep_b"),
             message(5, "tm_02", "ep_b"),
-            event(
-                6,
-                EventData::TeamDelivered {
-                    message_id: "tm_01".into(),
-                    to: "ep_b".into(),
-                },
-            ),
+            event(6, EventData::TeamDelivered { message_id: "tm_01".into(), to: "ep_b".into() }),
         ];
         let state = fold(&events);
         assert_eq!(state.roster.len(), 2);
         assert_eq!(state.member("reviewer").unwrap().phase, MemberPhase::Active);
-        assert_eq!(
-            state.member("tester").unwrap().phase,
-            MemberPhase::Provisioning
-        );
+        assert_eq!(state.member("tester").unwrap().phase, MemberPhase::Provisioning);
         assert_eq!(state.queue.len(), 2);
         let pending: Vec<&str> = state.undelivered().map(|m| m.message_id.as_str()).collect();
         assert_eq!(pending, ["tm_02"]);
@@ -670,50 +556,28 @@ mod tests {
         let log = Arc::new(MemLog::default());
         let inbox = Arc::new(MemInbox::default());
         let router = Arc::new(Router::new());
-        let team = Arc::new(Team::new(
-            "ep_lead".into(),
-            log.clone(),
-            inbox.clone(),
-            router.clone(),
-        ));
+        let team = Arc::new(Team::new("ep_lead".into(), log.clone(), inbox.clone(), router.clone()));
         (team, log, inbox, router)
     }
 
     #[test]
     fn notify_from_a_member_becomes_an_inbox_item() {
         let (team, _, inbox, _) = team();
-        assert!(
-            team.host_call("ep_a", "notify", &serde_json::json!({}))
-                .unwrap()
-                .is_error,
-            "content is required"
-        );
-        let value = team
-            .host_call("ep_a", "notify", &serde_json::json!({ "content": "hi" }))
-            .unwrap();
+        assert!(team.host_call("ep_a", "notify", &serde_json::json!({})).unwrap().is_error, "content is required");
+        let value = team.host_call("ep_a", "notify", &serde_json::json!({ "content": "hi" })).unwrap();
         assert!(!value.is_error);
         let items = inbox.0.lock().unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].source, InboxSource::Child);
         assert_eq!(items[0].from.as_deref(), Some("ep_a"));
         assert_eq!(items[0].content, text_content("hi"));
-        assert!(
-            team.host_call("ep_a", "other", &serde_json::json!({}))
-                .is_none(),
-            "other calls are forwarded"
-        );
+        assert!(team.host_call("ep_a", "other", &serde_json::json!({})).is_none(), "other calls are forwarded");
     }
 
     #[test]
     fn send_queues_a_message_and_peer_receipt_records_delivery() {
         let (team, log, _, _) = team();
-        let missing = team
-            .host_call(
-                "ep_a",
-                "send",
-                &serde_json::json!({ "to": "nobody", "content": "x" }),
-            )
-            .unwrap();
+        let missing = team.host_call("ep_a", "send", &serde_json::json!({ "to": "nobody", "content": "x" })).unwrap();
         assert!(missing.is_error);
         log.append(EventData::TeamRoster {
             member_id: "ep_b".into(),
@@ -721,24 +585,14 @@ mod tests {
             description: String::new(),
             phase: MemberPhase::Active,
         });
-        let sent = team
-            .host_call(
-                "ep_a",
-                "send",
-                &serde_json::json!({ "to": "tester", "content": "run it" }),
-            )
-            .unwrap();
+        let sent = team.host_call("ep_a", "send", &serde_json::json!({ "to": "tester", "content": "run it" })).unwrap();
         assert!(!sent.is_error, "{:?}", sent.rendered);
         let state = team.state();
         assert_eq!(state.queue.len(), 1);
         assert_eq!(state.queue[0].to, "ep_b");
         assert_eq!(state.queue[0].from, "ep_a");
         assert_eq!(state.queue[0].content, text_content("run it"));
-        assert_eq!(
-            state.undelivered().count(),
-            1,
-            "the target is not running, so the message stays queued"
-        );
+        assert_eq!(state.undelivered().count(), 1, "the target is not running, so the message stays queued");
         let receipt = InboxItem {
             source: InboxSource::Peer,
             content: vec![],
@@ -747,9 +601,7 @@ mod tests {
         };
         team.observe("ep_b", &event(5, EventData::InboxItem(receipt)));
         assert_eq!(team.state().undelivered().count(), 0);
-        let listed = team
-            .host_call("ep_a", "team", &serde_json::json!({}))
-            .unwrap();
+        let listed = team.host_call("ep_a", "team", &serde_json::json!({})).unwrap();
         assert_eq!(listed.rendered.as_deref(), Some("tester\tep_b\tactive"));
     }
 
@@ -802,51 +654,27 @@ mod tests {
         let value = spawn.call(args.clone(), &ctx(Some(spawner.clone()))).await;
         assert!(!value.is_error, "{:?}", value.rendered);
         let child_id = value.value["child_id"].as_str().unwrap().to_string();
-        assert!(
-            spawn.call(args, &ctx(Some(spawner.clone()))).await.is_error,
-            "roster names are unique"
-        );
-        let config: crate::Config = serde_json::from_slice(
-            &std::fs::read(dir.join("children").join(&child_id).join("config.json")).unwrap(),
-        )
-        .unwrap();
-        assert!(
-            config.host_tools.contains_key("notify"),
-            "the child resolves notify as a host tool"
-        );
+        assert!(spawn.call(args, &ctx(Some(spawner.clone()))).await.is_error, "roster names are unique");
+        let config: crate::Config =
+            serde_json::from_slice(&std::fs::read(dir.join("children").join(&child_id).join("config.json")).unwrap())
+                .unwrap();
+        assert!(config.host_tools.contains_key("notify"), "the child resolves notify as a host tool");
 
         wait_for(|| (uplink.0.lock().unwrap().len() == 2).then_some(()));
         let steer = tools.iter().find(|t| t.spec().name == "steer").unwrap();
-        let steered = steer
-            .call(
-                serde_json::json!({ "to": "w1", "content": "\"go\"" }),
-                &ctx(None),
-            )
-            .await;
+        let steered = steer.call(serde_json::json!({ "to": "w1", "content": "\"go\"" }), &ctx(None)).await;
         assert!(!steered.is_error, "{:?}", steered.rendered);
         let items = wait_for(|| {
             let items = inbox.0.lock().unwrap();
             (items.len() == 2).then(|| items.clone())
         });
-        assert_eq!(
-            items[0].content,
-            text_content("progress"),
-            "notify was answered by the lead"
-        );
+        assert_eq!(items[0].content, text_content("progress"), "notify was answered by the lead");
         assert_eq!(items[0].from.as_deref(), Some(&*child_id));
         let ended = format!("w1 ({child_id}) ended: completed with ");
-        let ContentBlock::Text { text } = &items[1].content[0] else {
-            panic!()
-        };
+        let ContentBlock::Text { text } = &items[1].content[0] else { panic!() };
         assert!(text.starts_with(&ended), "{text}");
-        assert!(
-            text.contains(r#""source":"parent""#),
-            "the steer reached the child: {text}"
-        );
-        assert!(
-            text.contains(r#""type":"tool/result""#),
-            "the notify result reached the child: {text}"
-        );
+        assert!(text.contains(r#""source":"parent""#), "the steer reached the child: {text}");
+        assert!(text.contains(r#""type":"tool/result""#), "the notify result reached the child: {text}");
         let phases: Vec<MemberPhase> = log
             .events()
             .iter()
@@ -857,9 +685,6 @@ mod tests {
             .collect();
         assert_eq!(phases, [MemberPhase::Provisioning, MemberPhase::Active]);
         assert_eq!(team.state().member("w1").unwrap().member_id, child_id);
-        assert!(
-            uplink.0.lock().unwrap().len() == 2,
-            "notify was never forwarded upward"
-        );
+        assert!(uplink.0.lock().unwrap().len() == 2, "notify was never forwarded upward");
     }
 }

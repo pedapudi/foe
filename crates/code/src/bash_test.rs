@@ -23,10 +23,7 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert_eq!(v.value["exit_code"], 2);
     assert_eq!(v.value["timed_out"], false);
     assert_eq!(v.value["duration_ms"], 1500);
-    assert_eq!(
-        v.rendered.as_deref(),
-        Some("out\n--- stderr ---\nerr\n[exit 2 in 1.50s]")
-    );
+    assert_eq!(v.rendered.as_deref(), Some("out\n--- stderr ---\nerr\n[exit 2 in 1.50s]"));
     let req = exec.last().unwrap();
     assert_eq!(req.program, PathBuf::from("/bin/bash"));
     assert_eq!(req.args, ["-c", "false"]);
@@ -43,14 +40,10 @@ async fn timeout_argument_and_deadline_bound_the_request() {
     let fx = Fixture::new();
     let exec = Arc::new(FakeExecutor::new(result(0, "", "")));
     let mut c = ctx_with_executor(&fx, exec.clone());
-    Bash::new()
-        .call(json!({"command": "true", "timeout_seconds": 7}), &c)
-        .await;
+    Bash::new().call(json!({"command": "true", "timeout_seconds": 7}), &c).await;
     assert_eq!(exec.last().unwrap().timeout, Duration::from_secs(7));
     c.deadline = Some(Instant::now() + Duration::from_secs(2));
-    Bash::new()
-        .call(json!({"command": "true", "timeout_seconds": 7}), &c)
-        .await;
+    Bash::new().call(json!({"command": "true", "timeout_seconds": 7}), &c).await;
     assert!(exec.last().unwrap().timeout <= Duration::from_secs(2));
 }
 
@@ -80,9 +73,7 @@ async fn long_output_is_tail_truncated_and_spilled() {
 #[tokio::test]
 async fn missing_handles_are_errors() {
     let fx = Fixture::new();
-    let v = Bash::new()
-        .call(json!({"command": "true"}), &ctx(&fx))
-        .await;
+    let v = Bash::new().call(json!({"command": "true"}), &ctx(&fx)).await;
     assert!(v.is_error);
     assert!(v.rendered.unwrap().contains("executor"));
 }
@@ -91,9 +82,7 @@ async fn missing_handles_are_errors() {
 async fn a_real_non_zero_exit_is_a_result() {
     let fx = Fixture::new();
     let c = ctx_with_executor(&fx, Arc::new(ProcessGroupExecutor));
-    let v = Bash::new()
-        .call(json!({"command": "echo out; echo err >&2; exit 3"}), &c)
-        .await;
+    let v = Bash::new().call(json!({"command": "echo out; echo err >&2; exit 3"}), &c).await;
     assert!(!v.is_error, "{v:?}");
     assert_eq!(v.value["exit_code"], 3);
     assert_eq!(v.value["stdout"], "out\n");
@@ -105,18 +94,13 @@ async fn a_timeout_kills_the_whole_process_group() {
     let fx = Fixture::new();
     let c = ctx_with_executor(&fx, Arc::new(ProcessGroupExecutor));
     let cmd = "sleep 30 & echo $!; wait";
-    let v = Bash::new()
-        .call(json!({"command": cmd, "timeout_seconds": 1}), &c)
-        .await;
+    let v = Bash::new().call(json!({"command": cmd, "timeout_seconds": 1}), &c).await;
     assert!(!v.is_error, "{v:?}");
     assert_eq!(v.value["timed_out"], true);
     assert!(v.value["exit_code"].is_null());
     assert!(v.rendered.as_deref().unwrap().contains("[timed out after"));
     let grandchild = v.value["stdout"].as_str().unwrap().trim().to_owned();
-    assert!(
-        !grandchild.is_empty(),
-        "bash printed the background pid before the kill"
-    );
+    assert!(!grandchild.is_empty(), "bash printed the background pid before the kill");
     let state = std::fs::read_to_string(format!("/proc/{grandchild}/stat")).unwrap_or_default();
     let alive = !state.is_empty() && !state.contains(") Z ") && !state.contains(") X ");
     assert!(!alive, "sleep {grandchild} outlived the timeout: {state}");

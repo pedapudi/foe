@@ -79,10 +79,7 @@ pub(crate) struct Store {
 
 impl Store {
     pub(crate) fn new(root: &Path) -> Store {
-        Store {
-            root: root.to_path_buf(),
-            episodes: BTreeMap::new(),
-        }
+        Store { root: root.to_path_buf(), episodes: BTreeMap::new() }
     }
 
     /// Reads whatever each log has appended since the last call and
@@ -119,9 +116,7 @@ impl Store {
     }
 
     pub(crate) fn tree(&self) -> Tree {
-        Tree {
-            roots: self.node(&self.root).into_iter().collect(),
-        }
+        Tree { roots: self.node(&self.root).into_iter().collect() }
     }
 
     fn node(&self, dir: &Path) -> Option<Node> {
@@ -140,30 +135,20 @@ impl Store {
     /// contiguous from 0, so it equals the line's index.
     pub(crate) fn lines(&self, id: &str, after: Option<u64>) -> Vec<Arc<str>> {
         let from = after.map_or(0, |s| s as usize + 1);
-        let found = self
-            .episodes
-            .values()
-            .find(|e| e.node.as_ref().is_some_and(|n| n.id == id));
-        found
-            .map_or(&[][..], |e| e.lines.get(from..).unwrap_or_default())
-            .to_vec()
+        let found = self.episodes.values().find(|e| e.node.as_ref().is_some_and(|n| n.id == id));
+        found.map_or(&[][..], |e| e.lines.get(from..).unwrap_or_default()).to_vec()
     }
 
     /// Every log that has a start event, with its lines, in tree order.
     pub(crate) fn logs(&self) -> impl Iterator<Item = (&str, &[Arc<str>])> {
-        self.episodes
-            .values()
-            .filter_map(|e| Some((e.node.as_ref()?.id.as_str(), e.lines.as_slice())))
+        self.episodes.values().filter_map(|e| Some((e.node.as_ref()?.id.as_str(), e.lines.as_slice())))
     }
 }
 
 /// Subdirectories of `dir/children`, in no particular order. Empty when
 /// there are none.
 fn child_dirs(dir: &Path) -> impl Iterator<Item = PathBuf> {
-    let entries = std::fs::read_dir(dir.join("children"))
-        .into_iter()
-        .flatten()
-        .flatten();
+    let entries = std::fs::read_dir(dir.join("children")).into_iter().flatten().flatten();
     entries.map(|e| e.path()).filter(|p| p.is_dir())
 }
 

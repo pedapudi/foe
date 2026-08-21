@@ -50,9 +50,7 @@
 
 use std::collections::BTreeMap;
 
-use foe_core::{
-    Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolSchema, Transport, Usage,
-};
+use foe_core::{Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolSchema, Transport, Usage};
 use foe_log::ThinkingBlock;
 use serde_json::{json, Value};
 
@@ -116,19 +114,11 @@ impl Anthropic {
 #[async_trait::async_trait]
 impl Transport for Anthropic {
     fn route(&self) -> foe_log::ModelRoute {
-        foe_log::ModelRoute {
-            provider: PROVIDER.to_string(),
-            model: self.model.clone(),
-        }
+        foe_log::ModelRoute { provider: PROVIDER.to_string(), model: self.model.clone() }
     }
 
     async fn stream(&self, req: ModelRequestBody, sink: &mut (dyn foe_core::ChunkSink + Send)) {
-        crate::deliver(
-            self.exchange(&req),
-            Box::new(StreamDecoder::default()),
-            sink,
-        )
-        .await
+        crate::deliver(self.exchange(&req), Box::new(StreamDecoder::default()), sink).await
     }
 }
 
@@ -169,14 +159,8 @@ pub fn messages_json(messages: &[Message]) -> Vec<Value> {
     let mut out: Vec<Value> = Vec::new();
     for message in messages {
         match message {
-            Message::User { content } => {
-                push_user(&mut out, content.iter().map(content_block).collect())
-            }
-            Message::Assistant {
-                text,
-                tool_calls,
-                thinking,
-            } => {
+            Message::User { content } => push_user(&mut out, content.iter().map(content_block).collect()),
+            Message::Assistant { text, tool_calls, thinking } => {
                 let mut blocks: Vec<Value> = thinking.iter().filter_map(thinking_block).collect();
                 if !text.trim().is_empty() {
                     blocks.push(json!({ "type": "text", "text": text }));
@@ -188,12 +172,7 @@ pub fn messages_json(messages: &[Message]) -> Vec<Value> {
                     out.push(json!({ "role": "assistant", "content": blocks }));
                 }
             }
-            Message::Tool {
-                call_id,
-                name: _,
-                rendered,
-                is_error,
-            } => {
+            Message::Tool { call_id, name: _, rendered, is_error } => {
                 let mut block = json!({ "type": "tool_result", "tool_use_id": call_id });
                 if !rendered.is_empty() {
                     block["content"] = json!(rendered);
@@ -272,9 +251,7 @@ impl StreamDecoder {
     /// https://platform.claude.com/docs/en/build-with-claude/prompt-caching
     fn usage(&self) -> Usage {
         Usage {
-            input: self.input_tokens
-                + self.cache_creation_input_tokens
-                + self.cache_read_input_tokens,
+            input: self.input_tokens + self.cache_creation_input_tokens + self.cache_read_input_tokens,
             output: self.output_tokens,
             cache_read: self.cache_read_input_tokens,
         }
@@ -287,26 +264,18 @@ impl StreamDecoder {
             }
         };
         take("input_tokens", &mut self.input_tokens);
-        take(
-            "cache_creation_input_tokens",
-            &mut self.cache_creation_input_tokens,
-        );
+        take("cache_creation_input_tokens", &mut self.cache_creation_input_tokens);
         take("cache_read_input_tokens", &mut self.cache_read_input_tokens);
         take("output_tokens", &mut self.output_tokens);
     }
 }
 
 fn fail(message: String) -> Chunk {
-    Chunk::Error {
-        message: format!("{PROVIDER}: {message}"),
-        retryable: false,
-    }
+    Chunk::Error { message: format!("{PROVIDER}: {message}"), retryable: false }
 }
 
 fn index_of(event: &str, data: &Value) -> Result<u64, Chunk> {
-    data.get("index")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| fail(format!("event {event}: missing index")))
+    data.get("index").and_then(Value::as_u64).ok_or_else(|| fail(format!("event {event}: missing index")))
 }
 
 impl Decoder for StreamDecoder {
@@ -317,11 +286,7 @@ impl Decoder for StreamDecoder {
         };
         // The `event:` line and the `type` field agree; the field is the
         // fallback for a proxy that drops event names.
-        let kind = if event.name.is_empty() {
-            data["type"].as_str().unwrap_or("")
-        } else {
-            event.name.as_str()
-        };
+        let kind = if event.name.is_empty() { data["type"].as_str().unwrap_or("") } else { event.name.as_str() };
         match kind {
             "message_start" => self.read_usage(&data["message"]["usage"]),
             "content_block_start" => {
@@ -335,9 +300,7 @@ impl Decoder for StreamDecoder {
                         let id = block["id"].as_str().unwrap_or("").to_string();
                         let name = block["name"].as_str().unwrap_or("").to_string();
                         if id.is_empty() || name.is_empty() {
-                            return out(fail(format!(
-                                "event {kind}: tool_use block without id or name"
-                            )));
+                            return out(fail(format!("event {kind}: tool_use block without id or name")));
                         }
                         self.tool_blocks.insert(index, id.clone());
                         out(Chunk::ToolCallStart { id, name });
@@ -345,25 +308,20 @@ impl Decoder for StreamDecoder {
                     // A text block may open with content already present.
                     "text" => {
                         if let Some(text) = block["text"].as_str().filter(|t| !t.is_empty()) {
-                            out(Chunk::Text {
-                                delta: text.to_string(),
-                            });
+                            out(Chunk::Text { delta: text.to_string() });
                         }
                     }
                     "thinking" => {
                         self.thinking_blocks.insert(index, String::new());
                         if let Some(text) = block["thinking"].as_str().filter(|t| !t.is_empty()) {
-                            out(Chunk::Thinking {
-                                delta: text.to_string(),
-                            });
+                            out(Chunk::Thinking { delta: text.to_string() });
                         }
                     }
                     // The data arrives whole in the start event; nothing of
                     // the block is readable, so no `Thinking` chunk is sent.
                     "redacted_thinking" => {
                         let data = block["data"].as_str().unwrap_or("");
-                        self.thinking_blocks
-                            .insert(index, format!("{REDACTED_MARKER}{data}"));
+                        self.thinking_blocks.insert(index, format!("{REDACTED_MARKER}{data}"));
                     }
                     _ => {}
                 }
@@ -377,16 +335,12 @@ impl Decoder for StreamDecoder {
                 match delta["type"].as_str().unwrap_or("") {
                     "text_delta" => {
                         if let Some(text) = delta["text"].as_str().filter(|t| !t.is_empty()) {
-                            out(Chunk::Text {
-                                delta: text.to_string(),
-                            });
+                            out(Chunk::Text { delta: text.to_string() });
                         }
                     }
                     "thinking_delta" => {
                         if let Some(text) = delta["thinking"].as_str().filter(|t| !t.is_empty()) {
-                            out(Chunk::Thinking {
-                                delta: text.to_string(),
-                            });
+                            out(Chunk::Thinking { delta: text.to_string() });
                         }
                     }
                     "signature_delta" => {
@@ -396,14 +350,12 @@ impl Decoder for StreamDecoder {
                     }
                     "input_json_delta" => {
                         let Some(id) = self.tool_blocks.get(&index) else {
-                            return out(fail(format!("event {kind}: input_json_delta for block {index}, which is not an open tool_use block")));
+                            return out(fail(format!(
+                                "event {kind}: input_json_delta for block {index}, which is not an open tool_use block"
+                            )));
                         };
-                        if let Some(text) = delta["partial_json"].as_str().filter(|t| !t.is_empty())
-                        {
-                            out(Chunk::ToolCallDelta {
-                                id: id.clone(),
-                                delta: text.to_string(),
-                            });
+                        if let Some(text) = delta["partial_json"].as_str().filter(|t| !t.is_empty()) {
+                            out(Chunk::ToolCallDelta { id: id.clone(), delta: text.to_string() });
                         }
                     }
                     _ => {}
@@ -432,21 +384,10 @@ impl Decoder for StreamDecoder {
                     "end_turn" | "stop_sequence" | "pause_turn" => StopReason::End,
                     "tool_use" => StopReason::Tool,
                     "max_tokens" => StopReason::Length,
-                    "refusal" => {
-                        return out(fail(
-                            "stop_reason refusal: the model declined to respond".into(),
-                        ))
-                    }
-                    other => {
-                        return out(fail(format!(
-                            "stop_reason {other:?} has no chunk equivalent"
-                        )))
-                    }
+                    "refusal" => return out(fail("stop_reason refusal: the model declined to respond".into())),
+                    other => return out(fail(format!("stop_reason {other:?} has no chunk equivalent"))),
                 };
-                out(Chunk::Done {
-                    stop,
-                    usage: self.usage(),
-                });
+                out(Chunk::Done { stop, usage: self.usage() });
             }
             "error" => {
                 let error = &data["error"];
@@ -454,22 +395,15 @@ impl Decoder for StreamDecoder {
                 let detail = error["message"].as_str().unwrap_or("");
                 // https://docs.anthropic.com/en/api/errors: these three are
                 // transient on the provider's side.
-                let retryable =
-                    matches!(kind, "overloaded_error" | "api_error" | "rate_limit_error");
-                out(Chunk::Error {
-                    message: format!("{PROVIDER}: stream error {kind}: {detail}"),
-                    retryable,
-                });
+                let retryable = matches!(kind, "overloaded_error" | "api_error" | "rate_limit_error");
+                out(Chunk::Error { message: format!("{PROVIDER}: stream error {kind}: {detail}"), retryable });
             }
             _ => {}
         }
     }
 
     fn end_of_stream(&mut self) -> Chunk {
-        Chunk::Error {
-            message: format!("{PROVIDER}: connection closed before message_delta"),
-            retryable: true,
-        }
+        Chunk::Error { message: format!("{PROVIDER}: connection closed before message_delta"), retryable: true }
     }
 }
 
@@ -588,24 +522,14 @@ data: {"type":"message_stop"}
                     parameters: json!({ "type": "object" }),
                 },
             ],
-            messages: vec![Message::User {
-                content: vec![ContentBlock::Text {
-                    text: "Fix the test.".into(),
-                }],
-            }],
+            messages: vec![Message::User { content: vec![ContentBlock::Text { text: "Fix the test.".into() }] }],
             max_output_tokens: None,
         }
     }
 
     async fn run(reply: Reply) -> (Vec<Chunk>, Server) {
         let server = Server::start(vec![reply]);
-        let transport = Anthropic::new(
-            "claude-opus-5",
-            "sk-ant-test".into(),
-            Some(&server.base()),
-            None,
-        )
-        .unwrap();
+        let transport = Anthropic::new("claude-opus-5", "sk-ant-test".into(), Some(&server.base()), None).unwrap();
         let mut chunks = Vec::new();
         transport.stream(request(), &mut chunks).await;
         (chunks, server)
@@ -623,14 +547,7 @@ data: {"type":"message_stop"}
             vec![
                 text("Hello"),
                 text("!"),
-                Chunk::Done {
-                    stop: StopReason::End,
-                    usage: Usage {
-                        input: 1225,
-                        output: 15,
-                        cache_read: 1200
-                    }
-                },
+                Chunk::Done { stop: StopReason::End, usage: Usage { input: 1225, output: 15, cache_read: 1200 } },
             ]
         );
         let seen = server.requests();
@@ -663,34 +580,14 @@ data: {"type":"message_stop"}
         assert_eq!(
             chunks,
             vec![
-                Chunk::Thinking {
-                    delta: "I should read the file first.".into()
-                },
-                Chunk::ThinkingSignature {
-                    signature: "EqQBCgIYAhIM1gbcDa9GJwZA2b3hGgxBdjrkzLoky3dl1pkiMOYds".into()
-                },
+                Chunk::Thinking { delta: "I should read the file first.".into() },
+                Chunk::ThinkingSignature { signature: "EqQBCgIYAhIM1gbcDa9GJwZA2b3hGgxBdjrkzLoky3dl1pkiMOYds".into() },
                 text("I will read it."),
-                Chunk::ToolCallStart {
-                    id: id.into(),
-                    name: "read".into()
-                },
-                Chunk::ToolCallDelta {
-                    id: id.into(),
-                    delta: "{\"path\": \"/src".into()
-                },
-                Chunk::ToolCallDelta {
-                    id: id.into(),
-                    delta: "/lib.rs\"}".into()
-                },
+                Chunk::ToolCallStart { id: id.into(), name: "read".into() },
+                Chunk::ToolCallDelta { id: id.into(), delta: "{\"path\": \"/src".into() },
+                Chunk::ToolCallDelta { id: id.into(), delta: "/lib.rs\"}".into() },
                 Chunk::ToolCallEnd { id: id.into() },
-                Chunk::Done {
-                    stop: StopReason::Tool,
-                    usage: Usage {
-                        input: 772,
-                        output: 89,
-                        cache_read: 0
-                    }
-                },
+                Chunk::Done { stop: StopReason::Tool, usage: Usage { input: 772, output: 89, cache_read: 0 } },
             ]
         );
     }
@@ -743,21 +640,11 @@ data: {"type":"message_stop"}
             chunks,
             vec![
                 Chunk::ThinkingSignature {
-                    signature: "redacted_thinking:EmwKAhgBEgy3va3pzix/LafPsn4aDFIT2Xlxh0L5L8rLJhIw"
-                        .into()
+                    signature: "redacted_thinking:EmwKAhgBEgy3va3pzix/LafPsn4aDFIT2Xlxh0L5L8rLJhIw".into()
                 },
-                Chunk::ThinkingSignature {
-                    signature: "AAAABBBB".into()
-                },
+                Chunk::ThinkingSignature { signature: "AAAABBBB".into() },
                 text("Hidden."),
-                Chunk::Done {
-                    stop: StopReason::End,
-                    usage: Usage {
-                        input: 40,
-                        output: 30,
-                        cache_read: 0
-                    }
-                },
+                Chunk::Done { stop: StopReason::End, usage: Usage { input: 40, output: 30, cache_read: 0 } },
             ]
         );
     }
@@ -769,14 +656,7 @@ data: {"type":"message_stop"}
             chunks,
             vec![
                 text("Once upon a"),
-                Chunk::Done {
-                    stop: StopReason::Length,
-                    usage: Usage {
-                        input: 10,
-                        output: 4,
-                        cache_read: 0
-                    }
-                },
+                Chunk::Done { stop: StopReason::Length, usage: Usage { input: 10, output: 4, cache_read: 0 } },
             ]
         );
     }
@@ -800,10 +680,7 @@ data: {"type":"message_stop"}
         let (chunks, _server) = run(Reply::full(529, body)).await;
         assert_eq!(
             chunks,
-            vec![Chunk::Error {
-                message: "anthropic: HTTP 529: overloaded_error: Overloaded".into(),
-                retryable: true
-            }]
+            vec![Chunk::Error { message: "anthropic: HTTP 529: overloaded_error: Overloaded".into(), retryable: true }]
         );
         let body = r#"{"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: too large"}}"#;
         let (chunks, _server) = run(Reply::full(400, body)).await;
@@ -874,14 +751,12 @@ data: {"type":"message_stop"}
 
     #[tokio::test]
     async fn clean_end_without_message_delta_is_retryable() {
-        let transcript = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":3}}}\n\n";
+        let transcript =
+            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":3}}}\n\n";
         let (chunks, _server) = run(Reply::sse(transcript)).await;
         assert_eq!(
             chunks,
-            vec![Chunk::Error {
-                message: "anthropic: connection closed before message_delta".into(),
-                retryable: true
-            }]
+            vec![Chunk::Error { message: "anthropic: connection closed before message_delta".into(), retryable: true }]
         );
     }
 
@@ -890,42 +765,20 @@ data: {"type":"message_stop"}
         let messages = vec![
             Message::User {
                 content: vec![
-                    ContentBlock::Text {
-                        text: "Look at this.".into(),
-                    },
-                    ContentBlock::Image {
-                        data: "aGk=".into(),
-                        media_type: "image/png".into(),
-                    },
+                    ContentBlock::Text { text: "Look at this.".into() },
+                    ContentBlock::Image { data: "aGk=".into(), media_type: "image/png".into() },
                 ],
             },
             Message::Assistant {
                 text: "Reading.".into(),
                 thinking: vec![
-                    ThinkingBlock {
-                        text: "Plan first.".into(),
-                        signature: Some("c2ln".into()),
-                    },
-                    ThinkingBlock {
-                        text: String::new(),
-                        signature: Some("redacted_thinking:RUJBRg==".into()),
-                    },
-                    ThinkingBlock {
-                        text: "unsigned, skipped".into(),
-                        signature: None,
-                    },
+                    ThinkingBlock { text: "Plan first.".into(), signature: Some("c2ln".into()) },
+                    ThinkingBlock { text: String::new(), signature: Some("redacted_thinking:RUJBRg==".into()) },
+                    ThinkingBlock { text: "unsigned, skipped".into(), signature: None },
                 ],
                 tool_calls: vec![
-                    ToolCall {
-                        id: "toolu_1".into(),
-                        name: "read".into(),
-                        args: json!({ "path": "/a" }),
-                    },
-                    ToolCall {
-                        id: "toolu_2".into(),
-                        name: "read".into(),
-                        args: json!({ "path": "/b" }),
-                    },
+                    ToolCall { id: "toolu_1".into(), name: "read".into(), args: json!({ "path": "/a" }) },
+                    ToolCall { id: "toolu_2".into(), name: "read".into(), args: json!({ "path": "/b" }) },
                 ],
             },
             Message::Tool {
@@ -940,21 +793,9 @@ data: {"type":"message_stop"}
                 rendered: "no such file".into(),
                 is_error: true,
             },
-            Message::User {
-                content: vec![ContentBlock::Text {
-                    text: "Hurry.".into(),
-                }],
-            },
-            Message::Assistant {
-                text: String::new(),
-                tool_calls: vec![],
-                thinking: vec![],
-            },
-            Message::Assistant {
-                text: "Done.".into(),
-                tool_calls: vec![],
-                thinking: vec![],
-            },
+            Message::User { content: vec![ContentBlock::Text { text: "Hurry.".into() }] },
+            Message::Assistant { text: String::new(), tool_calls: vec![], thinking: vec![] },
+            Message::Assistant { text: "Done.".into(), tool_calls: vec![], thinking: vec![] },
         ];
         assert_eq!(
             messages_json(&messages),
@@ -992,22 +833,10 @@ data: {"type":"message_stop"}
         assert!(body.get("system").is_none());
         assert!(body.get("tools").is_none());
         assert_eq!(body["max_tokens"], 4096);
-        let transport = Anthropic::new(
-            "m",
-            "k".into(),
-            Some("https://proxy.example/anthropic/"),
-            Some(1000),
-        )
-        .unwrap();
+        let transport = Anthropic::new("m", "k".into(), Some("https://proxy.example/anthropic/"), Some(1000)).unwrap();
         assert_eq!(transport.url.path, "/anthropic/v1/messages");
         assert_eq!(transport.max_tokens, 1000);
-        assert_eq!(
-            Anthropic::new("m", "k".into(), None, None)
-                .unwrap()
-                .url
-                .host,
-            "api.anthropic.com"
-        );
+        assert_eq!(Anthropic::new("m", "k".into(), None, None).unwrap().url.host, "api.anthropic.com");
     }
 
     #[test]
@@ -1016,13 +845,11 @@ data: {"type":"message_stop"}
         let mut chunks = Vec::new();
         let event = sse::Event {
             name: "content_block_delta".into(),
-            data: r#"{"type":"content_block_delta","index":4,"delta":{"type":"input_json_delta","partial_json":"{"}}"#.into(),
+            data: r#"{"type":"content_block_delta","index":4,"delta":{"type":"input_json_delta","partial_json":"{"}}"#
+                .into(),
         };
         decoder.event(&event, &mut |c| chunks.push(c));
-        let event = sse::Event {
-            name: "message_start".into(),
-            data: "not json".into(),
-        };
+        let event = sse::Event { name: "message_start".into(), data: "not json".into() };
         decoder.event(&event, &mut |c| chunks.push(c));
         assert_eq!(chunks.len(), 2);
         for chunk in &chunks {

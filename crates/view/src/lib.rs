@@ -21,10 +21,7 @@ const CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/viewer.css"));
 
 macro_rules! font {
     ($name:literal) => {
-        (
-            $name,
-            include_bytes!(concat!(env!("OUT_DIR"), "/", $name)) as &[u8],
-        )
+        ($name, include_bytes!(concat!(env!("OUT_DIR"), "/", $name)) as &[u8])
     };
 }
 
@@ -59,9 +56,7 @@ pub fn export(dir: &Path) -> Result<String, Error> {
     }
     let tree = serde_json::to_string(&store.tree()).expect("tree serializes");
     let logs = logs.join(",");
-    Ok(page(&format!(
-        "{{\"mode\":\"static\",\"episodes\":{{{logs}}},\"tree\":{tree}}}"
-    )))
+    Ok(page(&format!("{{\"mode\":\"static\",\"episodes\":{{{logs}}},\"tree\":{tree}}}")))
 }
 
 /// Wraps the bundle around the `window.__FOE__` boot object. `<` in the

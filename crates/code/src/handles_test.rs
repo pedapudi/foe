@@ -22,11 +22,7 @@ impl Fixture {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap().join("root");
         std::fs::create_dir(&root).unwrap();
-        Self {
-            dir,
-            root,
-            writes: Arc::new(AtomicUsize::new(0)),
-        }
+        Self { dir, root, writes: Arc::new(AtomicUsize::new(0)) }
     }
     pub fn root(&self) -> PathBuf {
         self.root.clone()
@@ -58,12 +54,8 @@ impl Bounded {
         let canon = match path.canonicalize() {
             Ok(c) => c,
             Err(_) => {
-                let parent = path
-                    .parent()
-                    .ok_or_else(|| CapError::Denied { path: path.into() })?;
-                parent
-                    .canonicalize()?
-                    .join(path.file_name().unwrap_or_default())
+                let parent = path.parent().ok_or_else(|| CapError::Denied { path: path.into() })?;
+                parent.canonicalize()?.join(path.file_name().unwrap_or_default())
             }
         };
         if self.roots.iter().any(|r| canon.starts_with(r)) {
@@ -114,10 +106,7 @@ impl Writer for Bounded {
 
 /// A context with a reader and writer bounded to the fixture root.
 pub fn ctx(fx: &Fixture) -> CallCtx {
-    let handle = Arc::new(Bounded {
-        roots: vec![fx.root()],
-        writes: fx.writes.clone(),
-    });
+    let handle = Arc::new(Bounded { roots: vec![fx.root()], writes: fx.writes.clone() });
     CallCtx {
         call_id: "call-1".into(),
         step: 1,
@@ -145,10 +134,7 @@ pub struct FakeExecutor {
 
 impl FakeExecutor {
     pub fn new(result: ExecResult) -> Self {
-        Self {
-            result,
-            requests: Mutex::new(Vec::new()),
-        }
+        Self { result, requests: Mutex::new(Vec::new()) }
     }
     pub fn last(&self) -> Option<ExecRequest> {
         self.requests.lock().unwrap().last().cloned()
@@ -199,9 +185,7 @@ impl Executor for ProcessGroupExecutor {
             }
             if started.elapsed() >= req.timeout {
                 timed_out = true;
-                Command::new("kill")
-                    .args(["-9", "--", &format!("-{}", child.id())])
-                    .status()?;
+                Command::new("kill").args(["-9", "--", &format!("-{}", child.id())]).status()?;
                 child.wait()?;
                 break None;
             }

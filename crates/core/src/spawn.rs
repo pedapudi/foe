@@ -76,18 +76,17 @@ impl Router {
     /// Delivers a host answer tagged `episode_id` to the direct child whose
     /// subtree contains that episode. The tag stays on the line.
     pub fn route(&self, episode_id: &str, line: &str) -> Result<(), CapError> {
-        let child = {
-            let inner = self.inner.lock().unwrap();
-            if inner.children.contains_key(episode_id) {
-                episode_id.to_string()
-            } else {
-                inner.below.get(episode_id).cloned().ok_or_else(|| {
-                    CapError::Invalid(format!(
-                        "episode {episode_id}: no running child leads to it"
-                    ))
-                })?
-            }
-        };
+        let child =
+            {
+                let inner = self.inner.lock().unwrap();
+                if inner.children.contains_key(episode_id) {
+                    episode_id.to_string()
+                } else {
+                    inner.below.get(episode_id).cloned().ok_or_else(|| {
+                        CapError::Invalid(format!("episode {episode_id}: no running child leads to it"))
+                    })?
+                }
+            };
         self.write(&child, line)
     }
 
@@ -100,14 +99,7 @@ impl Router {
 
     /// Sends `cancel` to every running child.
     pub fn cancel_all(&self) {
-        let ids: Vec<String> = self
-            .inner
-            .lock()
-            .unwrap()
-            .children
-            .keys()
-            .cloned()
-            .collect();
+        let ids: Vec<String> = self.inner.lock().unwrap().children.keys().cloned().collect();
         for id in ids {
             let _ = self.write(&id, r#"{"type":"cancel"}"#);
         }
@@ -130,11 +122,7 @@ impl Router {
     }
 
     fn learn(&self, descendant: &str, child_id: &str) {
-        self.inner
-            .lock()
-            .unwrap()
-            .below
-            .insert(descendant.to_string(), child_id.to_string());
+        self.inner.lock().unwrap().below.insert(descendant.to_string(), child_id.to_string());
     }
 
     fn remove(&self, child_id: &str) {
@@ -207,16 +195,7 @@ impl ProcessSpawner {
     ) -> Result<Self, CapError> {
         let exe = std::env::current_exe()?;
         let launcher = vec![exe.into_os_string()];
-        Ok(ProcessSpawner {
-            episode_id,
-            log_dir,
-            config,
-            launcher,
-            uplink,
-            router,
-            observer,
-            next: AtomicU64::new(0),
-        })
+        Ok(ProcessSpawner { episode_id, log_dir, config, launcher, uplink, router, observer, next: AtomicU64::new(0) })
     }
 
     /// Replaces the binary that runs children. Tests use a script.
@@ -227,15 +206,8 @@ impl ProcessSpawner {
 
     fn child_id(&self) -> String {
         let n = self.next.fetch_add(1, Ordering::SeqCst);
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let digest = Sha256::digest(format!(
-            "{}:{n}:{now}:{}",
-            self.episode_id,
-            std::process::id()
-        ));
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let digest = Sha256::digest(format!("{}:{n}:{now}:{}", self.episode_id, std::process::id()));
         format!("ep_{}", hex::encode(&digest[..4]))
     }
 }
@@ -244,12 +216,7 @@ impl ProcessSpawner {
 /// reserved replace the program's own when they are tighter, the depth
 /// below the child is one less than below the parent, and the team tools the
 /// parent answers are declared as host tools.
-pub fn child_config(
-    parent: &Config,
-    program: &ChildProgram,
-    task: String,
-    reserve: BudgetAmount,
-) -> Config {
+pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reserve: BudgetAmount) -> Config {
     let mut budget = program.budget.clone();
     if let Some(n) = reserve.model_calls {
         budget.model_calls = budget.model_calls.min(n);
@@ -260,9 +227,7 @@ pub fn child_config(
     if let Some(n) = reserve.seconds {
         budget.seconds = Some(budget.seconds.map_or(n, |t| t.min(n)));
     }
-    budget.max_depth = budget
-        .max_depth
-        .min(parent.budget.max_depth.saturating_sub(1));
+    budget.max_depth = budget.max_depth.min(parent.budget.max_depth.saturating_sub(1));
     let mut host_tools = program.host_tools.clone();
     host_tools.extend(crate::team::host_tool_defs());
     Config {
@@ -285,38 +250,28 @@ pub fn child_config(
 impl Spawner for ProcessSpawner {
     fn spawn(&self, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
         if !self.config.grants.spawn.contains(&req.program) {
-            return Err(CapError::Invalid(format!(
-                "grants.spawn does not list program {}",
-                req.program
-            )));
+            return Err(CapError::Invalid(format!("grants.spawn does not list program {}", req.program)));
         }
-        let program = self.config.programs.get(&req.program).ok_or_else(|| {
-            CapError::Invalid(format!("programs has no entry named {}", req.program))
-        })?;
+        let program = self
+            .config
+            .programs
+            .get(&req.program)
+            .ok_or_else(|| CapError::Invalid(format!("programs has no entry named {}", req.program)))?;
         let child_id = self.child_id();
         let dir = self.log_dir.join("children").join(&child_id);
         std::fs::create_dir_all(&dir)?;
         let invalid = |e: serde_json::Error| CapError::Invalid(e.to_string());
         let config = child_config(&self.config, program, req.task, req.reserve);
         let config_path = dir.join("config.json");
-        std::fs::write(
-            &config_path,
-            serde_json::to_vec_pretty(&config).map_err(invalid)?,
-        )?;
+        std::fs::write(&config_path, serde_json::to_vec_pretty(&config).map_err(invalid)?)?;
         let lineage = serde_json::json!({
             "episode_id": child_id, "parent_id": self.episode_id, "team_id": self.episode_id,
         });
-        std::fs::write(
-            dir.join("lineage.json"),
-            serde_json::to_vec_pretty(&lineage).map_err(invalid)?,
-        )?;
+        std::fs::write(dir.join("lineage.json"), serde_json::to_vec_pretty(&lineage).map_err(invalid)?)?;
         if req.context == SpawnContext::Fork {
-            let log_error = |e: foe_log::LogError| {
-                CapError::Invalid(format!("seed from {}: {e}", self.log_dir.display()))
-            };
-            let until = foe_log::fold::read_all(&self.log_dir)
-                .map_err(log_error)?
-                .len() as u64;
+            let log_error =
+                |e: foe_log::LogError| CapError::Invalid(format!("seed from {}: {e}", self.log_dir.display()));
+            let until = foe_log::fold::read_all(&self.log_dir).map_err(log_error)?.len() as u64;
             let header = SeedHeader {
                 new_id: child_id.clone(),
                 parent_id: Some(self.episode_id.clone()),
@@ -337,24 +292,10 @@ impl Spawner for ProcessSpawner {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let mut child = cmd.spawn()?;
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| CapError::Invalid("child has no stdin".into()))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| CapError::Invalid("child has no stdout".into()))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| CapError::Invalid("child has no stderr".into()))?;
-        self.router
-            .inner
-            .lock()
-            .unwrap()
-            .children
-            .insert(child_id.clone(), stdin);
+        let stdin = child.stdin.take().ok_or_else(|| CapError::Invalid("child has no stdin".into()))?;
+        let stdout = child.stdout.take().ok_or_else(|| CapError::Invalid("child has no stdout".into()))?;
+        let stderr = child.stderr.take().ok_or_else(|| CapError::Invalid("child has no stderr".into()))?;
+        self.router.inner.lock().unwrap().children.insert(child_id.clone(), stdin);
         relay_stderr(child_id.clone(), stderr);
         let (tx, rx) = watch::channel(None);
         let reader = Reader {
@@ -369,11 +310,7 @@ impl Spawner for ProcessSpawner {
             reader.router.remove(&reader.child_id);
             let _ = tx.send(Some(settled));
         });
-        Ok(SpawnHandle {
-            child_id,
-            dir,
-            run: ChildRun { rx },
-        })
+        Ok(SpawnHandle { child_id, dir, run: ChildRun { rx } })
     }
 }
 
@@ -399,8 +336,7 @@ impl Reader {
     /// Sends the child's own request upward, tagged with the child's id.
     fn forward(&self, mut value: serde_json::Map<String, serde_json::Value>) {
         value.insert("episode_id".into(), self.child_id.clone().into());
-        self.uplink
-            .forward(&serde_json::Value::Object(value).to_string());
+        self.uplink.forward(&serde_json::Value::Object(value).to_string());
     }
 
     /// Answers a host tool call the parent handled itself.
@@ -419,14 +355,10 @@ impl Reader {
         let mut below = BudgetAmount::default();
         let mut outcome = None;
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            let parsed: Result<serde_json::Map<String, serde_json::Value>, _> =
-                serde_json::from_str(&line);
+            let parsed: Result<serde_json::Map<String, serde_json::Value>, _> = serde_json::from_str(&line);
             let Ok(value) = parsed else {
                 outcome = Some(Outcome::Failed {
-                    error: format!(
-                        "child {} wrote a line that is not a JSON object",
-                        self.child_id
-                    ),
+                    error: format!("child {} wrote a line that is not a JSON object", self.child_id),
                 });
                 break;
             };
@@ -436,24 +368,19 @@ impl Reader {
                 self.uplink.forward(&line);
                 continue;
             }
-            let Ok(event) =
-                serde_json::from_value::<Event>(serde_json::Value::Object(value.clone()))
-            else {
+            let Ok(event) = serde_json::from_value::<Event>(serde_json::Value::Object(value.clone())) else {
                 outcome = Some(Outcome::Failed {
                     error: format!("child {} wrote an event that does not parse", self.child_id),
                 });
                 break;
             };
             match &event.data {
-                EventData::HostToolCall {
-                    call_id,
-                    name,
-                    args,
-                    ..
-                } => match self.observer.host_call(&self.child_id, name, args) {
-                    Some(result) => self.answer(call_id, result),
-                    None => self.forward(value),
-                },
+                EventData::HostToolCall { call_id, name, args, .. } => {
+                    match self.observer.host_call(&self.child_id, name, args) {
+                        Some(result) => self.answer(call_id, result),
+                        None => self.forward(value),
+                    }
+                }
                 EventData::ModelRequest(_) => {
                     calls += 1;
                     self.forward(value);
@@ -464,8 +391,7 @@ impl Reader {
                     usage.cache_read += m.usage.cache_read;
                 }
                 EventData::BudgetRelease { spent, .. } => {
-                    below.model_calls =
-                        Some(below.model_calls.unwrap_or(0) + spent.model_calls.unwrap_or(0));
+                    below.model_calls = Some(below.model_calls.unwrap_or(0) + spent.model_calls.unwrap_or(0));
                     below.tokens = Some(below.tokens.unwrap_or(0) + spent.tokens.unwrap_or(0));
                 }
                 EventData::EpisodeEnd { outcome: o } => outcome = Some(o.clone()),
@@ -481,11 +407,7 @@ impl Reader {
             tokens: Some(usage.input + usage.output + below.tokens.unwrap_or(0)),
             seconds: Some(start.elapsed().as_secs()),
         };
-        Settled {
-            outcome,
-            usage,
-            spent,
-        }
+        Settled { outcome, usage, spent }
     }
 }
 
@@ -515,10 +437,7 @@ pub(crate) mod tests {
 
     impl ChildObserver for Seen {
         fn observe(&self, child_id: &str, event: &Event) {
-            self.0
-                .lock()
-                .unwrap()
-                .push((child_id.to_string(), event.clone()));
+            self.0.lock().unwrap().push((child_id.to_string(), event.clone()));
         }
     }
 
@@ -589,34 +508,18 @@ echo "{\"seq\":4,\"time\":1,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"ki
             program: "worker".into(),
             task: "do it".into(),
             context: SpawnContext::Fresh,
-            reserve: BudgetAmount {
-                model_calls: Some(5),
-                tokens: None,
-                seconds: None,
-            },
+            reserve: BudgetAmount { model_calls: Some(5), tokens: None, seconds: None },
         };
         let handle = spawner.spawn(req).unwrap();
         let child_dir = dir.join("children").join(&handle.child_id);
-        let written: Config =
-            serde_json::from_slice(&std::fs::read(child_dir.join("config.json")).unwrap()).unwrap();
+        let written: Config = serde_json::from_slice(&std::fs::read(child_dir.join("config.json")).unwrap()).unwrap();
         assert_eq!(written.name, "worker");
         assert_eq!(written.task, "do it");
-        assert_eq!(
-            written.budget.model_calls, 5,
-            "the reservation caps the program's budget"
-        );
-        assert_eq!(
-            written.budget.max_depth, 1,
-            "depth below the child is one less than below the parent"
-        );
-        assert_eq!(
-            written.sandbox.mode,
-            foe_log::SandboxMode::Off,
-            "sandbox is inherited"
-        );
+        assert_eq!(written.budget.model_calls, 5, "the reservation caps the program's budget");
+        assert_eq!(written.budget.max_depth, 1, "depth below the child is one less than below the parent");
+        assert_eq!(written.sandbox.mode, foe_log::SandboxMode::Off, "sandbox is inherited");
         let lineage: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(child_dir.join("lineage.json")).unwrap())
-                .unwrap();
+            serde_json::from_slice(&std::fs::read(child_dir.join("lineage.json")).unwrap()).unwrap();
         assert_eq!(lineage["parent_id"], "ep_root");
         assert_eq!(lineage["episode_id"], handle.child_id.as_str());
 
@@ -625,16 +528,9 @@ echo "{\"seq\":4,\"time\":1,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"ki
             (lines.len() == 2).then(|| lines.clone())
         });
         let grand: serde_json::Value = serde_json::from_str(&forwarded[0]).unwrap();
-        assert_eq!(
-            grand["episode_id"], "ep_grand",
-            "a pre-tagged line is forwarded unchanged"
-        );
+        assert_eq!(grand["episode_id"], "ep_grand", "a pre-tagged line is forwarded unchanged");
         let own: serde_json::Value = serde_json::from_str(&forwarded[1]).unwrap();
-        assert_eq!(
-            own["episode_id"],
-            handle.child_id.as_str(),
-            "the child's own request is tagged with its id"
-        );
+        assert_eq!(own["episode_id"], handle.child_id.as_str(), "the child's own request is tagged with its id");
         assert_eq!(own["type"], "model/request");
 
         let answer = r#"{"type":"model/chunk","request_id":"rq_1","episode_id":"ep_grand","chunk":{"kind":"done"}}"#;
@@ -644,60 +540,23 @@ echo "{\"seq\":4,\"time\":1,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"ki
             (lines.len() == 3).then(|| lines.clone())
         });
         let call: serde_json::Value = serde_json::from_str(&forwarded[2]).unwrap();
-        assert_eq!(
-            call["type"], "host/tool-call",
-            "a host call the observer does not answer is forwarded"
-        );
+        assert_eq!(call["type"], "host/tool-call", "a host call the observer does not answer is forwarded");
         assert_eq!(call["episode_id"], handle.child_id.as_str());
-        let result = format!(
-            r#"{{"type":"tool/result","call_id":"tc_1","episode_id":"{}","value":1}}"#,
-            handle.child_id
-        );
+        let result =
+            format!(r#"{{"type":"tool/result","call_id":"tc_1","episode_id":"{}","value":1}}"#, handle.child_id);
         router.route(&handle.child_id, &result).unwrap();
         let settled = handle.run.clone().settle().await;
-        let Outcome::Completed { value } = &settled.outcome else {
-            panic!("{:?}", settled.outcome)
-        };
-        assert_eq!(
-            value[0],
-            serde_json::from_str::<serde_json::Value>(answer).unwrap(),
-            "routed by descendant id"
-        );
-        assert_eq!(
-            value[1],
-            serde_json::from_str::<serde_json::Value>(&result).unwrap(),
-            "routed by child id"
-        );
-        assert_eq!(
-            settled.usage,
-            Usage {
-                input: 10,
-                output: 5,
-                cache_read: 0
-            }
-        );
+        let Outcome::Completed { value } = &settled.outcome else { panic!("{:?}", settled.outcome) };
+        assert_eq!(value[0], serde_json::from_str::<serde_json::Value>(answer).unwrap(), "routed by descendant id");
+        assert_eq!(value[1], serde_json::from_str::<serde_json::Value>(&result).unwrap(), "routed by child id");
+        assert_eq!(settled.usage, Usage { input: 10, output: 5, cache_read: 0 });
         assert_eq!(settled.spent.model_calls, Some(1));
         assert_eq!(settled.spent.tokens, Some(15));
         let (outcome, _) = handle.run.wait().await;
         assert!(matches!(outcome, Outcome::Completed { .. }));
         assert!(!router.has_child(&handle.child_id));
-        let kinds: Vec<&str> = seen
-            .0
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(_, e)| e.data.type_name())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            kinds,
-            [
-                "episode/start",
-                "model/request",
-                "assistant/message",
-                "host/tool-call",
-                "episode/end"
-            ]
-        );
+        let kinds: Vec<&str> = seen.0.lock().unwrap().iter().map(|(_, e)| e.data.type_name()).collect::<Vec<_>>();
+        assert_eq!(kinds, ["episode/start", "model/request", "assistant/message", "host/tool-call", "episode/end"]);
     }
 
     #[test]

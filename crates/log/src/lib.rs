@@ -294,7 +294,9 @@ pub enum RetryCause {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
-    User { content: Vec<ContentBlock> },
+    User {
+        content: Vec<ContentBlock>,
+    },
     Assistant {
         text: String,
         tool_calls: Vec<ToolCall>,
@@ -303,7 +305,12 @@ pub enum Message {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         thinking: Vec<ThinkingBlock>,
     },
-    Tool { call_id: String, name: String, rendered: String, is_error: bool },
+    Tool {
+        call_id: String,
+        name: String,
+        rendered: String,
+        is_error: bool,
+    },
 }
 
 /// One reasoning block. `signature` is an opaque provider token that must
@@ -343,16 +350,36 @@ pub struct ToolCall {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Chunk {
-    Text { delta: String },
-    Thinking { delta: String },
+    Text {
+        delta: String,
+    },
+    Thinking {
+        delta: String,
+    },
     /// Closes the current thinking block with the provider's replay token.
     /// Sent at most once per block; absent for providers that issue none.
-    ThinkingSignature { signature: String },
-    ToolCallStart { id: String, name: String },
-    ToolCallDelta { id: String, delta: String },
-    ToolCallEnd { id: String },
-    Done { stop: StopReason, usage: Usage },
-    Error { message: String, retryable: bool },
+    ThinkingSignature {
+        signature: String,
+    },
+    ToolCallStart {
+        id: String,
+        name: String,
+    },
+    ToolCallDelta {
+        id: String,
+        delta: String,
+    },
+    ToolCallEnd {
+        id: String,
+    },
+    Done {
+        stop: StopReason,
+        usage: Usage,
+    },
+    Error {
+        message: String,
+        retryable: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

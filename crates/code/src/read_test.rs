@@ -24,10 +24,7 @@ async fn truncates_at_the_line_limit_and_names_the_next_offset() {
     fx.write("big.txt", &text);
     let v = read(&fx, json!({"path": "big.txt"})).await;
     let r = v.rendered.unwrap();
-    assert!(
-        r.ends_with("[Showing lines 1-2000 of 8431. Use offset=2001 to continue.]"),
-        "{r}"
-    );
+    assert!(r.ends_with("[Showing lines 1-2000 of 8431. Use offset=2001 to continue.]"), "{r}");
     assert!(r.starts_with("1\tline 1\n"));
     assert_eq!(v.value["shown"], 2000);
     assert_eq!(v.value["truncated"], true);
@@ -35,10 +32,7 @@ async fn truncates_at_the_line_limit_and_names_the_next_offset() {
     let v = read(&fx, json!({"path": "big.txt", "offset": 2001, "limit": 10})).await;
     let r = v.rendered.unwrap();
     assert!(r.starts_with("2001\tline 2001\n"));
-    assert!(
-        r.ends_with("[Showing lines 2001-2010 of 8431. Use offset=2011 to continue.]"),
-        "{r}"
-    );
+    assert!(r.ends_with("[Showing lines 2001-2010 of 8431. Use offset=2011 to continue.]"), "{r}");
 
     let v = read(&fx, json!({"path": "big.txt", "offset": 8431})).await;
     assert_eq!(v.rendered.as_deref(), Some("8431\tline 8431\n"));
@@ -54,10 +48,7 @@ async fn truncates_at_the_byte_limit_without_splitting_a_line() {
     let shown = v.value["shown"].as_u64().unwrap() as usize;
     assert!(shown * (line.len()) <= OUTPUT_MAX_BYTES);
     assert!((shown + 1) * line.len() > OUTPUT_MAX_BYTES);
-    assert!(v
-        .rendered
-        .unwrap()
-        .contains(&format!("Use offset={} to continue", shown + 1)));
+    assert!(v.rendered.unwrap().contains(&format!("Use offset={} to continue", shown + 1)));
 }
 
 #[tokio::test]
@@ -68,10 +59,7 @@ async fn a_single_line_over_the_byte_limit_suggests_bash() {
     assert!(!v.is_error);
     assert_eq!(v.value["shown"], 0);
     let r = v.rendered.unwrap();
-    assert!(
-        r.contains(&format!("is {} bytes", OUTPUT_MAX_BYTES + 10)),
-        "{r}"
-    );
+    assert!(r.contains(&format!("is {} bytes", OUTPUT_MAX_BYTES + 10)), "{r}");
     assert!(r.contains("sed -n '1p' 'one.txt' | head -c"), "{r}");
 }
 

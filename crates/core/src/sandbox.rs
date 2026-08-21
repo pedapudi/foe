@@ -14,9 +14,8 @@
 use crate::{Config, RuntimeError};
 use foe_log::{SandboxInfo, SandboxMode};
 use landlock::{
-    Access, AccessFs, AccessNet, BitFlags, CompatLevel, Compatible, LandlockStatus, NetPort,
-    PathBeneath, PathFd, Ruleset, RulesetAttr, RulesetCreated, RulesetCreatedAttr, RulesetStatus,
-    Scope, ABI,
+    Access, AccessFs, AccessNet, BitFlags, CompatLevel, Compatible, LandlockStatus, NetPort, PathBeneath, PathFd,
+    Ruleset, RulesetAttr, RulesetCreated, RulesetCreatedAttr, RulesetStatus, Scope, ABI,
 };
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -45,13 +44,7 @@ pub const LOADER_DIRS: &[&str] = &[
 pub const SYSTEM_READ_DIRS: &[&str] = &["/etc", "/usr/share", "/proc", "/sys"];
 
 /// Device files any process may read and write.
-pub const DEVICE_FILES: &[&str] = &[
-    "/dev/null",
-    "/dev/zero",
-    "/dev/random",
-    "/dev/urandom",
-    "/dev/tty",
-];
+pub const DEVICE_FILES: &[&str] = &["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty"];
 
 /// What one process may reach. Compiled into a ruleset by [`Sandbox`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -130,10 +123,7 @@ impl Sandbox {
 
     /// What `episode/start` records.
     pub fn info(&self) -> SandboxInfo {
-        SandboxInfo {
-            mode: self.mode,
-            landlock_abi: self.abi,
-        }
+        SandboxInfo { mode: self.mode, landlock_abi: self.abi }
     }
 
     /// The ABI in use; 0 when nothing is enforced.
@@ -161,24 +151,16 @@ impl Sandbox {
                     if let Some(r) = ruleset {
                         apply(r)?;
                     }
-                    cmd.spawn().map_err(|e| {
-                        RuntimeError::Sandbox(format!("spawn {:?}: {e}", cmd.get_program()))
-                    })
+                    cmd.spawn().map_err(|e| RuntimeError::Sandbox(format!("spawn {:?}: {e}", cmd.get_program())))
                 })
                 .join()
-                .map_err(|_| {
-                    RuntimeError::Sandbox("the thread starting the child panicked".into())
-                })?
+                .map_err(|_| RuntimeError::Sandbox("the thread starting the child panicked".into()))?
         })
     }
 
     /// Runs `f` on a thread restricted to `policy`, for code that must work
     /// under a narrowed domain without starting a process.
-    pub fn run_narrowed<T: Send>(
-        &self,
-        policy: &Policy,
-        f: impl FnOnce() -> T + Send,
-    ) -> Result<T, RuntimeError> {
+    pub fn run_narrowed<T: Send>(&self, policy: &Policy, f: impl FnOnce() -> T + Send) -> Result<T, RuntimeError> {
         let ruleset = self.compile(policy)?;
         std::thread::scope(|scope| {
             scope
@@ -207,11 +189,7 @@ impl Sandbox {
         if self.abi >= 4 {
             // Connect is handled only when it is to be denied: a handled access
             // with no rule is denied everywhere, and connect has no wildcard rule.
-            let net = if policy.connect_tcp {
-                BitFlags::from(AccessNet::BindTcp)
-            } else {
-                AccessNet::from_all(abi)
-            };
+            let net = if policy.connect_tcp { BitFlags::from(AccessNet::BindTcp) } else { AccessNet::from_all(abi) };
             ruleset = ruleset.handle_access(net).map_err(err)?;
         }
         if self.abi >= 6 {
@@ -228,27 +206,20 @@ impl Sandbox {
             (policy.log_dir.iter().cloned().collect(), read | write),
             (paths(LOADER_DIRS), read | AccessFs::Execute),
             (paths(SYSTEM_READ_DIRS), read),
-            (
-                paths(DEVICE_FILES),
-                AccessFs::ReadFile | AccessFs::WriteFile,
-            ),
+            (paths(DEVICE_FILES), AccessFs::ReadFile | AccessFs::WriteFile),
         ];
         for (paths, access) in rules {
             for path in paths {
                 // A granted path that does not exist cannot be opened, so it
                 // cannot be reached either; skipping it is exact.
                 if let Ok(fd) = PathFd::new(&path) {
-                    created = created
-                        .add_rule(PathBeneath::new(fd, access))
-                        .map_err(err)?;
+                    created = created.add_rule(PathBeneath::new(fd, access)).map_err(err)?;
                 }
             }
         }
         if self.abi >= 4 {
             for port in &policy.bind_tcp {
-                created = created
-                    .add_rule(NetPort::new(*port, AccessNet::BindTcp))
-                    .map_err(err)?;
+                created = created.add_rule(NetPort::new(*port, AccessNet::BindTcp)).map_err(err)?;
             }
         }
         if self.abi >= 7 {
@@ -261,13 +232,9 @@ impl Sandbox {
 
 /// Restricts the calling thread with a compiled ruleset.
 fn apply(ruleset: RulesetCreated) -> Result<RulesetStatus, RuntimeError> {
-    let status = ruleset
-        .restrict_self()
-        .map_err(|e| RuntimeError::Sandbox(e.to_string()))?;
+    let status = ruleset.restrict_self().map_err(|e| RuntimeError::Sandbox(e.to_string()))?;
     if status.ruleset == RulesetStatus::NotEnforced {
-        return Err(RuntimeError::Sandbox(
-            "landlock_restrict_self enforced nothing".into(),
-        ));
+        return Err(RuntimeError::Sandbox("landlock_restrict_self enforced nothing".into()));
     }
     Ok(status.ruleset)
 }
@@ -303,10 +270,9 @@ pub fn probe_abi() -> u32 {
             .restrict_self()
             .ok()?;
         match status.landlock {
-            LandlockStatus::Available {
-                effective_abi,
-                kernel_abi,
-            } => Some(kernel_abi.map(|k| k as u32).unwrap_or(effective_abi as u32)),
+            LandlockStatus::Available { effective_abi, kernel_abi } => {
+                Some(kernel_abi.map(|k| k as u32).unwrap_or(effective_abi as u32))
+            }
             _ => Some(0),
         }
     })
@@ -349,10 +315,7 @@ mod tests {
     fn off_records_zero_and_required_needs_landlock() {
         assert_eq!(
             Sandbox::new(SandboxMode::Off).unwrap().info(),
-            SandboxInfo {
-                mode: SandboxMode::Off,
-                landlock_abi: 0
-            }
+            SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 }
         );
         let required = Sandbox::new(SandboxMode::Required);
         if probe_abi() == 0 {
@@ -376,10 +339,7 @@ mod tests {
         let outside = temp_dir("outside");
         std::fs::write(inside.join("a"), b"a").unwrap();
         std::fs::write(outside.join("b"), b"b").unwrap();
-        let policy = Policy {
-            read: vec![inside.clone()],
-            ..Policy::default()
-        };
+        let policy = Policy { read: vec![inside.clone()], ..Policy::default() };
         let (a, b, w) = s
             .run_narrowed(&policy, || {
                 (
@@ -400,15 +360,10 @@ mod tests {
     fn write_roots_allow_create_and_remove() {
         let Some(s) = sandbox() else { return };
         let dir = temp_dir("write");
-        let policy = Policy {
-            write: vec![dir.clone()],
-            ..Policy::default()
-        };
+        let policy = Policy { write: vec![dir.clone()], ..Policy::default() };
         let ok = s
             .run_narrowed(&policy, || {
-                std::fs::File::create(dir.join("f"))
-                    .and_then(|mut f| f.write_all(b"x"))
-                    .is_ok()
+                std::fs::File::create(dir.join("f")).and_then(|mut f| f.write_all(b"x")).is_ok()
                     && std::fs::create_dir(dir.join("d")).is_ok()
                     && std::fs::remove_file(dir.join("f")).is_ok()
             })
@@ -422,29 +377,18 @@ mod tests {
         let dir = temp_dir("exec");
         let other = dir.join("true");
         std::fs::copy("/bin/true", &other).unwrap();
-        let episode = Policy {
-            read: vec![dir.clone()],
-            exec: vec!["/bin/sh".into(), other.clone()],
-            ..Policy::default()
-        };
+        let episode =
+            Policy { read: vec![dir.clone()], exec: vec!["/bin/sh".into(), other.clone()], ..Policy::default() };
         let tool = episode.for_executable(Path::new("/bin/sh"), false);
         assert_eq!(tool.exec, vec![PathBuf::from("/bin/sh")]);
         assert!(tool.log_dir.is_none());
         let run = |policy: &Policy| {
             let mut cmd = Command::new("/bin/sh");
             cmd.arg("-c").arg(other.display().to_string()).env_clear();
-            s.spawn_narrowed(policy, cmd)
-                .unwrap()
-                .wait_with_output()
-                .unwrap()
-                .status
-                .success()
+            s.spawn_narrowed(policy, cmd).unwrap().wait_with_output().unwrap().status.success()
         };
         assert!(run(&episode), "a file in the episode's exec list runs");
-        assert!(
-            !run(&tool),
-            "the same file is denied under a policy naming only /bin/sh"
-        );
+        assert!(!run(&tool), "the same file is denied under a policy naming only /bin/sh");
     }
 
     #[test]
@@ -453,16 +397,9 @@ mod tests {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let closed = Policy::default();
-        let open = Policy {
-            connect_tcp: true,
-            ..Policy::default()
-        };
-        let denied = s
-            .run_narrowed(&closed, || std::net::TcpStream::connect(addr).is_err())
-            .unwrap();
-        let allowed = s
-            .run_narrowed(&open, || std::net::TcpStream::connect(addr).is_ok())
-            .unwrap();
+        let open = Policy { connect_tcp: true, ..Policy::default() };
+        let denied = s.run_narrowed(&closed, || std::net::TcpStream::connect(addr).is_err()).unwrap();
+        let allowed = s.run_narrowed(&open, || std::net::TcpStream::connect(addr).is_ok()).unwrap();
         if s.abi() >= 4 {
             assert!(denied, "connect is denied when the policy closes TCP");
         }
@@ -479,16 +416,12 @@ mod tests {
         let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = probe.local_addr().unwrap().port();
         drop(probe);
-        let policy = Policy {
-            bind_tcp: vec![port],
-            ..Policy::default()
-        };
+        let policy = Policy { bind_tcp: vec![port], ..Policy::default() };
         let (listed, other) = s
             .run_narrowed(&policy, || {
                 (
                     std::net::TcpListener::bind(("127.0.0.1", port)).is_ok(),
-                    std::net::TcpListener::bind(("127.0.0.1", port.wrapping_add(1).max(1024)))
-                        .is_ok(),
+                    std::net::TcpListener::bind(("127.0.0.1", port.wrapping_add(1).max(1024))).is_ok(),
                 )
             })
             .unwrap();
@@ -510,9 +443,6 @@ mod tests {
         assert_eq!(p.write, vec![PathBuf::from("/src/out")]);
         assert_eq!(p.exec, vec![PathBuf::from("/usr/bin/ruff")]);
         assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
-        assert!(
-            !p.connect_tcp,
-            "an episode without a model block holds no transport"
-        );
+        assert!(!p.connect_tcp, "an episode without a model block holds no transport");
     }
 }

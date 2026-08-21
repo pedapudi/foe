@@ -55,13 +55,9 @@ impl Shared {
 pub async fn serve(dir: &Path, port: u16) -> Result<Server, Error> {
     let listener = match TcpListener::bind(("127.0.0.1", port)).await {
         Ok(listener) => listener,
-        Err(_) => TcpListener::bind(("127.0.0.1", 0))
-            .await
-            .map_err(|e| Error::Io("bind 127.0.0.1".into(), e))?,
+        Err(_) => TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| Error::Io("bind 127.0.0.1".into(), e))?,
     };
-    let addr = listener
-        .local_addr()
-        .map_err(|e| Error::Io("local address".into(), e))?;
+    let addr = listener.local_addr().map_err(|e| Error::Io("local address".into(), e))?;
     let mut bytes = [0u8; 16];
     std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut bytes))
@@ -81,11 +77,7 @@ pub async fn serve(dir: &Path, port: u16) -> Result<Server, Error> {
     let _ = shared.store().poll();
     tokio::spawn(tail(shared.clone(), tx));
     let accept = tokio::spawn(accept_loop(listener, shared));
-    Ok(Server {
-        addr,
-        token,
-        accept,
-    })
+    Ok(Server { addr, token, accept })
 }
 
 async fn tail(shared: Arc<Shared>, tx: watch::Sender<u64>) {
@@ -124,9 +116,7 @@ struct Request {
 
 /// Parses the request line and headers. `None` when the input is not an
 /// HTTP request or exceeds the header size limit.
-async fn read_request<R: AsyncRead + Unpin>(
-    rd: &mut BufReader<R>,
-) -> std::io::Result<Option<Request>> {
+async fn read_request<R: AsyncRead + Unpin>(rd: &mut BufReader<R>) -> std::io::Result<Option<Request>> {
     let mut line = String::new();
     rd.read_line(&mut line).await?;
     let mut parts = line.split_whitespace();
@@ -134,11 +124,8 @@ async fn read_request<R: AsyncRead + Unpin>(
         return Ok(None);
     };
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
-    let query = query
-        .split('&')
-        .filter_map(|kv| kv.split_once('='))
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
+    let query =
+        query.split('&').filter_map(|kv| kv.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect();
     let (method, path) = (method.to_string(), path.to_string());
     let mut headers = HashMap::new();
     loop {
@@ -151,29 +138,19 @@ async fn read_request<R: AsyncRead + Unpin>(
         };
         headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
     }
-    Ok(Some(Request {
-        method,
-        path,
-        query,
-        headers,
-    }))
+    Ok(Some(Request { method, path, query, headers }))
 }
 
 /// The bytes of an embedded font, or `None` when the name is unknown or the
 /// file was absent at build time.
 fn font(name: &str) -> Option<&'static [u8]> {
-    let found = crate::FONTS
-        .iter()
-        .find(|(n, bytes)| *n == name && !bytes.is_empty());
+    let found = crate::FONTS.iter().find(|(n, bytes)| *n == name && !bytes.is_empty());
     found.map(|(_, bytes)| *bytes)
 }
 
 /// Equality in time independent of where the strings first differ.
 fn same_token(a: &str, b: &str) -> bool {
-    let diff = a
-        .bytes()
-        .zip(b.bytes())
-        .fold(0, |acc, (x, y)| acc | (x ^ y));
+    let diff = a.bytes().zip(b.bytes()).fold(0, |acc, (x, y)| acc | (x ^ y));
     a.len() == b.len() && diff == 0
 }
 
@@ -183,11 +160,7 @@ async fn handle(stream: TcpStream, shared: Arc<Shared>) -> std::io::Result<()> {
     let Some(req) = read_request(&mut rd).await? else {
         return respond(&mut wr, "400 Bad Request", TEXT, b"bad request").await;
     };
-    if req
-        .headers
-        .get("origin")
-        .is_some_and(|o| *o != shared.origin)
-    {
+    if req.headers.get("origin").is_some_and(|o| *o != shared.origin) {
         return respond(&mut wr, "403 Forbidden", TEXT, b"origin not allowed").await;
     }
     // The page and the event stream are the two requests a browser cannot
@@ -199,21 +172,12 @@ async fn handle(stream: TcpStream, shared: Arc<Shared>) -> std::io::Result<()> {
         return respond(&mut wr, "401 Unauthorized", TEXT, b"missing or wrong token").await;
     }
     if req.method != "GET" {
-        return respond(
-            &mut wr,
-            "405 Method Not Allowed",
-            TEXT,
-            b"method not allowed",
-        )
-        .await;
+        return respond(&mut wr, "405 Method Not Allowed", TEXT, b"method not allowed").await;
     }
     let font = req.path.strip_prefix("/fonts/").and_then(font);
     let (content_type, body) = match (req.path.as_str(), font) {
         ("/", _) => {
-            let boot = format!(
-                "{{\"mode\":\"live\",\"base\":\"\",\"token\":{:?}}}",
-                shared.token
-            );
+            let boot = format!("{{\"mode\":\"live\",\"base\":\"\",\"token\":{:?}}}", shared.token);
             ("text/html; charset=utf-8", crate::page(&boot).into_bytes())
         }
         ("/episodes", _) => {
@@ -222,10 +186,7 @@ async fn handle(stream: TcpStream, shared: Arc<Shared>) -> std::io::Result<()> {
         }
         ("/events", _) => {
             let id = req.query.get("episode").cloned().unwrap_or_default();
-            let last = req
-                .headers
-                .get("last-event-id")
-                .and_then(|v| v.parse().ok());
+            let last = req.headers.get("last-event-id").and_then(|v| v.parse().ok());
             return stream_events(&mut wr, shared, &id, last).await;
         }
         (_, Some(bytes)) => (FONT, bytes.to_vec()),
@@ -240,17 +201,8 @@ const FONT: &str = "font/woff2";
 /// Writes one complete response and closes the connection. Fonts never
 /// change, so they alone are marked cacheable; everything else is a view of
 /// logs that grow.
-async fn respond(
-    wr: &mut OwnedWriteHalf,
-    status: &str,
-    content_type: &str,
-    body: &[u8],
-) -> std::io::Result<()> {
-    let cache = if content_type == FONT {
-        "public, max-age=31536000, immutable"
-    } else {
-        "no-store"
-    };
+async fn respond(wr: &mut OwnedWriteHalf, status: &str, content_type: &str, body: &[u8]) -> std::io::Result<()> {
+    let cache = if content_type == FONT { "public, max-age=31536000, immutable" } else { "no-store" };
     let head = format!(
         "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\
          Cache-Control: {cache}\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n\
@@ -284,8 +236,7 @@ async fn stream_events(
         let lines = shared.store().lines(id, last);
         for line in lines {
             let seq = last.map_or(0, |s| s + 1);
-            wr.write_all(format!("id: {seq}\ndata: {line}\n\n").as_bytes())
-                .await?;
+            wr.write_all(format!("id: {seq}\ndata: {line}\n\n").as_bytes()).await?;
             last = Some(seq);
         }
         match tokio::time::timeout(KEEP_ALIVE, changed.changed()).await {

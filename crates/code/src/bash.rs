@@ -90,8 +90,7 @@ impl Tool for Bash {
         let Some(cwd) = ctx.reader.as_ref().and_then(|r| r.roots().first().cloned()) else {
             return ToolValue::error("bash: no read root to use as the working directory");
         };
-        let mut timeout =
-            Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS));
+        let mut timeout = Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS));
         if let Some(deadline) = ctx.deadline {
             timeout = timeout.min(deadline.saturating_duration_since(Instant::now()));
         }
@@ -124,8 +123,8 @@ impl Tool for Bash {
         let mut out = String::new();
         if truncated {
             let file = ctx.spill_dir.join(format!("{}-bash.txt", ctx.call_id));
-            let saved = std::fs::create_dir_all(&ctx.spill_dir)
-                .and_then(|()| std::fs::write(&file, combined.as_bytes()));
+            let saved =
+                std::fs::create_dir_all(&ctx.spill_dir).and_then(|()| std::fs::write(&file, combined.as_bytes()));
             let _ = match &saved {
                 Ok(()) => writeln!(
                     out,
@@ -150,10 +149,7 @@ impl Tool for Bash {
         }
         let secs = res.duration.as_secs_f64();
         let _ = match (res.timed_out, res.exit_code) {
-            (true, _) => write!(
-                out,
-                "[timed out after {secs:.1}s; the process group was killed]"
-            ),
+            (true, _) => write!(out, "[timed out after {secs:.1}s; the process group was killed]"),
             (false, Some(code)) => write!(out, "[exit {code} in {secs:.2}s]"),
             (false, None) => write!(out, "[killed by a signal after {secs:.2}s]"),
         };

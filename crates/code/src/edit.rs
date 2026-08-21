@@ -101,9 +101,7 @@ impl Tool for Edit {
         let raw = match reader.read(&path).map(String::from_utf8) {
             Ok(Ok(s)) => s,
             Ok(Err(_)) => {
-                return ToolValue::error(format!(
-                    "edit: {shown} is not valid UTF-8; edit changes text files only"
-                ))
+                return ToolValue::error(format!("edit: {shown} is not valid UTF-8; edit changes text files only"))
             }
             Err(e) => return ToolValue::error(format!("edit: {shown}: {e}")),
         };
@@ -150,14 +148,7 @@ impl Tool for Edit {
                 ));
             }
         }
-        let spans: Vec<Span> = located
-            .iter()
-            .map(|(_, s, e, n)| Span {
-                start: *s,
-                end: *e,
-                new_text: n,
-            })
-            .collect();
+        let spans: Vec<Span> = located.iter().map(|(_, s, e, n)| Span { start: *s, end: *e, new_text: n }).collect();
         let mut result = String::with_capacity(text.len());
         let mut cursor = 0;
         for s in &spans {
@@ -167,9 +158,7 @@ impl Tool for Edit {
         }
         result.push_str(&text[cursor..]);
         if result == text {
-            return ToolValue::error(format!(
-                "edit: {shown} is unchanged; every new_text equals its old_text"
-            ));
+            return ToolValue::error(format!("edit: {shown} is unchanged; every new_text equals its old_text"));
         }
         let d = diff::unified(&shown, &text, &spans);
 
@@ -194,10 +183,7 @@ impl Tool for Edit {
                 "removed": d.removed,
                 "diff": d.text,
             }),
-            format!(
-                "edited {shown}: {n} edit(s), +{} -{} lines\n{}",
-                d.added, d.removed, d.text
-            ),
+            format!("edited {shown}: {n} edit(s), +{} -{} lines\n{}", d.added, d.removed, d.text),
         )
     }
 }

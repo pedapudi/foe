@@ -76,27 +76,14 @@ pub fn unified(name: &str, original: &str, spans: &[Span]) -> Diff {
             Some(t) => t.split('\n').map(str::to_owned).collect(),
             None => new_text.split('\n').map(str::to_owned).collect(),
         };
-        let lead = old
-            .iter()
-            .zip(&new)
-            .take_while(|(o, n)| **o == n.as_str())
-            .count();
+        let lead = old.iter().zip(&new).take_while(|(o, n)| **o == n.as_str()).count();
         old.drain(..lead);
         new.drain(..lead);
-        let trail = old
-            .iter()
-            .rev()
-            .zip(new.iter().rev())
-            .take_while(|(o, n)| **o == n.as_str())
-            .count();
+        let trail = old.iter().rev().zip(new.iter().rev()).take_while(|(o, n)| **o == n.as_str()).count();
         old.truncate(old.len() - trail);
         new.truncate(new.len() - trail);
         if !old.is_empty() || !new.is_empty() {
-            changes.push(Change {
-                at: a + lead,
-                old,
-                new,
-            });
+            changes.push(Change { at: a + lead, old, new });
         }
         i = j;
     }
@@ -107,18 +94,14 @@ pub fn unified(name: &str, original: &str, spans: &[Span]) -> Diff {
     while k < changes.len() {
         let hunk_start = changes[k].at.saturating_sub(CONTEXT);
         let mut end = k;
-        while end + 1 < changes.len()
-            && changes[end + 1].at <= changes[end].at + changes[end].old.len() + 2 * CONTEXT
-        {
+        while end + 1 < changes.len() && changes[end + 1].at <= changes[end].at + changes[end].old.len() + 2 * CONTEXT {
             end += 1;
         }
         let last = &changes[end];
         let hunk_end = (last.at + last.old.len() + CONTEXT).min(lines.len());
         let old_count = hunk_end - hunk_start;
-        let (minus, plus): (usize, usize) = changes[k..=end]
-            .iter()
-            .map(|c| (c.old.len(), c.new.len()))
-            .fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+        let (minus, plus): (usize, usize) =
+            changes[k..=end].iter().map(|c| (c.old.len(), c.new.len())).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
         let new_count = old_count - minus + plus;
         let new_start = (hunk_start as isize + delta) as usize;
         let shown = |start: usize, count: usize| if count == 0 { start } else { start + 1 };
@@ -149,11 +132,7 @@ pub fn unified(name: &str, original: &str, spans: &[Span]) -> Diff {
         delta += plus as isize - minus as isize;
         k = end + 1;
     }
-    Diff {
-        text: out,
-        added,
-        removed,
-    }
+    Diff { text: out, added, removed }
 }
 
 #[cfg(test)]

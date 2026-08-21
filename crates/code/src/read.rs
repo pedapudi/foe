@@ -78,10 +78,7 @@ impl Tool for Read {
             ));
         }
         let Ok(text) = std::str::from_utf8(&bytes) else {
-            return ToolValue::error(format!(
-                "read: {shown} is a binary file ({} bytes; invalid UTF-8)",
-                bytes.len()
-            ));
+            return ToolValue::error(format!("read: {shown} is a binary file ({} bytes; invalid UTF-8)", bytes.len()));
         };
         let lines = truncate::lines(text);
         let total = lines.len();
@@ -108,10 +105,7 @@ impl Tool for Read {
             ));
         }
         let rest = &lines[offset - 1..];
-        let max_lines = a
-            .limit
-            .unwrap_or(OUTPUT_MAX_LINES)
-            .clamp(1, OUTPUT_MAX_LINES);
+        let max_lines = a.limit.unwrap_or(OUTPUT_MAX_LINES).clamp(1, OUTPUT_MAX_LINES);
         let cut = truncate::head(rest, max_lines, OUTPUT_MAX_BYTES);
         if cut.len() == 0 {
             let notice = format!(
@@ -128,16 +122,9 @@ impl Tool for Read {
         }
         let truncated = last < total;
         if truncated {
-            let _ = write!(
-                out,
-                "[Showing lines {offset}-{last} of {total}. Use offset={} to continue.]",
-                last + 1
-            );
+            let _ = write!(out, "[Showing lines {offset}-{last} of {total}. Use offset={} to continue.]", last + 1);
         }
-        ToolValue::ok(
-            value(cut.len(), truncated, &rest[..cut.end].join("\n")),
-            out,
-        )
+        ToolValue::ok(value(cut.len(), truncated, &rest[..cut.end].join("\n")), out)
     }
 }
 

@@ -83,18 +83,11 @@ impl Url {
             return Err("host is empty".into());
         }
         let port = match port {
-            Some(p) => p
-                .parse::<u16>()
-                .map_err(|_| format!("port {p:?} is not a number"))?,
+            Some(p) => p.parse::<u16>().map_err(|_| format!("port {p:?} is not a number"))?,
             None if tls => 443,
             None => 80,
         };
-        Ok(Url {
-            tls,
-            host,
-            port,
-            path: path.to_string(),
-        })
+        Ok(Url { tls, host, port, path: path.to_string() })
     }
 
     /// Appends `suffix`, which starts with `/`, to the path. A trailing `/`
@@ -103,21 +96,14 @@ impl Url {
     pub fn join(&self, suffix: &str) -> Url {
         let mut path = self.path.trim_end_matches('/').to_string();
         path.push_str(suffix);
-        Url {
-            path,
-            ..self.clone()
-        }
+        Url { path, ..self.clone() }
     }
 
     /// The `Host` header value: the port is included only when it differs
     /// from the scheme's default.
     fn host_header(&self) -> String {
         let default = if self.tls { 443 } else { 80 };
-        let host = if self.host.contains(':') {
-            format!("[{}]", self.host)
-        } else {
-            self.host.clone()
-        };
+        let host = if self.host.contains(':') { format!("[{}]", self.host) } else { self.host.clone() };
         if self.port == default {
             host
         } else {
@@ -169,10 +155,7 @@ pub struct Response {
 impl Response {
     /// The first header with this name, compared case-insensitively.
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(name))
-            .map(|(_, v)| v.as_str())
+        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
     }
 }
 
@@ -209,33 +192,21 @@ pub fn post(url: &Url, headers: &[(&str, &str)], body: &[u8]) -> Result<Response
         let line = read_head_line(&mut reader)?;
         total += line.len();
         if total > MAX_HEAD_BYTES {
-            return Err(HttpError::Malformed(format!(
-                "response head exceeds {MAX_HEAD_BYTES} bytes"
-            )));
+            return Err(HttpError::Malformed(format!("response head exceeds {MAX_HEAD_BYTES} bytes")));
         }
         if line.is_empty() {
             break;
         }
-        let (name, value) = line
-            .split_once(':')
-            .ok_or_else(|| HttpError::Malformed(format!("header line {line:?}")))?;
+        let (name, value) =
+            line.split_once(':').ok_or_else(|| HttpError::Malformed(format!("header line {line:?}")))?;
         headers.push((name.trim().to_ascii_lowercase(), value.trim().to_string()));
     }
     let framing = framing(&headers)?;
-    Ok(Response {
-        status,
-        headers,
-        body: BufReader::new(Body {
-            inner: reader,
-            framing,
-        }),
-    })
+    Ok(Response { status, headers, body: BufReader::new(Body { inner: reader, framing }) })
 }
 
 fn connect(url: &Url) -> Result<Stream, HttpError> {
-    let addrs = (url.host.as_str(), url.port)
-        .to_socket_addrs()
-        .map_err(HttpError::Connect)?;
+    let addrs = (url.host.as_str(), url.port).to_socket_addrs().map_err(HttpError::Connect)?;
     let mut last = io::Error::new(io::ErrorKind::NotFound, "host resolved to no address");
     let mut tcp = None;
     for addr in addrs {
@@ -249,17 +220,13 @@ fn connect(url: &Url) -> Result<Stream, HttpError> {
     }
     let tcp = tcp.ok_or(HttpError::Connect(last))?;
     tcp.set_nodelay(true).map_err(HttpError::Connect)?;
-    tcp.set_read_timeout(Some(READ_TIMEOUT))
-        .map_err(HttpError::Connect)?;
-    tcp.set_write_timeout(Some(READ_TIMEOUT))
-        .map_err(HttpError::Connect)?;
+    tcp.set_read_timeout(Some(READ_TIMEOUT)).map_err(HttpError::Connect)?;
+    tcp.set_write_timeout(Some(READ_TIMEOUT)).map_err(HttpError::Connect)?;
     if !url.tls {
         return Ok(Stream::Plain(tcp));
     }
-    let name = rustls::pki_types::ServerName::try_from(url.host.clone())
-        .map_err(|e| HttpError::Tls(e.to_string()))?;
-    let conn = rustls::ClientConnection::new(tls_config(), name)
-        .map_err(|e| HttpError::Tls(e.to_string()))?;
+    let name = rustls::pki_types::ServerName::try_from(url.host.clone()).map_err(|e| HttpError::Tls(e.to_string()))?;
+    let conn = rustls::ClientConnection::new(tls_config(), name).map_err(|e| HttpError::Tls(e.to_string()))?;
     Ok(Stream::Tls(Box::new(rustls::StreamOwned::new(conn, tcp))))
 }
 
@@ -271,11 +238,7 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
         .get_or_init(|| {
             let mut roots = rustls::RootCertStore::empty();
             roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-            Arc::new(
-                rustls::ClientConfig::builder()
-                    .with_root_certificates(roots)
-                    .with_no_client_auth(),
-            )
+            Arc::new(rustls::ClientConfig::builder().with_root_certificates(roots).with_no_client_auth())
         })
         .clone()
 }
@@ -312,31 +275,18 @@ fn parse_status(line: &str) -> Result<u16, HttpError> {
     if !version.starts_with("HTTP/1.") {
         return Err(HttpError::Malformed(format!("status line {line:?}")));
     }
-    parts
-        .next()
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| HttpError::Malformed(format!("status line {line:?}")))
+    parts.next().and_then(|s| s.parse().ok()).ok_or_else(|| HttpError::Malformed(format!("status line {line:?}")))
 }
 
 fn framing(headers: &[(String, String)]) -> Result<Framing, HttpError> {
-    let find = |name: &str| {
-        headers
-            .iter()
-            .find(|(k, _)| k == name)
-            .map(|(_, v)| v.as_str())
-    };
+    let find = |name: &str| headers.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
     if find("transfer-encoding").is_some_and(|v| v.to_ascii_lowercase().contains("chunked")) {
-        return Ok(Framing::Chunked {
-            remaining: 0,
-            done: false,
-        });
+        return Ok(Framing::Chunked { remaining: 0, done: false });
     }
     match find("content-length") {
-        Some(v) => v
-            .trim()
-            .parse()
-            .map(Framing::Length)
-            .map_err(|_| HttpError::Malformed(format!("content-length {v:?}"))),
+        Some(v) => {
+            v.trim().parse().map(Framing::Length).map_err(|_| HttpError::Malformed(format!("content-length {v:?}")))
+        }
         None => Ok(Framing::UntilClose),
     }
 }
@@ -401,9 +351,7 @@ impl Read for Body {
                 if *remaining == 0 {
                     return Ok(0);
                 }
-                let want = buf
-                    .len()
-                    .min(usize::try_from(*remaining).unwrap_or(usize::MAX));
+                let want = buf.len().min(usize::try_from(*remaining).unwrap_or(usize::MAX));
                 let got = self.inner.read(&mut buf[..want])?;
                 if got == 0 {
                     return Err(truncated());
@@ -418,12 +366,8 @@ impl Read for Body {
                 if *remaining == 0 {
                     let size_line = read_crlf_line(&mut self.inner)?;
                     let digits = size_line.split(';').next().unwrap_or("").trim();
-                    let size = u64::from_str_radix(digits, 16).map_err(|_| {
-                        io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            format!("chunk size {size_line:?}"),
-                        )
-                    })?;
+                    let size = u64::from_str_radix(digits, 16)
+                        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, format!("chunk size {size_line:?}")))?;
                     if size == 0 {
                         // Trailer fields, if any, end with an empty line.
                         while !read_crlf_line(&mut self.inner)?.is_empty() {}
@@ -432,9 +376,7 @@ impl Read for Body {
                     }
                     *remaining = size;
                 }
-                let want = buf
-                    .len()
-                    .min(usize::try_from(*remaining).unwrap_or(usize::MAX));
+                let want = buf.len().min(usize::try_from(*remaining).unwrap_or(usize::MAX));
                 let got = self.inner.read(&mut buf[..want])?;
                 if got == 0 {
                     return Err(truncated());
@@ -451,10 +393,7 @@ impl Read for Body {
 }
 
 fn truncated() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::UnexpectedEof,
-        "connection closed before the body was complete",
-    )
+    io::Error::new(io::ErrorKind::UnexpectedEof, "connection closed before the body was complete")
 }
 
 fn read_crlf_line(reader: &mut BufReader<Stream>) -> io::Result<String> {
@@ -476,35 +415,11 @@ mod tests {
     #[test]
     fn url_parse_defaults_port_and_path() {
         let u = Url::parse("https://api.anthropic.com").unwrap();
-        assert_eq!(
-            u,
-            Url {
-                tls: true,
-                host: "api.anthropic.com".into(),
-                port: 443,
-                path: "/".into()
-            }
-        );
+        assert_eq!(u, Url { tls: true, host: "api.anthropic.com".into(), port: 443, path: "/".into() });
         let u = Url::parse("http://localhost:11434/v1").unwrap();
-        assert_eq!(
-            u,
-            Url {
-                tls: false,
-                host: "localhost".into(),
-                port: 11434,
-                path: "/v1".into()
-            }
-        );
+        assert_eq!(u, Url { tls: false, host: "localhost".into(), port: 11434, path: "/v1".into() });
         let u = Url::parse("http://[::1]:8080/x?y=1").unwrap();
-        assert_eq!(
-            u,
-            Url {
-                tls: false,
-                host: "::1".into(),
-                port: 8080,
-                path: "/x?y=1".into()
-            }
-        );
+        assert_eq!(u, Url { tls: false, host: "::1".into(), port: 8080, path: "/x?y=1".into() });
     }
 
     #[test]
@@ -518,39 +433,25 @@ mod tests {
 
     #[test]
     fn url_join_ignores_trailing_slash() {
-        let a = Url::parse("http://h/v1/")
-            .unwrap()
-            .join("/chat/completions");
+        let a = Url::parse("http://h/v1/").unwrap().join("/chat/completions");
         let b = Url::parse("http://h/v1").unwrap().join("/chat/completions");
         assert_eq!(a.path, "/v1/chat/completions");
         assert_eq!(a, b);
-        assert_eq!(
-            Url::parse("http://h").unwrap().join("/v1/messages").path,
-            "/v1/messages"
-        );
+        assert_eq!(Url::parse("http://h").unwrap().join("/v1/messages").path, "/v1/messages");
     }
 
     #[test]
     fn host_header_omits_default_port() {
         assert_eq!(Url::parse("https://h").unwrap().host_header(), "h");
-        assert_eq!(
-            Url::parse("https://h:8443").unwrap().host_header(),
-            "h:8443"
-        );
+        assert_eq!(Url::parse("https://h:8443").unwrap().host_header(), "h:8443");
         assert_eq!(Url::parse("http://h:80").unwrap().host_header(), "h");
-        assert_eq!(
-            Url::parse("http://[::1]:8080").unwrap().host_header(),
-            "[::1]:8080"
-        );
+        assert_eq!(Url::parse("http://[::1]:8080").unwrap().host_header(), "[::1]:8080");
     }
 
     #[test]
     fn chunked_body_is_reassembled_across_chunks_and_reads() {
-        let server = Server::start(vec![Reply::chunked(
-            200,
-            vec!["hel", "lo\r\n", "wor", "ld"],
-        )
-        .with_header("x-test", "1")]);
+        let server =
+            Server::start(vec![Reply::chunked(200, vec!["hel", "lo\r\n", "wor", "ld"]).with_header("x-test", "1")]);
         let mut resp = post(&server.url("/p"), &[("x-custom", "v")], b"{}").unwrap();
         assert_eq!(resp.status, 200);
         assert_eq!(resp.header("X-Test"), Some("1"));
@@ -587,9 +488,7 @@ mod tests {
     #[test]
     fn closed_before_head_is_retryable_io() {
         let server = Server::start(vec![Reply::close_immediately()]);
-        let err = post(&server.url("/"), &[], b"")
-            .err()
-            .expect("a closed socket fails");
+        let err = post(&server.url("/"), &[], b"").err().expect("a closed socket fails");
         assert!(matches!(err, HttpError::Io(_)), "{err}");
         assert!(err.retryable());
     }
@@ -600,9 +499,7 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         drop(listener);
         let url = Url::parse(&format!("http://127.0.0.1:{port}")).unwrap();
-        let err = post(&url, &[], b"")
-            .err()
-            .expect("a refused connection fails");
+        let err = post(&url, &[], b"").err().expect("a refused connection fails");
         assert!(matches!(err, HttpError::Connect(_)), "{err}");
         assert!(err.retryable());
     }

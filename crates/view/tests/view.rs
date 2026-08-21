@@ -16,11 +16,7 @@ fn fixture() -> PathBuf {
 /// Starts a server on an ephemeral port. The runtime is returned so the
 /// caller keeps it alive for the test's duration.
 fn start(dir: &Path, port: u16) -> (tokio::runtime::Runtime, SocketAddr, String) {
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()
-        .unwrap();
+    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap();
     let server = rt.block_on(foe_view::serve(dir, port)).unwrap();
     let (addr, token) = (server.addr, server.token.clone());
     rt.spawn(server.wait());
@@ -29,9 +25,7 @@ fn start(dir: &Path, port: u16) -> (tokio::runtime::Runtime, SocketAddr, String)
 
 fn connect(addr: SocketAddr, target: &str, headers: &[(&str, &str)]) -> BufReader<TcpStream> {
     let mut stream = TcpStream::connect(addr).unwrap();
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
+    stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let mut req = format!("GET {target} HTTP/1.1\r\nHost: {addr}\r\n");
     for (name, value) in headers {
         req.push_str(&format!("{name}: {value}\r\n"));
@@ -81,10 +75,7 @@ const FONTS: [&str; 4] = [
 /// The font files present in the checkout, with their bytes.
 fn present_fonts() -> Vec<(&'static str, Vec<u8>)> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../view/fonts");
-    FONTS
-        .iter()
-        .filter_map(|name| Some((*name, std::fs::read(dir.join(name)).ok()?)))
-        .collect()
+    FONTS.iter().filter_map(|name| Some((*name, std::fs::read(dir.join(name)).ok()?))).collect()
 }
 
 /// Reads one server-sent event, returning its `id` and `data` lines.
@@ -114,10 +105,7 @@ fn projects_tree_with_spawned_and_forked_children() {
     assert_eq!(root.name.as_deref(), Some("fixer"));
     assert_eq!(root.parent_id, None);
     assert!(matches!(root.outcome, Some(Outcome::Completed { .. })));
-    assert_eq!(
-        (root.usage.input, root.usage.output, root.usage.cache_read),
-        (9120, 100, 8000)
-    );
+    assert_eq!((root.usage.input, root.usage.output, root.usage.cache_read), (9120, 100, 8000));
     let ids: Vec<&str> = root.children.iter().map(|c| c.id.as_str()).collect();
     assert_eq!(ids, ["ep_child", "ep_fork"]);
     let child = &root.children[0];
@@ -127,12 +115,7 @@ fn projects_tree_with_spawned_and_forked_children() {
     let fork = &root.children[1];
     let origin = fork.fork_origin.as_ref().unwrap();
     assert_eq!((origin.episode_id.as_str(), origin.seq), ("ep_root", 7));
-    assert_eq!(
-        fork.outcome,
-        Some(Outcome::Exhausted {
-            limit: ExhaustedLimit::ModelCalls
-        })
-    );
+    assert_eq!(fork.outcome, Some(Outcome::Exhausted { limit: ExhaustedLimit::ModelCalls }));
     assert!(fork.children.is_empty());
 }
 
@@ -162,16 +145,10 @@ fn rejects_missing_or_wrong_token() {
     assert_eq!(get(addr, &format!("/episodes?token={token}"), &[]).0, 401);
     let (code, body) = get(addr, "/episodes", &[("X-Foe-Token", &token)]);
     assert_eq!(code, 200);
-    assert!(
-        body.contains("\"id\":\"ep_root\"") && body.contains("\"roots\""),
-        "{body}"
-    );
+    assert!(body.contains("\"id\":\"ep_root\"") && body.contains("\"roots\""), "{body}");
     let (code, body) = get(addr, &format!("/?token={token}"), &[]);
     assert_eq!(code, 200);
-    assert!(
-        body.contains("\"mode\":\"live\"") && body.contains(&token),
-        "{body}"
-    );
+    assert!(body.contains("\"mode\":\"live\"") && body.contains(&token), "{body}");
     assert_eq!(get(addr, "/nothing", &[("X-Foe-Token", &token)]).0, 404);
 }
 
@@ -179,15 +156,7 @@ fn rejects_missing_or_wrong_token() {
 fn rejects_foreign_origin() {
     let (_rt, addr, token) = start(&fixture(), 0);
     let auth = ("X-Foe-Token", token.as_str());
-    assert_eq!(
-        get(
-            addr,
-            "/episodes",
-            &[auth, ("Origin", "http://evil.example")]
-        )
-        .0,
-        403
-    );
+    assert_eq!(get(addr, "/episodes", &[auth, ("Origin", "http://evil.example")]).0, 403);
     assert_eq!(get(addr, "/episodes", &[auth, ("Origin", "null")]).0, 403);
     let own = format!("http://{addr}");
     assert_eq!(get(addr, "/episodes", &[auth, ("Origin", &own)]).0, 200);
@@ -216,15 +185,11 @@ fn sse_resumes_from_last_event_id() {
 
 #[test]
 fn sse_delivers_events_appended_while_connected() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("../../target/foe-view-tail-{}", std::process::id()));
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/foe-view-tail-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let lines: Vec<String> = std::fs::read_to_string(fixture().join("episode.jsonl"))
-        .unwrap()
-        .lines()
-        .map(str::to_string)
-        .collect();
+    let lines: Vec<String> =
+        std::fs::read_to_string(fixture().join("episode.jsonl")).unwrap().lines().map(str::to_string).collect();
     let log = dir.join("episode.jsonl");
     std::fs::write(&log, format!("{}\n{}\n", lines[0], lines[1])).unwrap();
 
@@ -253,30 +218,12 @@ fn export_contains_every_event() {
     let html = foe_view::export(&fixture()).unwrap();
     assert!(html.contains("\"mode\":\"static\""));
     assert!(html.contains("<div id=\"app\"></div>"));
-    let boot = html
-        .split("window.__FOE__=")
-        .nth(1)
-        .unwrap()
-        .split(";</script>")
-        .next()
-        .unwrap();
-    assert!(
-        !boot.contains('<') && boot.contains("\\u003cfirst>"),
-        "event text must not close the script"
-    );
-    for rel in [
-        "episode.jsonl",
-        "children/ep_child/episode.jsonl",
-        "children/ep_fork/episode.jsonl",
-    ] {
-        for line in std::fs::read_to_string(fixture().join(rel))
-            .unwrap()
-            .lines()
-        {
+    let boot = html.split("window.__FOE__=").nth(1).unwrap().split(";</script>").next().unwrap();
+    assert!(!boot.contains('<') && boot.contains("\\u003cfirst>"), "event text must not close the script");
+    for rel in ["episode.jsonl", "children/ep_child/episode.jsonl", "children/ep_fork/episode.jsonl"] {
+        for line in std::fs::read_to_string(fixture().join(rel)).unwrap().lines() {
             let event: Event = serde_json::from_str(line).unwrap();
-            let wire = serde_json::to_string(&event)
-                .unwrap()
-                .replace('<', "\\u003c");
+            let wire = serde_json::to_string(&event).unwrap().replace('<', "\\u003c");
             assert!(html.contains(&wire), "missing from export: {wire}");
         }
     }
@@ -291,26 +238,13 @@ fn serves_embedded_fonts_to_header_token_only() {
     for (name, bytes) in present_fonts() {
         let (code, head, body) = get_bytes(addr, &format!("/fonts/{name}"), &[auth]);
         assert_eq!(code, 200, "{name}");
-        assert!(
-            head.contains("Content-Type: font/woff2") && head.contains("immutable"),
-            "{head}"
-        );
+        assert!(head.contains("Content-Type: font/woff2") && head.contains("immutable"), "{head}");
         assert_eq!(body, bytes, "{name}");
-        assert_eq!(
-            get(addr, &format!("/fonts/{name}?token={token}"), &[]).0,
-            401
-        );
+        assert_eq!(get(addr, &format!("/fonts/{name}?token={token}"), &[]).0, 401);
     }
     assert_eq!(get(addr, "/fonts/Missing.woff2", &[auth]).0, 404);
-    for name in FONTS
-        .iter()
-        .filter(|n| !present_fonts().iter().any(|(p, _)| p == *n))
-    {
-        assert_eq!(
-            get(addr, &format!("/fonts/{name}"), &[auth]).0,
-            404,
-            "{name}"
-        );
+    for name in FONTS.iter().filter(|n| !present_fonts().iter().any(|(p, _)| p == *n)) {
+        assert_eq!(get(addr, &format!("/fonts/{name}"), &[auth]).0, 404, "{name}");
     }
 }
 
@@ -326,9 +260,7 @@ fn export_inlines_every_present_font() {
         assert!(!html.contains(&path), "{path} left unresolved in export");
     }
     assert_eq!(html.matches("data:font/woff2;base64,").count(), expected);
-    if present_fonts().len() == FONTS.len()
-        && FONTS.iter().all(|n| css.contains(&format!("/fonts/{n}")))
-    {
+    if present_fonts().len() == FONTS.len() && FONTS.iter().all(|n| css.contains(&format!("/fonts/{n}"))) {
         assert!(expected >= 4, "every font inlined at least once");
     }
 }

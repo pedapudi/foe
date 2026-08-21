@@ -6,9 +6,7 @@
 //! path and line so that the result is deterministic regardless of the
 //! filesystem's directory order.
 
-use crate::{
-    display, parse_args, resolve, GREP_COLLECT_MAX, GREP_DEFAULT_LIMIT, GREP_LINE_MAX_CHARS,
-};
+use crate::{display, parse_args, resolve, GREP_COLLECT_MAX, GREP_DEFAULT_LIMIT, GREP_LINE_MAX_CHARS};
 use foe_core::{CallCtx, Effect, Tool, ToolSpec, ToolValue};
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
@@ -70,12 +68,7 @@ impl Collect<'_> {
         }
         let text = String::from_utf8_lossy(bytes);
         let text = clamp(text.trim_end_matches(['\n', '\r']));
-        self.into.hits.push(Hit {
-            path: self.path.to_path_buf(),
-            line,
-            text,
-            context,
-        });
+        self.into.hits.push(Hit { path: self.path.to_path_buf(), line, text, context });
         Ok(true)
     }
 }
@@ -97,10 +90,7 @@ fn clamp(text: &str) -> String {
     match text.char_indices().nth(GREP_LINE_MAX_CHARS) {
         Some((at, _)) => {
             let more = text[at..].chars().count();
-            format!(
-                "{} [clamped at {GREP_LINE_MAX_CHARS} chars; {more} more]",
-                &text[..at]
-            )
+            format!("{} [clamped at {GREP_LINE_MAX_CHARS} chars; {more} more]", &text[..at])
         }
         None => text.to_owned(),
     }
@@ -168,14 +158,12 @@ impl Tool for Grep {
         if let Err(e) = reader.metadata(&root) {
             return ToolValue::error(format!("grep: {root_shown}: {e}"));
         }
-        let matcher = match RegexMatcherBuilder::new()
-            .case_insensitive(a.ignore_case)
-            .fixed_strings(a.literal)
-            .build(&a.pattern)
-        {
-            Ok(m) => m,
-            Err(e) => return ToolValue::error(format!("grep: invalid pattern: {e}")),
-        };
+        let matcher =
+            match RegexMatcherBuilder::new().case_insensitive(a.ignore_case).fixed_strings(a.literal).build(&a.pattern)
+            {
+                Ok(m) => m,
+                Err(e) => return ToolValue::error(format!("grep: invalid pattern: {e}")),
+            };
         let mut walk = WalkBuilder::new(&root);
         walk.require_git(false);
         if let Some(glob) = &a.glob {
@@ -192,11 +180,7 @@ impl Tool for Grep {
             .after_context(a.context)
             .binary_detection(BinaryDetection::quit(0))
             .build();
-        let mut collected = Collected {
-            hits: Vec::new(),
-            matches: 0,
-            complete: true,
-        };
+        let mut collected = Collected { hits: Vec::new(), matches: 0, complete: true };
         let mut searched = 0usize;
         for entry in walk.build() {
             let Ok(entry) = entry else { continue };
@@ -207,42 +191,26 @@ impl Tool for Grep {
                 continue;
             };
             searched += 1;
-            let sink = Collect {
-                path: entry.path(),
-                into: &mut collected,
-            };
+            let sink = Collect { path: entry.path(), into: &mut collected };
             let _ = searcher.search_slice(&matcher, &bytes, sink);
             if !collected.complete {
                 break;
             }
         }
-        collected
-            .hits
-            .sort_by(|x, y| x.path.cmp(&y.path).then(x.line.cmp(&y.line)));
+        collected.hits.sort_by(|x, y| x.path.cmp(&y.path).then(x.line.cmp(&y.line)));
 
         let limit = a.limit.unwrap_or(GREP_DEFAULT_LIMIT).max(1);
         let files = {
-            let mut paths: Vec<&PathBuf> = collected
-                .hits
-                .iter()
-                .filter(|h| !h.context)
-                .map(|h| &h.path)
-                .collect();
+            let mut paths: Vec<&PathBuf> = collected.hits.iter().filter(|h| !h.context).map(|h| &h.path).collect();
             paths.dedup();
             paths.len()
         };
-        let mut out = format!(
-            "{} matches in {files} files under {root_shown}",
-            collected.matches
-        );
+        let mut out = format!("{} matches in {files} files under {root_shown}", collected.matches);
         if !collected.complete {
             let _ = write!(out, " (search stopped at {GREP_COLLECT_MAX} matches)");
         }
         if collected.matches > limit {
-            let _ = write!(
-                out,
-                "; showing the first {limit}. Refine the pattern or raise limit."
-            );
+            let _ = write!(out, "; showing the first {limit}. Refine the pattern or raise limit.");
         }
         out.push('\n');
         let mut shown = 0;

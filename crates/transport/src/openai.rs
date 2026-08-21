@@ -44,9 +44,7 @@
 
 use std::collections::BTreeMap;
 
-use foe_core::{
-    Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolSchema, Transport, Usage,
-};
+use foe_core::{Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolSchema, Transport, Usage};
 use serde_json::{json, Value};
 
 use crate::{http::Url, sse, Decoder, Exchange, TransportError};
@@ -71,12 +69,7 @@ impl OpenAiCompatible {
         max_output_tokens: Option<u32>,
     ) -> Result<Self, TransportError> {
         let url = crate::parse_base_url(DEFAULT_BASE_URL, base_url)?.join("/chat/completions");
-        Ok(OpenAiCompatible {
-            model: model.to_string(),
-            api_key,
-            url,
-            max_tokens: max_output_tokens,
-        })
+        Ok(OpenAiCompatible { model: model.to_string(), api_key, url, max_tokens: max_output_tokens })
     }
 
     fn exchange(&self, req: &ModelRequestBody) -> Exchange {
@@ -84,10 +77,7 @@ impl OpenAiCompatible {
         Exchange {
             provider: PROVIDER,
             url: self.url.clone(),
-            headers: vec![(
-                "authorization".to_string(),
-                format!("Bearer {}", self.api_key),
-            )],
+            headers: vec![("authorization".to_string(), format!("Bearer {}", self.api_key))],
             body: serde_json::to_vec(&body).expect("a serde_json::Value serializes"),
         }
     }
@@ -96,19 +86,11 @@ impl OpenAiCompatible {
 #[async_trait::async_trait]
 impl Transport for OpenAiCompatible {
     fn route(&self) -> foe_log::ModelRoute {
-        foe_log::ModelRoute {
-            provider: PROVIDER.to_string(),
-            model: self.model.clone(),
-        }
+        foe_log::ModelRoute { provider: PROVIDER.to_string(), model: self.model.clone() }
     }
 
     async fn stream(&self, req: ModelRequestBody, sink: &mut (dyn foe_core::ChunkSink + Send)) {
-        crate::deliver(
-            self.exchange(&req),
-            Box::new(StreamDecoder::default()),
-            sink,
-        )
-        .await
+        crate::deliver(self.exchange(&req), Box::new(StreamDecoder::default()), sink).await
     }
 }
 
@@ -164,12 +146,9 @@ pub fn messages_json(messages: &[Message]) -> Vec<Value> {
                 };
                 json!({ "role": "user", "content": value })
             }
-            Message::Assistant {
-                text,
-                tool_calls,
-                thinking: _,
-            } => {
-                let mut value = json!({ "role": "assistant", "content": if text.is_empty() { Value::Null } else { json!(text) } });
+            Message::Assistant { text, tool_calls, thinking: _ } => {
+                let mut value =
+                    json!({ "role": "assistant", "content": if text.is_empty() { Value::Null } else { json!(text) } });
                 if !tool_calls.is_empty() {
                     value["tool_calls"] = tool_calls
                         .iter()
@@ -215,10 +194,7 @@ struct StreamDecoder {
 }
 
 fn fail(message: String) -> Chunk {
-    Chunk::Error {
-        message: format!("{PROVIDER}: {message}"),
-        retryable: false,
-    }
+    Chunk::Error { message: format!("{PROVIDER}: {message}"), retryable: false }
 }
 
 impl StreamDecoder {
@@ -247,36 +223,21 @@ impl StreamDecoder {
                     None => format!("call_{index}"),
                 };
                 let name = call["function"]["name"].as_str().unwrap_or("").to_string();
-                out(Chunk::ToolCallStart {
-                    id: id.clone(),
-                    name,
-                });
+                out(Chunk::ToolCallStart { id: id.clone(), name });
                 self.ids.insert(index, id.clone());
                 id
             }
         };
         self.open = Some(index);
-        if let Some(args) = call["function"]["arguments"]
-            .as_str()
-            .filter(|s| !s.is_empty())
-        {
-            out(Chunk::ToolCallDelta {
-                id,
-                delta: args.to_string(),
-            });
+        if let Some(args) = call["function"]["arguments"].as_str().filter(|s| !s.is_empty()) {
+            out(Chunk::ToolCallDelta { id, delta: args.to_string() });
         }
     }
 
     fn finish(&mut self) -> Chunk {
         match self.stop {
-            Some(stop) => Chunk::Done {
-                stop,
-                usage: self.usage,
-            },
-            None => Chunk::Error {
-                message: format!("{PROVIDER}: stream ended before finish_reason"),
-                retryable: true,
-            },
+            Some(stop) => Chunk::Done { stop, usage: self.usage },
+            None => Chunk::Error { message: format!("{PROVIDER}: stream ended before finish_reason"), retryable: true },
         }
     }
 }
@@ -293,17 +254,10 @@ impl Decoder for StreamDecoder {
         if let Some(error) = data.get("error") {
             // Proxies report an upstream failure mid-stream as a chunk; the
             // numeric code, when present, classifies it like a status.
-            let code = error
-                .get("code")
-                .or_else(|| error.get("status"))
-                .and_then(Value::as_u64)
-                .unwrap_or(0);
+            let code = error.get("code").or_else(|| error.get("status")).and_then(Value::as_u64).unwrap_or(0);
             let retryable = code == 429 || (500..600).contains(&code);
             let detail = error["message"].as_str().unwrap_or("");
-            return out(Chunk::Error {
-                message: format!("{PROVIDER}: stream error: {detail}"),
-                retryable,
-            });
+            return out(Chunk::Error { message: format!("{PROVIDER}: stream error: {detail}"), retryable });
         }
         if let Some(usage) = data.get("usage").filter(|u| u.is_object()) {
             let n = |v: &Value| v.as_u64().unwrap_or(0);
@@ -319,15 +273,11 @@ impl Decoder for StreamDecoder {
         let delta = &choice["delta"];
         for key in ["reasoning_content", "reasoning"] {
             if let Some(text) = delta[key].as_str().filter(|s| !s.is_empty()) {
-                out(Chunk::Thinking {
-                    delta: text.to_string(),
-                });
+                out(Chunk::Thinking { delta: text.to_string() });
             }
         }
         if let Some(text) = delta["content"].as_str().filter(|s| !s.is_empty()) {
-            out(Chunk::Text {
-                delta: text.to_string(),
-            });
+            out(Chunk::Text { delta: text.to_string() });
         }
         if let Some(calls) = delta["tool_calls"].as_array() {
             for call in calls {
@@ -342,9 +292,7 @@ impl Decoder for StreamDecoder {
                 "tool_calls" | "function_call" => StopReason::Tool,
                 "length" => StopReason::Length,
                 "content_filter" => {
-                    return out(fail(
-                        "finish_reason content_filter: the output was withheld".into(),
-                    ));
+                    return out(fail("finish_reason content_filter: the output was withheld".into()));
                 }
                 _ => StopReason::End,
             });
@@ -415,24 +363,16 @@ data: [DONE]
                 description: "Read a file.".into(),
                 parameters: json!({ "type": "object", "properties": { "path": { "type": "string" } } }),
             }],
-            messages: vec![Message::User {
-                content: vec![ContentBlock::Text {
-                    text: "Fix the test.".into(),
-                }],
-            }],
+            messages: vec![Message::User { content: vec![ContentBlock::Text { text: "Fix the test.".into() }] }],
             max_output_tokens: None,
         }
     }
 
     async fn run(reply: Reply) -> (Vec<Chunk>, Server) {
         let server = Server::start(vec![reply]);
-        let transport = OpenAiCompatible::new(
-            "gpt-4o",
-            "sk-test".into(),
-            Some(&format!("{}/v1", server.base())),
-            Some(2048),
-        )
-        .unwrap();
+        let transport =
+            OpenAiCompatible::new("gpt-4o", "sk-test".into(), Some(&format!("{}/v1", server.base())), Some(2048))
+                .unwrap();
         let mut chunks = Vec::new();
         transport.stream(request(), &mut chunks).await;
         (chunks, server)
@@ -450,14 +390,7 @@ data: [DONE]
             vec![
                 text("Hello"),
                 text("!"),
-                Chunk::Done {
-                    stop: StopReason::End,
-                    usage: Usage {
-                        input: 1250,
-                        output: 2,
-                        cache_read: 1024
-                    }
-                },
+                Chunk::Done { stop: StopReason::End, usage: Usage { input: 1250, output: 2, cache_read: 1024 } },
             ]
         );
         let seen = server.requests();
@@ -469,14 +402,8 @@ data: [DONE]
         assert_eq!(body["stream"], true);
         assert_eq!(body["stream_options"]["include_usage"], true);
         assert_eq!(body["max_tokens"], 2048);
-        assert_eq!(
-            body["messages"][0],
-            json!({ "role": "system", "content": "You are a coding agent." })
-        );
-        assert_eq!(
-            body["messages"][1],
-            json!({ "role": "user", "content": "Fix the test." })
-        );
+        assert_eq!(body["messages"][0], json!({ "role": "system", "content": "You are a coding agent." }));
+        assert_eq!(body["messages"][1], json!({ "role": "user", "content": "Fix the test." }));
         assert_eq!(body["tools"][0]["type"], "function");
         assert_eq!(body["tools"][0]["function"]["name"], "read");
         assert_eq!(body["tools"][0]["function"]["parameters"]["type"], "object");
@@ -488,40 +415,14 @@ data: [DONE]
         assert_eq!(
             chunks,
             vec![
-                Chunk::ToolCallStart {
-                    id: "call_abc123".into(),
-                    name: "read".into()
-                },
-                Chunk::ToolCallDelta {
-                    id: "call_abc123".into(),
-                    delta: "{\"pa".into()
-                },
-                Chunk::ToolCallDelta {
-                    id: "call_abc123".into(),
-                    delta: "th\": \"/src/lib.rs\"}".into()
-                },
-                Chunk::ToolCallEnd {
-                    id: "call_abc123".into()
-                },
-                Chunk::ToolCallStart {
-                    id: "call_def456".into(),
-                    name: "grep".into()
-                },
-                Chunk::ToolCallDelta {
-                    id: "call_def456".into(),
-                    delta: "{\"pattern\": \"fn main\"}".into()
-                },
-                Chunk::ToolCallEnd {
-                    id: "call_def456".into()
-                },
-                Chunk::Done {
-                    stop: StopReason::Tool,
-                    usage: Usage {
-                        input: 300,
-                        output: 40,
-                        cache_read: 0
-                    }
-                },
+                Chunk::ToolCallStart { id: "call_abc123".into(), name: "read".into() },
+                Chunk::ToolCallDelta { id: "call_abc123".into(), delta: "{\"pa".into() },
+                Chunk::ToolCallDelta { id: "call_abc123".into(), delta: "th\": \"/src/lib.rs\"}".into() },
+                Chunk::ToolCallEnd { id: "call_abc123".into() },
+                Chunk::ToolCallStart { id: "call_def456".into(), name: "grep".into() },
+                Chunk::ToolCallDelta { id: "call_def456".into(), delta: "{\"pattern\": \"fn main\"}".into() },
+                Chunk::ToolCallEnd { id: "call_def456".into() },
+                Chunk::Done { stop: StopReason::Tool, usage: Usage { input: 300, output: 40, cache_read: 0 } },
             ]
         );
     }
@@ -534,14 +435,7 @@ data: [DONE]
             vec![
                 text("Once"),
                 text(" upon"),
-                Chunk::Done {
-                    stop: StopReason::Length,
-                    usage: Usage {
-                        input: 12,
-                        output: 2,
-                        cache_read: 0
-                    }
-                },
+                Chunk::Done { stop: StopReason::Length, usage: Usage { input: 12, output: 2, cache_read: 0 } },
             ]
         );
     }
@@ -553,15 +447,14 @@ data: [DONE]
         assert_eq!(
             chunks,
             vec![Chunk::Error {
-                message: "openai-compatible: HTTP 429: tokens: Rate limit reached for gpt-4o retry_after_ms=20000".into(),
+                message: "openai-compatible: HTTP 429: tokens: Rate limit reached for gpt-4o retry_after_ms=20000"
+                    .into(),
                 retryable: true,
             }]
         );
         // The millisecond header, when present, is more precise and wins.
-        let (chunks, _server) = run(Reply::full(429, body)
-            .with_header("retry-after", "1")
-            .with_header("retry-after-ms", "350"))
-        .await;
+        let (chunks, _server) =
+            run(Reply::full(429, body).with_header("retry-after", "1").with_header("retry-after-ms", "350")).await;
         match &chunks[0] {
             Chunk::Error { message, .. } => {
                 assert!(message.ends_with(" retry_after_ms=350"), "{message}")
@@ -585,9 +478,7 @@ data: [DONE]
         assert_eq!(
             chunks,
             vec![Chunk::Error {
-                message:
-                    "openai-compatible: HTTP 401: invalid_request_error: Incorrect API key provided"
-                        .into(),
+                message: "openai-compatible: HTTP 401: invalid_request_error: Incorrect API key provided".into(),
                 retryable: false,
             }]
         );
@@ -602,7 +493,8 @@ data: [DONE]
                 Chunk::ToolCallStart { id: "call_abc123".into(), name: "read".into() },
                 Chunk::ToolCallDelta { id: "call_abc123".into(), delta: "{\"pa".into() },
                 Chunk::Error {
-                    message: "openai-compatible: reading response body: connection closed before the body was complete".into(),
+                    message: "openai-compatible: reading response body: connection closed before the body was complete"
+                        .into(),
                     retryable: true,
                 },
             ]
@@ -618,18 +510,10 @@ data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
 
 "#;
         let (chunks, _server) = run(Reply::sse(transcript)).await;
-        assert_eq!(
-            chunks,
-            vec![
-                text("ok"),
-                Chunk::Done {
-                    stop: StopReason::End,
-                    usage: Usage::default()
-                }
-            ]
-        );
+        assert_eq!(chunks, vec![text("ok"), Chunk::Done { stop: StopReason::End, usage: Usage::default() }]);
         // A server that closes cleanly before any finish_reason.
-        let transcript = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n";
+        let transcript =
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n";
         let (chunks, _server) = run(Reply::sse(transcript)).await;
         assert_eq!(
             chunks,
@@ -658,31 +542,19 @@ data: [DONE]
         assert_eq!(
             chunks,
             vec![
-                Chunk::Thinking {
-                    delta: "thinking...".into()
-                },
-                Chunk::ToolCallStart {
-                    id: "call_0".into(),
-                    name: "read".into()
-                },
-                Chunk::ToolCallDelta {
-                    id: "call_0".into(),
-                    delta: "{}".into()
-                },
-                Chunk::ToolCallEnd {
-                    id: "call_0".into()
-                },
-                Chunk::Done {
-                    stop: StopReason::Tool,
-                    usage: Usage::default()
-                },
+                Chunk::Thinking { delta: "thinking...".into() },
+                Chunk::ToolCallStart { id: "call_0".into(), name: "read".into() },
+                Chunk::ToolCallDelta { id: "call_0".into(), delta: "{}".into() },
+                Chunk::ToolCallEnd { id: "call_0".into() },
+                Chunk::Done { stop: StopReason::Tool, usage: Usage::default() },
             ]
         );
     }
 
     #[tokio::test]
     async fn inline_error_chunk_and_content_filter() {
-        let transcript = "data: {\"error\":{\"message\":\"upstream overloaded\",\"type\":\"server_error\",\"code\":503}}\n\n";
+        let transcript =
+            "data: {\"error\":{\"message\":\"upstream overloaded\",\"type\":\"server_error\",\"code\":503}}\n\n";
         let (chunks, _server) = run(Reply::sse(transcript)).await;
         assert_eq!(
             chunks,
@@ -691,13 +563,13 @@ data: [DONE]
                 retryable: true
             }]
         );
-        let transcript = "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"content_filter\"}]}\n\ndata: [DONE]\n\n";
+        let transcript =
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"content_filter\"}]}\n\ndata: [DONE]\n\n";
         let (chunks, _server) = run(Reply::sse(transcript)).await;
         assert_eq!(
             chunks,
             vec![Chunk::Error {
-                message: "openai-compatible: finish_reason content_filter: the output was withheld"
-                    .into(),
+                message: "openai-compatible: finish_reason content_filter: the output was withheld".into(),
                 retryable: false,
             }]
         );
@@ -706,33 +578,17 @@ data: [DONE]
     #[test]
     fn messages_map_every_role() {
         let messages = vec![
-            Message::User {
-                content: vec![ContentBlock::Text {
-                    text: "Look.".into(),
-                }],
-            },
+            Message::User { content: vec![ContentBlock::Text { text: "Look.".into() }] },
             Message::User {
                 content: vec![
-                    ContentBlock::Text {
-                        text: "And this.".into(),
-                    },
-                    ContentBlock::Image {
-                        data: "aGk=".into(),
-                        media_type: "image/png".into(),
-                    },
+                    ContentBlock::Text { text: "And this.".into() },
+                    ContentBlock::Image { data: "aGk=".into(), media_type: "image/png".into() },
                 ],
             },
             Message::Assistant {
                 text: String::new(),
-                thinking: vec![foe_log::ThinkingBlock {
-                    text: "dropped".into(),
-                    signature: Some("sig".into()),
-                }],
-                tool_calls: vec![ToolCall {
-                    id: "call_1".into(),
-                    name: "read".into(),
-                    args: json!({ "path": "/a" }),
-                }],
+                thinking: vec![foe_log::ThinkingBlock { text: "dropped".into(), signature: Some("sig".into()) }],
+                tool_calls: vec![ToolCall { id: "call_1".into(), name: "read".into(), args: json!({ "path": "/a" }) }],
             },
             Message::Tool {
                 call_id: "call_1".into(),
@@ -740,11 +596,7 @@ data: [DONE]
                 rendered: "error: no such file".into(),
                 is_error: true,
             },
-            Message::Assistant {
-                text: "Done.".into(),
-                tool_calls: vec![],
-                thinking: vec![],
-            },
+            Message::Assistant { text: "Done.".into(), tool_calls: vec![], thinking: vec![] },
         ];
         assert_eq!(
             messages_json(&messages),
@@ -773,17 +625,9 @@ data: [DONE]
         let body = request_body("m", None, &req);
         assert!(body.get("max_tokens").is_none());
         assert!(body.get("tools").is_none());
-        let transport =
-            OpenAiCompatible::new("m", "k".into(), Some("http://127.0.0.1:11434/v1/"), None)
-                .unwrap();
+        let transport = OpenAiCompatible::new("m", "k".into(), Some("http://127.0.0.1:11434/v1/"), None).unwrap();
         assert_eq!(transport.url.path, "/v1/chat/completions");
         assert_eq!(transport.url.port, 11434);
-        assert_eq!(
-            OpenAiCompatible::new("m", "k".into(), None, None)
-                .unwrap()
-                .url
-                .host,
-            "api.openai.com"
-        );
+        assert_eq!(OpenAiCompatible::new("m", "k".into(), None, None).unwrap().url.host, "api.openai.com");
     }
 }

@@ -42,19 +42,8 @@ pub struct LocalExecutor {
 impl LocalExecutor {
     /// `policy` is the episode's own policy; every request runs under a
     /// narrowing of it. Setting `cancel` ends every running process group.
-    pub fn new(
-        sandbox: Arc<Sandbox>,
-        policy: Policy,
-        spill_dir: PathBuf,
-        cancel: Arc<AtomicBool>,
-    ) -> Self {
-        LocalExecutor {
-            sandbox,
-            policy,
-            spill_dir,
-            cancel,
-            calls: AtomicU64::new(0),
-        }
+    pub fn new(sandbox: Arc<Sandbox>, policy: Policy, spill_dir: PathBuf, cancel: Arc<AtomicBool>) -> Self {
+        LocalExecutor { sandbox, policy, spill_dir, cancel, calls: AtomicU64::new(0) }
     }
 }
 
@@ -68,37 +57,20 @@ impl Executor for LocalExecutor {
             .env_clear()
             .envs(&req.env)
             .process_group(0)
-            .stdin(if req.stdin.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            })
+            .stdin(if req.stdin.is_some() { Stdio::piped() } else { Stdio::null() })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let narrowed = self.policy.for_executable(&req.program, req.network);
-        let mut child = self
-            .sandbox
-            .spawn_narrowed(&narrowed, cmd)
-            .map_err(|e| CapError::Invalid(e.to_string()))?;
+        let mut child = self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::Invalid(e.to_string()))?;
         let group = Pid::from_raw(child.id() as i32);
         if let (Some(bytes), Some(mut stdin)) = (req.stdin, child.stdin.take()) {
             std::thread::spawn(move || {
                 let _ = stdin.write_all(&bytes);
             });
         }
-        let name = req
-            .program
-            .file_name()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let stdout = Capture::start(
-            child.stdout.take(),
-            self.spill_dir.join(format!("exec-{call}-{name}.stdout")),
-        );
-        let stderr = Capture::start(
-            child.stderr.take(),
-            self.spill_dir.join(format!("exec-{call}-{name}.stderr")),
-        );
+        let name = req.program.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let stdout = Capture::start(child.stdout.take(), self.spill_dir.join(format!("exec-{call}-{name}.stdout")));
+        let stderr = Capture::start(child.stderr.take(), self.spill_dir.join(format!("exec-{call}-{name}.stderr")));
         let deadline = start + req.timeout;
         let mut timed_out = false;
         let status = loop {
@@ -149,11 +121,7 @@ impl Capture {
         let (tx, closed) = mpsc::channel();
         let Some(mut pipe) = pipe else {
             let _ = tx.send(());
-            return Capture {
-                kept,
-                spill,
-                closed,
-            };
+            return Capture { kept, spill, closed };
         };
         let (kept_w, spill_w) = (kept.clone(), spill.clone());
         std::thread::spawn(move || {
@@ -186,11 +154,7 @@ impl Capture {
             }
             let _ = tx.send(());
         });
-        Capture {
-            kept,
-            spill,
-            closed,
-        }
+        Capture { kept, spill, closed }
     }
 
     /// Waits up to [`TERM_GRACE`] for the pipe to close. A process outside
@@ -199,10 +163,7 @@ impl Capture {
         let _ = self.closed.recv_timeout(TERM_GRACE);
         let mut out = std::mem::take(&mut *self.kept.lock().unwrap());
         if let Some(path) = self.spill.lock().unwrap().as_ref() {
-            let note = format!(
-                "\n[output beyond {CAPTURE_LIMIT} bytes is in {}]\n",
-                path.display()
-            );
+            let note = format!("\n[output beyond {CAPTURE_LIMIT} bytes is in {}]\n", path.display());
             out.extend_from_slice(note.as_bytes());
         }
         out
@@ -218,34 +179,19 @@ pub(crate) mod tests {
 
     /// A fresh directory under the build tree for one test.
     pub(crate) fn scratch(module: &str, name: &str) -> PathBuf {
-        let dir = Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../target/test-scratch"
-        ))
-        .join(format!("{module}-{name}-{}", std::process::id()));
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/test-scratch"))
+            .join(format!("{module}-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir.canonicalize().unwrap()
     }
 
-    fn executor(
-        name: &str,
-        read: Vec<PathBuf>,
-        exec: Vec<PathBuf>,
-    ) -> (LocalExecutor, PathBuf, Arc<AtomicBool>) {
+    fn executor(name: &str, read: Vec<PathBuf>, exec: Vec<PathBuf>) -> (LocalExecutor, PathBuf, Arc<AtomicBool>) {
         let dir = scratch("exec", name);
         let cancel = Arc::new(AtomicBool::new(false));
         let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
-        let policy = Policy {
-            read,
-            exec,
-            ..Policy::default()
-        };
-        (
-            LocalExecutor::new(sandbox, policy, dir.join("spill"), cancel.clone()),
-            dir,
-            cancel,
-        )
+        let policy = Policy { read, exec, ..Policy::default() };
+        (LocalExecutor::new(sandbox, policy, dir.join("spill"), cancel.clone()), dir, cancel)
     }
 
     fn request(program: &str, args: &[&str], cwd: &Path) -> ExecRequest {
@@ -267,10 +213,7 @@ pub(crate) mod tests {
         req.env.insert("FOE_TEST_KEY".into(), "value".into());
         let out = ex.run(req).unwrap();
         assert_eq!(out.exit_code, Some(0));
-        assert_eq!(
-            String::from_utf8(out.stdout).unwrap(),
-            "FOE_TEST_KEY=value\n"
-        );
+        assert_eq!(String::from_utf8(out.stdout).unwrap(), "FOE_TEST_KEY=value\n");
     }
 
     #[test]
@@ -287,17 +230,9 @@ pub(crate) mod tests {
     #[test]
     fn exit_code_and_cwd_are_reported() {
         let (ex, dir, _) = executor("cwd", vec![], vec!["/bin/sh".into(), "/bin/pwd".into()]);
-        assert_eq!(
-            ex.run(request("/bin/sh", &["-c", "exit 3"], &dir))
-                .unwrap()
-                .exit_code,
-            Some(3)
-        );
+        assert_eq!(ex.run(request("/bin/sh", &["-c", "exit 3"], &dir)).unwrap().exit_code, Some(3));
         let out = ex.run(request("/bin/pwd", &[], &dir)).unwrap();
-        assert_eq!(
-            String::from_utf8(out.stdout).unwrap().trim(),
-            dir.display().to_string()
-        );
+        assert_eq!(String::from_utf8(out.stdout).unwrap().trim(), dir.display().to_string());
     }
 
     #[test]
@@ -309,11 +244,7 @@ pub(crate) mod tests {
         assert!(out.timed_out);
         assert_eq!(out.exit_code, None);
         assert!(out.duration < Duration::from_secs(5));
-        let pid: u32 = String::from_utf8(out.stdout)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
+        let pid: u32 = String::from_utf8(out.stdout).unwrap().trim().parse().unwrap();
         let gone = (0..200).any(|_| {
             std::thread::sleep(POLL);
             !Path::new(&format!("/proc/{pid}")).exists()
@@ -346,10 +277,7 @@ pub(crate) mod tests {
         let note = &text[CAPTURE_LIMIT..];
         assert!(note.starts_with("\n[output beyond"), "{note}");
         let spill = dir.join("spill").join("exec-0-sh.stdout");
-        assert_eq!(
-            std::fs::metadata(&spill).unwrap().len() as usize,
-            total - CAPTURE_LIMIT
-        );
+        assert_eq!(std::fs::metadata(&spill).unwrap().len() as usize, total - CAPTURE_LIMIT);
         assert!(note.contains(&spill.display().to_string()));
     }
 
@@ -364,21 +292,9 @@ pub(crate) mod tests {
             eprintln!("skipped: the kernel offers no Landlock");
             return;
         }
-        let a = ex
-            .run(request(
-                "/bin/cat",
-                &[inside.join("a").to_str().unwrap()],
-                &dir,
-            ))
-            .unwrap();
+        let a = ex.run(request("/bin/cat", &[inside.join("a").to_str().unwrap()], &dir)).unwrap();
         assert_eq!(a.exit_code, Some(0));
-        let b = ex
-            .run(request(
-                "/bin/cat",
-                &[outside.join("b").to_str().unwrap()],
-                &dir,
-            ))
-            .unwrap();
+        let b = ex.run(request("/bin/cat", &[outside.join("b").to_str().unwrap()], &dir)).unwrap();
         assert_ne!(b.exit_code, Some(0));
         assert!(String::from_utf8_lossy(&b.stderr).contains("Permission denied"));
     }

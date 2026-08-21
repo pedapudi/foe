@@ -23,10 +23,7 @@ impl Cut {
 /// not produce a final empty line, and a carriage return before a newline is
 /// dropped.
 pub fn lines(text: &str) -> Vec<&str> {
-    let mut v: Vec<&str> = text
-        .split('\n')
-        .map(|l| l.strip_suffix('\r').unwrap_or(l))
-        .collect();
+    let mut v: Vec<&str> = text.split('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)).collect();
     if v.last() == Some(&"") {
         v.pop();
     }
@@ -59,10 +56,7 @@ pub fn tail(lines: &[&str], max_lines: usize, max_bytes: usize) -> Cut {
         bytes += line.len() + 1;
         start -= 1;
     }
-    Cut {
-        start,
-        end: lines.len(),
-    }
+    Cut { start, end: lines.len() }
 }
 
 #[cfg(test)]

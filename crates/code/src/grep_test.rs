@@ -42,28 +42,12 @@ async fn glob_path_literal_and_ignore_case_narrow_the_search() {
     let fx = tree();
     let v = grep(&fx, json!({"pattern": "alpha", "glob": "*.md"})).await;
     assert_eq!(v.value["matches"], 1);
-    let v = grep(
-        &fx,
-        json!({"pattern": "ALPHA", "path": "src", "ignore_case": true}),
-    )
-    .await;
+    let v = grep(&fx, json!({"pattern": "ALPHA", "path": "src", "ignore_case": true})).await;
     assert_eq!(v.value["matches"], 3);
-    let v = grep(
-        &fx,
-        json!({"pattern": "alpha() {}", "literal": true, "path": "src/b.rs"}),
-    )
-    .await;
+    let v = grep(&fx, json!({"pattern": "alpha() {}", "literal": true, "path": "src/b.rs"})).await;
     assert_eq!(v.value["matches"], 1);
-    let v = Grep::new()
-        .call(
-            json!({"pattern": "alpha() {}", "path": "src/b.rs"}),
-            &ctx(&fx),
-        )
-        .await;
-    assert!(
-        v.is_error,
-        "without literal the same pattern is an invalid regex"
-    );
+    let v = Grep::new().call(json!({"pattern": "alpha() {}", "path": "src/b.rs"}), &ctx(&fx)).await;
+    assert!(v.is_error, "without literal the same pattern is an invalid regex");
 }
 
 #[tokio::test]
@@ -71,10 +55,7 @@ async fn limit_caps_the_rendering_while_the_value_keeps_every_match() {
     let fx = tree();
     let v = grep(&fx, json!({"pattern": "alpha", "limit": 2})).await;
     let r = v.rendered.unwrap();
-    assert!(
-        r.starts_with("4 matches in 3 files under .; showing the first 2."),
-        "{r}"
-    );
+    assert!(r.starts_with("4 matches in 3 files under .; showing the first 2."), "{r}");
     assert_eq!(r.lines().count(), 3);
     assert_eq!(v.value["hits"].as_array().unwrap().len(), 4);
 }
@@ -82,10 +63,7 @@ async fn limit_caps_the_rendering_while_the_value_keeps_every_match() {
 #[tokio::test]
 async fn context_lines_are_marked_and_long_lines_are_clamped() {
     let fx = Fixture::new();
-    fx.write(
-        "c.txt",
-        &format!("before\nneedle {}\nafter\n", "x".repeat(600)),
-    );
+    fx.write("c.txt", &format!("before\nneedle {}\nafter\n", "x".repeat(600)));
     let v = grep(&fx, json!({"pattern": "needle", "context": 1})).await;
     let r = v.rendered.unwrap();
     assert!(r.contains("c.txt:1-before\n"), "{r}");
@@ -99,8 +77,6 @@ async fn bad_patterns_and_unreadable_roots_are_errors() {
     let v = Grep::new().call(json!({"pattern": "("}), &ctx(&fx)).await;
     assert!(v.is_error);
     assert!(v.rendered.unwrap().contains("invalid pattern"));
-    let v = Grep::new()
-        .call(json!({"pattern": "a", "path": "/etc"}), &ctx(&fx))
-        .await;
+    let v = Grep::new().call(json!({"pattern": "a", "path": "/etc"}), &ctx(&fx)).await;
     assert!(v.is_error);
 }

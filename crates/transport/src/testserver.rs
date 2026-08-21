@@ -38,19 +38,11 @@ enum ReplyBody {
 
 impl Reply {
     pub fn full(status: u16, body: &str) -> Reply {
-        Reply {
-            status,
-            headers: Vec::new(),
-            body: ReplyBody::Full(body.to_string()),
-        }
+        Reply { status, headers: Vec::new(), body: ReplyBody::Full(body.to_string()) }
     }
 
     pub fn chunked(status: u16, pieces: Vec<&str>) -> Reply {
-        Reply {
-            status,
-            headers: Vec::new(),
-            body: ReplyBody::Chunked(pieces.iter().map(|s| s.to_string()).collect()),
-        }
+        Reply { status, headers: Vec::new(), body: ReplyBody::Chunked(pieces.iter().map(|s| s.to_string()).collect()) }
     }
 
     pub fn chunked_then_close(status: u16, pieces: Vec<&str>) -> Reply {
@@ -62,11 +54,7 @@ impl Reply {
     }
 
     pub fn close_immediately() -> Reply {
-        Reply {
-            status: 0,
-            headers: Vec::new(),
-            body: ReplyBody::CloseImmediately,
-        }
+        Reply { status: 0, headers: Vec::new(), body: ReplyBody::CloseImmediately }
     }
 
     /// A complete event stream, one chunk per event, as providers send it.
@@ -119,10 +107,7 @@ pub struct Recorded {
 
 impl Recorded {
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(name))
-            .map(|(_, v)| v.as_str())
+        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
     }
 
     pub fn json(&self) -> serde_json::Value {
@@ -167,9 +152,7 @@ impl Server {
 }
 
 fn serve_one(mut stream: TcpStream, reply: Reply, recorded: &Mutex<Vec<Recorded>>) {
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .expect("read timeout");
+    stream.set_read_timeout(Some(Duration::from_secs(5))).expect("read timeout");
     let mut reader = BufReader::new(stream.try_clone().expect("clone socket"));
     let mut line = String::new();
     reader.read_line(&mut line).expect("request line");
@@ -187,11 +170,8 @@ fn serve_one(mut stream: TcpStream, reply: Reply, recorded: &Mutex<Vec<Recorded>
         let (name, value) = text.split_once(':').expect("header has a colon");
         headers.push((name.trim().to_ascii_lowercase(), value.trim().to_string()));
     }
-    let length: usize = headers
-        .iter()
-        .find(|(k, _)| k == "content-length")
-        .and_then(|(_, v)| v.parse().ok())
-        .unwrap_or(0);
+    let length: usize =
+        headers.iter().find(|(k, _)| k == "content-length").and_then(|(_, v)| v.parse().ok()).unwrap_or(0);
     let mut body = vec![0; length];
     reader.read_exact(&mut body).expect("request body");
     recorded.lock().expect("requests lock").push(Recorded {
@@ -208,13 +188,8 @@ fn serve_one(mut stream: TcpStream, reply: Reply, recorded: &Mutex<Vec<Recorded>
     match reply.body {
         ReplyBody::CloseImmediately => {}
         ReplyBody::Full(body) => {
-            head.push_str(&format!(
-                "content-length: {}\r\nconnection: close\r\n\r\n",
-                body.len()
-            ));
-            let _ = stream
-                .write_all(head.as_bytes())
-                .and_then(|_| stream.write_all(body.as_bytes()));
+            head.push_str(&format!("content-length: {}\r\nconnection: close\r\n\r\n", body.len()));
+            let _ = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(body.as_bytes()));
         }
         ReplyBody::Chunked(pieces) => {
             head.push_str("transfer-encoding: chunked\r\nconnection: close\r\n\r\n");

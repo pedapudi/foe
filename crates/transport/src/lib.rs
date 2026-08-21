@@ -61,18 +61,10 @@ pub fn from_config(config: &ModelConfig) -> Result<Box<dyn Transport>, Transport
     let api_key = read_api_key(&config.api_key_file)?;
     let base_url = config.base_url.as_deref();
     Ok(match config.provider {
-        Provider::Anthropic => Box::new(Anthropic::new(
-            &config.model,
-            api_key,
-            base_url,
-            config.max_output_tokens,
-        )?),
-        Provider::OpenaiCompatible => Box::new(OpenAiCompatible::new(
-            &config.model,
-            api_key,
-            base_url,
-            config.max_output_tokens,
-        )?),
+        Provider::Anthropic => Box::new(Anthropic::new(&config.model, api_key, base_url, config.max_output_tokens)?),
+        Provider::OpenaiCompatible => {
+            Box::new(OpenAiCompatible::new(&config.model, api_key, base_url, config.max_output_tokens)?)
+        }
     })
 }
 
@@ -80,29 +72,18 @@ pub fn from_config(config: &ModelConfig) -> Result<Box<dyn Transport>, Transport
 /// editors append, is removed. An empty key is an error because every
 /// provider would reject it with a less specific message.
 pub fn read_api_key(path: &Path) -> Result<String, TransportError> {
-    let text = std::fs::read_to_string(path).map_err(|e| TransportError::ApiKeyFile {
-        path: path.to_path_buf(),
-        reason: e.to_string(),
-    })?;
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| TransportError::ApiKeyFile { path: path.to_path_buf(), reason: e.to_string() })?;
     let key = text.trim_end();
     if key.is_empty() {
-        return Err(TransportError::ApiKeyFile {
-            path: path.to_path_buf(),
-            reason: "file is empty".into(),
-        });
+        return Err(TransportError::ApiKeyFile { path: path.to_path_buf(), reason: "file is empty".into() });
     }
     Ok(key.to_string())
 }
 
-fn parse_base_url(
-    provider_default: &str,
-    base_url: Option<&str>,
-) -> Result<http::Url, TransportError> {
+fn parse_base_url(provider_default: &str, base_url: Option<&str>) -> Result<http::Url, TransportError> {
     let text = base_url.unwrap_or(provider_default);
-    http::Url::parse(text).map_err(|reason| TransportError::BaseUrl {
-        url: text.to_string(),
-        reason,
-    })
+    http::Url::parse(text).map_err(|reason| TransportError::BaseUrl { url: text.to_string(), reason })
 }
 
 // ---- the shared request loop -------------------------------------------------
@@ -134,16 +115,10 @@ fn is_terminal(chunk: &Chunk) -> bool {
 /// Forwards chunks from the blocking request to the caller's sink. Ensures
 /// the sequence ends with exactly one terminal chunk even if the worker
 /// fails.
-async fn deliver(
-    exchange: Exchange,
-    decoder: Box<dyn Decoder>,
-    sink: &mut (dyn foe_core::ChunkSink + Send),
-) {
+async fn deliver(exchange: Exchange, decoder: Box<dyn Decoder>, sink: &mut (dyn foe_core::ChunkSink + Send)) {
     let provider = exchange.provider;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let worker = tokio::task::spawn_blocking(move || {
-        perform(exchange, decoder, Outbox { tx, closed: false })
-    });
+    let worker = tokio::task::spawn_blocking(move || perform(exchange, decoder, Outbox { tx, closed: false }));
     let mut terminal = false;
     while let Some(chunk) = rx.recv().await {
         terminal |= is_terminal(&chunk);
@@ -155,10 +130,7 @@ async fn deliver(
             Ok(()) => "request ended without a final chunk".to_string(),
             Err(e) => format!("request worker failed: {e}"),
         };
-        sink.push(Chunk::Error {
-            message: format!("{provider}: {reason}"),
-            retryable: true,
-        });
+        sink.push(Chunk::Error { message: format!("{provider}: {reason}"), retryable: true });
     }
 }
 
@@ -185,18 +157,11 @@ impl Outbox {
 /// a blocking thread.
 fn perform(exchange: Exchange, mut decoder: Box<dyn Decoder>, mut out: Outbox) {
     let provider = exchange.provider;
-    let headers: Vec<(&str, &str)> = exchange
-        .headers
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect();
+    let headers: Vec<(&str, &str)> = exchange.headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     let mut response = match http::post(&exchange.url, &headers, &exchange.body) {
         Ok(response) => response,
         Err(e) => {
-            out.push(Chunk::Error {
-                message: format!("{provider}: {e}"),
-                retryable: e.retryable(),
-            });
+            out.push(Chunk::Error { message: format!("{provider}: {e}"), retryable: e.retryable() });
             return;
         }
     };
@@ -220,10 +185,7 @@ fn perform(exchange: Exchange, mut decoder: Box<dyn Decoder>, mut out: Outbox) {
                 // Invalid UTF-8 is a malformed stream; anything else is the
                 // connection failing under us.
                 let retryable = e.kind() != std::io::ErrorKind::InvalidData;
-                out.push(Chunk::Error {
-                    message: format!("{provider}: reading response body: {e}"),
-                    retryable,
-                });
+                out.push(Chunk::Error { message: format!("{provider}: reading response body: {e}"), retryable });
                 return;
             }
         }
@@ -245,16 +207,9 @@ fn status_error(provider: &str, response: &mut http::Response) -> Chunk {
     let retry_after_ms = response
         .header("retry-after-ms")
         .and_then(|v| v.trim().parse::<u64>().ok())
-        .or_else(|| {
-            response
-                .header("retry-after")
-                .and_then(|v| v.trim().parse::<u64>().ok())
-                .map(|s| s * 1000)
-        });
+        .or_else(|| response.header("retry-after").and_then(|v| v.trim().parse::<u64>().ok()).map(|s| s * 1000));
     let mut text = String::new();
-    let _ = (&mut response.body)
-        .take(MAX_ERROR_BODY)
-        .read_to_string(&mut text);
+    let _ = (&mut response.body).take(MAX_ERROR_BODY).read_to_string(&mut text);
     let mut message = format!("{provider}: HTTP {status}: {}", describe_error_body(&text));
     if let Some(ms) = retry_after_ms {
         message.push_str(&format!(" retry_after_ms={ms}"));
@@ -266,10 +221,7 @@ fn status_error(provider: &str, response: &mut http::Response) -> Chunk {
 fn describe_error_body(text: &str) -> String {
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
         let error = value.get("error").unwrap_or(&value);
-        let kind = error
-            .get("type")
-            .or_else(|| error.get("code"))
-            .and_then(|v| v.as_str());
+        let kind = error.get("type").or_else(|| error.get("code")).and_then(|v| v.as_str());
         let detail = error.get("message").and_then(|v| v.as_str());
         match (kind, detail) {
             (Some(kind), Some(detail)) => return format!("{kind}: {detail}"),
@@ -278,13 +230,7 @@ fn describe_error_body(text: &str) -> String {
             (None, None) => {}
         }
     }
-    let snippet: String = text
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .chars()
-        .take(200)
-        .collect();
+    let snippet: String = text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(200).collect();
     if snippet.is_empty() {
         "empty response body".to_string()
     } else {
@@ -331,10 +277,8 @@ mod tests {
         assert!(err.starts_with("model.api_key_file: "), "{err}");
         assert!(err.ends_with("file is empty"), "{err}");
         let missing = scratch("key-missing-does-not-exist");
-        let err = from_config(&config(&missing, Provider::Anthropic))
-            .err()
-            .expect("a missing key file fails")
-            .to_string();
+        let err =
+            from_config(&config(&missing, Provider::Anthropic)).err().expect("a missing key file fails").to_string();
         assert!(err.starts_with("model.api_key_file: "), "{err}");
         assert!(err.contains("key-missing-does-not-exist"), "{err}");
     }
@@ -356,22 +300,14 @@ mod tests {
         std::fs::write(&path, "k").unwrap();
         let mut cfg = config(&path, Provider::OpenaiCompatible);
         cfg.base_url = Some("localhost:11434/v1".into());
-        let err = from_config(&cfg)
-            .err()
-            .expect("a bad base url fails")
-            .to_string();
-        assert_eq!(
-            err,
-            "model.base_url: localhost:11434/v1: scheme must be http or https"
-        );
+        let err = from_config(&cfg).err().expect("a bad base url fails").to_string();
+        assert_eq!(err, "model.base_url: localhost:11434/v1: scheme must be http or https");
     }
 
     #[test]
     fn error_body_description_prefers_structured_fields() {
         assert_eq!(
-            describe_error_body(
-                r#"{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}"#
-            ),
+            describe_error_body(r#"{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}"#),
             "rate_limit_error: slow down"
         );
         assert_eq!(
@@ -379,10 +315,7 @@ mod tests {
             "invalid_api_key: bad"
         );
         assert_eq!(describe_error_body(r#"{"error":{"message":"bad"}}"#), "bad");
-        assert_eq!(
-            describe_error_body("<html>\n  502 Bad Gateway\n</html>"),
-            "<html> 502 Bad Gateway </html>"
-        );
+        assert_eq!(describe_error_body("<html>\n  502 Bad Gateway\n</html>"), "<html> 502 Bad Gateway </html>");
         assert_eq!(describe_error_body(""), "empty response body");
     }
 }
