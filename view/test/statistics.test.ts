@@ -94,6 +94,29 @@ test("a run that measured no cache read has no hit rate", () => {
   assert.equal(out.tokens.input, 500);
 });
 
+test("a run whose every attempt failed measures backoff and nothing else", () => {
+  // The recorded log of five transport failures: no answer was assembled,
+  // so every quantity that needs one is absent and the wall clock is the
+  // waiting between attempts.
+  const out = stats([["retries-exhausted.jsonl", 0]]);
+  assert.equal(out.requests, 5);
+  assert.equal(out.retries, 5);
+  assert.equal(out.wallClock.backoffMs, 15_500, "500 + 1000 + 2000 + 4000 + 8000 ms");
+  assert.equal(out.wallClock.totalMs, 15_515);
+  assert.ok(out.wallClock.modelMs < 20, "each attempt failed within a millisecond of its request");
+  assert.equal(out.wallClock.toolMs, 0);
+  assert.equal(out.cache, null);
+  assert.deepEqual(out.tokens, { input: null, output: null, cacheRead: null });
+  for (const step of out.steps) {
+    assert.equal(step.timeToFirstToken, null, "an error chunk is not a token");
+    assert.equal(step.latencyMs, null);
+    assert.equal(step.outputRate, null);
+  }
+  const bar = layoutWallClock(out.wallClock, 100);
+  const backoff = bar.shares.find((s) => s.name === "retry backoff")!;
+  assert.ok(backoff.fraction > 0.99, "the run is backoff-bound");
+});
+
 test("the wall clock divides into model time, tool time, and retry backoff", () => {
   const out = stats([["root.jsonl", 0]]);
   const clock = out.wallClock;
