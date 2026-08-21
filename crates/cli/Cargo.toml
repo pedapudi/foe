@@ -1,0 +1,25 @@
+[package]
+name = "foe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The friendly coding agent: an autonomous episode runtime"
+
+[[bin]]
+name = "foe"
+path = "src/main.rs"
+
+[dependencies]
+foe-log = { path = "../log" }
+foe-core = { path = "../core" }
+foe-code = { path = "../code" }
+foe-view = { path = "../view" }
+foe-transport = { path = "../transport", optional = true }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[features]
+default = ["transport"]
+transport = ["dep:foe-transport"]

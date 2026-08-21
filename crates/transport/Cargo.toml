@@ -1,0 +1,15 @@
+[package]
+name = "foe-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Built-in model clients, behind a feature flag"
+
+[dependencies]
+foe-core = { path = "../core" }
+foe-log = { path = "../log" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

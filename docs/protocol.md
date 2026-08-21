@@ -1,0 +1,180 @@
+# Host protocol
+
+A host is a process that launches foe and talks to it over standard input
+and standard output. The Python package is a host. An orchestrator that runs
+many episodes is a host. This document specifies the exchange completely.
+
+The protocol has one design rule: foe's output stream is its log. Every line
+foe writes to standard output is a log event, byte-identical to the line
+appended to `episode.jsonl`. A host that reads standard output has read the
+log. The host answers a small set of those events by writing lines to foe's
+standard input, and foe records each answer as a further log event. No
+exchange between foe and its host exists outside the log.
+
+## Framing
+
+Both directions carry one JSON object per line, terminated by a single line
+feed. Lines never contain a raw line feed inside a string; JSON escaping
+handles it. A reader treats a line that fails to parse as a fatal protocol
+error and terminates the episode with `failed`.
+
+## Launch
+
+```
+foe --config <path> [--headless] [--no-open] [--log-dir <path>]
+```
+
+The host supplies a configuration file. foe validates it, writes
+`episode/start`, and begins. When the configuration has no `model` block,
+the host supplies the model transport and must answer `model/request` events.
+When the configuration has a `model` block, foe uses its built-in transport
+and emits `model/request` events for the record only.
+
+Standard error carries diagnostics for a person. A host never parses it.
+
+## foe to host
+
+Every log event, in `seq` order, as written. Three event types require a
+host answer.
+
+### `model/request`
+
+Emitted once per model call when the host supplies the transport. The host
+performs the request and streams the response back as `model/chunk` lines,
+ending with a `done` or `error` chunk.
+
+```json
+{"seq": 4, "time": 1724200000123, "type": "model/request", "data": {
+  "step": 1, "attempt": 1, "request_id": "rq_01", "header_seq": 1,
+  "consumed": [1], "messages": [ { "role": "user", "content": [ { "type": "text", "text": "…" } ] } ]
+}}
+```
+
+The header referenced by `header_seq` carries the system prompt, the tool
+schemas, and the model route. The host combines it with `messages` to form
+the provider request.
+
+### `host/tool-call`
+
+Emitted when the model calls a tool that the host registered. The host runs
+the tool and answers with one `tool/result` line.
+
+```json
+{"seq": 9, "time": 1724200000456, "type": "host/tool-call", "data": {
+  "step": 2, "call_id": "tc_03", "name": "mutation_usage", "args": { "mutation_id": "m_41" }
+}}
+```
+
+### `episode/end`
+
+Emitted last. The host reads the outcome and may close standard input. foe
+exits with code 0 when the outcome is `completed`, 2 when `blocked`, 3 when
+`exhausted`, and 1 when `failed`.
+
+## Host to foe
+
+Four line types. Any other `type` is a protocol error.
+
+### `model/chunk`
+
+One fragment of a streamed model response. The `request_id` must match an
+outstanding `model/request`.
+
+```json
+{"type": "model/chunk", "request_id": "rq_01", "chunk": { "kind": "text", "delta": "I will" }}
+```
+
+| `kind` | fields | meaning |
+|---|---|---|
+| `text` | `delta` | a fragment of assistant text |
+| `thinking` | `delta` | a fragment of reasoning text; recorded, never re-sent to the model |
+| `tool_call_start` | `id`, `name` | a tool call began |
+| `tool_call_delta` | `id`, `delta` | a fragment of that call's JSON arguments |
+| `tool_call_end` | `id` | that call's arguments are complete |
+| `done` | `stop`, `usage` | the response ended; `stop` is `end`, `tool`, or `length` |
+| `error` | `message`, `retryable` | the request failed; `retryable` tells foe whether to retry |
+
+`usage` is `{ "input": N, "output": N, "cache_read": N }`. A host that
+cannot report a field sends 0.
+
+foe records every chunk as an `assistant/chunk` event, assembles the
+`assistant/message` on `done`, and applies the length rule when `stop` is
+`length`.
+
+### `tool/result`
+
+The result of a host tool call. The `call_id` must match an outstanding
+`host/tool-call`.
+
+```json
+{"type": "tool/result", "call_id": "tc_03", "value": { "count": 3 }, "rendered": "3 references", "is_error": false}
+```
+
+`value` is the canonical result and is required. `rendered` is optional;
+when absent, foe renders `value` compactly. `is_error` defaults to false.
+foe records the answer as a `tool/result` event.
+
+### `inbox/item`
+
+A message for the episode. The host uses this to steer a running episode or
+to deliver a team message.
+
+```json
+{"type": "inbox/item", "source": "parent", "content": [ { "type": "text", "text": "Stop after the first failing test." } ], "from": "ep_root", "message_id": null}
+```
+
+`source` is `parent`, `child`, or `peer`. foe records the line as an
+`inbox/item` event and includes it in the next request.
+
+### `cancel`
+
+Stops the episode. foe aborts any outstanding request, records any started
+tool calls as interrupted with synthetic results, writes `episode/end` with
+outcome `failed` and error `cancelled`, and exits.
+
+```json
+{"type": "cancel"}
+```
+
+## Ordering and concurrency
+
+foe has at most one outstanding `model/request` at a time. It may have
+several outstanding `host/tool-call` lines at once, when the calls' declared
+effects permit concurrent execution. The host may answer them in any order.
+
+The host may send `inbox/item` and `cancel` at any time, including while a
+`model/request` is outstanding. An `inbox/item` that arrives during a request
+enters the next request.
+
+A `model/chunk` or `tool/result` that names an unknown or already-settled id
+is a protocol error.
+
+## Timeouts
+
+foe waits for a `model/chunk` up to the `seconds` remaining in the episode's
+budget. A host tool call has no timeout of its own; the host is responsible
+for bounding it. When the budget's `seconds` elapse with an answer
+outstanding, foe ends the episode as `exhausted` with limit `seconds`.
+
+## Children
+
+A child episode is a further foe process. The parent foe process is the
+child's host: it launches the child, reads the child's standard output, and
+forwards the child's `model/request` and `host/tool-call` events to its own
+host, tagged with the child's id. The root host therefore sees every request
+in the tree and answers each one. Answers carry the same tag so that the root
+parent can route them down.
+
+```json
+{"type": "model/chunk", "request_id": "rq_01", "episode_id": "ep_9c21", "chunk": {}}
+```
+
+`episode_id` is absent or null for the root episode. A host that does not
+support children rejects configurations with a non-empty `spawn` grant; foe
+treats the `spawn` grant as unavailable and fails any spawn tool call.
+
+## Versioning
+
+The first line foe writes is the `episode/start` event, and its
+`runtime.version` identifies the protocol version. A host that does not
+recognize the version sends `cancel` and reports the mismatch.

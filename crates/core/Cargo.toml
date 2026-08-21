@@ -1,0 +1,16 @@
+[package]
+name = "foe-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Episode runtime: config, identity, grants, budget, registry, loop, spawn, teams, sandbox, host protocol"
+
+[dependencies]
+foe-log = { path = "../log" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+sha2.workspace = true
+hex.workspace = true
