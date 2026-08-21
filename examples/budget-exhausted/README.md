@@ -20,10 +20,10 @@ The example needs no provider credential and no network. Its model is the
 `exec` provider pointed at `never-finishing-transport` in this directory, a
 program that answers every request with one more `read` call.
 [docs/models.md](../../docs/models.md) specifies that provider and the chunk
-lines the program writes. Each answer reads a different module, because a
-call that returns an identical result in `budget.loop_threshold` consecutive
-steps ends the episode as `blocked` with the code `looping-tool-call`, and
-this example is about the declared limit rather than the loop detector.
+lines the program writes. Each answer reads a different module. A call that
+returns an identical result in `budget.loop_threshold` consecutive steps ends
+the episode as `blocked` with the code `looping-tool-call`, and this example
+is about the declared limit rather than the loop detector.
 
 ## Paths to replace
 

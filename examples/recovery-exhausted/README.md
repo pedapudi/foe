@@ -60,12 +60,16 @@ cargo build --release --bin foe
 sh examples/recovery-exhausted/run.sh
 ```
 
-The runner asserts what this example claims: the outcome is `blocked` with
-the code `recovery-exhausted` and the message naming five attempts, the exit
-code is 2, the five `model/request` events all belong to step 1 and carry
-the same messages, the five `request/retry` events record the delays 500,
-1000, 2000, 4000, and 8000 milliseconds, and no `assistant/message` and no
-`tool/result` were ever written.
+The runner asserts what this example claims.
+
+- The outcome is `blocked` with the code `recovery-exhausted`, and its
+  message names five attempts at step 1.
+- The exit code is 2.
+- The five `model/request` events all belong to step 1 and carry the same
+  messages.
+- The five `request/retry` events record the delays 500, 1000, 2000, 4000,
+  and 8000 milliseconds.
+- No `assistant/message` and no `tool/result` was written.
 
 ## What to look for
 
