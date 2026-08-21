@@ -519,6 +519,16 @@ fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
     std::fs::write(root.join("anthropic.key"), "sk-test\n").unwrap();
     let ruff = project.join("tools/ruff-check");
     std::fs::copy(Path::new(EXAMPLES).join("wrap-a-binary/ruff-check"), &ruff).unwrap();
+    // Every program an example ships is installed where the example's README
+    // says to put it, which is the project's tools directory. A file name
+    // with no extension is such a program; `config.json`, `README.md`, and
+    // `run.sh` are the files that carry one.
+    for entry in std::fs::read_dir(Path::new(EXAMPLES).join(name)).unwrap().flatten() {
+        let file = entry.file_name();
+        if !file.to_string_lossy().contains('.') {
+            std::fs::copy(entry.path(), project.join("tools").join(&file)).unwrap();
+        }
+    }
     let rewritten = text
         .replace("/home/user/.config/foe/anthropic.key", root.join("anthropic.key").to_str().unwrap())
         .replace("/home/user/project", project.to_str().unwrap());

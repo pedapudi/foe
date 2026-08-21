@@ -1,0 +1,38 @@
+#!/usr/bin/python3
+"""Answers every model request with a turn that reports the work as done.
+
+No answer calls a tool, so each one is a candidate for the `done_when`
+verifier, and no answer changes the file the verifier looks at. The text
+differs from turn to turn, because an identical assistant turn repeated
+`loop_threshold` times ends the episode as `blocked` with the code
+`looping-reasoning`, which is a different outcome from the one this example
+demonstrates.
+"""
+
+import sys
+from pathlib import Path
+
+# `chunks.py` is in `examples/support` in the repository and beside this
+# file once a runner has copied both into a project's tools directory.
+here = Path(__file__).resolve().parent
+sys.path[:0] = [str(here), str(here.parent.parent / "support")]
+
+from chunks import done, read_request, step, text  # noqa: E402
+
+CLAIMS = [
+    "I implemented add and removed the TODO comment above it.",
+    "I looked at the module again and the change I described is in place.",
+    "The function is implemented and no TODO comment remains in it.",
+    "There is nothing further for me to change in this module.",
+]
+
+
+def main() -> None:
+    request = read_request()
+    turn = step(request)
+    text(request, CLAIMS[min(turn, len(CLAIMS) - 1)])
+    done(request, "end")
+
+
+if __name__ == "__main__":
+    main()
