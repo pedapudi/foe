@@ -164,6 +164,7 @@ test("the context curve places one series per episode against the declared limit
   assert.equal(points[0]!.x, curve.plot.left);
   assert.equal(points[points.length - 1]!.x, curve.plot.right);
   assert.equal(curve.peak, 1900);
+  assert.equal(curve.peakY, points[2]!.y, "the axis labels the peak where the peak sits");
   assert.ok(curve.budget, "the program declares a token limit");
   assert.equal(curve.budget!.tokens, 100000);
   assert.equal(curve.budget!.y, curve.plot.top, "the declared limit sets the top of the plot");

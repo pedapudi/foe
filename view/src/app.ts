@@ -362,6 +362,12 @@ export class App implements Sink {
    */
   private renderTabs(): void {
     const id = this.selected ?? "";
+    // The workflow tab appears once the episode's `episode/start` has been
+    // read and declares a graph, which in live mode is after the first
+    // selection is made.
+    const declared = this.declaresWorkflow(id);
+    const button = this.tabsBar.querySelector<HTMLElement>('.tab[data-tab="workflow"]');
+    if (button) button.hidden = !declared;
     const state = this.episodes.get(id);
     if (!state) {
       this.workflow.update(null, null);
@@ -402,12 +408,10 @@ export class App implements Sink {
   }
 
   private renderMain(): void {
-    const workflowTab = this.selected !== null && this.declaresWorkflow(this.selected);
     for (const b of this.tabsBar.querySelectorAll<HTMLElement>(".tab")) {
       const active = b.dataset.tab === this.tab;
       b.classList.toggle("active", active);
       b.setAttribute("aria-selected", active ? "true" : "false");
-      if (b.dataset.tab === "workflow") b.hidden = !workflowTab;
     }
     this.renderTabs();
     const selected = this.selected ? this.episodes.get(this.selected) : undefined;
@@ -430,8 +434,15 @@ export class App implements Sink {
       current.remove();
     }
     this.views.appendChild(next);
+    // A tab has no width until it is mounted, so the two figures that fit
+    // themselves to the pane draw once they are in the page.
+    if (next === this.workflow.el) this.workflow.resized();
+    if (next === this.statistics.el) this.statistics.resized();
     const remembered = this.scrollMemory.get(next);
-    next.scrollTop = remembered === undefined ? next.scrollHeight : remembered;
+    // A dialogue opens at its end, because the last row is the newest; a
+    // figure opens at its top, because the first figure is the first to read.
+    const foot = next !== this.workflow.el && next !== this.statistics.el;
+    next.scrollTop = remembered === undefined ? (foot ? next.scrollHeight : 0) : remembered;
   }
 
   private diffElement(): HTMLElement {

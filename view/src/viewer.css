@@ -1795,18 +1795,32 @@ table.events td.type.error {
   opacity: 1;
 }
 
-.wf-label {
+/* A label sits at the end of a leader tick, fanned clear of its
+ * neighbours, and the edge it names continues past it. */
+.wf-label text {
   fill: var(--v2-ink-faint);
   font-family: var(--v2-mono);
   font-size: calc(9.5px * var(--dt-font-scale, 1));
   opacity: 0.55;
 }
 
+.wf-label .leader {
+  fill: none;
+  stroke: var(--v2-ink-faint);
+  stroke-width: 0.9;
+  opacity: 0.35;
+}
+
 /* The one accent of the figure: the label a firing chose, which is where
  * the model's judgment entered a graph that bounds it. */
-.wf-label.chosen {
+.wf-label.chosen text {
   fill: var(--v2-accent);
   opacity: 1;
+}
+
+.wf-label.chosen .leader {
+  stroke: var(--v2-accent);
+  opacity: 0.8;
 }
 
 .wf-node .box {
@@ -1822,10 +1836,12 @@ table.events td.type.error {
 }
 
 .wf-node.good .box {
+  fill: var(--v2-good-soft);
   stroke: var(--v2-good);
 }
 
 .wf-node.bad .box {
+  fill: var(--v2-bad-soft);
   stroke: var(--v2-bad);
 }
 

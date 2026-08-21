@@ -308,6 +308,8 @@ export interface CurveLayout {
   series: CurveSeries[];
   /** Highest input token count any point carries. */
   peak: number;
+  /** Where that peak sits, which is where the axis labels it. */
+  peakY: number;
   /** Longest series, which is the x extent. */
   steps: number;
   /** The declared token limit and its y, absent when none is declared. */
@@ -367,6 +369,7 @@ export function layoutContextCurve(
   return {
     series,
     peak,
+    peakY: y(peak),
     steps,
     budget: declared ? { tokens: declared.limit, y: y(declared.limit) } : null,
     plot: { left, right, top, bottom },

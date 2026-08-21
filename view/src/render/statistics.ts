@@ -41,13 +41,28 @@ function measure(value: number | null, render: (v: number) => string): Child {
   return value === null ? absent() : render(value);
 }
 
+/**
+ * A percentage, with one decimal below ten and above ninety-nine and a
+ * half. Rounding 99.76 to 100 would assert that nothing else was measured,
+ * so a share short of the whole never reads as the whole.
+ */
 function percent(fraction: number): string {
   const pct = fraction * 100;
-  return `${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%`;
+  const fine = pct < 10 || (pct > 99.5 && fraction < 1);
+  return `${fine ? pct.toFixed(1) : Math.round(pct)}%`;
 }
 
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)} s`;
+}
+
+/** What the largest share of the wall clock means, in one sentence. */
+function leadCaption(name: string, fraction: number): string {
+  const share = percent(fraction);
+  if (name === "model") return `The run is ${share} model-bound.`;
+  if (name === "tool") return `The run is ${share} tool-bound.`;
+  if (name === "retry backoff") return `${share} of the wall clock went to waiting between retried requests.`;
+  return `${share} of the wall clock falls outside every measured interval.`;
 }
 
 export interface StatisticsHandlers {
@@ -139,8 +154,10 @@ export class StatisticsView {
       scope.map((e) => `${e.id}:${e.events.length}:${e.endTime ?? "-"}`).join("|"),
     ].join("~");
     if (!force && digest === this.digest) return;
-    this.digest = digest;
+    // A tab that is not mounted has no width; the digest is kept unset so
+    // that mounting it draws.
     if (width === 0) return;
+    this.digest = digest;
     clear(this.body);
     this.card.hide();
     if (scope.length === 0) {
@@ -212,7 +229,7 @@ export class StatisticsView {
       ? "The shares sum past the wall clock, because episodes of this scope ran at the same time; each share is drawn against that sum."
       : largest === null
         ? "No interval in this scope was measured."
-        : `The run is ${percent(largest.fraction)} ${largest.name}-bound.`;
+        : leadCaption(largest.name, largest.fraction);
     return this.figure("where the wall clock went", [figure, total], caption);
   }
 
@@ -300,9 +317,19 @@ export class StatisticsView {
       label.textContent = `step ${step}`;
       axes.appendChild(label);
     }
-    const peak = svg("text", { class: "tick-label", x: curve.plot.left - 6, y: curve.plot.top + 8, "text-anchor": "end" });
-    peak.textContent = fmtInt(curve.peak);
-    axes.appendChild(peak);
+    // The peak is labelled where it sits, so the reader can scale the
+    // curve; a declared limit close to it carries its own label already.
+    const budgetY = curve.budget === null ? Number.NEGATIVE_INFINITY : curve.budget.y;
+    if (Math.abs(curve.peakY - budgetY) > 11) {
+      const peak = svg("text", {
+        class: "tick-label",
+        x: curve.plot.left - 6,
+        y: curve.peakY + 3.5,
+        "text-anchor": "end",
+      });
+      peak.textContent = fmtInt(curve.peak);
+      axes.appendChild(peak);
+    }
     return axes;
   }
 

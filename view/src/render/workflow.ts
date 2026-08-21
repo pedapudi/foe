@@ -111,8 +111,10 @@ export class WorkflowView {
       workflow.edges.map((e) => (e.traversed ? 1 : 0)).join(""),
     ].join("~");
     if (digest === this.digest) return;
-    this.digest = digest;
+    // A tab that is not mounted has no width; the digest is kept unset so
+    // that mounting it draws.
     if (width === 0) return;
+    this.digest = digest;
     const layout = layoutWorkflow(workflow, width);
     clear(this.figure);
     this.card.hide();
@@ -176,21 +178,23 @@ export class WorkflowView {
     for (const node of layout.nodes) {
       for (const anchor of node.anchors) {
         const chosen = workflow.chosen.includes(`${node.name}/${anchor.label}`);
-        const el = text(
-          `wf-label${chosen ? " chosen" : ""}`,
-          anchor.point.x + 5,
-          anchor.point.y - 2.5,
-          anchor.label,
+        const group = svg("g", { class: `wf-label${chosen ? " chosen" : ""}` });
+        group.appendChild(
+          svg("path", {
+            class: "leader",
+            d: `M ${anchor.point.x} ${anchor.point.y} L ${anchor.labelPoint.x - 2} ${anchor.labelPoint.y}`,
+          }),
         );
+        group.appendChild(text("text", anchor.labelPoint.x, anchor.labelPoint.y + 3.5, anchor.label));
         const declared = byName.get(node.name)?.branches.find((b) => b.label === anchor.label);
         const successors = declared && declared.successors.length > 0 ? declared.successors.join(", ") : "no successor";
         this.card.attach(
-          el,
+          group,
           () => `${node.name}: ${anchor.label}`,
           () => `leads to ${successors}`,
           () => (chosen ? "a firing chose this label" : "declared; no firing chose it"),
         );
-        labels.appendChild(el);
+        labels.appendChild(group);
       }
     }
     figure.appendChild(labels);

@@ -168,7 +168,7 @@ test("columns follow rank and rows follow name order within a column", () => {
   assert.equal(at("apply").height, NODE_HEIGHT);
 });
 
-test("a narrow pane shrinks the gaps and then the boxes", () => {
+test("a narrow pane shrinks the boxes and keeps room for the labels", () => {
   const workflow = run();
   const wide = layoutWorkflow(workflow, 1400);
   const narrow = layoutWorkflow(workflow, 900);
@@ -178,11 +178,15 @@ test("a narrow pane shrinks the gaps and then the boxes", () => {
     return second.x - (first.x + first.width);
   };
   assert.equal(wide.nodes[0]!.width, NODE_WIDTH, "a pane with room keeps the box width");
-  assert.ok(gapOf(narrow) < gapOf(wide), "the gap gives way first");
-  assert.ok(narrow.nodes[0]!.width < NODE_WIDTH, "then the box gives way");
-  assert.ok(narrow.width <= 900, "and the figure fits");
+  assert.ok(narrow.nodes[0]!.width < NODE_WIDTH, "a narrow pane shrinks the box");
+  assert.ok(narrow.width < wide.width);
+  // The gap between two columns carries the left one's branch labels, so it
+  // never falls below what the longest label needs.
+  const longest = Math.max(...workflow.nodes.flatMap((n) => n.branches.map((b) => b.label.length)));
+  assert.ok(gapOf(narrow) > longest * 6, `the gap is ${gapOf(narrow)} for a ${longest}-character label`);
+  assert.equal(gapOf(narrow), gapOf(wide), "the label room holds at both widths");
   const tiny = layoutWorkflow(workflow, 300);
-  assert.ok(tiny.width > 300, "below both minimums the figure keeps its own width");
+  assert.ok(tiny.width > 300, "below every minimum the figure keeps its own width");
 });
 
 test("a choice point gives each label its own anchor on the node's edge", () => {
@@ -194,9 +198,16 @@ test("a choice point gives each label its own anchor on the node's edge", () => 
   for (const anchor of propose.anchors) {
     assert.equal(anchor.point.x, propose.x + propose.width);
     assert.ok(anchor.point.y > propose.y && anchor.point.y < propose.y + propose.height);
+    assert.ok(anchor.labelPoint.x > anchor.point.x, "the label sits at the end of a leader");
   }
+  // The labels fan further apart than the node's own edge allows, so that
+  // four labels on a 48-pixel box stay legible.
+  const gaps = propose.anchors.slice(1).map((a, i) => a.labelPoint.y - propose.anchors[i]!.labelPoint.y);
+  for (const gap of gaps) assert.ok(gap >= 12, `label lines are ${gap} apart`);
   const widen = out.edges.find((e) => e.from === "propose" && e.to === "survey")!;
-  assert.deepEqual(widen.from_, propose.anchors.find((a) => a.label === "widen")!.point);
+  const anchor = propose.anchors.find((a) => a.label === "widen")!;
+  assert.equal(widen.from_.y, anchor.labelPoint.y, "the edge continues from its label");
+  assert.ok(widen.from_.x > anchor.labelPoint.x);
 });
 
 test("an edge that runs back to an earlier column is routed under the rows", () => {
