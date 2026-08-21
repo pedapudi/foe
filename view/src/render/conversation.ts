@@ -1,0 +1,281 @@
+// The conversation pane: one element per fold row, patched in place.
+
+import { clear, compact, fmtDuration, fmtInt, fmtTime, h, lazyDetails, lineCount, pretty } from "../dom.js";
+import type { Child } from "../dom.js";
+import type { AssistantRow, HeaderRow, NoteRow, Patch, Row, ToolRow, UserRow } from "../fold.js";
+import type { ContentBlock } from "../types.js";
+
+export interface RenderContext {
+  /** Selects another episode, for rows that name one. */
+  select(id: string): void;
+}
+
+const INLINE_ARGS_CHARS = 160;
+
+export function renderRow(row: Row, ctx: RenderContext): HTMLElement {
+  switch (row.kind) {
+    case "header":
+      return renderHeader(row);
+    case "user":
+      return renderUser(row);
+    case "assistant":
+      return renderAssistant(row);
+    case "tool":
+      return renderTool(row);
+    case "note":
+      return renderNote(row, ctx);
+  }
+}
+
+function gutter(row: Row): HTMLElement {
+  return h("div", { class: "gutter", title: new Date(row.time).toISOString() }, `${row.seq}`, h("br"), fmtTime(row.time));
+}
+
+function renderHeader(row: HeaderRow): HTMLElement {
+  const meta = [row.reason, row.model, `${row.tools.length} tool${row.tools.length === 1 ? "" : "s"}`, `${fmtInt(
+    row.system.length,
+  )} chars`]
+    .filter(Boolean)
+    .join(" · ");
+  const body = lazyDetails(
+    [h("span", null, "system prompt"), h("span", { class: "meta" }, meta)],
+    () => [
+      h("pre", { class: "text" }, row.system || "(empty)"),
+      h(
+        "div",
+        { class: "tools-list" },
+        row.tools.map((t, i) =>
+          lazyDetails(
+            [h("code", null, t.name ?? "?"), h("span", { class: "tool-desc" }, firstLine(t.description ?? ""))],
+            () => [
+              t.description ? h("pre", { class: "text" }, t.description) : null,
+              h("pre", { class: "text" }, pretty(t.parameters)),
+            ],
+            { key: `tool-schema:${i}` },
+          ),
+        ),
+      ),
+    ],
+    { key: "header" },
+  );
+  return h("div", { class: "row header", "data-key": row.key }, gutter(row), h("div", { class: "role" }, "system"), h("div", { class: "body" }, body));
+}
+
+function renderUser(row: UserRow): HTMLElement {
+  const meta: string[] = [];
+  if (row.from) meta.push(`from ${row.from}`);
+  if (row.messageId) meta.push(row.messageId);
+  return h(
+    "div",
+    { class: "row user", "data-key": row.key },
+    gutter(row),
+    h("div", { class: "role" }, "user", h("span", { class: "badge source" }, row.source)),
+    h(
+      "div",
+      { class: "body" },
+      meta.length ? h("div", { class: "meta" }, meta.join(" · ")) : null,
+      row.content.length ? row.content.map((b, i) => renderBlock(b, `block:${i}`)) : h("pre", { class: "text" }, "(no content)"),
+    ),
+  );
+}
+
+function renderBlock(block: ContentBlock, key: string): HTMLElement {
+  if (block.type === "text" && typeof block.text === "string") {
+    return h("div", { class: "block" }, h("pre", { class: "text" }, block.text));
+  }
+  return h(
+    "div",
+    { class: "block" },
+    lazyDetails([h("code", null, block.type ?? "block")], () => h("pre", { class: "text" }, pretty(block)), { key }),
+  );
+}
+
+function renderAssistant(row: AssistantRow): HTMLElement {
+  const meta: string[] = [];
+  if (row.step) meta.push(`step ${row.step}`);
+  if (row.stop) meta.push(`stop ${row.stop}`);
+  if (row.usage) {
+    const u = row.usage;
+    const parts = [`in ${fmtInt(u.input ?? 0)}`, `out ${fmtInt(u.output ?? 0)}`];
+    if (u.cache_read) parts.push(`cache ${fmtInt(u.cache_read)}`);
+    meta.push(parts.join(" / "));
+  }
+  const body = h(
+    "div",
+    { class: `body${row.streaming ? " streaming" : ""}` },
+    row.thinking
+      ? lazyDetails([h("span", { class: "meta" }, `thinking · ${fmtInt(row.thinking.length)} chars`)], () => h("pre", { class: "text" }, row.thinking), {
+          key: "thinking",
+        })
+      : null,
+    row.text || row.toolCalls.length === 0 ? h("pre", { class: "text" }, row.text || (row.streaming ? "" : "(no text)")) : null,
+    row.toolCalls.map((call, i) => {
+      const args = typeof call.args === "string" ? call.args : compact(call.args);
+      const short = args.length <= INLINE_ARGS_CHARS;
+      return h(
+        "div",
+        { class: "call" },
+        h("span", { class: "call-name" }, call.name),
+        short
+          ? h("code", { class: "args" }, args)
+          : lazyDetails([h("span", { class: "meta" }, `${fmtInt(args.length)} chars of arguments`)], () => h("pre", { class: "text" }, typeof call.args === "string" ? call.args : pretty(call.args)), {
+              key: `call:${i}`,
+            }),
+        call.id ? h("span", { class: "meta" }, call.id) : null,
+        !call.done ? h("span", { class: "meta" }, "streaming") : null,
+      );
+    }),
+  );
+  return h(
+    "div",
+    { class: `row assistant${row.interrupted ? " interrupted" : ""}`, "data-key": row.key },
+    gutter(row),
+    h("div", { class: "role" }, "assistant"),
+    h(
+      "div",
+      null,
+      h(
+        "div",
+        { class: "meta-line" },
+        row.interrupted ? h("span", { class: "marker" }, "interrupted") : null,
+        row.streaming ? h("span", { class: "badge live" }, "live") : null,
+        meta.length ? h("span", { class: "meta" }, meta.join(" · ")) : null,
+      ),
+      body,
+    ),
+  );
+}
+
+function renderTool(row: ToolRow): HTMLElement {
+  const lines = lineCount(row.rendered);
+  const meta: string[] = [];
+  if (row.callId) meta.push(row.callId);
+  meta.push(`${lines} line${lines === 1 ? "" : "s"}`);
+  if (row.durationMs) meta.push(fmtDuration(row.durationMs));
+  return h(
+    "div",
+    { class: `row tool${row.isError ? " error" : ""}`, "data-key": row.key },
+    gutter(row),
+    h("div", { class: "role" }, "tool"),
+    h(
+      "div",
+      { class: "body" },
+      h(
+        "div",
+        null,
+        h("span", { class: "tool-name" }, row.name),
+        row.isError ? h("span", { class: "marker" }, "error") : null,
+        row.synthetic ? h("span", { class: "marker neutral" }, "synthetic") : null,
+        row.spill ? h("span", { class: "badge", title: "canonical value stored under spill/" }, `spill ${row.spill}`) : null,
+        h("span", { class: "meta" }, meta.join(" · ")),
+      ),
+      h("pre", { class: "text" }, row.rendered || "(no rendered text)"),
+      lazyDetails([h("span", null, "value")], () => h("pre", { class: "text" }, pretty(row.value)), { key: "value", class: "value" }),
+    ),
+  );
+}
+
+function renderNote(row: NoteRow, ctx: RenderContext): HTMLElement {
+  const line: Child[] = [h("span", { class: "detail" }, row.detail)];
+  if (row.link) {
+    const id = row.link;
+    line.push(
+      h(
+        "button",
+        {
+          class: "link",
+          onclick: (e: Event) => {
+            e.preventDefault();
+            e.stopPropagation();
+            ctx.select(id);
+          },
+        },
+        "open",
+      ),
+    );
+  }
+  const body =
+    row.data === null || row.data === undefined
+      ? h("div", { class: "line" }, line)
+      : lazyDetails(line, () => h("pre", { class: "text" }, pretty(row.data)), { key: "data" });
+  return h(
+    "div",
+    { class: `row note level-${row.level}`, "data-key": row.key, "data-type": row.type },
+    gutter(row),
+    h("div", { class: "role", title: row.type }, row.label),
+    h("div", { class: "body" }, body),
+  );
+}
+
+function firstLine(text: string): string {
+  const nl = text.indexOf("\n");
+  return nl >= 0 ? text.slice(0, nl) : text;
+}
+
+/**
+ * Keeps one scrolling list of rows in sync with a fold. Updated rows keep
+ * the open state of their expanders; the scroll position follows the end
+ * while the reader is at the end and stays put otherwise.
+ */
+export class ConversationView {
+  readonly el: HTMLElement;
+  private readonly list: HTMLElement;
+  private readonly els = new Map<string, HTMLElement>();
+  private stick = true;
+
+  constructor(
+    private readonly ctx: RenderContext,
+    private readonly filter: (row: Row) => boolean = () => true,
+  ) {
+    this.list = h("div", { class: "conv" });
+    this.el = h("div", { class: "conv-scroll" }, this.list);
+    this.el.addEventListener("scroll", () => {
+      this.stick = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 16;
+    });
+  }
+
+  load(rows: Row[]): void {
+    clear(this.list);
+    this.els.clear();
+    for (const row of rows) this.apply([{ op: "append", row }]);
+  }
+
+  apply(patches: Patch[]): void {
+    const before = this.el.scrollHeight;
+    for (const patch of patches) {
+      if (!this.filter(patch.row)) continue;
+      const fresh = renderRow(patch.row, this.ctx);
+      const old = this.els.get(patch.row.key);
+      if (old) {
+        transferOpenState(old, fresh);
+        old.replaceWith(fresh);
+      } else {
+        this.list.appendChild(fresh);
+      }
+      this.els.set(patch.row.key, fresh);
+    }
+    if (this.stick) {
+      this.el.scrollTop = this.el.scrollHeight;
+    } else {
+      // An updated row above the viewport changes height; shift by the
+      // same amount so the visible rows do not move.
+      const delta = this.el.scrollHeight - before;
+      if (delta !== 0 && patches.some((p) => p.op === "update")) {
+        const first = patches.find((p) => p.op === "update");
+        const el = first ? this.els.get(first.row.key) : undefined;
+        if (el && el.offsetTop < this.el.scrollTop) this.el.scrollTop += delta;
+      }
+    }
+  }
+}
+
+function transferOpenState(from: HTMLElement, to: HTMLElement): void {
+  const open = new Set<string>();
+  for (const d of from.querySelectorAll<HTMLDetailsElement>("details[data-key]")) {
+    if (d.open) open.add(d.dataset.key ?? "");
+  }
+  if (open.size === 0) return;
+  for (const d of to.querySelectorAll<HTMLDetailsElement>("details[data-key]")) {
+    if (open.has(d.dataset.key ?? "")) d.open = true;
+  }
+}
