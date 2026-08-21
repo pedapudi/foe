@@ -133,29 +133,30 @@ pub fn apply(state: &mut State, event: &Event) {
 }
 
 /// Derives the message list a request at `upto_seq` would carry, by the
-/// rule in the specification. Inbox items are included when their `seq` is
-/// in `consumed_inbox` or was consumed by an earlier request.
+/// rule in the specification. Each earlier `model/request` contributes the
+/// items its `consumed` list names, at the request's position; the request
+/// being built contributes `consumed_inbox` at the end.
 pub fn derive_messages(events: &[Event], upto_seq: u64, consumed_inbox: &[u64]) -> Vec<Message> {
-    let consumed: std::collections::BTreeSet<u64> = events
+    let items: BTreeMap<u64, &[crate::ContentBlock]> = events
         .iter()
-        .take_while(|e| e.seq < upto_seq)
         .filter_map(|e| match &e.data {
-            EventData::ModelRequest(request) => Some(request.consumed.iter().copied()),
+            EventData::InboxItem(item) => Some((e.seq, item.content.as_slice())),
             _ => None,
         })
-        .flatten()
-        .chain(consumed_inbox.iter().copied())
         .collect();
+    let user = |consumed: &[u64]| {
+        let content: Vec<_> = consumed.iter().filter_map(|s| items.get(s)).flat_map(|c| c.iter().cloned()).collect();
+        (!content.is_empty()).then_some(Message::User { content })
+    };
     let mut messages: Vec<Message> = Vec::new();
     for event in events.iter().take_while(|e| e.seq < upto_seq) {
         match &event.data {
-            EventData::InboxItem(item) if consumed.contains(&event.seq) => match messages.last_mut() {
-                Some(Message::User { content }) => content.extend(item.content.iter().cloned()),
-                _ => messages.push(Message::User { content: item.content.clone() }),
-            },
-            EventData::AssistantMessage(message) => {
-                messages.push(Message::Assistant { text: message.text.clone(), tool_calls: message.tool_calls.clone() })
-            }
+            EventData::ModelRequest(request) => messages.extend(user(&request.consumed)),
+            EventData::AssistantMessage(message) => messages.push(Message::Assistant {
+                text: message.text.clone(),
+                tool_calls: message.tool_calls.clone(),
+                thinking: message.thinking.clone(),
+            }),
             EventData::ToolResult(result) => messages.push(Message::Tool {
                 call_id: result.call_id.clone(),
                 name: result.name.clone(),
@@ -165,6 +166,7 @@ pub fn derive_messages(events: &[Event], upto_seq: u64, consumed_inbox: &[u64]) 
             _ => {}
         }
     }
+    messages.extend(user(consumed_inbox));
     messages
 }
 
@@ -193,8 +195,8 @@ pub fn validate_next(prior: &State, event: &Event) -> Result<(), LogError> {
             if prior.header_seq != Some(request.header_seq) {
                 return invalid("header_seq names the request/header in effect");
             }
-            if request.consumed.iter().any(|s| !matches!(prior.inbox.get(s), Some((_, false)))) {
-                return invalid("consumed names inbox items no earlier request consumed");
+            if request.consumed.iter().any(|s| *s >= seq || !matches!(prior.inbox.get(s), Some((_, false)))) {
+                return invalid("consumed names earlier inbox items that no earlier request consumed");
             }
         }
         EventData::SeedEnd {} if prior.seeded_through.is_some() => return invalid("at most one seed/end per log"),

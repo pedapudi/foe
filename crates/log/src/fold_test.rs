@@ -60,6 +60,7 @@ pub fn assistant(step: u32, text: &str, calls: Vec<ToolCall>, interrupted: bool)
         stop: if interrupted { StopReason::Interrupted } else { StopReason::Tool },
         usage: Usage { input: 10, output: 5, cache_read: 0 },
         interrupted,
+        thinking: vec![],
     })
 }
 
@@ -85,20 +86,20 @@ pub fn number(datas: Vec<EventData>) -> Vec<Event> {
     datas.into_iter().enumerate().map(|(i, data)| Event { seq: i as u64, time: 1000 + i as i64, data }).collect()
 }
 
-/// A hand-written fixture: task, a step with a tool call, two steers that
-/// arrive between steps, and an interrupted second step. Covers every
-/// derivation rule.
+/// A hand-written fixture: task, a step with a tool call, a steer that
+/// arrives while that step's request is in flight, a second steer after
+/// it, and an interrupted second step. Covers every derivation rule.
 fn fixture() -> Vec<Event> {
     number(vec![
         EventData::EpisodeStart(start("ep_1")),
         inbox(InboxSource::Task, "fix it"),
         header(),
         request(1, 2, vec![1], vec![]),
+        inbox(InboxSource::Parent, "hurry"),
         assistant(1, "reading", vec![call("tc_1")], false),
         result(1, "tc_1", "file body"),
-        inbox(InboxSource::Parent, "hurry"),
         inbox(InboxSource::Peer, "also this"),
-        request(2, 2, vec![6, 7], vec![]),
+        request(2, 2, vec![4, 7], vec![]),
         assistant(2, "partial", vec![call("tc_2")], true),
         result(2, "tc_2", "not recorded"),
     ])
@@ -110,14 +111,15 @@ fn derived_messages_follow_the_rule_against_the_fixture() {
     // Rule 3 and 7: the request at seq 3 sees only the task, as a user message.
     let first = derive_messages(&events, 3, &[1]);
     assert_eq!(first, vec![Message::User { content: text("fix it") }]);
-    // Rules 3-6 for the second request: consecutive items merge, the tool
-    // result becomes a tool message, and the earlier consumption persists.
-    let second = derive_messages(&events, 8, &[6, 7]);
+    // Rules 3-6 for the second request: the steer that arrived during the
+    // first request (seq 4) is placed where it was consumed, after the
+    // assistant message and the tool result, merged with the later steer.
+    let second = derive_messages(&events, 8, &[4, 7]);
     assert_eq!(
         second,
         vec![
             Message::User { content: text("fix it") },
-            Message::Assistant { text: "reading".into(), tool_calls: vec![call("tc_1")] },
+            Message::Assistant { text: "reading".into(), tool_calls: vec![call("tc_1")], thinking: vec![] },
             Message::Tool {
                 call_id: "tc_1".into(),
                 name: "read".into(),
@@ -132,9 +134,14 @@ fn derived_messages_follow_the_rule_against_the_fixture() {
             },
         ]
     );
-    // Rule 5: an interrupted message keeps its text and recorded calls.
+    // Rule 5: an interrupted message keeps its text and recorded calls. The
+    // recorded request at seq 8 contributes the same user message.
     let third = derive_messages(&events, 11, &[]);
-    assert_eq!(third[4], Message::Assistant { text: "partial".into(), tool_calls: vec![call("tc_2")] });
+    assert_eq!(third[..4], second[..4]);
+    assert_eq!(
+        third[4],
+        Message::Assistant { text: "partial".into(), tool_calls: vec![call("tc_2")], thinking: vec![] }
+    );
     assert_eq!(third.len(), 6);
 }
 
@@ -142,7 +149,17 @@ fn derived_messages_follow_the_rule_against_the_fixture() {
 fn unconsumed_inbox_items_are_excluded() {
     let events = fixture();
     let messages = derive_messages(&events, 8, &[]);
+    assert_eq!(messages.len(), 3);
     assert!(!messages.iter().any(|m| matches!(m, Message::User { content } if content == &text("hurry"))));
+}
+
+#[test]
+fn consumed_names_earlier_unconsumed_items_only() {
+    let state = fold(&fixture()[..5]).unwrap();
+    let forward = Event { seq: 5, time: 0, data: request(2, 2, vec![5], vec![]) };
+    assert!(validate_next(&state, &forward).is_err());
+    let fresh = Event { seq: 5, time: 0, data: request(2, 2, vec![4], vec![]) };
+    assert!(validate_next(&state, &fresh).is_ok());
 }
 
 #[test]
@@ -271,7 +288,19 @@ fn every_event_variant_round_trips() {
             request_id: "rq".into(),
             chunk: Chunk::Error { message: "e".into(), retryable: true },
         },
-        assistant(1, "t", vec![call("c")], false),
+        EventData::AssistantChunk {
+            step: 1,
+            request_id: "rq".into(),
+            chunk: Chunk::ThinkingSignature { signature: "sig".into() },
+        },
+        {
+            let EventData::AssistantMessage(mut m) = assistant(1, "t", vec![call("c")], false) else { unreachable!() };
+            m.thinking = vec![
+                ThinkingBlock { text: "hmm".into(), signature: Some("sig".into()) },
+                ThinkingBlock { text: "more".into(), signature: None },
+            ];
+            EventData::AssistantMessage(m)
+        },
         result(1, "c", "r"),
         EventData::HostToolCall { step: 1, call_id: "c".into(), name: "h".into(), args: reserved.clone() },
         inbox(InboxSource::Request, "reserved source"),
