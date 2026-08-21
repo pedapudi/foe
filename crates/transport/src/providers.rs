@@ -130,8 +130,8 @@ pub static PROVIDERS: &[Provider] = &[
         default_base_url: Some("https://api.openai.com/v1"),
         path: "/responses",
         required: &[],
-        presets: &["gpt-5", "gpt-5-mini", "gpt-5-codex"],
-        windows: &[("gpt-5", GPT5)],
+        presets: &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+        windows: &[("gpt-5.6", 1_050_000), ("gpt-5", GPT5)],
         headers: &[],
         verify: Verify::GetJson("/models"),
     },
@@ -180,8 +180,8 @@ pub static PROVIDERS: &[Provider] = &[
         default_base_url: Some("https://chatgpt.com/backend-api"),
         path: "/codex/responses",
         required: &[],
-        presets: &["gpt-5-codex", "gpt-5"],
-        windows: &[("gpt-5", GPT5)],
+        presets: &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+        windows: &[("gpt-5.6", 1_050_000), ("gpt-5", GPT5)],
         headers: &[("originator", "foe"), ("OpenAI-Beta", "responses=experimental")],
         verify: Verify::None,
     },
@@ -262,6 +262,11 @@ mod tests {
         if let Some(vertex) = find("vertex") {
             assert_eq!(vertex.context_window("gemini-2.5-flash"), Some(GEMINI_25));
             assert_eq!(vertex.context_window("claude-sonnet-5"), Some(CLAUDE));
+        }
+        for name in ["openai", "openai-codex"] {
+            let provider = find(name).unwrap();
+            assert_eq!(provider.presets[0], "gpt-5.6-sol");
+            assert_eq!(provider.context_window("gpt-5.6-sol"), Some(1_050_000));
         }
     }
 }

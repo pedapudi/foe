@@ -667,7 +667,7 @@ mod tests {
         let text = output.text();
         assert!(text.contains("(account ...5678)"), "{text}");
         assert!(!text.contains("acct_12345678") && !text.contains("rt\""), "{text}");
-        assert_eq!(default_model_in(&home).unwrap().unwrap().model, "gpt-5-codex");
+        assert_eq!(default_model_in(&home).unwrap().unwrap().model, "gpt-5.6-sol");
     }
 
     #[test]

@@ -306,10 +306,10 @@ One block per provider:
 
 ```json
 { "provider": "anthropic", "model": "claude-opus-5" }
-{ "provider": "openai", "model": "gpt-5", "reasoning_effort": "medium" }
+{ "provider": "openai", "model": "gpt-5.6-sol", "reasoning_effort": "medium" }
 { "provider": "openai-compatible", "model": "llama3.1", "base_url": "http://127.0.0.1:11434/v1", "api_key_file": "/home/user/.config/foe/ollama.key" }
 { "provider": "openrouter", "model": "anthropic/claude-opus-5" }
-{ "provider": "openai-codex", "model": "gpt-5-codex" }
+{ "provider": "openai-codex", "model": "gpt-5.6-sol" }
 { "provider": "vertex", "model": "gemini-2.5-pro", "project": "my-project", "location": "us-east5" }
 { "provider": "exec", "model": "openai/gpt-5", "exec": "/home/user/project/tools/litellm-transport", "api_key_file": "/home/user/project/.secrets/openai.key" }
 ```
