@@ -35,6 +35,26 @@ jobs:
       - name: Line budget
         run: scripts/loc.sh
 
+      - name: Install pnpm at the version pinned in view/package.json
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: view/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: view/pnpm-lock.yaml
+
+      # The binary embeds the browser bundle, so the bundle is built first.
+      # Without it the crate embeds a placeholder and the size measured
+      # below is not the size of the binary that ships.
+      - name: Build the browser bundle
+        working-directory: view
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
       - name: Release build
         run: |
           cargo build --release -p foe
