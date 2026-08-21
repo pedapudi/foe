@@ -329,9 +329,13 @@ by the runtime, the viewer, and the Python package identically.
 
 1. Begin with an empty list.
 2. Walk events in `seq` order.
-3. An `inbox/item` whose `seq` appears in the `consumed` list of the request
-   being built becomes a `user` message. Consecutive items merge into one
-   message with concatenated content blocks.
+3. A `model/request` contributes one `user` message built from the
+   `inbox/item` events its `consumed` list names, in the order listed, with
+   their content blocks concatenated. The message is placed at the request's
+   position, so an item received while an earlier request was in flight
+   appears after that request's assistant message. An `inbox/item` is
+   written when it is received and never moved; its `seq` records arrival
+   and its consumption records order.
 4. An `assistant/message` with `interrupted: false` becomes an `assistant`
    message carrying its text and tool calls.
 5. An `assistant/message` with `interrupted: true` becomes an `assistant`
