@@ -1,7 +1,10 @@
 #[test]
 fn all_lists_each_tool_once_and_readonly_lists_the_reads_tools() {
     let names: Vec<String> = super::all().iter().map(|t| t.spec().name.clone()).collect();
-    let expected = vec!["read", "grep", "edit"];
+    let mut expected = vec!["read", "grep", "edit"];
+    if cfg!(feature = "exec") {
+        expected.push("bash");
+    }
     assert_eq!(names, expected);
     let ro: Vec<String> = super::readonly()
         .iter()

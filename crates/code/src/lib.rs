@@ -11,6 +11,8 @@
 use foe_core::Tool;
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "exec")]
+mod bash;
 mod diff;
 mod edit;
 mod grep;
@@ -37,12 +39,23 @@ pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
 pub fn all() -> Vec<Box<dyn Tool>> {
     let mut tools = readonly();
     tools.push(Box::new(edit::Edit::new()));
+    tools.extend(exec_tools());
     tools
 }
 
 /// The tools whose effect is `reads`: `read` and `grep`.
 pub fn readonly() -> Vec<Box<dyn Tool>> {
     vec![Box::new(read::Read::new()), Box::new(grep::Grep::new())]
+}
+
+#[cfg(feature = "exec")]
+fn exec_tools() -> Vec<Box<dyn Tool>> {
+    vec![Box::new(bash::Bash::new())]
+}
+
+#[cfg(not(feature = "exec"))]
+fn exec_tools() -> Vec<Box<dyn Tool>> {
+    Vec::new()
 }
 
 /// Parses the model's arguments, naming the tool in the error.
