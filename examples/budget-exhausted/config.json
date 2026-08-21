@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "budget-exhausted",
+  "instructions": {
+    "role": "You are a coding agent surveying a Python package. Read one file under src per turn and finish with one sentence naming every module you read."
+  },
+  "tools": ["read", "grep"],
+  "grants": {
+    "read": ["/home/user/project"]
+  },
+  "budget": { "model_calls": 4, "seconds": 120 },
+  "model": {
+    "provider": "exec",
+    "exec": "/home/user/project/tools/never-finishing-transport",
+    "model": "budget-exhausted",
+    "project_dir": "/home/user/project"
+  },
+  "task": "Read every module under src and report what each one contains."
+}

@@ -1,0 +1,31 @@
+#!/usr/bin/python3
+"""Answers every model request with one more tool call, so the loop never ends.
+
+Each answer reads a different module, so the two calls the runtime rejects
+on its own, an identical call repeated `loop_threshold` times and an
+identical assistant turn repeated as often, never occur. The only thing
+that stops this episode is the `model_calls` limit its configuration
+declares.
+"""
+
+import sys
+from pathlib import Path
+
+# `chunks.py` is in `examples/support` in the repository and beside this
+# file once a runner has copied both into a project's tools directory.
+here = Path(__file__).resolve().parent
+sys.path[:0] = [str(here), str(here.parent.parent / "support")]
+
+from chunks import call, done, read_request, step  # noqa: E402
+
+
+def main() -> None:
+    request = read_request()
+    turn = step(request) + 1
+    project_dir = request["options"]["project_dir"]
+    call(request, f"tc_{turn:02}", "read", {"path": f"{project_dir}/src/module_{turn}.py"})
+    done(request, "tool")
+
+
+if __name__ == "__main__":
+    main()
