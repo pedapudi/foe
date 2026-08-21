@@ -109,6 +109,17 @@ export interface TrajectoryLayout {
 }
 
 export const ROW_HEIGHT = 24;
+
+/**
+ * How far below the lifetime line the tool lane sits. Two channels share a
+ * row: model requests and the outcome on the lifetime line, tool calls
+ * below it. Position separates them when duration does not.
+ */
+export const TOOL_LANE = 5;
+
+/** Shortest a tool segment is drawn, so a call of no measured length shows. */
+export const MARK_MIN_WIDTH = 1.5;
+
 const AXIS_HEIGHT = 20;
 const PAD_RIGHT = 14;
 const PAD_BOTTOM = 8;
@@ -178,14 +189,19 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
       ? value(axis, input.now, episode.lastSeq)
       : value(axis, episode.endTime!, episode.lastSeq);
     const marks: PlacedMark[] = episode.marks.map((mark) => {
+      // Tool calls have a lane of their own below the lifetime line. On a
+      // run bound by the model, every call is milliseconds against a span
+      // of tens of seconds, so its segment is a hairline; the lane is what
+      // keeps a tool call apart from a model request at that width.
+      const lane = mark.kind === "tool" ? y + TOOL_LANE : y;
       if (mark.kind === "tool" && mark.durationMs > 0 && axis === "time") {
         // A tool result is written when the call returns, so the segment
         // runs back from the event by the duration the result reports.
         const x1 = scale(mark.time - mark.durationMs);
         const x2 = scale(mark.time);
-        return { ...mark, episodeId: episode.id, x: x1, w: Math.max(1.5, x2 - x1), y };
+        return { ...mark, episodeId: episode.id, x: x1, w: Math.max(MARK_MIN_WIDTH, x2 - x1), y: lane };
       }
-      return { ...mark, episodeId: episode.id, x: scale(value(axis, mark.time, mark.seq)), w: 0, y };
+      return { ...mark, episodeId: episode.id, x: scale(value(axis, mark.time, mark.seq)), w: 0, y: lane };
     });
     return {
       id: episode.id,

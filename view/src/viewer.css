@@ -1542,9 +1542,12 @@ table.events td.type.error {
   cursor: pointer;
 }
 
+/* The tool lane sits below the lifetime line. A call short enough to draw
+ * as a hairline still has to read there, so the fill is stronger than the
+ * structure above it. */
 .traj-mark .seg {
   fill: var(--v2-ink-soft);
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 .traj-mark:hover .seg {

@@ -10,7 +10,7 @@
 import { clear, fmtDuration, fmtTime, h } from "../dom.js";
 import { outcomeLabel } from "../fold.js";
 import type { Axis, PlacedMark, TrajectoryEpisode, TrajectoryLayout } from "../trajectory.js";
-import { layoutTrajectory } from "../trajectory.js";
+import { MARK_MIN_WIDTH, layoutTrajectory } from "../trajectory.js";
 import type { Outcome } from "../types.js";
 import { str } from "../types.js";
 import { outcomeRole } from "./tree.js";
@@ -241,16 +241,21 @@ export class TrajectoryView {
   }
 
   private markElement(mark: PlacedMark, layout: TrajectoryLayout): SVGGElement {
-    const half = layout.rowHeight / 2 - 4;
     const group = svg("g", { class: `traj-mark ${mark.kind}` });
     switch (mark.kind) {
       case "tool":
+        // The lane's own band: the segment hangs below its baseline so that
+        // the tool channel never touches the lifetime line above it.
         group.appendChild(
-          svg("rect", { class: "seg", x: mark.x, y: mark.y - 3, width: Math.max(1.5, mark.w), height: 6, rx: 1.5 }),
+          svg("rect", { class: "seg", x: mark.x, y: mark.y - 2, width: Math.max(MARK_MIN_WIDTH, mark.w), height: 4.5, rx: 1.2 }),
         );
         break;
       case "request":
-        group.appendChild(svg("line", { class: "tick", x1: mark.x, y1: mark.y - half, x2: mark.x, y2: mark.y + half }));
+        // A request tick rises from the lifetime line rather than crossing
+        // it, so that requests read above the line and tools below it.
+        group.appendChild(
+          svg("line", { class: "tick", x1: mark.x, y1: mark.y - (layout.rowHeight / 2 - 3), x2: mark.x, y2: mark.y + 1 }),
+        );
         break;
       case "retry":
         group.appendChild(svg("path", { class: "glyph", d: `M ${mark.x - 3} ${mark.y - 3} l 6 6 M ${mark.x + 3} ${mark.y - 3} l -6 6` }));

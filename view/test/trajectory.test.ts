@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EpisodeFold } from "../src/fold.js";
 import { buildTree, flatten } from "../src/lineage.js";
-import { ROW_HEIGHT, labelWidthFor, layoutTrajectory, niceStep, tickLabel, timeAtSeq } from "../src/trajectory.js";
+import { MARK_MIN_WIDTH, ROW_HEIGHT, TOOL_LANE, labelWidthFor, layoutTrajectory, niceStep, tickLabel, timeAtSeq } from "../src/trajectory.js";
 import type { TrajectoryEpisode, TrajectoryInput } from "../src/trajectory.js";
 import { fixture } from "./helpers.js";
 
@@ -127,6 +127,38 @@ test("a tool segment on the sequence axis is a tick at its own position", () => 
   const out = layoutTrajectory(input(episodes("overlap-parent.jsonl"), { axis: "sequence" }));
   const segment = out.rows[0]!.marks.find((m) => m.kind === "tool")!;
   assert.equal(segment.w, 0);
+});
+
+test("tool marks take a lane below the lifetime line and every other mark stays on it", () => {
+  for (const axis of ["time", "sequence"] as const) {
+    const out = layoutTrajectory(input(episodes("overlap-parent.jsonl", "overlap-child.jsonl"), { axis }));
+    for (const row of out.rows) {
+      for (const mark of row.marks) {
+        const expected = mark.kind === "tool" ? row.y + TOOL_LANE : row.y;
+        assert.equal(mark.y, expected, `${axis}: ${mark.kind} at seq ${mark.seq}`);
+      }
+    }
+  }
+});
+
+test("the lane keeps a hairline tool call apart from a request tick at the same instant", () => {
+  // A run bound by the model: every tool call is milliseconds against a
+  // span of tens of seconds, so no segment has a visible length.
+  const start = 1_700_000_000_000;
+  const one: TrajectoryEpisode = {
+    id: "ep_bound", name: "bound", depth: 0, startTime: start, endTime: start + 43_000, lastSeq: 3,
+    outcome: { kind: "completed" }, parentId: null, forkOrigin: null,
+    marks: [
+      { kind: "request", seq: 1, time: start + 10_000, durationMs: 0, label: "step 1", detail: "" },
+      { kind: "tool", seq: 2, time: start + 10_000, durationMs: 4, label: "read", detail: "" },
+    ],
+  };
+  const out = layoutTrajectory(input([one]));
+  const [request, tool] = out.rows[0]!.marks as [(typeof out.rows)[0]["marks"][0], (typeof out.rows)[0]["marks"][0]];
+  assert.ok(Math.abs(request.x - tool.x) < 0.2, "the two marks fall at the same position on the axis");
+  assert.equal(tool.w, MARK_MIN_WIDTH, "a call of no measurable length still draws");
+  assert.equal(tool.y - request.y, TOOL_LANE, "position is what separates them");
+  assert.ok(TOOL_LANE > 0 && TOOL_LANE < ROW_HEIGHT / 2, "the lane stays inside its own row");
 });
 
 test("a running episode is drawn to the clock reading given", () => {

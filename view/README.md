@@ -169,9 +169,12 @@ consumed against the budget declared in `episode/start.program.budget`, the
 Landlock ABI, the fork origin, parent, team, timing, and task. Its text
 wraps and the region scrolls as a whole.
 
-The **trajectory** region draws one row per episode with a lifetime bar, a
-tick per model request, a segment per tool call sized by `duration_ms`, and
-markers for compactions, retries, spawns, and the outcome. A header control
+The **trajectory** region draws one row per episode in two lanes: a lifetime
+bar with a tick per model request and markers for compactions, retries,
+spawns, and the outcome; and, a few pixels below it, a lane holding a
+segment per tool call sized by `duration_ms`. The lane is what tells a tool
+call from a model request on a run where every call is too short to draw a
+length. A header control
 switches the x axis between wall-clock time and log position. Hovering a
 mark opens a hovercard; clicking one selects that episode and brings the
 conversation to that log position. `src/trajectory.ts` holds the placement

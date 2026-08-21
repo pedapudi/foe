@@ -88,20 +88,29 @@ The figure fits the region's width and reflows when the region is resized;
 it neither pans nor zooms, and it redraws only when a digest of what it
 would draw changes.
 
-Each row carries these marks.
+A row has two lanes. The episode's own events sit on the lifetime line, and
+tool calls sit in a lane a few pixels below it. The lanes exist because
+duration alone does not separate the two channels: on a run bound by the
+model every tool call is milliseconds against a span of tens of seconds, so
+its segment is drawn at its minimum width and is the same hairline as a
+request tick. Position separates them where length cannot. A request tick
+rises from the lifetime line rather than crossing it, so requests read above
+the line and tool calls below it.
 
-| mark | drawn from | form |
-|---|---|---|
-| lifetime | `episode/start` to `episode/end` | a hairline bar, continued as a dashed extension to the current time while the episode runs |
-| model request | `model/request` | a thin vertical tick |
-| tool call | `tool/result` | a segment whose width is `duration_ms`, ending at the result |
-| compaction | `compaction/start` | a small open diamond in `--v2-caution` |
-| retry | `request/retry` | a cross in `--v2-bad` |
-| spawn | `spawn/start` | a small ring, and the origin of the child's connector |
-| outcome | `episode/end` | a glyph at the end of the bar |
+| mark | lane | drawn from | form |
+|---|---|---|---|
+| lifetime | line | `episode/start` to `episode/end` | a hairline bar, continued as a dashed extension to the current time while the episode runs |
+| model request | line | `model/request` | a thin tick rising from the line |
+| compaction | line | `compaction/start` | a small open diamond in `--v2-caution` |
+| retry | line | `request/retry` | a cross in `--v2-bad` |
+| spawn | line | `spawn/start` | a small ring, and the origin of the child's connector |
+| outcome | line | `episode/end` | a glyph at the end of the bar |
+| tool call | tool | `tool/result` | a segment whose width is `duration_ms`, ending at the result |
 
-On the sequence axis a tool call is a tick rather than a segment, because a
-duration in milliseconds has no length in log positions.
+A tool call slow enough to have a visible length keeps it; a shorter one is
+drawn at the minimum width, so no call disappears. On the sequence axis a
+tool call is a tick rather than a segment, because a duration in
+milliseconds has no length in log positions, and the lane still holds.
 
 The outcome glyph is coloured by direction: a filled dot in `--v2-good` for
 `completed`, a cross in `--v2-bad` for `failed`, a triangle in
