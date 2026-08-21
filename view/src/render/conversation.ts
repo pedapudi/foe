@@ -3,6 +3,9 @@
 import { clear, compact, fmtDuration, fmtInt, fmtTime, h, lazyDetails, lineCount, pretty } from "../dom.js";
 import type { Child } from "../dom.js";
 import type { AssistantRow, CompactionRow, HeaderRow, NoteRow, Patch, Row, ToolRow, UserRow } from "../fold.js";
+import { renderMarkdown, renderToolText } from "./markup.js";
+import { languageForPath } from "./shape.js";
+import { obj, str } from "../types.js";
 import type { ContentBlock } from "../types.js";
 
 export interface RenderContext {
@@ -131,7 +134,16 @@ function renderAssistant(row: AssistantRow): HTMLElement {
           key: "thinking",
         })
       : null,
-    row.text || row.toolCalls.length === 0 ? h("pre", { class: "text" }, row.text || (row.streaming ? "" : "(no text)")) : null,
+    // An assistant turn is Markdown once it is complete. While it streams
+    // the text is shown as it arrives, because a half-written fence or
+    // table would parse as something the model did not mean.
+    row.text
+      ? row.streaming
+        ? h("pre", { class: "text" }, row.text)
+        : renderMarkdown(row.text)
+      : row.toolCalls.length === 0
+        ? h("pre", { class: "text" }, row.streaming ? "" : "(no text)")
+        : null,
     row.toolCalls.map((call, i) => {
       const args = typeof call.args === "string" ? call.args : compact(call.args);
       const short = args.length <= INLINE_ARGS_CHARS;
@@ -192,7 +204,9 @@ function renderTool(row: ToolRow): HTMLElement {
         row.spill ? h("span", { class: "badge", title: "canonical value stored under spill/" }, `spill ${row.spill}`) : null,
         h("span", { class: "meta" }, meta.join(" · ")),
       ),
-      h("pre", { class: "text" }, row.rendered || "(no rendered text)"),
+      row.rendered
+        ? renderToolText(row.rendered, languageForPath(str(obj(row.value).path)))
+        : h("pre", { class: "text" }, "(no rendered text)"),
       lazyDetails([h("span", null, "value")], () => h("pre", { class: "text" }, pretty(row.value)), { key: "value", class: "value" }),
     ),
   );
@@ -290,6 +304,27 @@ export class ConversationView {
         if (el && el.offsetTop < this.el.scrollTop) this.el.scrollTop += delta;
       }
     }
+  }
+
+  /**
+   * Brings the row at or after one log position into view and marks it, so
+   * that a click in the trajectory pane lands on the events it stands for.
+   */
+  scrollToSeq(seq: number): void {
+    let target: HTMLElement | null = null;
+    for (const el of this.list.children) {
+      const at = Number((el as HTMLElement).dataset.seq);
+      if (Number.isFinite(at) && at >= seq) {
+        target = el as HTMLElement;
+        break;
+      }
+    }
+    if (!target) target = this.list.lastElementChild as HTMLElement | null;
+    if (!target) return;
+    this.stick = false;
+    this.el.scrollTop = target.offsetTop - this.el.clientHeight / 3;
+    for (const el of this.list.querySelectorAll(".row.revealed")) el.classList.remove("revealed");
+    target.classList.add("revealed");
   }
 
   /**

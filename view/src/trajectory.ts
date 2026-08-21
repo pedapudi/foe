@@ -251,26 +251,35 @@ function domainOf(episodes: TrajectoryEpisode[], axis: Axis, now: number): [numb
   return [low, Math.max(high, low + 1)];
 }
 
-/** A short label for one axis value: elapsed time, or a log position. */
-export function tickLabel(axis: Axis, value: number, origin: number): string {
+/**
+ * A short label for one axis value: elapsed time from the left edge, or a
+ * log position. The step decides the unit and the precision, so that no
+ * two adjacent labels read the same however short the run was.
+ */
+export function tickLabel(axis: Axis, value: number, origin: number, step: number): string {
   if (axis === "sequence") return String(Math.round(value));
-  const seconds = (value - origin) / 1000;
-  if (seconds < 10) return `${seconds.toFixed(1)} s`;
-  if (seconds < 90) return `${Math.round(seconds)} s`;
+  const elapsed = value - origin;
+  if (step < 1000) return `${Math.round(elapsed)} ms`;
+  const seconds = elapsed / 1000;
+  if (seconds < 90) return `${seconds.toFixed(step < 10_000 ? 1 : 0)} s`;
   const minutes = Math.floor(seconds / 60);
   const rest = Math.round(seconds % 60);
   return `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
+/**
+ * Ticks at round offsets from the left edge of the domain. The offsets are
+ * measured from `low` rather than from zero, because on the time axis zero
+ * is the Unix epoch and a tick there would carry no meaning.
+ */
 function ticksFor(domain: [number, number], axis: Axis, scale: (v: number) => number): AxisTick[] {
   const [low, high] = domain;
   const step = niceStep((high - low) / TICK_TARGET, axis);
-  const first = Math.ceil(low / step) * step;
   const out: AxisTick[] = [];
-  for (let v = first; v <= high + step / 1000 && out.length < 24; v += step) {
-    out.push({ x: scale(v), label: tickLabel(axis, v, low) });
+  for (let offset = 0; offset <= high - low + step / 1000 && out.length < 24; offset += step) {
+    out.push({ x: scale(low + offset), label: tickLabel(axis, low + offset, low, step) });
   }
-  if (out.length === 0) out.push({ x: scale(low), label: tickLabel(axis, low, low) });
+  if (out.length === 0) out.push({ x: scale(low), label: tickLabel(axis, low, low, step) });
   return out;
 }
 

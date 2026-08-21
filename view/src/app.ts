@@ -8,11 +8,14 @@ import { clear, h } from "./dom.js";
 import { EpisodeFold } from "./fold.js";
 import type { Patch, Summary } from "./fold.js";
 import { buildTree, flatten, sharedPrefix } from "./lineage.js";
+import { loadPanes, onPanesChange, rowGrip, sidebarGrip } from "./panes.js";
 import { ConversationView } from "./render/conversation.js";
 import { DiffView, renderNoDiff } from "./render/diff.js";
 import { RawView } from "./render/raw.js";
+import { TrajectoryView } from "./render/trajectory.js";
 import { renderInfo, renderTree } from "./render/tree.js";
 import type { Sink } from "./source.js";
+import type { TrajectoryEpisode } from "./trajectory.js";
 import type { LogEvent } from "./types.js";
 
 type Tab = "conversation" | "raw" | "diff";
@@ -40,14 +43,19 @@ export class App implements Sink {
   private readonly scrollMemory = new Map<HTMLElement, number>();
 
   private readonly topbar: Topbar;
+  private readonly trajectory: TrajectoryView;
   private readonly treeHost = h("div", { class: "tree-host" });
-  private readonly infoHost = h("div");
+  private readonly infoHost = h("div", { class: "details-host" });
   private readonly tabsBar: HTMLElement;
   private readonly views = h("div", { class: "views" });
   private readonly title = h("span", { class: "title" });
 
   constructor(root: HTMLElement, private readonly live: boolean) {
     this.topbar = new Topbar({ up: () => this.up(), select: (id) => this.select(id) });
+    this.trajectory = new TrajectoryView({
+      select: (id) => this.select(id),
+      reveal: (id, seq) => this.reveal(id, seq),
+    });
     this.tabsBar = h(
       "div",
       { class: "tabs", role: "tablist" },
@@ -56,8 +64,20 @@ export class App implements Sink {
       this.tabButton("diff", "diff"),
       this.title,
     );
-    const treePane = h("div", { class: "pane-tree" }, h("h1", null, "episodes"), this.treeHost, this.infoHost);
-    const mainPane = h("div", { class: "pane-main" }, this.tabsBar, this.views);
+    const left = h(
+      "section",
+      { class: "column-left" },
+      h("section", { class: "pane-tree", "aria-label": "episodes" }, h("div", { class: "pane-head" }, h("h2", null, "episodes")), this.treeHost),
+      rowGrip("details", "height of the details pane"),
+      h("section", { class: "pane-details", "aria-label": "episode details" }, h("div", { class: "pane-head" }, h("h2", null, "details")), this.infoHost),
+    );
+    const right = h(
+      "section",
+      { class: "column-right" },
+      this.trajectory.el,
+      rowGrip("trajectory", "height of the trajectory pane"),
+      h("section", { class: "pane-main" }, this.tabsBar, this.views),
+    );
     const keys = h(
       "div",
       { class: "keys" },
@@ -74,14 +94,21 @@ export class App implements Sink {
       h("kbd", null, "1"),
       h("kbd", null, "2"),
       h("kbd", null, "3"),
-      " tabs",
+      " tabs · drag or arrow a grip to resize, double click to reset",
     );
     clear(root);
     root.classList.add("foe");
-    root.append(this.topbar.el, treePane, mainPane, keys);
+    root.append(this.topbar.el, left, sidebarGrip(), right, keys);
+    loadPanes({ root, left, right });
+    onPanesChange(() => this.trajectory.resized());
     document.addEventListener("keydown", (e) => this.onKey(e));
     if (typeof ResizeObserver !== "undefined") {
-      new ResizeObserver(() => this.scheduleSidebar()).observe(this.treeHost);
+      const redraw = new ResizeObserver(() => {
+        this.scheduleSidebar();
+        this.trajectory.resized();
+      });
+      redraw.observe(this.treeHost);
+      redraw.observe(this.trajectory.el);
     }
     this.connection = { state: live ? "reconnecting" : "file", detail: live ? "connecting" : "file" };
     this.renderSidebar();
@@ -138,6 +165,20 @@ export class App implements Sink {
     if (this.tab === "diff") this.tab = "conversation";
     this.renderSidebar();
     this.renderMain();
+  }
+
+  /**
+   * Selects an episode and brings its conversation to one log position.
+   * A mark in the trajectory pane is clicked to reach the events it stands for.
+   */
+  reveal(id: string, seq: number): void {
+    if (!this.episodes.has(id)) return;
+    const changing = this.selected !== id || this.tab !== "conversation";
+    this.tab = "conversation";
+    this.select(id);
+    const state = this.episodes.get(id)!;
+    if (changing) requestAnimationFrame(() => state.conv.scrollToSeq(seq));
+    else state.conv.scrollToSeq(seq);
   }
 
   /** Moves the selection to the parent or fork origin of the selected episode. */
@@ -251,7 +292,30 @@ export class App implements Sink {
       clear(this.infoHost);
       this.infoHost.appendChild(renderInfo(s));
     }
+    // The program name arrives with `episode/start`, after the first
+    // selection is made, so the title is set on every sidebar redraw.
+    this.title.textContent = s ? `${s.name} · ${s.id}` : "";
+    this.trajectory.update(this.trajectoryEpisodes(roots), { selected: this.selected, cursor: this.cursor });
     this.topbar.setCrumbs(this.lineage());
+  }
+
+  /** The episodes the trajectory pane draws, in the tree's own order. */
+  private trajectoryEpisodes(roots: ReturnType<typeof buildTree>): TrajectoryEpisode[] {
+    return flatten(roots).map(({ node, depth }) => {
+      const s = node.summary;
+      return {
+        id: s.id,
+        name: s.name,
+        depth,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        lastSeq: s.lastSeq,
+        outcome: s.outcome,
+        parentId: s.parentId,
+        forkOrigin: s.forkOrigin,
+        marks: s.marks,
+      };
+    });
   }
 
   private tabButton(tab: Tab, label: string): HTMLElement {
@@ -265,7 +329,6 @@ export class App implements Sink {
       b.setAttribute("aria-selected", active ? "true" : "false");
     }
     const selected = this.selected ? this.episodes.get(this.selected) : undefined;
-    this.title.textContent = selected ? `${selected.fold.summary.name} · ${selected.id}` : "";
     let next: HTMLElement;
     if (this.tab === "diff") {
       next = this.diffElement();

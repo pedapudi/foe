@@ -202,10 +202,24 @@ test("axis ticks fall inside the plot and carry short labels", () => {
 });
 
 test("tick labels read as elapsed time or as a log position", () => {
-  assert.equal(tickLabel("time", 1000, 0), "1.0 s");
-  assert.equal(tickLabel("time", 30_000, 0), "30 s");
-  assert.equal(tickLabel("time", 125_000, 0), "2:05");
-  assert.equal(tickLabel("sequence", 42, 0), "42");
+  assert.equal(tickLabel("time", 1000, 0, 1000), "1.0 s");
+  assert.equal(tickLabel("time", 30_000, 0, 10_000), "30 s");
+  assert.equal(tickLabel("time", 125_000, 0, 30_000), "2:05");
+  assert.equal(tickLabel("sequence", 42, 0, 10), "42");
+});
+
+test("a step below one second labels in milliseconds, so no two labels repeat", () => {
+  assert.equal(tickLabel("time", 50, 0, 50), "50 ms");
+  assert.equal(tickLabel("time", 0, 0, 50), "0 ms");
+  const short = layoutTrajectory(input(episodes("root.jsonl", "child.jsonl", "fork.jsonl")));
+  const labels = short.ticks.map((t) => t.label);
+  assert.equal(new Set(labels).size, labels.length, labels.join(" "));
+});
+
+test("a run of many seconds still labels every tick distinctly", () => {
+  const long = layoutTrajectory(input(episodes("overlap-parent.jsonl", "overlap-child.jsonl")));
+  const labels = long.ticks.map((t) => t.label);
+  assert.equal(new Set(labels).size, labels.length, labels.join(" "));
 });
 
 test("a tick step rounds up to one, two, or five times a power of ten", () => {
