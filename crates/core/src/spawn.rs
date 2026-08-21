@@ -52,6 +52,12 @@ pub trait ChildObserver: Send + Sync {
         let _ = (child_id, name, args);
         None
     }
+
+    /// Sees the child's outcome once its output has ended: the one in its
+    /// `episode/end`, or a failure when the process ended without one.
+    fn ended(&self, child_id: &str, outcome: &Outcome) {
+        let _ = (child_id, outcome);
+    }
 }
 
 /// Standard input of every running child, and the direct child under which
@@ -407,6 +413,7 @@ impl Reader {
         let outcome = outcome.unwrap_or_else(|| Outcome::Failed {
             error: format!("child {} exited without episode/end", self.child_id),
         });
+        self.observer.ended(&self.child_id, &outcome);
         let spent = BudgetAmount {
             model_calls: Some(calls + below.model_calls.unwrap_or(0)),
             tokens: Some(usage.input + usage.output + below.tokens.unwrap_or(0)),

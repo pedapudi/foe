@@ -221,19 +221,6 @@ impl ChildObserver for Team {
     fn observe(&self, child_id: &str, event: &Event) {
         match &event.data {
             EventData::EpisodeStart(_) => self.set_phase(child_id, MemberPhase::Active),
-            EventData::EpisodeEnd { outcome } => {
-                if matches!(outcome, Outcome::Failed { .. }) {
-                    self.set_phase(child_id, MemberPhase::Failed);
-                }
-                let name = self.state().member_by_id(child_id).map(|m| m.name.clone()).unwrap_or_default();
-                let text = format!("{name} ({child_id}) ended: {}", render_outcome(outcome));
-                self.inbox.append(InboxItem {
-                    source: InboxSource::Child,
-                    content: text_content(&text),
-                    from: Some(child_id.to_string()),
-                    message_id: None,
-                });
-            }
             EventData::InboxItem(item) if item.source == InboxSource::Peer => {
                 if let Some(id) = &item.message_id {
                     self.log.append(EventData::TeamDelivered { message_id: id.clone(), to: child_id.to_string() });
@@ -241,6 +228,22 @@ impl ChildObserver for Team {
             }
             _ => {}
         }
+    }
+
+    /// A member that failed, or whose process ended without an outcome, is
+    /// marked failed; every ending is reported to the lead as an inbox item.
+    fn ended(&self, child_id: &str, outcome: &Outcome) {
+        if matches!(outcome, Outcome::Failed { .. }) {
+            self.set_phase(child_id, MemberPhase::Failed);
+        }
+        let name = self.state().member_by_id(child_id).map(|m| m.name.clone()).unwrap_or_default();
+        let text = format!("{name} ({child_id}) ended: {}", render_outcome(outcome));
+        self.inbox.append(InboxItem {
+            source: InboxSource::Child,
+            content: text_content(&text),
+            from: Some(child_id.to_string()),
+            message_id: None,
+        });
     }
 
     fn host_call(&self, child_id: &str, name: &str, args: &serde_json::Value) -> Option<ToolValue> {
