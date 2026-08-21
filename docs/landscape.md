@@ -269,10 +269,6 @@ on the web's credential proxy and by sandbox-runtime's network proxy.
   finished session. For a person, "add one more instruction" is the most
   common second action after reviewing a result, and foe requires a new
   episode for it.
-- **No context compaction.** Claude Code auto-compacts when the window
-  approaches capacity, and Managed Agents advertises compaction. foe's
-  design specifies rendering and truncation of tool results and says
-  nothing about what happens when a long episode fills the model's context.
 - **No browser or computer use.** Cursor Cloud Agents and Devin give the
   agent a browser. foe's built-in tools are `read`, `grep`, `edit`, `bash`,
   and spawn.

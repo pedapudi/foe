@@ -90,6 +90,28 @@ OpenAI-shaped providers it includes the version prefix,
 The `model` block does not participate in identity. A system that needs to
 record which model ran reads it from the log.
 
+### Context windows
+
+The provider table records the context window of the models it knows, so
+that a `context` block enabling compaction need not state `window_tokens`
+for them. A window is matched by the longest model-name prefix in the
+table; a name no prefix matches is unknown, and `context.window_tokens`
+is then required. [compaction.md](compaction.md) states how the window is
+used.
+
+| provider | model-name prefix | window in tokens |
+|---|---|---|
+| `anthropic` | `claude-` | 200000 |
+| `openai`, `openai-codex` | `gpt-5` | 400000 |
+| `openrouter` | `anthropic/claude-` | 200000 |
+| `openrouter` | `openai/gpt-5` | 400000 |
+| `openrouter` | `google/gemini-2.5` | 1048576 |
+| `vertex` | `gemini-2.5` | 1048576 |
+| `vertex` | `claude-` | 200000 |
+
+`openai-compatible` and `exec` know no windows, because the model behind
+them is whatever the server or program answers for.
+
 ## Where credentials live
 
 foe has two convention paths, both under the home directory of the user

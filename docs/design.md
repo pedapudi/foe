@@ -23,6 +23,7 @@ piece.
 | [landscape.md](landscape.md) | the surrounding field of agent runtimes |
 | [deferred.md](deferred.md) | features with reserved event types and no implementation |
 | [workflow.md](workflow.md) | declared dataflow graphs, choice points, and recovery |
+| [compaction.md](compaction.md) | when and how the model's context is compacted, and what survives the cut |
 | [design-language.md](design-language.md) | the visual language the viewer follows |
 
 ## The problem
@@ -161,6 +162,15 @@ listed in [log-format.md](log-format.md#blocked-codes).
 
 Episodes never resume. A later episode may be seeded from a prefix of an
 earlier log, which is how replay and forking work.
+
+The model's context is a projection of the log, and the projection is
+bounded. When a configuration enables compaction and the next request is
+projected to outgrow the model's window, the runtime summarizes the oldest
+steps through one recorded model call. From then on the projection opens
+with the task verbatim, the runtime's record of what the model must still
+honor, and the summary, followed by the kept recent steps. The log keeps
+every event the summary replaced. [compaction.md](compaction.md) specifies
+the trigger, the cut, and what travels across it.
 
 ### One step
 
@@ -537,10 +547,13 @@ not finished.
                              identity,    ├── crates/workflow
                              spawn,       │    graph scheduling, recovery, plan report
                              teams,       │
-                             exec,        └── crates/view ◄── view/ (browser bundle)
-                             landlock,         projection, HTTP, SSE, export
-                             protocol,
-                             workflow config     crates/cli ◄── all of the above
+                             exec,        ├── crates/context
+                             landlock,    │    projection, cut, summarization prompt
+                             protocol,    │
+                             workflow     └── crates/view ◄── view/ (browser bundle)
+                             config,           projection, HTTP, SSE, export
+                             context seam
+                                                 crates/cli ◄── all of the above
 
    python/foe    a thin host: builds config, runs the binary, serves the protocol
    examples/     runnable configurations, one mechanism each
@@ -551,16 +564,19 @@ the reserved ones. `crates/core` depends on `crates/log`. Tools depend on
 `crates/core` for the tool trait and capability handles. `crates/workflow`
 depends on `crates/core` for the configuration types, the log, the
 registry, the budget pool, and the spawner, and runs an episode whose
-configuration declares a `workflow` in place of the loop. Nothing depends
-on `crates/view` except the binary.
+configuration declares a `workflow` in place of the loop. `crates/context`
+depends on `crates/core` for the context policy trait and implements it:
+the loop consults the policy before each request and lends it one recorded
+model call. Nothing depends on `crates/view` except the binary.
 
 ## Size
 
 The Rust source across `log`, `core`, `code`, and `view` stays under 6,000
 lines, excluding tests and generated code. The workflow executor in
-`crates/workflow` stays under 1,000 lines on the same terms. The browser
-bundle stays under 150 KB compressed. The built-in transport and the binary
-are budgeted separately. Continuous integration enforces all four as tests.
+`crates/workflow` stays under 1,000 lines on the same terms, and the
+compaction policy in `crates/context` under 500. The browser bundle stays
+under 150 KB compressed. The built-in transport and the binary are budgeted
+separately. Continuous integration enforces all five as tests.
 
 The budget is a design constraint rather than an aspiration. A runtime that
 other systems embed and audit earns trust in proportion to how little of it

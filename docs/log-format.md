@@ -374,10 +374,66 @@ episode from 1.
 { "node": "derive", "fire": 1, "cause": "tool-error", "action": "retry", "target": "survey", "intervention": 1 }
 ```
 
-### Reserved
+### Compaction
 
-`compaction/start`, `compaction/summary`, `compaction/end` — context
-summarization.
+These events appear when an episode's `context` block enables compaction
+and the projected size of the next request crosses the threshold.
+[compaction.md](compaction.md) specifies the policy; this section specifies
+the record. Between `compaction/start` and `compaction/summary` lie a
+`request/header` carrying the summarization prompt with no tools, a
+`model/request` whose `request_id` starts with `cmp_`, its chunks, and its
+`assistant/message`, all in the ordinary forms. A `request/header` restoring
+the step's own header follows `compaction/end`.
+
+`compaction/start` — implemented. `covered` is the span this compaction
+summarizes directly: from the previous compaction's `first_kept_seq`, or 1,
+to the event before the cut. `projected_tokens` is the projection that
+crossed the threshold. `reserved` is the budget the episode had left, which
+the summarization call draws on.
+
+```json
+{
+  "step": 14,
+  "covered": { "first_seq": 1, "last_seq": 57 },
+  "trigger": "threshold",
+  "projected_tokens": 186240,
+  "reserved": { "model_calls": 22, "tokens": 310400 }
+}
+```
+
+`compaction/summary` — implemented. `summary` is the model's narrative.
+`state` is built from typed events: the task verbatim, the completion
+condition in one line, the latest verifier report, the file lists, the
+children that ended in the covered span, the covered range, and the budget
+remaining. `first_kept_seq` is the `seq` of the `model/request` that opens
+the kept suffix. `summary_request_seq` names the `cmp_` request.
+
+```json
+{
+  "step": 14,
+  "summary": "## Goal\n…",
+  "state": {
+    "task": "Fix the failing parser test.",
+    "done_when": "a turn with no tool calls",
+    "outstanding_findings": [],
+    "files": { "read": ["src/parser.py"], "written": [], "edited": ["src/parser.py"] },
+    "children": [],
+    "covered": { "first_seq": 1, "last_seq": 57 },
+    "budget_remaining": { "model_calls": 22, "tokens": 310400 }
+  },
+  "first_kept_seq": 58,
+  "summary_request_seq": 61
+}
+```
+
+`compaction/end` — implemented. `usage` is what the summarization response
+reported, zero when none arrived. `active_estimate` is the estimated token
+count of the request that follows. When `ok` is false, `error` states why,
+no `compaction/summary` was written, and the projection is unchanged.
+
+```json
+{ "step": 14, "ok": true, "usage": { "input": 150200, "output": 610, "cache_read": 0 }, "active_estimate": 21800 }
+```
 
 ## Derived messages
 
@@ -399,6 +455,19 @@ by the runtime, the viewer, and the Python package identically.
    message carrying its text, with `tool_calls` as recorded.
 6. Each `tool/result` becomes a `tool` message carrying `rendered`.
 7. Events of any other type contribute nothing.
+
+A `model/request` whose `request_id` starts with `cmp_`, and the
+`assistant/message` answering it, contribute nothing: they are a
+summarization exchange, and the request records its prompt rather than a
+derived list.
+
+After the latest `compaction/summary` before the request, rule 2 changes.
+The list opens with one `user` message holding `state.task` verbatim and
+one `user` message holding the continuation message, which
+[compaction.md](compaction.md) renders from `state` and `summary`. The walk
+then begins at the summary's `first_kept_seq`. An `inbox/item` below that
+boundary still contributes through a request at or above it that names
+the item in `consumed`, as rule 3 provides.
 
 An assistant message whose request failed and was discarded before any tool
 call started is never written, so it never appears.

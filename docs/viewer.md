@@ -17,10 +17,15 @@ right pane shows the conversation of the selected episode, derived from its
 log by the rule in [log-format.md](log-format.md#derived-messages). It
 holds the system prompt and tool schemas from `request/header`, each inbox
 item, and each assistant turn. Each tool call appears with the text the
-model received and the canonical value the log stores. Budget consumption,
-sandbox status, and the outcome come from the same log. Everything the bundle shows is computed in
-the browser from the events; the server contributes only the tree, which
-tells the bundle which episodes exist and in what order.
+model received and the canonical value the log stores. A compaction appears
+as one system row placed at the cut, stating how many messages the summary
+replaced, with the continuation message the model receives behind an
+expander; the rows above it stay visible, faded and marked `compacted`,
+because the pane shows the log and the log keeps them. Budget consumption,
+sandbox status, and the outcome come from the same log. Everything the
+bundle shows is computed in the browser from the events; the server
+contributes only the tree, which tells the bundle which episodes exist and
+in what order.
 
 ## The page
 

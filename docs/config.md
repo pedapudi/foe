@@ -54,6 +54,8 @@ program and its identity without running anything.
 
   "done_when": { "verify": "check", "retries": 2 },
 
+  "context": { "compact": true },
+
   "model": { "provider": "anthropic", "model": "claude-opus-5" },
 
   "sandbox": { "mode": "best-effort" },
@@ -249,6 +251,34 @@ general-purpose linter is wrapped by a short script that reads the
 candidate, runs the linter, prints its findings, and exits with status zero
 whether or not it found any.
 
+### `context`
+
+Object. Optional. Whether and when the conversation is compacted: the
+oldest steps replaced in the model's context by a summary and the
+runtime's continuation state when the next request is projected to outgrow
+the model's window. [compaction.md](compaction.md) specifies the policy.
+
+| field | type | default | meaning |
+|---|---|---|---|
+| `compact` | boolean | `false` | whether the runtime compacts at all |
+| `window_tokens` | integer | from the provider table | the model's context window in tokens |
+| `reserve_tokens` | integer | 16384 | tokens kept free below the window; compaction runs when the projected request exceeds `window_tokens` minus `reserve_tokens` |
+| `keep_recent_tokens` | integer | 20000 | approximate size of the most recent steps kept verbatim after a compaction |
+| `margin_tokens` | integer | 2048 | added to the projection of the next request, absorbing estimation error |
+
+`window_tokens` may be omitted when `compact` is true and the `model` block
+names a model the provider table knows; [models.md](models.md) lists them.
+For any other model, and under a host that supplies the transport, it is
+required, and its absence is a construction error naming the key. When
+given, it must exceed `reserve_tokens` plus `keep_recent_tokens`.
+
+The block participates in identity.
+
+```json
+"context": { "compact": true }
+"context": { "compact": true, "window_tokens": 128000, "keep_recent_tokens": 12000 }
+```
+
 ### `model`
 
 Object. Optional. When present, foe calls the model itself. When absent, the
@@ -337,8 +367,8 @@ the same program with different tasks share an identity.
 
 The following participate in identity: `name`, `instructions`, `tools` and
 their order, each entry of `tool_defs` including the executable's content
-hash, the kinds and counts in `grants`, `budget`, `done_when`, every entry of
-`programs`, `workflow`, and the runtime's version and build.
+hash, the kinds and counts in `grants`, `budget`, `done_when`, `context`,
+every entry of `programs`, `workflow`, and the runtime's version and build.
 
 The following do not: the paths in `grants`, `model`, `sandbox`, and `task`.
 

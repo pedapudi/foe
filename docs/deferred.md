@@ -8,17 +8,6 @@ so that a version 1 reader parses a later log; nothing in version 1 emits it.
 A feature with nothing reserved is listed so that a reader does not search
 for it.
 
-## Context compaction
-
-Context compaction replaces a prefix of the conversation with a summary when
-the derived message list approaches the model's context limit, so that a
-long episode continues with a shorter request. The summary would be recorded
-in the log, and the derived message rule would substitute it for the events
-it covers. Context compaction is not implemented; an episode whose requests
-outgrow the model's context ends when the provider rejects the request.
-Reserved event types: `compaction/start`, `compaction/summary`,
-`compaction/end`, each carrying an unconstrained JSON object.
-
 ## Fork as a command and candidate slates
 
 A fork seeds a new episode from a prefix of an existing log so that the new
