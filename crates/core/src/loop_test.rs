@@ -1,0 +1,431 @@
+use super::{parse_tolerant, run, Log, Params, SPILL_LIMIT};
+use crate::budget::Pool;
+use crate::config::Program;
+use crate::harness_text as text;
+use crate::registry::{Handles, Registry};
+use crate::test_util::{call, done, program_with, text as text_chunk, tmp, turn, Probe, ScriptedTransport, Verifier};
+use crate::{Effect, Tool, Transport};
+use foe_log::{
+    BlockedCode, Chunk, EpisodeStart, Event, EventData, ExhaustedLimit, InboxSource, Outcome, RuntimeInfo, SandboxInfo,
+    SandboxMode, StopReason,
+};
+use serde_json::json;
+use std::sync::{Arc, Mutex};
+use tokio::sync::watch;
+
+fn start(program: &Program) -> EpisodeStart {
+    EpisodeStart {
+        id: "ep_test".into(),
+        parent_id: None,
+        fork_origin: None,
+        team_id: None,
+        program: program.to_value(),
+        identity: "sha256:test".into(),
+        task: "do the thing".into(),
+        runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
+        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+    }
+}
+
+struct Fixture {
+    dir: std::path::PathBuf,
+    log: Arc<Log>,
+    program: Program,
+    tools: Vec<Box<dyn Tool>>,
+    transport: Arc<dyn Transport>,
+    stop: watch::Sender<Option<String>>,
+    stop_rx: watch::Receiver<Option<String>>,
+}
+
+impl Fixture {
+    fn new(name: &str, edit: impl FnOnce(&mut serde_json::Value), responses: Vec<Vec<Chunk>>) -> Self {
+        let root = tmp(name);
+        let dir = root.join("episode");
+        std::fs::create_dir_all(&dir).unwrap();
+        let program = program_with(&root, edit).unwrap();
+        let log = Arc::new(Log::create(&dir, None).unwrap());
+        let (stop, stop_rx) = watch::channel(None);
+        Self { dir, log, program, tools: vec![], transport: Arc::new(ScriptedTransport::new(responses)), stop, stop_rx }
+    }
+
+    fn tool(mut self, tool: impl Tool + 'static) -> Self {
+        self.tools.push(Box::new(tool));
+        self
+    }
+
+    async fn run(self) -> (Outcome, Vec<Event>) {
+        let registry = Arc::new(Registry::new(&self.program, vec![], self.tools).unwrap());
+        let params = Params {
+            log: self.log.clone(),
+            start: start(&self.program),
+            program: self.program.clone(),
+            registry,
+            handles: Handles::default(),
+            transport: self.transport,
+            pool: Arc::new(Mutex::new(Pool::new(self.program.budget.clone()))),
+            stop: self.stop_rx,
+        };
+        let outcome = run(params).await.unwrap();
+        let events = foe_log::fold::read_all(&self.dir).unwrap();
+        foe_log::fold::fold(&events).expect("the log is well-formed");
+        (outcome, events)
+    }
+}
+
+fn types(events: &[Event]) -> Vec<&'static str> {
+    events.iter().map(|e| e.data.type_name()).collect()
+}
+
+fn results(events: &[Event]) -> Vec<&foe_log::ToolResult> {
+    events
+        .iter()
+        .filter_map(|e| match &e.data {
+            EventData::ToolResult(r) => Some(r),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_turn_without_tool_calls_completes_with_its_text() {
+    let fx = Fixture::new("loop-complete", |_| {}, vec![turn("all done", vec![])]);
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("all done") });
+    assert_eq!(
+        types(&events),
+        vec![
+            "episode/start",
+            "inbox/item",
+            "request/header",
+            "model/request",
+            "assistant/chunk",
+            "assistant/chunk",
+            "assistant/message",
+            "episode/end"
+        ]
+    );
+    let EventData::ModelRequest(request) = &events[3].data else { panic!() };
+    assert_eq!((request.step, request.attempt, request.header_seq, request.consumed.as_slice()), (1, 1, 2, &[1][..]));
+    assert_eq!(
+        request.messages,
+        foe_log::fold::derive_messages(&events, 3, &[1]),
+        "recorded messages equal the derivation"
+    );
+    let EventData::RequestHeader(header) = &events[2].data else { panic!() };
+    assert_eq!(header.reason, foe_log::HeaderReason::Initial);
+    assert_eq!(header.tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), vec!["block"]);
+}
+
+#[tokio::test]
+async fn concurrent_effects_overlap_serial_effects_wait_and_results_keep_issue_order() {
+    let fx = Fixture::new(
+        "loop-concurrency",
+        |v| v["tools"] = json!(["r1", "r2", "w"]),
+        vec![
+            turn("go", vec![call("a", "r1", "{}"), call("b", "r2", "{}"), call("c", "w", "{}"), call("d", "r1", "{}")]),
+            turn("done", vec![]),
+        ],
+    );
+    let r1 = Arc::new(Probe::slow("r1", Effect::Reads, 60));
+    let r2 = Arc::new(Probe::slow("r2", Effect::Reads, 60));
+    let w = Arc::new(Probe::slow("w", Effect::Writes, 10));
+    let (outcome, events) = fx.tool(Shared(r1.clone())).tool(Shared(r2.clone())).tool(Shared(w.clone())).run().await;
+    assert!(matches!(outcome, Outcome::Completed { .. }));
+    let ids: Vec<_> = results(&events).iter().map(|r| r.call_id.as_str()).collect();
+    assert_eq!(ids, vec!["a", "b", "c", "d"]);
+    let runs = |p: &Probe| p.runs.lock().unwrap().clone();
+    let (a, b, c, d) = (runs(&r1)[0].clone(), runs(&r2)[0].clone(), runs(&w)[0].clone(), runs(&r1)[1].clone());
+    assert!(a.1 < b.2 && b.1 < a.2, "a and b overlap");
+    assert!(c.1 >= a.2 && c.1 >= b.2, "the write waits for the reads before it");
+    assert!(d.1 >= c.2, "the read after the write waits for it");
+}
+
+/// Lets a test keep a handle on a tool the registry owns.
+struct Shared(Arc<Probe>);
+
+#[async_trait::async_trait]
+impl Tool for Shared {
+    fn spec(&self) -> &crate::ToolSpec {
+        self.0.spec()
+    }
+    async fn call(&self, args: serde_json::Value, ctx: &crate::CallCtx) -> crate::ToolValue {
+        self.0.call(args, ctx).await
+    }
+}
+
+#[tokio::test]
+async fn a_length_stop_rejects_every_call_without_running_any() {
+    let mut chunks = vec![text_chunk("partial")];
+    chunks.extend(call("a", "p", r#"{"x": 1}"#));
+    chunks.extend([
+        Chunk::ToolCallStart { id: "b".into(), name: "p".into() },
+        Chunk::ToolCallDelta { id: "b".into(), delta: r#"{"x": [1, 2"#.into() },
+    ]);
+    chunks.push(done(StopReason::Length));
+    let fx = Fixture::new("loop-length", |v| v["tools"] = json!(["p"]), vec![chunks, turn("ok", vec![])]);
+    let probe = Arc::new(Probe::new("p", Effect::Pure));
+    let (_, events) = fx.tool(Shared(probe.clone())).run().await;
+    let rs = results(&events);
+    assert_eq!(rs.len(), 2);
+    assert!(rs.iter().all(|r| r.is_error && r.rendered == text::LENGTH_LIMIT_ERROR && !r.synthetic));
+    assert!(probe.runs.lock().unwrap().is_empty(), "no call ran");
+    let EventData::AssistantMessage(m) =
+        &events.iter().find(|e| matches!(e.data, EventData::AssistantMessage(_))).unwrap().data
+    else {
+        panic!()
+    };
+    assert_eq!(m.tool_calls[1].args, json!({ "x": [1, 2] }), "a truncated call parses tolerantly");
+}
+
+#[tokio::test]
+async fn a_failure_after_a_tool_call_started_is_recorded_as_interrupted_and_the_next_step_continues() {
+    let mut chunks = vec![text_chunk("I will")];
+    chunks.extend(call("a", "p", "{}"));
+    chunks.push(Chunk::Error { message: "connection reset".into(), retryable: true });
+    let fx = Fixture::new("loop-interrupted", |v| v["tools"] = json!(["p"]), vec![chunks, turn("recovered", vec![])]);
+    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("recovered") });
+    let EventData::AssistantMessage(m) =
+        &events.iter().find(|e| matches!(e.data, EventData::AssistantMessage(_))).unwrap().data
+    else {
+        panic!()
+    };
+    assert!(m.interrupted && m.stop == StopReason::Interrupted && m.text == "I will");
+    let rs = results(&events);
+    assert!(rs[0].synthetic && rs[0].is_error && rs[0].rendered == text::INTERRUPTED_RESULT);
+    assert!(!types(&events).contains(&"request/retry"), "a request that started a tool call is never retried");
+}
+
+#[tokio::test]
+async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_consume_budget() {
+    let fx = Fixture::new(
+        "loop-retry",
+        |v| v["budget"]["model_calls"] = json!(3),
+        vec![
+            vec![Chunk::Error { message: "rate limited (429)".into(), retryable: true }],
+            vec![text_chunk("partial text"), Chunk::Error { message: "gone".into(), retryable: true }],
+            turn("finally", vec![]),
+        ],
+    );
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("finally") });
+    let retries: Vec<_> = events
+        .iter()
+        .filter_map(|e| match &e.data {
+            EventData::RequestRetry { attempt, cause, delay_ms, .. } => Some((*attempt, *cause, *delay_ms)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(retries, vec![(1, foe_log::RetryCause::RateLimit, 500), (2, foe_log::RetryCause::Interrupted, 1000)]);
+    let requests: Vec<_> = events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).collect();
+    assert_eq!(requests.len(), 3);
+    let EventData::ModelRequest(third) = &requests[2].data else { panic!() };
+    assert_eq!((third.step, third.attempt), (1, 3));
+    assert!(third.consumed.is_empty(), "the task was consumed by the first attempt");
+    assert_eq!(third.messages.len(), 1, "the discarded text never appears");
+}
+
+#[tokio::test]
+async fn a_non_retryable_failure_fails_the_episode() {
+    let fx =
+        Fixture::new("loop-fatal", |_| {}, vec![vec![Chunk::Error { message: "bad key".into(), retryable: false }]]);
+    let (outcome, _) = fx.run().await;
+    assert!(matches!(outcome, Outcome::Failed { error } if error.contains("bad key")));
+}
+
+#[tokio::test]
+async fn the_model_call_budget_ends_the_episode_as_exhausted() {
+    let fx = Fixture::new(
+        "loop-exhausted",
+        |v| {
+            v["budget"]["model_calls"] = json!(2);
+            v["tools"] = json!(["p"]);
+        },
+        vec![turn("1", vec![call("a", "p", "{}")]), turn("2", vec![call("b", "p", "{}")]), turn("3", vec![])],
+    );
+    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert_eq!(outcome, Outcome::Exhausted { limit: ExhaustedLimit::ModelCalls });
+    assert_eq!(events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).count(), 2);
+}
+
+#[tokio::test]
+async fn the_same_call_with_the_same_result_in_threshold_consecutive_steps_is_looping() {
+    let step = || turn("looking", vec![call("x", "p", r#"{"q": 1}"#)]);
+    let fx = Fixture::new(
+        "loop-looping-call",
+        |v| {
+            v["tools"] = json!(["p"]);
+            v["budget"]["loop_threshold"] = json!(2);
+        },
+        vec![step(), step(), step()],
+    );
+    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert!(matches!(outcome, Outcome::Blocked { code: BlockedCode::LoopingToolCall, .. }), "{outcome:?}");
+    assert_eq!(events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).count(), 2);
+}
+
+#[tokio::test]
+async fn identical_assistant_text_in_threshold_consecutive_steps_is_looping() {
+    let fx = Fixture::new(
+        "loop-looping-text",
+        |v| {
+            v["tools"] = json!(["p"]);
+        },
+        vec![
+            turn("same", vec![call("a", "p", r#"{"n": 1}"#)]),
+            turn("same", vec![call("b", "p", r#"{"n": 2}"#)]),
+            turn("same", vec![call("c", "p", r#"{"n": 3}"#)]),
+        ],
+    );
+    let (outcome, _) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert!(matches!(outcome, Outcome::Blocked { code: BlockedCode::LoopingReasoning, .. }), "{outcome:?}");
+}
+
+#[tokio::test]
+async fn block_ends_the_episode_with_the_reported_code() {
+    let fx = Fixture::new(
+        "loop-block",
+        |_| {},
+        vec![turn("cannot", vec![call("a", "block", r#"{"code": "missing-capability", "message": "no network"}"#)])],
+    );
+    let (outcome, _) = fx.run().await;
+    assert_eq!(outcome, Outcome::Blocked { code: BlockedCode::MissingCapability, message: "no network".into() });
+}
+
+#[tokio::test]
+async fn verifier_findings_return_as_inbox_items_until_accepted_or_retries_are_spent() {
+    let verifier = || Verifier {
+        spec: crate::test_util::spec("check", Effect::Pure),
+        findings: Mutex::new(vec![vec!["missing test".into()], vec![]].into()),
+    };
+    let edit = |v: &mut serde_json::Value| {
+        v["tools"] = json!(["block", "check"]);
+        v["done_when"] = json!({ "verify": "check", "retries": 1 });
+    };
+    let fx = Fixture::new("loop-verify", edit, vec![turn("first try", vec![]), turn("second try", vec![])]);
+    let (outcome, events) = fx.tool(verifier()).run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("second try") });
+    let item = events.iter().find_map(|e| match &e.data {
+        EventData::InboxItem(i) if i.source == InboxSource::Verify => Some(i),
+        _ => None,
+    });
+    let foe_log::ContentBlock::Text { text: framed } = &item.unwrap().content[0] else { panic!() };
+    assert_eq!(framed, &text::fill(text::VERIFY_FINDINGS, &[("tool", "check"), ("findings", "missing test")]));
+    let EventData::ModelRequest(second) =
+        &events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).nth(1).unwrap().data
+    else {
+        panic!()
+    };
+    assert!(matches!(second.messages.last(), Some(foe_log::Message::User { .. })), "findings enter the next request");
+
+    let stubborn = Verifier {
+        spec: crate::test_util::spec("check", Effect::Pure),
+        findings: Mutex::new(vec![vec!["a".into()], vec!["b".into()]].into()),
+    };
+    let fx = Fixture::new("loop-verify-spent", edit, vec![turn("1", vec![]), turn("2", vec![])]);
+    let (outcome, _) = fx.tool(stubborn).run().await;
+    assert!(matches!(outcome, Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, .. }), "{outcome:?}");
+}
+
+#[tokio::test]
+async fn a_returns_program_completes_only_through_the_return_tool() {
+    let edit =
+        |v: &mut serde_json::Value| v["done_when"] = json!({ "returns": { "type": "object", "required": ["n"] } });
+    let fx = Fixture::new(
+        "loop-returns",
+        edit,
+        vec![turn("I think I am done", vec![]), turn("returning", vec![call("a", "return", r#"{"value": {"n": 1}}"#)])],
+    );
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!({ "n": 1 }) });
+    let system =
+        events.iter().filter(|e| matches!(&e.data, EventData::InboxItem(i) if i.source == InboxSource::System)).count();
+    assert_eq!(system, 1, "a finished turn without `return` is answered with the requirement");
+}
+
+#[tokio::test]
+async fn a_large_result_is_spilled_and_replaced_by_a_locator() {
+    let fx = Fixture::new(
+        "loop-spill",
+        |v| v["tools"] = json!(["p"]),
+        vec![turn("big", vec![call("a", "p", &format!(r#"{{"big": {}}}"#, SPILL_LIMIT + 1))]), turn("", vec![])],
+    );
+    let dir = fx.dir.clone();
+    let (_, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    let r = results(&events)[0];
+    assert_eq!(r.spill.as_deref(), Some("a.json"));
+    assert_eq!(r.value["spill"], "a.json");
+    assert!(r.rendered.starts_with("The result was") && r.rendered.len() < SPILL_LIMIT);
+    let spilled: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("spill/a.json")).unwrap()).unwrap();
+    assert_eq!(spilled["args"]["big"], SPILL_LIMIT + 1);
+}
+
+#[tokio::test]
+async fn the_stop_signal_ends_the_episode_as_failed_with_its_reason() {
+    let fx = Fixture::new("loop-cancel", |_| {}, vec![turn("x", vec![])]);
+    fx.stop.send(Some("cancelled".into())).unwrap();
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Failed { error: "cancelled".into() });
+    assert_eq!(types(&events), vec!["episode/start", "inbox/item", "episode/end"]);
+}
+
+#[tokio::test]
+async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only_on_change() {
+    let first = Fixture::new(
+        "loop-seed-src",
+        |v| v["tools"] = json!(["p"]),
+        vec![turn("one", vec![call("a", "p", "{}")]), turn("two", vec![])],
+    );
+    let src = first.dir.clone();
+    first.tool(Probe::new("p", Effect::Pure)).run().await;
+    let dest = tmp("loop-seed-dst");
+    // Seq 10 is the first step's tool/result; the boundary excludes the second request.
+    foe_log::seed::seed(
+        &src,
+        11,
+        &dest,
+        foe_log::seed::SeedHeader { new_id: "ep_fork".into(), parent_id: None, team_id: None },
+    )
+    .unwrap();
+    let root = src.parent().unwrap().to_path_buf();
+    let program = program_with(&root, |v| v["tools"] = json!(["p"])).unwrap();
+    let log = Arc::new(Log::create_or_open(&dest, None).unwrap());
+    let (_, stop_rx) = watch::channel(None);
+    let params = Params {
+        log: log.clone(),
+        start: start(&program),
+        program: program.clone(),
+        registry: Arc::new(Registry::new(&program, vec![], vec![Box::new(Probe::new("p", Effect::Pure))]).unwrap()),
+        handles: Handles::default(),
+        transport: Arc::new(ScriptedTransport::new(vec![turn("forked end", vec![])])),
+        pool: Arc::new(Mutex::new(Pool::new(program.budget.clone()))),
+        stop: stop_rx,
+    };
+    let outcome = run(params).await.unwrap();
+    assert_eq!(outcome, Outcome::Completed { value: json!("forked end") });
+    let events = foe_log::fold::read_all(&dest).unwrap();
+    let state = foe_log::fold::fold(&events).unwrap();
+    assert_eq!(state.start.unwrap().id, "ep_fork");
+    assert_eq!(
+        events.iter().filter(|e| matches!(e.data, EventData::RequestHeader(_))).count(),
+        1,
+        "an unchanged header is not rewritten"
+    );
+    let EventData::ModelRequest(request) =
+        &events.iter().rev().find(|e| matches!(e.data, EventData::ModelRequest(_))).unwrap().data
+    else {
+        panic!()
+    };
+    assert_eq!(request.step, 2);
+    assert!(request.messages.len() >= 3, "the copied prefix is part of the derived history");
+}
+
+#[test]
+fn tolerant_parsing_closes_what_a_truncated_stream_left_open() {
+    assert_eq!(parse_tolerant(r#"{"path": "a/b", "n": [1, 2"#), json!({ "path": "a/b", "n": [1, 2] }));
+    assert_eq!(parse_tolerant(r#"{"path": "a/b"#), json!({ "path": "a/b" }));
+    assert_eq!(parse_tolerant(r#"{"path": "a/b", "#), json!({ "path": "a/b" }));
+    assert_eq!(parse_tolerant(r#"{"path": "a/b", "n":"#), json!({ "path": "a/b" }));
+    assert_eq!(parse_tolerant(""), json!({}));
+    assert_eq!(parse_tolerant("not json"), json!({}));
+}
