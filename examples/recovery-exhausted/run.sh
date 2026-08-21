@@ -36,7 +36,7 @@ mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-recovery-exhausted.XXXXXX")
 project_dir="$run_dir/project"
 log_dir="$run_dir/episode"
-mkdir -p "$project_dir/src" "$project_dir/tools"
+mkdir -p "$project_dir/src" "$project_dir/tools" "$project_dir/support"
 
 # The project the configuration points at. The episode never reads it,
 # because no request of its own is ever answered.
@@ -45,10 +45,12 @@ def add(left: int, right: int) -> int:
     return left + right
 MODULE
 
-# The transport and the chunk helpers it imports lie under the read root,
-# where the episode's sandbox lets the interpreter open them.
+# The transport and the chunk helpers it imports are copied into the
+# project, because an executable the episode starts may read the read roots
+# and its own file and nothing else. `support` sits beside `tools` here as
+# it does in the repository, so the import path is the same in both.
 cp "$example_dir/unreachable-provider-transport" "$project_dir/tools/unreachable-provider-transport"
-cp "$repo_dir/examples/support/chunks.py" "$project_dir/tools/chunks.py"
+cp "$repo_dir/examples/support/chunks.py" "$project_dir/support/chunks.py"
 chmod +x "$project_dir/tools/unreachable-provider-transport"
 
 config="$run_dir/config.json"

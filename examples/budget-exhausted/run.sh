@@ -36,7 +36,7 @@ mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-budget-exhausted.XXXXXX")
 project_dir="$run_dir/project"
 log_dir="$run_dir/episode"
-mkdir -p "$project_dir/src" "$project_dir/tools"
+mkdir -p "$project_dir/src" "$project_dir/tools" "$project_dir/support"
 
 # The project the configuration points at: more modules than the budget
 # allows turns, so the survey the task asks for cannot finish.
@@ -44,10 +44,12 @@ for n in 1 2 3 4 5 6 7 8; do
   printf 'def module_%s() -> str:\n    return "module %s"\n' "$n" "$n" >"$project_dir/src/module_$n.py"
 done
 
-# The transport and the chunk helpers it imports lie under the read root,
-# where the episode's sandbox lets the interpreter open them.
+# The transport and the chunk helpers it imports are copied into the
+# project, because an executable the episode starts may read the read roots
+# and its own file and nothing else. `support` sits beside `tools` here as
+# it does in the repository, so the import path is the same in both.
 cp "$example_dir/never-finishing-transport" "$project_dir/tools/never-finishing-transport"
-cp "$repo_dir/examples/support/chunks.py" "$project_dir/tools/chunks.py"
+cp "$repo_dir/examples/support/chunks.py" "$project_dir/support/chunks.py"
 chmod +x "$project_dir/tools/never-finishing-transport"
 
 config="$run_dir/config.json"

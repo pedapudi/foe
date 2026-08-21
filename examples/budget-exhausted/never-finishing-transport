@@ -11,10 +11,9 @@ declares.
 import sys
 from pathlib import Path
 
-# `chunks.py` is in `examples/support` in the repository and beside this
-# file once a runner has copied both into a project's tools directory.
-here = Path(__file__).resolve().parent
-sys.path[:0] = [str(here), str(here.parent.parent / "support")]
+# `chunks.py` sits in `support` beside the directory holding this file, both
+# in the repository and in the project a runner copies them into.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "support"))
 
 from chunks import call, done, read_request, step  # noqa: E402
 

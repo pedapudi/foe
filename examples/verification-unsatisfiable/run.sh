@@ -36,7 +36,7 @@ mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-verification-unsatisfiable.XXXXXX")
 project_dir="$run_dir/project"
 log_dir="$run_dir/episode"
-mkdir -p "$project_dir/src" "$project_dir/tools"
+mkdir -p "$project_dir/src" "$project_dir/tools" "$project_dir/support"
 
 # The project the configuration points at: one module with the TODO comment
 # the task names, which the episode may edit and never does.
@@ -47,13 +47,16 @@ def add(left: int, right: int) -> int:
 MODULE
 
 # The verifier carries the path it checks, so it is materialized like the
-# configuration. The transport and the chunk helpers it imports lie under
-# the read root, where the episode's sandbox lets the interpreter open them.
+# configuration. The transport and the chunk helpers it imports are copied
+# into the project, because an executable the episode starts may read the
+# read roots and its own file and nothing else. `support` sits beside
+# `tools` here as it does in the repository, so the import path is the same
+# in both.
 python3 "$repo_dir/examples/support/materialize.py" \
   "$example_dir/todo-check" "$project_dir/tools/todo-check" \
   /home/user/project "$project_dir"
 cp "$example_dir/claims-completion-transport" "$project_dir/tools/claims-completion-transport"
-cp "$repo_dir/examples/support/chunks.py" "$project_dir/tools/chunks.py"
+cp "$repo_dir/examples/support/chunks.py" "$project_dir/support/chunks.py"
 chmod +x "$project_dir/tools/todo-check" "$project_dir/tools/claims-completion-transport"
 
 config="$run_dir/config.json"

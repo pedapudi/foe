@@ -28,12 +28,19 @@ is about the declared limit rather than the loop detector.
 ## Paths to replace
 
 - `/home/user/project`: a directory with a `src` directory holding more
-  modules than the budget allows turns, and a `tools` directory.
+  modules than the budget allows turns, a `tools` directory, and a `support`
+  directory.
 - `/home/user/project/tools/never-finishing-transport`: a copy of this
-  directory's `never-finishing-transport`, marked executable, beside a copy
-  of `examples/support/chunks.py`, which it imports. Both lie under the read
-  root, because the transport runs under the episode's sandbox with an empty
-  environment and can open nothing outside it.
+  directory's `never-finishing-transport`, marked executable.
+- `/home/user/project/support/chunks.py`: a copy of
+  `examples/support/chunks.py`, which the transport imports.
+
+Both copies lie inside the read root the configuration grants. An executable
+the episode starts runs under the episode's sandbox with an empty
+environment. It may read the read roots and its own file and nothing else,
+so a transport left in this directory could not import the helper it shares
+with the other examples. `support` sits beside `tools` in the project as it
+does in `examples`, so the import path is the same in both places.
 
 ## Run
 
@@ -46,19 +53,24 @@ cargo build --release --bin foe
 sh examples/budget-exhausted/run.sh
 ```
 
-The runner asserts what this example claims: the outcome is `exhausted` with
-the limit `model_calls`, the exit code is 3, the log holds exactly as many
-`model/request` events as the budget allowed, every `assistant/message`
-stopped at a tool call, and the calls differ from one another.
+The runner asserts what this example claims.
+
+- The outcome is `exhausted`, and the limit it names is `model_calls`.
+- The exit code is 3.
+- The log holds exactly as many `model/request` events as the budget
+  allowed, each one a step of its own and each one a first attempt.
+- Every `assistant/message` stopped at a tool call, so no turn ever finished.
+- The calls differ from one another, which is what keeps the loop detector
+  out of this outcome.
 
 ## What to look for
 
 `episode/start` records the resolved program, and its
 `program.budget.model_calls` is the 4 that ends the run. The log then holds
-four steps, each one a `model/request` with `step` counting from 1 and
-`attempt` 1, four `assistant/chunk` events carrying the tool call, one
-`assistant/message` whose `stop` is `tool`, and one `tool/result` for the
-file that was read. The path in each result differs from the one before it.
+four steps. Each step is a `model/request` with `step` counting from 1 and
+`attempt` 1, four `assistant/chunk` events, three of them the tool call and
+the fourth the stop the transport reported, one `assistant/message` whose
+`stop` is `tool`, and one `tool/result` for the file that was read. The path in each result differs from the one before it.
 
 No fifth `model/request` appears. The runtime checks the budget before it
 assembles a request and again after a step settles, so the limit is reached
@@ -68,7 +80,7 @@ The last event is `episode/end` with `{"kind": "exhausted", "limit":
 "model_calls"}`. The four steps before it look exactly like the steps of a
 run that completed; the ending is the whole difference. The `usage` in every
 `assistant/message` is zero, because the transport reports no token counts,
-so the `tokens` limit never applies here.
+and this configuration declares no `tokens` limit for them to count against.
 
 In the viewer, the budget line counts four model calls against four, and the
 outcome line names the limit.

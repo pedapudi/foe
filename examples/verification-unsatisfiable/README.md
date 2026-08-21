@@ -33,15 +33,21 @@ judged instead.
 ## Paths to replace
 
 - `/home/user/project`: a Python repository with a `src` directory holding a
-  module with a TODO comment, and a `tools` directory.
+  module with a TODO comment, a `tools` directory, and a `support` directory.
 - `/home/user/project/tools/todo-check`: a copy of this directory's
   `todo-check`, marked executable, with the path inside it pointing at the
   project's `src`.
 - `/home/user/project/tools/claims-completion-transport`: a copy of this
-  directory's `claims-completion-transport`, marked executable, beside a copy
-  of `examples/support/chunks.py`, which it imports. Both lie under the read
-  root, because the transport runs under the episode's sandbox with an empty
-  environment and can open nothing outside it.
+  directory's `claims-completion-transport`, marked executable.
+- `/home/user/project/support/chunks.py`: a copy of
+  `examples/support/chunks.py`, which the transport imports.
+
+Every copy lies inside the read root the configuration grants. An executable
+the episode starts runs under the episode's sandbox with an empty
+environment. It may read the read roots and its own file and nothing else,
+so a transport left in this directory could not import the helper it shares
+with the other examples. `support` sits beside `tools` in the project as it
+does in `examples`, so the import path is the same in both places.
 
 ## Run
 
