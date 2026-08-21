@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "name": "host-transport",
+  "instructions": {
+    "role": "You are a coding agent. Read the file named in the task and summarize it in one sentence."
+  },
+  "tools": ["read", "grep"],
+  "grants": {
+    "read": ["/home/user/project"]
+  },
+  "budget": { "model_calls": 4, "seconds": 60 },
+  "task": "Summarize /home/user/project/README.md in one sentence."
+}
