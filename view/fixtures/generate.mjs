@@ -4,6 +4,11 @@
 // tests can compare them with the derived-messages rule.
 //
 // Run with `pnpm fixtures` after changing this file.
+//
+// `retries-exhausted.jsonl` is not written here. It is a log recorded from a
+// run against a live model whose every attempt failed in transport, kept
+// verbatim so that the tests read the shapes a real provider failure
+// produces rather than shapes chosen to make them pass.
 
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

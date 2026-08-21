@@ -18,6 +18,42 @@ function rows<T extends Row>(f: EpisodeFold, kind: T["kind"]): T[] {
   return f.rows.filter((r) => r.kind === kind) as T[];
 }
 
+test("a stream still open when the episode ends is interrupted rather than live", () => {
+  // Recorded from a run whose five attempts each failed in transport, so
+  // every request wrote chunks and none reached an assistant/message.
+  const f = fold("retries-exhausted.jsonl", true);
+  const turns = rows<AssistantRow>(f, "assistant");
+  assert.equal(turns.length, 5, "one row per request that streamed");
+  assert.equal(f.summary.outcome?.kind, "blocked");
+  for (const turn of turns) {
+    assert.equal(turn.streaming, false, "an ended episode has no stream still arriving");
+    assert.equal(turn.interrupted, true, "a stream cut off by the end of the episode is interrupted");
+  }
+});
+
+test("closing a cut-off stream emits an update for each row it changes", () => {
+  const f = new EpisodeFold("ep_retries", { stream: true });
+  const events = fixture("retries-exhausted.jsonl");
+  const end = events[events.length - 1]!;
+  assert.equal(end.type, "episode/end");
+  for (const ev of events.slice(0, -1)) f.push(ev);
+  assert.equal(rows<AssistantRow>(f, "assistant").every((r) => r.streaming), true, "still arriving before the end");
+  const patches = f.push(end);
+  const updated = patches.filter((p) => p.op === "update").map((p) => p.row.key);
+  assert.equal(updated.length, 5);
+  assert.equal(new Set(updated).size, 5, "one update per streaming row");
+  assert.equal(patches.some((p) => p.op === "append" && p.row.kind === "note"), true, "the outcome row still appends");
+});
+
+test("a stream that is answered is not marked interrupted when the episode ends", () => {
+  const f = fold("root.jsonl", true);
+  const turns = rows<AssistantRow>(f, "assistant");
+  assert.equal(f.summary.outcome?.kind, "completed");
+  assert.equal(turns.some((t) => t.streaming), false);
+  // Only the turn the log itself records as interrupted carries the mark.
+  assert.deepEqual(turns.map((t) => t.interrupted), [false, false, true, false]);
+});
+
 test("summary carries lineage, budget, usage, and sandbox from the log", () => {
   const s = fold("root.jsonl").summary;
   assert.equal(s.id, "ep_root");

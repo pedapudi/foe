@@ -57,7 +57,14 @@ it has a scrollbar of its own.
 The conversation is derived from the log by the rule in
 [log-format.md](log-format.md#derived-messages). It holds the system prompt
 and tool schemas from `request/header`, each inbox item, and each assistant
-turn. Each tool call appears with the text the model received and the
+turn.
+
+An assistant turn assembled from `assistant/chunk` events is marked `live`
+in the accent while its response is still arriving. A turn still assembling
+when `episode/end` is read is a stream that was cut off, so it is marked
+`interrupted` in `--v2-caution` instead, alongside the turns whose
+`assistant/message` reports truncation. A finished log therefore never
+shows a turn as live. Each tool call appears with the text the model received and the
 canonical value the log stores. A compaction appears as one system row
 placed at the cut, stating how many messages the summary replaced, with the
 continuation message the model receives behind an expander; the rows above

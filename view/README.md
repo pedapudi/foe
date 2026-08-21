@@ -53,7 +53,8 @@ helpers, the trajectory layout, the pane sizes, the Markdown parser, the
 syntax tokenizer, and the unified diff reader. Each of those modules is pure
 and reads no document, so the tests run under `node --test` with no browser.
 
-The fixtures are seven episode logs written by `fixtures/generate.mjs`.
+The fixtures are eight episode logs, seven of them written by
+`fixtures/generate.mjs`.
 
 | fixture | what it exercises |
 |---|---|
@@ -64,6 +65,11 @@ The fixtures are seven episode logs written by `fixtures/generate.mjs`.
 | `overlap-parent.jsonl` | a parent that spawns two children and keeps working while they run |
 | `overlap-child.jsonl` | the surveyor, which starts after the parent and ends before it, with a compaction and a retry |
 | `rich.jsonl` | the writer, whose one assistant turn holds a table, a fenced Rust block, and inline and display mathematics, with an `edit` result carrying a unified diff and a `read` result carrying numbered source |
+| `retries-exhausted.jsonl` | a run against a live model whose five attempts each failed in transport, ending `blocked: recovery-exhausted` with five streams cut off before any response was assembled |
+
+`retries-exhausted.jsonl` is a recorded log rather than a generated one, so
+the tests read the shapes a real provider failure produces. `pnpm fixtures`
+leaves it alone.
 
 `proof-light.png` and `proof-dark.png` are the static export of the
 `overlap-parent` fixture and its two children, rendered at 1512 by 792 in
@@ -177,7 +183,10 @@ The main region has three tabs.
   The latest `request/header` appears as a collapsed system prompt row, with
   each tool schema behind its own expander. An `inbox/item` is a user row
   with a badge for its `source`. An `assistant/message` renders its text as
-  Markdown and lists its tool calls; `interrupted: true` shows a marker. A
+  Markdown and lists its tool calls. A turn is marked `live` while its
+  response is still arriving and `interrupted` once the episode has ended,
+  whether the response reported truncation or the stream was cut off
+  before a response was assembled. A
   `tool/result` renders `rendered` by its shape, as a diff, as JSON, as
   numbered source, or as preformatted text, and keeps the canonical `value`
   behind an expander; `is_error`, `synthetic`, and `spill` show markers.

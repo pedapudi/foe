@@ -172,7 +172,11 @@ function renderAssistant(row: AssistantRow): HTMLElement {
       h(
         "div",
         { class: "meta-line" },
-        row.interrupted ? h("span", { class: "marker" }, "interrupted") : null,
+        // A turn is interrupted whether the response reported truncation
+        // or the stream was cut off before a response was assembled; both
+        // read the same. `live` says a response is arriving now, so it
+        // appears only while the episode is running.
+        row.interrupted ? h("span", { class: "marker interrupted" }, "interrupted") : null,
         row.streaming ? h("span", { class: "badge live" }, "live") : null,
         meta.length ? h("span", { class: "meta" }, meta.join(" · ")) : null,
       ),

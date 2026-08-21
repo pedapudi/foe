@@ -202,7 +202,10 @@ export class EpisodeFold {
         s.endTime = ev.time;
         s.outcome = obj(data.outcome) as Outcome;
         const kind = str(s.outcome.kind, "unknown");
-        return this.note(ev, "outcome", outcomeLabel(s.outcome), levelFor(kind), data.outcome);
+        return [
+          ...this.settleStreams(),
+          ...this.note(ev, "outcome", outcomeLabel(s.outcome), levelFor(kind), data.outcome),
+        ];
       }
       case "seed/end":
         s.seedEnd = ev.seq;
@@ -539,6 +542,24 @@ export class EpisodeFold {
       data,
       link: link || null,
     });
+  }
+
+  /**
+   * Closes every assistant row still assembling from chunks. A row is
+   * assembling until its `assistant/message` arrives, so a row still
+   * assembling when the episode ends is a stream that was cut off: the
+   * request failed before the response was assembled. It is recorded as
+   * interrupted, because that is what the log shows.
+   */
+  private settleStreams(): Patch[] {
+    const patches: Patch[] = [];
+    for (const row of this.rows) {
+      if (row.kind !== "assistant" || !row.streaming) continue;
+      row.streaming = false;
+      row.interrupted = true;
+      patches.push({ op: "update", row });
+    }
+    return patches;
   }
 
   /** Records one trajectory mark. Marks arrive in seq order and stay so. */

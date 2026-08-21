@@ -1125,6 +1125,13 @@ svg.mark .fill.caution {
   font-family: var(--v2-mono);
 }
 
+/* An interrupted turn reached a limit rather than failing: the request was
+ * cut off and the step continues from what arrived. */
+.marker.interrupted {
+  border-color: var(--v2-caution);
+  color: var(--v2-caution);
+}
+
 .marker.neutral {
   border-color: var(--v2-ink-soft);
   color: var(--v2-ink-soft);
