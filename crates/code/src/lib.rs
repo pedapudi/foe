@@ -11,6 +11,8 @@
 use foe_core::Tool;
 use std::path::{Path, PathBuf};
 
+mod diff;
+mod edit;
 mod grep;
 mod read;
 #[cfg(test)]
@@ -33,7 +35,9 @@ pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
 
 /// Every built-in coding tool, in the order `foe tools` lists them.
 pub fn all() -> Vec<Box<dyn Tool>> {
-    readonly()
+    let mut tools = readonly();
+    tools.push(Box::new(edit::Edit::new()));
+    tools
 }
 
 /// The tools whose effect is `reads`: `read` and `grep`.
