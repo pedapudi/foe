@@ -23,14 +23,13 @@ The runner requires `/usr/bin/python3`.
 
 ## Run
 
-From the repository root:
+From the repository root, after `cargo build --release --bin foe`:
 
 ```sh
-bazel run //examples/exec-transport
+examples/exec-transport/run.sh
 ```
 
-The target builds `//:foe` and runs `run.sh`. A binary at another path can
-run the example directly:
+A binary at another path is given as the single argument:
 
 ```sh
 examples/exec-transport/run.sh /absolute/path/to/foe
