@@ -137,15 +137,30 @@ fn send_queues_a_message_and_peer_receipt_records_delivery() {
     assert_eq!(listed.rendered.as_deref(), Some("tester\tep_b\tactive"));
 }
 
-#[test]
-fn built_ins_and_host_tool_defs_partition_the_five_tools() {
-    let (team, _, _, _) = team();
-    let names: Vec<String> = tools(team).iter().map(|t| t.spec().name.clone()).collect();
-    assert_eq!(names, ["spawn", "steer"]);
-    let defs = host_tool_defs();
-    let hosted: Vec<&String> = defs.keys().collect();
-    assert_eq!(hosted, ["notify", "send", "team"]);
-    assert_eq!(defs["send"].effect, Effect::Pure);
+/// docs/config.md `tools`: the five team tools are built in. A root answers
+/// `send` and `team` from its own roster and has no parent to notify.
+#[tokio::test]
+async fn a_root_serves_send_and_team_from_its_own_roster() {
+    let (team, log, _, _) = team();
+    let names: Vec<String> = tools(team.clone(), None).iter().map(|t| t.spec().name.clone()).collect();
+    assert_eq!(names, ["spawn", "steer", "notify", "send", "team"]);
+    assert_eq!(builtin_specs().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), names);
+    assert_eq!(builtin_specs()[3].effect, Effect::Pure);
+    let tools = tools(team, None);
+    let by_name = |name: &str| tools.iter().find(|t| t.spec().name == name).unwrap();
+    assert!(by_name("notify").call(serde_json::json!({ "content": "x" }), &ctx(None)).await.is_error);
+    log.append(EventData::TeamRoster {
+        member_id: "ep_b".into(),
+        name: "tester".into(),
+        description: String::new(),
+        phase: MemberPhase::Active,
+    });
+    let sent = by_name("send").call(serde_json::json!({ "to": "tester", "content": "go" }), &ctx(None)).await;
+    assert!(!sent.is_error, "{:?}", sent.rendered);
+    let EventData::TeamMessage { from, to, .. } = &log.events()[1].data else { panic!() };
+    assert_eq!((from.as_str(), to.as_str()), ("ep_lead", "ep_b"));
+    let roster = by_name("team").call(serde_json::json!({}), &ctx(None)).await;
+    assert_eq!(roster.rendered.as_deref(), Some("tester\tep_b\tactive"));
 }
 
 fn ctx(spawner: Option<Arc<dyn Spawner>>) -> CallCtx {
@@ -180,7 +195,7 @@ async fn spawn_tool_runs_a_child_whose_notify_and_end_reach_the_lead() {
         .unwrap()
         .with_launcher(fake_child(&dir)),
     );
-    let tools = tools(team.clone());
+    let tools = tools(team.clone(), None);
     let spawn = tools.iter().find(|t| t.spec().name == "spawn").unwrap();
     let args = serde_json::json!({ "program": "worker", "task": "do it", "name": "w1" });
     let value = spawn.call(args.clone(), &ctx(Some(spawner.clone()))).await;
@@ -190,7 +205,7 @@ async fn spawn_tool_runs_a_child_whose_notify_and_end_reach_the_lead() {
     let config: crate::Config =
         serde_json::from_slice(&std::fs::read(dir.join("children").join(&child_id).join("config.json")).unwrap())
             .unwrap();
-    assert!(config.host_tools.contains_key("notify"), "the child resolves notify as a host tool");
+    assert_eq!(config.tools, ["notify"], "the child's tools are the program's; notify is built in");
 
     wait_for(|| (uplink.0.lock().unwrap().len() == 2).then_some(()));
     let steer = tools.iter().find(|t| t.spec().name == "steer").unwrap();

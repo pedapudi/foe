@@ -52,9 +52,15 @@ impl Log {
         Ok(Self { dir: dir.to_path_buf(), inner: Mutex::new((writer, Vec::new())) })
     }
 
-    /// Opens a log that already has events, for example one that seeding wrote.
-    pub fn open(dir: &Path, mirror: Option<Box<dyn std::io::Write + Send>>) -> Result<Self, LogError> {
+    /// Opens a log that already has events, for example one that seeding
+    /// wrote. The mirror first receives the file as it stands, so a host
+    /// reading standard output sees the seeded prefix as well.
+    pub fn open(dir: &Path, mut mirror: Option<Box<dyn std::io::Write + Send>>) -> Result<Self, LogError> {
         let events = fold::read_all(dir)?;
+        if let Some(mirror) = &mut mirror {
+            std::io::copy(&mut std::fs::File::open(dir.join(fold::LOG_FILE))?, mirror)?;
+            mirror.flush()?;
+        }
         let writer = foe_log::append::Writer::open(dir, mirror)?;
         Ok(Self { dir: dir.to_path_buf(), inner: Mutex::new((writer, events)) })
     }

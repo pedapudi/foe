@@ -10,10 +10,10 @@
 //! Two files are written beside the child's log before it starts.
 //! `config.json` is the configuration the child is launched with, derived
 //! from the parent's `programs` entry with `version`, `model`, and
-//! `sandbox` inherited and with `notify`, `send`, and `team` declared under
-//! `host_tools`, because the parent is the host that answers them.
-//! `lineage.json` names the child's own id, its parent, and its team lead,
-//! for the child's `episode/start`.
+//! `sandbox` inherited. `lineage.json` names the child's own id, its parent,
+//! and its team lead, for the child's `episode/start`; a child that reads it
+//! sends its `notify`, `send`, and `team` calls to this process, which
+//! answers them through the [`ChildObserver`].
 //!
 //! The parent never writes the child's log, and this module never writes
 //! the parent's. `budget/reserve`, `spawn/start`, `spawn/end`, and
@@ -215,9 +215,8 @@ impl ProcessSpawner {
 }
 
 /// The configuration a child is launched with. Budget dimensions the parent
-/// reserved replace the program's own when they are tighter, the depth
-/// below the child is one less than below the parent, and the team tools the
-/// parent answers are declared as host tools.
+/// reserved replace the program's own when they are tighter, and the depth
+/// below the child is one less than below the parent.
 pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reserve: BudgetAmount) -> Config {
     let mut budget = program.budget.clone();
     if let Some(n) = reserve.model_calls {
@@ -230,15 +229,13 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
         budget.seconds = Some(budget.seconds.map_or(n, |t| t.min(n)));
     }
     budget.max_depth = budget.max_depth.min(parent.budget.max_depth.saturating_sub(1));
-    let mut host_tools = program.host_tools.clone();
-    host_tools.extend(crate::team::host_tool_defs());
     Config {
         version: parent.version,
         name: program.name.clone(),
         instructions: program.instructions.clone(),
         tools: program.tools.clone(),
         tool_defs: program.tool_defs.clone(),
-        host_tools,
+        host_tools: program.host_tools.clone(),
         grants: program.grants.clone(),
         budget,
         done_when: program.done_when.clone(),

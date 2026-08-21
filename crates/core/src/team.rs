@@ -5,22 +5,24 @@
 //! between members, and [`fold`] derives both from it. No other team state
 //! exists. See docs/design.md "Subagents and teams".
 //!
-//! The lead holds the `spawn` and `steer` built-ins. A member's `notify`,
-//! `send`, and `team` are host tools from the member's point of view, and
-//! the lead is the host that answers them: a `notify` becomes an inbox item
-//! in the lead's log with source `child`; a `send` becomes a `team/message`
-//! in the lead's log followed by an inbox item with source `peer` written
-//! to the target; `team` returns the roster. When the target records the
-//! peer item, the lead sees it and writes `team/delivered`. See
-//! docs/protocol.md "Children".
+//! Five built-in tools belong here. `spawn` and `steer` act on this
+//! episode's own team. `notify`, `send`, and `team` act on the team this
+//! episode belongs to: in an episode with a parent they are host tool calls
+//! that the parent answers, and in a root they act on its own roster, with
+//! `notify` an error because no parent exists. When the lead answers a
+//! member, a `notify` becomes an inbox item in the lead's log with source
+//! `child`; a `send` becomes a `team/message` in the lead's log followed by
+//! an inbox item with source `peer` written to the target; `team` returns
+//! the roster. When the target records the peer item, the lead sees it and
+//! writes `team/delivered`. See docs/protocol.md "Children".
 
-use crate::protocol::InboxSink;
+use crate::protocol::{Host, InboxSink};
 use crate::spawn::{ChildObserver, Router};
-use crate::{CallCtx, CapError, Effect, HostToolDef, SpawnHandle, SpawnRequest, Spawner, Tool, ToolSpec, ToolValue};
+use crate::{CallCtx, CapError, Effect, SpawnHandle, SpawnRequest, Spawner, Tool, ToolSpec, ToolValue};
 use foe_log::{
     BudgetAmount, ContentBlock, Event, EventData, InboxItem, InboxSource, MemberPhase, Outcome, SpawnContext,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -372,35 +374,24 @@ impl Kind {
     }
 }
 
-/// The specifications of the lead's built-in tools, in the order [`tools`]
-/// lists them. Identity and `foe tools` use this without a running team.
+const KINDS: [Kind; 5] = [Kind::Spawn, Kind::Steer, Kind::Notify, Kind::Send, Kind::Team];
+
+/// The specifications of the five team tools, in the order [`tools`] lists
+/// them. Identity and `foe tools` use this without a running team.
 pub fn builtin_specs() -> Vec<ToolSpec> {
-    [Kind::Spawn, Kind::Steer].into_iter().map(Kind::spec).collect()
+    KINDS.into_iter().map(Kind::spec).collect()
 }
 
-/// The built-in tools of a lead: `spawn` and `steer`. `spawn` takes its
-/// [`Spawner`] from the call context.
-pub fn tools(team: Arc<Team>) -> Vec<Box<dyn Tool>> {
-    [Kind::Spawn, Kind::Steer]
+/// The five team tools. `parent` is the link to the process hosting this
+/// episode, when it has one; `notify`, `send`, and `team` then go to the
+/// parent as host tool calls. `spawn` takes its [`Spawner`] from the call
+/// context.
+pub fn tools(team: Arc<Team>, parent: Option<&Host>) -> Vec<Box<dyn Tool>> {
+    KINDS
         .into_iter()
-        .map(|kind| Box::new(TeamTool { spec: kind.spec(), kind, team: team.clone() }) as Box<dyn Tool>)
-        .collect()
-}
-
-/// The `host_tools` entries a child is launched with: `notify`, `send`, and
-/// `team`, which its parent answers.
-pub fn host_tool_defs() -> BTreeMap<String, HostToolDef> {
-    [Kind::Notify, Kind::Send, Kind::Team]
-        .into_iter()
-        .map(|kind| {
-            let spec = kind.spec();
-            let def = HostToolDef {
-                description: spec.description,
-                instruction: spec.instruction,
-                params: spec.params,
-                effect: spec.effect,
-            };
-            (spec.name, def)
+        .map(|kind| match (parent, kind) {
+            (Some(host), Kind::Notify | Kind::Send | Kind::Team) => host.tool(kind.spec()),
+            _ => Box::new(TeamTool { spec: kind.spec(), kind, team: team.clone() }) as Box<dyn Tool>,
         })
         .collect()
 }
@@ -462,8 +453,23 @@ impl Tool for TeamTool {
                     Err(e) => ToolValue::error(format!("steer: {e}")),
                 }
             }
-            Kind::Notify | Kind::Send | Kind::Team => {
-                unreachable!("answered as host tools by the lead")
+            Kind::Notify => ToolValue::error("notify: this episode has no parent to notify"),
+            Kind::Send => {
+                let (to, content) = match (arg(&args, "to"), arg(&args, "content")) {
+                    (Ok(t), Ok(c)) => (t, c),
+                    (Err(e), _) | (_, Err(e)) => return e,
+                };
+                match self.team.send(&self.team.lead_id, to, text_content(content)) {
+                    Ok(message_id) => ToolValue::ok(
+                        serde_json::json!({ "to": to, "message_id": message_id }),
+                        format!("sent to {to}"),
+                    ),
+                    Err(e) => ToolValue::error(format!("send: {e}")),
+                }
+            }
+            Kind::Team => {
+                let state = self.team.state();
+                ToolValue::ok(state.roster_value(), state.roster_text())
             }
         }
     }
