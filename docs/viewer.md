@@ -11,21 +11,149 @@ a replay that has not finished.
 
 ## What the viewer shows
 
-The left pane lists episodes as a tree by lineage. Each entry shows the
-program name, the outcome once the episode has ended, and token usage. The
-right pane shows the conversation of the selected episode, derived from its
-log by the rule in [log-format.md](log-format.md#derived-messages). It
-holds the system prompt and tool schemas from `request/header`, each inbox
-item, and each assistant turn. Each tool call appears with the text the
-model received and the canonical value the log stores. A compaction appears
-as one system row placed at the cut, stating how many messages the summary
-replaced, with the continuation message the model receives behind an
-expander; the rows above it stay visible, faded and marked `compacted`,
-because the pane shows the log and the log keeps them. Budget consumption,
-sandbox status, and the outcome come from the same log. Everything the
-bundle shows is computed in the browser from the events; the server
-contributes only the tree, which tells the bundle which episodes exist and
-in what order.
+Below the top bar the page has three regions.
+
+- The **episodes** region, at the top of the left column, lists episodes as
+  a tree by lineage.
+- The **details** region, below it, describes the selected episode.
+- The **trajectory** region, at the top of the right column, draws when
+  each episode ran and what it did.
+- Below the trajectory sit the **conversation**, **raw events**, and
+  **diff** tabs for the selected episode.
+
+Every divider between two regions is a grip that resizes them, by drag, by
+the arrow keys, or to a limit with Home and End; a double click returns a
+grip to its default. `docs/design-language.md` specifies the grip.
+The sizes persist in `localStorage` under `foe.panes` as one object with
+the sidebar width in pixels and the two row splits as a fraction of the
+column each divides. The sidebar opens at 300 pixels, the details region at
+30 percent of the left column, and the trajectory at 35 percent of the right
+column. Every region declares a minimum, so none of them collapses.
+
+The episodes tree gives each episode a row about 40 pixels tall: a dot
+coloured by outcome, the program name at the page's base size, the episode
+id in mono beside it, and a second line reading the outcome word with the
+code of a `blocked` outcome or the limit of an `exhausted` one. A spawned
+child hangs under its parent on a solid connector and a fork under its
+origin on a dashed one, both two pixels wide in `--v2-ink-faint`.
+
+The details region states the outcome, the model calls and tokens consumed
+against the budget `episode/start.program.budget` declares, the sandbox
+mode and Landlock ABI, the lineage, the event count, the start time, the
+duration, and the task. Its text wraps and its numbers are tabular; the
+region scrolls as a whole when its content exceeds it, and nothing inside
+it has a scrollbar of its own.
+
+The conversation is derived from the log by the rule in
+[log-format.md](log-format.md#derived-messages). It holds the system prompt
+and tool schemas from `request/header`, each inbox item, and each assistant
+turn. Each tool call appears with the text the model received and the
+canonical value the log stores. A compaction appears as one system row
+placed at the cut, stating how many messages the summary replaced, with the
+continuation message the model receives behind an expander; the rows above
+it stay visible, faded and marked `compacted`, because the pane shows the
+log and the log keeps them. Everything the bundle shows is computed in the
+browser from the events; the server contributes only the tree, which tells
+the bundle which episodes exist and in what order.
+
+## The trajectory
+
+The trajectory draws one row per episode, in the order the tree lists them,
+indented by lineage. The row label is the program name with the episode id
+in mono, and the selected row carries the figure's one accent.
+
+The x axis is wall-clock time, taken from each event's `time`. A control in
+the region's header switches it to log position, where x is the event's
+`seq`. Both axes map linearly onto the same plot area, so switching moves
+the marks and changes nothing else. The axis carries small mono labels on
+leader ticks at round offsets from the start of the run, and no gridlines.
+The figure fits the region's width and reflows when the region is resized;
+it neither pans nor zooms, and it redraws only when a digest of what it
+would draw changes.
+
+Each row carries these marks.
+
+| mark | drawn from | form |
+|---|---|---|
+| lifetime | `episode/start` to `episode/end` | a hairline bar, continued as a dashed extension to the current time while the episode runs |
+| model request | `model/request` | a thin vertical tick |
+| tool call | `tool/result` | a segment whose width is `duration_ms`, ending at the result |
+| compaction | `compaction/start` | a small open diamond in `--v2-caution` |
+| retry | `request/retry` | a cross in `--v2-bad` |
+| spawn | `spawn/start` | a small ring, and the origin of the child's connector |
+| outcome | `episode/end` | a glyph at the end of the bar |
+
+On the sequence axis a tool call is a tick rather than a segment, because a
+duration in milliseconds has no length in log positions.
+
+The outcome glyph is coloured by direction: a filled dot in `--v2-good` for
+`completed`, a cross in `--v2-bad` for `failed`, a triangle in
+`--v2-caution` for `exhausted`, and a flat bar in `--v2-flat` for
+`blocked`, whose code appears on hover. A running episode ends in an open
+ring.
+
+A connector runs from the parent's `spawn/start` mark to the start of the
+child's bar, solid. A fork's connector runs from the origin's position at
+the fork boundary to the start of the fork's bar, dashed.
+
+Hovering a mark opens a hovercard naming the mark, its `seq`, its time, its
+duration when it has one, and one line of detail: a tool call's arguments, a
+retry's cause and delay, or a spawned child's program. Clicking a mark
+selects its episode and brings the conversation to that log position.
+Clicking a row label selects that episode, and `j` and `k` move between
+rows.
+
+## Rendering text
+
+The bundle renders four kinds of rich text. Every element is built with
+`document.createElement` and every string of model output is set as a text
+node, so no text from a log is ever parsed as markup by the browser.
+
+**Markdown.** An assistant message is Markdown once the message is
+complete. The parser is written for this viewer and takes no dependency. It
+covers ATX headings, paragraphs, bullet and ordered lists with nesting,
+fenced code, block quotes, pipe tables with alignment, thematic breaks, and
+the inline set of emphasis, strong emphasis, strikethrough, code spans,
+links, hard line breaks, and mathematics. A link shows its target in a
+tooltip and is not navigable, because the page runs on loopback or from a
+file and never leaves the log. While a message is still streaming its text
+is shown as it arrives, because a half-written fence or table would parse
+as something the model did not mean.
+
+**Code.** A fenced block is coloured by a hand-written tokenizer that knows
+Rust, Python, TypeScript and JavaScript, JSON, shell, Go, the C family,
+TOML, YAML, and Markdown; a language it does not know stays plain. The
+tokenizer recognizes five roles, and concatenating its output reproduces
+the input byte for byte, so colouring never changes a character. Strings
+take `--v2-good` at reduced opacity, keywords `--v2-accent`, comments
+`--v2-ink-faint`, numbers `--v2-caution` at reduced opacity, and everything
+else `--v2-ink`. A block sets in `--v2-mono` on a `--v2-panel` ground inside
+a `--v2-rule` hairline, names its language in faint mono at the top right,
+and carries a copy control.
+
+**Diffs.** The unified diff the `edit` tool returns is read into numbered
+lines. An added line is tinted `--v2-good-soft` and a removed line
+`--v2-bad-soft`; line numbers are faint mono, one column for the file
+before the edit and one for the file after, and each line's number advances
+only on the side it belongs to.
+
+**Mathematics.** `$…$` and `\(…\)` are inline expressions and `$$…$$` and
+`\[…\]` are display expressions. A display expression alone in a paragraph
+becomes a block. A single dollar opens an expression only when a closing
+dollar follows on the same line with no space beside either delimiter, so a
+price or a shell variable stays literal. Expressions are converted to
+MathML, which Chrome, Firefox, and Safari lay out natively, so the page
+ships no math font and fetches nothing. An expression that is not valid TeX
+is shown as its source in mono. The converter is Temml, vendored under
+`view/vendor/`, and `view/README.md` states why it is the one exception to
+the rule that the bundle has no dependencies.
+
+**Tool results.** The shape of a `tool/result`'s `rendered` text is decided
+from the text alone. Text carrying diff hunks renders as a diff; text that
+parses as JSON renders as pretty-printed, coloured JSON; text whose lines
+all begin with a number and a tab renders as numbered source, coloured by
+the extension of the `path` in the result's canonical value; everything
+else stays preformatted in mono.
 
 ## The page
 
