@@ -1,7 +1,0 @@
-#!/bin/sh
-# Runs ruff over the project source. Arguments narrow the check to the named paths.
-# Reads nothing from standard input, so the same file serves as a done_when verifier.
-# A verifier reports findings with exit status 0; ruff exits 1 when it finds any,
-# so that status is mapped to 0 and only a ruff failure (status 2) exits non-zero.
-/home/user/project/.venv/bin/ruff check -q --output-format concise /home/user/project/src "$@"
-[ $? -le 1 ]

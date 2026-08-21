@@ -517,8 +517,12 @@ fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
         std::fs::create_dir_all(project.join(sub)).unwrap();
     }
     std::fs::write(root.join("anthropic.key"), "sk-test\n").unwrap();
-    let ruff = project.join("tools/ruff-check");
-    std::fs::copy(Path::new(EXAMPLES).join("wrap-a-binary/ruff-check"), &ruff).unwrap();
+    // `plan` resolves every `tool_defs.exec` path, so a file has to exist at
+    // each path the examples name under `project/tools`. Identity hashes the
+    // contents, and both fixtures write the same bytes, so any contents serve.
+    for name in ["ruff-check", "style-check"] {
+        std::fs::write(project.join("tools").join(name), "#!/bin/sh\nexit 0\n").unwrap();
+    }
     let rewritten = text
         .replace("/home/user/.config/foe/anthropic.key", root.join("anthropic.key").to_str().unwrap())
         .replace("/home/user/project", project.to_str().unwrap());
