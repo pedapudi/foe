@@ -22,6 +22,22 @@ Changing an existing type's data requires a new log version.
 An episode directory is self-contained. Copying it copies everything needed
 to view, replay, or fork the episode and its descendants.
 
+## Writers
+
+Each log has exactly one writer: the process running that episode. A parent
+writes its own log and never a child's. A team member never appends to the
+lead's log; a message from a member reaches the lead over the host protocol,
+and the lead's process appends the `team/message` event. Concurrent episodes
+therefore never contend for a file, and a reader tailing many logs needs no
+lock.
+
+The writer appends each event with a single write call and flushes it before
+echoing the same bytes to standard output. It forces the file to disk after
+`episode/start`, after every `tool/result` whose tool declared an effect
+other than `pure` or `reads`, and before `episode/end`. A crash between
+those points loses at most the events since the last forced write, and the
+seeding rules repair any tool call left without a result.
+
 ## Envelope
 
 One JSON object per line.
