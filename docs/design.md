@@ -183,12 +183,17 @@ A step is one model request and the tool calls it produces.
   │    append tool/result in issue order                            │
   ├─────────────────────────────────────────────────────────────────┤
   │ 4. settle                                                       │
-  │    budget spent?  ──► Exhausted                                 │
+  │    block called?  ──► Blocked                                   │
   │    looping?       ──► Blocked                                   │
   │    done_when met? ──► Completed                                 │
+  │    budget spent?  ──► Exhausted                                 │
   │    else           ──► next step                                 │
   └─────────────────────────────────────────────────────────────────┘
 ```
+
+The settle order checks the budget last, so a turn that completes the task
+on the last permitted model call completes the episode. The budget ends the
+episode only when work remains.
 
 Three rules hold in every step. Each exists because its absence loses data.
 

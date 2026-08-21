@@ -216,7 +216,11 @@ other route.
 `spill` names a file under `spill/` when the canonical value was too large to
 inline; the inlined `value` is then a locator object. `synthetic` is true
 when the result was written by the seeding step or by request failure
-recovery rather than by running the tool.
+recovery rather than by running the tool: a call left without a result when
+the episode was interrupted receives a result with `synthetic: true` and
+`is_error: true`. The rejection of every call in a response that hit the
+output length limit is `is_error: true` with `synthetic: false`, because the
+runtime produced that result in the ordinary course of the step.
 
 `host/tool-call` — implemented. A tool call that resolves to a host tool,
 emitted so that the host can execute it. The result arrives as an ordinary
