@@ -27,7 +27,9 @@ macro_rules! font {
 
 /// The self-hosted font files by the name the bundle's CSS requests under
 /// `/fonts/`. A font that was absent at build time is embedded empty.
-const FONTS: [(&str, &[u8]); 4] = [
+const FONTS: [(&str, &[u8]); 6] = [
+    font!("Inconsolata-Regular.woff2"),
+    font!("Inconsolata-Bold.woff2"),
     font!("iAWriterMonoS-Regular.woff2"),
     font!("iAWriterMonoS-Bold.woff2"),
     font!("JetBrainsMono-Regular.woff2"),

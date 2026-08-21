@@ -4,15 +4,31 @@
  * src/zicato/dashboard/static/css/console.css without modification other
  * than the selector, which is re-scoped from
  * #variant-root[data-variant="T"][data-t-theme="<id>"] to
- * :root[data-theme="<id>"]. Monokai is the default. This file is the only
- * place in the bundle where a raw hex colour appears
- * (docs/design-language.md, "Colour").
+ * :root[data-theme="<id>"]. The default is google-light on a machine asking
+ * for a light ground and google-dark on one asking for a dark ground; the
+ * two blocks at the end of the theme list carry that default for the first
+ * paint, before the bundle stamps a theme. This file is the only place in
+ * the bundle where a raw hex colour appears (docs/design-language.md,
+ * "Colour").
  *
- * The four woff2 files under view/fonts/ are the self-hosted faces of the
- * default typeface. The live server serves them at /fonts/<name>.woff2 and
- * the static export inlines them as data URIs. No other font is fetched:
- * every other family resolves locally or falls back to a system face. */
+ * The six woff2 files under view/fonts/ are the self-hosted faces: the
+ * Inconsolata pair the default typeface sets, and the two pairs the other
+ * technical and display faces set. The live server serves them at
+ * /fonts/<name>.woff2 and the static export inlines them as data URIs. No
+ * other font is fetched: every other family resolves against the machine's
+ * own copy or falls back to a system face. view/fonts/README.md records
+ * where each file came from. */
 
+@font-face {
+  font-family: "Inconsolata"; font-style: normal; font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/Inconsolata-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inconsolata"; font-style: normal; font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/Inconsolata-Bold.woff2") format("woff2");
+}
 @font-face {
   font-family: "iA Writer Mono"; font-style: normal; font-weight: 400;
   font-display: swap;
@@ -37,10 +53,22 @@
 
 /* The brand accent, which is a token of its own and belongs to the mark's
  * core alone (docs/brand/README.md, "Color"). Interface chrome uses the
- * theme's --v2-accent. The dark value is the default because most of the
- * sixteen themes are dark; the five light-ground themes override it. */
+ * theme's --v2-accent. The dark value is stated first because most of the
+ * sixteen themes are dark; the five light-ground themes override it, and so
+ * does a root with no theme stamped on it unless the machine asks for a
+ * dark ground. */
 :root {
   --foe-accent: #E8A43E;
+}
+
+:root:not([data-theme]) {
+  --foe-accent: #C7791A;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --foe-accent: #E8A43E;
+  }
 }
 
 :root[data-theme="solarized-light"],
@@ -51,8 +79,7 @@
   --foe-accent: #C7791A;
 }
 
-/* Monokai (default): warm dark. */
-:root,
+/* Monokai. */
 :root[data-theme="monokai"] {
   --v2-paper:      #1e1f1c;
   --v2-panel:      #272822;
@@ -359,6 +386,49 @@
   --v2-cell-empty: #371129;
 }
 
+/* The palette in force before the bundle stamps a theme on the root. It
+ * repeats google-light and google-dark so that the first paint already
+ * matches the default the bundle then applies; the values must stay equal
+ * to the two blocks above. A stored choice wins over both, and the bundle
+ * applies it as soon as it runs. */
+:root {
+  --v2-paper:      #FFFFFF;
+  --v2-panel:      #F4F4F4;
+  --v2-ink:        #474A4E;
+  --v2-ink-soft:   #5F6368;
+  --v2-ink-faint:  #9FA1A4;
+  --v2-rule:       #E2E3E4;
+  --v2-rule-soft:  #F1F1F1;
+  --v2-good:       #34A853;
+  --v2-good-soft:  #D2ECD9;
+  --v2-bad:        #EA4335;
+  --v2-bad-soft:   #FAD6D3;
+  --v2-caution:    #C99700;
+  --v2-accent:     #1B9CB8;
+  --v2-flat:       #9AA0A6;
+  --v2-cell-empty: #F8F8F8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --v2-paper:      #202124;
+    --v2-panel:      #2C2D30;
+    --v2-ink:        #FFFFFF;
+    --v2-ink-soft:   #E8EAED;
+    --v2-ink-faint:  #989A9D;
+    --v2-rule:       #444548;
+    --v2-rule-soft:  #323336;
+    --v2-good:       #34A853;
+    --v2-good-soft:  #243F2E;
+    --v2-bad:        #EA4335;
+    --v2-bad-soft:   #4C2828;
+    --v2-caution:    #FBBC05;
+    --v2-accent:     #24C1E0;
+    --v2-flat:       #5F6368;
+    --v2-cell-empty: #28292C;
+  }
+}
+
 /* ===================  typeface tokens  ===================
  *
  * Three modes, four faces each. [data-typeface] on the root names a face;
@@ -367,6 +437,7 @@
  * --n-font-paper (long prose). The brand wordmark pins to --v2-brand-mono
  * and never follows the chosen face. */
 :root {
+  --n-font-inconsolata: "Inconsolata", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --n-font-mono-real: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   --n-font-prose-mono: "iA Writer Mono", "iA Writer Mono S", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --n-font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
@@ -374,15 +445,21 @@
   --n-font-geo: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
   --v2-brand-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 
-  --v2-sans: var(--n-font-prose-mono);
-  --v2-mono: var(--n-font-mono-real);
-  --n-font-head: var(--n-font-prose-mono);
-  --n-font-paper: var(--n-font-prose-mono);
+  --v2-sans: var(--n-font-inconsolata);
+  --v2-mono: var(--n-font-inconsolata);
+  --n-font-head: var(--n-font-inconsolata);
+  --n-font-paper: var(--n-font-inconsolata);
   --dt-font-scale: 1;
 }
 
 /* ----- technical ----- */
 :root[data-typeface="technical"],
+:root[data-typeface="technical-inconsolata"] {
+  --v2-sans: var(--n-font-inconsolata);
+  --v2-mono: var(--n-font-inconsolata);
+  --n-font-head: var(--n-font-inconsolata);
+  --n-font-paper: var(--n-font-inconsolata);
+}
 :root[data-typeface="technical-ia-writer"] {
   --v2-sans: var(--n-font-prose-mono);
   --v2-mono: var(--n-font-mono-real);
@@ -394,12 +471,6 @@
   --v2-mono: 'Source Code Pro', ui-monospace, monospace;
   --n-font-head: 'Source Sans 3', system-ui, sans-serif;
   --n-font-paper: 'Source Sans 3', system-ui, sans-serif;
-}
-:root[data-typeface="technical-inconsolata"] {
-  --v2-sans: 'Inconsolata', ui-monospace, monospace;
-  --v2-mono: 'Inconsolata', ui-monospace, monospace;
-  --n-font-head: 'Inconsolata', ui-monospace, monospace;
-  --n-font-paper: 'Inconsolata', ui-monospace, monospace;
 }
 :root[data-typeface="technical-ubuntu"] {
   --v2-sans: 'Ubuntu', system-ui, sans-serif;

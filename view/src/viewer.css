@@ -469,11 +469,42 @@ details[open] > summary::before {
   padding: 7px 12px;
 }
 
+/* The typeface trigger is a specimen, one family name, and a caret. The
+ * specimen carries the recognition, so the name is the option's first
+ * family alone and the control stays as narrow as the swatch beside it. */
 .tf-current {
   display: inline-flex;
-  align-items: center;
-  max-width: 190px;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 150px;
   overflow: hidden;
+}
+
+.tf-micro {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 0 4px;
+  border: 1px solid var(--v2-rule);
+  border-radius: 3px;
+  color: var(--v2-ink-soft);
+  line-height: 1.35;
+}
+
+.tf-micro-body {
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.tf-micro-data {
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.tf-lead {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Every option names itself in its own face, over one line set in the

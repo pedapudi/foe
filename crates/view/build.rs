@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 const JS_PLACEHOLDER: &str = "document.getElementById(\"app\").textContent = \
     \"The viewer bundle was not built. Run `pnpm install && pnpm build` in view/, then rebuild foe.\";";
 const CSS_PLACEHOLDER: &str = "body{font-family:system-ui,sans-serif;margin:2rem}";
-const FONTS: [&str; 4] = [
+const FONTS: [&str; 6] = [
+    "Inconsolata-Regular.woff2",
+    "Inconsolata-Bold.woff2",
     "iAWriterMonoS-Regular.woff2",
     "iAWriterMonoS-Bold.woff2",
     "JetBrainsMono-Regular.woff2",
