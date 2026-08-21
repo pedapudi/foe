@@ -26,9 +26,19 @@ the arrow keys, or to a limit with Home and End; a double click returns a
 grip to its default. `docs/design-language.md` specifies the grip.
 The sizes persist in `localStorage` under `foe.panes` as one object with
 the sidebar width in pixels and the two row splits as a fraction of the
-column each divides. The sidebar opens at 300 pixels, the details region at
-30 percent of the left column, and the trajectory at 35 percent of the right
-column. Every region declares a minimum, so none of them collapses.
+column each divides. The object names only the sizes the reader has moved,
+so a size left alone stays derived across a reload. The sidebar opens at
+300 pixels and the details region at 30 percent of the left column.
+
+The trajectory opens at the height its rows need: the axis, the rows, and
+the padding around them, held at or above the shortest pane and at or below
+half the right column. A run of one episode therefore opens a region the
+height of one episode rather than a fixed share of mostly empty ground, and
+a spawn during a live run grows the region as it adds a row. Once a grip has
+moved the trajectory the stored size wins and the row count no longer
+changes it; a double click on a grip drops the stored size and returns the
+region to what derives it. Every region declares a minimum, so none of them
+collapses.
 
 The episodes tree gives each episode a row about 40 pixels tall: a dot
 coloured by outcome, the program name at the page's base size, the episode

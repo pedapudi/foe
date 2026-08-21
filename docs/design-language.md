@@ -136,9 +136,13 @@ which takes `--v2-accent` on hover and while dragging. Its cursor is
 
 A grip is focusable and carries `role="separator"` with the current size as
 `aria-valuenow`. The arrow keys move it 16 pixels, Home and End take it to
-its two limits, and a double click returns it to its default. A drag takes
-pointer capture and applies at most one size per animation frame. Each
+its two limits, and a double click returns it to whatever derives it. A drag
+takes pointer capture and applies at most one size per animation frame. Each
 region declares a minimum, so no region collapses.
+
+A region whose height follows its content opens at that height and keeps
+following it until a grip sets a size. Only sizes a grip has set are stored,
+so a region left alone stays derived.
 
 Theme, typeface, font size, page scale, and pane sizes persist in
 `localStorage` under `foe.theme`, `foe.typeface`, `foe.fontsize`,

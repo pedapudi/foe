@@ -112,9 +112,21 @@ export const ROW_HEIGHT = 24;
 const AXIS_HEIGHT = 20;
 const PAD_RIGHT = 14;
 const PAD_BOTTOM = 8;
+/** Space between the axis and the first row. */
+const AXIS_GAP = 6;
 const LABEL_MIN = 116;
 const LABEL_MAX = 230;
 const TICK_TARGET = 5;
+
+/**
+ * The height the figure needs to show `rows` rows in full: the axis, the
+ * gap below it, the rows themselves, and the padding under the last row.
+ * The pane's default height is derived from this, so a run with one
+ * episode opens a pane the size of one episode.
+ */
+export function trajectoryContentHeight(rows: number): number {
+  return AXIS_HEIGHT + AXIS_GAP + Math.max(0, rows) * ROW_HEIGHT + PAD_BOTTOM;
+}
 
 /** Room the row labels take, which follows the pane width within limits. */
 export function labelWidthFor(width: number): number {
@@ -148,7 +160,7 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
   const plotLeft = labelWidth + 10;
   const plotRight = Math.max(plotLeft + 20, width - PAD_RIGHT);
   const rowHeight = ROW_HEIGHT;
-  const top = AXIS_HEIGHT + 6;
+  const top = AXIS_HEIGHT + AXIS_GAP;
   const bottom = top + episodes.length * rowHeight;
   const plot: Plot = { left: plotLeft, right: plotRight, top, bottom };
   const domain = domainOf(episodes, axis, input.now);

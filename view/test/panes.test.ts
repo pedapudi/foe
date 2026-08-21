@@ -3,8 +3,9 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PANE_DEFAULTS, PANE_LIMITS, clampPanes, parsePanes, serialisePanes } from "../src/panes.js";
+import { PANE_DEFAULTS, PANE_LIMITS, clampPanes, fitTrajectory, parsePanes, serialisePanes, storedPaneKeys } from "../src/panes.js";
 import type { PaneExtent, PaneSizes } from "../src/panes.js";
+import { ROW_HEIGHT, trajectoryContentHeight } from "../src/trajectory.js";
 
 const ROOM: PaneExtent = { width: 1512, leftHeight: 700, rightHeight: 700 };
 
@@ -67,6 +68,85 @@ test("a size that is not a number falls back rather than propagating", () => {
 
 test("the defaults themselves survive clamping at a common window size", () => {
   assert.deepEqual(clampPanes(PANE_DEFAULTS, ROOM), PANE_DEFAULTS);
+});
+
+// ---- the trajectory's derived height ----
+
+const CHROME = 28;
+
+test("the figure's content height grows by one row height per row", () => {
+  const one = trajectoryContentHeight(1);
+  assert.equal(trajectoryContentHeight(2) - one, ROW_HEIGHT);
+  assert.equal(trajectoryContentHeight(0), one - ROW_HEIGHT);
+  assert.equal(trajectoryContentHeight(-3), trajectoryContentHeight(0), "a negative count is no rows");
+});
+
+test("one episode takes the height of one episode rather than a fixed share", () => {
+  const column = 700;
+  const height = fitTrajectory(1, column, CHROME) * column;
+  // One row wants less than the shortest pane, so the floor decides.
+  assert.equal(CHROME + trajectoryContentHeight(1), 86);
+  assert.equal(height, PANE_LIMITS.rowMin);
+  assert.ok(height < PANE_DEFAULTS.trajectory * column, "the derived height is under the fixed default");
+});
+
+test("each further row raises the derived height by one row", () => {
+  const column = 700;
+  // Counted from a row count whose content already clears the floor.
+  const three = fitTrajectory(3, column, CHROME) * column;
+  const five = fitTrajectory(5, column, CHROME) * column;
+  assert.equal(three, CHROME + trajectoryContentHeight(3));
+  assert.equal(five - three, 2 * ROW_HEIGHT);
+});
+
+test("many rows stop at half the column, leaving the conversation the rest", () => {
+  const column = 700;
+  assert.equal(fitTrajectory(40, column, CHROME), 0.5);
+  assert.equal(fitTrajectory(400, column, CHROME), 0.5);
+});
+
+test("a row count too small to reach the shortest pane still reaches it", () => {
+  const column = 700;
+  assert.equal(fitTrajectory(0, column, 0) * column, PANE_LIMITS.rowMin);
+});
+
+test("an unmeasured column falls back to the fixed default", () => {
+  assert.equal(fitTrajectory(1, 0, CHROME), PANE_DEFAULTS.trajectory);
+  assert.equal(fitTrajectory(1, -10, CHROME), PANE_DEFAULTS.trajectory);
+});
+
+test("the derived height survives clamping, so it is applied as computed", () => {
+  const room: PaneExtent = { width: 1512, leftHeight: 700, rightHeight: 700 };
+  const fraction = fitTrajectory(3, 700, CHROME);
+  assert.equal(clampPanes({ ...PANE_DEFAULTS, trajectory: fraction }, room).trajectory, fraction);
+});
+
+// ---- which sizes the reader has set ----
+
+test("a stored value names only the sizes the reader has moved", () => {
+  assert.deepEqual(storedPaneKeys(null), []);
+  assert.deepEqual(storedPaneKeys("{}"), []);
+  assert.deepEqual(storedPaneKeys("not json"), []);
+  assert.deepEqual(storedPaneKeys('{"sidebar":420}'), ["sidebar"]);
+  assert.deepEqual(storedPaneKeys('{"trajectory":0.6,"sidebar":420}'), ["sidebar", "trajectory"]);
+  assert.deepEqual(storedPaneKeys('{"trajectory":"tall"}'), [], "a value that is not a number names nothing");
+});
+
+test("serialising writes only the sizes it is given", () => {
+  const sizes: PaneSizes = { sidebar: 412, details: 0.42, trajectory: 0.28 };
+  assert.equal(serialisePanes(sizes, ["trajectory"]), '{"trajectory":0.28}');
+  assert.deepEqual(storedPaneKeys(serialisePanes(sizes, [])), []);
+  assert.deepEqual(storedPaneKeys(serialisePanes(sizes)), ["sidebar", "details", "trajectory"]);
+});
+
+test("a stored trajectory overrides the derived height, and its absence does not", () => {
+  const raw = serialisePanes({ sidebar: 300, details: 0.3, trajectory: 0.62 }, ["trajectory"]);
+  assert.deepEqual(storedPaneKeys(raw), ["trajectory"]);
+  assert.equal(parsePanes(raw).trajectory, 0.62);
+  // With nothing stored the parsed value is the fixed default, which the
+  // derived height then replaces because no key is pinned.
+  assert.deepEqual(storedPaneKeys("{}"), []);
+  assert.equal(parsePanes("{}").trajectory, PANE_DEFAULTS.trajectory);
 });
 
 test("an unmeasured layout leaves the fractions alone", () => {

@@ -123,6 +123,15 @@ export class TrajectoryView {
     this.draw(false);
   }
 
+  /**
+   * Height of the heading above the figure. The pane's derived height is
+   * the figure's content plus this.
+   */
+  chromeHeight(): number {
+    const head = this.el.querySelector<HTMLElement>(".pane-head");
+    return head ? head.offsetHeight : 0;
+  }
+
   private draw(force: boolean): void {
     const width = this.figure.clientWidth;
     const height = this.figure.clientHeight;

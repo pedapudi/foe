@@ -9,6 +9,7 @@
 // proportionally more room.
 
 import { h } from "./dom.js";
+import { trajectoryContentHeight } from "./trajectory.js";
 
 export interface PaneSizes {
   /** Width of the episodes and details column, in pixels. */
@@ -27,6 +28,8 @@ export interface PaneExtent {
 }
 
 export const PANE_DEFAULTS: PaneSizes = { sidebar: 300, details: 0.3, trajectory: 0.35 };
+
+export const PANE_KEYS: (keyof PaneSizes)[] = ["sidebar", "details", "trajectory"];
 
 export const PANE_LIMITS = {
   /** Narrowest and widest the sidebar goes, before the window limit. */
@@ -68,7 +71,24 @@ export function clampPanes(sizes: PaneSizes, extent: PaneExtent): PaneSizes {
   };
 }
 
-/** Reads the stored sizes through `get`, falling back to the defaults. */
+/**
+ * The share of the right column the trajectory takes when the reader has
+ * not sized it: enough for every row, held at or above the shortest pane
+ * and at or below half the column, so that a run of one episode opens a
+ * pane the height of one episode and a run of forty still leaves the
+ * conversation half the column.
+ *
+ * `chromeHeight` is the height of the pane's heading, which sits above the
+ * figure inside the same region.
+ */
+export function fitTrajectory(rows: number, columnHeight: number, chromeHeight: number): number {
+  if (!(columnHeight > 0)) return PANE_DEFAULTS.trajectory;
+  const wanted = chromeHeight + trajectoryContentHeight(rows);
+  const height = clamp(wanted, PANE_LIMITS.rowMin, columnHeight / 2);
+  return height / columnHeight;
+}
+
+/** Reads the stored sizes, falling back to the defaults for what is absent. */
 export function parsePanes(raw: string | null): PaneSizes {
   if (raw === null) return { ...PANE_DEFAULTS };
   let value: unknown;
@@ -84,12 +104,31 @@ export function parsePanes(raw: string | null): PaneSizes {
   return { sidebar: pick("sidebar"), details: pick("details"), trajectory: pick("trajectory") };
 }
 
-export function serialisePanes(sizes: PaneSizes): string {
-  return JSON.stringify({
-    sidebar: Math.round(sizes.sidebar),
-    details: Number(sizes.details.toFixed(4)),
-    trajectory: Number(sizes.trajectory.toFixed(4)),
-  });
+/**
+ * The sizes the stored value actually names. A size the reader has never
+ * moved is absent, which is how a derived size stays derived across a
+ * reload.
+ */
+export function storedPaneKeys(raw: string | null): (keyof PaneSizes)[] {
+  if (raw === null) return [];
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (value === null || typeof value !== "object") return [];
+  const stored = value as Record<string, unknown>;
+  return PANE_KEYS.filter((key) => typeof stored[key] === "number" && Number.isFinite(stored[key]));
+}
+
+/** Writes `keys`, which default to all three sizes. */
+export function serialisePanes(sizes: PaneSizes, keys: (keyof PaneSizes)[] = PANE_KEYS): string {
+  const out: Record<string, number> = {};
+  for (const key of keys) {
+    out[key] = key === "sidebar" ? Math.round(sizes.sidebar) : Number(sizes[key].toFixed(4));
+  }
+  return JSON.stringify(out);
 }
 
 // ---- the live layout ----
@@ -103,6 +142,16 @@ interface Host {
 let host: Host | null = null;
 let current: PaneSizes = { ...PANE_DEFAULTS };
 const gripElements = new Map<keyof PaneSizes, HTMLElement>();
+
+/**
+ * Sizes the reader has set with a grip. A pinned size is stored and is
+ * never recomputed; an unpinned one follows `derived`, or the default when
+ * nothing derives it.
+ */
+const pinned = new Set<keyof PaneSizes>();
+
+/** Sizes computed from what a region holds, for the sizes not pinned. */
+const derived: Partial<PaneSizes> = {};
 
 function readStored(): string | null {
   try {
@@ -135,21 +184,54 @@ function extent(): PaneExtent {
 
 /**
  * Applies the sizes to the layout and stores them. Every grip, key, and
- * reset goes through this one call.
+ * reset goes through this one call. A size named in `sizes` becomes
+ * pinned, because naming one is what a reader moving a grip does; a size
+ * left out follows what derives it until a grip pins it.
  */
 export function applyPanes(sizes: Partial<PaneSizes>): void {
-  current = clampPanes({ ...current, ...sizes }, extent());
+  const next: PaneSizes = { ...current };
+  for (const key of PANE_KEYS) {
+    const given = sizes[key];
+    if (given !== undefined) {
+      pinned.add(key);
+      next[key] = given;
+    } else if (!pinned.has(key)) {
+      next[key] = derived[key] ?? PANE_DEFAULTS[key];
+    }
+  }
+  current = clampPanes(next, extent());
   if (!host) return;
   const style = host.root.style;
   const box = extent();
   style.setProperty("--pane-sidebar", `${Math.round(current.sidebar)}px`);
   style.setProperty("--pane-details", `${Math.round(current.details * box.leftHeight)}px`);
   style.setProperty("--pane-trajectory", `${Math.round(current.trajectory * box.rightHeight)}px`);
-  writeStored(serialisePanes(current));
+  writeStored(serialisePanes(current, [...pinned]));
   for (const [name, el] of gripElements) {
     el.setAttribute("aria-valuenow", String(Math.round(name === "sidebar" ? current[name] : current[name] * 100)));
   }
   for (const fn of listeners) fn();
+}
+
+/**
+ * Returns one size to whatever derives it, which a double click on its
+ * grip does. A size with nothing deriving it returns to its default.
+ */
+export function resetPane(name: keyof PaneSizes): void {
+  pinned.delete(name);
+  applyPanes({});
+}
+
+/**
+ * States how many rows the trajectory holds, so that its height follows
+ * its content while the reader has not sized it. A spawn during a live run
+ * adds a row and grows the region.
+ */
+export function setTrajectoryRows(rows: number, chromeHeight: number): void {
+  const fraction = fitTrajectory(rows, extent().rightHeight, chromeHeight);
+  if (derived.trajectory === fraction) return;
+  derived.trajectory = fraction;
+  if (!pinned.has("trajectory")) applyPanes({});
 }
 
 type Listener = () => void;
@@ -163,7 +245,9 @@ export function onPanesChange(fn: Listener): void {
 /** Reads the stored sizes and applies them to `root`. */
 export function loadPanes(parts: Host): void {
   host = parts;
-  current = parsePanes(readStored());
+  const raw = readStored();
+  current = parsePanes(raw);
+  for (const key of storedPaneKeys(raw)) pinned.add(key);
   applyPanes({});
   if (typeof ResizeObserver !== "undefined") {
     // A window resize changes what the fractions mean in pixels and can
@@ -238,17 +322,21 @@ export function buildGrip(options: GripOptions): HTMLElement {
   };
   el.addEventListener("pointerup", release);
   el.addEventListener("pointercancel", release);
-  el.addEventListener("dblclick", () => applyPanes({ [options.name]: PANE_DEFAULTS[options.name] } as Partial<PaneSizes>));
+  el.addEventListener("dblclick", () => resetPane(options.name));
   el.addEventListener("keydown", (event) => {
     const back = options.orientation === "col" ? "ArrowLeft" : "ArrowUp";
     const forward = options.orientation === "col" ? "ArrowRight" : "ArrowDown";
     const [low, high] = options.ends();
+    if (event.key === "Enter" || event.key === " ") {
+      resetPane(options.name);
+      event.preventDefault();
+      return;
+    }
     let next: number | null = null;
     if (event.key === back) next = current[options.name] - options.stepValue(PANE_STEP);
     else if (event.key === forward) next = current[options.name] + options.stepValue(PANE_STEP);
     else if (event.key === "Home") next = low;
     else if (event.key === "End") next = high;
-    else if (event.key === "Enter" || event.key === " ") next = PANE_DEFAULTS[options.name];
     if (next === null) return;
     applyPanes({ [options.name]: next } as Partial<PaneSizes>);
     event.preventDefault();

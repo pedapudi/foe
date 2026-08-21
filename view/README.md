@@ -148,8 +148,9 @@ Below the top bar are three regions, described in
 panel in the left column, and the trajectory over the tabs in the right
 column. Every divider is a grip that resizes the regions it separates, by
 drag, by the arrow keys in 16-pixel steps, or to a limit with Home and End;
-a double click returns it to its default. The sizes persist under
-`foe.panes`.
+a double click returns it to whatever derives it. The trajectory's height
+is derived from its row count until a grip sets it. `foe.panes` stores only
+the sizes a grip has set.
 
 The **episodes** region draws the tree as a line-art figure. A spawned
 child hangs under its `parent_id` with a solid edge; a fork hangs under its
