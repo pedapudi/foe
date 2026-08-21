@@ -3,6 +3,13 @@
 // `model/request` events are written out by hand here so that the unit
 // tests can compare them with the derived-messages rule.
 //
+// The four workflow fixtures are an exception: the foe runtime writes them.
+// `workflowRun` below assembles a configuration, a scripted model program,
+// and a scripted verification program, runs the `foe` binary over them, and
+// copies the logs here with the machine's own paths replaced. A declared
+// graph has rules a hand-written log would satisfy only by accident, so the
+// fixtures come from the runtime that enforces them.
+//
 // Run with `pnpm fixtures` after changing this file.
 //
 // `retries-exhausted.jsonl` is not written here. It is a log recorded from a
@@ -10,7 +17,9 @@
 // verbatim so that the tests read the shapes a real provider failure
 // produces rather than shapes chosen to make them pass.
 
-import { writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -482,6 +491,264 @@ function rich() {
   return log;
 }
 
+// The workflow fixtures, written by the runtime rather than by hand.
+//
+// The graph surveys a Python package for TODO comments, asks one model node
+// for a plan, applies it in a second model node, and checks the result. It
+// exercises what the workflow view has to draw: a node that fires twice, a
+// choice point whose labels include one the model never chose and one with
+// no successors, a node no firing ever reached, and a tool failure that a
+// recovery decision retried.
+
+/** Absolute path of the release binary that writes the logs. */
+const BINARY = join(dir, "..", "..", "target", "release", "foe");
+
+/** Paths written into the logs in place of the machine's own. */
+const PROJECT = "/home/user/project";
+const TOOLS = "/home/user/tools";
+
+/** A scripted model program: one model/request line in, model/chunk lines out. */
+const MODEL_PROGRAM = `#!/usr/bin/env python3
+"""Answers model requests for the workflow fixture.
+
+The answer is chosen from the tools the request offers and from a counter
+kept beside this file, so one run of the graph gives the same answers every
+time. A request offering \`recover\` is a recovery decision; one offering
+\`return\` is the propose node; anything else is the apply node.
+"""
+
+import json
+import os
+import sys
+
+STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state")
+
+
+def bump(name):
+    path = os.path.join(STATE, name)
+    n = int(open(path).read().strip()) if os.path.exists(path) else 0
+    open(path, "w").write(str(n + 1))
+    return n + 1
+
+
+def emit(rid, chunk):
+    sys.stdout.write(json.dumps({"type": "model/chunk", "request_id": rid, "chunk": chunk}) + "\\n")
+
+
+def call(rid, cid, name, args):
+    emit(rid, {"kind": "tool_call_start", "id": cid, "name": name})
+    emit(rid, {"kind": "tool_call_delta", "id": cid, "delta": json.dumps(args)})
+    emit(rid, {"kind": "tool_call_end", "id": cid})
+
+
+def say(rid, body):
+    for word in body.split(" "):
+        emit(rid, {"kind": "text", "delta": word + " "})
+
+
+def done(rid, stop, given, produced):
+    emit(rid, {"kind": "done", "stop": stop,
+               "usage": {"input": given, "output": produced, "cache_read": 0}})
+
+
+req = json.loads(sys.stdin.readline())
+rid = req["request_id"]
+offered = [t["name"] for t in req.get("tools") or []]
+messages = req.get("messages") or []
+
+if "recover" in offered:
+    n = bump("recover")
+    failed = json.dumps(messages).split("Node \`", 1)[1].split("\`", 1)[0]
+    call(rid, "tc_recover_%d" % n, "recover", {"action": "retry", "node": failed})
+    done(rid, "tool", 1180, 96)
+elif "return" in offered:
+    n = bump("propose")
+    plan = {"file": "src/collate.py",
+            "todo": "TODO: the pass over the manifest is quadratic",
+            "change": "widen the survey before choosing" if n == 1
+                      else "index the manifest by key and look each row up once",
+            "branch": "widen" if n == 1 else "apply"}
+    say(rid, "The survey names one TODO that a local change resolves.")
+    call(rid, "tc_return_%d" % n, "return", {"value": plan})
+    done(rid, "tool", 2400 + 900 * n, 180)
+elif len(messages) <= 1:
+    call(rid, "tc_read_%d" % bump("read"), "read", {"path": "src/collate.py"})
+    done(rid, "tool", 3100, 74)
+else:
+    say(rid, "Indexed the manifest by key so each row is looked up once, and removed the TODO comment.")
+    done(rid, "end", 4260, 210)
+`;
+
+/** A scripted verification program: one finding on its first run, none after. */
+const CHECK_PROGRAM = `#!/usr/bin/env python3
+"""Stands in for a project's checker in the workflow fixture.
+
+Prints one finding and exits 1 the first time it runs and prints none and
+exits 0 after that, so the graph meets one tool failure and the recovery
+decision that retries it.
+"""
+
+import os
+import sys
+
+path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state", "check")
+n = int(open(path).read().strip()) if os.path.exists(path) else 0
+open(path, "w").write(str(n + 1))
+
+if n == 0:
+    sys.stderr.write("src/collate.py:41: undefined name 'index'\\n")
+    sys.exit(1)
+
+sys.stdout.write("checked src: no findings\\n")
+`;
+
+/** The package the graph surveys. Both TODO comments are real matches. */
+const SOURCE = `"""Collates manifest rows into one table."""
+
+
+def collate(manifest, rows):
+    # TODO: the pass over the manifest is quadratic
+    out = []
+    for row in rows:
+        for entry in manifest:
+            if entry["key"] == row["key"]:
+                out.append({**entry, **row})
+    return out
+
+
+def summarize(table):
+    # TODO: report the widest column so the caller can pad
+    return {"rows": len(table)}
+`;
+
+/** The configuration the runtime resolves, with `root` as every path's base. */
+function workflowConfig(root) {
+  const child = (name, role, toolNames, grants, calls, extra = {}) => ({
+    name,
+    instructions: { role },
+    tools: toolNames,
+    grants,
+    budget: { model_calls: calls },
+    ...extra,
+  });
+  return {
+    version: 1,
+    name: "survey-propose-apply",
+    instructions: { role: "The ceiling of a declared workflow. Each model node carries its own instructions." },
+    tools: ["read", "grep", "edit", "bash", "check"],
+    tool_defs: {
+      check: {
+        exec: `${root}/check`,
+        cwd: `${root}/project`,
+        description: "Runs the project's checker over src and prints one finding per line; prints nothing when clean.",
+      },
+    },
+    grants: { read: [`${root}/project`], write: [`${root}/project/src`] },
+    budget: { model_calls: 30, tokens: 300000, max_episodes: 6 },
+    sandbox: { mode: "off" },
+    model: { provider: "exec", model: "scripted-answers", exec: `${root}/model` },
+    workflow: {
+      nodes: {
+        manifest: { tool: "grep", args: { pattern: "^def ", glob: "*.py" } },
+        survey: { tool: "grep", args: { pattern: "TODO", glob: "*.py" }, follows: ["manifest"], max_fires: 2 },
+        propose: {
+          model: child(
+            "propose",
+            "You receive the task of this run and the TODO comments found in a Python package, one grep match per line. Choose the one TODO that fits the task and that a small, local change can resolve, read the surrounding code, and return a plan: the file, the TODO, and the change to make. Return the branch `nothing` when no TODO is safe to resolve without more context.",
+            ["read", "grep"],
+            { read: [`${root}/project`] },
+            8,
+            {
+              done_when: {
+                returns: {
+                  type: "object",
+                  properties: { file: { type: "string" }, todo: { type: "string" }, change: { type: "string" } },
+                  required: ["file", "todo", "change"],
+                },
+              },
+            },
+          ),
+          follows: ["task", "survey"],
+          branches: { apply: ["apply"], widen: ["survey"], abandon: ["record_abandonment"], nothing: [] },
+          max_fires: 2,
+        },
+        apply: {
+          model: child(
+            "apply",
+            "You receive a plan naming a file, a TODO comment in it, and the change that resolves it. Make that change and remove the comment. Run the tests that cover the file when there are any. Finish with one sentence stating what changed.",
+            ["read", "edit", "bash"],
+            { read: [`${root}/project`], write: [`${root}/project/src`] },
+            12,
+          ),
+          follows: ["propose"],
+          max_fires: 2,
+        },
+        verify_change: { tool: "check", args: { args: [] }, follows: ["apply"], max_fires: 2, terminal: true },
+        record_abandonment: {
+          tool: "bash",
+          args: { command: "echo 'the run abandoned every TODO it surveyed'" },
+        },
+      },
+      recovery: { max_interventions: 2 },
+    },
+    task: "Resolve one TODO comment in src.",
+  };
+}
+
+/**
+ * Runs the graph and writes its four logs. Without the release binary the
+ * logs already here are left alone, so the rest of the fixtures regenerate
+ * on a machine with no Rust toolchain.
+ */
+function workflowRun() {
+  if (!existsSync(BINARY)) {
+    console.log(`${BINARY} is absent; the workflow fixtures are left as they are`);
+    console.log("build it with `cargo build --release --bin foe` to regenerate them");
+    return;
+  }
+  const root = mkdtempSync(join(tmpdir(), "foe-workflow-fixture-"));
+  try {
+    mkdirSync(join(root, "project", "src"), { recursive: true });
+    mkdirSync(join(root, "state"), { recursive: true });
+    writeFileSync(join(root, "project", "src", "collate.py"), SOURCE);
+    for (const [name, body] of [["model", MODEL_PROGRAM], ["check", CHECK_PROGRAM]]) {
+      writeFileSync(join(root, name), body);
+      chmodSync(join(root, name), 0o755);
+    }
+    const config = join(root, "config.json");
+    writeFileSync(config, JSON.stringify(workflowConfig(root), null, 2));
+    const logs = join(root, "logs");
+    const run = spawnSync(BINARY, ["--config", config, "--log-dir", logs, "--headless", "--no-open"], {
+      encoding: "utf8",
+    });
+    if (run.status !== 0) {
+      throw new Error(`${BINARY} exited with ${run.status}: ${run.stderr}`);
+    }
+    const outcome = JSON.parse(run.stdout.trim().split("\n").pop());
+    if (outcome.kind !== "completed") {
+      throw new Error(`the graph ended ${outcome.kind}: ${JSON.stringify(outcome)}`);
+    }
+    // The logs name the scratch directory in grants, tool paths, and every
+    // tool result. Two replacements put stable paths in their place; the
+    // events are otherwise the bytes the runtime wrote.
+    const settle = (text) => text.split(`${root}/project`).join(PROJECT).split(root).join(TOOLS);
+    const read = (path) => settle(readFileSync(path, "utf8"));
+    const episode = read(join(logs, "episode.jsonl"));
+    writeFileSync(join(dir, "workflow.jsonl"), episode);
+    const names = [];
+    for (const line of episode.split("\n").filter((l) => l.trim() !== "")) {
+      const event = JSON.parse(line);
+      if (event.type !== "workflow/node-start" || !event.data.child_id) continue;
+      const name = `workflow-${event.data.node.replace(/_/g, "-")}-${event.data.fire}.jsonl`;
+      writeFileSync(join(dir, name), read(join(logs, "children", event.data.child_id, "episode.jsonl")));
+      names.push(name);
+    }
+    console.log(`workflow.jsonl and ${names.join(", ")} written by ${BINARY}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 const r = root();
 r.write("root.jsonl");
 child().write("child.jsonl");
@@ -490,3 +757,4 @@ compact().write("compact.jsonl");
 overlapParent().write("overlap-parent.jsonl");
 overlapChild().write("overlap-child.jsonl");
 rich().write("rich.jsonl");
+workflowRun();

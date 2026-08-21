@@ -53,8 +53,7 @@ helpers, the trajectory layout, the pane sizes, the Markdown parser, the
 syntax tokenizer, and the unified diff reader. Each of those modules is pure
 and reads no document, so the tests run under `node --test` with no browser.
 
-The fixtures are eight episode logs, seven of them written by
-`fixtures/generate.mjs`.
+The fixtures are twelve episode logs.
 
 | fixture | what it exercises |
 |---|---|
@@ -66,6 +65,21 @@ The fixtures are eight episode logs, seven of them written by
 | `overlap-child.jsonl` | the surveyor, which starts after the parent and ends before it, with a compaction and a retry |
 | `rich.jsonl` | the writer, whose one assistant turn holds a table, a fenced Rust block, and inline and display mathematics, with an `edit` result carrying a unified diff and a `read` result carrying numbered source |
 | `retries-exhausted.jsonl` | a run against a live model whose five attempts each failed in transport, ending `blocked: recovery-exhausted` with five streams cut off before any response was assembled |
+| `workflow.jsonl` | an episode running a declared graph: a node that fires twice, a choice point whose labels include one the model never chose and one with no successors, a node no firing reached, and a tool failure that a recovery decision retried |
+| `workflow-propose-1.jsonl`, `workflow-propose-2.jsonl` | the two firings of the graph's `propose` node, each a child episode that returns a plan and a branch label |
+| `workflow-apply-1.jsonl` | the firing of the graph's `apply` node, a child episode that reads a file and finishes with a sentence |
+
+Seven of the twelve are literal in `generate.mjs`. The four workflow logs
+are written by the runtime: `workflowRun` assembles a configuration, a
+scripted model program, and a scripted verification program in a temporary
+directory, runs `target/release/foe` over them, and copies the logs here
+with that directory's path replaced by `/home/user/project` and
+`/home/user/tools`. Everything else in those four files is the bytes the
+runtime wrote, including episode ids and timestamps, which therefore change
+whenever the fixtures are regenerated; no test reads either from a literal.
+Regenerating without the release binary present leaves the four files as
+they are and says so, so the seven literal ones regenerate on a machine
+with no Rust toolchain.
 
 `retries-exhausted.jsonl` is a recorded log rather than a generated one, so
 the tests read the shapes a real provider failure produces. `pnpm fixtures`
