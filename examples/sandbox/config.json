@@ -2,9 +2,9 @@
   "version": 1,
   "name": "sandbox-required",
   "instructions": {
-    "role": "You are a coding agent. Use the cat tool to print files. Report what each tool call returned, including failures."
+    "role": "Use the cat tool to read both files named in the task. Report which read succeeded and which read the kernel denied."
   },
-  "tools": ["read", "grep", "cat"],
+  "tools": ["cat"],
   "tool_defs": {
     "cat": {
       "exec": "/usr/bin/cat",
@@ -14,12 +14,14 @@
   "grants": {
     "read": ["/home/user/project"]
   },
-  "budget": { "model_calls": 6, "seconds": 120 },
+  "budget": { "model_calls": 3, "seconds": 120 },
   "model": {
-    "provider": "anthropic",
-    "model": "claude-opus-5",
-    "api_key_file": "/home/user/.config/foe/anthropic.key"
+    "provider": "exec",
+    "model": "sandbox-demo",
+    "exec": "/home/user/foe/examples/support/scripted-transport.py",
+    "allowed_file": "/home/user/project/allowed.txt",
+    "denied_file": "/home/user/outside-grant/denied.txt"
   },
   "sandbox": { "mode": "required" },
-  "task": "Print /home/user/project/README.md with the cat tool, then print /etc/hostname with the cat tool. Report the result of each call."
+  "task": "Read /home/user/project/allowed.txt and /home/user/outside-grant/denied.txt with cat, then report both results."
 }

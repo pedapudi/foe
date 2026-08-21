@@ -1,96 +1,98 @@
-# Workflow
+# Workflow demo
 
-A declared graph of three nodes in place of the free agent loop. The
-`workflow` key names the nodes and the edges between them; the runtime
-fires each node when its inputs are ready and routes every failure through
-a recovery decision. [docs/workflow.md](../../docs/workflow.md) specifies
-the graph; this example runs one.
+This example runs a declared workflow from task input through a verified code
+change. The runner creates a disposable Python project, materializes the
+configuration with absolute paths, runs foe, and checks the resulting source
+file and episode log.
 
-```
-   task ──────┐
-   survey ──► propose ──► apply ■
-              │
-              └── nothing ──► (ends)
-```
+The example uses a deterministic local model transport. It requires no model
+credential and makes no provider request. The transport emits the same tool
+calls that a model transport would emit, so the runtime still executes the
+model nodes, tools, branch, verifier, child episodes, and log protocol.
 
-- `task` is the built-in source carrying the invocation task, the
-  configuration's `task` string. Any node may follow it; here only
-  `propose` does, so the task text reaches the node that chooses what to
-  do and no other.
-- `survey` is a tool node. It calls the built-in `grep` with fixed
-  arguments and produces the list of TODO comments in the Python files
-  under the first read root. The arguments name no path, so the program's
-  identity is the same in every directory.
-- `propose` is a model node. It receives the invocation task as the
-  section `## task` and the grep output as the section `## survey` of its
-  task, reads the code around a TODO it chooses, and
-  returns a plan. Its `branches` declare a choice point: the label `apply`
-  fires the next node, and the label `nothing` ends the workflow with the
-  plan as its value. The runtime adds `branch` to the node's `returns`
-  schema as a required field whose values are the two labels.
-- `apply` is a model node with write access. It receives the plan as the
-  section `## propose`, makes the change, and finishes. Its `verify` runs
-  the configured `check` executable on its output; findings re-fire the
-  node once, with the findings attached as a `## findings` section, before
-  recovery is asked. `terminal: true` makes its value the episode's.
-
-The root `instructions`, `tools`, `grants`, and `budget` are the ceiling.
-A tool node names a tool in the root `tools`; a model node's program is a
-child program whose grants lie within the root grants; each model node's
-budget is reserved from the root pool when the node fires. The root
-instructions reach no node; validation requires one entry, and the entry
-states what the document is.
-
-## Paths to replace
-
-- `/home/user/project`: a Python repository with a `src` directory and a
-  virtual environment at `.venv` with `ruff` installed.
-- `/home/user/project/tools/ruff-check`: a copy of
-  `examples/wrap-a-binary/ruff-check`, marked executable, with the path
-  inside it pointing at `.venv/bin/ruff`.
-- `/home/user/.config/foe/anthropic.key`: a file whose whole contents are
-  the API key.
+The runner requires `/usr/bin/python3`.
 
 ## Run
 
+From the repository root:
+
+```sh
+bazel run //examples/workflow
 ```
-cp examples/wrap-a-binary/ruff-check /home/user/project/tools/ruff-check
-chmod +x /home/user/project/tools/ruff-check
-foe plan --config examples/workflow/config.json
-foe --config examples/workflow/config.json
+
+The target builds `//:foe` and runs `run.sh`. A binary at another path can run
+the example directly:
+
+```sh
+examples/workflow/run.sh /absolute/path/to/foe
 ```
 
-`foe plan` prints the resolved program and, below it, the graph: the
-`task` source, every node with its kind and inputs, every edge, every
-cycle with the `max_fires` that bounds it, every pair of model nodes whose
-write roots overlap, and the terminal node. This graph has no cycle and no
-overlap.
+Each run creates `target/foe-workflow-demo.XXXXXX/`. The directory contains
+the materialized configuration, the disposable project, and the complete
+episode tree. The runner prints a command that serves the viewer for that
+episode tree.
 
-## What to look for
+The same runner is a Bazel test target:
 
-The episode log holds no model requests of its own until a node fails.
-It holds one `workflow/node-start` and one `workflow/node-end` per firing,
-in dataflow order: `survey`, then `propose`, then `apply`. The
-`node-start` of a model node names the child episode under `children/`
-whose log is that node's firing: its task is the sections built from its
-inputs, `## task` first for `propose`, its `request/header` shows the
-`return` tool with the `branch`
-field, and its `episode/end` carries the value the node produced.
+```sh
+bazel test //examples/workflow:workflow_test
+```
 
-Between `propose` and `apply` a `workflow/branch` event records the label
-chosen and the successors it fired. When `check` reports findings after
-`apply`, the node's second firing starts with `fire: 2`, and its child's
-task ends with a `## findings` section.
+## Graph
 
-When a node fails in a way a second attempt could change, the episode log
-gains one model request: a `request/header` whose system prompt is the
-runtime's recovery instruction and whose one tool is `recover`, an
-`inbox/item` with source `system` carrying the failed node's inputs and
-error, and an `assistant/message` choosing an action. The
-`workflow/recovery` event records the action and the node it acts on.
-`recovery.max_interventions: 2` allows two such decisions; a third failure
-ends the episode as `blocked` with code `recovery-exhausted`.
+```text
+   task ──────┐
+   survey ──► propose ──apply──► apply ■
+              │
+              └──nothing──► end
+```
 
-In the viewer, each node's firing links to its child episode, so a reader
-moves from the graph to the conversation that produced a value in one
-step.
+- `task` is the built-in source carrying the configuration task.
+- `survey` runs the built-in `grep` tool over the disposable project.
+- `propose` receives the task and grep result. It returns a typed plan and
+  selects the `apply` branch.
+- `apply` receives the plan and replaces the TODO implementation with
+  `return left + right`.
+- `check` reads the changed file. Empty standard output accepts the result.
+  Each output line would become a verifier finding and re-fire `apply`.
+
+The root program defines the maximum tools and paths available to child
+nodes. This limit is the authority ceiling. Each model node runs as a child
+program with a subset of the root tools and grants. The root budget reserves
+budget for each child and releases the unused reservation after the child
+ends.
+
+## Expected result
+
+The source file begins as:
+
+```python
+def add(left: int, right: int) -> int:
+    # TODO: Implement add.
+    raise NotImplementedError
+```
+
+The `apply` node changes it to:
+
+```python
+def add(left: int, right: int) -> int:
+    return left + right
+```
+
+The command exits zero and prints a completed outcome. `run.sh` then confirms
+the source change and the presence of `workflow/branch` and
+`workflow/node-end` events.
+
+## Log evidence
+
+The root `episode.jsonl` contains the graph events. Each model-node firing has
+a child log under `children/`.
+
+- `workflow/node-start` names the node, firing number, inputs, and child id.
+- `workflow/node-end` records the value, rendering, duration, and error field.
+- `workflow/branch` records the selected label and successor node.
+- The `propose` child ends through the synthesized `return` tool.
+- The `apply` child records the `edit` call, its diff, and its final sentence.
+
+The viewer links each node firing to the child episode that produced its
+value.

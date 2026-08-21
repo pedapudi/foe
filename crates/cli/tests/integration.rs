@@ -513,14 +513,18 @@ fn examples() -> Vec<(String, String)> {
 /// into `root`, and returns the path of the written document.
 fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
     let project = root.join("project");
+    let outside = root.join("outside-grant");
     for sub in ["src", "tests", "tools"] {
         std::fs::create_dir_all(project.join(sub)).unwrap();
     }
+    std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(root.join("anthropic.key"), "sk-test\n").unwrap();
     let ruff = project.join("tools/ruff-check");
     std::fs::copy(Path::new(EXAMPLES).join("wrap-a-binary/ruff-check"), &ruff).unwrap();
     let rewritten = text
         .replace("/home/user/.config/foe/anthropic.key", root.join("anthropic.key").to_str().unwrap())
+        .replace("/home/user/outside-grant", outside.to_str().unwrap())
+        .replace("/home/user/foe", Path::new(EXAMPLES).parent().unwrap().to_str().unwrap())
         .replace("/home/user/project", project.to_str().unwrap());
     let mut value: Value = serde_json::from_str(&rewritten).unwrap();
     value["task"] = json!(task);

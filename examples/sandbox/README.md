@@ -1,61 +1,74 @@
-# Sandbox
+# Sandbox demo
 
-A configuration that requires kernel enforcement and then asks the model to
-reach outside its grants, so that the refusal appears in the log.
-`sandbox.mode` is `required`, which makes foe refuse to start on a kernel
-without Landlock. The only grant is read access to `/home/user/project`. One
-`tool_defs` entry wraps `/usr/bin/cat`; declaring it is what permits the
-episode to execute that file. The task asks the model to print one file
-inside the grant and one outside it.
+This example demonstrates kernel-enforced file access. The runner creates two
+sibling directories. The configuration grants read access to one directory
+and gives no grant for the other directory.
 
-## Paths to replace
+The agent calls `/usr/bin/cat` for one file in each directory. The granted
+file is returned. Landlock rejects the second file open with a permission
+error, which foe records as the tool result.
 
-- `/home/user/project`: a directory containing a `README.md`.
-- `/home/user/.config/foe/anthropic.key`: a file whose whole contents are
-  the API key.
-- `/usr/bin/cat`: the absolute path of `cat` on the machine, when it
-  differs.
+## Requirements
+
+The demo requires Linux with Landlock support and `/usr/bin/python3`.
+`sandbox.mode` is `required`, so foe exits before the episode starts when the
+kernel cannot enforce the policy.
+
+The deterministic local model transport requires no model credential and
+makes no provider request.
 
 ## Run
 
-```
-foe --config examples/sandbox/config.json
-```
+From the repository root:
 
-On a kernel without Landlock the command exits with code 1 before writing
-any log, and standard error names `sandbox.mode` and the rule it violated.
-
-## What to look for
-
-The `episode/start` event records the mode and the Landlock version the
-kernel provided:
-
-```json
-{"seq": 0, "time": 1724200000000, "type": "episode/start", "data": { "sandbox": { "mode": "required", "landlock_abi": 7 } }}
+```sh
+bazel run //examples/sandbox
 ```
 
-The first `cat` call reads `/home/user/project/README.md` and returns its
-contents with exit code 0. The second call targets `/etc/hostname`, which
-no grant covers. The executable runs under a ruleset compiled from the
-grants, the kernel refuses the open, and the tool result records the
-refusal: the exit code and the message `cat` wrote.
+The target builds `//:foe` and runs `run.sh`. A binary at another path can run
+the example directly:
 
-```json
-{"seq": 12, "time": 1724200004000, "type": "tool/result", "data": {
-  "step": 2, "call_id": "tc_02", "name": "cat",
-  "value": { "exit_code": 1, "stdout": "", "stderr": "/usr/bin/cat: /etc/hostname: Permission denied\n", "timed_out": false, "duration_ms": 3 },
-  "rendered": "\n[stderr]\n/usr/bin/cat: /etc/hostname: Permission denied\n\n[exit code 1]",
-  "is_error": false, "spill": null, "duration_ms": 3, "synthetic": false }}
+```sh
+examples/sandbox/run.sh /absolute/path/to/foe
 ```
 
-A non-zero exit is a result rather than an error, so `is_error` is false and
-the model reads the message. The log format reserves a `sandbox/denied`
-event for a refusal read from the kernel's audit log; nothing emits it,
-because an unprivileged process cannot read that log, as `docs/sandbox.md`
-explains. The refusal is therefore recorded through the tool result alone.
-The field layout of `value` for a `tool_defs` result is specified in
-`docs/tools.md`.
+Each run creates `target/foe-sandbox-demo.XXXXXX/`. The directory contains
+the materialized configuration, both fixture directories, and the episode
+log. The runner prints a command that serves the viewer for the log.
 
-In the viewer, the sandbox line in the left pane shows `landlock 7`, and
-the second `cat` call is listed with its exit code. The episode ends
-`completed` with the model's report of both calls.
+The same runner is a Bazel test target:
+
+```sh
+bazel test //examples/sandbox:sandbox_test
+```
+
+## Access policy
+
+The materialized paths differ on every run. Their relationship stays fixed:
+
+```text
+target/foe-sandbox-demo.XXXXXX/
+├── project/allowed.txt          read grant covers this file
+├── outside-grant/denied.txt     no grant covers this file
+└── episode/episode.jsonl
+```
+
+The configured `cat` tool grants execute access to `/usr/bin/cat`. The child
+process inherits the episode read roots. It can open `allowed.txt` and cannot
+open `denied.txt`.
+
+## Expected result
+
+The command exits zero because the agent completes its reporting task. The
+denied `cat` process exits nonzero. A nonzero exit from a configured
+executable is a tool result, so the model receives the permission error and
+reports it in the next step.
+
+`run.sh` checks three facts:
+
+- The log contains the contents of `allowed.txt`.
+- The log contains the permission error from `denied.txt`.
+- `episode/start.sandbox.landlock_abi` is greater than zero.
+
+The viewer shows the Landlock ABI in the episode panel and both `cat` calls in
+the conversation. The denied call contains its exit code and standard error.

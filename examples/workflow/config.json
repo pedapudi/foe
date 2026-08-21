@@ -4,11 +4,11 @@
   "instructions": {
     "role": "The ceiling of a declared workflow. Each model node carries its own instructions."
   },
-  "tools": ["read", "grep", "edit", "bash", "check"],
+  "tools": ["read", "grep", "edit", "check"],
   "tool_defs": {
     "check": {
-      "exec": "/home/user/project/tools/ruff-check",
-      "description": "Runs ruff over src and prints one finding per line; prints nothing when clean."
+      "exec": "/home/user/foe/examples/workflow/check",
+      "description": "Checks that src/calculator.py implements add and contains no TODO comment. Prints one finding per line and prints nothing when the file passes."
     }
   },
   "grants": {
@@ -26,7 +26,7 @@
         "model": {
           "name": "propose",
           "instructions": {
-            "role": "You receive the task of this run and the TODO comments found in a Python package, one grep match per line. Choose the one TODO that fits the task and that a small, local change can resolve, read the surrounding code, and return a plan: the file, the TODO, and the change to make. Return the branch `nothing` when no TODO is safe to resolve without more context."
+            "role": "You receive the task and the TODO comments found in a Python package. Choose the TODO that fits the task and return the file, the TODO text, and the change to make. Return the branch `nothing` when no TODO is safe to resolve."
           },
           "tools": ["read", "grep"],
           "grants": { "read": ["/home/user/project"] },
@@ -50,9 +50,9 @@
         "model": {
           "name": "apply",
           "instructions": {
-            "role": "You receive a plan naming a file, a TODO comment in it, and the change that resolves it. Make that change and remove the comment. Run the tests that cover the file when there are any. Finish with one sentence stating what changed."
+            "role": "You receive a plan naming a file, a TODO comment, and the change that resolves it. Make the change, remove the comment, and finish with one sentence stating what changed."
           },
-          "tools": ["read", "edit", "bash"],
+          "tools": ["read", "edit"],
           "grants": { "read": ["/home/user/project"], "write": ["/home/user/project/src"] },
           "budget": { "model_calls": 12 }
         },
@@ -66,9 +66,10 @@
     "recovery": { "max_interventions": 2 }
   },
   "model": {
-    "provider": "anthropic",
-    "model": "claude-opus-5",
-    "api_key_file": "/home/user/.config/foe/anthropic.key"
+    "provider": "exec",
+    "model": "workflow-demo",
+    "exec": "/home/user/foe/examples/support/scripted-transport.py",
+    "project_dir": "/home/user/project"
   },
-  "task": "Resolve one TODO comment in src."
+  "task": "Implement add in src/calculator.py."
 }
