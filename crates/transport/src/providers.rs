@@ -102,7 +102,7 @@ pub static PROVIDERS: &[Provider] = &[
         default_base_url: Some("https://api.anthropic.com"),
         path: "/v1/messages",
         required: &[],
-        presets: &["claude-opus-5", "claude-sonnet-4-5", "claude-haiku-4-5"],
+        presets: &["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
         headers: &[("anthropic-version", "2023-06-01")],
         verify: Verify::GetJson("/v1/models"),
     },
