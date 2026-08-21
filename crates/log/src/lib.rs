@@ -295,8 +295,25 @@ pub enum RetryCause {
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
     User { content: Vec<ContentBlock> },
-    Assistant { text: String, tool_calls: Vec<ToolCall> },
+    Assistant {
+        text: String,
+        tool_calls: Vec<ToolCall>,
+        /// Reasoning blocks in the order produced. A transport replays them
+        /// to the same model route and omits them for any other route.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        thinking: Vec<ThinkingBlock>,
+    },
     Tool { call_id: String, name: String, rendered: String, is_error: bool },
+}
+
+/// One reasoning block. `signature` is an opaque provider token that must
+/// accompany the block when it is replayed; it is absent when the provider
+/// issues none.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ThinkingBlock {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -323,6 +340,9 @@ pub struct ToolCall {
 pub enum Chunk {
     Text { delta: String },
     Thinking { delta: String },
+    /// Closes the current thinking block with the provider's replay token.
+    /// Sent at most once per block; absent for providers that issue none.
+    ThinkingSignature { signature: String },
     ToolCallStart { id: String, name: String },
     ToolCallDelta { id: String, delta: String },
     ToolCallEnd { id: String },
@@ -352,6 +372,10 @@ pub struct AssistantMessage {
     pub request_id: String,
     pub text: String,
     pub tool_calls: Vec<ToolCall>,
+    /// Reasoning blocks assembled from `thinking` and `thinking_signature`
+    /// chunks, in order. Empty when the model produced none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub thinking: Vec<ThinkingBlock>,
     pub stop: StopReason,
     pub usage: Usage,
     /// True when the request failed after a tool call started; `text` is

@@ -93,7 +93,8 @@ outstanding `model/request`.
 | `kind` | fields | meaning |
 |---|---|---|
 | `text` | `delta` | a fragment of assistant text |
-| `thinking` | `delta` | a fragment of reasoning text; recorded, never re-sent to the model |
+| `thinking` | `delta` | a fragment of reasoning text |
+| `thinking_signature` | `signature` | closes the current reasoning block with the provider's replay token; at most one per block |
 | `tool_call_start` | `id`, `name` | a tool call began |
 | `tool_call_delta` | `id`, `delta` | a fragment of that call's JSON arguments |
 | `tool_call_end` | `id` | that call's arguments are complete |
