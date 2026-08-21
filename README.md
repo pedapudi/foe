@@ -36,8 +36,20 @@ implemented. No interface is stable.
 
 ## Running an episode
 
-A configuration is one JSON document. This is the smallest one that runs
-with the built-in model transport.
+```
+foe login anthropic
+foe "describe what this repository does"
+```
+
+The first command asks for an API key, checks it, stores it under
+`~/.config/foe/`, and sets the default model. The second runs the built-in
+coding configuration against the current directory. The providers are
+`anthropic`, `openai`, `openai-compatible`, `openrouter`, `openai-codex`,
+`vertex`, and `exec`, a program of your own; [docs/models.md](docs/models.md)
+describes each.
+
+A configuration of your own is one JSON document. This is the smallest one
+that runs with the built-in model transport.
 
 ```json
 {
@@ -47,7 +59,7 @@ with the built-in model transport.
   "tools": ["read", "grep", "edit", "bash"],
   "grants": { "read": ["/home/user/project"], "write": ["/home/user/project"] },
   "budget": { "model_calls": 20 },
-  "model": { "provider": "anthropic", "model": "claude-opus-5", "api_key_file": "/home/user/.config/foe/anthropic.key" },
+  "model": { "provider": "anthropic", "model": "claude-opus-5" },
   "task": "Fix the failing test in tests/parser_test.py."
 }
 ```
@@ -87,6 +99,7 @@ viewer bundle embedded; continuous integration fails a build over 8 MiB.
 |---|---|
 | [docs/design.md](docs/design.md) | what foe guarantees and the structure that delivers it |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
+| [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |
 | [docs/protocol.md](docs/protocol.md) | the line protocol between foe and the process that launched it |
 | [docs/sdk.md](docs/sdk.md) | the Python package |

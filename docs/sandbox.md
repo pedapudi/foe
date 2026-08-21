@@ -25,7 +25,7 @@ declared.
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
 | each `tool_defs` entry's `exec` file | execute and read that file |
 | the running `foe` binary, when `grants.spawn` is not empty | execute and read that file, so the episode can start children |
-| the file named by `model.api_key_file`, when present | read that file, so a child episode can read the key after inheriting this domain |
+| the credential file the `model` block resolves to, when present | read that file, so a child episode can read the credential after inheriting this domain |
 | the episode's own log directory | read and write |
 | the loader directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib`, `/bin`, `/usr/bin`, `/usr/local/bin` | read and execute |
 | the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |

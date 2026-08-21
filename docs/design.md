@@ -15,6 +15,7 @@ piece.
 | [log-format.md](log-format.md) | every event type, the request snapshot, and the replay guarantee |
 | [protocol.md](protocol.md) | the line protocol between foe and a host process |
 | [config.md](config.md) | every configuration key and the domain of its values |
+| [models.md](models.md) | the model providers, their credentials, `foe login`, and the exec transport |
 | [sdk.md](sdk.md) | the Python package |
 | [tools.md](tools.md) | built-in tools, configured executables, and host tools |
 | [sandbox.md](sandbox.md) | how grants compile into kernel restrictions |
@@ -452,15 +453,16 @@ own.
 
 ## The command line
 
-The binary has one running form and four forms that run nothing.
+The binary has one running form and five forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
-foe "task" --model PROVIDER/MODEL --key-file PATH        run the built-in coding configuration
+foe "task" [--model PROVIDER/MODEL] [--key-file PATH]    run the built-in coding configuration
 foe "task" --headless                                    run; no viewer; print the outcome
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
+foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan --config FILE [--json]                          resolve the program, print it and its identity
+foe plan --config FILE [--json]                          resolve the program, print it, its identity, and its transport
 foe tools [--config FILE]                                list tools, with sources when a config is given
 foe schema                                               print the JSON Schema for the configuration
 ```
@@ -480,8 +482,17 @@ its team lead.
 A task given with `--config` replaces the document's own `task`. A task
 given without `--config` uses a built-in coding configuration: the tools
 `read`, `grep`, `edit`, and `bash`, read and write on the current
-directory, a budget of 40 model calls, and the model named by `--model`
-with the key read from `--key-file`; both options are then required.
+directory, and a budget of 40 model calls. Its model is the one named by
+`--model`, or the default model when `--model` is absent. The default
+model is the `model` block in `~/.config/foe/default-model.json`, which
+`foe login` writes. `--key-file` names the key file explicitly; without it the
+provider's credential file under `~/.config/foe/credentials/` is read. The
+home directory comes from the passwd database, never from the environment.
+
+`foe login` configures one provider: it asks for the credential, proves it
+with one request, writes it under `~/.config/foe/credentials/` with mode
+0600, and sets the default model when none is set. [models.md](models.md)
+specifies the providers and the flows.
 
 Without `--headless` and without `--host`, the binary serves the viewer on
 a loopback port chosen before the process restricts itself, opens it with

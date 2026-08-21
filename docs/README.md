@@ -7,6 +7,7 @@ specify one piece each.
 |---|---|
 | [design.md](design.md) | the guarantees foe makes and the structure that delivers each |
 | [config.md](config.md) | what a configuration document may contain and what each key means |
+| [models.md](models.md) | which model providers exist, where their credentials live, how `foe login` sets them up, and how a program of your own answers model requests |
 | [log-format.md](log-format.md) | what an episode log contains and how a model request is derived from it |
 | [protocol.md](protocol.md) | how a process that launched foe exchanges lines with it |
 | [sdk.md](sdk.md) | how a Python program builds a configuration, runs an episode, and supplies a model transport |

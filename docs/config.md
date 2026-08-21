@@ -54,11 +54,7 @@ program and its identity without running anything.
 
   "done_when": { "verify": "check", "retries": 2 },
 
-  "model": {
-    "provider": "anthropic",
-    "model": "claude-opus-5",
-    "api_key_file": "/home/user/.config/foe/anthropic.key"
-  },
+  "model": { "provider": "anthropic", "model": "claude-opus-5" },
 
   "sandbox": { "mode": "best-effort" },
 
@@ -76,13 +72,15 @@ program and its identity without running anything.
   "tools": ["read", "grep", "edit", "bash"],
   "grants": { "read": ["/home/user/project"], "write": ["/home/user/project"] },
   "budget": { "model_calls": 20 },
-  "model": { "provider": "anthropic", "model": "claude-opus-5", "api_key_file": "/home/user/.config/foe/anthropic.key" },
+  "model": { "provider": "anthropic", "model": "claude-opus-5" },
   "task": "Fix the failing test in tests/parser_test.py."
 }
 ```
 
-When a host process supplies the model transport, the `model` block is
-omitted.
+The `model` block names no key file; the key is read from
+`~/.config/foe/credentials/anthropic.json`, which `foe login anthropic`
+writes. When a host process supplies the model transport, the `model` block
+is omitted.
 
 ## Keys
 
@@ -253,16 +251,39 @@ host process must answer model requests over the [protocol](protocol.md).
 
 | field | type | required | meaning |
 |---|---|---|---|
-| `provider` | string | yes | `anthropic` or `openai-compatible` |
+| `provider` | string | yes | a provider name the build knows; [models.md](models.md) lists them |
 | `model` | string | yes | the model identifier the provider expects |
-| `api_key_file` | string | yes | absolute path to a file whose contents are the key |
-| `base_url` | string | no | overrides the provider's default endpoint |
 | `max_output_tokens` | integer | no | per-request output limit; default is the provider's |
+| any other key | string | per provider | a provider-specific option, such as `api_key_file`, `base_url`, `project`, or `exec` |
 
-The key is read from the named file. It is never read from the environment.
-The `model` block does not participate in identity: the model is runtime
-infrastructure, and a system that needs to record which model ran reads it
-from the log's `request/header` events.
+The provider name is opaque to the configuration format. Whether a build
+knows it is decided where the transport is composed; `foe plan` reports the
+resolved transport, or says the name is unknown and lists the known ones.
+
+A block may omit its credential field. The transport then reads
+`~/.config/foe/credentials/<provider>.json`, the file `foe login` writes,
+with the home directory taken from the passwd database. An explicit
+`api_key_file`, `token_file`, or `credentials_file` replaces it. The path
+that was used is written into the block that `episode/start.program`
+records. Nothing is read from the environment.
+
+One block per provider:
+
+```json
+{ "provider": "anthropic", "model": "claude-opus-5" }
+{ "provider": "openai", "model": "gpt-5", "reasoning_effort": "medium" }
+{ "provider": "openai-compatible", "model": "llama3.1", "base_url": "http://127.0.0.1:11434/v1", "api_key_file": "/home/user/.config/foe/ollama.key" }
+{ "provider": "openrouter", "model": "anthropic/claude-opus-5" }
+{ "provider": "openai-codex", "model": "gpt-5-codex" }
+{ "provider": "vertex", "model": "gemini-2.5-pro", "project": "my-project", "location": "us-east5" }
+{ "provider": "exec", "model": "openai/gpt-5", "exec": "/home/user/project/tools/litellm-transport", "api_key_file": "/home/user/project/.secrets/openai.key" }
+```
+
+[models.md](models.md) specifies every option, the credential file shapes,
+and what each provider cannot express. The `model` block does not
+participate in identity: the model is runtime infrastructure, and a system
+that needs to record which model ran reads it from the log's
+`request/header` events.
 
 ### `sandbox`
 
