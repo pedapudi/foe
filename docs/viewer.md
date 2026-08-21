@@ -89,8 +89,9 @@ duration in milliseconds has no length in log positions.
 The outcome glyph is coloured by direction: a filled dot in `--v2-good` for
 `completed`, a cross in `--v2-bad` for `failed`, a triangle in
 `--v2-caution` for `exhausted`, and a flat bar in `--v2-flat` for
-`blocked`, whose code appears on hover. A running episode ends in an open
-ring.
+`blocked`. A running episode ends in an open ring. Hovering the glyph names
+the outcome with the code of a `blocked` outcome or the limit of an
+`exhausted` one, and the message the outcome carries.
 
 A connector runs from the parent's `spawn/start` mark to the start of the
 child's bar, solid. A fork's connector runs from the origin's position at
@@ -98,8 +99,9 @@ the fork boundary to the start of the fork's bar, dashed.
 
 Hovering a mark opens a hovercard naming the mark, its `seq`, its time, its
 duration when it has one, and one line of detail: a tool call's arguments, a
-retry's cause and delay, or a spawned child's program. Clicking a mark
-selects its episode and brings the conversation to that log position.
+retry's step and delay, or a spawned child's program. Clicking a mark
+selects its episode and brings the conversation to that log position, where
+the row is marked until another is.
 Clicking a row label selects that episode, and `j` and `k` move between
 rows.
 

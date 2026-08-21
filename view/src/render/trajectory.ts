@@ -225,7 +225,7 @@ export class TrajectoryView {
       }
 
       for (const mark of row.marks) group.appendChild(this.markElement(mark, layout));
-      group.appendChild(this.outcomeGlyph(row.x2, row.y, row.outcome, row.running));
+      group.appendChild(this.outcomeGlyph(row));
       figure.appendChild(group);
     }
     return figure;
@@ -264,31 +264,43 @@ export class TrajectoryView {
 
   /**
    * The end of a row: a glyph whose colour is the outcome's direction, and
-   * a hollow ring while the episode is still running.
+   * a hollow ring while the episode is still running. Hovering it opens the
+   * same hovercard the marks use, carrying the outcome's code or limit.
    */
-  private outcomeGlyph(x: number, y: number, outcome: Outcome | null, running: boolean): SVGGElement {
+  private outcomeGlyph(row: TrajectoryLayout["rows"][number]): SVGGElement {
+    const { x2: x, y } = row;
+    const outcome: Outcome | null = row.outcome;
     const role = outcomeRole(outcome);
-    const group = svg("g", { class: `traj-outcome ${role || (running ? "running" : "")}` });
+    const group = svg("g", { class: `traj-outcome ${role || (row.running ? "running" : "")}` });
     const kind = outcome ? str(outcome.kind) : "";
     if (kind === "completed") group.appendChild(svg("circle", { cx: x, cy: y, r: 3.6 }));
     else if (kind === "failed") group.appendChild(svg("path", { d: `M ${x - 3.4} ${y - 3.4} l 6.8 6.8 M ${x + 3.4} ${y - 3.4} l -6.8 6.8` }));
     else if (kind === "exhausted") group.appendChild(svg("path", { d: `M ${x} ${y - 4} l 4 7 l -8 0 z` }));
     else if (kind === "blocked") group.appendChild(svg("rect", { x: x - 1.6, y: y - 4.5, width: 3.2, height: 9 }));
     else group.appendChild(svg("circle", { class: "open", cx: x, cy: y, r: 3.2 }));
+    const label = outcome ? outcomeLabel(outcome) : "running";
     const title = svg("title");
-    title.textContent = outcome ? outcomeLabel(outcome) : "running";
+    title.textContent = label;
     group.appendChild(title);
+    const detail = outcome ? str((outcome as Record<string, unknown>).message) : "";
+    const meta = row.name === row.id ? row.id : `${row.name} · ${row.id}`;
+    group.addEventListener("pointerenter", (event) => this.showText(event as PointerEvent, label, meta, detail));
+    group.addEventListener("pointerleave", () => this.hideCard());
     return group;
   }
 
   private showCard(event: PointerEvent, mark: PlacedMark): void {
     const lines: string[] = [`seq ${mark.seq}`, fmtTime(mark.time)];
     if (mark.durationMs > 0) lines.push(fmtDuration(mark.durationMs));
+    this.showText(event, markLabel(mark), lines.join(" · "), mark.detail);
+  }
+
+  private showText(event: PointerEvent, head: string, meta: string, detail: string): void {
     clear(this.card);
     this.card.append(
-      h("div", { class: "traj-card-head" }, markLabel(mark)),
-      h("div", { class: "traj-card-meta" }, lines.join(" · ")),
-      mark.detail ? h("div", { class: "traj-card-detail" }, mark.detail) : "",
+      h("div", { class: "traj-card-head" }, head),
+      meta ? h("div", { class: "traj-card-meta" }, meta) : "",
+      detail ? h("div", { class: "traj-card-detail" }, detail) : "",
     );
     this.card.hidden = false;
     const box = this.figure.getBoundingClientRect();
