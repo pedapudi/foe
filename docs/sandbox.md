@@ -1,0 +1,164 @@
+# Sandbox
+
+An episode's grants name what it may reach: directories to read, directories
+to write, executables to run, and child programs to start. On Linux, the
+runtime compiles those grants into a Landlock ruleset and applies it to the
+episode process and to every process the episode starts. Landlock is a kernel
+security module that lets an unprivileged process restrict itself; once
+applied, a restriction cannot be lifted, and every process created afterwards
+inherits it. This document specifies what the runtime compiles, what each
+kernel version enforces, and what is outside the sandbox.
+
+The implementation is `crates/core/src/sandbox.rs`. The executable runner in
+`crates/core/src/exec.rs` applies the narrowing described under
+[Executables](#executables).
+
+## What is compiled
+
+A policy is the list of what one process may reach. The policy of an episode
+is derived from its configuration and its log directory; nothing else is
+declared.
+
+| source | access granted |
+|---|---|
+| each `grants.read` directory | read files, list directories |
+| each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
+| each `tool_defs` entry's `exec` file | execute and read that file |
+| the episode's own log directory | read and write |
+| the loader directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib`, `/bin`, `/usr/bin`, `/usr/local/bin` | read and execute |
+| the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |
+| the device files `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty` | read and write |
+| TCP | bind: listed ports only; connect: all ports or none |
+
+The loader directories are granted so that a process can start at all: the
+kernel executes the dynamic loader from `/lib64`, the loader maps shared
+libraries from `/usr/lib`, and a script names its interpreter in `/usr/bin`.
+A file under a read root is readable and is never executable by that grant
+alone. A file outside every listed path, such as a script inside the
+project, runs only when a `tool_defs` entry names it.
+
+A write root grants no read access. A configuration that writes to a
+directory it also reads lists that directory under both grants, or lists a
+parent under `read`.
+
+Paths that do not exist when the ruleset is compiled are skipped. A path
+that cannot be opened cannot be reached, so skipping it changes nothing.
+Symbolic links are resolved by the kernel at access time, so a link inside a
+root that points outside every root is denied.
+
+## Kernel tiers
+
+The kernel reports a Landlock version, called the ABI, at startup. Each
+version adds restrictions; the runtime uses every feature up to version 7
+and records the version it used. A newer kernel is used at version 7 and
+recorded as 7. Version 0 means Landlock is absent or disabled.
+
+| ABI | Linux | what the runtime enforces from this version |
+|---|---|---|
+| 1 | 5.13 | filesystem access by path: read, write, create, remove, and execute, as listed above |
+| 2 | 5.19 | renaming and linking across directories is part of write access |
+| 3 | 6.2 | truncation is part of write access |
+| 4 | 6.7 | TCP: an executable with `network: false` can neither bind nor connect; an episode that does not hold the model transport cannot connect |
+| 5 | 6.10 | device control calls (`ioctl`) on device files are part of write access |
+| 6 | 6.12 | a sandboxed process cannot signal a process outside its sandbox and cannot connect to abstract Unix sockets created outside it |
+| 7 | 6.15 | the kernel logs each denied access to the audit subsystem, including denials inside executables the episode starts |
+
+Below version 4 the network is open for every process. Below version 6 a
+tool can signal the episode process. Below version 7 a denial leaves no
+kernel record; the denied process sees a permission error and nothing else.
+
+Rulesets nest. Every process the episode starts keeps the episode's
+ruleset and receives a further one, so an executable or child can reach
+less than the episode and never more. The kernel allows sixteen nested
+rulesets; an episode tree of depth sixteen is the practical limit.
+
+## The episode process
+
+The episode process applies its own policy to itself at startup, after it
+has read its configuration and before it starts any other thread. Landlock
+restricts the calling thread and every thread or process created
+afterwards; a thread created before the ruleset is applied stays
+unrestricted. The runtime therefore applies the ruleset from the main
+thread before the asynchronous runtime exists.
+
+The episode keeps:
+
+- read on its read roots, write on its write roots;
+- execute on every `tool_defs` executable;
+- read and write on its own log directory, which holds its children's
+  directories and its spill files;
+- the loader, system, and device paths;
+- outbound TCP when the configuration has a `model` block, because the
+  episode then calls the provider itself;
+- inbound TCP on the viewer's port alone, when the episode serves a viewer;
+  the command line adds that one port to the policy before applying it;
+- no outbound TCP when a host process holds the transport.
+
+## Executables
+
+A configured executable runs under the episode's ruleset narrowed once
+more. The narrowed policy keeps the read roots, the write roots, the
+loader, system, and device paths, and execute on the one file named by the
+tool definition. It drops the log directory, execute on every other
+executable, and TCP unless the tool definition sets `network: true`.
+
+This crate forbids unsafe code, so the narrowing is applied by a short-lived
+thread rather than by a hook between fork and exec. The thread applies the
+narrowed ruleset to itself, starts the process, hands the process handle
+back, and ends. The process inherits the thread's ruleset before it
+executes anything, which is the same point at which a hook would act.
+
+Each executable also runs in its own process group. When its timeout
+elapses, or the episode is cancelled, the whole group receives `SIGTERM`
+and, two seconds later, `SIGKILL`. When the executable exits on its own,
+whatever remains of its group receives `SIGKILL`. A process that moved
+itself into a new process group or session is outside this rule; the
+kernel ruleset still binds it.
+
+## Children
+
+A child episode is a further `foe` process. The parent starts it without
+narrowing, because the child applies its own policy to itself at startup,
+and that policy is compiled from grants the parent's registry already
+verified to be a subset of the parent's. The child's ruleset nests inside
+the parent's, so the child's reach is the intersection.
+
+## Modes
+
+`sandbox.mode` in the configuration decides what happens at startup.
+
+| mode | behavior |
+|---|---|
+| `best-effort` | applies every feature the kernel offers up to version 7 and records the version in `episode/start.sandbox.landlock_abi`; records 0 and applies nothing when Landlock is absent |
+| `required` | refuses to start when the kernel offers no Landlock; otherwise as `best-effort` |
+| `off` | applies nothing and records 0 |
+
+`best-effort` records a number rather than a list of features, because the
+list is a function of the number, given in the table above. A reader of the
+log who sees `landlock_abi: 4` knows that the filesystem and TCP were
+enforced and that signals and audit logging were not.
+
+## Denied accesses
+
+The log format defines a `sandbox/denied` event for an access the kernel
+refused. The runtime does not yet emit it. From version 7 the kernel writes
+one audit record per denial, but an unprivileged process cannot read them:
+the audit socket requires the `CAP_AUDIT_READ` capability, and the audit
+daemon's log file is readable by the superuser alone. The runtime enables
+the kernel's logging of denials inside executables, so a machine that runs
+the audit daemon has the records; the runtime itself records nothing. The
+condition for emitting the event is a kernel interface that reports
+denials to the restricting process without privilege and without a daemon.
+
+## What is not enforced
+
+- The host process. The process that launched `foe` holds the model
+  credentials and the host tools, and the runtime never restricts it.
+- The network of the episode process when it holds the transport. An
+  episode with a `model` block connects to the provider itself, and
+  Landlock has no rule that names a remote host, so outbound TCP is open
+  for that process and for nothing it starts without `network: true`.
+- Anything on a kernel below the tier that enforces it, as listed in the
+  table. A log records the tier, so a reader knows what held.
+- Resources other than files, TCP, signals, and abstract sockets. Memory,
+  processor time, and process count are bounded by the budget alone.
