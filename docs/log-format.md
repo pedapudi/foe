@@ -317,8 +317,12 @@ redelivered when the target restarts. The target deduplicates by
 
 ### Sandbox
 
-`sandbox/denied` — implemented. An access the kernel refused, captured from
-the audit log when the kernel supports it.
+`sandbox/denied` — reserved. An access the kernel refused, captured from
+the audit log. Reading Landlock audit records requires the `CAP_AUDIT_READ`
+capability or access to the audit daemon's log, which an unprivileged foe
+process does not have, so nothing emits this event in version 1. The type
+is defined so that a privileged deployment or a later version can emit it
+and a version 1 reader will render it.
 
 ```json
 { "pid": 4120, "comm": "ruff", "path": "/etc/shadow", "access": "read" }
