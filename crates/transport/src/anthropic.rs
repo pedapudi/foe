@@ -12,12 +12,21 @@
 //! | `system`                     | top-level `system`, one text block, cache marked |
 //! | `tools`                      | `tools` with `input_schema`; last one cache marked |
 //! | `Message::User`              | `user` turn of `text` and `image` blocks         |
-//! | `Message::Assistant`         | `assistant` turn of `text` and `tool_use` blocks |
+//! | `Message::Assistant`         | `assistant` turn of `thinking`, `text`, and `tool_use` blocks |
 //! | `Message::Tool`              | `tool_result` block in a `user` turn             |
 //!
 //! Consecutive tool results share one `user` turn, which is how the API
 //! expects the results of parallel tool calls. An assistant turn with no
-//! text and no tool calls is omitted because the API rejects empty content.
+//! blocks at all is omitted because the API rejects empty content.
+//!
+//! Reasoning blocks are replayed ahead of the turn's other blocks, each as
+//! `{"type": "thinking", "thinking": text, "signature": sig}`, or as
+//! `{"type": "redacted_thinking", "data": ...}` when the signature carries
+//! the [`REDACTED_MARKER`]. The API accepts a replayed block only for the
+//! model route that produced it. The runtime fixes `model` for the whole
+//! episode in configuration version 1, so every block in the history came
+//! from this transport's route and is replayed whenever present. A block
+//! without a signature is skipped because the API rejects it.
 //!
 //! Mapping from stream events to chunks:
 //!
@@ -25,6 +34,8 @@
 //! |----------------------------------------------|---------------------------|
 //! | `content_block_delta` / `text_delta`         | `Text`                    |
 //! | `content_block_delta` / `thinking_delta`     | `Thinking`                |
+//! | `content_block_stop` of a `thinking` block   | `ThinkingSignature`       |
+//! | `content_block_stop` of `redacted_thinking`  | `ThinkingSignature`       |
 //! | `content_block_start` of a `tool_use` block  | `ToolCallStart`           |
 //! | `content_block_delta` / `input_json_delta`   | `ToolCallDelta`           |
 //! | `content_block_stop` of a `tool_use` block   | `ToolCallEnd`             |
@@ -34,14 +45,15 @@
 //! `end_turn`, `stop_sequence`, and `pause_turn` map to `End`; `tool_use`
 //! to `Tool`; `max_tokens` to `Length`. `refusal` has no chunk equivalent
 //! and is reported as a non-retryable `Error`. Empty deltas are dropped.
-//! `ping`, `message_stop`, `signature_delta`, and unknown events are
-//! ignored.
+//! `signature_delta` fragments accumulate and are emitted once when their
+//! block stops. `ping`, `message_stop`, and unknown events are ignored.
 
 use std::collections::BTreeMap;
 
 use foe_core::{
     Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolSchema, Transport, Usage,
 };
+use foe_log::ThinkingBlock;
 use serde_json::{json, Value};
 
 use crate::{http::Url, sse, Decoder, Exchange, TransportError};
@@ -53,6 +65,15 @@ const API_VERSION: &str = "2023-06-01";
 /// value, and a smaller limit truncates a long tool-calling turn, which
 /// costs the whole step.
 const DEFAULT_MAX_TOKENS: u32 = 64_000;
+
+/// Prefix of the signature recorded for a `redacted_thinking` block. The
+/// block has no text and its `data` field is the only thing the API needs
+/// back, so the data travels in the signature slot of a `ThinkingBlock`
+/// with empty text. The prefix tells a redacted block apart from an
+/// ordinary block whose text is empty, which current models produce when
+/// reasoning display is omitted. A real signature is base64 and cannot
+/// start with this prefix because the prefix contains a colon.
+pub const REDACTED_MARKER: &str = "redacted_thinking:";
 
 pub struct Anthropic {
     model: String,
@@ -151,8 +172,12 @@ pub fn messages_json(messages: &[Message]) -> Vec<Value> {
             Message::User { content } => {
                 push_user(&mut out, content.iter().map(content_block).collect())
             }
-            Message::Assistant { text, tool_calls } => {
-                let mut blocks = Vec::new();
+            Message::Assistant {
+                text,
+                tool_calls,
+                thinking,
+            } => {
+                let mut blocks: Vec<Value> = thinking.iter().filter_map(thinking_block).collect();
                 if !text.trim().is_empty() {
                     blocks.push(json!({ "type": "text", "text": text }));
                 }
@@ -197,6 +222,16 @@ fn push_user(out: &mut Vec<Value>, blocks: Vec<Value>) {
     out.push(json!({ "role": "user", "content": blocks }));
 }
 
+/// A reasoning block as the API expects it back. `None` when the block has
+/// no signature, which the API would reject.
+fn thinking_block(block: &ThinkingBlock) -> Option<Value> {
+    let signature = block.signature.as_deref()?;
+    Some(match signature.strip_prefix(REDACTED_MARKER) {
+        Some(data) => json!({ "type": "redacted_thinking", "data": data }),
+        None => json!({ "type": "thinking", "thinking": block.text, "signature": signature }),
+    })
+}
+
 fn content_block(block: &ContentBlock) -> Value {
     match block {
         ContentBlock::Text { text } => json!({ "type": "text", "text": text }),
@@ -215,6 +250,11 @@ struct StreamDecoder {
     /// Content block index to tool call id, for `tool_use` blocks that have
     /// started and not stopped.
     tool_blocks: BTreeMap<u64, String>,
+    /// Content block index to the signature accumulated so far, for
+    /// `thinking` and `redacted_thinking` blocks that have started and not
+    /// stopped. A redacted block's entry is its data behind
+    /// [`REDACTED_MARKER`].
+    thinking_blocks: BTreeMap<u64, String>,
     /// Usage counters as the API reports them, each overwritten whenever an
     /// event carries it. `message_start` carries the input side;
     /// `message_delta` carries cumulative output and, on current models,
@@ -310,6 +350,21 @@ impl Decoder for StreamDecoder {
                             });
                         }
                     }
+                    "thinking" => {
+                        self.thinking_blocks.insert(index, String::new());
+                        if let Some(text) = block["thinking"].as_str().filter(|t| !t.is_empty()) {
+                            out(Chunk::Thinking {
+                                delta: text.to_string(),
+                            });
+                        }
+                    }
+                    // The data arrives whole in the start event; nothing of
+                    // the block is readable, so no `Thinking` chunk is sent.
+                    "redacted_thinking" => {
+                        let data = block["data"].as_str().unwrap_or("");
+                        self.thinking_blocks
+                            .insert(index, format!("{REDACTED_MARKER}{data}"));
+                    }
                     _ => {}
                 }
             }
@@ -334,6 +389,11 @@ impl Decoder for StreamDecoder {
                             });
                         }
                     }
+                    "signature_delta" => {
+                        if let Some(signature) = self.thinking_blocks.get_mut(&index) {
+                            signature.push_str(delta["signature"].as_str().unwrap_or(""));
+                        }
+                    }
                     "input_json_delta" => {
                         let Some(id) = self.tool_blocks.get(&index) else {
                             return out(fail(format!("event {kind}: input_json_delta for block {index}, which is not an open tool_use block")));
@@ -356,6 +416,11 @@ impl Decoder for StreamDecoder {
                 };
                 if let Some(id) = self.tool_blocks.remove(&index) {
                     out(Chunk::ToolCallEnd { id });
+                }
+                if let Some(signature) = self.thinking_blocks.remove(&index) {
+                    if !signature.is_empty() {
+                        out(Chunk::ThinkingSignature { signature });
+                    }
                 }
             }
             "message_delta" => {
@@ -601,6 +666,9 @@ data: {"type":"message_stop"}
                 Chunk::Thinking {
                     delta: "I should read the file first.".into()
                 },
+                Chunk::ThinkingSignature {
+                    signature: "EqQBCgIYAhIM1gbcDa9GJwZA2b3hGgxBdjrkzLoky3dl1pkiMOYds".into()
+                },
                 text("I will read it."),
                 Chunk::ToolCallStart {
                     id: id.into(),
@@ -620,6 +688,73 @@ data: {"type":"message_stop"}
                     usage: Usage {
                         input: 772,
                         output: 89,
+                        cache_read: 0
+                    }
+                },
+            ]
+        );
+    }
+
+    const REDACTED: &str = r#"event: message_start
+data: {"type":"message_start","message":{"id":"msg_02","type":"message","role":"assistant","model":"claude-opus-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":40,"output_tokens":1}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"redacted_thinking","data":"EmwKAhgBEgy3va3pzix/LafPsn4aDFIT2Xlxh0L5L8rLJhIw"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"thinking","thinking":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"signature_delta","signature":"AAAA"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"signature_delta","signature":"BBBB"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: content_block_start
+data: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"Hidden."}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":2}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":30}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+"#;
+
+    /// A redacted block yields its data behind the marker; a block whose
+    /// reasoning text is omitted yields only its signature, assembled from
+    /// every fragment.
+    #[tokio::test]
+    async fn redacted_and_text_free_thinking_blocks() {
+        let (chunks, _server) = run(Reply::sse(REDACTED)).await;
+        assert_eq!(
+            chunks,
+            vec![
+                Chunk::ThinkingSignature {
+                    signature: "redacted_thinking:EmwKAhgBEgy3va3pzix/LafPsn4aDFIT2Xlxh0L5L8rLJhIw"
+                        .into()
+                },
+                Chunk::ThinkingSignature {
+                    signature: "AAAABBBB".into()
+                },
+                text("Hidden."),
+                Chunk::Done {
+                    stop: StopReason::End,
+                    usage: Usage {
+                        input: 40,
+                        output: 30,
                         cache_read: 0
                     }
                 },
@@ -690,6 +825,7 @@ data: {"type":"message_stop"}
             chunks,
             vec![
                 Chunk::Thinking { delta: "I should read the file first.".into() },
+                Chunk::ThinkingSignature { signature: "EqQBCgIYAhIM1gbcDa9GJwZA2b3hGgxBdjrkzLoky3dl1pkiMOYds".into() },
                 text("I will read it."),
                 Chunk::ToolCallStart { id: id.into(), name: "read".into() },
                 Chunk::ToolCallDelta { id: id.into(), delta: "{\"path\": \"/src".into() },
@@ -765,6 +901,20 @@ data: {"type":"message_stop"}
             },
             Message::Assistant {
                 text: "Reading.".into(),
+                thinking: vec![
+                    ThinkingBlock {
+                        text: "Plan first.".into(),
+                        signature: Some("c2ln".into()),
+                    },
+                    ThinkingBlock {
+                        text: String::new(),
+                        signature: Some("redacted_thinking:RUJBRg==".into()),
+                    },
+                    ThinkingBlock {
+                        text: "unsigned, skipped".into(),
+                        signature: None,
+                    },
+                ],
                 tool_calls: vec![
                     ToolCall {
                         id: "toolu_1".into(),
@@ -798,10 +948,12 @@ data: {"type":"message_stop"}
             Message::Assistant {
                 text: String::new(),
                 tool_calls: vec![],
+                thinking: vec![],
             },
             Message::Assistant {
                 text: "Done.".into(),
                 tool_calls: vec![],
+                thinking: vec![],
             },
         ];
         assert_eq!(
@@ -812,6 +964,8 @@ data: {"type":"message_stop"}
                     { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "aGk=" } },
                 ]},
                 { "role": "assistant", "content": [
+                    { "type": "thinking", "thinking": "Plan first.", "signature": "c2ln" },
+                    { "type": "redacted_thinking", "data": "RUJBRg==" },
                     { "type": "text", "text": "Reading." },
                     { "type": "tool_use", "id": "toolu_1", "name": "read", "input": { "path": "/a" } },
                     { "type": "tool_use", "id": "toolu_2", "name": "read", "input": { "path": "/b" } },

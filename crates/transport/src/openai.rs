@@ -13,13 +13,15 @@
 //! | `system`             | a leading `system` message                            |
 //! | `tools`              | `tools` of type `function`                            |
 //! | `Message::User`      | `user` message; a string when it is one text block    |
-//! | `Message::Assistant` | `assistant` message with `content` and `tool_calls`   |
+//! | `Message::Assistant` | `assistant` message with `content` and `tool_calls`; `thinking` dropped |
 //! | `Message::Tool`      | `tool` message with `tool_call_id`                    |
 //!
 //! A user message that is a single text block is sent as a plain string
 //! because some local servers accept only that form; anything else is sent
 //! as an array of content parts. The API has no field for a failed tool
 //! result, so `is_error` is not transmitted; the rendered text carries it.
+//! The API has no way to replay reasoning blocks, so an assistant turn's
+//! `thinking` is dropped.
 //!
 //! Mapping from stream chunks to chunks:
 //!
@@ -162,7 +164,11 @@ pub fn messages_json(messages: &[Message]) -> Vec<Value> {
                 };
                 json!({ "role": "user", "content": value })
             }
-            Message::Assistant { text, tool_calls } => {
+            Message::Assistant {
+                text,
+                tool_calls,
+                thinking: _,
+            } => {
                 let mut value = json!({ "role": "assistant", "content": if text.is_empty() { Value::Null } else { json!(text) } });
                 if !tool_calls.is_empty() {
                     value["tool_calls"] = tool_calls
@@ -718,6 +724,10 @@ data: [DONE]
             },
             Message::Assistant {
                 text: String::new(),
+                thinking: vec![foe_log::ThinkingBlock {
+                    text: "dropped".into(),
+                    signature: Some("sig".into()),
+                }],
                 tool_calls: vec![ToolCall {
                     id: "call_1".into(),
                     name: "read".into(),
@@ -733,6 +743,7 @@ data: [DONE]
             Message::Assistant {
                 text: "Done.".into(),
                 tool_calls: vec![],
+                thinking: vec![],
             },
         ];
         assert_eq!(
