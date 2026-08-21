@@ -11,6 +11,29 @@ env:
   BINARY_SIZE_LIMIT: 8388608
 
 jobs:
+  bazel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Bazel version pinned in .bazelversion
+        uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: Build the foe binary
+        run: bazel build --lockfile_mode=error //:foe
+
+      - name: Check the Bazel binary size
+        run: |
+          size=$(stat -c %s bazel-bin/crates/cli/foe)
+          echo "bazel-bin/crates/cli/foe: ${size} bytes (limit ${BINARY_SIZE_LIMIT})"
+          test "${size}" -le "${BINARY_SIZE_LIMIT}"
+
+      - name: Test the end-to-end examples
+        run: bazel test --lockfile_mode=error //examples/...
+
   rust:
     runs-on: ubuntu-latest
     steps:
@@ -90,6 +113,9 @@ jobs:
 
       - name: Build and check the bundle size
         run: pnpm build
+
+      - name: Check the committed bundle
+        run: git diff --exit-code -- dist
 
       - name: Test
         run: pnpm test

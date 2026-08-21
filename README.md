@@ -39,6 +39,26 @@ core-collapse supernova. One foe is one bounded release of work.
 The runtime, the binary, the viewer, and the Python package are
 implemented. No interface is stable.
 
+## Install and build
+
+The source installer builds the Bazel target with the pinned Rust toolchain
+and installs the binary under `~/.local/bin`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/pedapudi/foe/main/install.sh | sh
+```
+
+A checkout uses Bazel as its primary build interface:
+
+```sh
+bazel build //:foe
+```
+
+The public target `//:foe` produces `bazel-bin/crates/cli/foe`. The build
+requires neither Node.js nor a JavaScript package manager. Rust contributors
+can also use Cargo directly. [docs/build.md](docs/build.md) specifies the
+installer, Bazel targets, and contributor commands.
+
 ## Running an episode
 
 ```
@@ -80,7 +100,13 @@ outcome as one JSON line on standard output when it ends. The exit code is
 0 when the outcome is completed, 2 when blocked, 3 when exhausted, and 1
 when failed. Under `--host`, standard output carries the log instead and a
 host process answers model requests; see [docs/protocol.md](docs/protocol.md).
-`examples/` holds one runnable configuration per mechanism.
+`examples/` holds one configuration per mechanism. The workflow and sandbox
+examples include self-contained end-to-end runners:
+
+```sh
+bazel run //examples/workflow
+bazel run //examples/sandbox
+```
 
 ## Embedding
 
@@ -103,6 +129,7 @@ measuring and fails a build over 8 MiB.
 
 | document | answers |
 |---|---|
+| [docs/build.md](docs/build.md) | how to install, build with Bazel, run the end-to-end demos, and use Cargo for Rust development |
 | [docs/design.md](docs/design.md) | what foe guarantees and the structure that delivers it |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |

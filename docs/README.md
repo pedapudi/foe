@@ -5,6 +5,7 @@ specify one piece each.
 
 | document | subject |
 |---|---|
+| [build.md](build.md) | how to install foe, build it with Bazel, run the end-to-end demos, and use Cargo for Rust development |
 | [design.md](design.md) | the guarantees foe makes and the structure that delivers each |
 | [config.md](config.md) | what a configuration document may contain and what each key means |
 | [models.md](models.md) | which model providers exist, where their credentials live, how `foe login` sets them up, and how a program of your own answers model requests |
@@ -22,5 +23,5 @@ specify one piece each.
 | [brand/README.md](brand/README.md) | the name, the mark, the wordmark, the accent, and the rules for using them |
 
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the
-rules for changing the repository. `examples/` holds one runnable
-configuration per mechanism, each with a README.
+rules for changing the repository. `examples/` holds one configuration per
+mechanism and two self-contained end-to-end runners.
