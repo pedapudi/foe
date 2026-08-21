@@ -109,14 +109,16 @@ pub enum EventData {
     CompactionSummary(serde_json::Value),
     #[serde(rename = "compaction/end")]
     CompactionEnd(serde_json::Value),
+
+    // ---- workflows -------------------------------------------------------
     #[serde(rename = "workflow/node-start")]
-    WorkflowNodeStart(serde_json::Value),
+    WorkflowNodeStart(WorkflowNodeStart),
     #[serde(rename = "workflow/node-end")]
-    WorkflowNodeEnd(serde_json::Value),
+    WorkflowNodeEnd(WorkflowNodeEnd),
     #[serde(rename = "workflow/recovery")]
-    WorkflowRecovery(serde_json::Value),
+    WorkflowRecovery(WorkflowRecovery),
     #[serde(rename = "workflow/branch")]
-    WorkflowBranch(serde_json::Value),
+    WorkflowBranch(WorkflowBranch),
 }
 
 impl EventData {
@@ -223,6 +225,7 @@ pub enum BlockedCode {
     VerificationUnsatisfiable,
     ChildBlocked,
     RecoveryExhausted,
+    RecoveryFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -490,6 +493,58 @@ pub enum MemberPhase {
     Provisioning,
     Active,
     Failed,
+}
+
+// ---- workflow payloads --------------------------------------------------------
+
+/// One firing of a workflow node begins. `fire` counts this node's firings
+/// from 1. `inputs` lists the `seq` of the events that produced the values
+/// the node receives. `child_id` names the child episode of a model node.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkflowNodeStart {
+    pub node: String,
+    pub fire: u32,
+    pub inputs: Vec<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_id: Option<String>,
+}
+
+/// A firing ended. `value` is the node's canonical output and `rendered`
+/// the text its successors receive; both are empty when `error` is set.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkflowNodeEnd {
+    pub node: String,
+    pub fire: u32,
+    pub value: serde_json::Value,
+    pub rendered: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub duration_ms: u64,
+}
+
+/// A node with `branches` chose a label; only `successors` fire.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkflowBranch {
+    pub node: String,
+    pub fire: u32,
+    pub label: String,
+    pub successors: Vec<String>,
+}
+
+/// A recovery decision was made and applied. `action` is `retry`, `amend`,
+/// `skip`, or `abort`; `target` names the node a retry or amend re-fires;
+/// `intervention` counts decisions in this episode from 1.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkflowRecovery {
+    pub node: String,
+    pub fire: u32,
+    pub cause: String,
+    pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    pub intervention: u32,
 }
 
 // ---- errors ---------------------------------------------------------------------

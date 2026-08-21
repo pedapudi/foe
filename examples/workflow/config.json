@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "name": "survey-propose-apply",
+  "instructions": {
+    "role": "The ceiling of a declared workflow. Each model node carries its own instructions."
+  },
+  "tools": ["read", "grep", "edit", "bash", "check"],
+  "tool_defs": {
+    "check": {
+      "exec": "/home/user/project/tools/ruff-check",
+      "description": "Runs ruff over src and prints one finding per line; prints nothing when clean."
+    }
+  },
+  "grants": {
+    "read": ["/home/user/project"],
+    "write": ["/home/user/project/src"]
+  },
+  "budget": { "model_calls": 30, "tokens": 300000, "max_episodes": 6 },
+  "workflow": {
+    "nodes": {
+      "survey": {
+        "tool": "grep",
+        "args": { "pattern": "TODO", "glob": "*.py" }
+      },
+      "propose": {
+        "model": {
+          "name": "propose",
+          "instructions": {
+            "role": "You receive the TODO comments found in a Python package, one grep match per line. Choose the one that a small, local change can resolve, read the surrounding code, and return a plan: the file, the TODO, and the change to make. Return the branch `nothing` when no TODO is safe to resolve without more context."
+          },
+          "tools": ["read", "grep"],
+          "grants": { "read": ["/home/user/project"] },
+          "budget": { "model_calls": 8 },
+          "done_when": {
+            "returns": {
+              "type": "object",
+              "properties": {
+                "file": { "type": "string" },
+                "todo": { "type": "string" },
+                "change": { "type": "string" }
+              },
+              "required": ["file", "todo", "change"]
+            }
+          }
+        },
+        "follows": ["survey"],
+        "branches": { "apply": ["apply"], "nothing": [] }
+      },
+      "apply": {
+        "model": {
+          "name": "apply",
+          "instructions": {
+            "role": "You receive a plan naming a file, a TODO comment in it, and the change that resolves it. Make that change and remove the comment. Run the tests that cover the file when there are any. Finish with one sentence stating what changed."
+          },
+          "tools": ["read", "edit", "bash"],
+          "grants": { "read": ["/home/user/project"], "write": ["/home/user/project/src"] },
+          "budget": { "model_calls": 12 }
+        },
+        "follows": ["propose"],
+        "verify": "check",
+        "retries": 1,
+        "max_fires": 2,
+        "terminal": true
+      }
+    },
+    "recovery": { "max_interventions": 2 }
+  },
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-opus-5",
+    "api_key_file": "/home/user/.config/foe/anthropic.key"
+  },
+  "task": "Resolve one TODO comment in src."
+}

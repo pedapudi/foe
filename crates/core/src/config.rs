@@ -4,6 +4,7 @@
 //! `ConfigError::Invalid { key, rule }` naming the offending key in dotted
 //! form, for example `programs.survey.grants.read[0]`.
 
+use crate::workflow::{self, WorkflowConfig};
 use crate::{
     grants, Budget, ChildProgram, Config, ConfigError, DoneWhen, Grants, HostToolDef, ModelConfig, SandboxConfig,
     ToolDef,
@@ -34,6 +35,8 @@ pub struct Program {
     /// Inherited by every child program.
     pub sandbox: SandboxConfig,
     pub programs: BTreeMap<String, Program>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<WorkflowConfig>,
 }
 
 impl Program {
@@ -54,6 +57,7 @@ struct Section<'a> {
     budget: &'a Budget,
     done_when: Option<&'a DoneWhen>,
     programs: &'a BTreeMap<String, ChildProgram>,
+    workflow: Option<&'a WorkflowConfig>,
 }
 
 impl<'a> From<&'a Config> for Section<'a> {
@@ -68,6 +72,7 @@ impl<'a> From<&'a Config> for Section<'a> {
             budget: &c.budget,
             done_when: c.done_when.as_ref(),
             programs: &c.programs,
+            workflow: c.workflow.as_ref(),
         }
     }
 }
@@ -84,6 +89,7 @@ impl<'a> From<&'a ChildProgram> for Section<'a> {
             budget: &c.budget,
             done_when: c.done_when.as_ref(),
             programs: &c.programs,
+            workflow: c.workflow.as_ref(),
         }
     }
 }
@@ -113,14 +119,10 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
         return Err(invalid("task", "is not empty"));
     }
     if let Some(model) = &config.model {
-        if model.provider.trim().is_empty() {
-            return Err(invalid("model.provider", "is not empty"));
-        }
-        if model.model.trim().is_empty() {
-            return Err(invalid("model.model", "is not empty"));
-        }
-        if model.max_output_tokens == Some(0) {
-            return Err(invalid("model.max_output_tokens", "is greater than 0"));
+        for (key, value) in [("model.provider", &model.provider), ("model.model", &model.model)] {
+            if value.trim().is_empty() {
+                return Err(invalid(key, "is not empty"));
+            }
         }
     }
     validate_section("", &Section::from(config))
@@ -237,6 +239,9 @@ fn validate_section(prefix: &str, s: &Section) -> Result<(), ConfigError> {
     for (name, child) in s.programs {
         validate_section(&key(&format!("programs.{name}")), &Section::from(child))?;
     }
+    if let Some(wf) = s.workflow {
+        workflow::check(&key("workflow"), wf, s.tools, &mut |k, p| validate_section(k, &Section::from(p)))?;
+    }
     Ok(())
 }
 
@@ -296,6 +301,11 @@ fn resolve_section(
             resolve_section(&key(&format!("programs.{name}")), &Section::from(child), inherited, Some(&grants))?;
         programs.insert(name.clone(), program);
     }
+    if let Some(wf) = s.workflow {
+        let mut subset =
+            |k: &str, p: &ChildProgram| resolve_section(k, &Section::from(p), inherited, Some(&grants)).map(drop);
+        workflow::check(&key("workflow"), wf, s.tools, &mut subset)?;
+    }
     Ok(Program {
         name: s.name.to_string(),
         instructions: s.instructions.clone(),
@@ -308,7 +318,15 @@ fn resolve_section(
         model: inherited.0.clone(),
         sandbox: inherited.1.clone(),
         programs,
+        workflow: s.workflow.cloned(),
     })
+}
+
+/// Resolves a workflow model node's program against the resolved program
+/// that declares it, for identity. Keyed as `validate` keys it.
+pub fn resolve_node_program(key: &str, parent: &Program, child: &ChildProgram) -> Result<Program, ConfigError> {
+    let inherited = (parent.model.clone(), parent.sandbox.clone());
+    resolve_section(key, &Section::from(child), &inherited, Some(&parent.grants))
 }
 
 #[cfg(test)]

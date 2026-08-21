@@ -248,6 +248,7 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
         model: parent.model.clone(),
         sandbox: parent.sandbox.clone(),
         programs: program.programs.clone(),
+        workflow: program.workflow.clone(),
         task,
     }
 }
@@ -317,8 +318,8 @@ impl ProcessSpawner {
         };
         std::thread::spawn(move || {
             let settled = reader.run(stdout);
-            let _ = child.wait();
             reader.router.remove(&reader.child_id);
+            let _ = child.wait();
             let _ = tx.send(Some(settled));
         });
         Ok(SpawnHandle { child_id, dir, run: ChildRun { rx } })
@@ -409,6 +410,11 @@ impl Reader {
                 _ => {}
             }
             self.observer.observe(&self.child_id, &event);
+            // The log ends here; the caller closes the child's standard
+            // input so that a child waiting on its host can exit.
+            if matches!(event.data, EventData::EpisodeEnd { .. }) {
+                break;
+            }
         }
         let outcome = outcome.unwrap_or_else(|| Outcome::Failed {
             error: format!("child {} exited without episode/end", self.child_id),

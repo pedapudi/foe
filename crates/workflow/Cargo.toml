@@ -1,0 +1,17 @@
+[package]
+name = "foe-workflow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Workflow executor: fires a declared graph of tool, model, and nested workflow nodes by dataflow, with choice points and recovery"
+
+[dependencies]
+foe-log = { path = "../log" }
+foe-core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true

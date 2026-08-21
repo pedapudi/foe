@@ -325,6 +325,20 @@ impl Registry {
         deadline: Option<Instant>,
     ) -> Result<Vec<String>, String> {
         let name = self.verify.as_deref().ok_or("no verifier is configured")?;
+        self.verify_with(name, handles, candidate, step, spill_dir, deadline).await
+    }
+
+    /// Runs a named tool as a verifier under the same contract as
+    /// [`Registry::verify`]. A workflow node's `verify` uses this.
+    pub async fn verify_with(
+        &self,
+        name: &str,
+        handles: &Handles,
+        candidate: &Value,
+        step: u32,
+        spill_dir: PathBuf,
+        deadline: Option<Instant>,
+    ) -> Result<Vec<String>, String> {
         let entry = self.entry(name).ok_or_else(|| format!("verifier `{name}` is not registered"))?;
         let ctx = self.ctx(entry.spec.effect, handles, format!("verify-{step}"), step, spill_dir, deadline);
         if let Some(exec) = &entry.exec {

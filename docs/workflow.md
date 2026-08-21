@@ -7,8 +7,9 @@ at every choice point the graph declares, and at every failure. This
 document specifies the graph, the three places, and the guarantee that
 holds across all of them.
 
-Status: specified, with log event types reserved. Not implemented.
-Tracked as foe issues #1 and #2.
+Status: implemented. The configuration types and construction rules are in
+`crates/core/src/workflow.rs`; the executor is `crates/workflow`;
+`examples/workflow` runs one graph.
 
 ## Why a graph, and why agency inside it
 
@@ -50,10 +51,13 @@ decides, within those bounds, what to do.
     "manifest": { "tool": "list_mutation_points" },
     "survey":   { "tool": "grep",
                   "args": { "pattern": { "$node": "manifest", "pointer": "/top_symbol" } },
-                  "follows": ["manifest"] },
+                  "follows": ["manifest"],
+                  "max_fires": 3 },
     "propose":  { "model": {
+                    "name": "propose",
                     "instructions": { "10-role": "Propose one experiment grounded in the survey." },
                     "tools": ["read", "grep"],
+                    "grants": { "read": ["/home/user/project"] },
                     "budget": { "model_calls": 8 },
                     "done_when": { "returns": { "type": "object", "properties": {} } }
                   },
@@ -110,9 +114,14 @@ edge. The graph is the union. Duplicate edges are not an error.
 
 `args` is the argument object for the call. A value of the form
 `{ "$node": NAME }` is replaced by that node's canonical output; with
-`"pointer"`, by the value at that JSON Pointer within it. NAME must appear
-in `follows`. No other substitution exists. A tool node has no judgment of
-its own; when its call fails, recovery decides.
+`"pointer"`, by the value at that JSON Pointer within it. NAME must be one
+of the node's inputs: a name in its `follows`, or a node whose
+`followed_by` names it. No other substitution exists. A tool node has no
+judgment of its own; when its call fails, recovery decides. For a tool
+declared in `tool_defs`, an exit code other than zero or a timeout is a
+failure of the node, because no model reads the code the way the loop's
+model does; the exit code and both output streams are the error recovery
+sees.
 
 ### Model nodes
 
@@ -160,30 +169,50 @@ the two things it may decide.
 
 ### Firing
 
-A node fires when every node in its `follows` list has produced a value
-since this node last fired. For an acyclic graph this is topological order,
-and nodes with no pending dependency between them fire concurrently. For a
-graph with a cycle, it is dataflow: a node on the cycle fires again when its
-inputs are fresh again.
+A node fires when every one of its inputs has produced a value and at
+least one edge into it has carried a fresh value since this node last
+fired. A node with no edge into it fires once, at the start. An edge from a
+node without `branches` is fresh after every firing of its source; an edge
+from a node with `branches` is fresh only when the chosen label lists the
+target, or when no label lists it. A node waits while any ancestor of it
+is running or is itself about to fire, so that a node with two inputs fed
+by one re-fired ancestor fires once, with both inputs fresh. For an
+acyclic graph this is topological order, and nodes with no pending
+dependency between them fire concurrently. For a graph with a cycle, it is
+dataflow: a node on the cycle fires again when an input is fresh again.
 
 Cycles are permitted. What bounds them is `max_fires` on every node that
 lies on a cycle, which the runtime requires at construction, and the
 episode's budget, which bounds everything. `foe plan` reports every cycle
-and the bound that closes it.
+and the bound that closes it. A node that would fire beyond its
+`max_fires` ends the episode as `blocked` with `recovery-exhausted`.
 
 Firing a node a second time re-fires every node downstream of it, because
-their inputs became fresh. Recovery uses this.
+their inputs became fresh. Recovery uses this. Model nodes fire at most
+`budget.max_concurrent` at a time; a ready model node waits for a running
+one when the cap is reached.
 
 ### Completion
 
 The workflow completes when a terminal node completes, or when a chosen
 branch label has no successors. The episode's `done_when`, when present,
-verifies the terminal value; findings re-fire the terminal node's nearest
-model ancestor with the findings attached, under the recovery rules below.
-When the graph has no terminal node and no empty-branch path, the episode
-runs until its budget is spent and ends as `exhausted`, which is a
-legitimate shape for a supervisor loop and is reported as such by
-`foe plan`.
+verifies the terminal value: a `returns` schema it must conform to, a
+`verify` tool that must report no findings, or both. Findings re-fire the
+terminal node's nearest model ancestor with the findings attached, up to
+`done_when.retries` times; findings that remain go to recovery at the
+terminal node. Firings still running when the workflow completes are
+awaited, so that their events precede `episode/end`. When the graph has no
+terminal node and no empty-branch path, the episode runs until its budget
+is spent and ends as `exhausted`, which is a legitimate shape for a
+supervisor loop and is reported as such by `foe plan`. A graph whose
+nodes have all fired without completing, with nothing left to fire, ends
+as `failed` with a message saying so.
+
+A nested `workflow` node runs its graph inside the episode, over the same
+log, with each inner node named by its path, `outer/inner`. The outer
+node's inputs gate its firing; the inner graph's source nodes start from
+nothing. The inner graph's completing value is the node's value; an inner
+episode-level `done_when` does not apply.
 
 ## The flow guarantee, stated exactly
 
@@ -266,16 +295,30 @@ the trace.
 
 - `recovery.max_interventions`, default 3, caps recovery actions per
   episode.
-- `max_fires` caps every node, including re-fires that recovery causes.
+- `max_fires` caps every node, including re-fires that recovery causes
+  and re-fires that `verify` findings cause. A node that may be re-fired
+  declares a `max_fires` that admits the re-fires; a node at its bound is
+  not offered to `retry` or `amend`.
 - The episode budget caps everything.
 
 When a bound is reached, the episode ends as `blocked` with
 `recovery-exhausted`, carrying the findings never resolved. A recovery
-decision that itself fails ends the episode with `recovery-failed`.
-Recovery never recurses: a failure inside a recovery decision is terminal.
+decision that itself fails ends the episode with `recovery-failed`: a
+request that errors, a response with no call to `recover`, or a call
+naming an action or a node that was not offered. Recovery never recurses:
+a failure inside a recovery decision is terminal.
 
-`"recovery": false` at the workflow level disables it; a node failure then
-ends the episode with the node's outcome.
+A recovery decision is one model request in the episode's own log. Its
+context is an `inbox/item` with source `system`; its `model/request`
+carries that one message and nothing from earlier decisions; its answer is
+an `assistant/message` and a `tool/result` for the `recover` call. The
+applied action is the `workflow/recovery` event. A `skip` records the
+`empty` value as the node's output: successors name the recovery event as
+their input, and when the empty value carries a `branch` field the label it
+names is the one chosen.
+
+`"recovery": { "enabled": false }` at the workflow level disables it; a
+node failure then ends the episode with the node's outcome.
 
 ## Agency, summarized
 
@@ -294,10 +337,10 @@ against it.
 
 ## Log events
 
-Reserved in version 1; emitted when the workflow executor ships. A workflow
-episode's own log carries these; each model node's firing is a child
-episode under `children/` with its own log, and `workflow/node-start`
-names the child.
+A workflow episode's own log carries these; each model node's firing is a
+child episode under `children/` with its own log, and
+`workflow/node-start` names the child. [log-format.md](log-format.md)
+gives each event's fields.
 
 | event | data |
 |---|---|

@@ -290,6 +290,17 @@ A child program's grants must be a subset of its parent's, checked at
 construction. Each child program's identity participates in the parent's
 identity.
 
+### `workflow`
+
+Object. Optional. A declared graph of nodes that replaces the free loop
+for this episode. [workflow.md](workflow.md) specifies every key under it
+and every construction rule. The document's `tools`, `grants`, `budget`,
+and `done_when` are the ceiling the graph draws from: a tool node names a
+tool in `tools`, and a model node's program is a child program in the sense
+of `programs`, checked to be a subset the same way. A child program may
+carry a `workflow` of its own. The graph participates in identity as
+workflow.md "Identity" lists.
+
 ### `task`
 
 String. Required. What this episode is to do. Written into the log as the
@@ -301,7 +312,7 @@ the same program with different tasks share an identity.
 The following participate in identity: `name`, `instructions`, `tools` and
 their order, each entry of `tool_defs` including the executable's content
 hash, the kinds and counts in `grants`, `budget`, `done_when`, every entry of
-`programs`, and the runtime's version and build.
+`programs`, `workflow`, and the runtime's version and build.
 
 The following do not: the paths in `grants`, `model`, `sandbox`, and `task`.
 

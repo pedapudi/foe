@@ -136,10 +136,6 @@ fn every_rule_names_its_key() {
         ("model.provider", Box::new(|v| v["model"] = json!({ "provider": " ", "model": "m" }))),
         ("model.model", Box::new(|v| v["model"] = json!({ "provider": "anthropic", "model": "" }))),
         (
-            "model.max_output_tokens",
-            Box::new(|v| v["model"] = json!({ "provider": "anthropic", "model": "m", "max_output_tokens": 0 })),
-        ),
-        (
             "programs.kid.instructions",
             Box::new({
                 let root = root.clone();

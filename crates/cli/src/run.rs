@@ -21,6 +21,7 @@ use foe_core::team::{self, Team};
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
 use foe_core::{Config, ModelConfig, Spawner, Tool, ToolSpec, Transport, Writer};
 use foe_log::{EpisodeStart, Outcome};
+use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -221,6 +222,9 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let sandbox = Arc::new(Sandbox::new(program.sandbox.mode).map_err(|e| e.to_string())?);
+    // Every model node of a workflow is a child program of the spawner, so
+    // the policy and the spawner see the same configuration.
+    let config = foe_workflow::spawner_config(&config);
     let mut policy = Policy::for_episode(&config, &log_dir);
     let viewer = match options.host || options.headless {
         true => None,
@@ -321,7 +325,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         reader: Some(Arc::new(RootReader::new(program.grants.read.clone()))),
         writer: (!write.is_empty()).then(|| Arc::new(RootWriter::new(write)) as Arc<dyn Writer>),
         executor: Some(Arc::new(executor)),
-        spawner: (!program.grants.spawn.is_empty()).then_some(spawner),
+        spawner: (!program.grants.spawn.is_empty()).then(|| spawner.clone()),
     };
     let start = EpisodeStart {
         id,
@@ -338,8 +342,13 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         Some(bound) => Some(bound.serve(&log_dir).await.map_err(|e| e.to_string())?),
         None => None,
     };
+    let workflow = program.workflow.clone();
     let params = Params { log, start, program, registry: Arc::new(registry), handles, transport, pool, stop };
-    let outcome = loop_::run(params).await.map_err(|e| e.to_string())?;
+    let outcome = match workflow {
+        Some(workflow) => foe_workflow::run(WorkflowParams { episode: params, spawner, workflow }).await,
+        None => loop_::run(params).await,
+    }
+    .map_err(|e| e.to_string())?;
     if server.is_some() {
         tokio::time::sleep(VIEWER_GRACE).await;
     }

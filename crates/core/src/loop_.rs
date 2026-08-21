@@ -545,7 +545,7 @@ fn system_item(text: &str) -> InboxItem {
 
 /// Resolves with the reason once the stop signal carries one. Never
 /// resolves when the sender is gone, which is the case without a host.
-async fn wait_stop(mut stop: watch::Receiver<Option<String>>) -> String {
+pub async fn wait_stop(mut stop: watch::Receiver<Option<String>>) -> String {
     loop {
         if let Some(reason) = stop.borrow_and_update().clone() {
             return reason;
@@ -556,7 +556,8 @@ async fn wait_stop(mut stop: watch::Receiver<Option<String>>) -> String {
     }
 }
 
-async fn until(deadline: Option<Instant>) {
+/// Resolves at `deadline`; never resolves without one.
+pub async fn until(deadline: Option<Instant>) {
     match deadline {
         Some(d) => tokio::time::sleep_until(tokio::time::Instant::from_std(d)).await,
         None => std::future::pending().await,
@@ -642,8 +643,9 @@ fn spill(spill_dir: &Path, call_id: &str, value: ToolValue) -> Result<(Value, St
 }
 
 /// Records streamed chunks as `assistant/chunk` events and assembles the
-/// message. A log write failure is kept and reported after the stream.
-struct Recorder {
+/// message. A log write failure is kept and reported after the stream. The
+/// workflow executor records its recovery requests through it as well.
+pub struct Recorder {
     log: Arc<Log>,
     step: u32,
     request_id: String,
@@ -658,7 +660,7 @@ struct Recorder {
 }
 
 impl Recorder {
-    fn new(log: Arc<Log>, step: u32, request_id: String) -> Self {
+    pub fn new(log: Arc<Log>, step: u32, request_id: String) -> Self {
         Self {
             log,
             step,
@@ -691,11 +693,16 @@ impl Recorder {
         blocks
     }
 
-    fn check(&mut self) -> Result<(), RuntimeError> {
+    pub fn check(&mut self) -> Result<(), RuntimeError> {
         self.failure.take().map_or(Ok(()), |e| Err(e.into()))
     }
 
-    fn message(&self, stop: StopReason, usage: Usage, interrupted: bool) -> AssistantMessage {
+    /// The `Done` or `Error` chunk that ended the stream, taken once.
+    pub fn take_terminal(&mut self) -> Option<Chunk> {
+        self.terminal.take()
+    }
+
+    pub fn message(&self, stop: StopReason, usage: Usage, interrupted: bool) -> AssistantMessage {
         AssistantMessage {
             step: self.step,
             request_id: self.request_id.clone(),

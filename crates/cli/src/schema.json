@@ -48,6 +48,7 @@
       }
     },
     "programs": { "$ref": "#/$defs/programs" },
+    "workflow": { "$ref": "#/$defs/workflow" },
     "task": {
       "description": "What this episode is to do. Written into the log as the first inbox item. Does not participate in identity.",
       "type": "string",
@@ -155,7 +156,58 @@
         "grants": { "$ref": "#/$defs/grants" },
         "budget": { "$ref": "#/$defs/budget" },
         "done_when": { "$ref": "#/$defs/done_when" },
-        "programs": { "$ref": "#/$defs/programs" }
+        "programs": { "$ref": "#/$defs/programs" },
+        "workflow": { "$ref": "#/$defs/workflow" }
+      }
+    },
+    "workflow": {
+      "description": "A declared graph of nodes that replaces the free loop for this episode. docs/workflow.md specifies it. The episode's tools, grants, budget, and done_when are the ceiling every node draws from.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes"],
+      "properties": {
+        "nodes": {
+          "description": "Node name to node. Exactly one of tool, model, and workflow is set per node.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/workflow_node" }
+        },
+        "recovery": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "description": "Whether a node failure is put to a recovery decision; when false, a failure ends the episode with the node's outcome.", "type": "boolean", "default": true },
+            "max_interventions": { "description": "Recovery actions permitted per episode.", "type": "integer", "minimum": 0, "default": 3 }
+          }
+        }
+      }
+    },
+    "workflow_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "description": "A tool in tools; the node is one call to it.", "type": "string", "minLength": 1 },
+        "args": { "description": "The argument object of a tool node. A value { \"$node\": NAME, \"pointer\": POINTER } is replaced by an input node's output, or the value at a JSON Pointer within it.", "type": "object" },
+        "model": { "$ref": "#/$defs/child_program" },
+        "workflow": { "$ref": "#/$defs/workflow" },
+        "follows": { "description": "Nodes whose outputs this node receives.", "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "followed_by": { "description": "The same edges written from the other end.", "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "verify": { "description": "A tool in tools run on the node's output; findings re-fire the node.", "type": "string", "minLength": 1 },
+        "retries": { "description": "How many times verify findings re-fire the node.", "type": "integer", "minimum": 0, "default": 2 },
+        "branches": {
+          "description": "Label to the successors that fire when the node's value names that label in its branch field.",
+          "type": "object",
+          "additionalProperties": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        },
+        "max_fires": { "description": "How many times the node may fire in one episode; required on a cycle.", "type": "integer", "minimum": 1, "default": 1 },
+        "terminal": { "description": "Completing this node completes the workflow.", "type": "boolean", "default": false },
+        "empty": { "description": "The value the node contributes when recovery skips it; without it, skip is not offered." },
+        "recovery": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "follows": { "description": "Further nodes whose outputs the node's recovery decision sees.", "type": "array", "items": { "type": "string", "minLength": 1 } }
+          }
+        }
       }
     }
   }

@@ -205,6 +205,7 @@ dependencies = [
  "foe-log",
  "foe-transport",
  "foe-view",
+ "foe-workflow",
  "hex",
  "nix",
  "serde",
@@ -282,6 +283,18 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "foe-workflow"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "foe-core",
+ "foe-log",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
