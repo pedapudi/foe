@@ -3,19 +3,24 @@
 The smallest configuration that runs with the built-in model transport. It
 grants one directory for reading and writing, lists the four built-in coding
 tools (`read`, `grep`, `edit`, `bash`), sets a budget of twenty model calls,
-and names a model with a key file. `done_when` is absent, so the episode
+and names a provider and a model. `done_when` is absent, so the episode
 completes when the model produces a turn with no tool calls, and that turn's
 text is the outcome value.
+
+The `model` block names no key file. The key is read from
+`~/.config/foe/credentials/anthropic.json`, which `foe login anthropic`
+writes; the log records that path in `episode/start.program.model`. A block
+that names `api_key_file` reads that file instead. `docs/models.md`
+describes both.
 
 ## Paths to replace
 
 - `/home/user/project`: the repository the agent works in.
-- `/home/user/.config/foe/anthropic.key`: a file whose whole contents are
-  the API key.
 
 ## Run
 
 ```
+foe login anthropic
 foe --config examples/minimal/config.json
 ```
 

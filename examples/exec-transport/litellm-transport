@@ -1,0 +1,51 @@
+#!/home/user/project/.venv/bin/python
+"""A foe exec transport: answers one model/request line on standard input with
+model/chunk lines on standard output, through litellm. See docs/models.md."""
+import json
+import sys
+
+import litellm
+
+
+def emit(request_id, **chunk):
+    print(json.dumps({"type": "model/chunk", "request_id": request_id, "chunk": chunk}), flush=True)
+
+
+def to_chat(req):
+    out = [{"role": "system", "content": req["system"]}] if req["system"] else []
+    for m in req["messages"]:
+        if m["role"] == "user":
+            out.append({"role": "user", "content": " ".join(b["text"] for b in m["content"] if b["type"] == "text")})
+        elif m["role"] == "assistant":
+            calls = [{"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": json.dumps(c["args"])}}
+                     for c in m["tool_calls"]]
+            out.append({"role": "assistant", "content": m["text"] or None, **({"tool_calls": calls} if calls else {})})
+        else:
+            out.append({"role": "tool", "tool_call_id": m["call_id"], "content": m["rendered"]})
+    return out
+
+
+req = json.loads(sys.stdin.readline())
+rid, calls, stop, usage = req["request_id"], {}, "end", {"input": 0, "output": 0, "cache_read": 0}
+with open(req["options"]["api_key_file"]) as f:
+    key = f.read().strip()
+tools = [{"type": "function", "function": t} for t in req["tools"]] or None
+stream = litellm.completion(model=req["model"], messages=to_chat(req), tools=tools, stream=True, api_key=key,
+                            max_tokens=req["max_output_tokens"], stream_options={"include_usage": True})
+for part in stream:
+    if getattr(part, "usage", None):
+        usage = {"input": part.usage.prompt_tokens, "output": part.usage.completion_tokens, "cache_read": 0}
+    for choice in part.choices:
+        if choice.delta.content:
+            emit(rid, kind="text", delta=choice.delta.content)
+        for tc in choice.delta.tool_calls or []:
+            if tc.index not in calls:
+                calls[tc.index] = tc.id or f"call_{tc.index}"
+                emit(rid, kind="tool_call_start", id=calls[tc.index], name=tc.function.name)
+            if tc.function.arguments:
+                emit(rid, kind="tool_call_delta", id=calls[tc.index], delta=tc.function.arguments)
+        if choice.finish_reason:
+            stop = {"length": "length"}.get(choice.finish_reason, "tool" if calls else "end")
+for call_id in calls.values():
+    emit(rid, kind="tool_call_end", id=call_id)
+emit(rid, kind="done", stop=stop, usage=usage)
