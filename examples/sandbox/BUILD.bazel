@@ -1,0 +1,26 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+SANDBOX_DATA = [
+    "config.json",
+    "//:foe",
+    "//examples/support:materialize.py",
+    "//examples/support:scripted-transport.py",
+]
+
+sh_binary(
+    name = "sandbox",
+    srcs = ["run.sh"],
+    args = ["$(rootpath //:foe)"],
+    data = SANDBOX_DATA,
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+sh_test(
+    name = "sandbox_test",
+    srcs = ["run.sh"],
+    args = ["$(rootpath //:foe)"],
+    data = SANDBOX_DATA,
+    size = "small",
+    target_compatible_with = ["@platforms//os:linux"],
+)

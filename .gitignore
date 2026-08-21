@@ -7,10 +7,10 @@
 __pycache__/
 *.py[cod]
 /node_modules
-/view/dist
 /python/foe/__pycache__
 *.egg-info
 /dist
 /.claude/
 /view/.test-build
 /view/node_modules
+/bazel-*

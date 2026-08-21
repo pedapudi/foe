@@ -1,0 +1,29 @@
+load("@crates//:defs.bzl", "all_crate_deps", "crate_edition")
+load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
+load("@rules_rust//rust:defs.bzl", "rust_library")
+
+cargo_build_script(
+    name = "build_script",
+    srcs = ["build.rs"],
+    crate_name = "build_script_build",
+    crate_root = "build.rs",
+    data = ["//view:viewer_assets"],
+    edition = crate_edition(),
+    pkg_name = "foe-view",
+    version = "0.1.0",
+)
+
+rust_library(
+    name = "foe_view",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "foe_view",
+    crate_root = "src/lib.rs",
+    edition = crate_edition(),
+    version = "0.1.0",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":build_script",
+        "//crates/log:foe_log",
+    ] + all_crate_deps(normal = True),
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)

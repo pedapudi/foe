@@ -1,0 +1,25 @@
+load("@crates//:defs.bzl", "all_crate_deps", "crate_edition")
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+
+rust_binary(
+    name = "foe",
+    srcs = glob(["src/**/*.rs"]),
+    compile_data = ["src/schema.json"],
+    crate_features = ["transport"],
+    crate_name = "foe",
+    crate_root = "src/main.rs",
+    edition = crate_edition(),
+    version = "0.1.0",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//crates/code:foe_code",
+        "//crates/context:foe_context",
+        "//crates/core:foe_core",
+        "//crates/log:foe_log",
+        "//crates/transport:foe_transport",
+        "//crates/view:foe_view",
+        "//crates/workflow:foe_workflow",
+    ] + all_crate_deps(normal = True),
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+    rustc_flags = ["-Cstrip=symbols"],
+)

@@ -10,7 +10,7 @@
 //! without the bundle recompiles this crate each time; the cost is small.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const JS_PLACEHOLDER: &str = "document.getElementById(\"app\").textContent = \
     \"The viewer bundle was not built. Run `pnpm install && pnpm build` in view/, then rebuild foe.\";";
@@ -23,9 +23,9 @@ const FONTS: [&str; 4] = [
 ];
 
 fn main() {
-    let out = std::env::var_os("OUT_DIR").expect("cargo sets OUT_DIR for build scripts");
-    let out = Path::new(&out);
-    let view = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../view");
+    let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("cargo sets OUT_DIR for build scripts"));
+    let manifest = std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is absent");
+    let view = Path::new(&manifest).join("../../view");
     println!("cargo:rerun-if-changed=build.rs");
     let copy = |src: &Path, placeholder: &[u8]| {
         println!("cargo:rerun-if-changed={}", src.display());

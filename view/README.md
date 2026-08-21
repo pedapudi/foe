@@ -7,6 +7,11 @@ stay under 150 KB after gzip compression; the build fails when they exceed
 that budget. The only input the application reads is the log format defined
 in [`docs/log-format.md`](../docs/log-format.md).
 
+The compiled files are checked in. Cargo and Bazel embed them directly, so a
+person building or installing the foe binary needs no Node.js package manager.
+Node.js and pnpm are development requirements only when TypeScript sources or
+viewer tests change.
+
 The Rust crate `crates/view` embeds the two files into an HTML page. It does
 so in two modes, described below, and both modes run the same code.
 

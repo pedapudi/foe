@@ -1,0 +1,25 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+WORKFLOW_DATA = [
+    "config.json",
+    "check",
+    "//:foe",
+    "//examples/support:materialize.py",
+    "//examples/support:scripted-transport.py",
+]
+
+sh_binary(
+    name = "workflow",
+    srcs = ["run.sh"],
+    args = ["$(rootpath //:foe)"],
+    data = WORKFLOW_DATA,
+)
+
+sh_test(
+    name = "workflow_test",
+    srcs = ["run.sh"],
+    args = ["$(rootpath //:foe)"],
+    data = WORKFLOW_DATA,
+    size = "small",
+)

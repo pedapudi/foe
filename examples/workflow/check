@@ -1,0 +1,17 @@
+#!/bin/sh
+# A verifier prints one finding per line and exits zero. Empty output accepts.
+found_implementation=false
+found_todo=false
+while IFS= read -r line; do
+  case "$line" in
+    "    return left + right") found_implementation=true ;;
+    *TODO*) found_todo=true ;;
+  esac
+done < src/calculator.py
+
+if [ "$found_implementation" != true ]; then
+  echo "src/calculator.py does not return left + right"
+fi
+if [ "$found_todo" = true ]; then
+  echo "src/calculator.py still contains a TODO comment"
+fi
