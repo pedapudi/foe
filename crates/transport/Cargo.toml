@@ -13,3 +13,9 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+async-trait.workspace = true
+# TLS with the ring provider and Mozilla's roots compiled in. The system
+# certificate store is never read. No crate in this tree reads an
+# environment variable.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
