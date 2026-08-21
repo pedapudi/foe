@@ -319,10 +319,15 @@ pub struct ThinkingBlock {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ContentBlock {
-    Text { text: String },
+    Text {
+        text: String,
+    },
     /// Base64 data with its media type. Only text is sent to a model that
     /// does not accept images; the block is then replaced by a placeholder.
-    Image { data: String, media_type: String },
+    Image {
+        data: String,
+        media_type: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

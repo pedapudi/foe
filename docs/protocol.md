@@ -58,7 +58,9 @@ ending with a `done` or `error` chunk.
 
 The header referenced by `header_seq` carries the system prompt, the tool
 schemas, and the model route. The host combines it with `messages` to form
-the provider request.
+the provider request. When the host supplies the transport, the route's
+`provider` and `model` are both the word `host`: the runtime does not know
+which model the host calls, and the log records the route the runtime saw.
 
 ### `host/tool-call`
 

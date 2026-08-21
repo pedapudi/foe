@@ -24,6 +24,7 @@ pub mod budget;
 pub mod config;
 pub mod exec;
 pub mod grants;
+pub mod harness_text;
 pub mod identity;
 pub mod inbox;
 pub mod loop_;
@@ -32,6 +33,9 @@ pub mod registry;
 pub mod sandbox;
 pub mod spawn;
 pub mod team;
+#[cfg(test)]
+#[path = "fixtures_test.rs"]
+mod test_util;
 
 // ---- tools --------------------------------------------------------------------
 

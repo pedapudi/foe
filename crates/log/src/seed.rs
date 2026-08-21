@@ -1,8 +1,15 @@
 //! Starting a new log from a prefix of an existing one. See
 //! docs/log-format.md "Seeding". Forking and replay both use this.
 
-use crate::{Event, LogError};
+use crate::append::Writer;
+use crate::{Event, EventData, ForkOrigin, LogError, ToolResult};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+
+/// Rendered text of a synthetic result for a tool call whose real result
+/// never reached the log. The model sees this text.
+pub const ORPHAN_RENDERED: &str =
+    "The result of this tool call was not recorded; the episode was interrupted before the call finished.";
 
 /// What the new episode supplies for its own `episode/start`.
 pub struct SeedHeader {
@@ -15,15 +22,84 @@ pub struct SeedHeader {
 /// `dest`, preceded by a fresh `episode/start` carrying `fork_origin`, with
 /// orphaned tool calls repaired by synthetic results, followed by `seed/end`.
 /// Returns the events written, renumbered.
+///
+/// A copied `episode/end` or `seed/end` is dropped: the new log has its own
+/// outcome and its own single seed boundary. `seq` references inside copied
+/// `model/request` events are renumbered with the events they name.
 pub fn seed(source: &Path, until_seq: u64, dest: &Path, header: SeedHeader) -> Result<Vec<Event>, LogError> {
-    let _ = (source, until_seq, dest, header);
-    todo!("owner: runtime agent")
+    let events = crate::fold::read_all(source)?;
+    let Some(EventData::EpisodeStart(start)) = events.first().map(|e| &e.data) else {
+        return Err(events
+            .first()
+            .map_or(LogError::Empty, |e| LogError::Invalid { seq: e.seq, rule: "episode/start is the first event" }));
+    };
+    if until_seq > events.len() as u64 {
+        return Err(LogError::Invalid { seq: until_seq, rule: "seed boundary lies within the source log" });
+    }
+    let mut writer = Writer::create(dest, None)?;
+    let mut written = Vec::new();
+    let mut fresh = start.clone();
+    fresh.id = header.new_id;
+    fresh.parent_id = header.parent_id;
+    fresh.team_id = header.team_id;
+    fresh.fork_origin = Some(ForkOrigin { episode_id: start.id.clone(), seq: until_seq });
+    written.push(writer.append(EventData::EpisodeStart(fresh))?);
+
+    let mut renumber: BTreeMap<u64, u64> = BTreeMap::new();
+    for event in events.iter().take(until_seq as usize).skip(1) {
+        let mut data = match &event.data {
+            EventData::EpisodeEnd { .. } | EventData::SeedEnd {} => continue,
+            data => data.clone(),
+        };
+        if let EventData::ModelRequest(request) = &mut data {
+            request.header_seq = renumber.get(&request.header_seq).copied().unwrap_or(request.header_seq);
+            request.consumed = request.consumed.iter().map(|s| renumber.get(s).copied().unwrap_or(*s)).collect();
+        }
+        let copied = writer.append_at(data, event.time)?;
+        renumber.insert(event.seq, copied.seq);
+        written.push(copied);
+    }
+    for result in orphan_results(&written) {
+        written.push(writer.append(EventData::ToolResult(result))?);
+    }
+    written.push(writer.append(EventData::SeedEnd {})?);
+    writer.sync()?;
+    Ok(written)
 }
 
 /// For every tool call among `events` that has no result, produces the
 /// synthetic `tool/result` that seeding appends. Exposed so that the loop
 /// can apply the same repair after an interrupted request.
-pub fn orphan_results(events: &[Event]) -> Vec<crate::ToolResult> {
-    let _ = events;
-    todo!("owner: runtime agent")
+pub fn orphan_results(events: &[Event]) -> Vec<ToolResult> {
+    let settled: BTreeSet<&str> = events
+        .iter()
+        .filter_map(|e| match &e.data {
+            EventData::ToolResult(r) => Some(r.call_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    events
+        .iter()
+        .filter_map(|e| match &e.data {
+            EventData::AssistantMessage(m) => Some(m),
+            _ => None,
+        })
+        .flat_map(|m| m.tool_calls.iter().map(move |c| (m.step, c)))
+        .filter(|(_, c)| !settled.contains(c.id.as_str()))
+        .map(|(step, c)| ToolResult {
+            step,
+            call_id: c.id.clone(),
+            name: c.name.clone(),
+            value: serde_json::json!({ "error": ORPHAN_RENDERED }),
+            rendered: ORPHAN_RENDERED.to_string(),
+            is_error: true,
+            spill: None,
+            duration_ms: 0,
+            synthetic: true,
+        })
+        .collect()
 }
+
+#[cfg(test)]
+#[path = "seed_test.rs"]
+mod tests;
