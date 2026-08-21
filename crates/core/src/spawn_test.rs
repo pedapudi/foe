@@ -122,8 +122,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     let call: serde_json::Value = serde_json::from_str(&forwarded[2]).unwrap();
     assert_eq!(call["type"], "host/tool-call", "a host call the observer does not answer is forwarded");
     assert_eq!(call["episode_id"], handle.child_id.as_str());
-    let result =
-        format!(r#"{{"type":"tool/result","call_id":"tc_1","episode_id":"{}","value":1}}"#, handle.child_id);
+    let result = format!(r#"{{"type":"tool/result","call_id":"tc_1","episode_id":"{}","value":1}}"#, handle.child_id);
     router.route(&handle.child_id, &result).unwrap();
     let settled = handle.run.clone().settle().await;
     let Outcome::Completed { value } = &settled.outcome else { panic!("{:?}", settled.outcome) };

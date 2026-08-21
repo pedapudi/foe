@@ -520,6 +520,6 @@ pub struct State {
     pub seeded_through: Option<u64>,
     /// Ids of tool calls in an `assistant/message` that have no `tool/result` yet.
     pub pending_calls: BTreeSet<String>,
-    /// Ids of tool calls that have a `tool/result`.
+    /// Ids of tool calls whose most recent issue has a `tool/result`.
     pub settled_calls: BTreeSet<String>,
 }

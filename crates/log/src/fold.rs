@@ -97,7 +97,10 @@ pub fn apply(state: &mut State, event: &Event) {
             state.usage.input += message.usage.input;
             state.usage.output += message.usage.output;
             state.usage.cache_read += message.usage.cache_read;
-            state.pending_calls.extend(message.tool_calls.iter().map(|c| c.id.clone()));
+            for call in &message.tool_calls {
+                state.settled_calls.remove(&call.id);
+                state.pending_calls.insert(call.id.clone());
+            }
         }
         EventData::ToolResult(result) => {
             state.pending_calls.remove(&result.call_id);

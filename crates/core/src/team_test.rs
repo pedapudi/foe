@@ -35,10 +35,7 @@ fn roster(seq: u64, id: &str, name: &str, phase: MemberPhase) -> Event {
 }
 
 fn message(seq: u64, id: &str, to: &str) -> Event {
-    event(
-        seq,
-        EventData::TeamMessage { message_id: id.into(), from: "ep_a".into(), to: to.into(), content: vec![] },
-    )
+    event(seq, EventData::TeamMessage { message_id: id.into(), from: "ep_a".into(), to: to.into(), content: vec![] })
 }
 
 #[test]

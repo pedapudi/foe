@@ -19,10 +19,7 @@ fn temp_dir(name: &str) -> PathBuf {
 
 #[test]
 fn off_records_zero_and_required_needs_landlock() {
-    assert_eq!(
-        Sandbox::new(SandboxMode::Off).unwrap().info(),
-        SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 }
-    );
+    assert_eq!(Sandbox::new(SandboxMode::Off).unwrap().info(), SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 });
     let required = Sandbox::new(SandboxMode::Required);
     if probe_abi() == 0 {
         assert!(matches!(required, Err(RuntimeError::Sandbox(_))));
@@ -83,8 +80,7 @@ fn executable_policy_keeps_only_its_own_file() {
     let dir = temp_dir("exec");
     let other = dir.join("true");
     std::fs::copy("/bin/true", &other).unwrap();
-    let episode =
-        Policy { read: vec![dir.clone()], exec: vec!["/bin/sh".into(), other.clone()], ..Policy::default() };
+    let episode = Policy { read: vec![dir.clone()], exec: vec!["/bin/sh".into(), other.clone()], ..Policy::default() };
     let tool = episode.for_executable(Path::new("/bin/sh"), false);
     assert_eq!(tool.exec, vec![PathBuf::from("/bin/sh")]);
     assert!(tool.log_dir.is_none());
