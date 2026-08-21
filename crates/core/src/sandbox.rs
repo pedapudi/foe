@@ -55,10 +55,15 @@ pub struct Policy {
     pub write: Vec<PathBuf>,
     /// Files that may be executed.
     pub exec: Vec<PathBuf>,
-    /// Single files readable in full: the resolved resolver configuration,
-    /// and the model credential file that the binary adds after resolving
-    /// the transport. Executables retain the resolver file and drop the
-    /// credential file.
+    /// Single files readable in full. Two files reach this list. The
+    /// resolver configuration, which a process reads to turn a provider
+    /// host name into an address, is granted only to a process that may
+    /// open a connection: an episode that declares a `model` block, or an
+    /// executable whose tool definition asks for the network. It is
+    /// resolved through the symbolic link into `/run` that no system read
+    /// root covers, and an unresolvable path grants nothing. The model
+    /// credential file, which the binary appends after resolving the
+    /// transport, reaches episodes alone and never an executable.
     pub read_files: Vec<PathBuf>,
     /// The episode's own log directory, readable and writable. `None` for an
     /// executable, which has no log of its own.
@@ -82,14 +87,15 @@ impl Policy {
         if !config.grants.spawn.is_empty() {
             exec.extend(std::env::current_exe().ok());
         }
+        let network = config.model.is_some();
         Policy {
             read: config.grants.read.clone(),
             write: config.grants.write.clone(),
             exec,
-            read_files: std::fs::canonicalize("/etc/resolv.conf").into_iter().collect(),
+            read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
             log_dir: Some(log_dir.to_path_buf()),
             bind_tcp: Vec::new(),
-            connect_tcp: config.model.is_some(),
+            connect_tcp: network,
         }
     }
 
@@ -101,7 +107,7 @@ impl Policy {
             read: self.read.clone(),
             write: self.write.clone(),
             exec: vec![exec.to_path_buf()],
-            read_files: std::fs::canonicalize("/etc/resolv.conf").into_iter().collect(),
+            read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
             log_dir: None,
             bind_tcp: Vec::new(),
             connect_tcp: network,

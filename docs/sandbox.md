@@ -29,7 +29,7 @@ declared.
 | the episode's own log directory | read and write |
 | the loader directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib`, `/bin`, `/usr/bin`, `/usr/local/bin` | read and execute |
 | the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |
-| the resolved target of `/etc/resolv.conf` | read that file |
+| the resolved target of `/etc/resolv.conf`, when the process may connect | read that file |
 | the device files `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty` | read and write |
 | TCP | bind: listed ports only; connect: all ports or none |
 
@@ -42,9 +42,12 @@ project, runs only when a `tool_defs` entry names it.
 
 The resolver configuration may be a symbolic link into `/run`, which the
 system read directories do not cover. Before applying a policy, foe resolves
-`/etc/resolv.conf` and grants read access to the target file. The grant lets
-network-capable processes find provider hosts without exposing the target
-file's surrounding runtime directory.
+`/etc/resolv.conf` and grants read access to the target file, so that a
+process able to open a connection can turn a provider host name into an
+address without gaining the target file's surrounding runtime directory. A
+process that may not connect receives no such grant: an episode that
+declares no `model` block, and an executable whose tool definition does not
+ask for the network, read no resolver file.
 
 A write root grants no read access. A configuration that writes to a
 directory it also reads lists that directory under both grants, or lists a

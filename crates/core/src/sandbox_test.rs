@@ -164,7 +164,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
     assert!(!p.connect_tcp, "an episode without a model block holds no transport");
     let resolver: Vec<PathBuf> = std::fs::canonicalize("/etc/resolv.conf").into_iter().collect();
-    assert_eq!(p.read_files, resolver);
+    assert!(p.read_files.is_empty(), "an episode that opens no connection reads no resolver file");
     assert_eq!(p.exec.len(), 1, "no child program to start");
     let mut with_children = config.clone();
     with_children.grants.spawn = vec!["survey".into()];
@@ -174,6 +174,9 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert_eq!(p.exec.last(), std::env::current_exe().ok().as_ref(), "the binary starts children");
     assert!(p.connect_tcp);
     p.read_files.push(PathBuf::from("/keys/anthropic"));
-    let tool = p.for_executable(Path::new("/bin/sh"), false);
-    assert_eq!(tool.read_files, resolver, "an executable keeps the resolver file and drops the credential file");
+    let offline = p.for_executable(Path::new("/bin/sh"), false);
+    assert!(offline.read_files.is_empty(), "an executable without network reads no resolver file");
+    let online = p.for_executable(Path::new("/bin/sh"), true);
+    assert_eq!(online.read_files, resolver, "an executable with network keeps the resolver file");
+    assert!(!online.read_files.contains(&PathBuf::from("/keys/anthropic")), "and never the credential file");
 }
