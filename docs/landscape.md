@@ -220,8 +220,16 @@ The comparison below is against documented behavior of the surveyed systems.
   choice shared in spirit by OpenHands headless mode and Antigravity's
   `/goal`; the fixed blocking vocabulary for parent routing is foe's own.
 
-Two properties that might look distinctive are shared. Hands-free execution
-is available in every harness as a permission mode. Credential isolation by
+Two properties that might look distinctive are partly shared, and the
+partition matters. Running without a person present during execution is
+the premise of every hosted product in the first table, and every local
+harness offers it as a permission mode. What no surveyed system offers is a
+runtime designed around that absence: a declared completion condition, a
+budget held as a pool across the episode tree, runtime detection of a stuck
+agent, and a closed vocabulary of blocking conditions, each replacing a job
+a person would otherwise do. OpenHands's `stuck` status and Copilot's hard
+session cap are the nearest single pieces. Local harnesses with approvals
+disabled are unsupervised rather than autonomous. Credential isolation by
 placing the model transport in a separate process is matched by Claude Code
 on the web's credential proxy and by sandbox-runtime's network proxy.
 
