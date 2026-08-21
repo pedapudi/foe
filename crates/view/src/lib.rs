@@ -11,7 +11,7 @@ mod project;
 mod server;
 
 pub use project::{project, Node, Tree};
-pub use server::{serve, Server};
+pub use server::{serve, Bound, Server};
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;

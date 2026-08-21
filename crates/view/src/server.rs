@@ -49,35 +49,68 @@ impl Shared {
     }
 }
 
-/// Binds `127.0.0.1:port`, or an ephemeral port when that one is taken,
-/// prints the URL with its token to standard error once, and starts the
-/// tailing task and the accept loop on the current runtime.
+/// A listener bound and a token drawn, before the server runs. A caller
+/// that restricts itself with Landlock binds first, because a bind under
+/// the restriction needs the port listed; the URL is known at this point,
+/// so a browser may be opened before the accept loop starts, and its
+/// connection waits in the listen backlog.
+pub struct Bound {
+    listener: std::net::TcpListener,
+    pub addr: SocketAddr,
+    pub token: String,
+}
+
+impl Bound {
+    /// Binds `127.0.0.1:port`, or an ephemeral port when that one is taken,
+    /// and draws the token from `/dev/urandom`.
+    pub fn bind(port: u16) -> Result<Bound, Error> {
+        let listener = match std::net::TcpListener::bind(("127.0.0.1", port)) {
+            Ok(listener) => listener,
+            Err(_) => {
+                std::net::TcpListener::bind(("127.0.0.1", 0)).map_err(|e| Error::Io("bind 127.0.0.1".into(), e))?
+            }
+        };
+        let addr = listener.local_addr().map_err(|e| Error::Io("local address".into(), e))?;
+        let mut bytes = [0u8; 16];
+        std::fs::File::open("/dev/urandom")
+            .and_then(|mut f| f.read_exact(&mut bytes))
+            .map_err(|e| Error::Io("read /dev/urandom".into(), e))?;
+        let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        Ok(Bound { listener, addr, token })
+    }
+
+    /// The page's address with the token, as printed for a person.
+    pub fn url(&self) -> String {
+        format!("http://{}/?token={}", self.addr, self.token)
+    }
+
+    /// Prints the URL once to standard error and starts the tailing task and
+    /// the accept loop on the current runtime.
+    pub async fn serve(self, dir: &Path) -> Result<Server, Error> {
+        let Bound { listener, addr, token } = self;
+        listener.set_nonblocking(true).map_err(|e| Error::Io("set nonblocking".into(), e))?;
+        let listener = TcpListener::from_std(listener).map_err(|e| Error::Io("register listener".into(), e))?;
+        let (tx, changed) = watch::channel(0);
+        let shared = Arc::new(Shared {
+            store: Mutex::new(Store::new(dir)),
+            origin: format!("http://{addr}"),
+            token: token.clone(),
+            changed,
+        });
+        eprintln!("foe viewer: {}/?token={token}", shared.origin);
+        // Everything already on disk is read before the first request is
+        // accepted, so an early `/episodes` never answers with an empty tree.
+        // An error here is the same transient kind the tailing task tolerates.
+        let _ = shared.store().poll();
+        tokio::spawn(tail(shared.clone(), tx));
+        let accept = tokio::spawn(accept_loop(listener, shared));
+        Ok(Server { addr, token, accept })
+    }
+}
+
+/// Binds and serves in one step; see [`Bound`].
 pub async fn serve(dir: &Path, port: u16) -> Result<Server, Error> {
-    let listener = match TcpListener::bind(("127.0.0.1", port)).await {
-        Ok(listener) => listener,
-        Err(_) => TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| Error::Io("bind 127.0.0.1".into(), e))?,
-    };
-    let addr = listener.local_addr().map_err(|e| Error::Io("local address".into(), e))?;
-    let mut bytes = [0u8; 16];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut bytes))
-        .map_err(|e| Error::Io("read /dev/urandom".into(), e))?;
-    let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    let (tx, changed) = watch::channel(0);
-    let shared = Arc::new(Shared {
-        store: Mutex::new(Store::new(dir)),
-        origin: format!("http://{addr}"),
-        token: token.clone(),
-        changed,
-    });
-    eprintln!("foe viewer: {}/?token={token}", shared.origin);
-    // Everything already on disk is read before the first request is
-    // accepted, so an early `/episodes` never answers with an empty tree.
-    // An error here is the same transient kind the tailing task tolerates.
-    let _ = shared.store().poll();
-    tokio::spawn(tail(shared.clone(), tx));
-    let accept = tokio::spawn(accept_loop(listener, shared));
-    Ok(Server { addr, token, accept })
+    Bound::bind(port)?.serve(dir).await
 }
 
 async fn tail(shared: Arc<Shared>, tx: watch::Sender<u64>) {

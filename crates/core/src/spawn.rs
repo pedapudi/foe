@@ -204,7 +204,9 @@ impl ProcessSpawner {
         self
     }
 
-    fn child_id(&self) -> String {
+    /// A fresh child id. A caller that reserves budget under the id before
+    /// the child starts passes it to [`ProcessSpawner::spawn_as`].
+    pub fn child_id(&self) -> String {
         let n = self.next.fetch_add(1, Ordering::SeqCst);
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
         let digest = Sha256::digest(format!("{}:{n}:{now}:{}", self.episode_id, std::process::id()));
@@ -249,6 +251,13 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
 
 impl Spawner for ProcessSpawner {
     fn spawn(&self, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
+        self.spawn_as(self.child_id(), req)
+    }
+}
+
+impl ProcessSpawner {
+    /// Starts a child under a given id.
+    pub fn spawn_as(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
         if !self.config.grants.spawn.contains(&req.program) {
             return Err(CapError::Invalid(format!("grants.spawn does not list program {}", req.program)));
         }
@@ -257,7 +266,6 @@ impl Spawner for ProcessSpawner {
             .programs
             .get(&req.program)
             .ok_or_else(|| CapError::Invalid(format!("programs has no entry named {}", req.program)))?;
-        let child_id = self.child_id();
         let dir = self.log_dir.join("children").join(&child_id);
         std::fs::create_dir_all(&dir)?;
         let invalid = |e: serde_json::Error| CapError::Invalid(e.to_string());

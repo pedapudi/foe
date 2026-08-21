@@ -36,6 +36,7 @@ pub mod team;
 #[cfg(test)]
 #[path = "fixtures_test.rs"]
 mod test_util;
+pub mod wiring;
 
 // ---- tools --------------------------------------------------------------------
 
@@ -175,7 +176,11 @@ pub struct SpawnRequest {
     pub program: String,
     pub task: String,
     pub context: foe_log::SpawnContext,
+    /// What to reserve from the parent's remainder; an unset dimension
+    /// takes the whole remainder. The spawner records what it granted.
     pub reserve: foe_log::BudgetAmount,
+    /// The tool call that starts the child, recorded in `spawn/start`.
+    pub call_id: String,
 }
 
 pub struct SpawnHandle {

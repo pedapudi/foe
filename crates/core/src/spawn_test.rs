@@ -89,6 +89,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
         task: "do it".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount { model_calls: Some(5), tokens: None, seconds: None },
+        call_id: "tc_spawn".into(),
     };
     let handle = spawner.spawn(req).unwrap();
     let child_dir = dir.join("children").join(&handle.child_id);
@@ -156,6 +157,7 @@ fn spawn_refuses_programs_outside_the_grant() {
         task: "x".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount::default(),
+        call_id: "tc_spawn".into(),
     };
     let err = spawner.spawn(req).err().unwrap().to_string();
     assert!(err.contains("grants.spawn"), "{err}");

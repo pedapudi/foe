@@ -14,6 +14,7 @@
 //! peer item, the lead sees it and writes `team/delivered`. See
 //! docs/protocol.md "Children".
 
+use crate::protocol::InboxSink;
 use crate::spawn::{ChildObserver, Router};
 use crate::{CallCtx, CapError, Effect, HostToolDef, SpawnHandle, SpawnRequest, Spawner, Tool, ToolSpec, ToolValue};
 use foe_log::{
@@ -22,11 +23,6 @@ use foe_log::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-
-/// Appends an inbox item to this episode's own log.
-pub trait InboxSink: Send + Sync {
-    fn append(&self, item: InboxItem);
-}
 
 /// This episode's own log, as the lead of its team: appends team events and
 /// reads everything written so far.
@@ -376,6 +372,12 @@ impl Kind {
     }
 }
 
+/// The specifications of the lead's built-in tools, in the order [`tools`]
+/// lists them. Identity and `foe tools` use this without a running team.
+pub fn builtin_specs() -> Vec<ToolSpec> {
+    [Kind::Spawn, Kind::Steer].into_iter().map(Kind::spec).collect()
+}
+
 /// The built-in tools of a lead: `spawn` and `steer`. `spawn` takes its
 /// [`Spawner`] from the call context.
 pub fn tools(team: Arc<Team>) -> Vec<Box<dyn Tool>> {
@@ -431,8 +433,14 @@ impl Tool for TeamTool {
                     Some(other) => return ToolValue::error(format!("context: {other} is neither fresh nor fork")),
                 };
                 let name = args.get("name").and_then(|v| v.as_str()).unwrap_or(&program).to_string();
-                // The loop's spawner fills in the amount it reserved.
-                let req = SpawnRequest { program: program.clone(), task, context, reserve: BudgetAmount::default() };
+                // The spawner reserves the child's whole share and records what it granted.
+                let req = SpawnRequest {
+                    program: program.clone(),
+                    task,
+                    context,
+                    reserve: BudgetAmount::default(),
+                    call_id: ctx.call_id.clone(),
+                };
                 match self.team.spawn(spawner.as_ref(), req, &name) {
                     Ok(handle) => ToolValue::ok(
                         serde_json::json!({ "child_id": handle.child_id, "name": name, "program": program }),
