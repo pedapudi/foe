@@ -1,0 +1,447 @@
+/* Colour role tokens and typeface tokens for the foe viewer.
+ *
+ * The sixteen theme blocks below are copied from zicato's
+ * src/zicato/dashboard/static/css/console.css without modification other
+ * than the selector, which is re-scoped from
+ * #variant-root[data-variant="T"][data-t-theme="<id>"] to
+ * :root[data-theme="<id>"]. Monokai is the default. This file is the only
+ * place in the bundle where a raw hex colour appears
+ * (docs/design-language.md, "Colour").
+ *
+ * The four woff2 files under view/fonts/ are the self-hosted faces of the
+ * default typeface. The live server serves them at /fonts/<name>.woff2 and
+ * the static export inlines them as data URIs. No other font is fetched:
+ * every other family resolves locally or falls back to a system face. */
+
+@font-face {
+  font-family: "iA Writer Mono"; font-style: normal; font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/iAWriterMonoS-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "iA Writer Mono"; font-style: normal; font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/iAWriterMonoS-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono"; font-style: normal; font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono"; font-style: normal; font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+}
+
+
+/* Monokai (default): warm dark. */
+:root,
+:root[data-theme="monokai"] {
+  --v2-paper:      #1e1f1c;
+  --v2-panel:      #272822;
+  --v2-ink:        #f8f8f2;
+  --v2-ink-soft:   #c9cabf;
+  --v2-ink-faint:  #8f908a;
+  --v2-rule:       #3a3b34;
+  --v2-rule-soft:  #2f302a;
+
+  --v2-good:       #a6e22e;   /* monokai green: improved / promoted */
+  --v2-good-soft:  #2c361a;
+  --v2-bad:        #f92672;   /* monokai magenta-red: regressed / rejected */
+  --v2-bad-soft:   #3a1622;
+  --v2-caution:    #e6db74;   /* monokai yellow: caution / timeout */
+  --v2-accent:     #66d9ef;   /* monokai cyan: emphasis spine */
+  --v2-flat:       #75715e;   /* monokai comment grey: unchanged */
+  --v2-cell-empty: #23241f;
+}
+
+/* Solarized Dark. */
+:root[data-theme="solarized-dark"] {
+  --v2-paper:      #04222B;
+  --v2-panel:      #0A2D38;
+  --v2-ink:        #93A1A1;
+  --v2-ink-soft:   #839496;
+  --v2-ink-faint:  #5E7079;
+  --v2-rule:       #0E3540;
+  --v2-rule-soft:  #0B2E39;
+
+  --v2-good:       #8BB80E;
+  --v2-good-soft:  #1C3320;
+  --v2-bad:        #E0483C;
+  --v2-bad-soft:   #3A1F1D;
+  --v2-caution:    #C4920A;
+  --v2-accent:     #2AA198;
+  --v2-flat:       #46606B;
+  --v2-cell-empty: #0A2730;
+}
+
+/* Solarized Light. */
+:root[data-theme="solarized-light"] {
+  --v2-paper:      #FDF6E3;
+  --v2-panel:      #FBF1D6;
+  --v2-ink:        #586E75;
+  --v2-ink-soft:   #657B83;
+  --v2-ink-faint:  #93A1A1;
+  --v2-rule:       #E7DCBE;
+  --v2-rule-soft:  #F0E7CC;
+
+  --v2-good:       #6B9B0B;
+  --v2-good-soft:  #E3ECCB;
+  --v2-bad:        #DC322F;
+  --v2-bad-soft:   #F6DDD3;
+  --v2-caution:    #B58900;
+  --v2-accent:     #268BD2;
+  --v2-flat:       #93A1A1;
+  --v2-cell-empty: #F2E9CE;
+}
+
+/* Gogh: Google Light. */
+:root[data-theme="google-light"] {
+  --v2-paper:      #FFFFFF;
+  --v2-panel:      #F4F4F4;
+  --v2-ink:        #474A4E;
+  --v2-ink-soft:   #5F6368;
+  --v2-ink-faint:  #9FA1A4;
+  --v2-rule:       #E2E3E4;
+  --v2-rule-soft:  #F1F1F1;
+  --v2-good:       #34A853;
+  --v2-good-soft:  #D2ECD9;
+  --v2-bad:        #EA4335;
+  --v2-bad-soft:   #FAD6D3;
+  --v2-caution:    #C99700;
+  --v2-accent:     #1B9CB8;
+  --v2-flat:       #9AA0A6;
+  --v2-cell-empty: #F8F8F8;
+}
+
+/* Gogh: Google Dark. */
+:root[data-theme="google-dark"] {
+  --v2-paper:      #202124;
+  --v2-panel:      #2C2D30;
+  --v2-ink:        #FFFFFF;
+  --v2-ink-soft:   #E8EAED;
+  --v2-ink-faint:  #989A9D;
+  --v2-rule:       #444548;
+  --v2-rule-soft:  #323336;
+  --v2-good:       #34A853;
+  --v2-good-soft:  #243F2E;
+  --v2-bad:        #EA4335;
+  --v2-bad-soft:   #4C2828;
+  --v2-caution:    #FBBC05;
+  --v2-accent:     #24C1E0;
+  --v2-flat:       #5F6368;
+  --v2-cell-empty: #28292C;
+}
+
+/* Gogh: Lunaria Light. */
+:root[data-theme="lunaria-light"] {
+  --v2-paper:      #EBE4E1;
+  --v2-panel:      #E2DCD9;
+  --v2-ink:        #363434;
+  --v2-ink-soft:   #484646;
+  --v2-ink-faint:  #898584;
+  --v2-rule:       #CEC8C5;
+  --v2-rule-soft:  #DCD6D3;
+  --v2-good:       #497D46;
+  --v2-good-soft:  #C7CDBF;
+  --v2-bad:        #783C1F;
+  --v2-bad-soft:   #D2BFB6;
+  --v2-caution:    #8F750B;
+  --v2-accent:     #3778A9;
+  --v2-flat:       #898584;
+  --v2-cell-empty: #E6DFDC;
+}
+
+/* Gogh: Lunaria Eclipse. */
+:root[data-theme="lunaria-eclipse"] {
+  --v2-paper:      #323F46;
+  --v2-panel:      #3B484F;
+  --v2-ink:        #DFE2ED;
+  --v2-ink-soft:   #C9CDD7;
+  --v2-ink-faint:  #8D949D;
+  --v2-rule:       #4D5960;
+  --v2-rule-soft:  #404C53;
+  --v2-good:       #BEDBC1;
+  --v2-good-soft:  #516161;
+  --v2-bad:        #BA9088;
+  --v2-bad-soft:   #505155;
+  --v2-caution:    #F1DFB4;
+  --v2-accent:     #C8429F;
+  --v2-flat:       #6B767D;
+  --v2-cell-empty: #38454C;
+}
+
+/* Gogh: Belafonte Day (light). */
+:root[data-theme="belafonte-day"] {
+  --v2-paper:      #D5CCBA;
+  --v2-panel:      #CCC3B2;
+  --v2-ink:        #34292D;
+  --v2-ink-soft:   #45373C;
+  --v2-ink-faint:  #7F736E;
+  --v2-rule:       #BBB1A3;
+  --v2-rule-soft:  #C8BFAF;
+  --v2-good:       #6E6A4E;
+  --v2-good-soft:  #C3BCA7;
+  --v2-bad:        #BE100E;
+  --v2-bad-soft:   #D0A394;
+  --v2-caution:    #B57A1E;
+  --v2-accent:     #426A79;
+  --v2-flat:       #5E5252;
+  --v2-cell-empty: #D0C6B5;
+}
+
+/* Gogh: Belafonte Night (dark). */
+:root[data-theme="belafonte-night"] {
+  --v2-paper:      #20111B;
+  --v2-panel:      #271821;
+  --v2-ink:        #D5CCBA;
+  --v2-ink-soft:   #968C83;
+  --v2-ink-faint:  #675B59;
+  --v2-rule:       #35272E;
+  --v2-rule-soft:  #2B1C24;
+  --v2-good:       #A6A07A;
+  --v2-good-soft:  #362A2B;
+  --v2-bad:        #D6403E;
+  --v2-bad-soft:   #431118;
+  --v2-caution:    #EAA549;
+  --v2-accent:     #6F8E97;
+  --v2-flat:       #5E5252;
+  --v2-cell-empty: #25161F;
+}
+
+/* Gogh: Paper (light). */
+:root[data-theme="paper"] {
+  --v2-paper:      #F2EEDE;
+  --v2-panel:      #E6E2D3;
+  --v2-ink:        #1A1A1A;
+  --v2-ink-soft:   #33312B;
+  --v2-ink-faint:  #85837A;
+  --v2-rule:       #C6C3B6;
+  --v2-rule-soft:  #DCD9CA;
+  --v2-good:       #216609;
+  --v2-good-soft:  #CCD6B8;
+  --v2-bad:        #CC3E28;
+  --v2-bad-soft:   #EBCEBD;
+  --v2-caution:    #B58900;
+  --v2-accent:     #1E6FCC;
+  --v2-flat:       #6E6A5E;
+  --v2-cell-empty: #E8E4D5;
+}
+
+/* Gogh: Zenburn (dark). */
+:root[data-theme="zenburn"] {
+  --v2-paper:      #3A3A3A;
+  --v2-panel:      #424241;
+  --v2-ink:        #DCDCCC;
+  --v2-ink-soft:   #C5C5B8;
+  --v2-ink-faint:  #83837C;
+  --v2-rule:       #575754;
+  --v2-rule-soft:  #494947;
+  --v2-good:       #8FB28F;
+  --v2-good-soft:  #2E3A2E;
+  --v2-bad:        #CC9393;
+  --v2-bad-soft:   #402F2F;
+  --v2-caution:    #FFD7A7;
+  --v2-accent:     #8CD0D3;
+  --v2-flat:       #757575;
+  --v2-cell-empty: #404040;
+}
+
+/* Gogh: Selenized Black (dark). */
+:root[data-theme="selenized-black"] {
+  --v2-paper:      #181818;
+  --v2-panel:      #202020;
+  --v2-ink:        #DEDEDE;
+  --v2-ink-soft:   #B9B9B9;
+  --v2-ink-faint:  #606060;
+  --v2-rule:       #353535;
+  --v2-rule-soft:  #262626;
+  --v2-good:       #83C746;
+  --v2-good-soft:  #243218;
+  --v2-bad:        #FF5E56;
+  --v2-bad-soft:   #3A1B19;
+  --v2-caution:    #EFC541;
+  --v2-accent:     #56D8C9;
+  --v2-flat:       #3B3B3B;
+  --v2-cell-empty: #1E1E1E;
+}
+
+/* Gogh: Relaxed (dark). */
+:root[data-theme="relaxed"] {
+  --v2-paper:      #353A44;
+  --v2-panel:      #3D424B;
+  --v2-ink:        #F7F7F7;
+  --v2-ink-soft:   #D9D9D9;
+  --v2-ink-faint:  #7F8287;
+  --v2-rule:       #53575F;
+  --v2-rule-soft:  #444851;
+  --v2-good:       #A0AC77;
+  --v2-good-soft:  #353D2E;
+  --v2-bad:        #BC5653;
+  --v2-bad-soft:   #3F2A2C;
+  --v2-caution:    #EBC17A;
+  --v2-accent:     #7EAAC7;
+  --v2-flat:       #636363;
+  --v2-cell-empty: #3C404A;
+}
+
+/* Gogh: Espresso (dark). */
+:root[data-theme="espresso"] {
+  --v2-paper:      #323232;
+  --v2-panel:      #3A3A3A;
+  --v2-ink:        #FFFFFF;
+  --v2-ink-soft:   #D9D9D9;
+  --v2-ink-faint:  #8A8A8A;
+  --v2-rule:       #4C4C4C;
+  --v2-rule-soft:  #3E3E3E;
+  --v2-good:       #A5C261;
+  --v2-good-soft:  #353D24;
+  --v2-bad:        #D25252;
+  --v2-bad-soft:   #3D2424;
+  --v2-caution:    #FFC66D;
+  --v2-accent:     #6C99BB;
+  --v2-flat:       #6E6E6E;
+  --v2-cell-empty: #383838;
+}
+
+/* Gogh: Dracula (dark). */
+:root[data-theme="dracula"] {
+  --v2-paper:      #282A36;
+  --v2-panel:      #343746;
+  --v2-ink:        #F8F8F2;
+  --v2-ink-soft:   #D4D4CF;
+  --v2-ink-faint:  #6272A4;
+  --v2-rule:       #44475A;
+  --v2-rule-soft:  #353848;
+  --v2-good:       #50FA7B;
+  --v2-good-soft:  #213A2A;
+  --v2-bad:        #FF5555;
+  --v2-bad-soft:   #3C2329;
+  --v2-caution:    #F1FA8C;   /* dracula yellow */
+  --v2-accent:     #BD93F9;   /* dracula purple: signature accent — LIVE pill, highlights, active state */
+  --v2-flat:       #6272A4;   /* dracula comment: unchanged / muted */
+  --v2-cell-empty: #2E303D;
+}
+
+/* Gogh: Ubuntu (dark — the classic aubergine terminal). */
+:root[data-theme="ubuntu"] {
+  --v2-paper:      #300A24;
+  --v2-panel:      #3D1530;
+  --v2-ink:        #EEEEEC;
+  --v2-ink-soft:   #CBC3C9;
+  --v2-ink-faint:  #8A7383;
+  --v2-rule:       #4B2640;
+  --v2-rule-soft:  #3E1A32;
+  --v2-good:       #8AE234;
+  --v2-good-soft:  #2E3320;
+  --v2-bad:        #CC0000;
+  --v2-bad-soft:   #45161F;
+  --v2-caution:    #FCE94F;
+  --v2-accent:     #34E2E2;
+  --v2-flat:       #847683;
+  --v2-cell-empty: #371129;
+}
+
+/* ===================  typeface tokens  ===================
+ *
+ * Three modes, four faces each. [data-typeface] on the root names a face;
+ * the bare mode name selects that mode's first face. Four tokens are exposed:
+ * --v2-sans (body), --v2-mono (data, labels, code), --n-font-head (headings),
+ * --n-font-paper (long prose). The brand wordmark pins to --v2-brand-mono
+ * and never follows the chosen face. */
+:root {
+  --n-font-mono-real: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --n-font-prose-mono: "iA Writer Mono", "iA Writer Mono S", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --n-font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --n-font-display: "Archivo Narrow", "Space Grotesk", system-ui, sans-serif;
+  --n-font-geo: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --v2-brand-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --v2-sans: var(--n-font-prose-mono);
+  --v2-mono: var(--n-font-mono-real);
+  --n-font-head: var(--n-font-prose-mono);
+  --n-font-paper: var(--n-font-prose-mono);
+  --dt-font-scale: 1;
+}
+
+/* ----- technical ----- */
+:root[data-typeface="technical"],
+:root[data-typeface="technical-ia-writer"] {
+  --v2-sans: var(--n-font-prose-mono);
+  --v2-mono: var(--n-font-mono-real);
+  --n-font-head: var(--n-font-prose-mono);
+  --n-font-paper: var(--n-font-prose-mono);
+}
+:root[data-typeface="technical-source"] {
+  --v2-sans: 'Source Sans 3', system-ui, sans-serif;
+  --v2-mono: 'Source Code Pro', ui-monospace, monospace;
+  --n-font-head: 'Source Sans 3', system-ui, sans-serif;
+  --n-font-paper: 'Source Sans 3', system-ui, sans-serif;
+}
+:root[data-typeface="technical-inconsolata"] {
+  --v2-sans: 'Inconsolata', ui-monospace, monospace;
+  --v2-mono: 'Inconsolata', ui-monospace, monospace;
+  --n-font-head: 'Inconsolata', ui-monospace, monospace;
+  --n-font-paper: 'Inconsolata', ui-monospace, monospace;
+}
+:root[data-typeface="technical-ubuntu"] {
+  --v2-sans: 'Ubuntu', system-ui, sans-serif;
+  --v2-mono: 'Ubuntu Mono', ui-monospace, monospace;
+  --n-font-head: 'Ubuntu', system-ui, sans-serif;
+  --n-font-paper: 'Ubuntu', system-ui, sans-serif;
+}
+
+/* ----- editorial ----- */
+:root[data-typeface="editorial"],
+:root[data-typeface="editorial-source-serif"] {
+  --v2-sans: var(--n-font-serif);
+  --v2-mono: var(--n-font-serif);
+  --n-font-head: var(--n-font-serif);
+  --n-font-paper: var(--n-font-serif);
+}
+:root[data-typeface="editorial-fraunces"] {
+  --v2-sans: 'Fraunces', Georgia, serif;
+  --v2-mono: 'Fraunces', Georgia, serif;
+  --n-font-head: 'Fraunces', Georgia, serif;
+  --n-font-paper: 'Fraunces', Georgia, serif;
+}
+:root[data-typeface="editorial-bitter"] {
+  --v2-sans: 'Bitter', Georgia, serif;
+  --v2-mono: 'Bitter', Georgia, serif;
+  --n-font-head: 'Bitter', Georgia, serif;
+  --n-font-paper: 'Bitter', Georgia, serif;
+}
+:root[data-typeface="editorial-literata"] {
+  --v2-sans: 'Literata', Georgia, serif;
+  --v2-mono: 'Literata', Georgia, serif;
+  --n-font-head: 'Literata', Georgia, serif;
+  --n-font-paper: 'Literata', Georgia, serif;
+}
+
+/* ----- display ----- */
+:root[data-typeface="display"],
+:root[data-typeface="display-space-grotesk"] {
+  --v2-sans: var(--n-font-geo);
+  --v2-mono: var(--n-font-mono-real);
+  --n-font-head: var(--n-font-display);
+  --n-font-paper: var(--n-font-geo);
+}
+:root[data-typeface="display-hanken"] {
+  --v2-sans: 'Hanken Grotesk', system-ui, sans-serif;
+  --v2-mono: 'Hanken Grotesk', system-ui, sans-serif;
+  --n-font-head: 'Hanken Grotesk', system-ui, sans-serif;
+  --n-font-paper: 'Hanken Grotesk', system-ui, sans-serif;
+}
+:root[data-typeface="display-barlow"] {
+  --v2-sans: 'Space Grotesk', system-ui, sans-serif;
+  --v2-mono: 'Space Grotesk', system-ui, sans-serif;
+  --n-font-head: 'Barlow Condensed', 'Archivo Narrow', system-ui, sans-serif;
+  --n-font-paper: 'Space Grotesk', system-ui, sans-serif;
+}
+:root[data-typeface="display-bricolage"] {
+  --v2-sans: 'Bricolage Grotesque', system-ui, sans-serif;
+  --v2-mono: 'Bricolage Grotesque', system-ui, sans-serif;
+  --n-font-head: 'Bricolage Grotesque', system-ui, sans-serif;
+  --n-font-paper: 'Bricolage Grotesque', system-ui, sans-serif;
+}
