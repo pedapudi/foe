@@ -61,3 +61,23 @@ fn writer_rejects_events_that_break_the_structural_rules() {
     assert!(matches!(writer.append(fx::header()), Err(LogError::Invalid { seq: 2, .. })));
     assert_eq!(read_all(&dir).unwrap().len(), 2, "a rejected event is not written");
 }
+
+/// docs/log-format.md `tool/result`: exactly one per tool call, matched by
+/// `call_id`. The writer refuses a second result and a result for a call no
+/// assistant message issued, so neither can reach the file.
+#[test]
+fn writer_rejects_a_duplicate_or_orphan_tool_result() {
+    let dir = tmp("results");
+    let mut writer = Writer::create(&dir, None).unwrap();
+    writer.append(EventData::EpisodeStart(fx::start("ep"))).unwrap();
+    writer.append(fx::inbox(InboxSource::Task, "t")).unwrap();
+    writer.append(fx::header()).unwrap();
+    writer.append(fx::request(1, 2, vec![1], vec![])).unwrap();
+    writer.append(fx::assistant(1, "", vec![fx::call("tc_1")], false)).unwrap();
+    assert_eq!(writer.state().pending_calls.len(), 1);
+    assert!(matches!(writer.append(fx::result(1, "tc_9", "x")), Err(LogError::Invalid { seq: 5, .. })));
+    writer.append(fx::result(1, "tc_1", "x")).unwrap();
+    assert!(writer.state().pending_calls.is_empty());
+    assert!(matches!(writer.append(fx::result(1, "tc_1", "again")), Err(LogError::Invalid { seq: 6, .. })));
+    assert_eq!(read_all(&dir).unwrap().len(), 6);
+}

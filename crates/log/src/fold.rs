@@ -59,35 +59,14 @@ fn parse_lines(bytes: &[u8]) -> Result<(Vec<Event>, u64), LogError> {
 /// still in progress may have calls awaiting their results.
 pub fn fold(events: &[Event]) -> Result<State, LogError> {
     let mut state = State::default();
-    let mut calls: BTreeMap<&str, bool> = BTreeMap::new();
     for (index, event) in events.iter().enumerate() {
         if event.seq != index as u64 {
             return Err(LogError::Invalid { seq: event.seq, rule: "seq is contiguous from 0" });
         }
         validate_next(&state, event)?;
-        match &event.data {
-            EventData::AssistantMessage(message) => {
-                for call in &message.tool_calls {
-                    calls.insert(call.id.as_str(), false);
-                }
-            }
-            EventData::ToolResult(result) => match calls.get_mut(result.call_id.as_str()) {
-                None => {
-                    return Err(LogError::Invalid {
-                        seq: event.seq,
-                        rule: "tool/result names a tool call in an earlier assistant/message",
-                    })
-                }
-                Some(true) => {
-                    return Err(LogError::Invalid { seq: event.seq, rule: "exactly one tool/result per tool call" })
-                }
-                Some(settled) => *settled = true,
-            },
-            _ => {}
-        }
         apply(&mut state, event);
     }
-    if state.outcome.is_some() && calls.values().any(|settled| !settled) {
+    if state.outcome.is_some() && !state.pending_calls.is_empty() {
         return Err(LogError::Invalid {
             seq: events.len() as u64 - 1,
             rule: "every tool call has a result before episode/end",
@@ -118,6 +97,11 @@ pub fn apply(state: &mut State, event: &Event) {
             state.usage.input += message.usage.input;
             state.usage.output += message.usage.output;
             state.usage.cache_read += message.usage.cache_read;
+            state.pending_calls.extend(message.tool_calls.iter().map(|c| c.id.clone()));
+        }
+        EventData::ToolResult(result) => {
+            state.pending_calls.remove(&result.call_id);
+            state.settled_calls.insert(result.call_id.clone());
         }
         EventData::InboxItem(item) => {
             state.inbox.insert(event.seq, (item.clone(), false));
@@ -198,6 +182,12 @@ pub fn validate_next(prior: &State, event: &Event) -> Result<(), LogError> {
             if request.consumed.iter().any(|s| *s >= seq || !matches!(prior.inbox.get(s), Some((_, false)))) {
                 return invalid("consumed names earlier inbox items that no earlier request consumed");
             }
+        }
+        EventData::ToolResult(result) if prior.settled_calls.contains(&result.call_id) => {
+            return invalid("exactly one tool/result per tool call");
+        }
+        EventData::ToolResult(result) if !prior.pending_calls.contains(&result.call_id) => {
+            return invalid("tool/result names a tool call in an earlier assistant/message");
         }
         EventData::SeedEnd {} if prior.seeded_through.is_some() => return invalid("at most one seed/end per log"),
         _ => {}

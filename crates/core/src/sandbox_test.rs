@@ -1,0 +1,153 @@
+use super::*;
+use std::io::Write;
+
+fn sandbox() -> Option<Sandbox> {
+    let s = Sandbox::new(SandboxMode::BestEffort).unwrap();
+    if s.abi() == 0 {
+        eprintln!("skipped: the kernel offers no Landlock");
+        return None;
+    }
+    Some(s)
+}
+
+fn temp_dir(name: &str) -> PathBuf {
+    let dir = crate::exec::tests::scratch("sandbox", name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn off_records_zero_and_required_needs_landlock() {
+    assert_eq!(
+        Sandbox::new(SandboxMode::Off).unwrap().info(),
+        SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 }
+    );
+    let required = Sandbox::new(SandboxMode::Required);
+    if probe_abi() == 0 {
+        assert!(matches!(required, Err(RuntimeError::Sandbox(_))));
+    } else {
+        assert!(required.unwrap().abi() >= 1);
+    }
+}
+
+#[test]
+fn best_effort_records_the_abi_obtained() {
+    let s = Sandbox::new(SandboxMode::BestEffort).unwrap();
+    assert_eq!(s.info().landlock_abi, probe_abi().min(MAX_ABI));
+    eprintln!("landlock abi in use: {}", s.abi());
+}
+
+#[test]
+fn read_roots_are_readable_and_other_paths_are_not() {
+    let Some(s) = sandbox() else { return };
+    let inside = temp_dir("inside");
+    let outside = temp_dir("outside");
+    std::fs::write(inside.join("a"), b"a").unwrap();
+    std::fs::write(outside.join("b"), b"b").unwrap();
+    let policy = Policy { read: vec![inside.clone()], ..Policy::default() };
+    let (a, b, w) = s
+        .run_narrowed(&policy, || {
+            (
+                std::fs::read(inside.join("a")).is_ok(),
+                std::fs::read(outside.join("b")).is_ok(),
+                std::fs::write(inside.join("c"), b"c").is_ok(),
+            )
+        })
+        .unwrap();
+    assert!(a, "a read root is readable");
+    assert!(!b, "a path outside every root is denied");
+    assert!(!w, "a read root is not writable");
+    // The calling thread is unaffected by the narrowed thread.
+    assert!(std::fs::read(outside.join("b")).is_ok());
+}
+
+#[test]
+fn write_roots_allow_create_and_remove() {
+    let Some(s) = sandbox() else { return };
+    let dir = temp_dir("write");
+    let policy = Policy { write: vec![dir.clone()], ..Policy::default() };
+    let ok = s
+        .run_narrowed(&policy, || {
+            std::fs::File::create(dir.join("f")).and_then(|mut f| f.write_all(b"x")).is_ok()
+                && std::fs::create_dir(dir.join("d")).is_ok()
+                && std::fs::remove_file(dir.join("f")).is_ok()
+        })
+        .unwrap();
+    assert!(ok);
+}
+
+#[test]
+fn executable_policy_keeps_only_its_own_file() {
+    let Some(s) = sandbox() else { return };
+    let dir = temp_dir("exec");
+    let other = dir.join("true");
+    std::fs::copy("/bin/true", &other).unwrap();
+    let episode =
+        Policy { read: vec![dir.clone()], exec: vec!["/bin/sh".into(), other.clone()], ..Policy::default() };
+    let tool = episode.for_executable(Path::new("/bin/sh"), false);
+    assert_eq!(tool.exec, vec![PathBuf::from("/bin/sh")]);
+    assert!(tool.log_dir.is_none());
+    let run = |policy: &Policy| {
+        let mut cmd = Command::new("/bin/sh");
+        cmd.arg("-c").arg(other.display().to_string()).env_clear();
+        s.spawn_narrowed(policy, cmd).unwrap().wait_with_output().unwrap().status.success()
+    };
+    assert!(run(&episode), "a file in the episode's exec list runs");
+    assert!(!run(&tool), "the same file is denied under a policy naming only /bin/sh");
+}
+
+#[test]
+fn tcp_connect_is_denied_from_abi_4() {
+    let Some(s) = sandbox() else { return };
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let closed = Policy::default();
+    let open = Policy { connect_tcp: true, ..Policy::default() };
+    let denied = s.run_narrowed(&closed, || std::net::TcpStream::connect(addr).is_err()).unwrap();
+    let allowed = s.run_narrowed(&open, || std::net::TcpStream::connect(addr).is_ok()).unwrap();
+    if s.abi() >= 4 {
+        assert!(denied, "connect is denied when the policy closes TCP");
+    }
+    assert!(allowed, "connect succeeds when the policy opens TCP");
+}
+
+#[test]
+fn tcp_bind_is_limited_to_listed_ports_from_abi_4() {
+    let Some(s) = sandbox() else { return };
+    if s.abi() < 4 {
+        eprintln!("skipped: ABI {} has no TCP rules", s.abi());
+        return;
+    }
+    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+    let policy = Policy { bind_tcp: vec![port], ..Policy::default() };
+    let (listed, other) = s
+        .run_narrowed(&policy, || {
+            (
+                std::net::TcpListener::bind(("127.0.0.1", port)).is_ok(),
+                std::net::TcpListener::bind(("127.0.0.1", port.wrapping_add(1).max(1024))).is_ok(),
+            )
+        })
+        .unwrap();
+    assert!(listed);
+    assert!(!other);
+}
+
+#[test]
+fn episode_policy_follows_grants_and_tool_defs() {
+    let config: Config = serde_json::from_value(serde_json::json!({
+        "version": 1, "name": "p", "instructions": {"r": "x"}, "tools": ["ruff"],
+        "tool_defs": {"ruff": {"exec": "/usr/bin/ruff", "description": "d"}},
+        "grants": {"read": ["/src"], "write": ["/src/out"]},
+        "budget": {"model_calls": 1}, "task": "t"
+    }))
+    .unwrap();
+    let p = Policy::for_episode(&config, Path::new("/logs/ep"));
+    assert_eq!(p.read, vec![PathBuf::from("/src")]);
+    assert_eq!(p.write, vec![PathBuf::from("/src/out")]);
+    assert_eq!(p.exec, vec![PathBuf::from("/usr/bin/ruff")]);
+    assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
+    assert!(!p.connect_tcp, "an episode without a model block holds no transport");
+}

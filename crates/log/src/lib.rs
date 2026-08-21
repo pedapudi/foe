@@ -13,7 +13,7 @@
 #![forbid(unsafe_code)]
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub mod append;
 pub mod fold;
@@ -518,4 +518,8 @@ pub struct State {
     /// Children by id, with their last known outcome.
     pub children: BTreeMap<String, Option<Outcome>>,
     pub seeded_through: Option<u64>,
+    /// Ids of tool calls in an `assistant/message` that have no `tool/result` yet.
+    pub pending_calls: BTreeSet<String>,
+    /// Ids of tool calls that have a `tool/result`.
+    pub settled_calls: BTreeSet<String>,
 }
