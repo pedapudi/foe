@@ -1,0 +1,29 @@
+#!/usr/bin/python3
+"""Answers every model request with the same retryable provider error.
+
+The message is the one a program reports when the host name of the model
+endpoint does not resolve. Marking the error retryable is what a transport
+does for a condition that a later attempt could survive, and it is what
+makes the runtime retry with a growing delay rather than fail at once.
+"""
+
+import sys
+from pathlib import Path
+
+# `chunks.py` is in `examples/support` in the repository and beside this
+# file once a runner has copied both into a project's tools directory.
+here = Path(__file__).resolve().parent
+sys.path[:0] = [str(here), str(here.parent.parent / "support")]
+
+from chunks import error, read_request  # noqa: E402
+
+MESSAGE = "cannot reach the model endpoint: name resolution for api.example.invalid failed"
+
+
+def main() -> None:
+    request = read_request()
+    error(request, MESSAGE, retryable=True)
+
+
+if __name__ == "__main__":
+    main()
