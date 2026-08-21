@@ -1,1 +1,75 @@
-//! See docs/design.md. Implemented by the crate owner against that specification.
+//! Built-in coding tools: `read`, `grep`, `edit`, and `bash`.
+//!
+//! Each tool implements `foe_core::Tool` and reaches files and processes
+//! only through the capability handles in `CallCtx`. docs/tools.md states
+//! each tool's arguments, limits, and canonical value. The constants below
+//! are the single source of those limits: the code enforces them and every
+//! tool description is formatted from them, so the two cannot drift.
+
+#![forbid(unsafe_code)]
+
+use foe_core::Tool;
+use std::path::{Path, PathBuf};
+
+mod grep;
+mod read;
+#[cfg(test)]
+#[path = "handles_test.rs"]
+mod testing;
+mod truncate;
+
+/// Longest output any tool inlines into a result, in lines.
+pub const OUTPUT_MAX_LINES: usize = 2_000;
+/// Longest output any tool inlines into a result, in bytes.
+pub const OUTPUT_MAX_BYTES: usize = 50 * 1024;
+/// Longest line `grep` returns before clamping it, in characters.
+pub const GREP_LINE_MAX_CHARS: usize = 500;
+/// Matches `grep` renders when the call names no `limit`.
+pub const GREP_DEFAULT_LIMIT: usize = 100;
+/// Matches `grep` collects into the canonical value before it stops searching.
+pub const GREP_COLLECT_MAX: usize = 10_000;
+/// Seconds `bash` waits when the call names no `timeout_seconds`.
+pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
+
+/// Every built-in coding tool, in the order `foe tools` lists them.
+pub fn all() -> Vec<Box<dyn Tool>> {
+    readonly()
+}
+
+/// The tools whose effect is `reads`: `read` and `grep`.
+pub fn readonly() -> Vec<Box<dyn Tool>> {
+    vec![Box::new(read::Read::new()), Box::new(grep::Grep::new())]
+}
+
+/// Parses the model's arguments, naming the tool in the error.
+fn parse_args<T: serde::de::DeserializeOwned>(
+    tool: &str,
+    args: serde_json::Value,
+) -> Result<T, foe_core::ToolValue> {
+    serde_json::from_value(args)
+        .map_err(|e| foe_core::ToolValue::error(format!("{tool}: invalid arguments: {e}")))
+}
+
+/// A path from the model. Absolute paths pass through; relative paths are
+/// taken from the first root.
+fn resolve(roots: &[PathBuf], path: &str) -> PathBuf {
+    let p = Path::new(path);
+    match (p.is_absolute(), roots.first()) {
+        (false, Some(root)) => root.join(p),
+        _ => p.to_path_buf(),
+    }
+}
+
+/// The path as shown to the model: relative to the first root when below it,
+/// and `.` for the root itself.
+fn display(roots: &[PathBuf], path: &Path) -> String {
+    match roots.first().and_then(|r| path.strip_prefix(r).ok()) {
+        Some(rel) if rel.as_os_str().is_empty() => ".".to_owned(),
+        Some(rel) => rel.display().to_string(),
+        None => path.display().to_string(),
+    }
+}
+
+#[cfg(test)]
+#[path = "lib_test.rs"]
+mod tests;
