@@ -177,6 +177,9 @@ pub struct SpawnRequest {
 pub struct SpawnHandle {
     pub child_id: String,
     pub dir: PathBuf,
+    /// Settles when the child's `episode/end` arrives. Clone it to wait in
+    /// more than one place.
+    pub run: spawn::ChildRun,
 }
 
 #[derive(Debug, thiserror::Error)]
