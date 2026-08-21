@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/foe-lockup-dark.svg">
+  <img alt="foe" src="docs/brand/foe-lockup-light.svg" width="420">
+</picture>
+
 # foe
 
 foe is a runtime for autonomous coding agents. One invocation runs one

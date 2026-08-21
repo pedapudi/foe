@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="foe">
+  <path d="M6,44 L14,44 C18,44 19,14 22,12 C30,12 36,32 58,44" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="22" cy="12" r="7" fill="var(--foe-accent, #C7791A)"/>
+</svg>

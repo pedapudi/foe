@@ -80,6 +80,10 @@ no network.
 The brand wordmark pins to a fixed mono, `--v2-brand-mono`, independent of
 the chosen mode, so it never reflows. The wordmark reads `foe` in lowercase.
 
+The brand mark, the wordmark's construction, and the brand accent are
+specified in [brand/README.md](brand/README.md). The brand accent is a
+separate token from `--v2-accent` and appears on the mark's peak dot only.
+
 Base size is `13px` scaled by the page-scale pill. Numbers in columns or
 that animate use `font-variant-numeric: tabular-nums`.
 

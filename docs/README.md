@@ -19,6 +19,7 @@ specify one piece each.
 | [workflow.md](workflow.md) | how a declared graph of nodes runs, where the model keeps its judgment inside it, and how failures are recovered |
 | [compaction.md](compaction.md) | when the model's context is compacted, where the conversation is cut, what the summary carries, and what compaction loses |
 | [design-language.md](design-language.md) | the visual language the viewer follows |
+| [brand/README.md](brand/README.md) | the name, the mark, the wordmark, the accent, and the rules for using them |
 
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the
 rules for changing the repository. `examples/` holds one runnable
