@@ -45,7 +45,8 @@ The source installer builds the Bazel target with the pinned Rust toolchain
 and installs the binary under `~/.local/bin`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pedapudi/foe/main/install.sh | sh
+gh api -H "Accept: application/vnd.github.raw+json" \
+  repos/pedapudi/foe/contents/install.sh | sh
 ```
 
 A checkout uses Bazel as its primary build interface:

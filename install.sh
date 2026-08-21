@@ -2,6 +2,7 @@
 set -eu
 
 repository="https://github.com/pedapudi/foe"
+repository_slug="pedapudi/foe"
 reference="main"
 install_dir=""
 temporary_dir=""
@@ -115,13 +116,15 @@ if [ -z "$source_dir" ]; then
   bazel_root="$temporary_dir/bazel-root"
   archive="$temporary_dir/source.tar.gz"
   url="$repository/archive/$reference.tar.gz"
-  echo "Downloading foe source from $url"
-  if command -v curl >/dev/null 2>&1; then
+  echo "Downloading foe source at $reference"
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    gh api "repos/$repository_slug/tarball/$reference" > "$archive"
+  elif command -v curl >/dev/null 2>&1; then
     curl -fsSL "$url" -o "$archive"
   elif command -v wget >/dev/null 2>&1; then
     wget -q -O "$archive" "$url"
   else
-    echo "install.sh: curl or wget is required to download foe" >&2
+    echo "install.sh: authenticated gh, curl, or wget is required to download foe" >&2
     exit 1
   fi
   source_dir="$temporary_dir/source"

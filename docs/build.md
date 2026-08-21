@@ -8,12 +8,14 @@ development commands are documented in [`view/README.md`](../view/README.md).
 ## Install from source
 
 The installer requires Bazel or Bazelisk. A downloaded installation also
-requires `tar` and either `curl` or `wget`. The script builds the public Bazel
-target with the pinned Rust toolchain, verifies the resulting binary, and
-installs it under `~/.local/bin` by default.
+requires `tar` and one source client. An authenticated GitHub CLI can read a
+private source archive. `curl` and `wget` can read a publicly accessible
+archive. The script builds `//:foe` with the pinned Rust toolchain, verifies
+the resulting binary, and installs it under `~/.local/bin` by default.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pedapudi/foe/main/install.sh | sh
+gh api -H "Accept: application/vnd.github.raw+json" \
+  repos/pedapudi/foe/contents/install.sh | sh
 ```
 
 Running the checked-out script builds the current checkout, including local
@@ -28,7 +30,8 @@ option applies when the script downloads a source archive:
 
 ```sh
 ./install.sh --install-dir /absolute/directory
-curl -fsSL https://raw.githubusercontent.com/pedapudi/foe/main/install.sh | sh -s -- --ref GIT-REFERENCE
+gh api -H "Accept: application/vnd.github.raw+json" \
+  repos/pedapudi/foe/contents/install.sh | sh -s -- --ref GIT-REFERENCE
 ```
 
 `--ref` accepts a branch, tag, or commit understood by the GitHub source
