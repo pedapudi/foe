@@ -435,6 +435,30 @@ passed through it. A host that supplies the transport keeps credentials in
 its own process, and the episode process then has no network access of its
 own.
 
+## The command line
+
+The binary has one running form and four forms that run nothing.
+
+```
+foe "task" [--config FILE] [--no-open]      run; serve the viewer; print the outcome
+foe "task" --headless                       run; no viewer; print the outcome
+foe --config FILE --host                    run under a host; stdout is the log (protocol.md)
+foe view DIR [--serve]                      write a self-contained HTML file, or serve it
+foe plan --config FILE [--json]             resolve the program, print it and its identity
+foe tools [--config FILE]                   list tools, with sources when a config is given
+foe schema                                  print the JSON Schema for the configuration
+```
+
+In every running form except `--host`, standard output receives exactly one
+line when the episode ends: the outcome as JSON. A shell reads it with one
+`read`; another program parses it with one `json.loads`. The exit code is 0
+for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
+Progress goes to standard error. The log goes to the file.
+
+A task given on the command line without `--config` uses a built-in coding
+configuration: the four built-in tools, read and write on the current
+directory, and a model from a file named on the command line with `--model`.
+
 ## The viewer
 
 The viewer renders a log directory. It shows the episode tree by lineage, the

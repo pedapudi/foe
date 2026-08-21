@@ -21,8 +21,14 @@ error and terminates the episode with `failed`.
 ## Launch
 
 ```
-foe --config <path> [--headless] [--no-open] [--log-dir <path>]
+foe --config <path> --host [--log-dir <path>]
 ```
+
+`--host` selects this protocol. Standard output then carries the log, and
+standard input carries the host's answers. Without `--host`, standard output
+carries one JSON line at the end, the outcome, so that a shell or another
+program invoking foe reads a single result; the log still goes to the file.
+The two modes are exclusive, and this document describes `--host` only.
 
 The host supplies a configuration file. foe validates it, writes
 `episode/start`, and begins. When the configuration has no `model` block,
