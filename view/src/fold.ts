@@ -127,6 +127,12 @@ export interface Summary {
   children: Map<string, { program: string; context: string }>;
   roster: Map<string, { name: string; phase: string }>;
   seedEnd: number | null;
+  /**
+   * `episode/start.program`: the resolved configuration with the task
+   * removed. The workflow view reads its `workflow` key and the statistics
+   * view its `budget`.
+   */
+  program: Record<string, unknown>;
   lastSeq: number;
   /** Marks the trajectory pane draws, in seq order (src/trajectory.ts). */
   marks: Mark[];
@@ -151,6 +157,7 @@ export function emptySummary(id: string): Summary {
     children: new Map(),
     roster: new Map(),
     seedEnd: null,
+    program: {},
     lastSeq: -1,
     marks: [],
   };
@@ -412,6 +419,7 @@ export class EpisodeFold {
     const sandbox = obj(data.sandbox);
     const origin = obj(data.fork_origin) as ForkOrigin;
     if (typeof data.id === "string") s.id = data.id;
+    s.program = program;
     s.name = str(program.name, s.id);
     s.parentId = typeof data.parent_id === "string" ? data.parent_id : null;
     s.forkOrigin =
