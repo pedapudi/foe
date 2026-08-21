@@ -1646,6 +1646,520 @@ table.events td.type.error {
   margin-top: 3px;
 }
 
+/* ---- the hovercard shared by the workflow and statistics figures ---- */
+
+/* Every figure that shows a number a reader could not derive by eye opens
+ * this card, which names the quantity, defines it, and gives the values it
+ * was computed from. */
+.hovercard {
+  position: absolute;
+  z-index: 4;
+  max-width: 340px;
+  padding: 6px 9px;
+  background: var(--v2-panel);
+  border: 1px solid var(--v2-rule);
+  border-radius: 5px;
+  pointer-events: none;
+  font-family: var(--v2-mono);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
+
+.hovercard-head {
+  color: var(--v2-ink);
+}
+
+.hovercard-meta {
+  color: var(--v2-ink-faint);
+  overflow-wrap: anywhere;
+}
+
+.hovercard-detail {
+  color: var(--v2-ink-soft);
+  overflow-wrap: anywhere;
+  margin-top: 3px;
+}
+
+/* ---- figure furniture, shared by the two tabs ---- */
+
+.fig-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--v2-rule);
+}
+
+.fig-head h3 {
+  margin: 0;
+  font-size: calc(11px * var(--dt-font-scale, 1));
+  font-family: var(--v2-mono);
+  font-weight: 400;
+  color: var(--v2-ink-soft);
+  text-transform: lowercase;
+}
+
+.fig-head .spacer {
+  flex: 1 1 auto;
+}
+
+.fig-legend {
+  display: flex;
+  gap: 12px;
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-mark {
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  border-top: 1.2px solid var(--v2-ink-faint);
+}
+
+.legend-mark.faint {
+  opacity: 0.35;
+}
+
+.legend-mark.chosen {
+  border-top-color: var(--v2-accent);
+}
+
+/* A caption states what to see; it is prose and holds a readable measure. */
+.fig-caption {
+  padding: 6px 12px 0;
+  max-width: 72ch;
+  color: var(--v2-ink-faint);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+  line-height: 1.5;
+}
+
+.fig-total {
+  margin-left: 10px;
+  font-family: var(--v2-mono);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+  color: var(--v2-ink-soft);
+}
+
+.fig-svg {
+  display: block;
+}
+
+/* ---- workflow tab ---- */
+
+.wf {
+  padding-bottom: 24px;
+}
+
+.wf-figure {
+  padding: 10px 0 0 0;
+  overflow-x: auto;
+}
+
+.wf-graph {
+  display: block;
+}
+
+/* Structure is faint and thin. The run is the weight over it: a traversed
+ * edge is solid and a declared one that carried nothing is faint. */
+.wf-edge {
+  fill: none;
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1.2;
+  opacity: 0.85;
+}
+
+.wf-edge.faint {
+  opacity: 0.3;
+  stroke-dasharray: 3 4;
+}
+
+.wf-end {
+  fill: none;
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1.1;
+  opacity: 0.5;
+}
+
+.wf-stub.chosen .wf-end {
+  stroke: var(--v2-accent);
+  opacity: 1;
+}
+
+.wf-label {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  opacity: 0.55;
+}
+
+/* The one accent of the figure: the label a firing chose, which is where
+ * the model's judgment entered a graph that bounds it. */
+.wf-label.chosen {
+  fill: var(--v2-accent);
+  opacity: 1;
+}
+
+.wf-node .box {
+  fill: var(--v2-panel);
+  stroke: var(--v2-rule);
+  stroke-width: 1.1;
+}
+
+.wf-node.unfired .box {
+  fill: none;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+
+.wf-node.good .box {
+  stroke: var(--v2-good);
+}
+
+.wf-node.bad .box {
+  stroke: var(--v2-bad);
+}
+
+.wf-node.terminal .box {
+  stroke-width: 1.6;
+}
+
+.wf-node .name {
+  fill: var(--v2-ink);
+  font-family: var(--v2-sans);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.wf-node.unfired .name {
+  fill: var(--v2-ink-faint);
+}
+
+.wf-node .kind,
+.wf-node .fires {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.wf-node .source .box {
+  stroke-dasharray: 4 3;
+}
+
+.wf-firing .glyph {
+  fill: var(--v2-paper);
+  stroke: var(--v2-ink-soft);
+  stroke-width: 1.2;
+}
+
+.wf-firing.linked {
+  cursor: pointer;
+}
+
+.wf-firing.linked .glyph {
+  fill: var(--v2-ink-faint);
+}
+
+.wf-firing.linked:hover .glyph {
+  fill: var(--v2-ink-soft);
+}
+
+/* The selected child episode, marked in ink rather than in the accent,
+ * which the chosen label holds. */
+.wf-firing.selected .glyph {
+  fill: var(--v2-ink);
+  stroke: var(--v2-ink);
+  stroke-width: 2;
+}
+
+.wf-recovery .glyph {
+  fill: none;
+  stroke: var(--v2-caution);
+  stroke-width: 1.2;
+}
+
+.wf-recovery-label {
+  fill: var(--v2-caution);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+}
+
+.wf-recovery-edge {
+  fill: none;
+  stroke: var(--v2-caution);
+  stroke-width: 1.1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+/* ---- statistics tab ---- */
+
+.stats {
+  padding-bottom: 32px;
+}
+
+.stats-scope {
+  display: inline-flex;
+  border: 1px solid var(--v2-rule);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.stats-scope-btn {
+  border: none;
+  border-radius: 0;
+  padding: 2px 9px;
+  font-family: var(--v2-mono);
+  font-size: calc(10px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+}
+
+.stats-scope-btn + .stats-scope-btn {
+  border-left: 1px solid var(--v2-rule);
+}
+
+.stats-scope-btn.active {
+  background: var(--v2-accent);
+  color: var(--v2-paper);
+}
+
+.stats-body {
+  padding: 4px 0 0;
+}
+
+.fig {
+  padding: 14px 12px 16px;
+  border-bottom: 1px solid var(--v2-rule-soft);
+}
+
+.fig h4 {
+  margin: 0 0 8px;
+  font-family: var(--v2-mono);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+  font-weight: 400;
+  color: var(--v2-ink-faint);
+  text-transform: lowercase;
+}
+
+.fig .fig-caption {
+  padding: 8px 0 0;
+}
+
+.fig-body {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  overflow-x: auto;
+}
+
+/* A quantity no event measured reads as absent; zero would assert a
+ * measurement that was not made. */
+.absent {
+  color: var(--v2-ink-faint);
+  font-style: italic;
+}
+
+.stats-table {
+  border-collapse: collapse;
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.stats-table th {
+  text-align: left;
+  padding: 0 14px 4px 0;
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-weight: 400;
+  color: var(--v2-ink-faint);
+}
+
+.stats-table td {
+  padding: 2px 14px 2px 0;
+  color: var(--v2-ink-soft);
+  vertical-align: middle;
+}
+
+.stats-table td.num {
+  font-family: var(--v2-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.stats-table tr:hover td {
+  color: var(--v2-ink);
+}
+
+.step-row,
+.tool-row,
+.limit-row {
+  cursor: default;
+}
+
+.step-row {
+  cursor: pointer;
+}
+
+.step-name .sub {
+  margin-left: 8px;
+}
+
+.step-row.compaction .step-name {
+  color: var(--v2-ink-faint);
+}
+
+.step-bar .rest {
+  fill: var(--v2-ink-faint);
+  opacity: 0.5;
+}
+
+.step-bar .head {
+  fill: var(--v2-ink-soft);
+  opacity: 0.75;
+}
+
+/* The slowest answered request is the row the figure argues. */
+.step-row.lead .step-bar .rest {
+  fill: var(--v2-accent);
+  opacity: 0.4;
+}
+
+.step-row.lead .step-bar .head {
+  fill: var(--v2-accent);
+  opacity: 1;
+}
+
+.tool-name {
+  font-family: var(--v2-mono);
+}
+
+.tool-bar .seg {
+  fill: var(--v2-ink-faint);
+  opacity: 0.6;
+}
+
+.tool-row:hover .seg {
+  opacity: 1;
+}
+
+.stats-table .bad {
+  color: var(--v2-bad);
+}
+
+.clock-share .seg {
+  fill: var(--v2-ink-faint);
+  opacity: 0.4;
+}
+
+.clock-share .edge {
+  stroke: var(--v2-paper);
+  stroke-width: 1;
+}
+
+.clock-share .share-label {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+}
+
+/* The largest share is what the figure argues, so it takes the accent. */
+.clock-share.lead .seg {
+  fill: var(--v2-accent);
+  opacity: 0.55;
+}
+
+.clock-share.lead .share-label {
+  fill: var(--v2-accent);
+}
+
+.clock-share:hover .seg {
+  opacity: 0.8;
+}
+
+.cache-track {
+  fill: var(--v2-ink-faint);
+  opacity: 0.2;
+}
+
+.cache-hit {
+  fill: var(--v2-accent);
+  opacity: 0.8;
+}
+
+.curve-axes .baseline {
+  stroke: var(--v2-rule);
+  stroke-width: 1;
+}
+
+.curve-axes .tick-label {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+/* The declared limit is an envelope, so it is dashed. */
+.curve-budget {
+  stroke: var(--v2-caution);
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+  opacity: 0.8;
+}
+
+.curve-budget-label {
+  fill: var(--v2-caution);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.curve .line {
+  fill: none;
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1.2;
+  opacity: 0.6;
+}
+
+.curve .dot {
+  fill: var(--v2-ink-faint);
+  cursor: pointer;
+}
+
+/* The longest series is the one the figure argues. */
+.curve.lead .line {
+  stroke: var(--v2-accent);
+  opacity: 1;
+}
+
+.curve.lead .dot {
+  fill: var(--v2-accent);
+}
+
+.stats .mark .track {
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1;
+  opacity: 0.3;
+}
+
+.stats .mark .fill {
+  stroke: var(--v2-ink-soft);
+  stroke-width: 3;
+}
+
+.stats .mark .fill.caution {
+  stroke: var(--v2-caution);
+}
+
 /* ---- Markdown ---- */
 
 /* Prose is held to a readable measure. A code block, a table, and a diff
