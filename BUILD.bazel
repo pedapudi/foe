@@ -1,0 +1,10 @@
+exports_files([
+    "Cargo.lock",
+    "Cargo.toml",
+])
+
+alias(
+    name = "foe",
+    actual = "//crates/cli:foe",
+    visibility = ["//visibility:public"],
+)

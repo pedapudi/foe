@@ -1,0 +1,17 @@
+load("@crates//:defs.bzl", "all_crate_deps", "crate_edition")
+load("@rules_rust//rust:defs.bzl", "rust_library")
+
+rust_library(
+    name = "foe_context",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "foe_context",
+    crate_root = "src/lib.rs",
+    edition = crate_edition(),
+    version = "0.1.0",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//crates/core:foe_core",
+        "//crates/log:foe_log",
+    ] + all_crate_deps(normal = True),
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)

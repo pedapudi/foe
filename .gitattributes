@@ -1,0 +1,2 @@
+# Minified bundles contain template literals whose whitespace is data.
+view/dist/* -whitespace

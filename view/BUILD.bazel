@@ -1,0 +1,8 @@
+filegroup(
+    name = "viewer_assets",
+    srcs = glob([
+        "dist/*",
+        "fonts/*",
+    ]),
+    visibility = ["//visibility:public"],
+)
