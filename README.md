@@ -77,7 +77,7 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 Two numbers bound the runtime. The Rust source of the log, core, tool, and
 viewer crates stays under 6,000 lines, excluding tests and generated code;
 `scripts/loc.sh` counts and continuous integration fails over budget. The
-stripped release binary measured 4,432,904 bytes on 2026-08-21 with the
+stripped release binary measured 4,433,104 bytes on 2026-08-21 with the
 viewer bundle embedded; continuous integration fails a build over 8 MiB.
 
 ## Documents
