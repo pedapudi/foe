@@ -147,6 +147,11 @@ form defined under [Derived messages](#derived-messages).
 ```
 
 `cause` is one of `transport`, `rate-limit`, `provider`, `interrupted`.
+`interrupted` names a request that failed after text had arrived and before
+any tool call had started; the partial text is discarded and the request is
+retried. A request that fails after a tool call started is never retried:
+it is recorded as an `assistant/message` with `interrupted: true`, and the
+next step continues from there.
 
 ### Assistant output
 

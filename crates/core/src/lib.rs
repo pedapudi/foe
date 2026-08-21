@@ -243,6 +243,10 @@ pub struct Config {
     pub tools: Vec<String>,
     #[serde(default)]
     pub tool_defs: BTreeMap<String, ToolDef>,
+    /// Tools the host implements over the protocol. The specification lives
+    /// here so that identity is computable from the document alone.
+    #[serde(default)]
+    pub host_tools: BTreeMap<String, HostToolDef>,
     pub grants: Grants,
     pub budget: Budget,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -273,6 +277,18 @@ pub struct ToolDef {
 
 fn default_tool_timeout() -> u64 {
     120
+}
+
+/// A host-implemented tool as declared in the document. See docs/config.md
+/// `host_tools`. The host supplies only the implementation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostToolDef {
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instruction: Option<String>,
+    pub params: serde_json::Value,
+    pub effect: Effect,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -377,6 +393,8 @@ pub struct ChildProgram {
     pub tools: Vec<String>,
     #[serde(default)]
     pub tool_defs: BTreeMap<String, ToolDef>,
+    #[serde(default)]
+    pub host_tools: BTreeMap<String, HostToolDef>,
     pub grants: Grants,
     pub budget: Budget,
     #[serde(default, skip_serializing_if = "Option::is_none")]

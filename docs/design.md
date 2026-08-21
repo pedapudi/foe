@@ -327,7 +327,7 @@ can record every match and show the model a count and the first twenty.
 
 ## Subagents and teams
 
-An episode with a `spawns` grant may start child episodes. A child is a
+An episode with a `spawn` grant may start child episodes. A child is a
 separate process with its own log, its own grants, and a budget reserved from
 its parent's remaining budget. The child's log header names the parent.
 
@@ -408,7 +408,8 @@ transport and the credentials, and restricting it would break the host.
 
 foe writes its log to a file and echoes every event to standard output as it
 is written. A host process that launched foe reads that stream and answers
-three kinds of request on foe's standard input.
+two kinds of request on foe's standard input: model requests and host tool
+calls.
 
 ```
    host                                          foe
@@ -434,6 +435,30 @@ therefore complete by construction, because every exchange with the host
 passed through it. A host that supplies the transport keeps credentials in
 its own process, and the episode process then has no network access of its
 own.
+
+## The command line
+
+The binary has one running form and four forms that run nothing.
+
+```
+foe "task" [--config FILE] [--no-open]      run; serve the viewer; print the outcome
+foe "task" --headless                       run; no viewer; print the outcome
+foe --config FILE --host                    run under a host; stdout is the log (protocol.md)
+foe view DIR [--serve]                      write a self-contained HTML file, or serve it
+foe plan --config FILE [--json]             resolve the program, print it and its identity
+foe tools [--config FILE]                   list tools, with sources when a config is given
+foe schema                                  print the JSON Schema for the configuration
+```
+
+In every running form except `--host`, standard output receives exactly one
+line when the episode ends: the outcome as JSON. A shell reads it with one
+`read`; another program parses it with one `json.loads`. The exit code is 0
+for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
+Progress goes to standard error. The log goes to the file.
+
+A task given on the command line without `--config` uses a built-in coding
+configuration: the four built-in tools, read and write on the current
+directory, and a model from a file named on the command line with `--model`.
 
 ## The viewer
 

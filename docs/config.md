@@ -30,13 +30,17 @@ program and its identity without running anything.
     "20-style": "Prefer the smallest change that makes the test pass. Run the test after every edit."
   },
 
-  "tools": ["read", "grep", "edit", "bash", "ruff"],
+  "tools": ["read", "grep", "edit", "bash", "ruff", "check"],
 
   "tool_defs": {
     "ruff": {
       "exec": "/home/user/project/.venv/bin/ruff",
       "description": "Python linter. Usage: ruff check [--output-format json] <path>. Exits 1 when findings exist.",
       "instruction": "Run ruff on every .py file you edit before finishing."
+    },
+    "check": {
+      "exec": "/home/user/project/scripts/check",
+      "description": "Runs ruff and the test suite over the repository and prints one finding per line; prints nothing when clean."
     }
   },
 
@@ -48,7 +52,7 @@ program and its identity without running anything.
 
   "budget": { "model_calls": 40, "tokens": 400000, "seconds": 1800 },
 
-  "done_when": { "verify": "ruff", "retries": 2 },
+  "done_when": { "verify": "check", "retries": 2 },
 
   "model": {
     "provider": "anthropic",
@@ -123,7 +127,7 @@ A name resolves against three sources, checked in this order:
 1. Built-in tools: `read`, `grep`, `edit`, `bash`, `block`, `spawn`,
    `steer`, `notify`, `send`, `team`.
 2. Entries in `tool_defs`.
-3. Tools registered by the host process.
+3. Entries in `host_tools`.
 
 A name that resolves in two sources, or in none, is an error at construction.
 
@@ -159,6 +163,24 @@ same path changes identity.
 
 Declaring an entry in `tool_defs` is what permits the episode to execute that
 file. There is no separate execute grant.
+
+### `host_tools`
+
+Object mapping tool name to a specification. Optional. Each entry describes
+a tool that the host process implements and answers over the
+[protocol](protocol.md). The specification is in the document so that
+identity is computable from the document alone; the host supplies only the
+implementation.
+
+| field | type | required | meaning |
+|---|---|---|---|
+| `description` | string | yes | sent to the model in the tool schema |
+| `instruction` | string | no | appended to the system prompt |
+| `params` | object | yes | JSON Schema for the arguments |
+| `effect` | string | yes | `pure`, `reads`, `writes`, `execs`, or `spawns` |
+
+A host that does not implement a tool named here fails the first call to it.
+The Python package generates these entries from decorated functions.
 
 ### `grants`
 
@@ -214,11 +236,15 @@ episode completes when the model produces a turn with no tool calls.
 `verify` and `returns` may both be present. The verifier then checks the
 returned value.
 
-A verifier is invoked with the candidate result as its argument. For a tool
-in `tool_defs`, the candidate is passed as JSON on standard input, and the
-executable reports findings as lines on standard output; an empty output
-means no findings. For a host tool, the candidate is the single argument,
-and the returned value is a list of finding strings.
+A verifier is invoked once per candidate, with the candidate as its input and
+an empty argument list. For a tool in `tool_defs`, the candidate is passed
+as JSON on standard input and the executable reports findings as lines on
+standard output; an empty standard output means no findings, regardless of
+exit code. For a host tool, the candidate is the single argument and the
+returned value is a list of finding strings. A verifier is therefore a
+program written to this contract; a general-purpose linter is wrapped by a
+short script that reads the candidate, runs the linter, and prints its
+findings.
 
 ### `model`
 
