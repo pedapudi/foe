@@ -35,6 +35,22 @@
 }
 
 
+/* The brand accent, which is a token of its own and belongs to the mark's
+ * core alone (docs/brand/README.md, "Color"). Interface chrome uses the
+ * theme's --v2-accent. The dark value is the default because most of the
+ * sixteen themes are dark; the five light-ground themes override it. */
+:root {
+  --foe-accent: #E8A43E;
+}
+
+:root[data-theme="solarized-light"],
+:root[data-theme="google-light"],
+:root[data-theme="lunaria-light"],
+:root[data-theme="belafonte-day"],
+:root[data-theme="paper"] {
+  --foe-accent: #C7791A;
+}
+
 /* Monokai (default): warm dark. */
 :root,
 :root[data-theme="monokai"] {

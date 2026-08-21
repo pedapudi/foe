@@ -22,13 +22,14 @@ export interface TreeHandlers {
 }
 
 const SVG = "http://www.w3.org/2000/svg";
-const ROW = 36;
-const INDENT = 16;
-const LEFT = 10;
-const DOT_R = 3.5;
-const COMPARE_W = 44;
-const SANS_CHAR = 7.2;
-const MONO_CHAR = 6.4;
+const ROW = 40;
+const INDENT = 18;
+const LEFT = 12;
+const DOT_R = 4;
+const COMPARE_W = 40;
+/** Advance of one character at the base and the secondary size, in pixels. */
+const NAME_CHAR = 7.6;
+const SUB_CHAR = 6.2;
 
 /** Colour role for an outcome, earned by direction (docs/design-language.md). */
 export function outcomeRole(outcome: Summary["outcome"]): "good" | "bad" | "caution" | "flat" | "" {
@@ -47,6 +48,27 @@ export function outcomeRole(outcome: Summary["outcome"]): "good" | "bad" | "caut
   }
 }
 
+/**
+ * The two parts of an outcome: the word itself, and the code, limit, or
+ * error that qualifies it. A running episode has the word and no detail.
+ */
+export function outcomeParts(outcome: Summary["outcome"]): { word: string; detail: string } {
+  if (!outcome) return { word: "running", detail: "" };
+  const o = outcome as Record<string, unknown>;
+  switch (outcome.kind) {
+    case "completed":
+      return { word: "completed", detail: "" };
+    case "blocked":
+      return { word: "blocked", detail: str(o.code, "?") };
+    case "exhausted":
+      return { word: "exhausted", detail: `${str(o.limit, "?")} spent` };
+    case "failed":
+      return { word: "failed", detail: str(o.error, "?") };
+    default:
+      return { word: str(outcome.kind, "unknown"), detail: "" };
+  }
+}
+
 function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
   const el = document.createElementNS(SVG, tag);
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
@@ -55,7 +77,7 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string,
 
 function fit(text: string, px: number, charW: number): string {
   const max = Math.max(3, Math.floor(px / charW));
-  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+  return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`;
 }
 
 /** Draws the forest into a figure `width` pixels wide. */
@@ -80,11 +102,12 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     const from = parentId ? position.get(parentId) : undefined;
     const to = position.get(node.id);
     if (!from || !to) continue;
-    const path = svg("path", {
-      class: `edge${node.fork ? " fork" : ""}`,
-      d: `M ${from.x} ${from.y + DOT_R + 2} V ${to.y} H ${to.x - DOT_R - 1}`,
-    });
-    figure.appendChild(path);
+    figure.appendChild(
+      svg("path", {
+        class: `edge${node.fork ? " fork" : ""}`,
+        d: `M ${from.x} ${from.y + DOT_R + 3} V ${to.y} H ${to.x - DOT_R - 2}`,
+      }),
+    );
   }
 
   for (const { node } of rows) {
@@ -94,8 +117,13 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     const classes = ["node"];
     if (state.selected === node.id) classes.push("selected");
     if (state.cursor === node.id) classes.push("cursor");
-    const g = svg("g", { class: classes.join(" "), role: "treeitem", "data-id": node.id, "aria-selected": state.selected === node.id ? "true" : "false" });
-    const hit = svg("rect", { class: "hit", x: 1, y: y - ROW / 2 + 2, width: width - 2, height: ROW - 4, rx: 2 });
+    const g = svg("g", {
+      class: classes.join(" "),
+      role: "treeitem",
+      "data-id": node.id,
+      "aria-selected": state.selected === node.id ? "true" : "false",
+    });
+    const hit = svg("rect", { class: "hit", x: 1, y: y - ROW / 2 + 2, width: width - 2, height: ROW - 4, rx: 3 });
     const title = svg("title");
     title.textContent = node.fork
       ? `fork of ${s.forkOrigin?.episodeId} at seq ${s.forkOrigin?.seq}`
@@ -105,36 +133,43 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     g.append(title, hit);
     g.appendChild(svg("circle", { class: `dot ${role}`, cx: x, cy: y, r: DOT_R }));
 
-    const textX = x + DOT_R + 8;
-    const textW = width - textX - COMPARE_W - 6;
-    // First line: program name, then the id when it fits beside the name.
-    // Second line: the outcome, coloured by direction.
-    const name = svg("text", { x: textX, y: y - 3 });
-    const nameText = fit(s.name, textW, SANS_CHAR);
+    const textX = x + DOT_R + 9;
+    const textW = Math.max(24, width - textX - COMPARE_W - 6);
+    // First line: the program name, then the episode id when it fits.
+    const name = svg("text", { class: "name", x: textX, y: y - 4 });
+    const nameText = fit(s.name, textW * 0.66, NAME_CHAR);
     const nameSpan = svg("tspan");
     nameSpan.textContent = nameText;
     name.appendChild(nameSpan);
-    const idRoom = textW - nameText.length * SANS_CHAR - 10;
-    if (s.id !== s.name && idRoom >= 6 * MONO_CHAR) {
-      const idSpan = svg("tspan", { class: "sub", dx: 8 });
-      idSpan.textContent = fit(s.id, idRoom, MONO_CHAR);
+    const idRoom = textW - nameText.length * NAME_CHAR - 10;
+    if (s.id !== s.name && idRoom >= 6 * SUB_CHAR) {
+      const idSpan = svg("tspan", { class: "id", dx: 8 });
+      idSpan.textContent = fit(s.id, idRoom, SUB_CHAR);
       name.appendChild(idSpan);
     }
     g.appendChild(name);
 
-    const sub = svg("text", { class: "sub", x: textX, y: y + 10 });
-    const outcomeSpan = svg("tspan", { class: role });
-    outcomeSpan.textContent = fit(s.outcome ? outcomeLabel(s.outcome) : "running", textW, MONO_CHAR);
-    sub.appendChild(outcomeSpan);
+    // Second line: the outcome word, then what qualifies it.
+    const parts = outcomeParts(s.outcome);
+    const sub = svg("text", { class: "sub", x: textX, y: y + 12 });
+    const word = svg("tspan", { class: role || "running" });
+    word.textContent = parts.word;
+    sub.appendChild(word);
+    if (parts.detail) {
+      const room = textW - parts.word.length * SUB_CHAR - 10;
+      const detail = svg("tspan", { class: "detail", dx: 7 });
+      detail.textContent = fit(parts.detail, room, SUB_CHAR);
+      sub.appendChild(detail);
+    }
     g.appendChild(sub);
 
     const comparing = state.compare.includes(node.id);
     const boxX = width - COMPARE_W;
-    const box = svg("rect", { class: `compare-box${comparing ? " on" : ""}`, x: boxX, y: y - 4, width: 8, height: 8 });
+    const box = svg("rect", { class: `compare-box${comparing ? " on" : ""}`, x: boxX, y: y - 5, width: 10, height: 10, rx: 2 });
     const boxTitle = svg("title");
     boxTitle.textContent = comparing ? "remove from comparison" : "mark for comparison";
     box.appendChild(boxTitle);
-    const label = svg("text", { class: "compare-label", x: boxX + 12, y: y + 3 });
+    const label = svg("text", { class: "compare-label", x: boxX + 14, y: y + 4 });
     label.textContent = comparing ? "cmp" : "";
     const toggle = (e: Event) => {
       e.stopPropagation();
