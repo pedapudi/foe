@@ -199,6 +199,7 @@ dependencies = [
  "foe-log",
  "foe-transport",
  "foe-view",
+ "foe-workflow",
  "hex",
  "serde",
  "serde_json",

@@ -16,7 +16,7 @@ use foe_core::budget::Pool;
 use foe_core::config::Program;
 use foe_core::harness_text as text;
 use foe_core::loop_::{lock, until, wait_stop, Log, Params, Recorder};
-use foe_core::registry::{conforms, Handles, Registry};
+use foe_core::registry::{conforms, Handles, Registry, Source};
 use foe_core::workflow::{ancestors, Node, WorkflowConfig};
 use foe_core::{Effect, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolSpec, ToolValue, Transport};
 use foe_log::{
@@ -166,10 +166,14 @@ fn settled_in(message: &str) -> Option<Outcome> {
     Some(Outcome::Exhausted { limit })
 }
 
-/// A tool result as a node value, or the trouble it represents.
-fn classify_tool(value: ToolValue) -> Output {
+/// A tool result as a node value, or the trouble it represents. For a
+/// `tool_defs` executable, `configured` is set and an exit code other than
+/// zero or a timeout is a failure, because the node has no judgment to
+/// read the code the way the loop's model does.
+fn classify_tool(value: ToolValue, configured: bool) -> Output {
     let rendered = value.rendered.unwrap_or_else(|| render(&value.value));
-    if !value.is_error {
+    let exited_badly = value.value["exit_code"] != json!(0) || value.value["timed_out"] == json!(true);
+    if !(value.is_error || configured && exited_badly) {
         return Ok((value.value, rendered));
     }
     match settled_in(&rendered) {
@@ -214,10 +218,7 @@ enum Decision {
 /// The `recover` tool: the closed action set, with the nodes a retry or
 /// amend may name and `skip` present only when the node declares `empty`.
 fn recover_spec(targets: &[String], skip: bool) -> ToolSpec {
-    let mut actions = vec!["retry", "amend", "abort"];
-    if skip {
-        actions.push("skip");
-    }
+    let actions: Vec<&str> = ["retry", "amend", "abort"].into_iter().chain(skip.then_some("skip")).collect();
     let codes =
         ["goal-unreachable", "ambiguous-task", "missing-capability", "verification-unsatisfiable", "child-blocked"];
     ToolSpec {
@@ -389,8 +390,10 @@ impl Executor {
                 Ok(args) => {
                     let call = ToolCall { id: call_id, name: tool.clone(), args };
                     let (deadline, spill) = (self.deadline(), sh.log.dir().join("spill"));
+                    let configured = sh.registry.source(tool) == Some(Source::Configured);
                     Box::pin(async move {
-                        classify_tool(sh.registry.dispatch(&sh.handles, &call, step, spill, deadline).await)
+                        let value = sh.registry.dispatch(&sh.handles, &call, step, spill, deadline).await;
+                        classify_tool(value, configured)
                     })
                 }
             }

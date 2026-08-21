@@ -42,10 +42,9 @@ pub fn node_program(node: &Node) -> ChildProgram {
     if node.branches.is_empty() {
         return program;
     }
-    let labels: Vec<&String> = node.branches.keys().collect();
     let done = program.done_when.get_or_insert(DoneWhen { verify: None, retries: 2, returns: None });
     let returns = done.returns.get_or_insert_with(|| json!({ "type": "object", "properties": {} }));
-    returns["properties"]["branch"] = json!({ "type": "string", "enum": labels });
+    returns["properties"]["branch"] = json!({ "type": "string", "enum": node.branches.keys().collect::<Vec<_>>() });
     let mut required = returns["required"].as_array().cloned().unwrap_or_default();
     if !required.contains(&json!("branch")) {
         required.push(json!("branch"));

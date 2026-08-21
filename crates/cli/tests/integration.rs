@@ -73,9 +73,17 @@ fn host_run(
     let mut stdin = child.stdin.take().unwrap();
     let stdout = BufReader::new(child.stdout.take().unwrap());
     let mut events = Vec::new();
-    let mut send = |line: Value| writeln!(stdin, "{line}").unwrap();
+    let mut send = |mut line: Value, tag: Option<&Value>| {
+        if let Some(id) = tag {
+            line["episode_id"] = id.clone();
+        }
+        writeln!(stdin, "{line}").unwrap()
+    };
     for line in stdout.lines() {
         let event: Value = serde_json::from_str(&line.unwrap()).unwrap();
+        // A line tagged with an episode id is a descendant's request passed
+        // through this process; the answer carries the tag back.
+        let tag = event.get("episode_id").cloned();
         match event["type"].as_str().unwrap() {
             "model/request" => {
                 let id = event["data"]["request_id"].clone();
@@ -85,15 +93,18 @@ fn host_run(
                     responses.remove(0)
                 };
                 for chunk in chunks {
-                    send(json!({ "type": "model/chunk", "request_id": id, "chunk": chunk }));
+                    send(json!({ "type": "model/chunk", "request_id": id, "chunk": chunk }), tag.as_ref());
                 }
             }
             "host/tool-call" => {
                 let data = &event["data"];
                 let value = answer(data["name"].as_str().unwrap(), &data["args"]);
-                send(json!({ "type": "tool/result", "call_id": data["call_id"], "value": value }));
+                send(json!({ "type": "tool/result", "call_id": data["call_id"], "value": value }), tag.as_ref());
             }
             _ => {}
+        }
+        if tag.is_some() {
+            continue;
         }
         let ended = event["type"] == "episode/end";
         events.push(event);
@@ -196,6 +207,164 @@ fn a_spent_model_call_budget_exhausts_the_episode() {
     assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "exhausted", "limit": "model_calls" }));
 }
 
+/// A child program for a workflow model node, reading `dir`.
+fn node_program(name: &str, dir: &Path) -> Value {
+    json!({
+        "name": name, "instructions": { "role": "Decide." }, "tools": ["block"],
+        "grants": { "read": [dir] }, "budget": { "model_calls": 2 }
+    })
+}
+
+fn node_starts(events: &[Value]) -> Vec<(String, u64)> {
+    events
+        .iter()
+        .filter(|e| e["type"] == "workflow/node-start")
+        .map(|e| (e["data"]["node"].as_str().unwrap().to_string(), e["data"]["fire"].as_u64().unwrap()))
+        .collect()
+}
+
+/// docs/workflow.md "Firing", "Choice points", and "Model nodes": a tool
+/// node's value reaches a model node as a task section, the model node's
+/// returned `branch` fires only the listed successor, and a binding with a
+/// pointer reaches the terminal tool node.
+#[test]
+fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
+    let dir = scratch("workflow-nodes");
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["list", "derive"]);
+        c["host_tools"] = json!({
+            "list": { "description": "Lists targets.", "params": { "type": "object" }, "effect": "pure" },
+            "derive": { "description": "Derives patches.", "params": { "type": "object" }, "effect": "pure" }
+        });
+        c["budget"] = json!({ "model_calls": 6 });
+        c["workflow"] = json!({ "nodes": {
+            "manifest": { "tool": "list" },
+            "propose": { "model": node_program("propose", &dir), "follows": ["manifest"],
+                         "branches": { "accept": ["derive"], "stop": [] } },
+            "derive": { "tool": "derive", "args": { "experiment": { "$node": "propose", "pointer": "/experiment" } },
+                        "follows": ["propose"], "terminal": true }
+        } });
+    });
+    let mut child = vec![text("proposing")];
+    child.extend(call("tc_1", "return", r#"{"value": {"experiment": "swap", "branch": "accept"}}"#));
+    child.push(done("tool"));
+    let (events, code) = host_run(&dir, &config, vec![child], |name, args| match name {
+        "list" => json!({ "targets": ["a", "b"] }),
+        "derive" => {
+            assert_eq!(args["experiment"], "swap", "the pointer binding resolved");
+            json!({ "patches": 2 })
+        }
+        other => panic!("unexpected tool {other}"),
+    });
+    assert_eq!(code, 0);
+    assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "completed", "value": { "patches": 2 } }));
+    assert_eq!(node_starts(&events), [("manifest".into(), 1), ("propose".into(), 1), ("derive".into(), 1)]);
+    assert_eq!(types(&events).iter().filter(|t| **t == "model/request").count(), 0, "no recovery was needed");
+    let branch = events.iter().find(|e| e["type"] == "workflow/branch").unwrap();
+    assert_eq!(branch["data"]["label"], "accept");
+    assert_eq!(branch["data"]["successors"], json!(["derive"]));
+    let spawn = events.iter().find(|e| e["type"] == "spawn/start").unwrap();
+    assert_eq!(spawn["data"]["program"], "propose");
+    let start = events.iter().find(|e| e["type"] == "workflow/node-start" && e["data"]["node"] == "propose").unwrap();
+    let child_id = start["data"]["child_id"].as_str().unwrap();
+    let child_log = dir.join("log/children").join(child_id).join("episode.jsonl");
+    let child: Vec<Value> =
+        std::fs::read_to_string(&child_log).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let task = child[1]["data"]["content"][0]["text"].as_str().unwrap();
+    assert_eq!(task, "## manifest\n\n{\"targets\":[\"a\",\"b\"]}", "the task is one section per input");
+    let header = child.iter().find(|e| e["type"] == "request/header").unwrap();
+    let returns = &header["data"]["tools"][1]["parameters"]["properties"]["value"];
+    assert_eq!(returns["properties"]["branch"]["enum"], json!(["accept", "stop"]));
+    assert_eq!(child.last().unwrap()["data"]["outcome"]["kind"], "completed");
+    assert!(types(&events).contains(&"budget/release"));
+}
+
+/// docs/workflow.md "Recovery" and "Tool nodes": a configured executable
+/// that exits non-zero fails its node; the host's `retry` re-fires it and
+/// the workflow completes when it succeeds.
+#[test]
+fn a_failed_tool_node_is_retried_through_recovery() {
+    let dir = scratch("workflow-recovery");
+    let script = dir.join("flaky");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\nstate=\"$(dirname \"$0\")/state\"\nif [ ! -f \"$state\" ]; then touch \"$state\"; echo failing; exit 1; fi\necho fine\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["flaky"]);
+        c["tool_defs"] = json!({ "flaky": { "exec": script, "description": "Fails once." } });
+        c["grants"]["write"] = json!([dir]);
+        c["workflow"] = json!({ "nodes": {
+            "only": { "tool": "flaky", "args": { "args": [] }, "max_fires": 2, "terminal": true }
+        } });
+    });
+    let mut decision = vec![text("retrying")];
+    decision.extend(call("tc_r", "recover", r#"{"action": "retry", "node": "only"}"#));
+    decision.push(done("tool"));
+    let (events, code) = host_run(&dir, &config, vec![decision], |_, _| Value::Null);
+    assert_eq!(code, 0);
+    let outcome = &events.last().unwrap()["data"]["outcome"];
+    assert_eq!((outcome["kind"].as_str(), outcome["value"]["exit_code"].as_i64()), (Some("completed"), Some(0)));
+    let recovery = events.iter().find(|e| e["type"] == "workflow/recovery").unwrap();
+    assert_eq!(recovery["data"]["action"], "retry");
+    assert_eq!(recovery["data"]["target"], "only");
+    assert_eq!(recovery["data"]["intervention"], 1);
+    assert_eq!(recovery["data"]["cause"], "tool-error");
+    assert_eq!(node_starts(&events), [("only".into(), 1), ("only".into(), 2)]);
+    let first_end = events.iter().find(|e| e["type"] == "workflow/node-end").unwrap();
+    assert!(first_end["data"]["error"].as_str().unwrap().contains("exit code 1"));
+    let header = events.iter().find(|e| e["type"] == "request/header").unwrap();
+    assert_eq!(header["data"]["tools"][0]["name"], "recover");
+    let item = events.iter().find(|e| e["type"] == "inbox/item" && e["data"]["source"] == "system").unwrap();
+    assert!(item["data"]["content"][0]["text"].as_str().unwrap().contains("Node `only` failed on firing 1"));
+}
+
+/// docs/workflow.md "What bounds it": a cycle that re-fires until a node
+/// reaches its `max_fires` ends the episode as blocked with code
+/// `recovery-exhausted`.
+#[test]
+fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
+    let dir = scratch("workflow-cycle");
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["list", "scan", "derive"]);
+        c["host_tools"] = json!({
+            "list": { "description": "Lists targets.", "params": { "type": "object" }, "effect": "pure" },
+            "scan": { "description": "Scans a target.", "params": { "type": "object" }, "effect": "pure" },
+            "derive": { "description": "Derives patches.", "params": { "type": "object" }, "effect": "pure" }
+        });
+        c["budget"] = json!({ "model_calls": 8 });
+        c["workflow"] = json!({ "nodes": {
+            "manifest": { "tool": "list" },
+            "survey": { "tool": "scan", "args": { "about": { "$node": "manifest" } }, "follows": ["manifest"], "max_fires": 2 },
+            "propose": { "model": node_program("propose", &dir), "follows": ["manifest", "survey"],
+                         "branches": { "accept": ["derive"], "widen": ["survey"] }, "max_fires": 2 },
+            "derive": { "tool": "derive", "follows": ["propose"], "terminal": true }
+        } });
+    });
+    let widen = || {
+        let mut chunks = vec![text("wider")];
+        chunks.extend(call("tc_1", "return", r#"{"value": {"branch": "widen"}}"#));
+        chunks.push(done("tool"));
+        chunks
+    };
+    let (events, code) = host_run(&dir, &config, vec![widen(), widen()], |_, _| json!({ "ok": true }));
+    assert_eq!(code, 2);
+    let outcome = &events.last().unwrap()["data"]["outcome"];
+    assert_eq!(outcome["code"], "recovery-exhausted");
+    assert!(outcome["message"].as_str().unwrap().contains("max_fires"), "{outcome}");
+    let fired: Vec<String> = node_starts(&events).iter().map(|(n, f)| format!("{n}#{f}")).collect();
+    assert_eq!(fired, ["manifest#1", "survey#1", "propose#1", "survey#2", "propose#2"]);
+    let labels: Vec<&str> = events
+        .iter()
+        .filter(|e| e["type"] == "workflow/branch")
+        .map(|e| e["data"]["label"].as_str().unwrap())
+        .collect();
+    assert_eq!(labels, ["widen", "widen"]);
+    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2, "one child per model firing");
+}
+
 fn examples() -> Vec<(String, String)> {
     let mut found: Vec<(String, String)> = std::fs::read_dir(EXAMPLES)
         .unwrap()
@@ -206,7 +375,7 @@ fn examples() -> Vec<(String, String)> {
         })
         .collect();
     found.sort();
-    assert!(found.len() >= 6, "every example has a config.json");
+    assert!(found.len() >= 7, "every example has a config.json");
     found
 }
 
@@ -253,6 +422,13 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
         assert_eq!(first["identity"], second["identity"], "{name}: identity ignores task and paths");
         assert_eq!(first["program"]["name"], json!(serde_json::from_str::<Value>(&text).unwrap()["name"]));
         assert!(first["program"].get("task").is_none(), "{name}: the program omits the task");
+        if name == "workflow" {
+            assert_eq!(first["workflow"]["terminal"], json!(["apply"]), "plan reports the workflow's terminal node");
+            assert_eq!(first["workflow"]["cycles"], json!([]));
+            assert!(first["program"]["workflow"]["nodes"]["propose"]["model"].is_object());
+        } else {
+            assert_eq!(first["workflow"], Value::Null);
+        }
     }
 }
 

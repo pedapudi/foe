@@ -164,16 +164,27 @@ fn load(config: &Path) -> Result<foe_core::config::Program, String> {
 }
 
 /// Resolves the program and prints it with its identity. `--json` prints one
-/// object with `identity` and `program`, which the Python package parses.
+/// object with `identity` and `program`, which the Python package parses,
+/// and `workflow` when the program declares one: its cycles, the model
+/// nodes sharing write roots, and its terminal nodes. Without `--json`, a
+/// workflow is followed by the report docs/workflow.md "Firing" describes.
 fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
     let program = load(config)?;
     let identity = run::identity(&program)?;
     let value = program.to_value();
     if json {
-        println!("{}", serde_json::json!({ "identity": identity.hash, "program": value }));
+        let workflow = program.workflow.as_ref().map(|wf| {
+            let terminal: Vec<&String> = wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k).collect();
+            let overlaps = foe_workflow::plan::write_overlaps(wf);
+            serde_json::json!({ "cycles": foe_workflow::plan::cycles(wf), "write_overlaps": overlaps, "terminal": terminal })
+        });
+        println!("{}", serde_json::json!({ "identity": identity.hash, "program": value, "workflow": workflow }));
     } else {
         println!("identity  {}", identity.hash);
         println!("{}", serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?);
+        if let Some(wf) = &program.workflow {
+            print!("{}", foe_workflow::plan_report(wf));
+        }
     }
     Ok(ExitCode::SUCCESS)
 }

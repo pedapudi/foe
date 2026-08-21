@@ -15,6 +15,7 @@ foe-log = { path = "../log" }
 foe-core = { path = "../core" }
 foe-code = { path = "../code" }
 foe-view = { path = "../view" }
+foe-workflow = { path = "../workflow" }
 foe-transport = { path = "../transport", optional = true }
 serde.workspace = true
 serde_json.workspace = true

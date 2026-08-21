@@ -8,19 +8,6 @@ so that a version 1 reader parses a later log; nothing in version 1 emits it.
 A feature with nothing reserved is listed so that a reader does not search
 for it.
 
-## Workflow graphs and recovery nodes
-
-A workflow graph is a declared dataflow of episodes: nodes name programs,
-edges carry a node's outcome into the next node's task, and a recovery node
-is a node that runs when a predecessor ends blocked or exhausted. The
-runtime would schedule nodes, reserve each node's budget from the graph's
-pool, and record each node's start, end, and any recovery transition.
-Workflow graphs are not implemented. Reserved event types: `workflow/node-start`,
-`workflow/node-end`, `workflow/recovery`, each carrying an unconstrained JSON
-object. No configuration key is reserved.
-
-The full specification is [workflow.md](workflow.md).
-
 ## Context compaction
 
 Context compaction replaces a prefix of the conversation with a summary when

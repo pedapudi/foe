@@ -336,11 +336,10 @@ and a version 1 reader will render it.
 
 These events appear in the log of an episode whose configuration declares
 a `workflow`, which [workflow.md](workflow.md) specifies. Each firing of a
-model node is a child episode under `children/` with its own log. All four
-are reserved: their data shapes are fixed so that a version 1 reader
-renders them, and nothing emits them until the workflow executor ships.
+model node is a child episode under `children/` with its own log. A node
+inside a nested workflow node is named by its path, `outer/inner`.
 
-`workflow/node-start` — reserved. One firing of a node begins. `fire`
+`workflow/node-start` — implemented. One firing of a node begins. `fire`
 counts the node's firings from 1. `inputs` lists the `seq` of the events
 that produced the values the node receives: the `workflow/node-end` of
 each predecessor, or the `workflow/recovery` that skipped one. `child_id`
@@ -350,7 +349,7 @@ names the child episode of a model node and is absent otherwise.
 { "node": "survey", "fire": 1, "inputs": [4], "child_id": "ep_9c21" }
 ```
 
-`workflow/node-end` — reserved. The firing ended. `value` is the node's
+`workflow/node-end` — implemented. The firing ended. `value` is the node's
 canonical output and `rendered` the text its successors receive. When the
 firing failed, `error` states why and `value` is null.
 
@@ -358,13 +357,13 @@ firing failed, `error` states why and `value` is null.
 { "node": "survey", "fire": 1, "value": {}, "rendered": "…", "duration_ms": 1200 }
 ```
 
-`workflow/branch` — reserved. A node with `branches` chose a label.
+`workflow/branch` — implemented. A node with `branches` chose a label.
 
 ```json
 { "node": "propose", "fire": 1, "label": "accept", "successors": ["derive"] }
 ```
 
-`workflow/recovery` — reserved. A recovery decision was made and applied.
+`workflow/recovery` — implemented. A recovery decision was made and applied.
 `cause` names what failed, `action` is `retry`, `amend`, `skip`, or
 `abort`, `target` names the node a retry or amend re-fires, `note` carries
 the text an amend appends, and `intervention` counts decisions in this
@@ -402,6 +401,13 @@ by the runtime, the viewer, and the Python package identically.
 
 An assistant message whose request failed and was discarded before any tool
 call started is never written, so it never appears.
+
+A workflow episode's own requests are recovery decisions, and each one is
+built from declared inputs alone: its `messages` hold the one `user`
+message made from the `system` inbox item it consumes, and the assistant
+messages and tool results of earlier decisions in the same log are
+excluded. A reader derives such a request by applying rule 3 to that
+request only.
 
 The message list is the one `model/request.messages` records. A reader
 that recomputes it from the preceding events and finds a difference has found
