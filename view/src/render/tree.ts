@@ -9,6 +9,7 @@ import type { Summary } from "../fold.js";
 import { flatten } from "../lineage.js";
 import type { TreeNode } from "../lineage.js";
 import { str } from "../types.js";
+import { barSvg, figureSvg, svg } from "./svg.js";
 
 export interface TreeState {
   selected: string | null;
@@ -21,7 +22,6 @@ export interface TreeHandlers {
   toggleCompare(id: string): void;
 }
 
-const SVG = "http://www.w3.org/2000/svg";
 const ROW = 40;
 const INDENT = 18;
 const LEFT = 12;
@@ -69,12 +69,6 @@ export function outcomeParts(outcome: Summary["outcome"]): { word: string; detai
   }
 }
 
-function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
-  const el = document.createElementNS(SVG, tag);
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
-  return el;
-}
-
 function fit(text: string, px: number, charW: number): string {
   const max = Math.max(3, Math.floor(px / charW));
   return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`;
@@ -89,7 +83,7 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     return host;
   }
   const height = rows.length * ROW;
-  const figure = svg("svg", { width, height, viewBox: `0 0 ${width} ${height}` });
+  const figure = figureSvg("tree-figure", width, height, "episodes by lineage");
   const position = new Map<string, { x: number; y: number }>();
   rows.forEach(({ node, depth }, i) => {
     position.set(node.id, { x: LEFT + depth * INDENT, y: i * ROW + ROW / 2 });
@@ -124,13 +118,16 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
       "aria-selected": state.selected === node.id ? "true" : "false",
     });
     const hit = svg("rect", { class: "hit", x: 1, y: y - ROW / 2 + 2, width: width - 2, height: ROW - 4, rx: 3 });
+    // The row's one emphasis: a spine down its leading edge, which the
+    // stylesheet colours on the selected row and leaves clear on the rest.
+    const spine = svg("line", { class: "spine", x1: 1, y1: y - ROW / 2 + 3, x2: 1, y2: y + ROW / 2 - 3 });
     const title = svg("title");
     title.textContent = node.fork
       ? `fork of ${s.forkOrigin?.episodeId} at seq ${s.forkOrigin?.seq}`
       : s.parentId
         ? `spawned by ${s.parentId}`
         : "root episode";
-    g.append(title, hit);
+    g.append(title, hit, spine);
     g.appendChild(svg("circle", { class: `dot ${role}`, cx: x, cy: y, r: DOT_R }));
 
     const textX = x + DOT_R + 9;
@@ -234,7 +231,7 @@ function ratio(used: number, limit: number | null, unit: string): Child {
   const fraction = Math.min(1, used / limit);
   const pct = Math.round(fraction * 100);
   const w = 72;
-  const mark = svg("svg", { class: "mark", width: w, height: 8, viewBox: `0 0 ${w} 8` });
+  const mark = barSvg("mark", w, 8, "share of the limit spent");
   mark.appendChild(svg("line", { class: "track", x1: 0, y1: 4, x2: w, y2: 4 }));
   mark.appendChild(svg("line", { class: `fill${fraction >= 1 ? " caution" : ""}`, x1: 0, y1: 4, x2: Math.max(0.5, fraction * w), y2: 4 }));
   mark.appendChild(svg("line", { class: "tick", x1: fraction * w, y1: 0, x2: fraction * w, y2: 8 }));

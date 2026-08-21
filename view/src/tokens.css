@@ -532,3 +532,43 @@
   --n-font-head: 'Bricolage Grotesque', system-ui, sans-serif;
   --n-font-paper: 'Bricolage Grotesque', system-ui, sans-serif;
 }
+
+/* ===================  spacing and radii  ===================
+ *
+ * One rhythm, stated once and used everywhere. The names and the values
+ * come from zicato's DESIGN-LANGUAGE.md section 4.1, which bakes a single
+ * scale onto the root rather than offering a density control; the page
+ * scale in the top bar is the sizing control.
+ *
+ * The four tokens below the rule are foe's. zicato's scale measures a
+ * scrolling document, and its smallest step is 16 pixels; the viewer's
+ * regions are panes a few hundred pixels wide whose interiors need steps
+ * under that. Every interior spacing in the stylesheet is one of these
+ * four, so a row, a gutter, and a pane edge share one rhythm. */
+:root {
+  --dt-rail: 288px;
+  --dt-pad-x: 56px;
+  --dt-pad-y: 40px;
+  --dt-section-gap: 30px;
+  --dt-panel-pad-x: 19px;
+  --dt-panel-pad-y: 17px;
+  --dt-row-gap: 30px;
+  --dt-card-min: 270px;
+  --dt-card-gap: 18px;
+  --dt-card-pad: 16px;
+
+  /* between two lines of one row */
+  --dt-gap-line: 3px;
+  /* between two controls, marks, or words set side by side */
+  --dt-gap-item: 6px;
+  /* between a pane's edge and what it holds */
+  --dt-gap-edge: 10px;
+  /* between two groups inside one pane */
+  --dt-gap-group: 14px;
+
+  --dt-radius-panel: 4px;
+  --dt-radius-card: 5px;
+  --dt-radius-mark: 3px;
+  --dt-radius-hovercard: 6px;
+  --dt-radius-pill: 999px;
+}

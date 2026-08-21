@@ -14,19 +14,7 @@ import { MARK_MIN_WIDTH, layoutTrajectory } from "../trajectory.js";
 import type { Outcome } from "../types.js";
 import { str } from "../types.js";
 import { outcomeRole } from "./tree.js";
-
-const SVG = "http://www.w3.org/2000/svg";
-
-function svg<K extends keyof SVGElementTagNameMap>(
-  tag: K,
-  attrs: Record<string, string | number | undefined> = {},
-): SVGElementTagNameMap[K] {
-  const el = document.createElementNS(SVG, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (value !== undefined) el.setAttribute(key, String(value));
-  }
-  return el;
-}
+import { figureSvg, svg } from "./svg.js";
 
 export interface TrajectoryState {
   selected: string | null;
@@ -165,14 +153,7 @@ export class TrajectoryView {
   }
 
   private build(layout: TrajectoryLayout, width: number): SVGSVGElement {
-    const figure = svg("svg", {
-      class: "traj",
-      width,
-      height: layout.height,
-      viewBox: `0 0 ${width} ${layout.height}`,
-      role: "img",
-      "aria-label": "episode trajectory",
-    });
+    const figure = figureSvg("traj", width, layout.height, "episode trajectory");
 
     // The axis: leader ticks with a small mono label, and no gridlines.
     const axis = svg("g", { class: "traj-axisline" });
@@ -213,6 +194,17 @@ export class TrajectoryView {
       });
       hit.addEventListener("click", () => this.handlers.select(row.id));
       group.appendChild(hit);
+      // The figure's one emphasis: a spine down the row's leading edge. A
+      // filled row would compete with the bars drawn inside it.
+      group.appendChild(
+        svg("line", {
+          class: "traj-spine",
+          x1: 1,
+          y1: row.y - layout.rowHeight / 2 + 2,
+          x2: 1,
+          y2: row.y + layout.rowHeight / 2 - 2,
+        }),
+      );
 
       // The label: the program name, then the episode id in mono.
       const label = svg("text", { class: "traj-label", x: 6 + row.depth * 10, y: row.y + 3.5 });
