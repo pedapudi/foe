@@ -55,7 +55,8 @@ pub struct Policy {
     pub write: Vec<PathBuf>,
     /// Files that may be executed.
     pub exec: Vec<PathBuf>,
-    /// Single files readable in full: the model key file, which child
+    /// Single files readable in full: the model credential file, which the
+    /// binary adds once the transport has resolved it, and which child
     /// episodes read after inheriting this domain. Executables never
     /// receive these.
     pub read_files: Vec<PathBuf>,
@@ -71,9 +72,11 @@ pub struct Policy {
 
 impl Policy {
     /// The policy of an episode process: its grants, every configured
-    /// executable, the running binary when it may start children, the key
-    /// file when it holds the model transport, its log directory, and
-    /// outbound TCP only when the episode itself holds the model transport.
+    /// executable, the running binary when it may start children, its log
+    /// directory, and outbound TCP only when the episode itself holds the
+    /// model transport. The credential file the transport reads is not
+    /// known here; the binary appends it to `read_files` after resolving
+    /// the `model` block.
     pub fn for_episode(config: &Config, log_dir: &Path) -> Policy {
         let mut exec: Vec<PathBuf> = config.tool_defs.values().map(|d| d.exec.clone()).collect();
         if !config.grants.spawn.is_empty() {
@@ -83,7 +86,7 @@ impl Policy {
             read: config.grants.read.clone(),
             write: config.grants.write.clone(),
             exec,
-            read_files: config.model.iter().map(|m| m.api_key_file.clone()).collect(),
+            read_files: Vec::new(),
             log_dir: Some(log_dir.to_path_buf()),
             bind_tcp: Vec::new(),
             connect_tcp: config.model.is_some(),

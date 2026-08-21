@@ -24,17 +24,20 @@
     "budget": { "$ref": "#/$defs/budget" },
     "done_when": { "$ref": "#/$defs/done_when" },
     "model": {
-      "description": "When present, foe calls the model itself. When absent, the host process answers model requests over the protocol. Does not participate in identity.",
+      "description": "When present, foe calls the model itself. When absent, the host process answers model requests over the protocol. Every key other than provider, model, and max_output_tokens is a provider-specific option with a string value; docs/models.md lists them per provider. Does not participate in identity.",
       "type": "object",
-      "additionalProperties": false,
-      "required": ["provider", "model", "api_key_file"],
+      "required": ["provider", "model"],
       "properties": {
-        "provider": { "type": "string", "enum": ["anthropic", "openai-compatible"] },
+        "provider": { "description": "A provider name known to the build, such as anthropic, openai, openai-compatible, openrouter, openai-codex, vertex, or exec. foe plan reports an unknown name.", "type": "string", "minLength": 1 },
         "model": { "description": "The model identifier the provider expects.", "type": "string", "minLength": 1 },
-        "api_key_file": { "description": "Absolute path to a file whose contents are the key.", "type": "string", "pattern": "^/" },
+        "max_output_tokens": { "description": "Per-request output limit; the default is the provider's.", "type": "integer", "minimum": 1 },
+        "api_key_file": { "description": "Absolute path to the API key file; the default is ~/.config/foe/credentials/<provider>.json.", "type": "string", "pattern": "^/" },
+        "token_file": { "description": "Absolute path to the OAuth token file; the default is ~/.config/foe/credentials/<provider>.json.", "type": "string", "pattern": "^/" },
+        "credentials_file": { "description": "Absolute path to Google credentials; the default is named by ~/.config/foe/credentials/vertex.json.", "type": "string", "pattern": "^/" },
         "base_url": { "description": "Overrides the provider's default endpoint.", "type": "string" },
-        "max_output_tokens": { "description": "Per-request output limit; the default is the provider's.", "type": "integer", "minimum": 1 }
-      }
+        "exec": { "description": "Absolute path of the program an exec provider runs.", "type": "string", "pattern": "^/" }
+      },
+      "additionalProperties": { "type": "string" }
     },
     "sandbox": {
       "description": "Behavior when Landlock is unavailable. The rules themselves are compiled from grants and tool_defs. Does not participate in identity.",

@@ -1,10 +1,12 @@
 //! The `foe` binary. docs/design.md "The command line" states the forms.
-//! This file parses the command line and implements the four forms that run
+//! This file parses the command line and implements the forms that run
 //! nothing: `view`, `plan`, `tools`, and `schema`. The running form is in
-//! `run.rs`.
+//! `run.rs` and `login` in `login.rs`.
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "transport")]
+mod login;
 mod run;
 
 use foe_core::registry::{block_spec, resolve_sources, resolve_specs, Source};
@@ -18,8 +20,9 @@ use std::process::ExitCode;
 const SCHEMA: &str = include_str!("schema.json");
 
 const USAGE: &str = "usage:
-  foe \"task\" [--config FILE] [--model PROVIDER/MODEL --key-file PATH] [--log-dir DIR] [--no-open] [--headless]
+  foe \"task\" [--config FILE] [--model PROVIDER/MODEL] [--key-file PATH] [--log-dir DIR] [--no-open] [--headless]
   foe --config FILE --host [--log-dir DIR]
+  foe login [PROVIDER [--model MODEL]] [--status]
   foe view DIR [--serve [--port N]]
   foe plan --config FILE [--json]
   foe tools [--config FILE]
@@ -28,7 +31,7 @@ const USAGE: &str = "usage:
 /// Options that take a value.
 const VALUED: &[&str] = &["--config", "--model", "--key-file", "--log-dir", "--port"];
 /// Options that take none.
-const SWITCHES: &[&str] = &["--no-open", "--headless", "--host", "--serve", "--json"];
+const SWITCHES: &[&str] = &["--no-open", "--headless", "--host", "--serve", "--json", "--status"];
 
 #[derive(Default)]
 struct Args {
@@ -75,6 +78,7 @@ impl Args {
 
 enum Command {
     Run(run::Options),
+    Login { provider: Option<String>, model: Option<String>, status: bool },
     View { dir: PathBuf, serve: bool, port: u16 },
     Plan { config: PathBuf, json: bool },
     Tools { config: Option<PathBuf> },
@@ -100,6 +104,11 @@ fn command(args: &[String]) -> Result<Command, String> {
             Command::Plan { config: PathBuf::from(config), json: args.switch("--json") }
         }
         "tools" => Command::Tools { config: args.value("--config").map(PathBuf::from) },
+        "login" => Command::Login {
+            provider: args.positional.get(1).cloned(),
+            model: args.value("--model"),
+            status: args.switch("--status"),
+        },
         _ => {
             if args.positional.len() > 1 {
                 return Err(format!("one task at most\n{USAGE}"));
@@ -126,6 +135,7 @@ fn command(args: &[String]) -> Result<Command, String> {
     let leftover = match &command {
         Command::Run(_) => args.positional.is_empty(),
         Command::Schema | Command::Tools { .. } | Command::Plan { .. } => args.positional.len() == 1,
+        Command::Login { .. } => args.positional.len() <= 2,
         Command::View { .. } => args.positional.len() == 2,
     };
     if !leftover {
@@ -155,8 +165,19 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
         Command::Plan { config, json } => plan(&config, json),
         Command::Tools { config } => tools(config.as_deref()),
         Command::View { dir, serve, port } => view(&dir, serve, port),
+        Command::Login { provider, model, status } => login(provider, model, status),
         Command::Run(options) => run::run(options),
     }
+}
+
+#[cfg(feature = "transport")]
+fn login(provider: Option<String>, model: Option<String>, status: bool) -> Result<ExitCode, String> {
+    login::login(login::Options { provider, model, status })
+}
+
+#[cfg(not(feature = "transport"))]
+fn login(_provider: Option<String>, _model: Option<String>, _status: bool) -> Result<ExitCode, String> {
+    Err("this binary was built without the transport feature; there is no provider to log in to".into())
 }
 
 fn load(config: &Path) -> Result<foe_core::config::Program, String> {
@@ -169,10 +190,12 @@ fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
     let program = load(config)?;
     let identity = run::identity(&program)?;
     let value = program.to_value();
+    let transport = program.model.as_ref().map(run::describe_transport);
     if json {
-        println!("{}", serde_json::json!({ "identity": identity.hash, "program": value }));
+        println!("{}", serde_json::json!({ "identity": identity.hash, "program": value, "transport": transport }));
     } else {
         println!("identity  {}", identity.hash);
+        println!("model     {}", transport.as_deref().unwrap_or("answered by the host over the protocol"));
         println!("{}", serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?);
     }
     Ok(ExitCode::SUCCESS)
@@ -255,6 +278,11 @@ mod tests {
         assert!(matches!(parse("schema"), Ok(Command::Schema)));
         assert!(matches!(parse("plan --config c.json --json"), Ok(Command::Plan { json: true, .. })));
         assert!(matches!(parse("tools"), Ok(Command::Tools { config: None })));
+        assert!(matches!(parse("login"), Ok(Command::Login { provider: None, model: None, status: false })));
+        assert!(matches!(parse("login --status"), Ok(Command::Login { provider: None, status: true, .. })));
+        let Ok(Command::Login { provider, model, .. }) = parse("login anthropic --model m") else { panic!() };
+        assert_eq!((provider.as_deref(), model.as_deref()), (Some("anthropic"), Some("m")));
+        assert!(parse("login a b").is_err(), "login takes one provider");
         assert!(matches!(parse("view logs --serve --port 8080"), Ok(Command::View { serve: true, port: 8080, .. })));
         assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(run::Options { host: true, .. }))));
         let Ok(Command::Run(options)) = parse("fix --model anthropic/m --key-file k --headless --no-open") else {

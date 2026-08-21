@@ -133,9 +133,11 @@ fn every_rule_names_its_key() {
         ("budget.loop_threshold", Box::new(|v| v["budget"]["loop_threshold"] = json!(1))),
         ("done_when.verify", Box::new(|v| v["done_when"] = json!({ "verify": "ghost" }))),
         ("done_when.returns", Box::new(|v| v["done_when"] = json!({ "returns": "string" }))),
+        ("model.provider", Box::new(|v| v["model"] = json!({ "provider": " ", "model": "m" }))),
+        ("model.model", Box::new(|v| v["model"] = json!({ "provider": "anthropic", "model": "" }))),
         (
-            "model.api_key_file",
-            Box::new(|v| v["model"] = json!({ "provider": "anthropic", "model": "m", "api_key_file": "rel.key" })),
+            "model.max_output_tokens",
+            Box::new(|v| v["model"] = json!({ "provider": "anthropic", "model": "m", "max_output_tokens": 0 })),
         ),
         (
             "programs.kid.instructions",

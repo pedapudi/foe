@@ -19,7 +19,7 @@ use foe_core::sandbox::{Policy, Sandbox};
 use foe_core::spawn::{ProcessSpawner, Router, Uplink};
 use foe_core::team::{self, Team};
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
-use foe_core::{Config, ModelConfig, Provider, Spawner, Tool, ToolSpec, Transport, Writer};
+use foe_core::{Config, ModelConfig, Spawner, Tool, ToolSpec, Transport, Writer};
 use foe_log::{EpisodeStart, Outcome};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -101,11 +101,15 @@ fn fresh_id() -> String {
 fn load_config(options: &Options) -> Result<Config, String> {
     let Some(path) = &options.config else {
         let task = options.task.clone().ok_or(USAGE_BARE)?;
-        let (model, key_file) = match (&options.model, &options.key_file) {
-            (Some(model), Some(key_file)) => (model, key_file),
-            _ => return Err("a task without --config takes --model PROVIDER/MODEL and --key-file PATH".into()),
+        let model = match &options.model {
+            Some(spec) => {
+                let (provider, model) =
+                    spec.split_once('/').ok_or("--model takes PROVIDER/MODEL, for example anthropic/claude-opus-5")?;
+                ModelConfig::new(provider, model)
+            }
+            None => default_model()?.ok_or(NO_DEFAULT_MODEL)?,
         };
-        return builtin_config(task, model, key_file);
+        return builtin_config(task, model, options.key_file.as_deref());
     };
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut config = foe_core::config::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -116,24 +120,27 @@ fn load_config(options: &Options) -> Result<Config, String> {
 }
 
 const USAGE_BARE: &str = "a task or --config FILE is required";
+const NO_DEFAULT_MODEL: &str =
+    "no model: run `foe login <provider>` once to set a default, or give --model PROVIDER/MODEL";
 
-fn builtin_config(task: String, model: &str, key_file: &Path) -> Result<Config, String> {
-    let (provider, model) =
-        model.split_once('/').ok_or("--model takes PROVIDER/MODEL, for example anthropic/claude-opus-5")?;
-    let provider = match provider {
-        "anthropic" => Provider::Anthropic,
-        "openai-compatible" => Provider::OpenaiCompatible,
-        other => return Err(format!("--model: {other} is neither anthropic nor openai-compatible")),
-    };
+#[cfg(feature = "transport")]
+fn default_model() -> Result<Option<ModelConfig>, String> {
+    crate::login::default_model()
+}
+
+#[cfg(not(feature = "transport"))]
+fn default_model() -> Result<Option<ModelConfig>, String> {
+    Ok(None)
+}
+
+/// The built-in coding configuration. `--key-file` names the API key file
+/// explicitly; without it the provider's convention path is read.
+fn builtin_config(task: String, mut model: ModelConfig, key_file: Option<&Path>) -> Result<Config, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
-    let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
-    let model = ModelConfig {
-        provider,
-        model: model.to_string(),
-        api_key_file: key_file,
-        base_url: None,
-        max_output_tokens: None,
-    };
+    if let Some(key_file) = key_file {
+        let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
+        model.options.insert("api_key_file".to_string(), key_file.to_string_lossy().into_owned());
+    }
     let document = serde_json::json!({
         "version": 1,
         "name": "coding",
@@ -147,13 +154,48 @@ fn builtin_config(task: String, model: &str, key_file: &Path) -> Result<Config, 
     serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"))
 }
 
+/// One line naming the transport a `model` block resolves to, for `foe plan`.
 #[cfg(feature = "transport")]
-fn built_in_transport(model: &ModelConfig) -> Result<Arc<dyn Transport>, String> {
-    foe_transport::from_config(model).map(Arc::from).map_err(|e| e.to_string())
+pub fn describe_transport(model: &ModelConfig) -> String {
+    foe_transport::plan(model).map(|plan| plan.describe()).unwrap_or_else(|e| e.to_string())
 }
 
 #[cfg(not(feature = "transport"))]
-fn built_in_transport(_model: &ModelConfig) -> Result<Arc<dyn Transport>, String> {
+pub fn describe_transport(model: &ModelConfig) -> String {
+    format!("{}/{}: this binary was built without the transport feature", model.provider, model.model)
+}
+
+/// Resolves the `model` block into a transport before the process restricts
+/// itself. The block is rewritten with the credential path it resolved to,
+/// so the record names the credential that ran; the path joins the sandbox
+/// policy as a readable file; and an `exec` provider's program joins it as
+/// an executable, run through the episode's own executor.
+#[cfg(feature = "transport")]
+fn built_in_transport(
+    model: &mut ModelConfig,
+    policy: &mut Policy,
+    sandbox: &Arc<Sandbox>,
+    log_dir: &Path,
+) -> Result<Arc<dyn Transport>, String> {
+    let plan = foe_transport::plan(model).map_err(|e| e.to_string())?;
+    policy.read_files.extend(plan.credential_path.iter().cloned());
+    let executor: Option<Arc<dyn foe_core::Executor>> = plan.exec.as_ref().map(|exec| {
+        policy.exec.push(exec.clone());
+        let spill = log_dir.join("spill");
+        let cancel = Arc::new(AtomicBool::new(false));
+        Arc::new(LocalExecutor::new(sandbox.clone(), policy.clone(), spill, cancel)) as Arc<dyn foe_core::Executor>
+    });
+    *model = plan.model.clone();
+    foe_transport::build_planned(&plan, executor).map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "transport"))]
+fn built_in_transport(
+    _model: &mut ModelConfig,
+    _policy: &mut Policy,
+    _sandbox: &Arc<Sandbox>,
+    _log_dir: &Path,
+) -> Result<Arc<dyn Transport>, String> {
     Err("this binary was built without the transport feature; remove `model` and run under a host".into())
 }
 
@@ -173,7 +215,7 @@ fn open_browser(url: &str) {
 
 pub fn run(options: Options) -> Result<ExitCode, String> {
     let config = load_config(&options)?;
-    let program = resolve(&config).map_err(|e| format!("config: {e}"))?;
+    let mut program = resolve(&config).map_err(|e| format!("config: {e}"))?;
     let lineage = Lineage::read(options.log_dir.as_deref())?;
     let log_dir = options.log_dir.clone().unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
@@ -192,8 +234,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let identity = identity(&program)?;
     let runtime_info = identity::runtime_info();
-    let transport = match &program.model {
-        Some(model) => Some(built_in_transport(model)?),
+    let transport = match &mut program.model {
+        Some(model) => Some(built_in_transport(model, &mut policy, &sandbox, &log_dir)?),
         None if options.host => None,
         None => return Err("no model: give --model and --key-file, add a `model` block, or run under --host".into()),
     };

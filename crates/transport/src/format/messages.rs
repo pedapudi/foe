@@ -4,6 +4,7 @@
 //! Stream events: https://docs.anthropic.com/en/api/messages-streaming
 //! Tool use: https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview
 //! Prompt caching: https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+//! On Vertex AI: https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-claude
 //!
 //! Mapping from the runtime's messages to the request:
 //!
@@ -28,6 +29,10 @@
 //! from this transport's route and is replayed whenever present. A block
 //! without a signature is skipped because the API rejects it.
 //!
+//! Vertex AI serves the same format with two differences: the model is
+//! named in the URL rather than the body, and the body carries
+//! `anthropic_version` in place of the `anthropic-version` header.
+//!
 //! Mapping from stream events to chunks:
 //!
 //! | event                                        | chunk                     |
@@ -50,19 +55,17 @@
 
 use std::collections::BTreeMap;
 
-use foe_core::{Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolSchema, Transport, Usage};
+use foe_core::{Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolSchema, Usage};
 use foe_log::ThinkingBlock;
 use serde_json::{json, Value};
 
-use crate::{http::Url, sse, Decoder, Exchange, TransportError};
+use super::{fail, Decoder, Format};
+use crate::sse;
 
-const PROVIDER: &str = "anthropic";
-const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
-const API_VERSION: &str = "2023-06-01";
 /// `max_tokens` is required by the API. Every current model accepts this
 /// value, and a smaller limit truncates a long tool-calling turn, which
 /// costs the whole step.
-const DEFAULT_MAX_TOKENS: u32 = 64_000;
+pub const DEFAULT_MAX_TOKENS: u32 = 64_000;
 
 /// Prefix of the signature recorded for a `redacted_thinking` block. The
 /// block has no text and its `data` field is the only thing the API needs
@@ -73,52 +76,38 @@ const DEFAULT_MAX_TOKENS: u32 = 64_000;
 /// start with this prefix because the prefix contains a colon.
 pub const REDACTED_MARKER: &str = "redacted_thinking:";
 
-pub struct Anthropic {
-    model: String,
-    api_key: String,
-    url: Url,
+pub struct Messages {
+    provider: &'static str,
+    /// `None` when the URL names the model, as on Vertex AI.
+    model: Option<String>,
     max_tokens: u32,
+    /// The `anthropic_version` body field, which Vertex AI requires in
+    /// place of the header.
+    version_field: Option<&'static str>,
 }
 
-impl Anthropic {
-    /// `base_url` is the origin without a path; `/v1/messages` is appended.
+impl Messages {
     pub fn new(
-        model: &str,
-        api_key: String,
-        base_url: Option<&str>,
+        provider: &'static str,
+        model: Option<String>,
         max_output_tokens: Option<u32>,
-    ) -> Result<Self, TransportError> {
-        let url = crate::parse_base_url(DEFAULT_BASE_URL, base_url)?.join("/v1/messages");
-        Ok(Anthropic {
-            model: model.to_string(),
-            api_key,
-            url,
-            max_tokens: max_output_tokens.unwrap_or(DEFAULT_MAX_TOKENS),
-        })
-    }
-
-    fn exchange(&self, req: &ModelRequestBody) -> Exchange {
-        let body = request_body(&self.model, self.max_tokens, req);
-        Exchange {
-            provider: PROVIDER,
-            url: self.url.clone(),
-            headers: vec![
-                ("x-api-key".to_string(), self.api_key.clone()),
-                ("anthropic-version".to_string(), API_VERSION.to_string()),
-            ],
-            body: serde_json::to_vec(&body).expect("a serde_json::Value serializes"),
-        }
+        version_field: Option<&'static str>,
+    ) -> Messages {
+        Messages { provider, model, max_tokens: max_output_tokens.unwrap_or(DEFAULT_MAX_TOKENS), version_field }
     }
 }
 
-#[async_trait::async_trait]
-impl Transport for Anthropic {
-    fn route(&self) -> foe_log::ModelRoute {
-        foe_log::ModelRoute { provider: PROVIDER.to_string(), model: self.model.clone() }
+impl Format for Messages {
+    fn body(&self, req: &ModelRequestBody) -> Value {
+        let mut body = request_body(self.model.as_deref(), req.max_output_tokens.unwrap_or(self.max_tokens), req);
+        if let Some(version) = self.version_field {
+            body["anthropic_version"] = json!(version);
+        }
+        body
     }
 
-    async fn stream(&self, req: ModelRequestBody, sink: &mut (dyn foe_core::ChunkSink + Send)) {
-        crate::deliver(self.exchange(&req), Box::new(StreamDecoder::default()), sink).await
+    fn decoder(&self) -> Box<dyn Decoder> {
+        Box::new(StreamDecoder { provider: self.provider, ..Default::default() })
     }
 }
 
@@ -127,13 +116,15 @@ impl Transport for Anthropic {
 /// The JSON body for one request. The system prompt and the last tool
 /// definition carry `cache_control` so that the prefix the API renders
 /// first, tools then system, is cached across steps.
-pub fn request_body(model: &str, max_tokens: u32, req: &ModelRequestBody) -> Value {
+pub fn request_body(model: Option<&str>, max_tokens: u32, req: &ModelRequestBody) -> Value {
     let mut body = json!({
-        "model": model,
         "max_tokens": max_tokens,
         "stream": true,
         "messages": messages_json(&req.messages),
     });
+    if let Some(model) = model {
+        body["model"] = json!(model);
+    }
     if !req.system.trim().is_empty() {
         body["system"] = json!([{ "type": "text", "text": req.system, "cache_control": { "type": "ephemeral" } }]);
     }
@@ -226,6 +217,7 @@ fn content_block(block: &ContentBlock) -> Value {
 /// Per-request state of the event-to-chunk translation.
 #[derive(Default)]
 struct StreamDecoder {
+    provider: &'static str,
     /// Content block index to tool call id, for `tool_use` blocks that have
     /// started and not stopped.
     tool_blocks: BTreeMap<u64, String>,
@@ -270,19 +262,16 @@ impl StreamDecoder {
     }
 }
 
-fn fail(message: String) -> Chunk {
-    Chunk::Error { message: format!("{PROVIDER}: {message}"), retryable: false }
-}
-
-fn index_of(event: &str, data: &Value) -> Result<u64, Chunk> {
-    data.get("index").and_then(Value::as_u64).ok_or_else(|| fail(format!("event {event}: missing index")))
+fn index_of(provider: &str, event: &str, data: &Value) -> Result<u64, Chunk> {
+    data.get("index").and_then(Value::as_u64).ok_or_else(|| fail(provider, format!("event {event}: missing index")))
 }
 
 impl Decoder for StreamDecoder {
     fn event(&mut self, event: &sse::Event, out: &mut dyn FnMut(Chunk)) {
+        let provider = self.provider;
         let data: Value = match serde_json::from_str(&event.data) {
             Ok(v) => v,
-            Err(e) => return out(fail(format!("event {}: data is not JSON: {e}", event.name))),
+            Err(e) => return out(fail(provider, format!("event {}: data is not JSON: {e}", event.name))),
         };
         // The `event:` line and the `type` field agree; the field is the
         // fallback for a proxy that drops event names.
@@ -290,7 +279,7 @@ impl Decoder for StreamDecoder {
         match kind {
             "message_start" => self.read_usage(&data["message"]["usage"]),
             "content_block_start" => {
-                let index = match index_of(kind, &data) {
+                let index = match index_of(provider, kind, &data) {
                     Ok(i) => i,
                     Err(chunk) => return out(chunk),
                 };
@@ -300,7 +289,7 @@ impl Decoder for StreamDecoder {
                         let id = block["id"].as_str().unwrap_or("").to_string();
                         let name = block["name"].as_str().unwrap_or("").to_string();
                         if id.is_empty() || name.is_empty() {
-                            return out(fail(format!("event {kind}: tool_use block without id or name")));
+                            return out(fail(provider, format!("event {kind}: tool_use block without id or name")));
                         }
                         self.tool_blocks.insert(index, id.clone());
                         out(Chunk::ToolCallStart { id, name });
@@ -327,7 +316,7 @@ impl Decoder for StreamDecoder {
                 }
             }
             "content_block_delta" => {
-                let index = match index_of(kind, &data) {
+                let index = match index_of(provider, kind, &data) {
                     Ok(i) => i,
                     Err(chunk) => return out(chunk),
                 };
@@ -350,9 +339,10 @@ impl Decoder for StreamDecoder {
                     }
                     "input_json_delta" => {
                         let Some(id) = self.tool_blocks.get(&index) else {
-                            return out(fail(format!(
-                                "event {kind}: input_json_delta for block {index}, which is not an open tool_use block"
-                            )));
+                            return out(fail(
+                                provider,
+                                format!("event {kind}: input_json_delta for block {index}, which is not an open tool_use block"),
+                            ));
                         };
                         if let Some(text) = delta["partial_json"].as_str().filter(|t| !t.is_empty()) {
                             out(Chunk::ToolCallDelta { id: id.clone(), delta: text.to_string() });
@@ -362,7 +352,7 @@ impl Decoder for StreamDecoder {
                 }
             }
             "content_block_stop" => {
-                let index = match index_of(kind, &data) {
+                let index = match index_of(provider, kind, &data) {
                     Ok(i) => i,
                     Err(chunk) => return out(chunk),
                 };
@@ -384,8 +374,8 @@ impl Decoder for StreamDecoder {
                     "end_turn" | "stop_sequence" | "pause_turn" => StopReason::End,
                     "tool_use" => StopReason::Tool,
                     "max_tokens" => StopReason::Length,
-                    "refusal" => return out(fail("stop_reason refusal: the model declined to respond".into())),
-                    other => return out(fail(format!("stop_reason {other:?} has no chunk equivalent"))),
+                    "refusal" => return out(fail(provider, "stop_reason refusal: the model declined to respond")),
+                    other => return out(fail(provider, format!("stop_reason {other:?} has no chunk equivalent"))),
                 };
                 out(Chunk::Done { stop, usage: self.usage() });
             }
@@ -396,22 +386,38 @@ impl Decoder for StreamDecoder {
                 // https://docs.anthropic.com/en/api/errors: these three are
                 // transient on the provider's side.
                 let retryable = matches!(kind, "overloaded_error" | "api_error" | "rate_limit_error");
-                out(Chunk::Error { message: format!("{PROVIDER}: stream error {kind}: {detail}"), retryable });
+                out(Chunk::Error { message: format!("{provider}: stream error {kind}: {detail}"), retryable });
             }
             _ => {}
         }
     }
 
     fn end_of_stream(&mut self) -> Chunk {
-        Chunk::Error { message: format!("{PROVIDER}: connection closed before message_delta"), retryable: true }
+        Chunk::Error { message: format!("{}: connection closed before message_delta", self.provider), retryable: true }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::api_key::ApiKey;
+    use crate::auth::KeyHeader;
     use crate::testserver::{Reply, Server};
-    use foe_core::ToolCall;
+    use crate::{http::Url, Client};
+    use foe_core::{ToolCall, Transport};
+    use std::sync::Arc;
+
+    /// A client as the `anthropic` provider row builds it.
+    fn client(base: &str, max_tokens: Option<u32>) -> Client {
+        Client::new(
+            "anthropic",
+            "claude-opus-5",
+            Url::parse(base).unwrap().join("/v1/messages"),
+            vec![("anthropic-version".into(), "2023-06-01".into())],
+            Arc::new(ApiKey::new(KeyHeader::XApiKey, "sk-ant-test".into())),
+            Box::new(Messages::new("anthropic", Some("claude-opus-5".into()), max_tokens, None)),
+        )
+    }
 
     const TEXT_ONLY: &str = r#"event: message_start
 data: {"type":"message_start","message":{"id":"msg_01XFDUDYJgAACzvnptvVoYEL","type":"message","role":"assistant","model":"claude-opus-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":25,"cache_creation_input_tokens":0,"cache_read_input_tokens":1200,"output_tokens":1}}}
@@ -529,9 +535,8 @@ data: {"type":"message_stop"}
 
     async fn run(reply: Reply) -> (Vec<Chunk>, Server) {
         let server = Server::start(vec![reply]);
-        let transport = Anthropic::new("claude-opus-5", "sk-ant-test".into(), Some(&server.base()), None).unwrap();
         let mut chunks = Vec::new();
-        transport.stream(request(), &mut chunks).await;
+        client(&server.base(), None).stream(request(), &mut chunks).await;
         (chunks, server)
     }
 
@@ -829,19 +834,30 @@ data: {"type":"message_stop"}
         let mut req = request();
         req.system = String::new();
         req.tools.clear();
-        let body = request_body("claude-opus-5", 4096, &req);
+        let body = request_body(Some("claude-opus-5"), 4096, &req);
         assert!(body.get("system").is_none());
         assert!(body.get("tools").is_none());
         assert_eq!(body["max_tokens"], 4096);
-        let transport = Anthropic::new("m", "k".into(), Some("https://proxy.example/anthropic/"), Some(1000)).unwrap();
-        assert_eq!(transport.url.path, "/anthropic/v1/messages");
-        assert_eq!(transport.max_tokens, 1000);
-        assert_eq!(Anthropic::new("m", "k".into(), None, None).unwrap().url.host, "api.anthropic.com");
+        let body = Messages::new("anthropic", Some("m".into()), Some(1000), None).body(&req);
+        assert_eq!(body["max_tokens"], 1000);
+        assert!(body.get("anthropic_version").is_none());
+        req.max_output_tokens = Some(5);
+        assert_eq!(Messages::new("anthropic", Some("m".into()), Some(1000), None).body(&req)["max_tokens"], 5);
+    }
+
+    /// On Vertex AI the model is in the URL and the version in the body.
+    #[test]
+    fn vertex_shape_omits_model_and_carries_anthropic_version() {
+        let body = Messages::new("vertex", None, None, Some("vertex-2023-10-16")).body(&request());
+        assert!(body.get("model").is_none());
+        assert_eq!(body["anthropic_version"], "vertex-2023-10-16");
+        assert_eq!(body["max_tokens"], DEFAULT_MAX_TOKENS);
+        assert_eq!(body["stream"], true);
     }
 
     #[test]
     fn decoder_reports_protocol_violations_as_non_retryable() {
-        let mut decoder = StreamDecoder::default();
+        let mut decoder = StreamDecoder { provider: "anthropic", ..Default::default() };
         let mut chunks = Vec::new();
         let event = sse::Event {
             name: "content_block_delta".into(),

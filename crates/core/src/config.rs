@@ -113,7 +113,15 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
         return Err(invalid("task", "is not empty"));
     }
     if let Some(model) = &config.model {
-        require_absolute("model.api_key_file", &model.api_key_file)?;
+        if model.provider.trim().is_empty() {
+            return Err(invalid("model.provider", "is not empty"));
+        }
+        if model.model.trim().is_empty() {
+            return Err(invalid("model.model", "is not empty"));
+        }
+        if model.max_output_tokens == Some(0) {
+            return Err(invalid("model.max_output_tokens", "is greater than 0"));
+        }
     }
     validate_section("", &Section::from(config))
 }

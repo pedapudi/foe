@@ -1,6 +1,6 @@
 //! The OpenAI Chat Completions API, streamed. Also serves local servers
-//! such as Ollama, vLLM, and llama.cpp, and proxies such as LiteLLM, which
-//! implement the same request and stream shapes.
+//! such as Ollama, vLLM, and llama.cpp, and proxies such as LiteLLM and
+//! OpenRouter, which implement the same request and stream shapes.
 //!
 //! Request shape: https://platform.openai.com/docs/api-reference/chat/create
 //! Stream chunks: https://platform.openai.com/docs/api-reference/chat/streaming
@@ -44,53 +44,31 @@
 
 use std::collections::BTreeMap;
 
-use foe_core::{Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolSchema, Transport, Usage};
+use foe_core::{Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolSchema, Usage};
 use serde_json::{json, Value};
 
-use crate::{http::Url, sse, Decoder, Exchange, TransportError};
+use super::{fail, Decoder, Format};
+use crate::sse;
 
-const PROVIDER: &str = "openai-compatible";
-const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
-
-pub struct OpenAiCompatible {
+pub struct Chat {
+    provider: &'static str,
     model: String,
-    api_key: String,
-    url: Url,
     max_tokens: Option<u32>,
 }
 
-impl OpenAiCompatible {
-    /// `base_url` includes the version prefix, as in
-    /// `http://127.0.0.1:11434/v1`; `/chat/completions` is appended.
-    pub fn new(
-        model: &str,
-        api_key: String,
-        base_url: Option<&str>,
-        max_output_tokens: Option<u32>,
-    ) -> Result<Self, TransportError> {
-        let url = crate::parse_base_url(DEFAULT_BASE_URL, base_url)?.join("/chat/completions");
-        Ok(OpenAiCompatible { model: model.to_string(), api_key, url, max_tokens: max_output_tokens })
-    }
-
-    fn exchange(&self, req: &ModelRequestBody) -> Exchange {
-        let body = request_body(&self.model, self.max_tokens, req);
-        Exchange {
-            provider: PROVIDER,
-            url: self.url.clone(),
-            headers: vec![("authorization".to_string(), format!("Bearer {}", self.api_key))],
-            body: serde_json::to_vec(&body).expect("a serde_json::Value serializes"),
-        }
+impl Chat {
+    pub fn new(provider: &'static str, model: String, max_output_tokens: Option<u32>) -> Chat {
+        Chat { provider, model, max_tokens: max_output_tokens }
     }
 }
 
-#[async_trait::async_trait]
-impl Transport for OpenAiCompatible {
-    fn route(&self) -> foe_log::ModelRoute {
-        foe_log::ModelRoute { provider: PROVIDER.to_string(), model: self.model.clone() }
+impl Format for Chat {
+    fn body(&self, req: &ModelRequestBody) -> Value {
+        request_body(&self.model, req.max_output_tokens.or(self.max_tokens), req)
     }
 
-    async fn stream(&self, req: ModelRequestBody, sink: &mut (dyn foe_core::ChunkSink + Send)) {
-        crate::deliver(self.exchange(&req), Box::new(StreamDecoder::default()), sink).await
+    fn decoder(&self) -> Box<dyn Decoder> {
+        Box::new(StreamDecoder { provider: self.provider, ..Default::default() })
     }
 }
 
@@ -184,6 +162,7 @@ fn content_part(block: &ContentBlock) -> Value {
 /// Per-request state of the chunk translation.
 #[derive(Default)]
 struct StreamDecoder {
+    provider: &'static str,
     /// Tool call index, as the API numbers them, to the id announced with
     /// `ToolCallStart`.
     ids: BTreeMap<u64, String>,
@@ -191,10 +170,6 @@ struct StreamDecoder {
     open: Option<u64>,
     stop: Option<StopReason>,
     usage: Usage,
-}
-
-fn fail(message: String) -> Chunk {
-    Chunk::Error { message: format!("{PROVIDER}: {message}"), retryable: false }
 }
 
 impl StreamDecoder {
@@ -237,7 +212,10 @@ impl StreamDecoder {
     fn finish(&mut self) -> Chunk {
         match self.stop {
             Some(stop) => Chunk::Done { stop, usage: self.usage },
-            None => Chunk::Error { message: format!("{PROVIDER}: stream ended before finish_reason"), retryable: true },
+            None => Chunk::Error {
+                message: format!("{}: stream ended before finish_reason", self.provider),
+                retryable: true,
+            },
         }
     }
 }
@@ -249,7 +227,7 @@ impl Decoder for StreamDecoder {
         }
         let data: Value = match serde_json::from_str(&event.data) {
             Ok(v) => v,
-            Err(e) => return out(fail(format!("stream chunk is not JSON: {e}"))),
+            Err(e) => return out(fail(self.provider, format!("stream chunk is not JSON: {e}"))),
         };
         if let Some(error) = data.get("error") {
             // Proxies report an upstream failure mid-stream as a chunk; the
@@ -257,7 +235,7 @@ impl Decoder for StreamDecoder {
             let code = error.get("code").or_else(|| error.get("status")).and_then(Value::as_u64).unwrap_or(0);
             let retryable = code == 429 || (500..600).contains(&code);
             let detail = error["message"].as_str().unwrap_or("");
-            return out(Chunk::Error { message: format!("{PROVIDER}: stream error: {detail}"), retryable });
+            return out(Chunk::Error { message: format!("{}: stream error: {detail}", self.provider), retryable });
         }
         if let Some(usage) = data.get("usage").filter(|u| u.is_object()) {
             let n = |v: &Value| v.as_u64().unwrap_or(0);
@@ -292,7 +270,7 @@ impl Decoder for StreamDecoder {
                 "tool_calls" | "function_call" => StopReason::Tool,
                 "length" => StopReason::Length,
                 "content_filter" => {
-                    return out(fail("finish_reason content_filter: the output was withheld".into()));
+                    return out(fail(self.provider, "finish_reason content_filter: the output was withheld"));
                 }
                 _ => StopReason::End,
             });
@@ -307,8 +285,24 @@ impl Decoder for StreamDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::api_key::ApiKey;
+    use crate::auth::KeyHeader;
     use crate::testserver::{Reply, Server};
-    use foe_core::ToolCall;
+    use crate::{http::Url, Client};
+    use foe_core::{ToolCall, Transport};
+    use std::sync::Arc;
+
+    /// A client as the `openai-compatible` provider row builds it.
+    fn client(base: &str, max_tokens: Option<u32>) -> Client {
+        Client::new(
+            "openai-compatible",
+            "gpt-4o",
+            Url::parse(base).unwrap().join("/chat/completions"),
+            Vec::new(),
+            Arc::new(ApiKey::new(KeyHeader::Bearer, "sk-test".into())),
+            Box::new(Chat::new("openai-compatible", "gpt-4o".into(), max_tokens)),
+        )
+    }
 
     const TEXT_ONLY: &str = r#"data: {"id":"chatcmpl-9Y8e","object":"chat.completion.chunk","created":1716000000,"model":"gpt-4o-2024-08-06","system_fingerprint":"fp_1","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null}
 
@@ -370,11 +364,8 @@ data: [DONE]
 
     async fn run(reply: Reply) -> (Vec<Chunk>, Server) {
         let server = Server::start(vec![reply]);
-        let transport =
-            OpenAiCompatible::new("gpt-4o", "sk-test".into(), Some(&format!("{}/v1", server.base())), Some(2048))
-                .unwrap();
         let mut chunks = Vec::new();
-        transport.stream(request(), &mut chunks).await;
+        client(&format!("{}/v1", server.base()), Some(2048)).stream(request(), &mut chunks).await;
         (chunks, server)
     }
 
@@ -625,9 +616,7 @@ data: [DONE]
         let body = request_body("m", None, &req);
         assert!(body.get("max_tokens").is_none());
         assert!(body.get("tools").is_none());
-        let transport = OpenAiCompatible::new("m", "k".into(), Some("http://127.0.0.1:11434/v1/"), None).unwrap();
-        assert_eq!(transport.url.path, "/v1/chat/completions");
-        assert_eq!(transport.url.port, 11434);
-        assert_eq!(OpenAiCompatible::new("m", "k".into(), None, None).unwrap().url.host, "api.openai.com");
+        req.max_output_tokens = Some(7);
+        assert_eq!(Chat::new("openai-compatible", "m".into(), Some(2048)).body(&req)["max_tokens"], 7);
     }
 }

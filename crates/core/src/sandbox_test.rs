@@ -149,21 +149,12 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert!(p.read_files.is_empty() && p.exec.len() == 1, "no key file and no child to start");
     let mut with_children = config.clone();
     with_children.grants.spawn = vec!["survey".into()];
-    with_children.model = Some(crate::ModelConfig {
-        provider: crate::Provider::Anthropic,
-        model: "m".into(),
-        api_key_file: "/keys/anthropic".into(),
-        base_url: None,
-        max_output_tokens: None,
-    });
-    let p = Policy::for_episode(&with_children, Path::new("/logs/ep"));
-    assert_eq!(
-        p.read_files,
-        vec![PathBuf::from("/keys/anthropic")],
-        "children read the key after inheriting the domain"
-    );
+    with_children.model = Some(crate::ModelConfig::new("anthropic", "m"));
+    let mut p = Policy::for_episode(&with_children, Path::new("/logs/ep"));
+    assert!(p.read_files.is_empty(), "the credential file is appended by the binary after resolution");
     assert_eq!(p.exec.last(), std::env::current_exe().ok().as_ref(), "the binary starts children");
     assert!(p.connect_tcp);
+    p.read_files.push(PathBuf::from("/keys/anthropic"));
     let tool = p.for_executable(Path::new("/bin/sh"), false);
-    assert!(tool.read_files.is_empty(), "an executable never reads the key file");
+    assert!(tool.read_files.is_empty(), "an executable never reads the credential file");
 }

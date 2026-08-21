@@ -359,23 +359,36 @@ fn default_retries() -> u32 {
     2
 }
 
+/// The `model` block. The provider name is opaque to this crate: which
+/// names a build knows is decided where the transport is composed, and
+/// `foe plan` reports the resolution. Every key other than the three named
+/// fields is a provider-specific option, flat and string-valued, such as
+/// `api_key_file`, `base_url`, `project`, or `exec`. The block does not
+/// participate in identity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ModelConfig {
-    pub provider: Provider,
+    pub provider: String,
     pub model: String,
-    pub api_key_file: PathBuf,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
+    #[serde(flatten)]
+    pub options: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Provider {
-    Anthropic,
-    OpenaiCompatible,
+impl ModelConfig {
+    pub fn new(provider: impl Into<String>, model: impl Into<String>) -> Self {
+        ModelConfig {
+            provider: provider.into(),
+            model: model.into(),
+            max_output_tokens: None,
+            options: BTreeMap::new(),
+        }
+    }
+
+    /// One provider-specific option, when present.
+    pub fn option(&self, key: &str) -> Option<&str> {
+        self.options.get(key).map(String::as_str)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

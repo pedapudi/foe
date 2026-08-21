@@ -1,14 +1,14 @@
-//! A minimal HTTP/1.1 client: one POST per connection, with the response
+//! A minimal HTTP/1.1 client: one request per connection, with the response
 //! body read as a stream.
 //!
-//! The clients in this crate need exactly one HTTP shape: POST a JSON
-//! document, then read a server-sent-event body line by line until the
-//! server finishes or the connection drops. A general-purpose client would
-//! bring proxy discovery from the environment, redirects, compression, and
-//! connection pools, none of which this crate wants. This module sends one
-//! request per TCP connection with `Connection: close`, decodes
-//! `Transfer-Encoding: chunked` and `Content-Length` framing, and nothing
-//! else.
+//! The clients in this crate need two HTTP shapes: POST a document, then
+//! read a server-sent-event body line by line until the server finishes or
+//! the connection drops; and a short GET or form POST against a token or
+//! model-listing endpoint. A general-purpose client would bring proxy
+//! discovery from the environment, redirects, compression, and connection
+//! pools, none of which this crate wants. This module sends one request per
+//! TCP connection with `Connection: close`, decodes `Transfer-Encoding:
+//! chunked` and `Content-Length` framing, and nothing else.
 //!
 //! Invariants:
 //! - No environment variable is read. There is no proxy support.
@@ -159,17 +159,35 @@ impl Response {
     }
 }
 
-/// Sends one POST and returns once the response head has arrived. `headers`
-/// are sent verbatim after the fixed headers this client always sends.
+/// Sends one POST of a JSON body and returns once the response head has
+/// arrived. `headers` are sent verbatim after the fixed headers this client
+/// always sends.
 pub fn post(url: &Url, headers: &[(&str, &str)], body: &[u8]) -> Result<Response, HttpError> {
+    request("POST", url, headers, body)
+}
+
+/// Sends one request and returns once the response head has arrived. The
+/// body is sent as JSON unless `headers` carries its own `content-type`; a
+/// GET sends no body. `accept` defaults to `text/event-stream`, which every
+/// endpoint this crate talks to also answers with plain JSON.
+pub fn request(method: &str, url: &Url, headers: &[(&str, &str)], body: &[u8]) -> Result<Response, HttpError> {
     let mut stream = connect(url)?;
+    let given = |name: &str| headers.iter().any(|(k, _)| k.eq_ignore_ascii_case(name));
     let mut head = format!(
-        "POST {} HTTP/1.1\r\nhost: {}\r\ncontent-type: application/json\r\ncontent-length: {}\r\naccept: text/event-stream\r\nconnection: close\r\nuser-agent: foe/{}\r\n",
+        "{method} {} HTTP/1.1\r\nhost: {}\r\nconnection: close\r\nuser-agent: foe/{}\r\n",
         url.path,
         url.host_header(),
-        body.len(),
         env!("CARGO_PKG_VERSION"),
     );
+    if method != "GET" {
+        if !given("content-type") {
+            head.push_str("content-type: application/json\r\n");
+        }
+        head.push_str(&format!("content-length: {}\r\n", body.len()));
+    }
+    if !given("accept") {
+        head.push_str("accept: text/event-stream\r\n");
+    }
     for (name, value) in headers {
         head.push_str(name);
         head.push_str(": ");
@@ -177,6 +195,7 @@ pub fn post(url: &Url, headers: &[(&str, &str)], body: &[u8]) -> Result<Response
         head.push_str("\r\n");
     }
     head.push_str("\r\n");
+    let body = if method == "GET" { &[][..] } else { body };
     stream
         .write_all(head.as_bytes())
         .and_then(|_| stream.write_all(body))
@@ -463,6 +482,23 @@ mod tests {
         assert_eq!(seen[0].body, "{}");
         assert_eq!(seen[0].header("x-custom"), Some("v"));
         assert_eq!(seen[0].header("content-type"), Some("application/json"));
+    }
+
+    #[test]
+    fn get_sends_no_body_and_form_post_keeps_its_content_type() {
+        let server = Server::start(vec![Reply::full(200, "{}"), Reply::full(200, "{}")]);
+        let mut resp = request("GET", &server.url("/v1/models"), &[("authorization", "Bearer k")], b"ignored").unwrap();
+        assert_eq!(resp.status, 200);
+        let mut text = String::new();
+        resp.body.read_to_string(&mut text).unwrap();
+        let form = [("content-type", "application/x-www-form-urlencoded")];
+        request("POST", &server.url("/token"), &form, b"a=1&b=2").unwrap();
+        let seen = server.requests();
+        assert_eq!((seen[0].method.as_str(), seen[0].path.as_str(), seen[0].body.as_str()), ("GET", "/v1/models", ""));
+        assert_eq!(seen[0].header("content-length"), None);
+        assert_eq!(seen[0].header("authorization"), Some("Bearer k"));
+        assert_eq!(seen[1].header("content-type"), Some("application/x-www-form-urlencoded"));
+        assert_eq!(seen[1].body, "a=1&b=2");
     }
 
     #[test]
