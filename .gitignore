@@ -3,6 +3,7 @@
 *.pdb
 .DS_Store
 /.venv
+/python/.venv
 __pycache__/
 *.py[cod]
 /node_modules
