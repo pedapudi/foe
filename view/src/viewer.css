@@ -9,6 +9,22 @@
   box-sizing: border-box;
 }
 
+/* Every stroke in the viewer is a hairline, and stays one whatever scales
+ * the figure around it. Without this a figure drawn at one width and shown
+ * at another thickens every line with the drawing, and the register the
+ * figures share falls apart exactly when a reader leans in. zicato's
+ * DESIGN-LANGUAGE.md section 5.1 sets this for every mark. */
+svg :is(path, line, rect, circle, ellipse, polyline, polygon) {
+  vector-effect: non-scaling-stroke;
+}
+
+/* A figure fills its host and carries its own viewBox, so no pane scrolls
+ * sideways to reach one. */
+svg[role="img"] {
+  display: block;
+  max-width: 100%;
+}
+
 html,
 body {
   margin: 0;
@@ -27,7 +43,7 @@ body {
  * its region. */
 .foe {
   display: grid;
-  grid-template-columns: var(--pane-sidebar, 300px) auto minmax(0, 1fr);
+  grid-template-columns: var(--pane-sidebar, var(--dt-rail)) auto minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
   overflow: hidden;
@@ -136,8 +152,8 @@ body.resizing-row * {
 .pane-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 12px 4px;
+  gap: var(--dt-gap-item);
+  padding: var(--dt-gap-item) var(--dt-gap-edge) var(--dt-gap-line);
   flex: none;
 }
 
@@ -164,7 +180,7 @@ input {
 button {
   background: transparent;
   border: 1px solid var(--v2-rule);
-  border-radius: 5px;
+  border-radius: var(--dt-radius-card);
   padding: 2px 8px;
   cursor: pointer;
   color: var(--v2-ink-soft);
@@ -237,8 +253,8 @@ details[open] > summary::before {
   z-index: 6;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 7px 16px;
+  gap: var(--dt-gap-group);
+  padding: var(--dt-gap-item) var(--dt-gap-group);
   background: color-mix(in srgb, var(--v2-paper) 92%, transparent);
   backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--v2-rule);
@@ -401,7 +417,7 @@ details[open] > summary::before {
 
 .swatch-strip {
   display: inline-flex;
-  border-radius: 3px;
+  border-radius: var(--dt-radius-mark);
   overflow: hidden;
   border: 1px solid var(--v2-rule);
 }
@@ -427,7 +443,7 @@ details[open] > summary::before {
   min-width: 190px;
   background: var(--v2-panel);
   border: 1px solid var(--v2-rule);
-  border-radius: 6px;
+  border-radius: var(--dt-radius-hovercard);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--v2-ink) 18%, transparent);
   padding: 4px;
 }
@@ -469,11 +485,42 @@ details[open] > summary::before {
   padding: 7px 12px;
 }
 
+/* The typeface trigger is a specimen, one family name, and a caret. The
+ * specimen carries the recognition, so the name is the option's first
+ * family alone and the control stays as narrow as the swatch beside it. */
 .tf-current {
   display: inline-flex;
-  align-items: center;
-  max-width: 190px;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 150px;
   overflow: hidden;
+}
+
+.tf-micro {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 0 4px;
+  border: 1px solid var(--v2-rule);
+  border-radius: var(--dt-radius-mark);
+  color: var(--v2-ink-soft);
+  line-height: 1.35;
+}
+
+.tf-micro-body {
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.tf-micro-data {
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.tf-lead {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Every option names itself in its own face, over one line set in the
@@ -518,7 +565,7 @@ details[open] > summary::before {
 .sizeseg {
   display: inline-flex;
   border: 1px solid var(--v2-rule);
-  border-radius: 5px;
+  border-radius: var(--dt-radius-card);
   overflow: hidden;
 }
 
@@ -556,7 +603,7 @@ details[open] > summary::before {
   align-items: center;
   gap: 6px;
   border: 1px solid var(--v2-rule);
-  border-radius: 5px;
+  border-radius: var(--dt-radius-card);
   padding: 2px 7px;
   font-family: var(--v2-mono);
   font-size: calc(10px * var(--dt-font-scale, 1));
@@ -697,7 +744,7 @@ details[open] > summary::before {
 
 .tree {
   display: block;
-  padding: 4px 8px 8px;
+  padding: var(--dt-gap-line) var(--dt-gap-item) var(--dt-gap-item);
 }
 
 .tree svg {
@@ -734,9 +781,23 @@ details[open] > summary::before {
 }
 
 .tree .node.selected .hit {
-  fill: color-mix(in srgb, var(--v2-accent) 14%, transparent);
+  fill: var(--v2-rule-soft);
+}
+
+/* Selection is a spine: one accent line down the row's leading edge. A
+ * filled row would be the loudest element on a page that is otherwise
+ * hairlines, and in the trajectory a fill competes with the bars inside
+ * the row (zicato DESIGN-LANGUAGE.md, section 5.1). */
+.tree .spine,
+.traj-spine {
+  stroke: transparent;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.tree .node.selected .spine,
+.traj-row.selected .traj-spine {
   stroke: var(--v2-accent);
-  stroke-width: 1;
 }
 
 .tree .dot {
@@ -828,11 +889,16 @@ details[open] > summary::before {
 
 /* selected-episode details */
 
+/* The pane is a query container, so the rows inside it answer to the pane's
+ * own width rather than the window's. A grip changes that width, and the
+ * rows re-lay out at the width the reader gave them. */
 .pane-details {
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  container-type: inline-size;
+  container-name: details;
 }
 
 .details-host {
@@ -842,14 +908,14 @@ details[open] > summary::before {
 }
 
 .episode-info {
-  padding: 0 12px 10px;
+  padding: 0 var(--dt-gap-edge) var(--dt-gap-edge);
   font-size: calc(12px * var(--dt-font-scale, 1));
 }
 
 .episode-info dl {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 3px 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--dt-gap-line) var(--dt-gap-edge);
   margin: 0;
 }
 
@@ -858,13 +924,38 @@ details[open] > summary::before {
   white-space: nowrap;
 }
 
+/* A value wraps between words. It never breaks inside one, because a word
+ * split across two lines reads as two words; a value that cannot fit beside
+ * its label goes under it instead, in the rule below. */
 .episode-info dd {
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   white-space: normal;
   font-family: var(--v2-mono);
   font-size: calc(11.5px * var(--dt-font-scale, 1));
   font-variant-numeric: tabular-nums;
+}
+
+/* Under this width the label column and a value no longer both fit on one
+ * line, so the two stack: the label on its own line and the value under it,
+ * indented enough to keep the pair together. */
+@container details (width < 250px) {
+  .episode-info dl {
+    display: block;
+  }
+
+  .episode-info dt {
+    margin-top: var(--dt-gap-item);
+  }
+
+  .episode-info dt:first-child {
+    margin-top: 0;
+  }
+
+  .episode-info dd {
+    margin-left: var(--dt-gap-edge);
+  }
 }
 
 /* The task wraps in full. The pane scrolls when the whole panel exceeds
@@ -882,10 +973,13 @@ details[open] > summary::before {
   color: var(--v2-ink-faint);
 }
 
+/* The consumption mark sits inline beside its number, so it takes the width
+ * it was drawn at rather than the width of the line it is on. */
 svg.mark {
   display: inline-block;
   vertical-align: middle;
-  margin-left: 6px;
+  margin-left: var(--dt-gap-item);
+  width: 72px;
   overflow: visible;
 }
 
@@ -949,7 +1043,7 @@ svg.mark .fill.caution {
 .tab {
   border: 1px solid transparent;
   border-bottom: none;
-  border-radius: 4px 4px 0 0;
+  border-radius: var(--dt-radius-panel) var(--dt-radius-panel) 0 0;
   padding: 4px 10px;
   color: var(--v2-ink-faint);
   font-family: var(--v2-mono);
@@ -998,8 +1092,8 @@ svg.mark .fill.caution {
 .row {
   display: grid;
   grid-template-columns: 52px 76px minmax(0, 1fr);
-  gap: 0 10px;
-  padding: 6px 12px;
+  gap: 0 var(--dt-gap-edge);
+  padding: var(--dt-gap-item) var(--dt-gap-edge);
   border-bottom: 1px solid var(--v2-rule-soft);
   align-items: start;
 }
@@ -1028,7 +1122,7 @@ svg.mark .fill.caution {
 }
 
 .row.note {
-  padding: 2px 12px;
+  padding: 2px var(--dt-gap-edge);
   background: var(--v2-panel);
   font-size: calc(12px * var(--dt-font-scale, 1));
 }
@@ -1088,7 +1182,7 @@ svg.mark .fill.caution {
 .badge {
   display: inline-block;
   border: 1px solid var(--v2-rule);
-  border-radius: 3px;
+  border-radius: var(--dt-radius-mark);
   padding: 0 5px;
   font-size: calc(9.5px * var(--dt-font-scale, 1));
   line-height: 16px;
@@ -1115,7 +1209,7 @@ svg.mark .fill.caution {
   display: inline-block;
   border: 1px solid var(--v2-bad);
   color: var(--v2-bad);
-  border-radius: 3px;
+  border-radius: var(--dt-radius-mark);
   padding: 0 5px;
   font-size: calc(9.5px * var(--dt-font-scale, 1));
   line-height: 16px;
@@ -1143,7 +1237,7 @@ pre.text {
   padding: 4px 6px;
   background: var(--v2-panel);
   border: 1px solid var(--v2-rule-soft);
-  border-radius: 3px;
+  border-radius: var(--dt-radius-mark);
   margin-top: 3px;
 }
 
@@ -1166,7 +1260,7 @@ pre.text {
   margin-top: 4px;
   padding: 3px 6px;
   border: 1px solid var(--v2-rule);
-  border-radius: 3px;
+  border-radius: var(--dt-radius-mark);
   background: var(--v2-panel);
 }
 
@@ -1293,7 +1387,7 @@ pre.text {
   flex: 1 1 auto;
   background: var(--v2-panel);
   border: 1px solid var(--v2-rule);
-  border-radius: 4px;
+  border-radius: var(--dt-radius-panel);
   padding: 3px 6px;
   font-family: var(--v2-mono);
   font-size: calc(11.5px * var(--dt-font-scale, 1));
@@ -1419,7 +1513,7 @@ table.events td.type.error {
 .traj-axis {
   display: inline-flex;
   border: 1px solid var(--v2-rule);
-  border-radius: 5px;
+  border-radius: var(--dt-radius-card);
   overflow: hidden;
 }
 
@@ -1471,6 +1565,13 @@ table.events td.type.error {
   opacity: 0.7;
 }
 
+/* A gridline per tick, thin enough to read a span's length against without
+ * competing with the spans themselves. */
+.traj .grid {
+  stroke: var(--v2-rule-soft);
+  stroke-width: 0.6;
+}
+
 .traj .tick-label {
   fill: var(--v2-ink-faint);
   font-family: var(--v2-mono);
@@ -1502,7 +1603,7 @@ table.events td.type.error {
 }
 
 .traj-row.selected .traj-hit {
-  fill: color-mix(in srgb, var(--v2-accent) 10%, transparent);
+  fill: var(--v2-rule-soft);
 }
 
 .traj-label {
@@ -1512,8 +1613,10 @@ table.events td.type.error {
   cursor: pointer;
 }
 
+/* The spine is the figure's one accent, so the selected row's label reads
+ * in full ink rather than taking a second one. */
 .traj-row.selected .traj-label {
-  fill: var(--v2-accent);
+  fill: var(--v2-ink);
 }
 
 .traj-id {
@@ -1528,7 +1631,7 @@ table.events td.type.error {
 }
 
 .traj-row.selected .traj-life {
-  stroke: var(--v2-accent);
+  stroke: var(--v2-ink-soft);
 }
 
 /* A running episode has no recorded end, so its bar continues as a dashed
@@ -1547,17 +1650,38 @@ table.events td.type.error {
  * structure above it. */
 .traj-mark .seg {
   fill: var(--v2-ink-soft);
-  opacity: 0.75;
+  fill-opacity: 0.75;
+  stroke: none;
 }
 
 .traj-mark:hover .seg {
-  opacity: 1;
+  fill-opacity: 1;
 }
 
-.traj-mark.request .tick {
-  stroke: var(--v2-ink-soft);
+/* A request is a bar above the lifetime line: the whole answer at reduced
+ * fill, and the wait before its first token over it at full fill. The two
+ * are the same encoding the statistics view's per-step bars use, so a
+ * reader learns one grammar for both. A bar lifts to full fill on hover. */
+.traj-mark.request .span {
+  fill: var(--v2-ink-faint);
+  fill-opacity: 0.7;
+  stroke: none;
+}
+
+.traj-mark.request .wait {
+  fill: var(--v2-ink-soft);
+  fill-opacity: 1;
+  stroke: none;
+}
+
+.traj-mark.request:hover .span {
+  fill-opacity: 1;
+}
+
+.traj-mark.request .stem {
+  stroke: var(--v2-ink-faint);
   stroke-width: 1;
-  opacity: 0.75;
+  opacity: 0.7;
 }
 
 .traj-mark.retry .glyph {
@@ -1624,7 +1748,7 @@ table.events td.type.error {
   padding: 6px 9px;
   background: var(--v2-panel);
   border: 1px solid var(--v2-rule);
-  border-radius: 5px;
+  border-radius: var(--dt-radius-card);
   pointer-events: none;
   font-family: var(--v2-mono);
   font-size: calc(10.5px * var(--dt-font-scale, 1));
@@ -1658,7 +1782,7 @@ table.events td.type.error {
   padding: 6px 9px;
   background: var(--v2-panel);
   border: 1px solid var(--v2-rule);
-  border-radius: 5px;
+  border-radius: var(--dt-radius-card);
   pointer-events: none;
   font-family: var(--v2-mono);
   font-size: calc(10.5px * var(--dt-font-scale, 1));
@@ -1926,7 +2050,7 @@ table.events td.type.error {
 .stats-scope {
   display: inline-flex;
   border: 1px solid var(--v2-rule);
-  border-radius: 5px;
+  border-radius: var(--dt-radius-card);
   overflow: hidden;
 }
 
@@ -1953,7 +2077,7 @@ table.events td.type.error {
 }
 
 .fig {
-  padding: 14px 12px 16px;
+  padding: var(--dt-panel-pad-y) var(--dt-gap-edge);
   border-bottom: 1px solid var(--v2-rule-soft);
 }
 
@@ -2034,25 +2158,27 @@ table.events td.type.error {
   color: var(--v2-ink-faint);
 }
 
+/* The same two parts the trajectory's request bars carry: the whole answer
+ * at reduced fill, and the wait before the first token over it. */
 .step-bar .rest {
   fill: var(--v2-ink-faint);
-  opacity: 0.5;
+  fill-opacity: 0.7;
 }
 
 .step-bar .head {
   fill: var(--v2-ink-soft);
-  opacity: 0.75;
+  fill-opacity: 1;
 }
 
 /* The slowest answered request is the row the figure argues. */
 .step-row.lead .step-bar .rest {
   fill: var(--v2-accent);
-  opacity: 0.4;
+  fill-opacity: 0.45;
 }
 
 .step-row.lead .step-bar .head {
   fill: var(--v2-accent);
-  opacity: 1;
+  fill-opacity: 1;
 }
 
 .tool-name {
@@ -2260,7 +2386,7 @@ h6.md-h {
   font-size: calc(11px * var(--dt-font-scale, 1));
   background: var(--v2-panel);
   border: 1px solid var(--v2-rule-soft);
-  border-radius: 3px;
+  border-radius: var(--dt-radius-mark);
   padding: 0 3px;
 }
 
@@ -2333,7 +2459,7 @@ h6.md-h {
   margin: 0 0 0.7em;
   background: var(--v2-panel);
   border: 1px solid var(--v2-rule);
-  border-radius: 4px;
+  border-radius: var(--dt-radius-panel);
 }
 
 /* The language tag and the copy control sit over the block's top right
@@ -2410,7 +2536,7 @@ h6.md-h {
 .diff-block {
   margin: 0 0 0.7em;
   border: 1px solid var(--v2-rule);
-  border-radius: 4px;
+  border-radius: var(--dt-radius-panel);
   overflow: hidden;
   font-family: var(--v2-mono);
   font-size: calc(11px * var(--dt-font-scale, 1));
@@ -2516,7 +2642,7 @@ h6.md-h {
 .src-block {
   margin: 0 0 0.7em;
   border: 1px solid var(--v2-rule);
-  border-radius: 4px;
+  border-radius: var(--dt-radius-panel);
   background: var(--v2-panel);
   overflow: hidden;
 }
@@ -2571,7 +2697,7 @@ h6.md-h {
 
 kbd {
   border: 1px solid var(--v2-rule);
-  border-radius: 3px;
+  border-radius: var(--dt-radius-mark);
   padding: 0 4px;
   font-size: calc(9.5px * var(--dt-font-scale, 1));
   color: var(--v2-ink-soft);
@@ -2602,4 +2728,147 @@ kbd {
   .diff .columns {
     grid-template-columns: 1fr;
   }
+}
+
+/* The per-row measure in the episode tree: how much of a sibling group's
+ * tokens this episode spent. Faint, so the tree still reads as names and
+ * outcomes first; the selected row's bar takes the accent that marks it. */
+.tree .measure-track {
+  fill: var(--v2-ink-faint);
+  fill-opacity: 0.16;
+  stroke: none;
+}
+
+.tree .measure-fill {
+  fill: var(--v2-ink-faint);
+  fill-opacity: 0.55;
+  stroke: none;
+}
+
+.tree .node:hover .measure-fill {
+  fill-opacity: 0.85;
+}
+
+.tree .node.selected .measure-fill {
+  fill: var(--v2-accent);
+  fill-opacity: 0.9;
+}
+
+/* The system prompt, rendered the way an assistant message is. Each
+ * declared section carries the key its author gave it as a heading, so the
+ * prompt reads as the parts it was composed from rather than as one wall
+ * of text (docs/config.md, "instructions"). */
+.prompt {
+  margin-top: var(--dt-gap-item);
+}
+
+.prompt-name {
+  margin-top: var(--dt-gap-group);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--v2-ink-faint);
+  border-bottom: 1px solid var(--v2-rule-soft);
+  padding-bottom: 2px;
+}
+
+.prompt-name:first-child {
+  margin-top: 0;
+}
+
+/* A header the runtime wrote because the prompt, the tools, or the route
+ * changed says which of the three, before it shows what they became. */
+.header-changed {
+  margin: var(--dt-gap-item) 0;
+  padding: var(--dt-gap-item) var(--dt-gap-edge);
+  border: 1px solid var(--v2-rule);
+  border-radius: var(--dt-radius-panel);
+  background: var(--v2-panel);
+}
+
+.header-changed-lab {
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--v2-caution);
+}
+
+.header-changed ul {
+  margin: var(--dt-gap-line) 0 0;
+  padding-left: 18px;
+}
+
+.header-changed li {
+  font-family: var(--v2-mono);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-soft);
+}
+
+.tool-schema {
+  margin-top: var(--dt-gap-group);
+}
+
+.tool-schema-head {
+  display: flex;
+  gap: var(--dt-gap-item);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+/* The parameters of a tool as a table. The schema's JSON says the same
+ * thing in a shape that has to be parsed by eye before it can be read. */
+.schema-table {
+  margin-top: var(--dt-gap-line);
+  border-collapse: collapse;
+  width: 100%;
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.schema-table th {
+  text-align: left;
+  font-weight: 400;
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--v2-ink-faint);
+  border-bottom: 1px solid var(--v2-rule);
+  padding: 2px var(--dt-gap-item) 2px 0;
+}
+
+.schema-table td {
+  vertical-align: top;
+  padding: var(--dt-gap-line) var(--dt-gap-item) var(--dt-gap-line) 0;
+  border-bottom: 1px solid var(--v2-rule-soft);
+  color: var(--v2-ink-soft);
+}
+
+/* The first three columns are as narrow as their content, so the
+ * description keeps the rest of the row rather than starting halfway
+ * across the pane. */
+.schema-table th:not(:last-child),
+.schema-table td:not(:last-child) {
+  width: 1%;
+  white-space: nowrap;
+  padding-right: var(--dt-gap-group);
+}
+
+.schema-table .schema-name {
+  font-family: var(--v2-mono);
+  color: var(--v2-ink);
+}
+
+.schema-table .schema-type,
+.schema-table .schema-required {
+  font-family: var(--v2-mono);
+  color: var(--v2-ink-faint);
+}
+
+/* A value made of several parts wraps between them and never inside one,
+ * so a phrase like `cache read 2,560` stays whole and a hyphenated word
+ * like `best-effort` is not split at its hyphen. */
+.episode-info .part {
+  white-space: nowrap;
 }

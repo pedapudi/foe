@@ -3,10 +3,11 @@
 import { clear, compact, fmtDuration, fmtInt, fmtTime, h, lazyDetails, lineCount, pretty } from "../dom.js";
 import type { Child } from "../dom.js";
 import type { AssistantRow, CompactionRow, HeaderRow, NoteRow, Patch, Row, ToolRow, UserRow } from "../fold.js";
+import { promptParts, toolParameters } from "../prompt.js";
 import { renderMarkdown, renderToolText } from "./markup.js";
 import { languageForPath } from "./shape.js";
 import { obj, str } from "../types.js";
-import type { ContentBlock } from "../types.js";
+import type { ContentBlock, ToolSchema } from "../types.js";
 
 export interface RenderContext {
   /** Selects another episode, for rows that name one. */
@@ -57,34 +58,99 @@ function gutter(row: Row): HTMLElement {
   return h("div", { class: "gutter", title: new Date(row.time).toISOString() }, `${row.seq}`, h("br"), fmtTime(row.time));
 }
 
+/**
+ * The system prompt and the tool schemas in effect for the requests that
+ * follow. The prompt is the best available account of why an agent behaved
+ * as it did, so it is rendered the way an assistant message is: as
+ * Markdown, under the names its author gave its sections.
+ */
 function renderHeader(row: HeaderRow): HTMLElement {
   const meta = [row.reason, row.model, `${row.tools.length} tool${row.tools.length === 1 ? "" : "s"}`, `${fmtInt(
     row.system.length,
   )} chars`]
     .filter(Boolean)
     .join(" · ");
+  const parts = promptParts(row.system, row.instructions);
   const body = lazyDetails(
     [h("span", null, "system prompt"), h("span", { class: "meta" }, meta)],
     () => [
-      h("pre", { class: "text" }, row.system || "(empty)"),
-      h(
-        "div",
-        { class: "tools-list" },
-        row.tools.map((t, i) =>
-          lazyDetails(
-            [h("code", null, t.name ?? "?"), h("span", { class: "tool-desc" }, firstLine(t.description ?? ""))],
-            () => [
-              t.description ? h("pre", { class: "text" }, t.description) : null,
-              h("pre", { class: "text" }, pretty(t.parameters)),
-            ],
-            { key: `tool-schema:${i}` },
-          ),
-        ),
-      ),
+      // A header other than the first replaced the one before it, so what
+      // it replaced comes before the prompt itself.
+      row.changed.length
+        ? h(
+            "div",
+            { class: "header-changed" },
+            h("div", { class: "header-changed-lab" }, "changed from the header in effect"),
+            h("ul", null, row.changed.map((line) => h("li", null, line))),
+          )
+        : null,
+      row.system
+        ? h(
+            "div",
+            { class: "prompt" },
+            parts.sections.map((section) => [
+              h("div", { class: "prompt-name" }, section.name),
+              renderMarkdown(section.text),
+            ]),
+            parts.appended ? renderMarkdown(parts.appended) : null,
+          )
+        : h("pre", { class: "text" }, "(empty)"),
+      row.tools.length ? h("div", { class: "tools-list" }, row.tools.map(renderToolSchema)) : null,
     ],
     { key: "header" },
   );
   return h("div", { class: "row header", "data-key": row.key }, gutter(row), h("div", { class: "role" }, "system"), h("div", { class: "body" }, body));
+}
+
+/**
+ * One tool: its name, what the model is told it does, and its parameters as
+ * a table. The schema's JSON says the same thing, and says it in a shape
+ * that has to be parsed by eye before it can be read.
+ */
+function renderToolSchema(tool: ToolSchema): HTMLElement {
+  const parameters = toolParameters(tool.parameters);
+  return h(
+    "div",
+    { class: "tool-schema" },
+    h(
+      "div",
+      { class: "tool-schema-head" },
+      h("code", null, tool.name ?? "?"),
+      h("span", { class: "tool-desc" }, firstLine(tool.description ?? "")),
+    ),
+    parameters.length === 0
+      ? h("div", { class: "sub" }, "no parameters")
+      : h(
+          "table",
+          { class: "schema-table" },
+          h(
+            "thead",
+            null,
+            h(
+              "tr",
+              null,
+              h("th", null, "parameter"),
+              h("th", null, "type"),
+              h("th", null, "required"),
+              h("th", null, "description"),
+            ),
+          ),
+          h(
+            "tbody",
+            null,
+            parameters.map((p) =>
+              h(
+                "tr",
+                null,
+                h("td", { class: "schema-name" }, p.name),
+                h("td", { class: "schema-type" }, p.type),
+                h("td", { class: "schema-required" }, p.required ? "yes" : ""),
+                h("td", null, p.description),
+              ),
+            ),
+          ),
+        ),
+  );
 }
 
 function renderUser(row: UserRow): HTMLElement {

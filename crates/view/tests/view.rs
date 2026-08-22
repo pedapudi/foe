@@ -65,7 +65,9 @@ fn get(addr: SocketAddr, target: &str, headers: &[(&str, &str)]) -> (u16, String
     (code, String::from_utf8(body).unwrap())
 }
 
-const FONTS: [&str; 4] = [
+const FONTS: [&str; 6] = [
+    "Inconsolata-Regular.woff2",
+    "Inconsolata-Bold.woff2",
     "iAWriterMonoS-Regular.woff2",
     "iAWriterMonoS-Bold.woff2",
     "JetBrainsMono-Regular.woff2",
@@ -261,6 +263,6 @@ fn export_inlines_every_present_font() {
     }
     assert_eq!(html.matches("data:font/woff2;base64,").count(), expected);
     if present_fonts().len() == FONTS.len() && FONTS.iter().all(|n| css.contains(&format!("/fonts/{n}"))) {
-        assert!(expected >= 4, "every font inlined at least once");
+        assert!(expected >= FONTS.len(), "every font inlined at least once");
     }
 }

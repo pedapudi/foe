@@ -31,7 +31,8 @@ The sizes persist in `localStorage` under `foe.panes` as one object with
 the sidebar width in pixels and the two row splits as a fraction of the
 column each divides. The object names only the sizes the reader has moved,
 so a size left alone stays derived across a reload. The sidebar opens at
-300 pixels and the details region at 30 percent of the left column.
+288 pixels, the rail width the spacing scale names, and the details
+region at 30 percent of the left column.
 
 The trajectory opens at the height its rows need: the axis, the rows, and
 the padding around them, held at or above the shortest pane and at or below
@@ -45,10 +46,27 @@ collapses.
 
 The episodes tree gives each episode a row about 40 pixels tall: a dot
 coloured by outcome, the program name at the page's base size, the episode
-id in mono beside it, and a second line reading the outcome word with the
-code of a `blocked` outcome or the limit of an `exhausted` one. A spawned
-child hangs under its parent on a solid connector and a fork under its
-origin on a dashed one, both two pixels wide in `--v2-ink-faint`.
+id in mono beside it, a second line reading the outcome word with the code
+of a `blocked` outcome or the limit of an `exhausted` one, and under those a
+measure of what the episode spent. A spawned child hangs under its parent on
+a solid connector and a fork under its origin on a dashed one, both two
+pixels wide in `--v2-ink-faint`.
+
+The measure is a hairline bar whose fill is the episode's tokens as a
+fraction of the largest token total among the episodes with the same parent,
+itself included, so the biggest spender of every sibling group draws a full
+bar. Hovering it gives the token count and the fraction. The bar is faint,
+because the tree reads as names and outcomes first; the selected row's bar
+takes the accent that marks the row.
+
+The quantity is tokens rather than wall clock, because tokens are the one
+spendable thing a tree divides without overlap. A parent and its
+descendants draw on one budget pool, and the tokens each of them reports
+are its own, so a group's bars are comparable and their sum is the group's
+spending. Wall clock does not divide that way: siblings that ran at the
+same time each hold the whole interval, so their durations sum past their
+parent's and a bar of one against another would assert a division that did
+not happen.
 
 The details region states the outcome, the model calls and tokens consumed
 against the budget `episode/start.program.budget` declares, the sandbox
@@ -61,6 +79,33 @@ The conversation is derived from the log by the rule in
 [log-format.md](log-format.md#derived-messages). It holds the system prompt
 and tool schemas from `request/header`, each inbox item, and each assistant
 turn.
+
+The system prompt is the best available account of why an agent behaved as
+it did, so it is rendered the way an assistant message is: as Markdown,
+behind an expander whose summary names the reason the header was written,
+the route, the number of tools, and the length of the prompt.
+
+The prompt is shown under the names its author gave its parts.
+`episode/start.program.instructions` maps a key to the text of one section,
+and the runtime renders those sections in lexicographic order of their keys,
+joined by a blank line, before it appends the instruction of every tool that
+has one; [config.md](config.md#instructions) states that rule. The viewer
+reads the rendered prompt back through the same rule and heads each section
+with its key. The walk stops at the first section whose text is not where
+the rule puts it, and the rest is rendered as one piece, so a prompt the
+program did not compose is shown whole rather than split wrongly.
+
+Each tool's schema is a table of its parameters, one row per parameter with
+its type, whether it is required, and its description, under the tool's name
+and the description the model was given. An enumerated parameter names its
+options in its description. The schema's JSON says the same thing in a
+shape that has to be parsed by eye before it can be read.
+
+A `request/header` whose `reason` is not `initial` was written because the
+prompt, the tool schemas, or the route differ from the header in effect. It
+carries a list of what differs, above the prompt: the route it replaced,
+each instruction section added, rewritten, or removed, whether the appended
+tool instructions changed, and each tool added, removed, or redeclared.
 
 An assistant turn assembled from `assistant/chunk` events is marked `live`
 in the accent while its response is still arriving. A turn still assembling
@@ -80,40 +125,62 @@ the bundle which episodes exist and in what order.
 
 The trajectory draws one row per episode, in the order the tree lists them,
 indented by lineage. The row label is the program name with the episode id
-in mono, and the selected row carries the figure's one accent.
+in mono, and the selected row carries the figure's one accent as a spine
+down its leading edge.
 
 The x axis is wall-clock time, taken from each event's `time`. A control in
 the region's header switches it to log position, where x is the event's
 `seq`. Both axes map linearly onto the same plot area, so switching moves
 the marks and changes nothing else. The axis carries small mono labels on
-leader ticks at round offsets from the start of the run, and no gridlines.
-The figure fits the region's width and reflows when the region is resized;
-it neither pans nor zooms, and it redraws only when a digest of what it
-would draw changes.
+leader ticks at round offsets from the start of the run, and each tick
+carries a gridline down the plot in `--v2-rule-soft` at 0.6 pixels, because
+a bar's length is read against the axis. The figure fits the region's width
+and reflows when the region is resized; it neither pans nor zooms, and it
+redraws only when a digest of what it would draw changes.
 
 A row has two lanes. The episode's own events sit on the lifetime line, and
 tool calls sit in a lane a few pixels below it. The lanes exist because
 duration alone does not separate the two channels: on a run bound by the
 model every tool call is milliseconds against a span of tens of seconds, so
-its segment is drawn at its minimum width and is the same hairline as a
-request tick. Position separates them where length cannot. A request tick
-rises from the lifetime line rather than crossing it, so requests read above
-the line and tool calls below it.
+its segment is drawn at its minimum width. Position separates them where
+length cannot. A request bar sits above the lifetime line rather than
+crossing it, so requests read above the line and tool calls below it.
 
 | mark | lane | drawn from | form |
 |---|---|---|---|
 | lifetime | line | `episode/start` to `episode/end` | a hairline bar, continued as a dashed extension to the current time while the episode runs |
-| model request | line | `model/request` | a thin tick rising from the line |
+| model request | line | `model/request` to its `assistant/message` | a bar above the line, in two parts, on a hairline stem down to the line |
 | compaction | line | `compaction/start` | a small open diamond in `--v2-caution` |
 | retry | line | `request/retry` | a cross in `--v2-bad` |
 | spawn | line | `spawn/start` | a small ring, and the origin of the child's connector |
 | outcome | line | `episode/end` | a glyph at the end of the bar |
 | tool call | tool | `tool/result` | a segment whose width is `duration_ms`, ending at the result |
 
-A tool call slow enough to have a visible length keeps it; a shorter one is
-drawn at the minimum width, so no call disappears. On the sequence axis a
-tool call is a tick rather than a segment, because a duration in
-milliseconds has no length in log positions, and the lane still holds.
+A model request is a bar rather than a tick, because how long an answer took
+is most of what a run's shape consists of: one request of a four-request
+episode can hold more than half its wall clock, and a tick would draw that
+request exactly like the shortest one.
+
+The bar has two parts, in the encoding the statistics view's per-step bars
+use, so that a reader learns one grammar rather than two. The lower and
+fainter part spans the whole answer, from the `model/request` to the
+`assistant/message` that answers it. The taller part over it spans the wait
+before the first token, from the `model/request` to the first
+`assistant/chunk` of that request whose `chunk.kind` is not `error`. A
+request answered only by errors produced no token, so it has the first part
+and not the second. A request with no answer yet spans to its last chunk, so
+a request still streaming shows the length it has reached.
+
+The two parts have a length on the sequence axis as well, because the chunks
+a request produced are events between its call and its answer. A tool call
+has no such length: its duration is in milliseconds and the log records the
+result alone, so on the sequence axis a tool call is a tick and the lane is
+what still separates it from a request. A tool call slow enough to have a
+visible length on the time axis keeps it; a shorter one is drawn at the
+minimum width, so no call disappears.
+
+Every bar is `rx: 3` and filled at reduced opacity, and lifts to full
+opacity while the pointer is on it.
 
 The outcome glyph is coloured by direction: a filled dot in `--v2-good` for
 `completed`, a cross in `--v2-bad` for `failed`, a triangle in
@@ -127,8 +194,9 @@ child's bar, solid. A fork's connector runs from the origin's position at
 the fork boundary to the start of the fork's bar, dashed.
 
 Hovering a mark opens a hovercard naming the mark, its `seq`, its time, its
-duration when it has one, and one line of detail: a tool call's arguments, a
-retry's step and delay, or a spawned child's program. Clicking a mark
+duration when it has one, the wait before its first token when it is a
+request that received one, and one line of detail: a tool call's arguments,
+a retry's step and delay, or a spawned child's program. Clicking a mark
 selects its episode and brings the conversation to that log position, where
 the row is marked until another is.
 Clicking a row label selects that episode, and `j` and `k` move between
@@ -488,7 +556,7 @@ malformed.
 ## Embedding the bundle
 
 `crates/view/build.rs` copies `view/dist/viewer.js`, `view/dist/viewer.css`,
-and the four font files under `view/fonts/` into the crate's build output,
+and the six font files under `view/fonts/` into the crate's build output,
 where `include_str!` and `include_bytes!` embed them. The bundle is built
 with `pnpm install && pnpm build` in `view/`; a rebuild of `foe-view` then
 picks it up. When the script or stylesheet is absent, the build script

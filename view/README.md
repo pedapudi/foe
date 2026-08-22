@@ -54,10 +54,11 @@ pnpm fixtures       # regenerates fixtures/*.jsonl from fixtures/generate.mjs
 into the matching element.
 
 The tests cover the derived-messages rule, the episode fold, the lineage
-helpers, the trajectory layout, the workflow graph and its layout, the
-statistics, the pane sizes, the Markdown parser, the syntax tokenizer, and
-the unified diff reader. Each of those modules is pure and reads no
-document, so the tests run under `node --test` with no browser.
+helpers and the per-row measure, the trajectory layout, the workflow graph
+and its layout, the statistics, the pane sizes, the appearance catalogue,
+the system prompt reader, the Markdown parser, the syntax tokenizer, and the
+unified diff reader. Each of those modules is pure and reads no document, so
+the tests run under `node --test` with no browser.
 
 The fixtures are twelve episode logs.
 
@@ -91,13 +92,16 @@ with no Rust toolchain.
 the tests read the shapes a real provider failure produces. `pnpm fixtures`
 leaves it alone.
 
-Three screenshots of the static export at 1512 by 792 sit beside the source.
-`proof-light.png` and `proof-dark.png` show the `overlap-parent` fixture and
-its two children in the `paper` and `monokai` themes: the tree, both
-connector kinds, and a turn holding Markdown, a table, a fenced block, and
-mathematics. `proof-one-episode.png` shows a recorded run of this repository
-with one root episode and no children, which is the ordinary case and the
-one where the trajectory's height is derived from a single row.
+Three screenshots of the static export at 1512 by 792 sit beside the source,
+each in one of the two default themes. `proof-light.png` and
+`proof-dark.png` show the `overlap-parent` fixture and its two children in
+`google-light` and `google-dark`: the tree with its per-row measure and the
+spine on the selected row, both connector kinds, the trajectory's request
+spans, and a turn holding a diff and a fenced block. `proof-one-episode.png`
+shows a recorded run of this repository in `google-light`, with one root
+episode and no children, which is the ordinary case and the one where the
+trajectory's height is derived from a single row; its four request spans
+differ in length by a factor of seven, and its system prompt is open.
 
 The `messages` list recorded in each `model/request` event is written by
 hand in the generator, so the tests compare it with the list the bundle
@@ -148,7 +152,7 @@ matching `assistant/message` replaces it.
 |---|---|---|
 | `GET /episodes` | `X-Foe-Token` header | `{"roots":[Node,...]}` where Node is `{"id":string,"children":[Node,...]}`; other fields are ignored |
 | `GET /events?episode=<id>` | `X-Foe-Token` header or `?token=` | a `text/event-stream` of the episode's log |
-| `GET /fonts/<name>.woff2` | `X-Foe-Token` header | one of the four font files under `fonts/`; see Design language |
+| `GET /fonts/<name>.woff2` | `X-Foe-Token` header | one of the six font files under `fonts/`; see Design language |
 
 The event stream sends one log line per message, in the form
 `id: <seq>` followed by `data: <one event as JSON>`. The `id` field lets the
@@ -302,17 +306,20 @@ appears in the stylesheet, and it also holds the two values of
 `#C7791A` on the five light-ground themes and `#E8A43E` on the other
 eleven. The swatch preview strips in `src/chrome.ts`
 carry the tuples from zicato's `ui.js` `COLOR_THEMES`, including the
-substituted preview accent for `lunaria-eclipse`. Monokai is the default;
-when no theme is stored and the host page has stamped none, a light system
-preference selects `paper` instead.
+substituted preview accent for `lunaria-eclipse`. When no theme is stored
+and the host page has stamped none, `prefers-color-scheme` selects
+`google-light` on a machine asking for a light ground and `google-dark` on
+one asking for a dark ground. `src/tokens.css` repeats those two palettes on
+a root carrying no theme, so the first paint already matches.
 
 Typefaces are a separate axis. `[data-typeface]` on the root names one of
 twelve faces, four per mode, and resolves `--v2-sans`, `--v2-mono`,
-`--n-font-head`, and `--n-font-paper`. The default face pairs iA Writer
-Mono for prose with JetBrains Mono for data. Those two families are
-self-hosted: the four woff2 files under `fonts/` are copied from zicato's
-`src/zicato/dashboard/static/fonts/` and declared in `src/tokens.css` with
-`font-display: swap` and the path `/fonts/<name>.woff2`. The live server
+`--n-font-head`, and `--n-font-paper`. The default face is Inconsolata in
+every role. Three families are self-hosted, both weights each: Inconsolata,
+iA Writer Mono, and JetBrains Mono. The six woff2 files under `fonts/` are
+declared in `src/tokens.css` with `font-display: swap` and the path
+`/fonts/<name>.woff2`; `fonts/README.md` records where each file came
+from. The live server
 serves that path and the static export replaces it with a data URI. The
 bundle performs no network fetch for any font. This is a departure from
 zicato, which loads the editorial and display families from a font service;
@@ -338,6 +345,7 @@ build.mjs                     esbuild driver; size and inlining checks
 src/main.ts                   entry point: settings, then the application
 src/app.ts                    state, regions, keyboard, digest-gated redraws
 src/chrome.ts                 top bar, pickers, persisted settings
+src/appearance.ts             themes, typefaces, sizes, and their names
 src/brand.ts                  the lockup and the research-preview tag
 src/panes.ts                  region sizes, the grips, and their persistence
 src/trajectory.ts             where every mark of the timeline goes
@@ -346,7 +354,8 @@ src/statistics.ts             every quantity the statistics tab shows
 src/source.ts                 static and live event sources
 src/fold.ts                   one episode log to rows, a summary, and marks
 src/messages.ts               the derived-messages rule
-src/lineage.ts                the tree and the shared fork prefix
+src/lineage.ts                the tree, the shared fork prefix, the per-row measure
+src/prompt.ts                 a system prompt read back into its sections
 src/render/conversation.ts    the dialogue rows
 src/render/trajectory.ts      the timeline figure
 src/render/tree.ts            the episode tree and the details panel
@@ -360,10 +369,11 @@ src/render/markup.ts          elements for Markdown, code, diffs, and math
 src/render/highlight.ts       the syntax tokenizer
 src/render/unified-diff.ts    the unified diff reader
 src/render/shape.ts           what kind of text a tool result holds
+src/render/svg.ts             building SVG, and the two shapes a figure takes
 src/viewer.css                the stylesheet, on role tokens only
-src/tokens.css                theme, typeface, and brand accent tokens
+src/tokens.css                theme, typeface, spacing, radius, and brand tokens
 vendor/                       Temml and its license
-fonts/                        the four self-hosted woff2 files
+fonts/                        the six self-hosted woff2 files and their note
 fixtures/                     fixture logs and their generator
 test/                         unit tests
 ```

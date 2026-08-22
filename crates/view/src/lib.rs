@@ -19,20 +19,10 @@ use std::sync::OnceLock;
 const JS: &str = include_str!(concat!(env!("OUT_DIR"), "/viewer.js"));
 const CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/viewer.css"));
 
-macro_rules! font {
-    ($name:literal) => {
-        ($name, include_bytes!(concat!(env!("OUT_DIR"), "/", $name)) as &[u8])
-    };
-}
-
-/// The self-hosted font files by the name the bundle's CSS requests under
-/// `/fonts/`. A font that was absent at build time is embedded empty.
-const FONTS: [(&str, &[u8]); 4] = [
-    font!("iAWriterMonoS-Regular.woff2"),
-    font!("iAWriterMonoS-Bold.woff2"),
-    font!("JetBrainsMono-Regular.woff2"),
-    font!("JetBrainsMono-Bold.woff2"),
-];
+// `FONTS`: the self-hosted font files by the name the bundle's CSS requests
+// under `/fonts/`. `build.rs` names the files and writes the array, so the
+// list has one place. A font absent at build time is embedded empty.
+include!(concat!(env!("OUT_DIR"), "/fonts.rs"));
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

@@ -13,19 +13,7 @@ import type { Child } from "../dom.js";
 import { computeStatistics, layoutContextCurve, layoutTools, layoutWallClock } from "../statistics.js";
 import type { CurveLayout, Statistics, StatisticsEpisode, Step } from "../statistics.js";
 import { Hovercard } from "./hovercard.js";
-
-const SVG = "http://www.w3.org/2000/svg";
-
-function svg<K extends keyof SVGElementTagNameMap>(
-  tag: K,
-  attrs: Record<string, string | number | undefined> = {},
-): SVGElementTagNameMap[K] {
-  const el = document.createElementNS(SVG, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (value !== undefined) el.setAttribute(key, String(value));
-  }
-  return el;
-}
+import { barSvg, figureSvg, svg } from "./svg.js";
 
 export type Scope = "episode" | "tree";
 
@@ -193,7 +181,7 @@ export class StatisticsView {
     const barWidth = Math.max(80, width - 24);
     const { shares, divisor } = layoutWallClock(clock, barWidth);
     const height = 30;
-    const figure = svg("svg", { class: "fig-svg", width: barWidth, height, viewBox: `0 0 ${barWidth} ${height}` });
+    const figure = barSvg("fig-svg", barWidth, height, "where the wall clock went");
     const largest = shares.reduce<(typeof shares)[number] | null>((a, b) => (a && a.ms >= b.ms ? a : b), null);
     for (const share of shares) {
       const group = svg("g", {
@@ -245,14 +233,7 @@ export class StatisticsView {
         "Input tokens per step are not measured here.",
       );
     }
-    const figure = svg("svg", {
-      class: "fig-svg",
-      width: curve.width,
-      height,
-      viewBox: `0 0 ${curve.width} ${height}`,
-      role: "img",
-      "aria-label": "input tokens per step",
-    });
+    const figure = figureSvg("fig-svg", curve.width, height, "input tokens per step");
     figure.appendChild(this.curveAxes(curve));
     // The declared limit is the envelope, dashed as the register asks.
     if (curve.budget) {
@@ -373,7 +354,7 @@ export class StatisticsView {
   private stepRow(step: Step, longest: number, barWidth: number, slowest: boolean): HTMLElement {
     const name = this.names.get(step.episodeId) ?? step.episodeId;
     const label = `${step.compaction ? "compaction" : `step ${step.step}`}${step.attempt > 1 ? ` · attempt ${step.attempt}` : ""}`;
-    const bar = svg("svg", { class: "step-bar", width: barWidth, height: 12, viewBox: `0 0 ${barWidth} 12` });
+    const bar = barSvg("step-bar", barWidth, 12, "wait for the first token, then for the whole answer");
     const latency = step.latencyMs;
     if (latency !== null) {
       const full = (latency / longest) * barWidth;
@@ -418,7 +399,7 @@ export class StatisticsView {
     const { read, input, rate } = stats.cache;
     const barWidth = Math.max(80, width - 24);
     const height = 26;
-    const figure = svg("svg", { class: "fig-svg", width: barWidth, height, viewBox: `0 0 ${barWidth} ${height}` });
+    const figure = barSvg("fig-svg", barWidth, height, "cache-read tokens against total input tokens");
     figure.appendChild(svg("rect", { class: "cache-track", x: 0, y: 6, width: barWidth, height: 12 }));
     const hit = svg("rect", { class: "cache-hit", x: 0, y: 6, width: Math.max(1, rate * barWidth), height: 12 });
     figure.appendChild(hit);
@@ -448,7 +429,7 @@ export class StatisticsView {
     const rows = stats.limits.map((limit) => {
       const fraction = limit.limit <= 0 ? 0 : Math.min(1, limit.used / limit.limit);
       const w = 96;
-      const mark = svg("svg", { class: "mark", width: w, height: 8, viewBox: `0 0 ${w} 8` });
+      const mark = barSvg("mark", w, 8, "share of the limit spent");
       mark.appendChild(svg("line", { class: "track", x1: 0, y1: 4, x2: w, y2: 4 }));
       mark.appendChild(
         svg("line", { class: `fill${fraction >= 1 ? " caution" : ""}`, x1: 0, y1: 4, x2: Math.max(0.5, fraction * w), y2: 4 }),
@@ -486,7 +467,7 @@ export class StatisticsView {
     const barWidth = Math.max(60, Math.min(220, width - 400));
     const bars = layoutTools(stats.tools, barWidth);
     const rows = bars.map(({ group, w }) => {
-      const mark = svg("svg", { class: "tool-bar", width: barWidth, height: 10, viewBox: `0 0 ${barWidth} 10` });
+      const mark = barSvg("tool-bar", barWidth, 10, "duration against the longest");
       mark.appendChild(svg("rect", { class: "seg", x: 0, y: 3, width: Math.max(0.5, w), height: 4 }));
       const row = h(
         "tr",

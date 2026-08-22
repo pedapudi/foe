@@ -14,19 +14,7 @@ import { MARK_MIN_WIDTH, layoutTrajectory } from "../trajectory.js";
 import type { Outcome } from "../types.js";
 import { str } from "../types.js";
 import { outcomeRole } from "./tree.js";
-
-const SVG = "http://www.w3.org/2000/svg";
-
-function svg<K extends keyof SVGElementTagNameMap>(
-  tag: K,
-  attrs: Record<string, string | number | undefined> = {},
-): SVGElementTagNameMap[K] {
-  const el = document.createElementNS(SVG, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (value !== undefined) el.setAttribute(key, String(value));
-  }
-  return el;
-}
+import { figureSvg, svg } from "./svg.js";
 
 export interface TrajectoryState {
   selected: string | null;
@@ -165,18 +153,14 @@ export class TrajectoryView {
   }
 
   private build(layout: TrajectoryLayout, width: number): SVGSVGElement {
-    const figure = svg("svg", {
-      class: "traj",
-      width,
-      height: layout.height,
-      viewBox: `0 0 ${width} ${layout.height}`,
-      role: "img",
-      "aria-label": "episode trajectory",
-    });
+    const figure = figureSvg("traj", width, layout.height, "episode trajectory");
 
-    // The axis: leader ticks with a small mono label, and no gridlines.
+    // The axis: leader ticks with a small mono label, each carrying a
+    // gridline down the plot. A span's length is read against the axis, so
+    // the gridline is what lets a reader take that length off the figure.
     const axis = svg("g", { class: "traj-axisline" });
     for (const tick of layout.ticks) {
+      axis.appendChild(svg("line", { class: "grid", x1: tick.x, y1: layout.plot.top - 1, x2: tick.x, y2: layout.plot.bottom + 2 }));
       axis.appendChild(svg("line", { class: "tick", x1: tick.x, y1: layout.plot.top - 6, x2: tick.x, y2: layout.plot.top - 1 }));
       const label = svg("text", { class: "tick-label", x: tick.x, y: layout.plot.top - 9, "text-anchor": "middle" });
       label.textContent = tick.label;
@@ -213,6 +197,17 @@ export class TrajectoryView {
       });
       hit.addEventListener("click", () => this.handlers.select(row.id));
       group.appendChild(hit);
+      // The figure's one emphasis: a spine down the row's leading edge. A
+      // filled row would compete with the bars drawn inside it.
+      group.appendChild(
+        svg("line", {
+          class: "traj-spine",
+          x1: 1,
+          y1: row.y - layout.rowHeight / 2 + 2,
+          x2: 1,
+          y2: row.y + layout.rowHeight / 2 - 2,
+        }),
+      );
 
       // The label: the program name, then the episode id in mono.
       const label = svg("text", { class: "traj-label", x: 6 + row.depth * 10, y: row.y + 3.5 });
@@ -247,16 +242,27 @@ export class TrajectoryView {
         // The lane's own band: the segment hangs below its baseline so that
         // the tool channel never touches the lifetime line above it.
         group.appendChild(
-          svg("rect", { class: "seg", x: mark.x, y: mark.y - 2, width: Math.max(MARK_MIN_WIDTH, mark.w), height: 4.5, rx: 1.2 }),
+          svg("rect", { class: "seg", x: mark.x, y: mark.y - 2, width: Math.max(MARK_MIN_WIDTH, mark.w), height: 4.5, rx: 3 }),
         );
         break;
-      case "request":
-        // A request tick rises from the lifetime line rather than crossing
-        // it, so that requests read above the line and tools below it.
-        group.appendChild(
-          svg("line", { class: "tick", x1: mark.x, y1: mark.y - (layout.rowHeight / 2 - 3), x2: mark.x, y2: mark.y + 1 }),
-        );
+      case "request": {
+        // A request is a bar above the lifetime line, running from the call
+        // to the answer, so its length is the time the answer took. The two
+        // parts of that time carry the encoding the statistics view's
+        // per-step bars use: the whole answer is the lower and fainter bar,
+        // and the wait before the first token is the taller one over it.
+        const width = Math.max(MARK_MIN_WIDTH, mark.w);
+        group.appendChild(svg("rect", { class: "span", x: mark.x, y: mark.y - 6, width, height: 4, rx: 3 }));
+        if (mark.head > 0) {
+          group.appendChild(
+            svg("rect", { class: "wait", x: mark.x, y: mark.y - 7, width: Math.max(MARK_MIN_WIDTH, mark.head), height: 6, rx: 3 }),
+          );
+        }
+        // A hairline back to the line ties the bar to the row it belongs
+        // to, so a bar never floats free of its episode.
+        group.appendChild(svg("line", { class: "stem", x1: mark.x, y1: mark.y - 2, x2: mark.x, y2: mark.y + 1 }));
         break;
+      }
       case "retry":
         group.appendChild(svg("path", { class: "glyph", d: `M ${mark.x - 3} ${mark.y - 3} l 6 6 M ${mark.x + 3} ${mark.y - 3} l -6 6` }));
         break;
@@ -306,6 +312,12 @@ export class TrajectoryView {
   private showCard(event: PointerEvent, mark: PlacedMark): void {
     const lines: string[] = [`seq ${mark.seq}`, fmtTime(mark.time)];
     if (mark.durationMs > 0) lines.push(fmtDuration(mark.durationMs));
+    // A request's card names the two parts of its span separately, because
+    // the bar draws them as two and a reader asks which one was long.
+    const first = mark.span?.firstTokenTime ?? null;
+    if (first !== null) {
+      lines.push(`${fmtDuration(first - mark.time)} to first token`);
+    }
     this.showText(event, markLabel(mark), lines.join(" · "), mark.detail);
   }
 

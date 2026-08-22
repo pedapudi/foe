@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 const JS_PLACEHOLDER: &str = "document.getElementById(\"app\").textContent = \
     \"The viewer bundle was not built. Run `pnpm install && pnpm build` in view/, then rebuild foe.\";";
 const CSS_PLACEHOLDER: &str = "body{font-family:system-ui,sans-serif;margin:2rem}";
-const FONTS: [&str; 4] = [
+const FONTS: [&str; 6] = [
+    "Inconsolata-Regular.woff2",
+    "Inconsolata-Bold.woff2",
     "iAWriterMonoS-Regular.woff2",
     "iAWriterMonoS-Bold.woff2",
     "JetBrainsMono-Regular.woff2",
@@ -37,4 +39,12 @@ fn main() {
     for name in FONTS {
         copy(&view.join("fonts").join(name), b"");
     }
+    // The crate includes this array rather than repeating the list, so
+    // FONTS above is the one place a self-hosted font is named.
+    let entries: String = FONTS
+        .iter()
+        .map(|name| format!("    ({name:?}, include_bytes!(concat!(env!(\"OUT_DIR\"), \"/{name}\")) as &[u8]),\n"))
+        .collect();
+    let array = format!("const FONTS: [(&str, &[u8]); {}] = [\n{entries}];\n", FONTS.len());
+    fs::write(out.join("fonts.rs"), array).expect("write fonts.rs into OUT_DIR");
 }

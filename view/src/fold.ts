@@ -4,6 +4,8 @@
 
 import { fmtInt } from "./dom.js";
 import { renderContinuation } from "./messages.js";
+import { headerDifference } from "./prompt.js";
+import type { HeaderParts } from "./prompt.js";
 import type { Mark } from "./trajectory.js";
 import { arr, num, obj, str } from "./types.js";
 import type {
@@ -27,6 +29,13 @@ export interface HeaderRow extends RowBase {
   system: string;
   tools: ToolSchema[];
   model: string;
+  /**
+   * The instruction sections `episode/start.program` declares, by key. They
+   * name the parts of the system prompt, which the log stores rendered.
+   */
+  instructions: Record<string, string>;
+  /** What this header changed, empty for the first header of an episode. */
+  changed: string[];
 }
 
 export interface UserRow extends RowBase {
@@ -187,6 +196,14 @@ export class EpisodeFold {
   private readonly byKey = new Map<string, Row>();
   /** One line of arguments per tool call id, for the trajectory hovercard. */
   private readonly callArgs = new Map<string, string>();
+  /**
+   * The mark of each request still in flight, by `request_id`. A request
+   * spans its `model/request` to the `assistant/message` that answers it,
+   * and the events between them close the span as they are read.
+   */
+  private readonly requests = new Map<string, Mark>();
+  /** The header in effect, against which the next one states its change. */
+  private header: HeaderParts | null = null;
   private readonly stream: boolean;
 
   /** `stream` makes `assistant/chunk` events build a row token by token. */
@@ -217,24 +234,40 @@ export class EpisodeFold {
       case "seed/end":
         s.seedEnd = ev.seq;
         return this.note(ev, "seed end", "events above were copied from the fork origin", "info", null);
-      case "request/header":
+      case "request/header": {
+        const parts = {
+          system: str(data.system),
+          tools: arr(data.tools).map((t) => obj(t) as ToolSchema),
+          model: modelLabel(data.model),
+        };
+        // A header other than the first was written because one of those
+        // three parts differs from the header in effect, so the row says
+        // which; `docs/log-format.md` states that rule.
+        const changed = this.header ? headerDifference(this.header, parts, this.instructions()) : [];
+        this.header = parts;
         return this.append({
           kind: "header",
           key: `header:${ev.seq}`,
           seq: ev.seq,
           time: ev.time,
           reason: str(data.reason, "initial"),
-          system: str(data.system),
-          tools: arr(data.tools).map((t) => obj(t) as ToolSchema),
-          model: modelLabel(data.model),
+          instructions: this.instructions(),
+          changed,
+          ...parts,
         });
+      }
       case "model/request": {
         s.modelCalls += 1;
         const consumed = arr(data.consumed).length;
         const detail = `step ${num(data.step)} · attempt ${num(data.attempt)} · header seq ${num(
           data.header_seq,
         )}${consumed ? ` · consumed ${consumed}` : ""}`;
-        this.mark(ev, "request", `step ${num(data.step)}`, detail, 0);
+        const mark = this.mark(ev, "request", `step ${num(data.step)}`, detail, 0);
+        // The span opens with no length. The chunks the request produces
+        // and the message that answers it give it one as they are read.
+        mark.span = { endTime: ev.time, endSeq: ev.seq, firstTokenTime: null, firstTokenSeq: null };
+        const requestId = str(data.request_id);
+        if (requestId) this.requests.set(requestId, mark);
         return this.note(ev, "request", detail, "info", data);
       }
       case "request/retry":
@@ -256,8 +289,12 @@ export class EpisodeFold {
           data,
         );
       case "assistant/chunk":
+        // The span is closed whether or not the pane assembles the chunk
+        // into a row, because the trajectory draws it either way.
+        this.extendRequest(ev, data);
         return this.stream ? this.chunk(ev, data) : [];
       case "assistant/message":
+        this.closeRequest(ev, str(data.request_id));
         return this.message(ev, data);
       case "tool/result":
         this.mark(
@@ -570,9 +607,55 @@ export class EpisodeFold {
     return patches;
   }
 
+  /**
+   * The instruction sections the program declares, by key. `episode/start`
+   * precedes every `request/header`, so the map is complete by the time a
+   * header needs it; a log that carries no program yields an empty map and
+   * the prompt is then shown unsplit.
+   */
+  private instructions(): Record<string, string> {
+    const declared = obj(this.summary.program.instructions);
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(declared)) {
+      if (typeof value === "string") out[key] = value;
+    }
+    return out;
+  }
+
   /** Records one trajectory mark. Marks arrive in seq order and stay so. */
-  private mark(ev: LogEvent, kind: Mark["kind"], label: string, detail: string, durationMs: number): void {
-    this.summary.marks.push({ kind, seq: ev.seq, time: ev.time, durationMs, label, detail });
+  private mark(ev: LogEvent, kind: Mark["kind"], label: string, detail: string, durationMs: number): Mark {
+    const mark: Mark = { kind, seq: ev.seq, time: ev.time, durationMs, span: null, label, detail };
+    this.summary.marks.push(mark);
+    return mark;
+  }
+
+  /**
+   * Extends the span of the request a chunk belongs to, and records where
+   * its first token arrived. A chunk carrying an error produced no token,
+   * so it moves the end of the span and leaves the first token unset. The
+   * end moves with every chunk, so a request still streaming shows the
+   * length it has reached rather than none.
+   */
+  private extendRequest(ev: LogEvent, data: Record<string, unknown>): void {
+    const mark = this.requests.get(str(data.request_id));
+    if (!mark || !mark.span) return;
+    mark.span.endTime = ev.time;
+    mark.span.endSeq = ev.seq;
+    mark.durationMs = ev.time - mark.time;
+    if (mark.span.firstTokenTime !== null) return;
+    if (str(obj(data.chunk).kind) === "error") return;
+    mark.span.firstTokenTime = ev.time;
+    mark.span.firstTokenSeq = ev.seq;
+  }
+
+  /** Closes the span of the request an `assistant/message` answers. */
+  private closeRequest(ev: LogEvent, requestId: string): void {
+    const mark = this.requests.get(requestId);
+    if (!mark || !mark.span) return;
+    mark.span.endTime = ev.time;
+    mark.span.endSeq = ev.seq;
+    mark.durationMs = ev.time - mark.time;
+    this.requests.delete(requestId);
   }
 
   private append(row: Row): Patch[] {

@@ -6,9 +6,10 @@ import { fmtDate, fmtDuration, fmtInt, h } from "../dom.js";
 import type { Child } from "../dom.js";
 import { outcomeLabel } from "../fold.js";
 import type { Summary } from "../fold.js";
-import { flatten } from "../lineage.js";
+import { flatten, siblingShares, spentTokens } from "../lineage.js";
 import type { TreeNode } from "../lineage.js";
 import { str } from "../types.js";
+import { barSvg, figureSvg, svg } from "./svg.js";
 
 export interface TreeState {
   selected: string | null;
@@ -21,12 +22,13 @@ export interface TreeHandlers {
   toggleCompare(id: string): void;
 }
 
-const SVG = "http://www.w3.org/2000/svg";
 const ROW = 40;
 const INDENT = 18;
 const LEFT = 12;
 const DOT_R = 4;
 const COMPARE_W = 40;
+/** Height of the per-row measure bar. */
+const MEASURE_H = 2.5;
 /** Advance of one character at the base and the secondary size, in pixels. */
 const NAME_CHAR = 7.6;
 const SUB_CHAR = 6.2;
@@ -69,12 +71,6 @@ export function outcomeParts(outcome: Summary["outcome"]): { word: string; detai
   }
 }
 
-function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
-  const el = document.createElementNS(SVG, tag);
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
-  return el;
-}
-
 function fit(text: string, px: number, charW: number): string {
   const max = Math.max(3, Math.floor(px / charW));
   return text.length <= max ? text : `${text.slice(0, max - 1)}\u2026`;
@@ -89,7 +85,8 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     return host;
   }
   const height = rows.length * ROW;
-  const figure = svg("svg", { width, height, viewBox: `0 0 ${width} ${height}` });
+  const shares = siblingShares(roots);
+  const figure = figureSvg("tree-figure", width, height, "episodes by lineage");
   const position = new Map<string, { x: number; y: number }>();
   rows.forEach(({ node, depth }, i) => {
     position.set(node.id, { x: LEFT + depth * INDENT, y: i * ROW + ROW / 2 });
@@ -124,13 +121,16 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
       "aria-selected": state.selected === node.id ? "true" : "false",
     });
     const hit = svg("rect", { class: "hit", x: 1, y: y - ROW / 2 + 2, width: width - 2, height: ROW - 4, rx: 3 });
+    // The row's one emphasis: a spine down its leading edge, which the
+    // stylesheet colours on the selected row and leaves clear on the rest.
+    const spine = svg("line", { class: "spine", x1: 1, y1: y - ROW / 2 + 3, x2: 1, y2: y + ROW / 2 - 3 });
     const title = svg("title");
     title.textContent = node.fork
       ? `fork of ${s.forkOrigin?.episodeId} at seq ${s.forkOrigin?.seq}`
       : s.parentId
         ? `spawned by ${s.parentId}`
         : "root episode";
-    g.append(title, hit);
+    g.append(title, hit, spine);
     g.appendChild(svg("circle", { class: `dot ${role}`, cx: x, cy: y, r: DOT_R }));
 
     const textX = x + DOT_R + 9;
@@ -163,6 +163,27 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     }
     g.appendChild(sub);
 
+    // Third line: how much of the sibling group's spending this episode
+    // did. The tree names episodes and outcomes; the question in front of
+    // a tree is where the work went, and this answers it without a click.
+    const share = shares.get(node.id);
+    if (share !== undefined) {
+      const barW = Math.max(12, textW);
+      const measure = svg("g", { class: "measure" });
+      const measureTitle = svg("title");
+      const group = "among the episodes with the same parent";
+      measureTitle.textContent =
+        share >= 1
+          ? `${fmtInt(spentTokens(s))} tokens, the largest total ${group}`
+          : `${fmtInt(spentTokens(s))} tokens, ${Math.round(share * 100)} percent of the largest total ${group}`;
+      measure.append(
+        measureTitle,
+        svg("rect", { class: "measure-track", x: textX, y: y + 16, width: barW, height: MEASURE_H, rx: 1 }),
+        svg("rect", { class: "measure-fill", x: textX, y: y + 16, width: Math.max(1, share * barW), height: MEASURE_H, rx: 1 }),
+      );
+      g.appendChild(measure);
+    }
+
     const comparing = state.compare.includes(node.id);
     const boxX = width - COMPARE_W;
     const box = svg("rect", { class: `compare-box${comparing ? " on" : ""}`, x: boxX, y: y - 5, width: 10, height: 10, rx: 2 });
@@ -185,6 +206,19 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
   return host;
 }
 
+/**
+ * A value made of several parts, separated by a middle dot. Each part is
+ * one unbreakable run, so a narrow pane wraps between two parts and never
+ * inside one: `cache read 2,560` stays on one line, and `best-effort` is
+ * never split at its hyphen. An empty part is left out.
+ */
+function parts(list: string[]): Child {
+  const kept = list.filter((p) => p !== "");
+  // The separator leads its part rather than trailing the one before it, so
+  // that a line never ends on a dangling dot.
+  return kept.flatMap((part, i) => [i > 0 ? " " : null, h("span", { class: "part" }, i > 0 ? `· ${part}` : part)]);
+}
+
 export function renderInfo(s: Summary | null): HTMLElement {
   if (!s) return h("div", { class: "episode-info" }, h("span", { class: "sub" }, "select an episode"));
   const rows: [string, Child][] = [];
@@ -202,12 +236,20 @@ export function renderInfo(s: Summary | null): HTMLElement {
   if (tokensUsed > 0) {
     rows.push([
       "tokens",
-      [ratio(tokensUsed, s.budget.tokens, "tokens"), h("div", { class: "sub" }, `in ${fmtInt(s.usage.input)} · out ${fmtInt(s.usage.output)} · cache read ${fmtInt(s.usage.cacheRead)}`)],
+      [
+        ratio(tokensUsed, s.budget.tokens, "tokens"),
+        h(
+          "div",
+          { class: "sub" },
+          parts([`in ${fmtInt(s.usage.input)}`, `out ${fmtInt(s.usage.output)}`, `cache read ${fmtInt(s.usage.cacheRead)}`]),
+        ),
+      ],
     ]);
   }
   const abi = s.sandbox.landlockAbi;
   if (abi !== null || s.sandbox.mode) {
-    rows.push(["sandbox", [abi === null ? "" : abi === 0 ? "landlock unavailable" : `landlock abi ${abi}`, s.sandbox.mode ? `${abi === null ? "" : " · "}${s.sandbox.mode}` : ""]]);
+    const landlock = abi === null ? "" : abi === 0 ? "landlock unavailable" : `landlock abi ${abi}`;
+    rows.push(["sandbox", parts([landlock, s.sandbox.mode])]);
   }
   if (s.forkOrigin) rows.push(["fork origin", `${s.forkOrigin.episodeId} at seq ${s.forkOrigin.seq}`]);
   if (s.parentId) rows.push(["parent", s.parentId]);
@@ -234,7 +276,7 @@ function ratio(used: number, limit: number | null, unit: string): Child {
   const fraction = Math.min(1, used / limit);
   const pct = Math.round(fraction * 100);
   const w = 72;
-  const mark = svg("svg", { class: "mark", width: w, height: 8, viewBox: `0 0 ${w} 8` });
+  const mark = barSvg("mark", w, 8, "share of the limit spent");
   mark.appendChild(svg("line", { class: "track", x1: 0, y1: 4, x2: w, y2: 4 }));
   mark.appendChild(svg("line", { class: `fill${fraction >= 1 ? " caution" : ""}`, x1: 0, y1: 4, x2: Math.max(0.5, fraction * w), y2: 4 }));
   mark.appendChild(svg("line", { class: "tick", x1: fraction * w, y1: 0, x2: fraction * w, y2: 8 }));

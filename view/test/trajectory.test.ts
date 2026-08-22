@@ -104,7 +104,7 @@ test("a single instant gives a degenerate domain and no division by zero", () =>
   const one: TrajectoryEpisode = {
     id: "ep_one", name: "one", depth: 0, startTime: 5, endTime: 5, lastSeq: 0,
     outcome: { kind: "completed" }, parentId: null, forkOrigin: null,
-    marks: [{ kind: "request", seq: 0, time: 5, durationMs: 0, label: "", detail: "" }],
+    marks: [{ kind: "request", seq: 0, time: 5, durationMs: 0, span: null, label: "", detail: "" }],
   };
   const out = layoutTrajectory(input([one]));
   assert.ok(Number.isFinite(out.rows[0]!.x1));
@@ -149,8 +149,8 @@ test("the lane keeps a hairline tool call apart from a request tick at the same 
     id: "ep_bound", name: "bound", depth: 0, startTime: start, endTime: start + 43_000, lastSeq: 3,
     outcome: { kind: "completed" }, parentId: null, forkOrigin: null,
     marks: [
-      { kind: "request", seq: 1, time: start + 10_000, durationMs: 0, label: "step 1", detail: "" },
-      { kind: "tool", seq: 2, time: start + 10_000, durationMs: 4, label: "read", detail: "" },
+      { kind: "request", seq: 1, time: start + 10_000, durationMs: 0, span: null, label: "step 1", detail: "" },
+      { kind: "tool", seq: 2, time: start + 10_000, durationMs: 4, span: null, label: "read", detail: "" },
     ],
   };
   const out = layoutTrajectory(input([one]));
@@ -279,4 +279,79 @@ test("the fold records one mark per event the trajectory draws", () => {
   assert.equal(tool.detail, '{"cmd":"ls crates"}');
   const retry = s.marks.find((m) => m.kind === "retry")!;
   assert.equal(retry.label, "rate-limit");
+});
+
+test("a request's span runs from its call to the message that answers it", () => {
+  const marks = fold("root.jsonl").summary.marks.filter((m) => m.kind === "request");
+  const first = marks[0]!;
+  assert.equal(first.seq, 3);
+  assert.equal(first.span!.endSeq, 9, "the span ends at the assistant/message");
+  assert.equal(first.span!.endTime - first.time, 60);
+  assert.equal(first.durationMs, 60, "the duration is the length of the span");
+  assert.equal(first.span!.firstTokenTime! - first.time, 10, "the wait before the first token");
+  assert.equal(first.span!.firstTokenSeq, 4);
+});
+
+test("a request no message answered spans nothing", () => {
+  const marks = fold("root.jsonl").summary.marks.filter((m) => m.kind === "request");
+  const unanswered = marks.find((m) => m.seq === 12)!;
+  assert.equal(unanswered.span!.endSeq, 12);
+  assert.equal(unanswered.durationMs, 0);
+  assert.equal(unanswered.span!.firstTokenTime, null);
+});
+
+test("a request answered only by an error has a span and no first token", () => {
+  const marks = fold("retries-exhausted.jsonl").summary.marks.filter((m) => m.kind === "request");
+  assert.equal(marks.length, 5);
+  for (const mark of marks) {
+    assert.equal(mark.span!.firstTokenTime, null, `seq ${mark.seq} produced no token`);
+    assert.ok(mark.span!.endSeq > mark.seq, "the error chunk still ends the span");
+  }
+});
+
+test("a request draws as a span whose parts are the wait and the answer", () => {
+  const out = layoutTrajectory(input(episodes("root.jsonl")));
+  const request = out.rows[0]!.marks.find((m) => m.kind === "request" && m.seq === 3)!;
+  const [low, high] = out.domain;
+  const span = out.plot.right - out.plot.left;
+  const at = (v: number) => out.plot.left + ((v - low) / (high - low)) * span;
+  assert.ok(Math.abs(request.x - at(request.time)) < 1e-6, "the bar starts at the call");
+  assert.ok(Math.abs(request.x + request.w - at(request.span!.endTime)) < 1e-6, "and ends at the answer");
+  assert.ok(Math.abs(request.head - (at(request.span!.firstTokenTime!) - at(request.time))) < 1e-6);
+  assert.ok(request.head < request.w, "the wait is part of the answer's span");
+});
+
+test("a longer request draws a longer bar", () => {
+  const out = layoutTrajectory(input(episodes("root.jsonl")));
+  const marks = out.rows[0]!.marks.filter((m) => m.kind === "request");
+  const byDuration = [...marks].sort((a, b) => a.durationMs - b.durationMs);
+  const byWidth = [...marks].sort((a, b) => a.w - b.w);
+  assert.deepEqual(byWidth.map((m) => m.seq), byDuration.map((m) => m.seq));
+});
+
+test("a request keeps its length on the sequence axis, where its chunks are events", () => {
+  const out = layoutTrajectory(input(episodes("root.jsonl"), { axis: "sequence" }));
+  const request = out.rows[0]!.marks.find((m) => m.kind === "request" && m.seq === 3)!;
+  const [low, high] = out.domain;
+  const span = out.plot.right - out.plot.left;
+  const at = (v: number) => out.plot.left + ((v - low) / (high - low)) * span;
+  assert.ok(Math.abs(request.x - at(3)) < 1e-6);
+  assert.ok(Math.abs(request.x + request.w - at(9)) < 1e-6);
+  assert.ok(Math.abs(request.head - (at(4) - at(3))) < 1e-6);
+});
+
+test("a mark that is not a request has no span and no head", () => {
+  const out = layoutTrajectory(input(episodes("root.jsonl")));
+  for (const mark of out.rows[0]!.marks) {
+    if (mark.kind === "request") continue;
+    assert.equal(mark.span, null, `${mark.kind} at seq ${mark.seq}`);
+    assert.equal(mark.head, 0, `${mark.kind} at seq ${mark.seq}`);
+  }
+});
+
+test("the domain reaches the end of the last span", () => {
+  const list = episodes("root.jsonl");
+  const out = layoutTrajectory(input(list));
+  const ends = list.flatMap((e) => e.marks.map((m) => (m.span ? m.span.endTime : m.time)));
+  assert.ok(out.domain[1] >= Math.max(...ends));
 });

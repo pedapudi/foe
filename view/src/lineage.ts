@@ -95,3 +95,37 @@ export function sharedPrefix(a: string, b: string, summaries: Map<string, Summar
   }
   return best;
 }
+
+/**
+ * The tokens an episode spent: the input and output its answers reported,
+ * summed over the episode's own log. Cache reads are inside the input
+ * figure and are not added again.
+ */
+export function spentTokens(summary: Summary): number {
+  return summary.usage.input + summary.usage.output;
+}
+
+/**
+ * How much of a sibling group's spending each episode did, as a fraction of
+ * the largest spender among them, itself included. An episode with no
+ * sibling that spent anything has no share.
+ *
+ * Tokens are the quantity, because tokens are the one spendable thing a
+ * tree divides without overlap: a parent and its children draw on one
+ * budget pool, and every episode's spending is its own. Wall clock does
+ * not divide that way, since siblings that ran at the same time each hold
+ * the whole interval and their durations sum past their parent's.
+ */
+export function siblingShares(roots: TreeNode[]): Map<string, number> {
+  const shares = new Map<string, number>();
+  const group = (siblings: TreeNode[]) => {
+    let largest = 0;
+    for (const node of siblings) largest = Math.max(largest, spentTokens(node.summary));
+    for (const node of siblings) {
+      if (largest > 0) shares.set(node.id, spentTokens(node.summary) / largest);
+      group(node.children);
+    }
+  };
+  group(roots);
+  return shares;
+}

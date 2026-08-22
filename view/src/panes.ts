@@ -27,7 +27,8 @@ export interface PaneExtent {
   rightHeight: number;
 }
 
-export const PANE_DEFAULTS: PaneSizes = { sidebar: 300, details: 0.3, trajectory: 0.35 };
+/** The sidebar opens at the rail width `--dt-rail` in tokens.css names. */
+export const PANE_DEFAULTS: PaneSizes = { sidebar: 288, details: 0.3, trajectory: 0.35 };
 
 export const PANE_KEYS: (keyof PaneSizes)[] = ["sidebar", "details", "trajectory"];
 

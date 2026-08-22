@@ -13,19 +13,7 @@ import { clear, fmtDuration, h } from "../dom.js";
 import { TASK_SOURCE, layoutWorkflow } from "../workflow.js";
 import type { PlacedNode, Workflow, WorkflowLayout, WorkflowNode } from "../workflow.js";
 import { Hovercard } from "./hovercard.js";
-
-const SVG = "http://www.w3.org/2000/svg";
-
-function svg<K extends keyof SVGElementTagNameMap>(
-  tag: K,
-  attrs: Record<string, string | number | undefined> = {},
-): SVGElementTagNameMap[K] {
-  const el = document.createElementNS(SVG, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (value !== undefined) el.setAttribute(key, String(value));
-  }
-  return el;
-}
+import { figureSvg, svg } from "./svg.js";
 
 function text(cls: string, x: number, y: number, body: string, anchor?: string): SVGTextElement {
   const el = svg("text", { class: cls, x, y, "text-anchor": anchor });
@@ -127,14 +115,7 @@ export class WorkflowView {
   }
 
   private build(workflow: Workflow, layout: WorkflowLayout): SVGSVGElement {
-    const figure = svg("svg", {
-      class: "wf-graph",
-      width: layout.width,
-      height: layout.height,
-      viewBox: `0 0 ${layout.width} ${layout.height}`,
-      role: "img",
-      "aria-label": "declared workflow graph",
-    });
+    const figure = figureSvg("wf-graph", layout.width, layout.height, "declared workflow graph");
     const byName = new Map(workflow.nodes.map((n) => [n.name, n]));
     const placedByName = new Map(layout.nodes.map((n) => [n.name, n]));
 
