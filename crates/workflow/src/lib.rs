@@ -8,10 +8,8 @@
 
 pub mod bind;
 mod graph;
-pub mod plan;
 mod run;
 
-pub use plan::plan_report;
 pub use run::{render, run, WorkflowParams};
 
 use foe_core::workflow::{Node, WorkflowConfig};

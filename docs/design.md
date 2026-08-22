@@ -406,6 +406,9 @@ through the tree can spend more than the root's total. Structural caps on
 depth, lifetime episode count, and concurrency sit beside the spend caps. A
 spawn that would pass any cap fails as a tool call with a result naming the
 limit, and no child starts; the model reads that result like any other.
+A parent observes a child as settled only after it has appended `spawn/end`
+and `budget/release` and returned the child's reservation to the pool, so
+anything waiting on the child sees the account of it already closed.
 
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent
@@ -515,7 +518,7 @@ foe "task" --headless                                    run; no viewer; print t
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan --config FILE [--json]                          resolve the program, print it, its identity, and its transport
+foe plan --config FILE [--json]                          print the resolved program, its identity, its transport, and its effective authority
 foe tools [--config FILE]                                list tools, with sources when a config is given
 foe schema                                               print the JSON Schema for the configuration
 ```
@@ -588,7 +591,7 @@ not finished.
                              grants,      │    built-in model clients
                              budget,      │
                              identity,    ├── crates/workflow
-                             spawn,       │    graph scheduling, recovery, plan report
+                             spawn,       │    graph scheduling and recovery
                              teams,       │
                              exec,        ├── crates/context
                              landlock,    │    projection, cut, summarization prompt
@@ -596,7 +599,7 @@ not finished.
                              workflow     └── crates/view ◄── view/ (browser bundle)
                              config,           projection, HTTP, SSE, export
                              context seam
-                                                 crates/cli ◄── all of the above
+                                                 crates/cli ◄── all of the above; plan reports
 
    python/foe    a thin host: builds config, runs the binary, serves the protocol
    examples/     one runnable example per job, each checking its own result

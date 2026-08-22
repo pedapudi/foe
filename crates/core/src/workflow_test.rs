@@ -1,6 +1,7 @@
 use crate::config::resolve;
 use crate::identity::compute;
 use crate::test_util::{config_value, program_with, tmp};
+use crate::workflow::MAX_POSSIBLE_FIRINGS;
 use crate::{Config, ConfigError};
 use foe_log::RuntimeInfo;
 use serde_json::{json, Value};
@@ -41,11 +42,15 @@ fn with_graph(root: &std::path::Path, edit: impl FnOnce(&mut Value)) -> Value {
 }
 
 fn rejected(value: Value) -> String {
+    rejection(value).0
+}
+
+fn rejection(value: Value) -> (String, String) {
     let config: Config = serde_json::from_value(value).expect("the document parses");
     match resolve(&config) {
         Err(ConfigError::Invalid { key, rule }) => {
             assert!(!rule.is_empty());
-            key
+            (key, rule)
         }
         other => panic!("expected an Invalid error, got {other:?}"),
     }
@@ -172,4 +177,38 @@ fn identity_hashes_the_graph_and_the_recovery_texts() {
     assert_ne!(capped.hash, base.hash, "max_interventions participates");
     let reprogrammed = hash(&|v| v["workflow"]["nodes"]["propose"]["model"]["instructions"]["r"] = json!("Other."));
     assert_ne!(reprogrammed.hash, base.hash, "a model node's program participates");
+}
+
+/// docs/workflow.md "Firing": the possible-firing count sums each node's
+/// effective `max_fires`, and a nested workflow node multiplies its own
+/// count by one plus the count of the graph it holds. A graph above the
+/// runtime bound is refused before anything runs.
+#[test]
+fn a_graph_declares_how_many_firings_it_can_perform() {
+    let plain: crate::workflow::WorkflowConfig = serde_json::from_value(json!({ "nodes": {
+        "a": { "tool": "t" },
+        "b": { "tool": "t", "follows": ["a"], "max_fires": 3 }
+    } }))
+    .unwrap();
+    assert_eq!(plain.possible_firings(), 4, "one firing of `a` and three of `b`");
+
+    let nested: crate::workflow::WorkflowConfig = serde_json::from_value(json!({ "nodes": {
+        "outer": { "max_fires": 3, "workflow": { "nodes": {
+            "inner": { "tool": "t", "max_fires": 2, "terminal": true }
+        } } }
+    } }))
+    .unwrap();
+    assert_eq!(nested.possible_firings(), 9, "three firings of `outer`, each running two of `inner`");
+
+    let root = tmp("workflow-firing-bound");
+    let over = with_graph(&root, |value| {
+        value["workflow"] = json!({ "nodes": {
+            "loop": { "tool": "list", "followed_by": ["back"], "max_fires": 4096 },
+            "back": { "tool": "grep", "followed_by": ["loop"], "max_fires": 4096, "terminal": true }
+        } });
+    });
+    let (key, rule) = rejection(over);
+    assert_eq!(key, "workflow");
+    assert!(rule.contains("8192 possible firings"), "{rule}");
+    assert!(rule.contains(&MAX_POSSIBLE_FIRINGS.to_string()), "{rule}");
 }

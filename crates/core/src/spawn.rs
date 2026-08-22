@@ -156,6 +156,14 @@ pub struct ChildRun {
 }
 
 impl ChildRun {
+    /// A handle whose settlement its holder publishes, for a layer that
+    /// owes work after the child process ends and before its caller may
+    /// observe the child as settled.
+    pub(crate) fn pending() -> (watch::Sender<Option<Settled>>, Self) {
+        let (tx, rx) = watch::channel(None);
+        (tx, Self { rx })
+    }
+
     pub async fn wait(self) -> (Outcome, Usage) {
         let settled = self.settle().await;
         (settled.outcome, settled.usage)
@@ -233,9 +241,14 @@ impl ProcessSpawner {
         amount
     }
 
-    /// Whether a child running `program` could start children in turn.
+    /// Whether a child running `program` could start children in turn. A
+    /// spawn grant and a workflow model node are the two sources of
+    /// descendants, and the model node may sit at any workflow depth.
     fn spawns_below(&self, program: &ChildProgram) -> bool {
-        self.config.budget.max_depth > 1 && !program.grants.spawn.is_empty()
+        let workflow_spawns = program.workflow.as_ref().is_some_and(|wf| wf.contains_model_node());
+        self.config.budget.max_depth > 1
+            && program.budget.max_depth > 0
+            && (!program.grants.spawn.is_empty() || workflow_spawns)
     }
 
     /// A fresh child id. A caller that reserves budget under the id before
@@ -334,7 +347,7 @@ impl ProcessSpawner {
         let stderr = child.stderr.take().ok_or_else(|| CapError::Invalid("child has no stderr".into()))?;
         self.router.inner.lock().unwrap().children.insert(child_id.clone(), stdin);
         relay_stderr(child_id.clone(), stderr);
-        let (tx, rx) = watch::channel(None);
+        let (tx, run) = ChildRun::pending();
         let reader = Reader {
             child_id: child_id.clone(),
             uplink: self.uplink.clone(),
@@ -347,7 +360,7 @@ impl ProcessSpawner {
             let _ = child.wait();
             let _ = tx.send(Some(settled));
         });
-        Ok(SpawnHandle { child_id, dir, run: ChildRun { rx } })
+        Ok(SpawnHandle { child_id, dir, run })
     }
 }
 

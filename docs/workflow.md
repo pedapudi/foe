@@ -81,9 +81,9 @@ decides, within those bounds, what to do.
 ```
 
 A `workflow` key in a configuration replaces the free loop for that
-episode. The configuration's `tools`, `grants`, `budget`, and `done_when`
-become the workflow's ceiling: every node draws from them and none exceeds
-them.
+episode. The configuration's authority and budget become the workflow's
+ceiling: every node draws from them and none exceeds them. "Model nodes"
+below states the rule for each field.
 
 The invocation task, the configuration's `task` string, enters the graph
 through one built-in source named `task`. A node that lists `task` in its
@@ -154,11 +154,34 @@ sees.
 ### Model nodes
 
 A model node is a full episode. Its `model` block is a child program in the
-sense of [config.md](config.md#programs): instructions, tools, grants,
-budget, and termination, each a subset of the workflow's. The node's inputs
-become the child's task, one section per input, labeled with the input's
-name and carrying its rendered output; the `task` section comes first when
-the node follows `task`. The child runs the
+sense of [config.md](config.md#programs). Construction applies these
+ceiling rules to it, and to every program below it, against the program
+that contains the workflow.
+
+- Every name in `tools` appears in the containing program's `tools`.
+- A `tool_defs` entry names the same executable as the containing entry of
+  that name. Its working directory lies within that entry's working
+  directory, its `network` is no wider, and its `timeout_seconds` is no
+  larger. Its description and its instruction may differ, because they
+  change what the model reads rather than what the process may do.
+- A `host_tools` entry equals the containing entry of that name.
+- Read and write roots lie within the containing roots.
+- Every `grants.spawn` name appears in the containing program's
+  `grants.spawn`, and the same-named `programs` entry is itself within the
+  containing entry of that name.
+- `model_calls`, `tokens`, `seconds`, `max_depth`, and `loop_threshold` are
+  each at most the containing program's value. An omitted `tokens` or
+  `seconds` draws from the containing budget.
+- The `model` and `sandbox` blocks are inherited and cannot be declared.
+
+`max_episodes` and `max_concurrent` carry no ceiling here. The budget pool
+clamps the episode share a child receives when it reserves, and
+`max_concurrent` counts one episode's own direct children rather than the
+whole tree's, so a node's value is not a claim on the containing program's.
+
+The node's inputs become the child's task, one section per input, labeled
+with the input's name and carrying its rendered output; the `task` section
+comes first when the node follows `task`. The child runs the
 ordinary agent loop with the ordinary tools, and its outcome value is the
 node's output.
 
@@ -219,6 +242,19 @@ episode's budget, which bounds everything. `foe plan` reports every cycle
 and the bound that closes it. A node that would fire beyond its
 `max_fires` ends the episode as `blocked` with `recovery-exhausted`.
 
+A graph states how much work it can perform before it runs. Its possible
+firings are the sum, over every node, of that node's effective `max_fires`;
+a nested workflow node contributes its own `max_fires` multiplied by one
+plus the possible firings of the graph it holds, because each firing of the
+node runs that graph once from the start. A graph whose possible firings
+exceed 4,096 is refused at construction, naming the count and the bound.
+That number is a runtime constant rather than a configuration key: an
+episode running unattended needs a bound on its work that a reader can
+check before it starts, and `max_fires` multiplies through nesting. The
+bound also caps the node count and the nesting depth, because every node
+contributes at least one firing. `foe plan` reports the count beside the
+bound.
+
 A cycle needs a node outside it to start it. Because a branch edge makes
 its target a successor, a label that points back at the graph's only
 source leaves that source with a predecessor and no node ready at the
@@ -230,7 +266,13 @@ branch label names, and let that node feed the cycle.
 Firing a node a second time re-fires every node downstream of it, because
 their inputs became fresh. Recovery uses this. Model nodes fire at most
 `budget.max_concurrent` at a time; a ready model node waits for a running
-one when the cap is reached.
+one when the cap is reached. A tool node whose effect is `pure` or `reads`
+runs beside any other node. A tool node whose effect is `writes`, `execs`,
+or `spawns` runs alone, in node-start order, and the same holds for a
+verifier with such an effect. The order covers the whole episode: a node of
+a nested workflow waits for an effectful node of the graph containing it.
+This is the effect rule the agent loop applies to one turn's tool calls,
+applied to one episode's firings.
 
 ### Completion
 
@@ -408,6 +450,10 @@ A workflow episode is an episode. It has one log, one budget pool, one
 outcome, and one identity. Its model nodes are child episodes and obey
 every rule of [subagents](design.md#subagents-and-teams). Its tool nodes
 dispatch through the ordinary registry with the ordinary effect checks.
+A parent that spawns a child whose program carries a workflow with a model
+node reserves descendant episode capacity for that child, as it does for a
+child holding a `grants.spawn` entry. The rule applies at every level of
+nested workflows.
 The viewer renders the graph with each firing linked to its child log, so
 a reader moves from the graph to the conversation that produced a value in
 one step.

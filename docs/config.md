@@ -16,7 +16,8 @@ Three rules shape the format.
 
 `foe schema` emits a JSON Schema for this format, so an editor can validate a
 document and offer completions. `foe plan --config FILE` prints the resolved
-program and its identity without running anything.
+program, its identity, and every tool definition the program's reachable
+tree can invoke, without running anything.
 
 ## A complete example
 
@@ -226,6 +227,14 @@ exceed it, and the child reports back what its whole subtree used. A child
 program that declares a limit larger than the share it receives runs under
 the share.
 
+The episode share a spawn asks for depends on whether the child can start
+descendants at all. A child that can start none asks for one episode, so a
+leaf does not hold its parent's whole allowance against its siblings. A
+child that can start descendants asks for the `max_episodes` its own
+program declares. An entry in `grants.spawn` and a model node in the
+child's `workflow` each make the child able to start descendants, and the
+model node counts at every level of nested workflows.
+
 `max_concurrent` and `loop_threshold` apply to one episode. `max_concurrent`
 counts the direct children of the episode that declares it, so a child with
 its own children answers to its own value. The number of episodes running at
@@ -354,18 +363,24 @@ is a full configuration document without `version`, `task`, `model`, or
 
 A child program's grants must be a subset of its parent's, checked at
 construction. Each child program's identity participates in the parent's
-identity.
+identity. Its tool list may differ from its parent's. The effective tool
+authority `foe plan` reports covers the root, each descendant program a
+`grants.spawn` entry reaches, and each workflow model node. A declaration
+no such path reaches stays in the resolved program and is absent from the
+report, because no episode can invoke it.
 
 ### `workflow`
 
 Object. Optional. A declared graph of nodes that replaces the free loop
 for this episode. [workflow.md](workflow.md) specifies every key under it
-and every construction rule. The document's `tools`, `grants`, `budget`,
-and `done_when` are the ceiling the graph draws from: a tool node names a
-tool in `tools`, and a model node's program is a child program in the sense
-of `programs`, checked to be a subset the same way. A child program may
-carry a `workflow` of its own. The graph participates in identity as
-workflow.md "Identity" lists.
+and every construction rule. The document's authority and budget are the
+ceiling the graph draws from: a tool node names a tool in `tools`, and a
+model node's program is a child program in the sense of `programs` whose
+tools, configured executable authority, host tool definitions, filesystem
+grants, spawn grants with their descendant programs, and spend limits all
+lie within the document's own. A child program may carry a `workflow` of
+its own. The graph participates in identity as workflow.md "Identity"
+lists.
 
 ### `task`
 
