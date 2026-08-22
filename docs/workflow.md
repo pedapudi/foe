@@ -185,7 +185,9 @@ the two things it may decide.
 A node fires when every one of its inputs has produced a value and at
 least one edge into it has carried a fresh value since this node last
 fired. A node with no edge into it, or with only the edge from `task`,
-fires once, at the start. An edge from a
+fires once, at the start. A branch edge counts as an edge into its target,
+so a node that any `branches` label lists is never a graph source, even
+when nothing else points at it. An edge from a
 node without `branches` is fresh after every firing of its source; an edge
 from a node with `branches` is fresh only when the chosen label lists the
 target, or when no label lists it. A node waits while any ancestor of it
@@ -200,6 +202,14 @@ lies on a cycle, which the runtime requires at construction, and the
 episode's budget, which bounds everything. `foe plan` reports every cycle
 and the bound that closes it. A node that would fire beyond its
 `max_fires` ends the episode as `blocked` with `recovery-exhausted`.
+
+A cycle needs a node outside it to start it. Because a branch edge makes
+its target a successor, a label that points back at the graph's only
+source leaves that source with a predecessor and no node ready at the
+start. Such a graph passes construction and `foe plan`, and the episode
+ends immediately as `failed` with `the workflow stalled: no node is ready
+and no terminal node completed`. Place the loop's entry in a node that no
+branch label names, and let that node feed the cycle.
 
 Firing a node a second time re-fires every node downstream of it, because
 their inputs became fresh. Recovery uses this. Model nodes fire at most
