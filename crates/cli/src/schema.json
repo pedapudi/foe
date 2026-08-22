@@ -97,7 +97,7 @@
         "properties": {
           "description": { "description": "Sent to the model in the tool schema.", "type": "string", "minLength": 1 },
           "instruction": { "description": "Appended to the system prompt.", "type": "string" },
-          "params": { "description": "JSON Schema for the arguments.", "type": "object" },
+          "params": { "description": "JSON Schema for the arguments, in the subset docs/config.md lists.", "type": "object" },
           "effect": { "type": "string", "enum": ["pure", "reads", "writes", "execs", "spawns"] }
         }
       }
@@ -135,7 +135,7 @@
       "properties": {
         "verify": { "description": "Name of a tool in tools; the episode completes when the model finishes and this tool returns no findings.", "type": "string", "minLength": 1 },
         "retries": { "description": "How many times findings are fed back.", "type": "integer", "minimum": 0, "default": 2 },
-        "returns": { "description": "A JSON Schema; the episode completes when the model calls the synthesized return tool with a conforming value.", "type": "object" }
+        "returns": { "description": "A JSON Schema in the subset docs/config.md lists; the episode completes when the model calls the synthesized return tool with a conforming value.", "type": "object" }
       }
     },
     "context": {

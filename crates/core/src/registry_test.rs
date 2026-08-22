@@ -1,4 +1,4 @@
-use super::{conforms, resolve_specs, Handles, Registry, Source};
+use super::{resolve_specs, Handles, Registry, Source};
 use crate::grants::{RootReader, RootWriter};
 use crate::harness_text as text;
 use crate::test_util::{program_with, spec, tmp, FakeExecutor, Probe, Verifier};
@@ -167,18 +167,58 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
     assert!(rejected.is_error && rejected.rendered.unwrap().contains("value.n"));
 }
 
+/// docs/config.md "JSON Schema subset": dispatch is the one place a call's
+/// arguments are checked, so a host tool's declared `params` binds the model
+/// before the host process sees the call.
+#[tokio::test]
+async fn dispatch_checks_host_tool_arguments_against_the_declared_schema() {
+    let root = tmp("registry-host-args");
+    let program = program_with(&root, |v| {
+        v["tools"] = json!(["lookup"]);
+        v["host_tools"] = json!({ "lookup": {
+            "description": "lookup", "effect": "pure",
+            "params": {
+                "type": "object", "additionalProperties": false, "required": ["key", "limit"],
+                "properties": { "key": { "type": "string", "minLength": 1 }, "limit": { "type": "integer", "minimum": 1 } }
+            }
+        }});
+    })
+    .unwrap();
+    let registry = Registry::new(&program, vec![probe("lookup", Effect::Pure)], vec![]).unwrap();
+    let handles = Handles::default();
+    let ok =
+        registry.dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 2 })), 1, root.clone(), None).await;
+    assert!(!ok.is_error, "{:?}", ok.rendered);
+    let bad =
+        registry.dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 0 })), 1, root.clone(), None).await;
+    assert!(bad.is_error);
+    assert!(bad.rendered.unwrap().contains("limit"));
+    let extra = registry
+        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 1, "x": 1 })), 1, root.clone(), None)
+        .await;
+    assert!(extra.is_error && extra.rendered.unwrap().contains("`x`"));
+}
+
+/// AGENTS.md: a specification rule that can be tested has a test. Every
+/// parameter schema the runtime itself writes stays inside the subset
+/// `crate::schema` implements, so no built-in tool advertises a constraint
+/// dispatch would ignore.
 #[test]
-fn conforms_checks_the_supported_schema_subset() {
-    let schema = json!({
-        "type": "object", "additionalProperties": false, "required": ["items"],
-        "properties": { "items": { "type": "array", "items": { "type": ["string", "null"] } }, "kind": { "enum": ["a", "b"] } }
-    });
-    assert!(conforms(&schema, &json!({ "items": ["x", null], "kind": "a" })).is_ok());
-    assert!(conforms(&schema, &json!({ "items": [1] })).unwrap_err().contains("value.items[0]"));
-    assert!(conforms(&schema, &json!({ "items": [], "kind": "c" })).unwrap_err().contains("one of"));
-    assert!(conforms(&schema, &json!({ "items": [], "extra": 1 })).unwrap_err().contains("`extra`"));
-    assert!(conforms(&schema, &json!({})).unwrap_err().contains("`items`"));
-    assert!(conforms(&json!({ "type": "number" }), &json!(2)).is_ok(), "an integer is a number");
+fn every_runtime_written_parameter_schema_stays_inside_the_implemented_subset() {
+    let root = tmp("registry-own-schemas");
+    let exec = root.join("t.sh");
+    std::fs::write(&exec, "").unwrap();
+    let program = program_with(&root, |v| {
+        v["tools"] = json!(["t", "block"]);
+        v["tool_defs"] = json!({ "t": { "exec": exec, "description": "configured" } });
+        v["done_when"] = json!({ "returns": { "type": "object", "properties": { "n": { "type": "integer" } } } });
+    })
+    .unwrap();
+    let specs = resolve_specs(&program, &[spec("p", Effect::Pure)]).unwrap();
+    assert!(specs.iter().any(|s| s.name == text::RETURN_NAME), "the synthesized return tool is present");
+    for s in specs {
+        crate::schema::check(format!("tools.{}.params", s.name), &s.params).unwrap();
+    }
 }
 
 #[tokio::test]

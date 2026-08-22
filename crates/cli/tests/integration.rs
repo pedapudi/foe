@@ -605,10 +605,10 @@ fn every_example_conforms_to_the_schema_and_parses() {
     let inlined = inline(&schema, &schema["$defs"], 4);
     for (name, text) in examples() {
         let document: Value = serde_json::from_str(&text).unwrap();
-        foe_core::registry::conforms(&inlined, &document).unwrap_or_else(|e| panic!("{name}: {e}"));
+        foe_core::schema::conforms(&inlined, &document).unwrap_or_else(|e| panic!("{name}: {e}"));
         foe_core::config::parse(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
     }
     let mut broken: Value = serde_json::from_str(&examples()[0].1).unwrap();
     broken["budget"]["model_calls"] = json!("many");
-    assert!(foe_core::registry::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
+    assert!(foe_core::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
 }
