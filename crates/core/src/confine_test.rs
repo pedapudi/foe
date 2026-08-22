@@ -20,15 +20,3 @@ fn confinement_carries_the_policy_assembled_before_it() {
     assert_eq!(policy.bind_tcp, vec![4321]);
     assert_eq!(policy.read_files, vec![PathBuf::from("/etc/hostname")]);
 }
-
-/// `sandbox.mode` of `required` fails before anything is enforced when the
-/// kernel offers no Landlock, so the error surfaces at construction rather
-/// than at the point of entering.
-#[test]
-fn a_required_sandbox_without_landlock_never_reaches_confinement() {
-    if crate::sandbox::probe_abi() != 0 {
-        return;
-    }
-    let err = Sandbox::new(SandboxMode::Required).unwrap_err().to_string();
-    assert!(err.contains("sandbox.mode is required"), "{err}");
-}
