@@ -33,7 +33,7 @@ def mutation_usage(mutation_id: str, fs: foe.ReadFS) -> dict:
 
 
 @mutation_usage.render
-def _(value: dict) -> str:
+def mutation_usage_summary(value: dict) -> str:
     return f"{value['count']} references; first: {value['paths'][:5]}"
 
 
@@ -289,6 +289,12 @@ the model sees. Without one, `rendered` is omitted and the runtime renders
 the value compactly. A function may also return a `foe.ToolResult(value,
 rendered, is_error)` to set all three fields itself.
 
+The decorator returns the function unchanged, so the name it is bound to
+still refers to it. `HostTool` holds the renderer privately and offers no
+accessor for it, so binding the decorated function to `_` leaves the
+program no way to call it again. A program that needs the text the model
+saw reads the `rendered` field of the `tool/result` event from the log.
+
 An exception inside the function becomes an error result: `value` is
 `{"error": "<type>: <message>"}`, `rendered` is the same message, and
 `is_error` is true. The model receives it as data and the episode
@@ -312,6 +318,25 @@ also accepts `returns=` so that the verifier checks a typed return.
 
 `foe.Returns(Experiment)` derives the `done_when.returns` schema from a
 dataclass or a `TypedDict`; a JSON Schema object is accepted as given.
+
+### The shape of the `return` call
+
+A `done_when.returns` schema makes the runtime synthesize a built-in tool
+named `return`. The tool's parameters are an object with one required
+property, `value`, whose schema is the declared one. The call the model
+makes is therefore `{"value": {…}}`, with the declared object nested one
+level down. A call that passes the declared object at the top level fails
+the tool, and the episode continues until the budget is spent:
+
+```
+The arguments for `return` are invalid: value: expected type object, found null
+```
+
+The wrapper exists only on the call. `foe.Completed.value` holds the
+declared object itself, so a program reading the outcome never sees the
+`value` key. A transport, a test double, or an evaluation harness that
+produces the `return` call on the model's behalf must write the wrapper,
+because nothing between the model and the runtime adds it.
 
 ## Capabilities become effects
 
