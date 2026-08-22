@@ -128,10 +128,13 @@ specifies the conformance checks and the model-backed benchmark protocol.
 The model-backed micro evaluation runs five assessed tasks with combined
 declared limits of 56,000 tokens. Each strict success requires an accepted
 artifact, a completed outcome, the intended harness mechanism, a conformant
-trace, and reported usage within budget:
+trace, and reported usage within budget. It calls a real provider, so it
+prints the largest spend it can incur and launches nothing until
+`--confirm-spend` is given:
 
 ```sh
 bazel run //evals:micro -- --model openai/gpt-5.6-sol
+bazel run //evals:micro -- --model openai/gpt-5.6-sol --confirm-spend
 ```
 
 ## Embedding

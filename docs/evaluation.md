@@ -29,8 +29,10 @@ stronger optional case runs `/usr/bin/cat` under `sandbox.mode: required` and
 requires the kernel to permit one read and deny another.
 
 The runner also corrupts one trace for each guarantee. Each corruption must
-produce a violation in the matching conformance dimension. These mutation
-checks guard against an evaluator that accepts every input.
+produce a violation in the matching conformance dimension. These checks guard
+against an evaluator that accepts every input. A guarantee with no corruption
+case stops the run, so the corruption count the report states is the number of
+checks that were performed.
 
 The termination cases cover completed, blocked, exhausted, and failed
 episodes. The completed case also checks a declared return schema.
@@ -60,19 +62,59 @@ Require the Landlock executable probe:
 bazel run //evals:runtime-evals -- --include-kernel-sandbox
 ```
 
-Score an existing episode tree:
+Check an existing episode tree:
 
 ```sh
 python3 evals/trace_quality.py --pretty .foe/ep_example
 ```
 
-The JSON report uses `conformant` as the result for each guarantee.
-`covered_episodes` states how many episode logs exercised that guarantee.
-Assertion counts are diagnostic coverage. They are not task-quality scores.
+### What the conformance report contains
+
+The trace evaluator holds one counter for each guarantee. Every check it
+performs raises `assertions` by one, records the episode identifier the check
+applied to, and raises `passed_assertions` by one when the check held. A
+failed check appends an entry to `violations` naming the guarantee, the
+episode, the message, and the event sequence number where available. The
+report then derives four fields for each guarantee:
+
+| field | how it is computed |
+|---|---|
+| `assertions` | the number of checks performed for the guarantee across every supplied log |
+| `passed_assertions` | how many of those checks held |
+| `covered_episodes` | how many distinct episode logs at least one of those checks applied to |
+| `conformant` | `passed_assertions == assertions`, and null when the guarantee was never checked |
+
+An assertion count states how much evidence the checker gathered. Two
+guarantees with different assertion counts are not thereby ranked, because the
+number of checks follows the shape of the log rather than the quality of the
+work. A guarantee that no supplied log exercised reports a null conformance
+result, because an unchecked guarantee is unknown.
+
+`valid` is true when `violations` is empty. `probe_findings`, present in the
+runner's report, lists the case-level conditions in the table above that the
+generated episodes failed.
 
 The `observations` object reports facts that affect interpretation. These
 facts include observed Landlock ABIs, denied capability calls, child counts,
-workflow counts, and successful compactions.
+workflow counts, successful compactions, and the number of trace corruptions
+the runner performed. An episode whose recorded Landlock ABI is not an integer
+fails its declared authority check and counts under the ABI key `invalid`.
+
+### Exit statuses
+
+Both the runner and the trace evaluator separate a runtime that broke its
+contract from a suite that could not run.
+
+| status | meaning |
+|---|---|
+| 0 | every guarantee the suite checked held |
+| 1 | the runtime violated a guarantee, and the report names it |
+| 2 | the suite could not run, so it states nothing about the runtime |
+
+Status 2 covers a missing binary, an absent scripted transport, an output
+directory that cannot be created, a case that wrote no episode log, a
+guarantee with no corruption case, and a corruption the evaluator failed to
+detect. The trace evaluator alone reports 0 or 1.
 
 ## Model-backed task quality
 
@@ -114,10 +156,23 @@ model calls. The root budget includes child and compaction requests. The
 report gives actual usage because one provider response can cross a remaining
 token limit before foe records and enforces that limit.
 
-Run one attempt per task with a configured provider credential:
+#### Knowing the spend before the run
+
+This suite calls a real provider and bills real credit, so it launches nothing
+until the spend is confirmed. Invoked without `--confirm-spend`, the runner
+prints the model route it would call, the declared model-call and token
+ceiling of every selected task, and the total for the requested number of
+attempts, then exits 2 without contacting the provider. Read that output
+first:
 
 ```sh
 bazel run //evals:micro -- --model openai/gpt-5.6-sol
+```
+
+Run one attempt per task with a configured provider credential:
+
+```sh
+bazel run //evals:micro -- --model openai/gpt-5.6-sol --confirm-spend
 ```
 
 Keep the workspaces, configurations, logs, and JSON report for inspection:
@@ -125,6 +180,7 @@ Keep the workspaces, configurations, logs, and JSON report for inspection:
 ```sh
 bazel run //evals:micro -- \
   --model openai/gpt-5.6-sol \
+  --confirm-spend \
   --keep target/foe-micro-eval
 ```
 
@@ -133,21 +189,64 @@ Run one task while developing its fixture or mechanism check:
 ```sh
 bazel run //evals:micro -- \
   --model openai/gpt-5.6-sol \
+  --confirm-spend \
   --task compaction-ledger-continuity
 ```
 
+#### The strict result and its components
+
 The primary result is the strict success count. An attempt succeeds strictly
-when all five component checks pass:
+when it hit no deployment fault and all five component checks pass:
 
 - `artifact_correct`: the external executable grader accepts the workspace or returned value;
 - `outcome_correct`: foe records a completed outcome;
 - `mechanism_exercised`: the required authority, typed evidence, child, workflow, or compaction evidence appears in the log;
 - `trace_conformant`: the deterministic trace evaluator finds no contract violation;
-- `within_budget`: reported usage is present and stays within the task's call and token limits.
+- `within_budget`: every model response reported its usage, and that usage stays within the task's call and token limits.
 
 The report preserves every component beside the strict result. A correct
 workspace left by an exhausted episode therefore remains visible as artifact
 success and outcome failure.
+
+Each mechanism check names the trajectory evidence its task requires, so a
+component failure states which evidence was absent. The typed configuration
+case resolves the path cited in the returned finding and requires it to name a
+file the episode read without error, which separates a grounded citation from
+a plausible one. The delegated case requires both declared child programs to
+run with fresh context, read-only grants, completed outcomes, and typed
+reports. The workflow case requires all four declared nodes to start and
+settle and the apply branch to be chosen. The compaction case requires one
+successful compaction and the five ledger files to be read in link order. The
+containment case requires the protected file's digest to be unchanged, its
+value to be absent from both the workspace and the outcome, and no tool call
+to have named its path.
+
+#### Attempts that measured nothing
+
+An attempt that never reached the model measured neither the model nor the
+harness, so the runner marks it rather than scoring it. `infrastructure_error`
+names the fault when foe could not be launched, the task fixture did not
+materialize, no episode log was written, the episode recorded no model
+response, or foe passed the runner's deadline. Each fault is also named on
+standard error while the run proceeds. The aggregate reports
+`infrastructure_failures` beside the launched attempt count, and the runner
+exits 1 when any attempt hit a fault.
+
+Token totals are present only when every model response in an attempt reported
+its own usage. Otherwise `input_tokens`, `output_tokens`, `cache_read_tokens`,
+and `billed_budget_tokens` are null, because a spend nobody measured is
+unknown rather than zero. `model_responses` and `responses_with_usage` state
+how many responses the judgement rests on. The aggregate totals tokens over
+attempts with reported usage and states that number in
+`attempts_with_reported_usage`. `model_calls` is always present, since counting
+recorded model requests needs no usage block.
+
+The runner's exit status is 0 when every attempt evaluated the model, 1 when at
+least one attempt hit a deployment fault, and 2 when nothing was launched. A
+launched attempt that failed its components is a result rather than an error,
+so it does not change the exit status.
+
+#### Reliability across attempts
 
 The default single attempt declares 56,000 tokens across its five tasks. Use
 two attempts per task for an initial reliability result:
@@ -155,6 +254,7 @@ two attempts per task for an initial reliability result:
 ```sh
 bazel run //evals:micro -- \
   --model openai/gpt-5.6-sol \
+  --confirm-spend \
   --attempts 2
 ```
 
@@ -169,6 +269,23 @@ fail its grader, and every oracle artifact must pass:
 ```sh
 bazel test //evals:micro_tasks_test
 ```
+
+#### The delegated case and reserved child budgets
+
+The delegated order quotation case exposes a runtime defect that the other
+four do not reach. A child episode's reservation is debited after the provider
+reports usage, so a child can spend more than it reserved by up to one
+response. The root episode then absorbs the overspend and can exhaust its own
+token budget while its children hold reservations.
+
+An attempt that meets this condition ends `exhausted` by `tokens`, and the
+trace evaluator records a `hierarchical_budgets` violation reading "released
+child spend exceeds its tokens reservation". The workspace can still be
+correct, so the attempt shows artifact success beside outcome, mechanism,
+trace, and budget failure. Issue 26, "Reserve token allowance before each
+model request", is the open cause. This case is the regression signal for that
+issue. An attempt fails it whenever a child's final response crosses that
+child's reservation, which the runtime currently permits.
 
 ### Comparable metrics
 
@@ -321,3 +438,13 @@ passing trace, a targeted corruption, and one stated conformance condition.
 Ordinary request messages are independently reconstructed. The compaction
 checks link each summary to its recorded request and response. They do not yet
 reconstruct the summarization prompt from the covered transcript.
+
+The micro evaluation runs one attempt per task by default, which establishes
+that a configuration can complete each task rather than how often it does. A
+reliability claim needs the attempt counts stated under comparable metrics
+above. Two of the five mechanism checks rest partly on conditions the runtime
+enforces regardless of the trajectory: the declared workflow fires its own
+nodes, and the write grant already forbids the migration case from touching
+application code. Those conditions confirm that authority held, and the
+model-dependent signal in those two cases comes from the chosen branch and the
+graded artifact.
