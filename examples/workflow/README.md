@@ -44,17 +44,24 @@ bazel test //examples/workflow:workflow_test
    task ──────┐
    survey ──► propose ──apply──► apply ■
               │
-              └──nothing──► end
+              └──nothing──► (no successor: the workflow ends)
 ```
 
-- `task` is the built-in source carrying the configuration task.
+The graph has three declared nodes. `foe plan --config FILE` prints the same
+shape and reports the completion as `terminal apply`.
+
+- `task` is the built-in source carrying the configuration task. It is not a
+  declared node.
 - `survey` runs the built-in `grep` tool over the disposable project.
 - `propose` receives the task and grep result. It returns a typed plan and
   selects the `apply` branch.
 - `apply` receives the plan and replaces the TODO implementation with
-  `return left + right`.
-- `check` reads the changed file. Empty standard output accepts the result.
-  Each output line would become a verifier finding and re-fire `apply`.
+  `return left + right`. It is the terminal node.
+- The `nothing` label lists no successor, so choosing it ends the workflow
+  with the value `propose` produced.
+- `check` is `apply`'s verifier rather than a node. Empty standard output
+  accepts the result. Each output line would become a verifier finding and
+  re-fire `apply`.
 
 The root program defines the maximum tools and paths available to child
 nodes. This limit is the authority ceiling. Each model node runs as a child
