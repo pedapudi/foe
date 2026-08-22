@@ -12,10 +12,12 @@ Three helpers shared by the examples.
 
 An example that runs without a provider credential names the `exec` provider
 and points it at a transport script. That script runs as a configured
-executable, so `Policy::for_executable` grants it the episode's read roots,
-plus execute and read on its own file, and nothing else. A script in this
-directory therefore cannot import `chunks.py` from this directory: neither
-file lies under a read root, and Landlock denies the read.
+executable, so `Policy::for_executable` grants it the episode's read roots
+and write roots, execute access on its own file, outbound TCP, the resolver
+configuration, and nothing else. It has no log directory of its own. A
+script in this directory therefore cannot import `chunks.py` from this
+directory: neither file lies under a read root, and Landlock denies the
+read.
 
 A runner copies both files into the disposable project it creates, and points
 `model.exec` at the copy.
