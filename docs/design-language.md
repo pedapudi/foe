@@ -242,6 +242,24 @@ Figures are line art in the diastil drawing register.
   pixels down the row's leading edge. A filled row would be the loudest
   element on a page that is otherwise hairlines, and in a figure whose rows
   hold bars a fill competes with the bars inside it.
+- A state a row carries is drawn as a mark. A word inside a bordered
+  rectangle puts a border and a fill on a page whose every other element is
+  a hairline, and it says less than a mark of the same size. The order of
+  preference is a drawn mark first, plain text in faint mono second, and a
+  bordered rectangle only where neither serves. A quantity stays text,
+  because a reader wants the number. A value drawn from a set of more than
+  about three stays text, because an alphabet that large is learned rather
+  than read. A control a person presses keeps its border, because a border
+  is how a control states that it is pressable.
+- A mark reuses the shape the trajectory gives the same meaning, so one
+  grammar covers the timeline and the conversation. `src/marks.ts` holds
+  every mark as geometry in one box, and the stylesheet gives each one its
+  role colour; no mark names a colour of its own. A mark stands `1.2em`
+  tall in the line it joins and strokes `currentColor` at 1.2 pixels, which
+  does not scale with the box. A ring must keep a hole of at least three
+  device pixels at the lowest page scale, because a smaller hole fills in
+  and the ring reads as a dot. The word a mark replaces is its accessible
+  name and the heading of the hovercard it opens.
 - Small mono labels with leader ticks. A legend only when two channels
   appear. A caption that states what to see.
 - A gridline only where a length is read off the figure. A figure whose

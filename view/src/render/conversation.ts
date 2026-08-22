@@ -3,7 +3,11 @@
 import { clear, compact, fmtDuration, fmtInt, fmtTime, h, lazyDetails, lineCount, pretty } from "../dom.js";
 import type { Child } from "../dom.js";
 import type { AssistantRow, CompactionRow, HeaderRow, NoteRow, Patch, Row, ToolRow, UserRow } from "../fold.js";
+import { MARKS } from "../marks.js";
+import type { MarkKind } from "../marks.js";
 import { promptParts, toolParameters } from "../prompt.js";
+import { Hovercard } from "./hovercard.js";
+import { markSvg } from "./mark.js";
 import { renderMarkdown, renderToolText } from "./markup.js";
 import { languageForPath } from "./shape.js";
 import { obj, str } from "../types.js";
@@ -154,18 +158,21 @@ function renderToolSchema(tool: ToolSchema): HTMLElement {
 }
 
 function renderUser(row: UserRow): HTMLElement {
-  const meta: string[] = [];
+  // Where the message came from leads the row's metadata. Provenance takes
+  // one of six words, and a six-glyph alphabet would be learned rather than
+  // read, so it stays text beside the sender and the message id.
+  const meta: string[] = [row.source];
   if (row.from) meta.push(`from ${row.from}`);
   if (row.messageId) meta.push(row.messageId);
   return h(
     "div",
     { class: "row user", "data-key": row.key },
     gutter(row),
-    h("div", { class: "role" }, "user", h("span", { class: "badge source" }, row.source)),
+    h("div", { class: "role" }, "user"),
     h(
       "div",
       { class: "body" },
-      meta.length ? h("div", { class: "meta" }, meta.join(" · ")) : null,
+      h("div", { class: "meta" }, meta.join(" · ")),
       row.content.length ? row.content.map((b, i) => renderBlock(b, `block:${i}`)) : h("pre", { class: "text" }, "(no content)"),
     ),
   );
@@ -241,9 +248,11 @@ function renderAssistant(row: AssistantRow): HTMLElement {
         // A turn is interrupted whether the response reported truncation
         // or the stream was cut off before a response was assembled; both
         // read the same. `live` says a response is arriving now, so it
-        // appears only while the episode is running.
-        row.interrupted ? h("span", { class: "marker interrupted" }, "interrupted") : null,
-        row.streaming ? h("span", { class: "badge live" }, "live") : null,
+        // appears only while the episode is running. The two marks are
+        // mirrors: a line that ran and stopped at an open terminal, and an
+        // open terminal with the line still to come.
+        row.interrupted ? markSvg("interrupted") : null,
+        row.streaming ? markSvg("live") : null,
         meta.length ? h("span", { class: "meta" }, meta.join(" · ")) : null,
       ),
       body,
@@ -269,10 +278,17 @@ function renderTool(row: ToolRow): HTMLElement {
         "div",
         null,
         h("span", { class: "tool-name" }, row.name),
-        row.isError ? h("span", { class: "marker" }, "error") : null,
-        row.synthetic ? h("span", { class: "marker neutral" }, "synthetic") : null,
-        row.spill ? h("span", { class: "badge", title: "canonical value stored under spill/" }, `spill ${row.spill}`) : null,
-        h("span", { class: "meta" }, meta.join(" · ")),
+        row.isError ? markSvg("error") : null,
+        row.synthetic ? markSvg("synthetic") : null,
+        // Where the canonical value is stored is a locator a reader reads
+        // and copies, so it stays text, and it joins the rest of the row's
+        // metadata under the same separator rather than standing apart.
+        h(
+          "span",
+          { class: "meta" },
+          row.spill ? [h("span", { title: "canonical value stored under spill/" }, `spill ${row.spill}`), " · "] : null,
+          meta.join(" · "),
+        ),
       ),
       row.rendered
         ? renderToolText(row.rendered, languageForPath(str(obj(row.value).path)))
@@ -327,6 +343,7 @@ function firstLine(text: string): string {
 export class ConversationView {
   readonly el: HTMLElement;
   private readonly list: HTMLElement;
+  private readonly card: Hovercard;
   private readonly els = new Map<string, HTMLElement>();
   private stick = true;
 
@@ -336,7 +353,21 @@ export class ConversationView {
   ) {
     this.list = h("div", { class: "conv" });
     this.el = h("div", { class: "conv-scroll" }, this.list);
+    this.card = new Hovercard(this.el);
+    this.el.appendChild(this.card.el);
+    // One listener for the pane rather than one per mark: a patch replaces
+    // a row whole, and a listener per mark would be rebound with each of
+    // them. `pointerover` bubbles, so leaving a mark for anything else in
+    // the pane closes the card without a second listener per mark.
+    this.list.addEventListener("pointerover", (event) => {
+      const over = (event.target as Element).closest<SVGElement>("[data-mark]");
+      const mark = over ? MARKS[over.dataset.mark as MarkKind] : undefined;
+      if (mark) this.card.show(event as PointerEvent, mark.label, mark.meaning, "");
+      else this.card.hide();
+    });
+    this.list.addEventListener("pointerleave", () => this.card.hide());
     this.el.addEventListener("scroll", () => {
+      this.card.hide();
       this.stick = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 16;
     });
   }

@@ -1179,19 +1179,6 @@ svg.mark .fill.caution {
   margin-left: 8px;
 }
 
-.badge {
-  display: inline-block;
-  border: 1px solid var(--v2-rule);
-  border-radius: var(--dt-radius-mark);
-  padding: 0 5px;
-  font-size: calc(9.5px * var(--dt-font-scale, 1));
-  line-height: 16px;
-  vertical-align: 1px;
-  margin-left: 6px;
-  color: var(--v2-ink-soft);
-  font-family: var(--v2-mono);
-}
-
 .meta-line:empty {
   display: none;
 }
@@ -1200,35 +1187,55 @@ svg.mark .fill.caution {
   margin-left: 0;
 }
 
-.badge.live {
-  border-color: var(--v2-accent);
-  color: var(--v2-accent);
-}
-
-.marker {
+/* A state the conversation draws rather than spells. Each mark reuses a
+ * shape from the trajectory, so the grammar a reader learns in the timeline
+ * reads the same here: a hairline that runs, an open ring for something not
+ * yet closed, a dashed stroke for something supplied, a cross for an
+ * attempt that failed. The word each mark replaces is its accessible name
+ * and the heading of the hovercard it opens.
+ *
+ * This block sits below `svg[role="img"]`, which it must beat on display at
+ * equal specificity. Every mark is sized in `em`, so it follows the type
+ * scale and the page-scale control without a rule of its own. */
+svg.mark {
   display: inline-block;
-  border: 1px solid var(--v2-bad);
-  color: var(--v2-bad);
-  border-radius: var(--dt-radius-mark);
-  padding: 0 5px;
-  font-size: calc(9.5px * var(--dt-font-scale, 1));
-  line-height: 16px;
-  vertical-align: 1px;
-  margin-left: 6px;
-  font-weight: 600;
-  font-family: var(--v2-mono);
+  height: 1.2em;
+  width: 1.4em;
+  vertical-align: -0.26em;
+  margin-left: var(--dt-gap-item);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
 }
 
 /* An interrupted turn reached a limit rather than failing: the request was
  * cut off and the step continues from what arrived. */
-.marker.interrupted {
-  border-color: var(--v2-caution);
+svg.mark.interrupted {
   color: var(--v2-caution);
 }
 
-.marker.neutral {
-  border-color: var(--v2-ink-soft);
+svg.mark.live {
+  color: var(--v2-accent);
+}
+
+/* The dashes of a response still arriving. They are drawn ahead of the ring
+ * rather than behind it, which is what separates this mark from
+ * `interrupted` at a glance. */
+svg.mark.live path {
+  stroke-dasharray: 2 2;
+}
+
+svg.mark.error {
+  color: var(--v2-bad);
+}
+
+svg.mark.synthetic {
   color: var(--v2-ink-soft);
+}
+
+svg.mark.synthetic path {
+  stroke-dasharray: 1.6 2;
 }
 
 pre.text {
