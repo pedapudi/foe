@@ -221,14 +221,16 @@ The main region has five tabs.
 - **conversation**: one row per event that contributes to the dialogue.
   The latest `request/header` appears as a collapsed system prompt row, with
   each tool schema behind its own expander. An `inbox/item` is a user row
-  with a badge for its `source`. An `assistant/message` renders its text as
-  Markdown and lists its tool calls. A turn is marked `live` while its
-  response is still arriving and `interrupted` once the episode has ended,
-  whether the response reported truncation or the stream was cut off
-  before a response was assembled. A
+  whose `source` leads its metadata line. An `assistant/message` renders its
+  text as Markdown and lists its tool calls. A turn carries the `live` mark
+  while its response is still arriving and the `interrupted` mark once the
+  episode has ended, whether the response reported truncation or the stream
+  was cut off before a response was assembled. A
   `tool/result` renders `rendered` by its shape, as a diff, as JSON, as
   numbered source, or as preformatted text, and keeps the canonical `value`
-  behind an expander; `is_error`, `synthetic`, and `spill` show markers.
+  behind an expander; `is_error` and `synthetic` carry marks and `spill`
+  names its file on the metadata line. `src/marks.ts` holds the four marks
+  as geometry and `src/render/mark.ts` builds one.
   A `compaction/summary` is a system row inserted at its `first_kept_seq`,
   ahead of the rows the model still sees, stating how many dialogue rows
   the summary replaced and holding the continuation message behind an
@@ -364,12 +366,14 @@ src/fold.ts                   one episode log to rows, a summary, marks, and fir
 src/messages.ts               the derived-messages rule
 src/lineage.ts                the tree, the shared fork prefix, the per-row measure
 src/prompt.ts                 a system prompt read back into its sections
+src/marks.ts                  the four states a conversation row draws
 src/render/conversation.ts    the dialogue rows
+src/render/mark.ts            building one conversation mark
 src/render/trajectory.ts      the timeline figure
 src/render/tree.ts            the episode tree and the details panel
 src/render/workflow.ts        the declared graph with the run over it
 src/render/statistics.ts      the six statistics figures
-src/render/hovercard.ts       the one card every figure explains a mark in
+src/render/hovercard.ts       the one card every mark is explained in
 src/render/raw.ts             the raw events table
 src/render/diff.ts            two forked episodes side by side
 src/render/markdown.ts        the Markdown parser

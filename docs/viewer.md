@@ -108,12 +108,24 @@ carries a list of what differs, above the prompt: the route it replaced,
 each instruction section added, rewritten, or removed, whether the appended
 tool instructions changed, and each tool added, removed, or redeclared.
 
-An assistant turn assembled from `assistant/chunk` events is marked `live`
-in the accent while its response is still arriving. A turn still assembling
-when `episode/end` is read is a stream that was cut off, so it is marked
-`interrupted` in `--v2-caution` instead, alongside the turns whose
-`assistant/message` reports truncation. A finished log therefore never
-shows a turn as live. Each tool call appears with the text the model received and the
+Four states a row carries are drawn beside the row rather than written out
+as a word, in the shapes [design-language.md](design-language.md) sets out
+under "Figures". An assistant turn assembled from `assistant/chunk` events
+carries an open ring with dashes ahead of it, in the accent, while its
+response is still arriving. A turn still assembling when `episode/end` is
+read is a stream that was cut off, so it carries the mirror of that shape
+in `--v2-caution`: a hairline that runs and stops at an open ring. The
+turns whose `assistant/message` reports truncation carry the same mark. A
+finished log therefore never shows a turn as still arriving. A tool result
+the tool reported as a failure carries a cross in `--v2-bad`, and a result
+the runtime wrote without running the tool carries a dashed hairline in
+`--v2-ink-soft`. Each mark reads out as the word it replaced and opens the
+hovercard on that word with one line saying what the state means.
+
+Where a message came from is one of the six words `inbox/item` allows, and
+the file a spilled tool value sits in under `spill/` is a name a reader
+copies, so both stay text in faint mono beside the rest of the row's
+metadata. Each tool call appears with the text the model received and the
 canonical value the log stores. A compaction appears as one system row
 placed at the cut, stating how many messages the summary replaced, with the
 continuation message the model receives behind an expander; the rows above
