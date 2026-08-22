@@ -94,6 +94,8 @@ struct Fixture {
     calls: std::collections::BTreeMap<String, Calls>,
     responses: Vec<Vec<Chunk>>,
     spawner: Arc<NoSpawner>,
+    /// When set, the stop signal is raised this long after the run starts.
+    stop_after: Option<Duration>,
 }
 
 impl Fixture {
@@ -115,6 +117,7 @@ impl Fixture {
             calls: Default::default(),
             responses: Vec::new(),
             spawner: Default::default(),
+            stop_after: None,
         }
     }
 
@@ -166,7 +169,19 @@ impl Fixture {
         std::fs::create_dir_all(&log_dir).unwrap();
         let log = Arc::new(Log::create_or_open(&log_dir, None).unwrap());
         let registry = Registry::new(&program, vec![], std::mem::take(&mut self.tools)).unwrap();
-        let (_stop, stop_rx) = tokio::sync::watch::channel(None);
+        let (stop, stop_rx) = tokio::sync::watch::channel(None);
+        let stop_after = self.stop_after;
+        // The sender lives for the whole run: dropping it would make every
+        // wait on the stop signal resolve at once.
+        let stopper = tokio::spawn(async move {
+            match stop_after {
+                Some(after) => {
+                    tokio::time::sleep(after).await;
+                    let _ = stop.send(Some("cancelled".into()));
+                }
+                None => std::future::pending().await,
+            }
+        });
         let responses = Responses(Mutex::new(std::mem::take(&mut self.responses).into()), Mutex::new(Vec::new()));
         let episode = Params {
             log: log.clone(),
@@ -192,6 +207,7 @@ impl Fixture {
         };
         let params = WorkflowParams { episode, workflow: program.workflow.unwrap(), spawner: self.spawner.clone() };
         let outcome = run(params).await.unwrap();
+        stopper.abort();
         let events = foe_log::fold::read_all(&log_dir).unwrap();
         foe_log::fold::fold(&events).expect("the log is well-formed");
         (outcome, events)
@@ -629,4 +645,58 @@ async fn verify_retries_then_recovers_and_nested_workflows_produce_their_termina
     .tool("t", vec![], 0);
     let (outcome, _) = fx.run().await;
     assert_eq!(outcome, Outcome::Completed { value: json!({ "got": { "from": { "v": 1 } } }) });
+}
+
+/// The two nodes of a drain test: one that answers at once and completes
+/// the workflow, and one that never answers.
+fn draining(name: &str) -> Fixture {
+    Fixture::new(
+        name,
+        &["finish", "linger"],
+        json!({ "nodes": {
+            "finish": { "tool": "finish", "terminal": true },
+            "linger": { "tool": "linger" }
+        } }),
+    )
+    .tool("finish", vec![ToolValue::ok(json!({ "done": true }), "done")], 0)
+    .tool("linger", vec![], 60_000)
+}
+
+/// The `workflow/node-end` of the node named, with its error.
+fn node_error(events: &[Event], node: &str) -> Option<String> {
+    events.iter().find_map(|e| match &e.data {
+        EventData::WorkflowNodeEnd(end) if end.node == node => Some(end.error.clone().unwrap_or_default()),
+        _ => None,
+    })
+}
+
+/// docs/workflow.md "Completion": a firing still running when the workflow
+/// completes is awaited only as far as the episode's `seconds` budget. The
+/// budget elapsing abandons the firing, records its end with the bound that
+/// abandoned it, and leaves the outcome the graph reached standing.
+#[tokio::test]
+async fn a_firing_still_running_when_the_seconds_budget_elapses_is_abandoned() {
+    let mut fx = draining("drain-seconds");
+    fx.config["budget"]["seconds"] = json!(1);
+    let started = Instant::now();
+    let (outcome, events) = fx.run().await;
+    assert!(started.elapsed() < Duration::from_secs(30), "the drain ended at the budget rather than with the firing");
+    assert_eq!(outcome, Outcome::Completed { value: json!({ "done": true }) });
+    assert_eq!(node_error(&events, "finish"), Some(String::new()), "the terminal node ended with no error");
+    let error = node_error(&events, "linger").expect("the abandoned firing was given an end");
+    assert!(error.contains("seconds"), "{error}");
+}
+
+/// docs/workflow.md "Completion": the stop signal ends the wait for the
+/// firings still running, whether or not the program declares `seconds`.
+#[tokio::test]
+async fn a_firing_still_running_when_the_episode_stops_is_abandoned() {
+    let mut fx = draining("drain-stop");
+    fx.stop_after = Some(Duration::from_millis(200));
+    let started = Instant::now();
+    let (outcome, events) = fx.run().await;
+    assert!(started.elapsed() < Duration::from_secs(30), "the drain ended at the stop signal");
+    assert_eq!(outcome, Outcome::Completed { value: json!({ "done": true }) });
+    let error = node_error(&events, "linger").expect("the abandoned firing was given an end");
+    assert!(error.contains("stopped") && error.contains("cancelled"), "{error}");
 }

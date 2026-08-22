@@ -168,10 +168,27 @@ is a protocol error.
 
 ## Timeouts
 
-foe waits for a `model/chunk` up to the `seconds` remaining in the episode's
-budget. A host tool call has no timeout of its own; the host is responsible
-for bounding it. When the budget's `seconds` elapse with an answer
-outstanding, foe ends the episode as `exhausted` with limit `seconds`.
+foe waits for a `model/chunk` and for a `tool/result` up to the `seconds`
+remaining in the episode's budget. When the budget's `seconds` elapse with
+an answer outstanding, foe ends the episode as `exhausted` with limit
+`seconds`, and the host tool call still waiting receives an error result
+naming the tool. A `cancel` ends an outstanding wait the same way, with an
+error result naming the tool and the reason.
+
+A program that declares no `seconds` gives its waits no wall-clock bound.
+Two rules keep such an episode from waiting on an answer that can never
+arrive. A configuration with a `host_tools` entry is refused at
+construction when the process has no host, because the tool named there has
+no implementation to register. A call forwarded to a process with no host
+is answered there with an error, which the [Children](#children) section
+states.
+
+What remains unbounded is a call a live host has received and not yet
+answered. The host owes that answer. foe waits for it, and `cancel` is what
+ends the wait when the host decides to give no answer. A program that means
+to wait a long time therefore does one of two things: it declares a
+`seconds` budget large enough for the longest answer it expects, or it
+declares none and relies on its host to answer or to cancel.
 
 ## Children
 
@@ -189,6 +206,13 @@ parent can route them down.
 `episode_id` is absent or null for the root episode. A host that does not
 support children rejects configurations with a non-empty `spawn` grant; foe
 treats the `spawn` grant as unavailable and fails any spawn tool call.
+
+A process started without `--host` has no host to forward to. A
+`host/tool-call` that reaches such a process, from its own child or from any
+episode below it, is answered there with an error naming the tool, and the
+answer carries the tag of the episode that made the call. Nothing above that
+process could answer, so the episode that called learns at once rather than
+waiting.
 
 An episode sends `cancel` to every child still running when it ends,
 whatever its outcome, and waits for each child's `episode/end` before

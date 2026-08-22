@@ -311,18 +311,53 @@ impl Executor {
     }
 
     /// Drives the graph to an outcome, then waits for every firing still
-    /// running so that its events precede `episode/end`.
+    /// running so that its events precede `episode/end`. The wait carries
+    /// the bounds the episode itself has, the stop signal and the `seconds`
+    /// budget, so that a firing waiting on something that never arrives
+    /// cannot hold the episode open. The outcome the graph reached stands:
+    /// the episode decided it before either bound was reached.
     fn drive(&mut self) -> Pin<Box<dyn Future<Output = Result<Outcome, RuntimeError>> + Send + '_>> {
         Box::pin(async move {
             let outcome = self.schedule().await;
-            while let Some(joined) = self.tasks.join_next().await {
+            let cut = loop {
+                let (stop, deadline) = (self.shared.stop.clone(), self.deadline());
+                let joined = tokio::select! {
+                    joined = self.tasks.join_next() => joined,
+                    reason = wait_stop(stop) => break Some(format!("the episode stopped: {reason}")),
+                    _ = until(deadline) => break Some("the budget's seconds elapsed".to_string()),
+                };
+                let Some(joined) = joined else { break None };
                 if let Ok(f) = joined {
                     self.sched.finish(&f.node);
                     self.node_end(&f.node, f.fire, f.started, &f.result, None)?;
                 }
+            };
+            if let Some(reason) = cut {
+                self.abandon(&reason).await?;
             }
             outcome
         })
+    }
+
+    /// Stops the firings still running and records a `workflow/node-end`
+    /// for each, naming the bound that ended the wait. The tasks are
+    /// stopped before the events are written so that nothing a firing does
+    /// reaches the log after the end its node was given.
+    async fn abandon(&mut self, reason: &str) -> Result<(), RuntimeError> {
+        self.tasks.shutdown().await;
+        let running: Vec<(String, u32, Instant)> = self
+            .sched
+            .state
+            .iter()
+            .filter(|(_, state)| state.running)
+            .map(|(name, state)| (name.clone(), state.fires, state.started.unwrap_or_else(Instant::now)))
+            .collect();
+        let abandoned: Output = Ok((Value::Null, String::new()));
+        for (name, fire, started) in running {
+            self.sched.finish(&name);
+            self.node_end(&name, fire, started, &abandoned, Some(reason.to_string()))?;
+        }
+        Ok(())
     }
 
     async fn schedule(&mut self) -> Result<Outcome, RuntimeError> {

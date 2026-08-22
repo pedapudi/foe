@@ -38,6 +38,11 @@ pub trait Uplink: Send + Sync {
     /// Writes one line to the host. The line is a descendant's event that
     /// needs a host answer; it carries `episode_id` and has no line feed.
     fn forward(&self, line: &str);
+
+    /// Whether a process above this one can answer what is forwarded. A
+    /// process with no host answers nothing, so a `host/tool-call` it would
+    /// forward is refused where it stands rather than left waiting.
+    fn answers(&self) -> bool;
 }
 
 /// The parent's side of a child's log. The team coordinator implements this.
@@ -374,6 +379,22 @@ fn relay_stderr(child_id: String, stderr: impl std::io::Read + Send + 'static) {
     });
 }
 
+/// The call id and the tool name of a `host/tool-call` line, when the line
+/// is one. Other event lines pass through unread.
+fn host_call_of(value: &serde_json::Map<String, serde_json::Value>) -> Option<(String, String)> {
+    let data = value.get("data").filter(|_| value.get("type").is_some_and(|t| t == "host/tool-call"))?;
+    let field = |name| data.get(name)?.as_str().map(str::to_string);
+    Some((field("call_id")?, field("name")?))
+}
+
+/// The result a `host/tool-call` receives when no process above the one
+/// reading it can answer. The episode that called learns at once rather
+/// than waiting for an answer that cannot come; see docs/protocol.md
+/// "Children".
+fn no_host(episode_id: &str, name: &str) -> ToolValue {
+    ToolValue::error(format!("`{name}`: no host above episode {episode_id} can answer a host tool call"))
+}
+
 /// Reads one child's standard output to its end.
 struct Reader {
     child_id: String,
@@ -389,13 +410,18 @@ impl Reader {
         self.uplink.forward(&serde_json::Value::Object(value).to_string());
     }
 
-    /// Answers a host tool call the parent handled itself.
-    fn answer(&self, call_id: &str, result: ToolValue) {
-        let line = serde_json::json!({
+    /// Answers a host tool call that this process settled: one the observer
+    /// handled, or one no host above can answer. `episode_id` names the
+    /// descendant that made the call when it was not the direct child.
+    fn answer(&self, episode_id: Option<&str>, call_id: &str, result: ToolValue) {
+        let mut line = serde_json::json!({
             "type": "tool/result", "call_id": call_id, "value": result.value,
             "rendered": result.rendered, "is_error": result.is_error,
         });
-        let _ = self.router.write(&self.child_id, &line.to_string());
+        if let Some(id) = episode_id {
+            line["episode_id"] = id.into();
+        }
+        let _ = self.router.route(episode_id.unwrap_or(&self.child_id), &line.to_string());
     }
 
     fn run(&self, stdout: impl std::io::Read) -> Settled {
@@ -415,7 +441,10 @@ impl Reader {
             if let Some(id) = value.get("episode_id").and_then(|v| v.as_str()) {
                 // Forwarded by the child on behalf of one of its own descendants.
                 self.router.learn(id, &self.child_id);
-                self.uplink.forward(&line);
+                match host_call_of(&value).filter(|_| !self.uplink.answers()) {
+                    Some((call_id, name)) => self.answer(Some(id), &call_id, no_host(id, &name)),
+                    None => self.uplink.forward(&line),
+                }
                 continue;
             }
             let Ok(event) = serde_json::from_value::<Event>(serde_json::Value::Object(value.clone())) else {
@@ -427,8 +456,9 @@ impl Reader {
             match &event.data {
                 EventData::HostToolCall { call_id, name, args, .. } => {
                     match self.observer.host_call(&self.child_id, name, args) {
-                        Some(result) => self.answer(call_id, result),
-                        None => self.forward(value),
+                        Some(result) => self.answer(None, call_id, result),
+                        None if self.uplink.answers() => self.forward(value),
+                        None => self.answer(None, call_id, no_host(&self.child_id, name)),
                     }
                 }
                 EventData::ModelRequest(_) => {

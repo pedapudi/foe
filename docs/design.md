@@ -255,10 +255,27 @@ abandon its children ends its turn as usual, and the teardown settles them.
 `seconds` is the one bound that every episode in the tree shares as a
 single deadline rather than dividing between children. A child's
 reservation caps its `seconds` at what the parent has left, so one deadline
-ends every episode below it. Without that bound, an episode that
-waits on something that never arrives, such as a host tool call the host
-never answers, waits without end, and every ancestor waiting on it does
-too.
+ends every episode below it.
+
+A program need not declare `seconds`. An episode that declares none still
+reaches an outcome, and two rules stand in place of the deadline.
+
+The first is that every wait the runtime performs is cancellable. The stop
+signal, which a host raises by sending `cancel` and a terminal raises by
+interrupting, ends the wait and the episode holding it, at whatever depth
+of the tree that episode sits.
+
+The second is that a wait for an answer no process can give is never
+entered. A host tool call that reaches a process with no host is answered
+there with an error naming the tool, which
+[protocol.md](protocol.md#children) states, so no episode waits on a line
+that nothing above it would read.
+
+What an episode without `seconds` gives up is the bound on an answer that
+could still arrive: one owed by a live host, or one owed by a child that is
+still working. An operator who wants that bound declares `seconds`. A
+program whose work legitimately outlasts any deadline its author could name
+declares none, and ends when its host cancels it.
 
 A program's `done_when` field chooses how an episode completes.
 

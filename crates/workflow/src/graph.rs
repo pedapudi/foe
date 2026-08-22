@@ -15,6 +15,7 @@
 use foe_core::workflow::{ancestors, Node, WorkflowConfig, TASK_SOURCE};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 
 /// A value a node produced, with the `seq` of the event that produced it.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,6 +34,9 @@ pub struct NodeState {
     /// Set by recovery and by verification: fire regardless of freshness.
     pub forced: bool,
     pub running: bool,
+    /// When the firing now running began, for the `workflow/node-end` its
+    /// executor owes even when it abandons the firing.
+    pub started: Option<Instant>,
     /// Attached to the next firing as a `findings` section.
     pub findings: Vec<String>,
     /// Attached to the next firing as a `recovery` section.
@@ -94,6 +98,7 @@ impl Scheduler {
         s.fresh.clear();
         s.forced = false;
         s.running = true;
+        s.started = Some(Instant::now());
         (s.fires, std::mem::take(&mut s.findings), s.note.take())
     }
 
