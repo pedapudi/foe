@@ -11,6 +11,19 @@ use std::collections::{BTreeMap, BTreeSet};
 /// The reserved name of the built-in source any node may follow: the
 /// invocation task, available from the start and produced exactly once.
 pub const TASK_SOURCE: &str = "task";
+pub const WORKFLOW_FIRING_RULE: &str = "Each node contributes its effective max_fires. A nested workflow contributes its possible firings multiplied by the effective max_fires of its containing node.";
+
+/// Static graph size and the maximum number of node firings it permits.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct WorkflowStructure {
+    pub nodes: u64,
+    pub edges: u64,
+    pub nested_depth: u64,
+    pub possible_firings: u64,
+}
+
+pub const WORKFLOW_CEILINGS: WorkflowStructure =
+    WorkflowStructure { nodes: 256, edges: 1024, nested_depth: 8, possible_firings: 4096 };
 
 /// A declared graph. Model node programs are kept as written; the spawner
 /// resolves each when the node fires, as it does for `programs`.
@@ -23,25 +36,16 @@ pub struct WorkflowConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct RecoveryConfig {
-    #[serde(default = "default_enabled")]
     pub enabled: bool,
-    #[serde(default = "default_max_interventions")]
     pub max_interventions: u32,
 }
 
 impl Default for RecoveryConfig {
     fn default() -> Self {
-        Self { enabled: true, max_interventions: default_max_interventions() }
+        Self { enabled: true, max_interventions: 3 }
     }
-}
-
-fn default_enabled() -> bool {
-    true
-}
-fn default_max_interventions() -> u32 {
-    3
 }
 
 /// Widens what a node's recovery decision sees.
@@ -95,6 +99,33 @@ impl WorkflowConfig {
             .any(|node| node.model.is_some() || node.workflow.as_ref().is_some_and(Self::contains_model_node))
     }
 
+    /// Counts the graph at every nested workflow node. Edges are
+    /// distinct source-target pairs, including edges from `task`.
+    pub fn structure(&self) -> WorkflowStructure {
+        fn walk(wf: &WorkflowConfig, depth: u64) -> WorkflowStructure {
+            let mut out = WorkflowStructure {
+                nodes: wf.nodes.len() as u64,
+                edges: edge_count(wf),
+                nested_depth: depth,
+                possible_firings: 0,
+            };
+            if depth > WORKFLOW_CEILINGS.nested_depth {
+                return out;
+            }
+            for node in wf.nodes.values() {
+                let fires = u64::from(node.max_fires.unwrap_or(1));
+                let inner = node.workflow.as_ref().map(|w| walk(w, depth.saturating_add(1))).unwrap_or_default();
+                out.possible_firings =
+                    out.possible_firings.saturating_add(fires.saturating_mul(inner.possible_firings.saturating_add(1)));
+                out.nodes = out.nodes.saturating_add(inner.nodes);
+                out.edges = out.edges.saturating_add(inner.edges);
+                out.nested_depth = out.nested_depth.max(inner.nested_depth);
+            }
+            out
+        }
+        walk(self, 0)
+    }
+
     /// The data inputs of every node: the `task` source first when the node
     /// follows it, then its other `follows`, then every node whose
     /// `followed_by` names it, in name order, each listed once.
@@ -104,9 +135,7 @@ impl WorkflowConfig {
         for (source, node) in &self.nodes {
             for target in &node.followed_by {
                 let list = inputs.entry(target.clone()).or_default();
-                if !list.contains(source) {
-                    list.push(source.clone());
-                }
+                list.extend((!list.contains(source)).then(|| source.clone()));
             }
         }
         inputs.values_mut().for_each(|list| list.sort_by_key(|name| name != TASK_SOURCE));
@@ -128,12 +157,12 @@ impl WorkflowConfig {
         }
         preds
     }
+}
 
-    /// Every node from which a path of edges leads back to itself.
-    pub fn on_cycles(&self) -> BTreeSet<String> {
-        let preds = self.predecessors();
-        self.nodes.keys().filter(|name| ancestors(&preds, name).contains(*name)).cloned().collect()
-    }
+fn edge_count(wf: &WorkflowConfig) -> u64 {
+    let graph = wf.predecessors().values().map(BTreeSet::len).sum::<usize>();
+    let task = wf.nodes.values().filter(|node| node.follows.iter().any(|source| source == TASK_SOURCE)).count();
+    (graph + task) as u64
 }
 
 /// Every node reachable from `node` by walking `preds` backwards. Contains
@@ -151,13 +180,14 @@ pub fn ancestors(preds: &BTreeMap<String, BTreeSet<String>>, node: &str) -> BTre
 
 /// The node name of every `$node` binding in `args`, at any depth.
 pub fn bindings(value: &Value) -> Vec<String> {
-    match value.as_object() {
-        Some(o) => match o.get("$node").and_then(Value::as_str) {
-            Some(name) => vec![name.to_string()],
-            None => o.values().flat_map(bindings).collect(),
-        },
-        None => Vec::new(),
+    match value.get("$node").and_then(Value::as_str) {
+        Some(name) => vec![name.to_string()],
+        None => value.as_object().into_iter().flat_map(|object| object.values()).flat_map(bindings).collect(),
     }
+}
+
+fn valid(condition: bool, key: String, rule: String) -> Result<(), ConfigError> {
+    condition.then_some(()).ok_or(ConfigError::Invalid { key, rule })
 }
 
 /// The rules of docs/workflow.md "The graph" that the document alone can
@@ -170,25 +200,30 @@ pub fn check(
     tools: &[String],
     program: &mut dyn FnMut(&str, &ChildProgram) -> Result<(), ConfigError>,
 ) -> Result<(), ConfigError> {
-    let invalid = |key: String, rule: String| ConfigError::Invalid { key, rule };
-    let (inputs, cyclic) = (wf.inputs(), wf.on_cycles());
+    let structure = wf.structure();
+    let limits = [
+        ("nodes", structure.nodes, WORKFLOW_CEILINGS.nodes),
+        ("distinct edges", structure.edges, WORKFLOW_CEILINGS.edges),
+        ("nested workflow levels", structure.nested_depth, WORKFLOW_CEILINGS.nested_depth),
+        ("possible firings", structure.possible_firings, WORKFLOW_CEILINGS.possible_firings),
+    ];
+    if let Some((name, count, limit)) = limits.into_iter().find(|(_, count, limit)| count > limit) {
+        let rule = format!("contains {count} {name}; the foe runtime permits at most {limit}");
+        return Err(ConfigError::Invalid { key: prefix.into(), rule });
+    }
+    let (inputs, preds) = (wf.inputs(), wf.predecessors());
+    let cyclic: BTreeSet<&String> = wf.nodes.keys().filter(|name| ancestors(&preds, name).contains(*name)).collect();
     for (name, node) in &wf.nodes {
         let key = |field: &str| format!("{prefix}.nodes.{name}.{field}");
-        if name == TASK_SOURCE {
-            return Err(invalid(key(""), "has a name other than `task`, which names the built-in source".into()));
-        }
+        valid(name != TASK_SOURCE, key(""), "has a name other than `task`, which names the built-in source".into())?;
         let kinds = [node.tool.is_some(), node.model.is_some(), node.workflow.is_some()];
-        if kinds.iter().filter(|set| **set).count() != 1 || (node.args.is_some() && node.tool.is_none()) {
-            let rule = "has exactly one of tool, model, and workflow, and args only with tool";
-            return Err(invalid(key(""), rule.into()));
-        }
-        let names = |field: &str, target: &String| match wf.nodes.contains_key(target) {
-            true => Ok(()),
-            false => Err(invalid(key(field), format!("names a node; `{target}` is absent"))),
+        let one_kind = kinds.iter().filter(|set| **set).count() == 1 && (node.args.is_none() || node.tool.is_some());
+        valid(one_kind, key(""), "has exactly one of tool, model, and workflow, and args only with tool".into())?;
+        let names = |field: &str, target: &String| {
+            valid(wf.nodes.contains_key(target), key(field), format!("names a node; `{target}` is absent"))
         };
-        let tool_in = |field: &str, tool: &String| match tools.contains(tool) {
-            true => Ok(()),
-            false => Err(invalid(key(field), format!("names a tool in tools; `{tool}` is absent"))),
+        let tool_in = |field: &str, tool: &String| {
+            valid(tools.contains(tool), key(field), format!("names a tool in tools; `{tool}` is absent"))
         };
         node.follows.iter().filter(|t| *t != TASK_SOURCE).try_for_each(|t| names("follows", t))?;
         node.followed_by.iter().try_for_each(|t| names("followed_by", t))?;
@@ -198,18 +233,15 @@ pub fn check(
         node.recovery.iter().flat_map(|r| &r.follows).try_for_each(|t| names("recovery.follows", t))?;
         node.verify.iter().try_for_each(|v| tool_in("verify", v))?;
         node.tool.iter().try_for_each(|t| tool_in("tool", t))?;
-        let args = node.args.clone().map_or(Value::Null, Value::Object);
-        if let Some(bound) = bindings(&args).iter().find(|b| !inputs[name].contains(b)) {
-            return Err(invalid(key("args"), format!("binds `{bound}`, which is not an input of this node")));
+        let bound =
+            node.args.iter().flat_map(|args| args.values()).flat_map(bindings).find(|b| !inputs[name].contains(b));
+        if let Some(bound) = bound {
+            return valid(false, key("args"), format!("binds `{bound}`, which is not an input of this node"));
         }
         node.model.iter().try_for_each(|p| program(&key("model"), p))?;
         node.workflow.iter().try_for_each(|inner| check(&key("workflow"), inner, tools, program))?;
-        if node.max_fires == Some(0) {
-            return Err(invalid(key("max_fires"), "is greater than 0".into()));
-        }
-        if cyclic.contains(name) && node.max_fires.is_none() {
-            return Err(invalid(key("max_fires"), "is declared, because this node lies on a cycle".into()));
-        }
+        valid(node.max_fires != Some(0), key("max_fires"), "is greater than 0".into())?;
+        valid(!cyclic.contains(name) || node.max_fires.is_some(), key("max_fires"), "is declared on cycles".into())?;
     }
     Ok(())
 }

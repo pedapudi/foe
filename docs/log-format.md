@@ -604,7 +604,10 @@ message. The runtime detects the rest.
 ## Exhausted limits
 
 The `limit` of an `exhausted` outcome is one of `model_calls`, `tokens`,
-`seconds`, `depth`, `episodes`, `concurrency`.
+`seconds`, `depth`, `episodes`, `concurrency`, or `workflow_firings`.
+`workflow_firings` means that a workflow attempted to exceed the aggregate
+firing allowance derived and accepted during construction. The allowance
+counts firings in every workflow nested within the episode.
 
 ## Size
 

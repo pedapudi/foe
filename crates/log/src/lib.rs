@@ -299,6 +299,7 @@ pub enum ExhaustedLimit {
     Depth,
     Episodes,
     Concurrency,
+    WorkflowFirings,
 }
 
 // ---- request payloads --------------------------------------------------------

@@ -440,7 +440,7 @@ Each member is a frozen dataclass that supports pattern matching.
 |---|---|---|
 | `Completed` | `value` | the program's termination condition was met |
 | `Blocked` | `code`, `message` | the agent recognized that it cannot proceed; `code` is from the closed vocabulary in log-format.md |
-| `Exhausted` | `limit` | a budget limit was reached; one of `model_calls`, `tokens`, `seconds`, `depth`, `episodes`, `concurrency` |
+| `Exhausted` | `limit` | an execution limit was reached; one of `model_calls`, `tokens`, `seconds`, `depth`, `episodes`, `concurrency`, `workflow_firings` |
 | `Failed` | `error` | the runtime could not continue |
 
 The outcome is parsed from the `episode/end` event. When the binary exits

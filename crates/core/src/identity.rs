@@ -7,7 +7,7 @@
 //! identity executes nothing and opens no socket.
 
 use crate::config::{resolve_node_program, Program};
-use crate::workflow::WorkflowConfig;
+use crate::workflow::{WorkflowConfig, WORKFLOW_CEILINGS, WORKFLOW_FIRING_RULE};
 use crate::{harness_text, registry, ConfigError, ToolSpec};
 use foe_log::RuntimeInfo;
 use serde_json::{json, Value};
@@ -102,24 +102,26 @@ fn workflow_document(
     let inputs = wf.inputs();
     let mut nodes = serde_json::Map::new();
     for (name, node) in &wf.nodes {
-        let key = format!("{prefix}.nodes.{name}");
         let mut entry = serde_json::to_value(node)?;
         let fields = entry.as_object_mut().expect("a node serializes to an object");
         fields.remove("followed_by");
         fields.insert("follows".into(), json!(inputs[name]));
         fields.insert("max_fires".into(), json!(node.max_fires.unwrap_or(1)));
         if let Some(child) = &node.model {
-            let program = resolve_node_program(&format!("{key}.model"), parent, child)?;
+            let program = resolve_node_program(&format!("{prefix}.nodes.{name}.model"), parent, child)?;
             fields.insert("model".into(), json!(compute(&program, extra_builtins, runtime)?.hash));
         }
         if let Some(inner) = &node.workflow {
-            let inner = workflow_document(&format!("{key}.workflow"), inner, parent, extra_builtins, runtime)?;
+            let inner =
+                workflow_document(&format!("{prefix}.nodes.{name}.workflow"), inner, parent, extra_builtins, runtime)?;
             fields.insert("workflow".into(), inner);
         }
         nodes.insert(name.clone(), entry);
     }
     let texts = texts(harness_text::workflow_texts());
-    Ok(json!({ "nodes": nodes, "max_interventions": wf.recovery.max_interventions, "texts": texts }))
+    let structure = json!({ "ceilings": WORKFLOW_CEILINGS, "firing_rule": WORKFLOW_FIRING_RULE });
+    Ok(json!({ "nodes": nodes, "max_interventions": wf.recovery.max_interventions,
+        "structure": structure, "texts": texts }))
 }
 
 fn texts(list: Vec<(&str, &str)>) -> serde_json::Map<String, Value> {

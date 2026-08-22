@@ -31,10 +31,10 @@ class Blocked:
 
 @dataclass(frozen=True, slots=True)
 class Exhausted:
-    """A budget limit was reached.
+    """An execution limit was reached.
 
     `limit` is one of `model_calls`, `tokens`, `seconds`, `depth`,
-    `episodes`, `concurrency`.
+    `episodes`, `concurrency`, `workflow_firings`.
     """
 
     limit: str

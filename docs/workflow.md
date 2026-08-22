@@ -95,6 +95,51 @@ node that follows nothing receives no task text. `task` is a reserved name;
 a node named `task` is a construction error naming the rule. `foe plan`
 lists the source when any node follows it.
 
+### Structural bounds
+
+Construction measures a workflow and every workflow node nested within it.
+Four measurements bound validation, plan output, and execution.
+
+| measurement | how it is counted | ceiling |
+|---|---|---|
+| nodes | every declared node, including workflow nodes and their inner nodes | 256 |
+| edges | every distinct source-target pair, including an edge from `task` | 1024 |
+| nested depth | zero for the episode's graph, then one for each enclosing workflow node | 8 |
+| possible firings | each node's effective firing allowance, with nested allowances multiplied as specified below | 4096 |
+
+The foe runtime supplies these ceilings. They are fixed for one runtime
+build and cannot be changed by configuration. Construction rejects a graph
+that exceeds a ceiling. The error names the applicable `workflow` key, the
+measured count, and the ceiling.
+
+A node's effective firing allowance is its `max_fires`, or one when
+`max_fires` is absent. A node without a nested workflow contributes that
+allowance to `possible_firings`. A workflow node contributes its allowance
+for its own firings, plus that allowance multiplied by the inner graph's
+`possible_firings`.
+
+```
+node contribution = effective max_fires * (1 + inner possible_firings)
+```
+
+The inner term is zero for a tool or model node. Summing every node
+contribution gives the workflow's accepted firing allowance. This calculation
+accounts for a nested graph running again whenever its containing node
+re-fires.
+
+One runtime counter draws from the accepted allowance before every firing.
+Every workflow node nested within the episode shares the root graph's counter.
+Firings caused by cycles, verification findings, and recovery actions draw
+from the same allowance. A firing beyond the accepted allowance ends the
+episode as `exhausted` with limit `workflow_firings`.
+A model node can start a child episode whose program declares another
+workflow. The child episode validates and enforces its own firing allowance.
+
+`foe plan` reports every measurement, its ceiling, and `foe runtime` as the
+ceiling source. It also reports the firing calculation. The JSON report
+places the same data under `workflow.structure` while preserving the
+elementary cycles under `workflow.cycles`.
+
 ### Nodes
 
 A node carries thirteen keys at most, and any key outside the two tables
@@ -234,10 +279,12 @@ dependency between them fire concurrently. For a graph with a cycle, it is
 dataflow: a node on the cycle fires again when an input is fresh again.
 
 Cycles are permitted. What bounds them is `max_fires` on every node that
-lies on a cycle, which the runtime requires at construction, and the
-episode's budget, which bounds everything. `foe plan` reports every cycle
-and the bound that closes it. A node that would fire beyond its
-`max_fires` ends the episode as `blocked` with `recovery-exhausted`.
+lies on a cycle, which the runtime requires at construction. The aggregate
+firing allowance bounds node execution across nested workflows in the same
+episode. The episode budget bounds model requests, tokens, child episodes,
+and time. `foe plan` reports every cycle and the bound that closes it. A
+node that would fire beyond its `max_fires` ends the episode as `blocked`
+with `recovery-exhausted`.
 
 A cycle needs a node outside it to start it. Because a branch edge makes
 its target a successor, a label that points back at the graph's only
@@ -267,12 +314,11 @@ terminal node. Firings still running when the workflow completes receive
 ten seconds to finish. The executor then cancels them and records a
 `workflow/node-end` with a null value and a cancellation error before
 `episode/end`. The same bound applies when the workflow ends as blocked,
-exhausted, or failed. When the graph has no
-terminal node and no empty-branch path, the episode runs until its budget
-is spent and ends as `exhausted`, which is a legitimate shape for a
-supervisor loop and is reported as such by `foe plan`. A graph whose
-nodes have all fired without completing, with nothing left to fire, ends
-as `failed` with a message saying so.
+exhausted, or failed. When the graph has no terminal node and no empty-branch
+path, the episode runs until a budget or firing bound is spent. This graph
+shape can implement a supervisor loop and is reported by `foe plan`. A
+graph whose nodes have all fired without completing, with nothing left to
+fire, ends as `failed` with a message saying so.
 
 A nested `workflow` node runs its graph inside the episode, over the same
 log, with each inner node named by its path, `outer/inner`. The outer
@@ -366,14 +412,19 @@ the trace.
   and re-fires that `verify` findings cause. A node that may be re-fired
   declares a `max_fires` that admits the re-fires; a node at its bound is
   not offered to `retry` or `amend`.
-- The episode budget caps everything.
+- The accepted firing allowance caps aggregate firings across every nested
+  workflow in the episode.
+- The episode budget caps model requests, tokens, child episodes, and time.
 
-When a bound is reached, the episode ends as `blocked` with
-`recovery-exhausted`, carrying the findings never resolved. A recovery
-decision that itself fails ends the episode with `recovery-failed`: a
-request that errors, a response with no call to `recover`, or a call
-naming an action or a node that was not offered. Recovery never recurses:
-a failure inside a recovery decision is terminal.
+Reaching `recovery.max_interventions` or scheduling a node beyond its
+`max_fires` ends the episode as `blocked` with `recovery-exhausted`.
+Exceeding the accepted firing allowance ends it as `exhausted` with
+`workflow_firings`. Spending the episode budget ends it as `exhausted`
+with the applicable budget limit. A recovery decision that itself fails
+ends the episode with `recovery-failed`: a request that errors, a response
+with no call to `recover`, or a call naming an action or a node that was
+not offered. Recovery never recurses: a failure inside a recovery decision
+is terminal.
 
 A recovery decision is one model request in the episode's own log. Its
 context is an `inbox/item` with source `system`; its `model/request`
@@ -426,7 +477,8 @@ The following participate in identity: every node's name and kind, the
 edge set, every `branches` declaration, every tool node's `args` with
 bindings, every model node's program identity, `verify`, `retries`,
 `max_fires`, `terminal`, `empty`, every `recovery.follows` widening,
-`recovery.max_interventions`, and the runtime's recovery instruction.
+`recovery.max_interventions`, the structural ceilings, the possible-firing
+calculation, and the runtime's recovery instruction.
 
 ## Relationship to the rest of foe
 

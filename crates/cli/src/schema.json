@@ -175,7 +175,7 @@
       }
     },
     "workflow": {
-      "description": "A declared graph of nodes that replaces the free loop for this episode. docs/workflow.md specifies it. The episode's tools, grants, budget, and done_when are the ceiling every node draws from.",
+      "description": "A declared graph of nodes that replaces the free loop for this episode. docs/workflow.md specifies it. The episode's tools, grants, budget, and done_when are the ceiling every node draws from. Fixed runtime ceilings bound nodes, edges, nesting depth, and possible firings.",
       "type": "object",
       "additionalProperties": false,
       "required": ["nodes"],
@@ -212,7 +212,7 @@
           "type": "object",
           "additionalProperties": { "type": "array", "items": { "type": "string", "minLength": 1 } }
         },
-        "max_fires": { "description": "How many times the node may fire in one episode; required on a cycle.", "type": "integer", "minimum": 1, "default": 1 },
+        "max_fires": { "description": "How many times the node may fire in one episode; required on a cycle and included in the workflow's derived firing allowance.", "type": "integer", "minimum": 1, "default": 1 },
         "terminal": { "description": "Completing this node completes the workflow.", "type": "boolean", "default": false },
         "empty": { "description": "The value the node contributes when recovery skips it; without it, skip is not offered." },
         "recovery": {

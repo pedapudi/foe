@@ -616,6 +616,13 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
         if name == "workflow" {
             assert_eq!(first["workflow"]["terminal"], json!(["apply"]), "plan reports the workflow's terminal node");
             assert_eq!(first["workflow"]["cycles"], json!([]));
+            let structure = &first["workflow"]["structure"];
+            for key in ["nodes", "edges", "nested_depth", "possible_firings"] {
+                assert!(structure[key]["count"].is_number(), "{key} count");
+                assert!(structure[key]["ceiling"].is_number(), "{key} ceiling");
+                assert_eq!(structure[key]["ceiling_source"], json!("foe runtime"), "{key} source");
+            }
+            assert!(structure["possible_firings"]["calculation"].as_str().unwrap().contains("max_fires"));
             assert!(first["program"]["workflow"]["nodes"]["propose"]["model"].is_object());
             assert!(first["authority"].as_array().unwrap().iter().any(|row| {
                 row["programs"]
@@ -626,6 +633,26 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
             assert_eq!(first["workflow"], Value::Null);
         }
     }
+}
+
+/// docs/workflow.md "Structural bounds": the text plan reports each
+/// accepted count, its fixed ceiling, its source, and the firing rule.
+#[test]
+fn plan_text_reports_workflow_structure_before_execution() {
+    let (name, text) = examples().into_iter().find(|(name, _)| name == "workflow").unwrap();
+    let config = materialize(&scratch("plan-workflow-structure"), &name, &text, "inspect TODO comments");
+    let output = Command::new(FOE).args(["plan", "--config"]).arg(config).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let report = String::from_utf8(output.stdout).unwrap();
+    for row in [
+        "nodes              3 / 256  ceiling: foe runtime",
+        "edges              3 / 1024  ceiling: foe runtime",
+        "nested depth       0 / 8  ceiling: foe runtime",
+        "possible firings   4 / 4096  ceiling: foe runtime",
+    ] {
+        assert!(report.contains(row), "{row}: {report}");
+    }
+    assert!(report.contains("calculation") && report.contains("effective max_fires"), "{report}");
 }
 
 /// docs/design.md "Subagents and teams": `foe plan` reports distinct tool

@@ -188,10 +188,10 @@ fn load(config: &Path) -> Result<foe_core::config::Program, String> {
 /// Resolves the program and prints it with its identity. `--json` prints one
 /// object with `identity` and `program`, which the Python package parses,
 /// `context` with the compaction policy in one line when the program
-/// compacts, and `workflow` when the program declares one: its cycles, the
-/// nodes sharing write roots, and its terminal nodes. Both forms report the
-/// tool authority reachable from the root. Without `--json`, a workflow is
-/// followed by the report docs/workflow.md "Firing" describes.
+/// compacts, and `workflow` when the program declares one: its structural
+/// counts, cycles, shared write roots, and terminal nodes. Both forms report
+/// the tool authority reachable from the root. Without `--json`, a workflow
+/// is followed by the report docs/workflow.md "Firing" describes.
 fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
     let program = load(config)?;
     let identity = run::identity(&program)?;
@@ -202,9 +202,8 @@ fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
     if json {
         let workflow = if let Some(wf) = &program.workflow {
             let terminal: Vec<&String> = wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k).collect();
-            Some(
-                serde_json::json!({ "cycles": plan::cycles(wf), "write_overlaps": plan::write_overlaps(&program)?, "terminal": terminal }),
-            )
+            Some(serde_json::json!({ "structure": plan::structure(wf), "cycles": plan::cycles(wf),
+                    "write_overlaps": plan::write_overlaps(&program)?, "terminal": terminal }))
         } else {
             None
         };

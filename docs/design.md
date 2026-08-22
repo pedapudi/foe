@@ -55,8 +55,8 @@ reconstructs the run without the process that made it.
 
 **Nobody corrects course, so the cost must be bounded.** A person notices
 when an agent spends an hour in a loop. A runtime has to enforce limits on
-model calls, tokens, wall-clock time, recursion depth, and the number of
-processes an agent may start, and it has to hold those limits as one pool
+workflow firings within each workflow episode. Model calls, tokens,
+wall-clock time, recursion depth, and process counts belong to one pool
 across every subagent the run creates.
 
 **Nobody reviews each action, so permission must be structural.** A per-action

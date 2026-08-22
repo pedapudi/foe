@@ -1,6 +1,7 @@
 use crate::config::resolve;
 use crate::identity::compute;
 use crate::test_util::{config_value, program_with, tmp};
+use crate::workflow::{ancestors, WORKFLOW_CEILINGS};
 use crate::{Config, ConfigError};
 use foe_log::RuntimeInfo;
 use serde_json::{json, Value};
@@ -41,11 +42,15 @@ fn with_graph(root: &std::path::Path, edit: impl FnOnce(&mut Value)) -> Value {
 }
 
 fn rejected(value: Value) -> String {
+    rejection(value).0
+}
+
+fn rejection(value: Value) -> (String, String) {
     let config: Config = serde_json::from_value(value).expect("the document parses");
     match resolve(&config) {
         Err(ConfigError::Invalid { key, rule }) => {
             assert!(!rule.is_empty());
-            key
+            (key, rule)
         }
         other => panic!("expected an Invalid error, got {other:?}"),
     }
@@ -69,7 +74,9 @@ fn the_edge_set_unions_both_forms_and_finds_cycles() {
     assert!(preds["survey"].contains("propose"), "a branch target is a successor");
     assert!(!preds["propose"].contains("task"), "the task source orders nothing");
     let cyclic: BTreeSet<String> = ["propose", "survey"].into_iter().map(String::from).collect();
-    assert_eq!(wf.on_cycles(), cyclic);
+    let found: BTreeSet<String> =
+        wf.nodes.keys().filter(|name| ancestors(&preds, name).contains(*name)).cloned().collect();
+    assert_eq!(found, cyclic);
     assert!(resolve(&config).is_ok());
     let program = resolve(&config).unwrap();
     assert!(program.to_value()["workflow"]["nodes"]["propose"]["branches"]["widen"].is_array());
@@ -161,6 +168,8 @@ fn identity_hashes_the_graph_and_the_recovery_texts() {
     }
     assert!(base.document["workflow"]["nodes"]["propose"]["model"].as_str().unwrap().starts_with("sha256:"));
     assert_eq!(base.document["workflow"]["nodes"]["derive"]["max_fires"], json!(1));
+    assert_eq!(base.document["workflow"]["structure"]["ceilings"]["possible_firings"], json!(4096));
+    assert!(base.document["workflow"]["structure"]["firing_rule"].as_str().unwrap().contains("nested workflow"));
     let relabeled =
         hash(&|v| v["workflow"]["nodes"]["propose"]["branches"] = json!({ "ok": ["derive"], "widen": ["survey"] }));
     assert_ne!(relabeled.hash, base.hash, "labels participate");
@@ -172,4 +181,68 @@ fn identity_hashes_the_graph_and_the_recovery_texts() {
     assert_ne!(capped.hash, base.hash, "max_interventions participates");
     let reprogrammed = hash(&|v| v["workflow"]["nodes"]["propose"]["model"]["instructions"]["r"] = json!("Other."));
     assert_ne!(reprogrammed.hash, base.hash, "a model node's program participates");
+}
+
+/// docs/workflow.md "Structural bounds": construction rejects a wide graph
+/// and a dense graph before either can reach scheduling or plan rendering.
+#[test]
+fn construction_bounds_wide_and_dense_graphs() {
+    let root = tmp("workflow-structure-width");
+    let nodes: serde_json::Map<String, Value> =
+        (0..=WORKFLOW_CEILINGS.nodes).map(|i| (format!("node_{i}"), json!({ "tool": "list" }))).collect();
+    let (key, rule) = rejection(with_graph(&root, |v| v["workflow"]["nodes"] = Value::Object(nodes)));
+    assert_eq!(key, "workflow");
+    assert!(rule.contains(&WORKFLOW_CEILINGS.nodes.to_string()), "{rule}");
+
+    let count = 47_u64;
+    assert!(count * (count - 1) / 2 > WORKFLOW_CEILINGS.edges);
+    let nodes: serde_json::Map<String, Value> = (0..count)
+        .map(|i| {
+            let follows: Vec<String> = (0..i).map(|j| format!("node_{j}")).collect();
+            (format!("node_{i}"), json!({ "tool": "list", "follows": follows }))
+        })
+        .collect();
+    let (key, rule) = rejection(with_graph(&root, |v| v["workflow"]["nodes"] = Value::Object(nodes)));
+    assert_eq!(key, "workflow");
+    assert!(rule.contains("distinct edges") && rule.contains(&WORKFLOW_CEILINGS.edges.to_string()), "{rule}");
+}
+
+/// docs/workflow.md "Structural bounds": the firing sum uses the effective
+/// cycle bounds and multiplies nested work by the containing node allowance.
+#[test]
+fn construction_bounds_cycles_and_nested_workflows() {
+    let root = tmp("workflow-structure-depth");
+    let cycle = |fires| {
+        json!({ "nodes": {
+            "left": { "tool": "list", "follows": ["right"], "max_fires": fires },
+            "right": { "tool": "list", "follows": ["left"], "max_fires": fires }
+        } })
+    };
+    let accepted: crate::workflow::WorkflowConfig = serde_json::from_value(cycle(2048)).unwrap();
+    assert_eq!(accepted.structure().possible_firings, WORKFLOW_CEILINGS.possible_firings);
+    let (key, rule) = rejection(with_graph(&root, |v| v["workflow"] = cycle(2049)));
+    assert_eq!(key, "workflow");
+    assert!(
+        rule.contains("possible firings") && rule.contains(&WORKFLOW_CEILINGS.possible_firings.to_string()),
+        "{rule}"
+    );
+
+    let nested = json!({ "nodes": { "inner": { "tool": "list", "max_fires": 64 } } });
+    let multiplied = json!({ "nodes": { "outer": { "workflow": nested, "max_fires": 64 } } });
+    let (key, rule) = rejection(with_graph(&root, |v| v["workflow"] = multiplied));
+    assert_eq!(key, "workflow");
+    assert!(rule.contains("possible firings"), "{rule}");
+
+    let mut deep = json!({ "nodes": { "leaf": { "tool": "list" } } });
+    for level in 0..=WORKFLOW_CEILINGS.nested_depth {
+        let mut nodes = serde_json::Map::new();
+        nodes.insert(format!("level_{level}"), json!({ "workflow": deep }));
+        deep = json!({ "nodes": nodes });
+    }
+    let (key, rule) = rejection(with_graph(&root, |v| v["workflow"] = deep));
+    assert_eq!(key, "workflow");
+    assert!(
+        rule.contains("nested workflow levels") && rule.contains(&WORKFLOW_CEILINGS.nested_depth.to_string()),
+        "{rule}"
+    );
 }

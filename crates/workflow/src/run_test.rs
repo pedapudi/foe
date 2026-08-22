@@ -1,4 +1,4 @@
-use super::{output_of, run, WorkflowParams};
+use super::{output_of, run, spend_firing, WorkflowParams};
 use foe_core::budget::Pool;
 use foe_core::config::resolve;
 use foe_core::loop_::{Log, Params};
@@ -13,6 +13,7 @@ use foe_log::{
 };
 use serde_json::{json, Value};
 use std::collections::VecDeque;
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -231,6 +232,18 @@ fn count(events: &[Event], kind: &str) -> usize {
     events.iter().filter(|e| e.data.type_name() == kind).count()
 }
 
+/// docs/workflow.md "Structural bounds": the shared firing allowance
+/// accepts its declared total and refuses the next firing.
+#[test]
+fn the_aggregate_firing_allowance_is_atomic_and_closed() {
+    let used = AtomicU64::new(0);
+    assert_eq!(spend_firing(&used, 2), None);
+    assert_eq!(spend_firing(&used, 2), None);
+    let outcome = Outcome::Exhausted { limit: foe_log::ExhaustedLimit::WorkflowFirings };
+    assert_eq!(spend_firing(&used, 2), Some(outcome.clone()));
+    assert_eq!(serde_json::to_value(outcome).unwrap(), json!({ "kind": "exhausted", "limit": "workflow_firings" }));
+}
+
 /// docs/workflow.md "Firing" and "Choice points": a cycle re-fires through
 /// the chosen label only, bindings carry values forward, and the terminal
 /// node completes the workflow with its value.
@@ -427,8 +440,8 @@ async fn completion_cancels_and_records_an_outstanding_firing() {
     assert_eq!(events.last().unwrap().data.type_name(), "episode/end");
 }
 
-/// docs/workflow.md "Recovery": a tool error goes to one recovery decision;
-/// `retry` re-fires the node; the episode completes once it succeeds.
+/// docs/workflow.md "Recovery" and "Structural bounds": a tool error goes
+/// to one recovery decision; `retry` re-fires the node inside the allowance.
 #[tokio::test]
 async fn a_tool_error_is_recovered_by_retry() {
     let mut fx = Fixture::new(
@@ -442,6 +455,8 @@ async fn a_tool_error_is_recovered_by_retry() {
     .tool("flaky", vec![ToolValue::error("the service timed out"), ToolValue::ok(json!("ok"), "ok")], 0)
     .tool("after", vec![], 0)
     .respond(recover(json!({ "action": "retry", "node": "first" })));
+    let wf: foe_core::workflow::WorkflowConfig = serde_json::from_value(fx.config["workflow"].clone()).unwrap();
+    assert_eq!(wf.structure().possible_firings, 3, "the recovery re-fire is inside the aggregate allowance");
     let (outcome, events) = fx.run().await;
     assert_eq!(outcome, Outcome::Completed { value: json!({}) });
     let recovery = recoveries(&events);
@@ -624,9 +639,9 @@ async fn bounds_end_the_episode_as_recovery_exhausted() {
     assert_eq!(count(&events, "model/request"), 0);
 }
 
-/// docs/workflow.md "Nodes": `verify` findings re-fire the node up to
-/// `retries` times, then go to recovery; a nested workflow's terminal
-/// value is its node's value; an aborted recovery carries the code.
+/// docs/workflow.md "Nodes" and "Structural bounds": `verify` findings
+/// re-fire the node up to `retries` times; nested firings share the root
+/// allowance; an aborted recovery carries the code.
 #[tokio::test]
 async fn verify_retries_then_recovers_and_nested_workflows_produce_their_terminal_value() {
     let mut fx = Fixture::new(
@@ -676,6 +691,7 @@ async fn verify_retries_then_recovers_and_nested_workflows_produce_their_termina
         } }),
     )
     .tool("t", vec![], 0);
-    let (outcome, _) = fx.run().await;
+    let (outcome, events) = fx.run().await;
     assert_eq!(outcome, Outcome::Completed { value: json!({ "got": { "from": { "v": 1 } } }) });
+    assert_eq!(starts(&events).len(), 4, "the outer firing and all nested firings draw from one allowance");
 }

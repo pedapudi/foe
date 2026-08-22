@@ -28,7 +28,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::{watch, Notify, OwnedSemaphorePermit, Semaphore};
@@ -71,6 +71,8 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
         program: p.program,
         task,
         step: AtomicU32::new(0),
+        firings: AtomicU64::new(0),
+        firing_limit: params.workflow.structure().possible_firings,
         header: Mutex::new(None),
         effectful: Arc::new(Semaphore::new(1)),
         active: Arc::new(AtomicU32::new(0)),
@@ -104,6 +106,8 @@ struct Shared {
     /// Counts firings, verifications, and recovery requests; a recovery
     /// request's id is drawn from it.
     step: AtomicU32,
+    firings: AtomicU64,
+    firing_limit: u64,
     header: Mutex<Option<(u64, RequestHeader)>>,
     /// Serializes writes, execution, and spawning across nested workflows.
     effectful: Arc<Semaphore>,
@@ -214,6 +218,12 @@ pub fn render(value: &Value) -> String {
 
 fn section(name: &str, body: &str) -> String {
     text::fill(text::WORKFLOW_SECTION, &[("name", name), ("body", body)])
+}
+
+fn spend_firing(used: &AtomicU64, limit: u64) -> Option<Outcome> {
+    used.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| (n < limit).then_some(n + 1))
+        .err()
+        .map(|_| Outcome::Exhausted { limit: ExhaustedLimit::WorkflowFirings })
 }
 
 type Fired = (String, u32, Instant, Output);
@@ -411,6 +421,9 @@ impl Executor {
                 } else {
                     None
                 };
+                if let Some(outcome) = spend_firing(&self.shared.firings, self.shared.firing_limit) {
+                    return Ok(outcome);
+                }
                 self.launch(&name, permit)?;
             }
             if self.tasks.is_empty() {

@@ -7,14 +7,18 @@ for. The episode ends with the outcome `{"kind": "exhausted", "limit":
 "model_calls"}`, and the process exits with code 3.
 
 `exhausted` is one of the four outcome kinds a foe episode can end with,
-beside `completed`, `blocked`, and `failed`. It carries one fact: a limit
-the configuration named was reached. The program did not break. Every model
-request was answered, every tool call returned a result, and the work
-stopped at the boundary the configuration set. An operator who reads this
-outcome raises the limit, narrows the task, or decides the work is not worth
-more calls, and looks for no defect. The limits that end an episode this way
-are `model_calls`, `tokens`, `seconds`, `depth`, `episodes`, and
-`concurrency`; [docs/log-format.md](../../docs/log-format.md) lists them.
+beside `completed`, `blocked`, and `failed`. It carries one fact: a declared
+or derived execution limit was reached. For a configured budget, the work
+stops at a boundary in the execution contract. An operator can raise the
+limit, narrow the task, or decide that the work is complete enough. A
+`workflow_firings` outcome means that runtime execution exceeded the
+structural total accepted during construction. That outcome requires
+investigation because construction and execution use the same calculation.
+The seven limits are `model_calls`, `tokens`, `seconds`,
+`depth`, `episodes`, `concurrency`, and `workflow_firings`;
+[docs/log-format.md](../../docs/log-format.md) lists them. The first six come
+from `budget`. The workflow firing allowance is derived from the graph's
+`max_fires` declarations and nesting structure.
 
 The example needs no provider credential and no network. Its model is the
 `exec` provider pointed at `never-finishing-transport` in this directory, a

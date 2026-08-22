@@ -4,7 +4,7 @@
 use crate::run;
 use foe_core::config::{resolve_node_program, Program};
 use foe_core::registry::{resolve_sources, resolve_specs, Source};
-use foe_core::workflow::{WorkflowConfig, TASK_SOURCE};
+use foe_core::workflow::{WorkflowConfig, TASK_SOURCE, WORKFLOW_CEILINGS, WORKFLOW_FIRING_RULE};
 use foe_core::Effect;
 use serde::Serialize;
 use serde_json::Value;
@@ -114,6 +114,21 @@ pub fn cycles(wf: &WorkflowConfig) -> Vec<Vec<String>> {
     found
 }
 
+/// Structural counts and fixed runtime ceilings for JSON plan output.
+pub fn structure(wf: &WorkflowConfig) -> Value {
+    let counts = wf.structure();
+    let row =
+        |count, ceiling| serde_json::json!({ "count": count, "ceiling": ceiling, "ceiling_source": "foe runtime" });
+    serde_json::json!({
+        "nodes": row(counts.nodes, WORKFLOW_CEILINGS.nodes),
+        "edges": row(counts.edges, WORKFLOW_CEILINGS.edges),
+        "nested_depth": row(counts.nested_depth, WORKFLOW_CEILINGS.nested_depth),
+        "possible_firings": { "count": counts.possible_firings,
+            "ceiling": WORKFLOW_CEILINGS.possible_firings, "ceiling_source": "foe runtime",
+            "calculation": WORKFLOW_FIRING_RULE },
+    })
+}
+
 type Overlap = (String, String, String, String);
 
 /// Every pair of nodes that can write overlapping roots. Effectful tool
@@ -167,7 +182,18 @@ fn collect_writers(
 /// The workflow report printed below the resolved program.
 pub fn workflow_report(program: &Program) -> Result<String, String> {
     let wf = program.workflow.as_ref().expect("called for a workflow");
-    let mut out = String::from("workflow nodes\n");
+    let counts = wf.structure();
+    let mut out = String::from("workflow structure\n");
+    for (name, count, ceiling) in [
+        ("nodes", counts.nodes, WORKFLOW_CEILINGS.nodes),
+        ("edges", counts.edges, WORKFLOW_CEILINGS.edges),
+        ("nested depth", counts.nested_depth, WORKFLOW_CEILINGS.nested_depth),
+        ("possible firings", counts.possible_firings, WORKFLOW_CEILINGS.possible_firings),
+    ] {
+        writeln!(out, "  {name:<18} {count} / {ceiling}  ceiling: foe runtime").ok();
+    }
+    writeln!(out, "  calculation        {WORKFLOW_FIRING_RULE}").ok();
+    out.push_str("workflow nodes\n");
     let inputs = wf.inputs();
     if inputs.values().flatten().any(|i| i == TASK_SOURCE) {
         writeln!(out, "  {TASK_SOURCE:<12} built-in source: the invocation task").ok();
@@ -228,7 +254,7 @@ pub fn workflow_report(program: &Program) -> Result<String, String> {
     let completion = match (terminals.is_empty(), empty_branch) {
         (false, _) => format!("terminal {}", terminals.join(", ")),
         (true, true) => "an empty branch".to_string(),
-        (true, false) => "no terminal node and no empty branch: runs until the budget is spent".to_string(),
+        (true, false) => "no terminal node and no empty branch: runs until a budget or firing bound is spent".into(),
     };
     writeln!(out, "workflow completion  {completion}").ok();
     Ok(out)

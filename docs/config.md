@@ -410,6 +410,15 @@ descendant programs, and every budget dimension. A child program may carry a
 `workflow` of its own. The graph participates in identity as workflow.md
 "Identity" lists.
 
+Workflow structure has no additional configuration key. The runtime derives
+the accepted firing allowance from each node's effective `max_fires` and
+the nesting structure. Fixed runtime ceilings permit at most 256 nodes,
+1024 distinct edges, eight nested workflow levels, and 4096 possible
+firings. [workflow.md](workflow.md#structural-bounds) specifies the counts
+and the nested firing calculation. `foe plan` reports each count, ceiling,
+and ceiling source before execution. A runtime attempt beyond the accepted
+firing allowance ends as `exhausted` with limit `workflow_firings`.
+
 ### `task`
 
 String. Required. What this episode is to do. Written into the log as the
