@@ -584,3 +584,39 @@ test("a rail passes through a row when a deeper row follows it", () => {
   assert.equal(inner!.x - outer!.x, DEPTH_INDENT);
   assert.equal(guidesFor(1, 100, 24, 112, -1)[0]!.y2, 112, "the last row of all stops at its label");
 });
+
+// ---- a run that has not finished ----
+
+/** One workflow episode with no end, whose last firing is still open. */
+function openRun(now: number): TrajectoryEpisode {
+  const start = 1_700_000_000_000;
+  return {
+    id: "ep_open", name: "grapher", depth: 0, startTime: start, endTime: null, lastSeq: 4,
+    outcome: null, parentId: null, forkOrigin: null, marks: [], decisions: [],
+    firings: [
+      { node: "survey", fire: 1, startSeq: 1, startTime: start + 1_000, endSeq: 2, endTime: start + 3_000, durationMs: 1_900, error: "", childId: null },
+      { node: "draft", fire: 1, startSeq: 3, startTime: start + 3_000, endSeq: null, endTime: null, durationMs: null, error: "", childId: "ep_child" },
+    ],
+  };
+}
+
+test("a firing still running is drawn to the clock reading given", () => {
+  const now = 1_700_000_000_000 + 9_000;
+  const out = layoutTrajectory(input([openRun(now)], { now }));
+  const row = out.rows[0]!;
+  assert.equal(row.running, true);
+  const [open] = row.firings.filter((f) => f.endSeq === null);
+  assert.equal(open!.node, "draft");
+  assert.equal(Math.round(open!.x + open!.w), Math.round(row.x2), "it reaches the end of the lifetime bar");
+  assert.equal(open!.durationMs, null, "a length no node reported stays absent rather than zero");
+});
+
+test("an open firing lengthens as the clock moves and its lane stays put", () => {
+  const start = 1_700_000_000_000;
+  const early = layoutTrajectory(input([openRun(start + 5_000)], { now: start + 5_000 }));
+  const later = layoutTrajectory(input([openRun(start + 20_000)], { now: start + 20_000 }));
+  const laneOf = (out: typeof early) => out.rows[0]!.lanes.map((l) => l.node);
+  assert.deepEqual(laneOf(early), ["survey", "draft"]);
+  assert.deepEqual(laneOf(later), laneOf(early));
+  assert.equal(early.rows[0]!.height, later.rows[0]!.height);
+});

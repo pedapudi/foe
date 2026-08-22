@@ -211,10 +211,27 @@ export class TrajectoryView {
     axis.appendChild(svg("line", { class: "baseline", x1: layout.plot.left, y1: layout.plot.top - 1, x2: layout.plot.right, y2: layout.plot.top - 1 }));
     figure.appendChild(axis);
 
-    // Connectors first, so that rows paint over them. Each drops at the x
-    // where the parent started the child and turns once into the child's
-    // row, so it crosses an intervening row as a hairline rather than
-    // sweeping along it.
+    // Every row's ground first, then the connectors over it, then what the
+    // rows hold. A row that carries a ground would otherwise cover the
+    // connector that leaves it, and the connector has to leave the firing
+    // it belongs to rather than the row's lower edge.
+    const grounds = svg("g", { class: "traj-grounds" });
+    for (const row of layout.rows) {
+      const hit = svg("rect", {
+        class: `traj-hit${row.id === this.state.selected ? " selected" : ""}${row.id === this.state.cursor ? " cursor" : ""}`,
+        x: 0,
+        y: row.top,
+        width,
+        height: row.height,
+      });
+      hit.addEventListener("click", () => this.handlers.select(row.id));
+      grounds.appendChild(hit);
+    }
+    figure.appendChild(grounds);
+
+    // A connector drops at the x where the parent started the child and
+    // turns once into the child's row, so it crosses an intervening row as
+    // a hairline rather than sweeping along it.
     const edges = svg("g", { class: "traj-edges" });
     for (const edge of layout.connectors) {
       const turn = edge.to.y - 6;
@@ -227,19 +244,16 @@ export class TrajectoryView {
     }
     figure.appendChild(edges);
 
-    for (const row of layout.rows) figure.appendChild(this.rowElement(row, width));
+    for (const row of layout.rows) figure.appendChild(this.rowElement(row));
     return figure;
   }
 
-  private rowElement(row: TrajectoryRow, width: number): SVGGElement {
+  private rowElement(row: TrajectoryRow): SVGGElement {
     const selected = row.id === this.state.selected;
     const group = svg("g", {
       class: `traj-row${selected ? " selected" : ""}${row.id === this.state.cursor ? " cursor" : ""}`,
       "data-id": row.id,
     });
-    const hit = svg("rect", { class: "traj-hit", x: 0, y: row.top, width, height: row.height });
-    hit.addEventListener("click", () => this.handlers.select(row.id));
-    group.appendChild(hit);
     // The figure's one emphasis: a spine down the row's leading edge. A
     // filled row would compete with the bars drawn inside it.
     group.appendChild(svg("line", { class: "traj-spine", x1: 1, y1: row.top + 2, x2: 1, y2: row.top + row.height - 2 }));

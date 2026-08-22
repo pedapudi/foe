@@ -1593,19 +1593,17 @@ table.events td.type.error {
   stroke-dasharray: 4 4;
 }
 
+/* One ground per row, painted under every connector so that a connector
+ * leaving a row is not covered by the row it leaves. A transparent fill
+ * still takes the pointer, so the ground is what a click on empty space in
+ * a row reaches. */
 .traj-hit {
   fill: transparent;
 }
 
-.traj-row:hover .traj-hit {
-  fill: var(--v2-rule-soft);
-}
-
-.traj-row.cursor .traj-hit {
-  fill: var(--v2-rule-soft);
-}
-
-.traj-row.selected .traj-hit {
+.traj-hit:hover,
+.traj-hit.cursor,
+.traj-hit.selected {
   fill: var(--v2-rule-soft);
 }
 

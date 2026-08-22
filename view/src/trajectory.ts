@@ -246,9 +246,11 @@ export const MARK_MIN_WIDTH = 1.5;
  * How far apart two calls of one co-timed cluster sit. A batch of parallel
  * calls lands on one x, so without a second dimension six calls draw as one
  * mark. Each keeps its own x and takes the next free height, so the count
- * is readable and no call is moved in time.
+ * is readable and no call is moved in time. The pitch exceeds the height
+ * render/trajectory.ts gives a segment, so two stacked calls have clear
+ * ground between them and a batch of six is six marks rather than a bar.
  */
-export const TOOL_PITCH = 4.5;
+export const TOOL_PITCH = 6;
 
 /** Height of one lane of the node band, which holds one node's firings. */
 export const NODE_LANE = 9;
