@@ -267,7 +267,7 @@ The values `request` and `response` are reserved for correlated exchanges.
 episode's remainder.
 
 ```json
-{ "child_id": "ep_9c21", "reserved": { "model_calls": 6, "tokens": 60000, "episodes": 3 } }
+{ "child_id": "ep_9c21", "reserved": { "model_calls": 6, "tokens": 60000, "episodes": 3, "concurrent": 2 } }
 ```
 
 `budget/release` — implemented. A child settled and returned its unspent
@@ -277,14 +277,20 @@ reservation.
 { "child_id": "ep_9c21", "spent": { "model_calls": 4, "tokens": 41200, "episodes": 2 } }
 ```
 
-An amount holds four optional fields: `model_calls`, `tokens`, `seconds`,
-and `episodes`. An absent field means the dimension is unlimited. In
+An amount holds five optional fields: `model_calls`, `tokens`, `seconds`,
+`episodes`, and `concurrent`. An absent reservation field means the dimension
+is unlimited. In
 `reserved`, `episodes` is how many episodes the child's subtree may hold,
 the child itself included; it is the child's `budget.max_episodes` once the
 parent's share is applied. In `spent`, `episodes` is how many episodes that
 subtree held, so a leaf child reports one. A parent adds each released
 count to a lifetime total that never returns to the pool, which is how one
 `max_episodes` bounds a whole tree.
+
+In `reserved`, `concurrent` is the number of episodes the child subtree may
+run at once, including the child. The field is absent from `spent`, because
+concurrency is reusable rather than spent. The `budget/release` that names
+the child returns every concurrent slot held by its matching reservation.
 
 `spawn/start` — implemented.
 
@@ -557,13 +563,12 @@ Given a source log and a boundary `seq` N:
    the result was not recorded. A `compaction/start` receives a
    `compaction/end` with `ok: false`. A `spawn/start` receives a
    `spawn/end` whose outcome is `failed`, and a `budget/reserve` receives a
-   `budget/release` naming the whole reservation as spent. The whole
-   reservation is named because no writer that reaches this step can learn
-   what the child actually spent: a new episode does not host the child,
-   and a teardown that reaches this step waited for the child's own
-   settlement and did not receive it. Charging the reservation is the
-   conservative reading, so a synthetic release never understates a
-   subtree.
+   `budget/release` naming every spend dimension of the reservation as
+   spent. The concurrency field is omitted because closing the reservation
+   returns its slots. A writer cannot learn what the child actually spent.
+   A new episode does not host the child. A teardown that reaches this step
+   waited for settlement and received none. Charging the spend reservation
+   ensures that a synthetic release never understates a subtree.
 5. Append `seed/end`.
 6. Continue with live events.
 

@@ -1,10 +1,9 @@
 //! Budget pool: debits, reservation on spawn, release, folded from the log.
 //!
 //! Implements docs/design.md (Subagents and teams). The pool is held by the
-//! episode and shared with its spawner. Every limit in `Budget` applies to
-//! the whole tree below the episode: a child's reservation is debited from
-//! the parent's remainder until the child settles and returns what it did
-//! not spend.
+//! episode and shared with its spawner. Spend and structural allowances are
+//! debited through child reservations. A settlement returns reusable and
+//! unspent dimensions and keeps lifetime episode use debited.
 
 use crate::Budget;
 use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
@@ -67,18 +66,20 @@ impl Pool {
 
     /// What remains for this episode after its own spend, its settled
     /// children, and its active reservations. `None` means unlimited.
-    /// `episodes` counts this episode against the limit, so it is the
-    /// number of further episodes the tree below here may still hold.
+    /// `episodes` is the remaining lifetime allowance below this episode.
+    /// `concurrent` is the number of episode slots below it that are not leased.
     pub fn remaining(&self) -> BudgetAmount {
         let reserved = |f: fn(&BudgetAmount) -> Option<u64>| self.active.values().filter_map(f).sum::<u64>();
         let calls_used = self.requests + self.children_spent.model_calls.unwrap_or(0) + reserved(|a| a.model_calls);
         let tokens_used = self.tokens + self.children_spent.tokens.unwrap_or(0) + reserved(|a| a.tokens);
         let episodes_used = 1 + self.children_spent.episodes.unwrap_or(0) + reserved(|a| a.episodes);
+        let concurrent_used = reserved(|a| a.concurrent);
         BudgetAmount {
             model_calls: Some(self.limits.model_calls.saturating_sub(calls_used)),
             tokens: self.limits.tokens.map(|t| t.saturating_sub(tokens_used)),
             seconds: self.limits.seconds.map(|s| s.saturating_sub(self.started.elapsed().as_secs())),
             episodes: Some(u64::from(self.limits.max_episodes).saturating_sub(episodes_used)),
+            concurrent: Some(u64::from(self.limits.max_concurrent).saturating_sub(concurrent_used)),
         }
     }
 
@@ -106,9 +107,6 @@ impl Pool {
         if self.limits.max_depth == 0 {
             return Err(ExhaustedLimit::Depth);
         }
-        if self.active.len() as u32 >= self.limits.max_concurrent {
-            return Err(ExhaustedLimit::Concurrency);
-        }
         let remaining = self.remaining();
         let within = |asked: Option<u64>, left: Option<u64>, limit| match (asked, left) {
             (Some(a), Some(l)) if a > l => Err(limit),
@@ -122,11 +120,17 @@ impl Pool {
         if episodes_left == 0 {
             return Err(ExhaustedLimit::Episodes);
         }
+        let concurrent_left = remaining.concurrent.unwrap_or(0);
+        let concurrent = request.concurrent.unwrap_or(1);
+        if concurrent == 0 || concurrent_left == 0 {
+            return Err(ExhaustedLimit::Concurrency);
+        }
         let granted = BudgetAmount {
             model_calls: within(request.model_calls, remaining.model_calls, ExhaustedLimit::ModelCalls)?,
             tokens: within(request.tokens, remaining.tokens, ExhaustedLimit::Tokens)?,
             seconds: within(request.seconds, remaining.seconds, ExhaustedLimit::Seconds)?,
             episodes: Some(request.episodes.map_or(episodes_left, |a| a.min(episodes_left))),
+            concurrent: Some(concurrent.min(concurrent_left)),
         };
         // A grant of zero on any dimension is refused rather than passed
         // down. A configuration whose budget holds a zero is invalid, so a

@@ -489,6 +489,22 @@ async fn settled_failures_end_the_episode_without_a_decision() {
     assert_eq!(outcome, Outcome::Exhausted { limit: foe_log::ExhaustedLimit::Episodes });
 }
 
+/// docs/config.md `budget`: zero `max_concurrent` forbids child episodes.
+/// A workflow model node therefore ends with the concurrency limit.
+#[tokio::test]
+async fn a_model_node_with_no_concurrent_slot_ends_as_exhausted() {
+    let mut fx = Fixture::new("no-concurrency", &[], json!({ "nodes": { "placeholder": { "tool": "block" } } }));
+    let read = fx.dir.to_string_lossy();
+    fx.config["budget"]["max_concurrent"] = json!(0);
+    fx.config["workflow"] = json!({ "nodes": { "only": { "terminal": true, "model": {
+        "name": "child", "instructions": { "role": "finish" }, "tools": ["block"],
+        "grants": { "read": [read] }, "budget": { "model_calls": 1 }
+    } } } });
+    let (outcome, _) = fx.run().await;
+    assert_eq!(outcome, Outcome::Exhausted { limit: foe_log::ExhaustedLimit::Concurrency });
+    assert!(fx.spawner.0.lock().unwrap().is_empty(), "the child process never started");
+}
+
 /// docs/workflow.md "What bounds it": the intervention cap and `max_fires`
 /// end the episode as `recovery-exhausted`; disabled recovery ends it with
 /// the node's outcome.

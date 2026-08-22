@@ -231,9 +231,9 @@ and no terminal node completed`. Place the loop's entry in a node that no
 branch label names, and let that node feed the cycle.
 
 Firing a node a second time re-fires every node downstream of it, because
-their inputs became fresh. Recovery uses this. Model nodes fire at most
-`budget.max_concurrent` at a time; a ready model node waits for a running
-one when the cap is reached.
+their inputs became fresh. Recovery uses this. Model nodes share the
+episode's whole-tree `budget.max_concurrent` leases with every other child
+episode. A ready model node waits while no slot remains.
 
 ### Completion
 

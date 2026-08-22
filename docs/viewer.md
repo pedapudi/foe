@@ -487,8 +487,8 @@ that the figure and the runtime never disagree.
 | `max_depth` | the deepest lineage below the scope's root |
 
 A limit the program does not declare has no row. `max_concurrent` and
-`loop_threshold` have no row either: neither bounds a quantity the log
-accumulates, so neither has a consumption to draw.
+`loop_threshold` have no row either. `max_concurrent` is a reusable lease.
+`loop_threshold` bounds a consecutive sequence. Neither has cumulative consumption.
 
 ### The figures
 

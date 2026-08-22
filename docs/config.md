@@ -237,21 +237,23 @@ Object. Required.
 | `seconds` | integer | no | unlimited | wall-clock limit for the episode |
 | `max_depth` | integer | no | 1 | how many levels of child episodes may exist below this one; 0 forbids spawning |
 | `max_episodes` | integer | no | 8 | lifetime count of episodes in the tree, including this one |
-| `max_concurrent` | integer | no | 4 | direct children of this episode running at once |
+| `max_concurrent` | integer | no | 4 | child episodes running at once anywhere below this episode |
 | `loop_threshold` | integer | no | 3 | consecutive identical tool calls, or identical assistant turns, that end the episode as blocked |
 
-`model_calls`, `tokens`, `seconds`, `max_depth`, and `max_episodes` apply to
-the whole tree below this episode. A child's budget is reserved from its
-parent's remainder: the spawn grants the child a share, the child cannot
-exceed it, and the child reports back what its whole subtree used. A child
-program that declares a limit larger than the share it receives runs under
-the share.
+`model_calls`, `tokens`, `seconds`, `max_depth`, `max_episodes`, and
+`max_concurrent` apply to the whole tree below this episode. A child's
+budget is reserved from its parent's remainder. The spawn grants the child a
+share of each dimension. The child cannot exceed that share. The child
+reports what its whole subtree used. A child program that declares a larger
+limit runs under the granted share.
 
-`max_concurrent` and `loop_threshold` apply to one episode. `max_concurrent`
-counts the direct children of the episode that declares it, so a child with
-its own children answers to its own value. The number of episodes running at
-once anywhere in the tree is bounded instead by `max_episodes`, which every
-episode in the tree draws from.
+Each child subtree receives a concurrency lease while that child runs. The
+lease counts the child and every descendant that may run beside it. A child
+that may spawn receives its declared subtree capacity, capped by the
+parent's remaining slots. A leaf receives one slot. The child's own
+`max_concurrent` is capped at the lease minus the slot occupied by the child.
+`budget/release` returns the lease when the child settles. A value of zero
+forbids child episodes. `loop_threshold` applies to one episode.
 
 ### `done_when`
 

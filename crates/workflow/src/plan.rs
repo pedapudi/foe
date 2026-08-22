@@ -7,21 +7,18 @@ use foe_core::workflow::{Node, WorkflowConfig, TASK_SOURCE};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
+type SuccessorMap = BTreeMap<String, BTreeSet<String>>;
+
 /// Every elementary cycle, each listed once starting from its smallest
 /// node name, as the sequence of nodes along it.
 pub fn cycles(wf: &WorkflowConfig) -> Vec<Vec<String>> {
-    let mut succs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut succs = SuccessorMap::new();
     for (target, sources) in wf.predecessors() {
         for source in sources {
             succs.entry(source).or_default().insert(target.clone());
         }
     }
-    fn walk(
-        start: &str,
-        path: &mut Vec<String>,
-        succs: &BTreeMap<String, BTreeSet<String>>,
-        out: &mut Vec<Vec<String>>,
-    ) {
+    fn walk(start: &str, path: &mut Vec<String>, succs: &SuccessorMap, out: &mut Vec<Vec<String>>) {
         let last = path.last().cloned().expect("a path has a start");
         for next in succs.get(&last).into_iter().flatten() {
             if next == start {
@@ -111,17 +108,13 @@ pub fn plan_report(wf: &WorkflowConfig) -> String {
         let bounds: Vec<String> = cycle.iter().map(|n| format!("{n} {}", wf.nodes[n].max_fires.unwrap_or(1))).collect();
         writeln!(out, "  {} -> {}  bounded by max_fires {}", cycle.join(" -> "), cycle[0], bounds.join(", ")).ok();
     }
-    if found.is_empty() {
-        out.push_str("  (none)\n");
-    }
+    out.push_str(if found.is_empty() { "  (none)\n" } else { "" });
     out.push_str("workflow write roots shared by model nodes\n");
     let overlaps = write_overlaps(wf);
     for (a, b, x, y) in &overlaps {
         writeln!(out, "  {a} and {b}: {x} and {y}").ok();
     }
-    if overlaps.is_empty() {
-        out.push_str("  (none)\n");
-    }
+    out.push_str(if overlaps.is_empty() { "  (none)\n" } else { "" });
     let terminals: Vec<&str> = wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k.as_str()).collect();
     let empty_branch = wf.nodes.values().any(|n| n.branches.values().any(Vec::is_empty));
     let completion = match (terminals.is_empty(), empty_branch) {

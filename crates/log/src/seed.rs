@@ -130,7 +130,9 @@ pub fn closing_events(events: &[Event]) -> Vec<EventData> {
                 closing.push(EventData::SpawnEnd { child_id: child_id.clone(), outcome })
             }
             EventData::BudgetReserve { child_id, reserved } if held(Obligation::Reservation, child_id) => {
-                closing.push(EventData::BudgetRelease { child_id: child_id.clone(), spent: *reserved })
+                let mut spent = *reserved;
+                spent.concurrent = None;
+                closing.push(EventData::BudgetRelease { child_id: child_id.clone(), spent })
             }
             _ => {}
         }

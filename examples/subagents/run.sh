@@ -134,6 +134,7 @@ for reserve in reserved:
         f"a reservation took {reserve['reserved']['model_calls']} calls rather than the {declared['model_calls']} "
         "the survey program declares",
     )
+    require(reserve["reserved"]["concurrent"] == 1, "a leaf child did not receive one concurrent slot")
 require(len(ends) == 2 and len(released) == 2, "a child settled without a spawn/end and a budget/release")
 waited = [e["seq"] for e in parent if e["type"] == "tool/result" and e["data"]["name"] == "wait"]
 settled = [e["seq"] for e in parent if e["type"] in ("spawn/end", "budget/release")]
@@ -145,6 +146,7 @@ require(
 )
 by_child = {reserve["child_id"]: reserve["reserved"] for reserve in reserved}
 for release in released:
+    require("concurrent" not in release["spent"], "a reusable concurrent slot was recorded as spent")
     spent = release["spent"]["model_calls"]
     taken = by_child[release["child_id"]]["model_calls"]
     require(spent < taken, f"child {release['child_id']} spent {spent} of {taken} calls and returned nothing")

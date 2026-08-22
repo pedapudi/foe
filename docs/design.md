@@ -403,11 +403,13 @@ its parent's remaining budget. The child's log header names the parent.
                               └── reserve 4 calls ──► grandchild B.1
 ```
 
-Budget is a pool held by the root. Every spawn reserves from the parent's
-remainder, and unspent reservation returns when the child settles. No path
-through the tree can spend more than the root's total. Structural caps on
-depth, lifetime episode count, and concurrency sit beside the spend caps. A
-spawn that would pass any cap fails as a tool call with a result naming the
+Budget is a pool held by the root and divided through child reservations.
+Every spawn reserves from the parent's remainder, and unspent reservation
+returns when the child settles. No path through the tree can spend more than
+the root's total. The lifetime episode count remains spent after settlement.
+The concurrency lease returns at settlement. Both counts include every
+descendant represented by a child's reservation. Depth bounds each lineage.
+A spawn that would pass a cap fails as a tool call with a result naming the
 limit, and no child starts; the model reads that result like any other.
 
 Communication is an inbox append with a typed source. A parent steers a
