@@ -112,6 +112,13 @@ fn every_rule_names_its_key() {
             Box::new(|v| v["host_tools"] = json!({ "h": { "description": "d", "params": [], "effect": "pure" } })),
         ),
         (
+            "host_tools.h.params",
+            Box::new(|v| {
+                v["host_tools"] =
+                    json!({ "h": { "description": "d", "params": { "minimum": "zero" }, "effect": "pure" } });
+            }),
+        ),
+        (
             "host_tools.h.description",
             Box::new(|v| v["host_tools"] = json!({ "h": { "description": "", "params": {}, "effect": "pure" } })),
         ),
@@ -133,6 +140,7 @@ fn every_rule_names_its_key() {
         ("budget.loop_threshold", Box::new(|v| v["budget"]["loop_threshold"] = json!(1))),
         ("done_when.verify", Box::new(|v| v["done_when"] = json!({ "verify": "ghost" }))),
         ("done_when.returns", Box::new(|v| v["done_when"] = json!({ "returns": "string" }))),
+        ("done_when.returns", Box::new(|v| v["done_when"] = json!({ "returns": { "type": 1 } }))),
         ("model.provider", Box::new(|v| v["model"] = json!({ "provider": " ", "model": "m" }))),
         ("model.model", Box::new(|v| v["model"] = json!({ "provider": "anthropic", "model": "" }))),
         (
@@ -156,6 +164,22 @@ fn every_rule_names_its_key() {
     for (key, edit) in cases {
         assert_eq!(rejected(&root, edit), key);
     }
+}
+
+#[test]
+fn workflow_model_schemas_are_validated_at_their_dotted_keys() {
+    let root = tmp("config-workflow-schema");
+    let key = rejected(&root, |v| {
+        v["workflow"] = json!({ "nodes": { "draft": {
+            "model": {
+                "name": "draft", "instructions": { "role": "draft" }, "tools": ["block"],
+                "grants": { "read": [root] }, "budget": { "model_calls": 1 },
+                "done_when": { "returns": { "properties": [] } }
+            },
+            "terminal": true
+        } } });
+    });
+    assert_eq!(key, "workflow.nodes.draft.model.done_when.returns");
 }
 
 #[test]

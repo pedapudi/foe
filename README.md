@@ -156,8 +156,8 @@ run rather than running one; its HTML, TypeScript, and CSS count toward no
 line budget at all. `scripts/loc.sh` counts the four, and continuous
 integration fails a build over any of them. The fifth number bounds the
 browser bundle at 150 KB compressed. The sixth is the stripped release
-binary with that bundle embedded, which measured 5,347,632 bytes on
-2026-08-21; continuous integration builds the bundle before measuring and
+binary with that bundle embedded, which measured 6,575,656 bytes on
+2026-08-22; continuous integration builds the bundle before measuring and
 fails a build over 8 MiB.
 
 ## Documents

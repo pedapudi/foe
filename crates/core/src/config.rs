@@ -143,6 +143,7 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
         let k = |field: &str| key(&format!("host_tools.{name}.{field}"));
         require(!def.description.trim().is_empty(), k("description"), "is not empty")?;
         require(def.params.is_object(), k("params"), "is a JSON Schema object")?;
+        crate::schema::check(k("params"), &def.params)?;
     }
     require(!s.grants.read.is_empty(), key("grants.read"), "has at least one entry")?;
     for (i, path) in s.grants.read.iter().enumerate() {
@@ -171,6 +172,9 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
             key("done_when.returns"),
             "is a JSON Schema object",
         )?;
+        if let Some(schema) = &done.returns {
+            crate::schema::check(key("done_when.returns"), schema)?;
+        }
     }
     if let Some(c) = s.context.as_ref().filter(|c| c.compact) {
         let fits = c.window_tokens.is_none_or(|w| w > c.reserve_tokens + c.keep_recent_tokens);

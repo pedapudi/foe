@@ -18,6 +18,27 @@ Three rules shape the format.
 document and offer completions. `foe plan --config FILE` prints the resolved
 program and its identity without running anything.
 
+## JSON Schema dialect
+
+Every schema embedded in a configuration uses JSON Schema Draft 2020-12.
+The dialect URI is `https://json-schema.org/draft/2020-12/schema`. An
+embedded schema may omit `$schema`. When present, `$schema` must equal that
+URI.
+
+Foe validates every embedded schema during construction. An invalid schema,
+an unknown keyword, or an unknown format is a construction error naming the
+configuration key and the unsupported part. The runtime enforces the `format`
+keyword.
+
+An embedded schema may use `$ref` and `$dynamicRef` within its own document.
+A reference to another document is a construction error. This restriction
+keeps configuration validation independent of the filesystem and network.
+
+The runtime validates tool arguments before dispatch. It validates a value
+passed to the synthesized `return` tool before recording a successful result.
+The workflow executor applies the same check to each completed model node
+before recording the node value.
+
 ## A complete example
 
 ```json
@@ -176,7 +197,7 @@ implementation.
 |---|---|---|---|
 | `description` | string | yes | sent to the model in the tool schema |
 | `instruction` | string | no | appended to the system prompt |
-| `params` | object | yes | JSON Schema for the arguments |
+| `params` | object | yes | Draft 2020-12 JSON Schema for the arguments |
 | `effect` | string | yes | `pure`, `reads`, `writes`, `execs`, or `spawns` |
 
 A host that does not implement a tool named here fails the first call to it.
@@ -241,7 +262,7 @@ episode completes when the model produces a turn with no tool calls.
 |---|---|---|
 | `verify` | string | name of a tool in `tools`; the episode completes when the model finishes and this tool returns no findings |
 | `retries` | integer | how many times findings are fed back; default 2 |
-| `returns` | object | a JSON Schema; the episode completes when the model calls the synthesized `return` tool with a conforming value |
+| `returns` | object | Draft 2020-12 JSON Schema; the episode completes when the model calls the synthesized `return` tool with a conforming value |
 
 `verify` and `returns` may both be present. The verifier then checks the
 returned value.
@@ -385,6 +406,7 @@ The following do not: the paths in `grants`, `model`, `sandbox`, and `task`.
 ## Errors
 
 Every error at construction names the key that caused it and the rule it
-violated. Construction fails before any process starts and before any log is
+violated. A schema error also names the invalid or unsupported keyword or
+format. Construction fails before any process starts and before any log is
 written. A document that passes construction will run; what remains uncertain
 is the model's behavior and the world's.
