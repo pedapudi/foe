@@ -2313,6 +2313,108 @@ table.events td.type.error {
   opacity: 0.8;
 }
 
+/* Where a request's input came from. The six sources are one neutral ink
+ * at six weights, because the register holds no second hue and the accent
+ * is reserved for the source that dominates. The ramp runs from the text
+ * the program fixes to the text the run produced. */
+.kind-system {
+  --input-weight: 0.2;
+}
+
+.kind-schemas {
+  --input-weight: 0.3;
+}
+
+.kind-inbox {
+  --input-weight: 0.42;
+}
+
+.kind-summary {
+  --input-weight: 0.54;
+}
+
+.kind-assistant {
+  --input-weight: 0.66;
+}
+
+.kind-tool {
+  --input-weight: 0.8;
+}
+
+.legend-mark {
+  opacity: var(--input-weight, 1);
+}
+
+.input-seg .seg {
+  fill: var(--v2-ink-faint);
+  fill-opacity: var(--input-weight, 0.5);
+}
+
+.input-seg.lead .seg {
+  fill: var(--v2-accent);
+}
+
+.input-seg .edge {
+  stroke: var(--v2-paper);
+  stroke-width: 1;
+}
+
+.input-seg:hover .seg {
+  fill-opacity: 1;
+}
+
+/* The bars of two rows are read against each other, so the column that
+ * holds them takes the width every row leaves. */
+.input-table {
+  width: 100%;
+}
+
+.input-row {
+  cursor: pointer;
+}
+
+.input-cell {
+  width: 100%;
+  padding-right: 0;
+}
+
+/* A replay cost that spans a request nothing measured is a floor, and the
+ * dashed end says the bar stops where the measurements stop. */
+.tool-bar .open {
+  stroke: var(--v2-ink-faint);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.origin-share .seg {
+  fill: var(--v2-ink-faint);
+  opacity: 0.4;
+}
+
+.origin-share.lead .seg {
+  fill: var(--v2-accent);
+  opacity: 0.55;
+}
+
+.origin-share .edge {
+  stroke: var(--v2-paper);
+  stroke-width: 1;
+}
+
+.origin-share .share-label {
+  fill: var(--v2-ink-faint);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+}
+
+.origin-share.lead .share-label {
+  fill: var(--v2-accent);
+}
+
+.origin-share:hover .seg {
+  opacity: 0.8;
+}
+
 .cache-track {
   fill: var(--v2-ink-faint);
   opacity: 0.2;

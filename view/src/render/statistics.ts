@@ -1,4 +1,4 @@
-// The statistics tab: six figures over one episode, over that episode and
+// The statistics tab: nine figures over one episode, over that episode and
 // its descendants, or one row per root of a collection. Line art in the
 // register docs/design-language.md sets out, with two rules of its own.
 //
@@ -10,6 +10,9 @@
 
 import { clear, fmtDuration, fmtInt, h } from "../dom.js";
 import type { Child } from "../dom.js";
+import { computeAttribution } from "../attribution.js";
+import { inputOriginFigure, inputSourceFigure, replayCostFigure } from "./attribution.js";
+import type { FigureTools } from "./attribution.js";
 import { outcomeLabel } from "../fold.js";
 import { computeRuns, computeStatistics, layoutContextCurve, layoutTools, layoutWallClock } from "../statistics.js";
 import type { CurveLayout, Run, Statistics, StatisticsEpisode, Step } from "../statistics.js";
@@ -179,14 +182,29 @@ export class StatisticsView {
       return;
     }
     const stats = computeStatistics(scope, Date.now());
+    const attribution = computeAttribution(scope);
     this.body.append(
       this.wallClockFigure(stats, width),
       this.contextFigure(stats, width),
+      inputSourceFigure(this.tools, attribution, width),
+      replayCostFigure(this.tools, attribution, width),
+      inputOriginFigure(this.tools, attribution, width),
       this.stepFigure(stats, width),
       this.cacheFigure(stats, width),
       this.budgetFigure(stats),
       this.toolFigure(stats, width),
     );
+  }
+
+  /** What the attribution figures borrow from this view. */
+  private get tools(): FigureTools {
+    return {
+      card: this.card,
+      figure: (name, body, caption) => this.figure(name, body, caption),
+      reveal: (episodeId, seq) => this.handlers.reveal(episodeId, seq),
+      percent,
+      absent,
+    };
   }
 
   /** A figure: a heading, the drawing, and a caption stating what to see. */
