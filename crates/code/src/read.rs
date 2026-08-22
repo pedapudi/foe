@@ -1,7 +1,7 @@
 //! `read`: a numbered window of a text file.
 
-use crate::{display, parse_args, resolve, truncate, OUTPUT_MAX_BYTES, OUTPUT_MAX_LINES};
-use foe_core::{CallCtx, Effect, Tool, ToolSpec, ToolValue};
+use crate::{display, parse_args, resolve, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES};
+use foe_core::{fitting, CallCtx, Effect, Tool, ToolSpec, ToolValue};
 use serde::Deserialize;
 use serde_json::json;
 use std::fmt::Write;
@@ -20,7 +20,7 @@ struct Args {
 
 impl Read {
     pub(crate) fn new() -> Self {
-        let kib = OUTPUT_MAX_BYTES / 1024;
+        let kib = OUTPUT_MAX_CHARS / 1024;
         Self {
             spec: ToolSpec {
                 name: "read".into(),
@@ -80,7 +80,7 @@ impl Tool for Read {
         let Ok(text) = std::str::from_utf8(&bytes) else {
             return ToolValue::error(format!("read: {shown} is a binary file ({} bytes; invalid UTF-8)", bytes.len()));
         };
-        let lines = truncate::lines(text);
+        let lines: Vec<&str> = text.lines().collect();
         let total = lines.len();
         let offset = a.offset.unwrap_or(1);
         let value = |shown_n: usize, truncated: bool, content: &str| {
@@ -106,25 +106,25 @@ impl Tool for Read {
         }
         let rest = &lines[offset - 1..];
         let max_lines = a.limit.unwrap_or(OUTPUT_MAX_LINES).clamp(1, OUTPUT_MAX_LINES);
-        let cut = truncate::head(rest, max_lines, OUTPUT_MAX_BYTES);
-        if cut.len() == 0 {
+        let (kept, _) = fitting(rest.iter(), max_lines, OUTPUT_MAX_CHARS);
+        if kept == 0 {
             let notice = format!(
-                "[Line {offset} of {shown} is {} bytes, over the {OUTPUT_MAX_BYTES}-byte limit for \
-                 one read. Use bash: sed -n '{offset}p' '{shown}' | head -c 4000]",
-                rest[0].len()
+                "[Line {offset} of {shown} is {} characters, over the {OUTPUT_MAX_CHARS}-character limit \
+                 for one read. Use bash: sed -n '{offset}p' '{shown}' | head -c 4000]",
+                rest[0].chars().count()
             );
             return ToolValue::ok(value(0, true, ""), notice);
         }
-        let last = offset - 1 + cut.len();
+        let last = offset - 1 + kept;
         let mut out = String::new();
-        for (i, line) in rest[..cut.end].iter().enumerate() {
+        for (i, line) in rest[..kept].iter().enumerate() {
             let _ = writeln!(out, "{}\t{line}", offset + i);
         }
         let truncated = last < total;
         if truncated {
             let _ = write!(out, "[Showing lines {offset}-{last} of {total}. Use offset={} to continue.]", last + 1);
         }
-        ToolValue::ok(value(cut.len(), truncated, &rest[..cut.end].join("\n")), out)
+        ToolValue::ok(value(kept, truncated, &rest[..kept].join("\n")), out)
     }
 }
 

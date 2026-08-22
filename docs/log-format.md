@@ -216,9 +216,18 @@ other route.
 }
 ```
 
-`value` is the canonical result. `rendered` is the text the model received.
+`value` is the canonical result, kept whole. `rendered` is the text the
+model received, which the turn budget may have shortened: the results of one
+model turn share a character budget, and a rendering over its part of that
+budget ends with a notice stating what was removed and naming the call that
+shows it. [tools.md](tools.md#the-turn-budget) specifies the division and
+the notice. The cut is applied before the event is appended, so the
+rendering in the log is the rendering every request carries, and no earlier
+event is ever rewritten. A reader that wants the whole result reads
+`value`.
 `spill` names a file under `spill/` when the canonical value was too large to
-inline; the inlined `value` is then a locator object. `synthetic` is true
+inline; the inlined `value` is then a locator object, and `rendered` states
+the file and carries the rendering. `synthetic` is true
 when the result was written by the seeding step or by request failure
 recovery rather than by running the tool: a call left without a result when
 the episode was interrupted receives a result with `synthetic: true` and

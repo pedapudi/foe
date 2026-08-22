@@ -1,13 +1,13 @@
 //! `bash`: one shell command through the `Executor`.
 //!
 //! The tool never starts a process itself. It builds an `ExecRequest` for
-//! `/bin/bash -c` and renders the result: the tail of the combined output,
-//! the exit code, and the duration. The executor owns the timeout and the
+//! `/bin/bash -c` and renders the result: the exit status, then the tail
+//! of the combined output. The executor owns the timeout and the
 //! kill, so a command that outlives its budget is reported as `timed_out`
 //! rather than as a tool error.
 
-use crate::{parse_args, truncate, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_BYTES, OUTPUT_MAX_LINES};
-use foe_core::{CallCtx, Effect, ExecRequest, Tool, ToolSpec, ToolValue};
+use crate::{parse_args, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES};
+use foe_core::{fitting, CallCtx, Effect, ExecRequest, Tool, ToolSpec, ToolValue};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -42,16 +42,17 @@ struct Args {
 
 impl Bash {
     pub(crate) fn new() -> Self {
-        let kib = OUTPUT_MAX_BYTES / 1024;
+        let kib = OUTPUT_MAX_CHARS / 1024;
         Self {
             spec: ToolSpec {
                 name: "bash".into(),
                 description: format!(
                     "Run a command with {SHELL} -c in the first read root. Times out after \
                      timeout_seconds (default {BASH_DEFAULT_TIMEOUT_SECS}). Returns stdout, stderr, \
-                     the exit code, and the duration; a non-zero exit is an ordinary result. Only \
-                     the last {OUTPUT_MAX_LINES} lines or {kib} KiB of output are shown; the full \
-                     output is then saved to a file named in the result."
+                     the exit code, and the duration; a non-zero exit is an ordinary result. The \
+                     rendering opens with the exit status. At most the last {OUTPUT_MAX_LINES} lines \
+                     or {kib} KiB of output are collected; the rest is saved to a file named in the \
+                     result."
                 ),
                 instruction: Some(
                     "Use bash to build, test, and run programs. Prefer read, grep, and edit for \
@@ -116,11 +117,19 @@ impl Tool for Bash {
             }
             let _ = write!(combined, "--- stderr ---\n{stderr}");
         }
-        let lines = truncate::lines(&combined);
-        let cut = truncate::tail(&lines, OUTPUT_MAX_LINES, OUTPUT_MAX_BYTES);
-        let truncated = cut.len() < lines.len();
+        let lines: Vec<&str> = combined.lines().collect();
+        let (kept, _) = fitting(lines.iter().rev(), OUTPUT_MAX_LINES, OUTPUT_MAX_CHARS);
+        let truncated = kept < lines.len();
         let mut spill = None;
-        let mut out = String::new();
+        // The status leads the rendering so that it survives any later cut
+        // of the middle, and the tail of the output, which carries a build
+        // or test verdict, survives with it.
+        let secs = res.duration.as_secs_f64();
+        let mut out = match (res.timed_out, res.exit_code) {
+            (true, _) => format!("[timed out after {secs:.1}s; the process group was killed]\n"),
+            (false, Some(code)) => format!("[exit {code} in {secs:.2}s]\n"),
+            (false, None) => format!("[killed by a signal after {secs:.2}s]\n"),
+        };
         if truncated {
             let file = ctx.spill_dir.join(format!("{}-bash.txt", ctx.call_id));
             let saved =
@@ -129,14 +138,14 @@ impl Tool for Bash {
                 Ok(()) => writeln!(
                     out,
                     "[Showing the last {} of {} lines. Full output saved to {}]",
-                    cut.len(),
+                    kept,
                     lines.len(),
                     file.display()
                 ),
                 Err(e) => writeln!(
                     out,
                     "[Showing the last {} of {} lines. Saving the full output failed: {e}]",
-                    cut.len(),
+                    kept,
                     lines.len()
                 ),
             };
@@ -144,15 +153,9 @@ impl Tool for Bash {
                 spill = Some(file.display().to_string());
             }
         }
-        for l in &lines[cut.start..cut.end] {
+        for l in &lines[lines.len() - kept..] {
             let _ = writeln!(out, "{l}");
         }
-        let secs = res.duration.as_secs_f64();
-        let _ = match (res.timed_out, res.exit_code) {
-            (true, _) => write!(out, "[timed out after {secs:.1}s; the process group was killed]"),
-            (false, Some(code)) => write!(out, "[exit {code} in {secs:.2}s]"),
-            (false, None) => write!(out, "[killed by a signal after {secs:.2}s]"),
-        };
         ToolValue::ok(
             json!({
                 "command": a.command,

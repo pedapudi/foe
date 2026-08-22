@@ -23,7 +23,7 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert_eq!(v.value["exit_code"], 2);
     assert_eq!(v.value["timed_out"], false);
     assert_eq!(v.value["duration_ms"], 1500);
-    assert_eq!(v.rendered.as_deref(), Some("out\n--- stderr ---\nerr\n[exit 2 in 1.50s]"));
+    assert_eq!(v.rendered.as_deref(), Some("[exit 2 in 1.50s]\nout\n--- stderr ---\nerr\n"));
     let req = exec.last().unwrap();
     assert_eq!(req.program, PathBuf::from("/bin/bash"));
     assert_eq!(req.args, ["-c", "false"]);
@@ -58,12 +58,12 @@ async fn long_output_is_tail_truncated_and_spilled() {
     let spill = c.spill_dir.join("call-1-bash.txt");
     assert!(
         r.starts_with(&format!(
-            "[Showing the last 2000 of 5000 lines. Full output saved to {}]\nline 3001\n",
+            "[exit 0 in 1.50s]\n[Showing the last 2000 of 5000 lines. Full output saved to {}]\nline 3001\n",
             spill.display()
         )),
         "{r}"
     );
-    assert!(r.ends_with("line 5000\n[exit 0 in 1.50s]"));
+    assert!(r.ends_with("line 5000\n"), "the tail of the output ends the rendering");
     assert_eq!(std::fs::read_to_string(&spill).unwrap(), full);
     assert_eq!(v.value["truncated"], true);
     assert_eq!(v.value["spill"], spill.display().to_string());

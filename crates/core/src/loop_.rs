@@ -13,6 +13,7 @@ use crate::context::{Answer, ContextPolicy, ContextState, Summarized, SummaryCal
 use crate::harness_text as text;
 use crate::inbox::Inbox;
 use crate::registry::{Handles, Registry};
+use crate::result_budget;
 use crate::spawn::Router;
 use crate::{ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
 use foe_log::{
@@ -29,11 +30,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
 
-/// A rendered result longer than this, or a canonical value serializing
-/// longer than this, is written to `spill/` and replaced by a locator.
+/// A canonical value serializing longer than this is written to `spill/`
+/// and replaced by a locator. The rendering beside it needs no such rule:
+/// the turn budget has already bounded it.
 pub const SPILL_LIMIT: usize = 64 * 1024;
-/// Bytes of the rendered text kept inline ahead of the locator.
-pub const SPILL_HEAD: usize = 16 * 1024;
 /// Attempts per step before the episode is blocked as `recovery-exhausted`.
 pub const MAX_ATTEMPTS: u32 = 5;
 const BACKOFF_BASE_MS: u64 = 500;
@@ -475,7 +475,11 @@ impl Episode {
             reason = wait_stop(self.p.stop.clone()) => return Ok(Err(Outcome::Failed { error: reason })),
             _ = until(deadline) => return Ok(Err(Outcome::Exhausted { limit: ExhaustedLimit::Seconds })),
         };
-        for (call, (value, duration_ms)) in message.tool_calls.iter().zip(values) {
+        // The turn's results are bounded together, before any is appended,
+        // so that the log and every later request carry the same text.
+        let (mut values, durations): (Vec<ToolValue>, Vec<u64>) = values.into_iter().unzip();
+        result_budget::bound(&mut values);
+        for ((call, value), duration_ms) in message.tool_calls.iter().zip(values).zip(durations) {
             results.push(self.append_result(call, value, duration_ms, false)?);
             if self.p.registry.effect(&call.name).is_some_and(|e| !e.concurrent()) {
                 self.p.log.sync()?;
@@ -653,14 +657,14 @@ async fn run_calls(
         .collect()
 }
 
-/// Renders a value for the model and writes it to `spill/<call_id>.json`
-/// when it exceeds [`SPILL_LIMIT`]. Returns the inlined value, the rendered
-/// text, and the spill file name.
+/// Writes a canonical value to `spill/<call_id>.json` when it exceeds
+/// [`SPILL_LIMIT`]. Returns the inlined value, which is then a locator, the
+/// rendered text, and the spill file name.
 fn spill(spill_dir: &Path, call_id: &str, value: ToolValue) -> Result<(Value, String, Option<String>), RuntimeError> {
     let canonical =
         serde_json::to_vec(&value.value).map_err(|e| RuntimeError::Protocol(format!("tool value serializes: {e}")))?;
     let rendered = value.rendered.unwrap_or_else(|| String::from_utf8_lossy(&canonical).into_owned());
-    if rendered.len() <= SPILL_LIMIT && canonical.len() <= SPILL_LIMIT {
+    if canonical.len() <= SPILL_LIMIT {
         return Ok((value.value, rendered, None));
     }
     std::fs::create_dir_all(spill_dir).map_err(foe_log::LogError::Io)?;
@@ -668,18 +672,9 @@ fn spill(spill_dir: &Path, call_id: &str, value: ToolValue) -> Result<(Value, St
         call_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
     let file = format!("{safe}.json");
     std::fs::write(spill_dir.join(&file), &canonical).map_err(foe_log::LogError::Io)?;
-    let mut head_end = SPILL_HEAD.min(rendered.len());
-    while !rendered.is_char_boundary(head_end) {
-        head_end -= 1;
-    }
     let framed = text::fill(
         text::SPILL_FRAME,
-        &[
-            ("bytes", &canonical.len().to_string()),
-            ("path", &format!("spill/{file}")),
-            ("head_bytes", &head_end.to_string()),
-            ("head", &rendered[..head_end]),
-        ],
+        &[("bytes", &canonical.len().to_string()), ("path", &format!("spill/{file}")), ("head", &rendered)],
     );
     let locator = serde_json::json!({ "spill": file, "bytes": canonical.len(), "is_error": value.is_error });
     Ok((locator, framed, Some(file)))

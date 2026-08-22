@@ -387,9 +387,9 @@ async fn a_large_result_is_spilled_and_replaced_by_a_locator() {
     let r = results(&events)[0];
     assert_eq!(r.spill.as_deref(), Some("a.json"));
     assert_eq!(r.value["spill"], "a.json");
-    assert!(r.rendered.starts_with("The result was") && r.rendered.len() < SPILL_LIMIT);
+    assert!(r.rendered.starts_with("The canonical value was") && r.rendered.len() < SPILL_LIMIT);
     let spilled: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("spill/a.json")).unwrap()).unwrap();
-    assert_eq!(spilled["args"]["big"], SPILL_LIMIT + 1);
+    assert_eq!(spilled["big"].as_str().unwrap().len(), SPILL_LIMIT + 1);
 }
 
 #[tokio::test]
