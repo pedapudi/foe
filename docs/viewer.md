@@ -1,7 +1,10 @@
 # Viewer
 
-The viewer renders an episode directory: the log of one episode and the
-logs of every descendant under `children/`. It has two halves. A browser
+The viewer renders an episode directory, which is the log of one episode
+and the logs of every descendant under `children/`, or a directory of such
+directories, whose episodes are shown side by side as independent runs.
+"The episode tree" below states which of the two a directory is read as.
+The viewer has two halves. A browser
 bundle, built from `view/` into `view/dist/viewer.js` and
 `view/dist/viewer.css`, renders the page. The `foe-view` crate embeds that
 bundle into the binary at build time and supplies it with events in one of
@@ -24,6 +27,14 @@ Below the top bar the page has four regions.
   that order. The workflow tab is present only for an episode whose
   program declares a graph; the other four are always present.
 
+The main region holds one episode, the selected one, however many the
+viewer shows. Reading several episodes against each other is what the
+other figures are for: the trajectory draws every episode as a row, the
+statistics tab gives every root a row of its own, and the diff tab sets
+the suffixes of two forked episodes side by side. A second conversation
+pane would take width from those three and answer a narrower question than
+any of them.
+
 Every divider between two regions is a grip that resizes them, by drag, by
 the arrow keys, or to a limit with Home and End; a double click returns a
 grip to its default. `docs/design-language.md` specifies the grip.
@@ -44,6 +55,28 @@ region as it adds a row. Once a grip has moved the trajectory the stored
 size wins and the rows no longer change it; a double click on a grip drops
 the stored size and returns the region to what derives it. Every region
 declares a minimum, so none of them collapses.
+
+### Runs of one program
+
+`episode/start.identity` is a hash over everything that shapes what the
+model sees, which [design.md](design.md) specifies under "Programs and
+identity". Two episodes of one program carry one identity and unrelated
+episodes carry different ones, so it is what separates runs that may be
+compared from episodes that merely sit in one directory.
+
+Roots that carry one identity stand together in the episode list and in
+the trajectory, and a hairline bracket spans their rows: down the left
+edge of the episode list, and in the gutter between the label column and
+the plot in the trajectory. A root's descendants are inside its bracket,
+because they are part of that run. A program with a single root in view
+gets no bracket, since a bracket around one row groups nothing, and an
+episode whose `episode/start` has not been read yet has no identity and
+stands alone until it has. Hovering a bracket names the program, the
+number of runs, and the identity they share.
+
+A rebuild of the runtime changes identity, because the runtime's version
+and build hash are part of it. Two runs of one configuration separated by
+a rebuild are therefore two programs here, and they are drawn as two.
 
 The episodes tree gives each episode a row about 40 pixels tall: a dot
 coloured by outcome, the program name at the page's base size, the episode
@@ -71,8 +104,9 @@ not happen.
 
 The details region states the outcome, the model calls and tokens consumed
 against the budget `episode/start.program.budget` declares, the sandbox
-mode and Landlock ABI, the lineage, the event count, the start time, the
-duration, and the task. Its text wraps and its numbers are tabular; the
+mode and Landlock ABI, the program identity, the lineage, the event count,
+the start time, the duration, and the task. The identity is set as the
+first eight characters of its digest, with the whole hash in its tooltip. Its text wraps and its numbers are tabular; the
 region scrolls as a whole when its content exceeds it, and nothing inside
 it has a scrollbar of its own.
 
@@ -142,10 +176,24 @@ stands beside it in the sidebar and in the breadcrumbs, so the row does not
 repeat it. The selected row carries the figure's one accent as a spine down
 its leading edge.
 
-The x axis is wall-clock time, taken from each event's `time`. A control in
-the region's header switches it to log position, where x is the event's
-`seq`. Both axes map linearly onto the same plot area, so switching moves
-the marks and changes nothing else. The axis carries small mono labels on
+A control in the region's header sets what x measures, and the three
+settings map linearly onto the same plot area, so switching moves the
+marks and changes nothing else.
+
+- **wall clock** places a mark at its event's `time`. Two marks at one x
+  happened at one moment, which is what a reader of a single tree wants.
+- **elapsed** places a mark at the time since the start of its row's own
+  root episode. Every root then begins at the left edge, and the axis
+  spans the longest run rather than the interval between the runs. A child
+  keeps its offset from its root, so a tree holds its shape and only whole
+  trees are moved.
+- **sequence** places a mark at its event's `seq`.
+
+The figure opens on the axis its content calls for: elapsed when it holds
+more than one root, because independent runs started days apart would each
+draw as a sliver of an axis spanning those days, and wall clock inside one
+tree, where simultaneity between rows is real. Once the reader has picked
+a setting, that setting stays. The axis carries small mono labels on
 leader ticks at round offsets from the start of the run, and each tick
 carries a gridline down the plot in `--v2-rule-soft` at 0.6 pixels, because
 a bar's length is read against the axis. The figure fits the region's width
@@ -389,8 +437,10 @@ The statistics tab draws six figures over the selected episode, or over
 that episode together with every episode under it. A control in the tab's
 header switches between the two, because a child spends from the budget
 pool its root holds: the tree is the scope a declared limit actually
-bounds. Every quantity is derived in the browser from events the log
-already carries.
+bounds. Where the viewer holds more than one root, the control offers a
+third setting, **every run**, described below; with one root that setting
+is absent, because a collection of one has nothing to compare. Every
+quantity is derived in the browser from events the log already carries.
 
 Two rules govern the presentation.
 
@@ -473,6 +523,21 @@ share of the limit, and a hairline mark of that share which takes
 **Tool calls** is one row per tool name with its call count, the total
 duration its results report, its error count, and a bar of that duration
 against the longest.
+
+**Every run** replaces the six figures with one row per root episode: the
+program name and episode id, the outcome, the model requests, the tokens,
+the wall clock, the retries, and a bar of that run's tokens against the
+largest run. Each row is counted over that root and its descendants alone.
+
+No column of that table is a total across roots. A budget is a pool a root
+reserves and hands down to its descendants, so adding two roots together
+would state one pool where there are two, which is the same kind of claim
+as reporting an unmeasured quantity as zero. Comparison is what the table
+offers instead: the bar puts each run's spending against the largest run,
+and the other columns stand side by side. A run whose answers reported no
+usage at all has no token figure and no bar, for the same reason a run
+with no cache-read figure has no hit rate. Clicking a row selects that
+root.
 
 ## Rendering text
 
@@ -564,9 +629,41 @@ that identify the episode and its lineage, the outcome when the log has an
 
 `name` is `program.name` from `episode/start` and is null when the program
 has no name. Children are the episodes whose directories lie under the
-parent's `children/`, sorted by directory name. A directory holds one root
-log, so `roots` has one element once that log exists and none before it
-does.
+parent's `children/`, sorted by directory name.
+
+### What a directory holds
+
+The directory the viewer is pointed at is read in one of two layouts, and
+what is on disk decides which; no option selects a layout.
+
+- A directory holding `episode.jsonl` is one **episode directory**. It is
+  its own single root, and its descendants are the logs under `children/`.
+  Every runner and every example passes a directory of this kind.
+- A directory holding no log of its own is a **collection**. Each of its
+  immediate subdirectories that holds an `episode.jsonl` is a root, sorted
+  by directory name, and each root keeps its own descendants under its own
+  `children/`. A subdirectory with no log, such as one holding notes, is
+  passed over. This is the layout a log directory accumulates when several
+  runs write into it, as `.foe` does.
+
+`roots` therefore has one element for an episode directory and one per
+entry for a collection. Both are empty until the first `episode/start` is
+readable. Roots are independent: nothing is nested under a fabricated
+parent, because a parent means a shared budget pool and a settled child,
+and neither holds between two runs that merely share a directory.
+
+A directory that is neither, such as a path that does not exist or one
+holding no log anywhere, is read as an episode directory, so the failure
+names the `episode.jsonl` that is missing. Live mode tolerates that
+failure and retries, so a server started on an empty directory picks up
+each run as its log appears.
+
+An episode seeded from another log carries `fork_origin`, which names that
+log's episode. The runtime writes the seeded episode under the origin's
+own `children/` and gives it a `parent_id` as well, so the origin of a
+fork is always a log in the same tree. No index from episode id to
+directory is therefore needed, and none exists: an episode whose named
+origin is not among the logs read is drawn as a root of its own.
 
 ## Live mode
 
@@ -657,8 +754,8 @@ script, stylesheet, fonts, and events are all inside it. Its size is the
 bundle plus the fonts plus the logs, and `assistant/chunk` and
 `model/request` events make the logs several times the size of the
 conversation they describe; see [log-format.md](log-format.md#size). The
-export fails, naming the file, when any log under `dir` is missing or
-malformed.
+export fails, naming the file, when a log under `dir` is malformed and
+when `dir` is neither an episode directory nor a directory holding one.
 
 ## Embedding the bundle
 

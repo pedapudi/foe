@@ -18,6 +18,7 @@ import {
   layoutTrajectory,
   niceStep,
   nodeLaneOrder,
+  originsOf,
   tickLabel,
   timeAtSeq,
 } from "../src/trajectory.js";
@@ -42,6 +43,7 @@ function episodes(...names: string[]): TrajectoryEpisode[] {
     return {
       id: s.id,
       name: s.name,
+      identity: s.identity,
       depth,
       startTime: s.startTime,
       endTime: s.endTime,
@@ -135,6 +137,79 @@ test("the same episodes on the sequence axis map log positions instead", () => {
   assert.equal(Math.round(longest.x2), Math.round(out.plot.right));
 });
 
+test("on the elapsed axis every root starts at the left edge of the plot", () => {
+  // Two independent runs 67 days apart. On the wall clock the later one is
+  // a sliver at the right edge; measured from each root's own start they
+  // are read against each other.
+  const list = episodes("compact.jsonl", "overlap-parent.jsonl", "overlap-child.jsonl");
+  const wall = layoutTrajectory(input(list));
+  const slivers = wall.rows.filter((r) => r.x2 - r.x1 < (wall.plot.right - wall.plot.left) / 100);
+  assert.equal(slivers.length, wall.rows.length, "on the wall clock the gap between the runs is the whole axis");
+
+  const out = layoutTrajectory(input(list, { axis: "elapsed" }));
+  assert.equal(out.domain[0], 0, "the elapsed axis starts at zero");
+  for (const row of out.rows.filter((r) => r.depth === 0)) {
+    assert.equal(row.x1, out.plot.left, `${row.id} starts at the left edge`);
+  }
+  const longest = out.rows.reduce((a, b) => (a.x2 > b.x2 ? a : b));
+  assert.equal(Math.round(longest.x2), Math.round(out.plot.right), "the longest run reaches the right edge");
+  // Every row is now a readable length rather than a sliver.
+  for (const row of out.rows) assert.ok(row.x2 - row.x1 > 1, `${row.id} has a visible length`);
+});
+
+test("the elapsed axis keeps a child at its offset from its own root", () => {
+  const list = episodes("overlap-parent.jsonl", "overlap-child.jsonl");
+  const out = layoutTrajectory(input(list, { axis: "elapsed" }));
+  const [parent, child] = out.rows as [(typeof out.rows)[number], (typeof out.rows)[number]];
+  const [, high] = out.domain;
+  const perMs = (out.plot.right - out.plot.left) / high;
+  const offset = list[1]!.startTime - list[0]!.startTime;
+  assert.ok(offset > 0);
+  assert.equal(parent.x1, out.plot.left, "the root of the tree is the origin");
+  assert.ok(Math.abs(child.x1 - (out.plot.left + offset * perMs)) < 1e-6, "the child keeps its offset");
+  assert.ok(child.x2 < parent.x2, "the child still ends inside its parent");
+});
+
+test("origins are the start of each row's own root", () => {
+  const list = episodes("compact.jsonl", "overlap-parent.jsonl", "overlap-child.jsonl");
+  const origins = originsOf(list);
+  const byId = new Map(list.map((e) => [e.id, e]));
+  assert.equal(origins.get("ep_compact"), byId.get("ep_compact")!.startTime);
+  assert.equal(origins.get("ep_over_parent"), byId.get("ep_over_parent")!.startTime);
+  assert.equal(
+    origins.get("ep_over_child"),
+    byId.get("ep_over_parent")!.startTime,
+    "a child measures from its root rather than from itself",
+  );
+});
+
+test("a tool call keeps the length of its duration on the elapsed axis", () => {
+  const list = episodes("overlap-parent.jsonl");
+  const out = layoutTrajectory(input(list, { axis: "elapsed" }));
+  const [, high] = out.domain;
+  const perMs = (out.plot.right - out.plot.left) / high;
+  const tools = out.rows[0]!.marks.filter((m) => m.kind === "tool" && m.durationMs > 0);
+  assert.ok(tools.length > 0, "the fixture calls tools");
+  for (const mark of tools) {
+    assert.ok(Math.abs(mark.w - mark.durationMs * perMs) < 1e-6, `${mark.label} is as wide as it is long`);
+  }
+});
+
+test("brackets group the roots that ran one program and nothing else", () => {
+  const list = episodes("compact.jsonl", "root.jsonl", "overlap-parent.jsonl", "overlap-child.jsonl");
+  const out = layoutTrajectory(input(list, { axis: "elapsed" }));
+  assert.equal(out.groups.length, 1);
+  const group = out.groups[0]!;
+  assert.equal(group.identity, "sha256:cccc");
+  assert.equal(group.runs, 2);
+  assert.ok(group.x < out.plot.left, "the bracket stands in the gutter beside the plot");
+  const first = out.rows.find((r) => r.id === "ep_compact")!;
+  const last = out.rows.find((r) => r.id === "ep_over_child")!;
+  assert.ok(group.y1 >= first.top && group.y1 < first.top + first.height);
+  assert.ok(group.y2 > last.top && group.y2 <= last.top + last.height);
+  assert.equal(layoutTrajectory(input(episodes("root.jsonl", "compact.jsonl"))).groups.length, 0);
+});
+
 test("the x mapping is linear and puts the domain ends on the plot edges", () => {
   const list = episodes("overlap-parent.jsonl", "overlap-child.jsonl");
   const out = layoutTrajectory(input(list));
@@ -148,7 +223,7 @@ test("the x mapping is linear and puts the domain ends on the plot edges", () =>
 
 test("a single instant gives a degenerate domain and no division by zero", () => {
   const one: TrajectoryEpisode = {
-    id: "ep_one", name: "one", depth: 0, startTime: 5, endTime: 5, lastSeq: 0,
+    id: "ep_one", name: "one", identity: "sha256:one", depth: 0, startTime: 5, endTime: 5, lastSeq: 0,
     outcome: { kind: "completed" }, parentId: null, forkOrigin: null,
     marks: [{ kind: "request", seq: 0, time: 5, durationMs: 0, span: null, label: "", detail: "" }],
     firings: [], decisions: [],
@@ -196,7 +271,7 @@ test("the lane keeps a hairline tool call apart from a request tick at the same 
   // span of tens of seconds, so no segment has a visible length.
   const start = 1_700_000_000_000;
   const one: TrajectoryEpisode = {
-    id: "ep_bound", name: "bound", depth: 0, startTime: start, endTime: start + 43_000, lastSeq: 3,
+    id: "ep_bound", name: "bound", identity: "sha256:bound", depth: 0, startTime: start, endTime: start + 43_000, lastSeq: 3,
     outcome: { kind: "completed" }, parentId: null, forkOrigin: null,
     marks: [
       { kind: "request", seq: 1, time: start + 10_000, durationMs: 0, span: null, label: "step 1", detail: "" },
@@ -519,7 +594,7 @@ test("an episode with no graph has no lane, no firing, and no decision", () => {
 function batch(count: number, gap: number): TrajectoryEpisode {
   const start = 1_700_000_000_000;
   return {
-    id: "ep_batch", name: "batch", depth: 0, startTime: start, endTime: start + 40_000, lastSeq: count,
+    id: "ep_batch", name: "batch", identity: "sha256:batch", depth: 0, startTime: start, endTime: start + 40_000, lastSeq: count,
     outcome: { kind: "completed" }, parentId: null, forkOrigin: null,
     marks: Array.from({ length: count }, (_, i) => ({
       kind: "tool" as const, seq: i + 1, time: start + 10_000 + i * gap, durationMs: 0, span: null,
@@ -616,7 +691,7 @@ test("a rail passes through a row when a deeper row follows it", () => {
 function openRun(now: number): TrajectoryEpisode {
   const start = 1_700_000_000_000;
   return {
-    id: "ep_open", name: "grapher", depth: 0, startTime: start, endTime: null, lastSeq: 4,
+    id: "ep_open", name: "grapher", identity: "sha256:grapher", depth: 0, startTime: start, endTime: null, lastSeq: 4,
     outcome: null, parentId: null, forkOrigin: null, marks: [], decisions: [],
     firings: [
       { node: "survey", fire: 1, startSeq: 1, startTime: start + 1_000, endSeq: 2, endTime: start + 3_000, durationMs: 1_900, error: "", childId: null },

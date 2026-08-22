@@ -762,6 +762,15 @@ details[open] > summary::before {
   stroke-dasharray: 4 4;
 }
 
+/* A bracket down the left edge spanning the rows of the roots that ran one
+ * program. Lineage is drawn in ink; this is a grouping of independent runs
+ * rather than a relation between them, so it stays a hairline rule. */
+.tree .program-run {
+  fill: none;
+  stroke: var(--v2-rule);
+  stroke-width: 0.9;
+}
+
 .tree .node {
   cursor: pointer;
 }
@@ -1635,6 +1644,19 @@ table.events td.type.error {
   stroke-width: 0.9;
 }
 
+/* A bracket in the gutter between the labels and the plot, spanning the
+ * rows of the roots that ran one program. It is structure rather than
+ * activity, so it is a hairline in the separator ink. */
+.traj-group {
+  fill: none;
+  stroke: var(--v2-rule);
+  stroke-width: 0.9;
+}
+
+.traj-group:hover {
+  stroke: var(--v2-ink-faint);
+}
+
 /* One lane per node that fired, named in the label column beside its own
  * lane. The name is data about the graph, so it sets in the data face. */
 .traj-lane-label {
@@ -2208,7 +2230,8 @@ table.events td.type.error {
   cursor: default;
 }
 
-.step-row {
+.step-row,
+.run-row {
   cursor: pointer;
 }
 

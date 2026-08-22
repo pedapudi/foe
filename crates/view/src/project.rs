@@ -26,8 +26,9 @@ pub struct Node {
     pub children: Vec<Node>,
 }
 
-/// The episodes under one directory. A directory holds one root log, so
-/// `roots` has one element once that log exists and none before.
+/// The episodes under one directory. One episode directory has the single
+/// root its own log describes; a directory of episode directories has one
+/// root per entry whose log has an `episode/start`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct Tree {
     pub roots: Vec<Node>,
@@ -70,25 +71,29 @@ struct Episode {
     node: Option<Node>,
 }
 
-/// Every log under a root directory, keyed by episode directory. Child
-/// directories sort after their parent, so iteration is tree order.
+/// Every log under one directory, keyed by episode directory. Child
+/// directories sort after their parent, so iteration is tree order. `dir`
+/// is the directory the viewer was pointed at, which is one episode
+/// directory or a directory of them; [`roots_of`] states the rule.
 pub(crate) struct Store {
-    root: PathBuf,
+    dir: PathBuf,
     episodes: BTreeMap<PathBuf, Episode>,
 }
 
 impl Store {
-    pub(crate) fn new(root: &Path) -> Store {
-        Store { root: root.to_path_buf(), episodes: BTreeMap::new() }
+    pub(crate) fn new(dir: &Path) -> Store {
+        Store { dir: dir.to_path_buf(), episodes: BTreeMap::new() }
     }
 
     /// Reads whatever each log has appended since the last call and
-    /// discovers new child directories. Returns whether any log grew. When
-    /// some log cannot be read, the others are still advanced and the first
-    /// error is returned; a tailing caller retries on its next tick.
+    /// discovers new root and child directories. Returns whether any log
+    /// grew. When some log cannot be read, the others are still advanced
+    /// and the first error is returned; a tailing caller retries on its
+    /// next tick. Roots are discovered on every call, so a run that writes
+    /// its directory while the server is up joins the collection.
     pub(crate) fn poll(&mut self) -> Result<bool, Error> {
         let (mut changed, mut first_err) = (false, None);
-        let mut pending = vec![self.root.clone()];
+        let mut pending = roots_of(&self.dir);
         while let Some(dir) = pending.pop() {
             let episode = self.episodes.entry(dir.clone()).or_default();
             match foe_log::fold::read_from(&dir, episode.offset) {
@@ -107,16 +112,18 @@ impl Store {
                     }
                 }
                 Err(e) => {
-                    first_err.get_or_insert(Error::Log(dir.join("episode.jsonl"), e));
+                    first_err.get_or_insert(Error::Log(dir.join(LOG_FILE), e));
                 }
             }
-            pending.extend(child_dirs(&dir));
+            // A child directory written before its log exists holds no
+            // episode yet; a later poll discovers it.
+            pending.extend(episode_dirs(&dir.join("children")));
         }
         first_err.map_or(Ok(changed), Err)
     }
 
     pub(crate) fn tree(&self) -> Tree {
-        Tree { roots: self.node(&self.root).into_iter().collect() }
+        Tree { roots: roots_of(&self.dir).iter().filter_map(|dir| self.node(dir)).collect() }
     }
 
     fn node(&self, dir: &Path) -> Option<Node> {
@@ -145,15 +152,53 @@ impl Store {
     }
 }
 
-/// Subdirectories of `dir/children`, in no particular order. Empty when
-/// there are none.
-fn child_dirs(dir: &Path) -> impl Iterator<Item = PathBuf> {
-    let entries = std::fs::read_dir(dir.join("children")).into_iter().flatten().flatten();
-    entries.map(|e| e.path()).filter(|p| p.is_dir())
+/// The name every episode log has, inside the directory of its episode.
+const LOG_FILE: &str = "episode.jsonl";
+
+/// The immediate subdirectories of `dir` that hold a log of their own,
+/// sorted by path. A subdirectory without a log is left out, so a
+/// directory of notes or of spilled tool values is never taken for an
+/// episode. Empty when `dir` cannot be read, which is how an absent
+/// directory arrives here.
+fn episode_dirs(dir: &Path) -> Vec<PathBuf> {
+    let entries = std::fs::read_dir(dir).into_iter().flatten().flatten();
+    let mut dirs: Vec<PathBuf> = entries.map(|e| e.path()).filter(|p| p.join(LOG_FILE).is_file()).collect();
+    dirs.sort();
+    dirs
 }
 
-/// Reads every log under `dir` once and returns the episode tree. Fails
-/// when any log under `dir` cannot be read or parsed, naming the file.
+/// The directories whose logs are the roots of the projection. What is on
+/// disk decides which of three cases `dir` falls into, and no option
+/// overrides that.
+///
+/// 1. `dir` holds a log of its own. It is one episode directory, it is its
+///    own only root, and its descendants are the logs under `children/`.
+///    Every runner and every example passes a directory of this kind.
+/// 2. `dir` holds no log and at least one immediate subdirectory does.
+///    `dir` is a collection: each of those subdirectories is a root, in
+///    path order, and each keeps its own descendants under its own
+///    `children/`. The roots are independent, so none of them is nested
+///    under any other and no parent is invented to hold them.
+/// 3. `dir` is neither, because it holds nothing, holds no log anywhere,
+///    or does not exist. It is returned as its own root, so the read that
+///    follows fails naming the `episode.jsonl` it could not open. In live
+///    mode that failure is transient and retried, so a server started on
+///    an empty directory shows each run once its log appears.
+fn roots_of(dir: &Path) -> Vec<PathBuf> {
+    if dir.join(LOG_FILE).is_file() {
+        return vec![dir.to_path_buf()];
+    }
+    let roots = episode_dirs(dir);
+    if roots.is_empty() {
+        return vec![dir.to_path_buf()];
+    }
+    roots
+}
+
+/// Reads every log under `dir` once and returns the episodes it holds:
+/// one root for an episode directory, one root per entry for a directory
+/// of episode directories. Fails when any log under `dir` cannot be read
+/// or parsed, naming the file.
 pub fn project(dir: &Path) -> Result<Tree, Error> {
     let mut store = Store::new(dir);
     store.poll()?;

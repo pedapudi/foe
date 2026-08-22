@@ -15,6 +15,7 @@
 
 import { clear, fmtDuration, fmtTime, h } from "../dom.js";
 import { outcomeLabel } from "../fold.js";
+import { shortIdentity } from "../lineage.js";
 import type {
   Axis,
   PlacedDecision,
@@ -75,6 +76,12 @@ export class TrajectoryView {
   private readonly card: Hovercard;
   private readonly axisButtons: HTMLElement;
   private axis: Axis = "time";
+  /**
+   * True once the reader has picked an axis. Until then the axis follows
+   * what the figure holds: wall clock inside one tree, where simultaneity
+   * is real, and elapsed time across independent roots, where it is not.
+   */
+  private chosen = false;
   private digest = "";
   private episodes: TrajectoryEpisode[] = [];
   private rows = 0;
@@ -85,6 +92,7 @@ export class TrajectoryView {
       "span",
       { class: "traj-axis", role: "radiogroup", "aria-label": "trajectory x axis" },
       this.axisButton("time", "wall clock"),
+      this.axisButton("elapsed", "elapsed"),
       this.axisButton("sequence", "sequence"),
     );
     this.body = h("div", { class: "traj-body" }, this.figure);
@@ -101,6 +109,11 @@ export class TrajectoryView {
   }
 
   private axisButton(axis: Axis, label: string): HTMLElement {
+    const title = {
+      time: "place marks by wall-clock time, so rows that ran at one moment line up",
+      elapsed: "place marks by the time since each root episode's own start, so runs begin together",
+      sequence: "place marks by log position",
+    };
     return h(
       "button",
       {
@@ -108,7 +121,7 @@ export class TrajectoryView {
         type: "button",
         role: "radio",
         "data-axis": axis,
-        title: axis === "time" ? "place marks by wall-clock time" : "place marks by log position",
+        title: title[axis],
         onclick: () => this.setAxis(axis),
       },
       label,
@@ -116,6 +129,7 @@ export class TrajectoryView {
   }
 
   setAxis(axis: Axis): void {
+    this.chosen = true;
     if (this.axis === axis) return;
     this.axis = axis;
     this.syncAxis();
@@ -133,6 +147,18 @@ export class TrajectoryView {
   update(episodes: TrajectoryEpisode[], state: TrajectoryState): void {
     this.episodes = episodes;
     this.state = state;
+    // A figure of independent roots opens on the elapsed axis: their wall
+    // clocks may be days apart, which would draw each run as a sliver of
+    // an axis that spans the gap between them. One tree opens on the wall
+    // clock, where two rows at one x did run at one moment.
+    if (!this.chosen) {
+      const roots = episodes.filter((e) => e.depth === 0).length;
+      const axis: Axis = roots > 1 ? "elapsed" : "time";
+      if (axis !== this.axis) {
+        this.axis = axis;
+        this.syncAxis();
+      }
+    }
     this.draw(false);
   }
 
@@ -171,7 +197,7 @@ export class TrajectoryView {
       this.episodes
         .map(
           (e) =>
-            `${e.id}:${e.depth}:${e.lastSeq}:${e.startTime}:${e.endTime ?? "-"}:${e.marks.length}:${e.firings.length}:${e.decisions.length}:${e.outcome ? e.outcome.kind : ""}`,
+            `${e.id}:${e.depth}:${e.identity}:${e.lastSeq}:${e.startTime}:${e.endTime ?? "-"}:${e.marks.length}:${e.firings.length}:${e.decisions.length}:${e.outcome ? e.outcome.kind : ""}`,
         )
         .join("|"),
     ].join("~");
@@ -247,6 +273,25 @@ export class TrajectoryView {
       );
     }
     figure.appendChild(edges);
+
+    // A bracket in the gutter between the labels and the plot spans the
+    // rows of one program, so that runs which are comparable read as a
+    // set. Nothing else in the figure claims that gutter.
+    const groups = svg("g", { class: "traj-groups" });
+    for (const group of layout.groups) {
+      const bracket = svg("path", {
+        class: "traj-group",
+        d: `M ${group.x + 3} ${group.y1} H ${group.x} V ${group.y2} H ${group.x + 3}`,
+      });
+      this.card.attach(
+        bracket,
+        () => `${group.runs} runs of ${group.name}`,
+        () => "one program: equal `episode/start.identity`",
+        () => shortIdentity(group.identity),
+      );
+      groups.appendChild(bracket);
+    }
+    figure.appendChild(groups);
 
     for (const row of layout.rows) figure.appendChild(this.rowElement(row));
     return figure;

@@ -10,7 +10,7 @@
 // beside its total.
 
 import { num, obj, str } from "./types.js";
-import type { LogEvent } from "./types.js";
+import type { LogEvent, Outcome } from "./types.js";
 
 /** One episode as the statistics read it. */
 export interface StatisticsEpisode {
@@ -24,6 +24,8 @@ export interface StatisticsEpisode {
   program: Record<string, unknown>;
   /** Depth below the scope's own root, which is 0 for that root. */
   depth: number;
+  /** The outcome once `episode/end` is read, which the run table names. */
+  outcome: Outcome | null;
 }
 
 /** One model request and the answer it received. */
@@ -285,6 +287,54 @@ export function computeStatistics(scope: StatisticsEpisode[], now: number): Stat
     retries,
     requests: steps.length,
   };
+}
+
+// ---- one column per root ---------------------------------------------------
+
+/** One root episode with its descendants, as the run comparison reads it. */
+export interface Run {
+  id: string;
+  name: string;
+  /** Episodes in this root's own scope, itself included. */
+  episodes: number;
+  outcome: Outcome | null;
+  statistics: Statistics;
+  /**
+   * Input plus output tokens over the root's scope, absent when no answer
+   * in that scope reported either figure. A run whose provider reported no
+   * usage spent an unknown number of tokens rather than none.
+   */
+  tokens: number | null;
+  /**
+   * Width of the token bar, against the largest total among the runs. Zero
+   * for a run whose tokens were never measured, which draws no bar.
+   */
+  w: number;
+}
+
+/**
+ * One entry per root, each computed over that root and its descendants
+ * alone, with a token bar drawn against the largest total among them.
+ *
+ * Nothing here is summed across roots. A budget is a pool a root reserves
+ * down to its descendants, so a total over two roots would assert one pool
+ * where there are two, which is the same kind of claim as reporting an
+ * unmeasured quantity as zero. Each root's own figures stand beside each
+ * other instead, which is what makes two runs comparable.
+ */
+export function computeRuns(roots: StatisticsEpisode[][], now: number, width: number): Run[] {
+  const runs = roots
+    .filter((scope) => scope.length > 0)
+    .map((scope) => {
+      const root = scope[0]!;
+      const statistics = computeStatistics(scope, now);
+      const { input, output } = statistics.tokens;
+      const tokens = input === null && output === null ? null : (input ?? 0) + (output ?? 0);
+      const run = { id: root.id, name: root.name, episodes: scope.length, outcome: root.outcome };
+      return { ...run, statistics, tokens, w: 0 };
+    });
+  const largest = Math.max(1, ...runs.map((run) => run.tokens ?? 0));
+  return runs.map((run) => ({ ...run, w: ((run.tokens ?? 0) / largest) * width }));
 }
 
 // ---- the context curve -----------------------------------------------------

@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EpisodeFold } from "../src/fold.js";
 import {
+  computeRuns,
   computeStatistics,
   layoutContextCurve,
   layoutTools,
@@ -20,7 +21,16 @@ function episode(name: string, depth = 0): StatisticsEpisode {
   const fold = new EpisodeFold(name.replace(".jsonl", ""), { stream: false });
   for (const ev of events) fold.push(ev);
   const s = fold.summary;
-  return { id: s.id, name: s.name, events, startTime: s.startTime, endTime: s.endTime, program: s.program, depth };
+  return {
+    id: s.id,
+    name: s.name,
+    events,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    program: s.program,
+    depth,
+    outcome: s.outcome,
+  };
 }
 
 function stats(names: [string, number][]): Statistics {
@@ -211,4 +221,49 @@ test("the layouts are pure functions of what they are given", () => {
   assert.deepEqual(layoutContextCurve(out, names, 400, 160), layoutContextCurve(out, names, 400, 160));
   assert.deepEqual(layoutWallClock(out.wallClock, 300), layoutWallClock(out.wallClock, 300));
   assert.deepEqual(layoutTools(out.tools, 90), layoutTools(out.tools, 90));
+});
+
+test("every run is counted on its own and nothing is summed across roots", () => {
+  const first = [episode("root.jsonl"), episode("child.jsonl", 1)];
+  const second = [episode("compact.jsonl")];
+  const runs = computeRuns([first, second], 0, 100);
+  assert.deepEqual(runs.map((r) => r.id), ["ep_root", "ep_compact"]);
+  assert.equal(runs[0]!.episodes, 2, "a run covers its root and the episodes under it");
+  assert.equal(runs[1]!.episodes, 1);
+  // Each run's figures are exactly the figures of its own scope, so no
+  // column of the table is a total over two budget pools.
+  for (const [run, scope] of [
+    [runs[0]!, first],
+    [runs[1]!, second],
+  ] as const) {
+    const own = computeStatistics(scope, 0);
+    assert.deepEqual(run.statistics.episodes, own.episodes);
+    assert.equal(run.statistics.requests, own.requests);
+    assert.equal(run.tokens, (own.tokens.input ?? 0) + (own.tokens.output ?? 0));
+    assert.equal(run.statistics.wallClock.totalMs, own.wallClock.totalMs);
+  }
+});
+
+test("the token bar of a run is its share of the largest run", () => {
+  const runs = computeRuns([[episode("root.jsonl")], [episode("compact.jsonl")]], 0, 100);
+  const largest = runs.reduce((a, b) => ((a.tokens ?? 0) > (b.tokens ?? 0) ? a : b));
+  assert.equal(largest.w, 100, "the largest run fills the bar");
+  for (const run of runs) {
+    const share = ((run.tokens ?? 0) / (largest.tokens ?? 1)) * 100;
+    assert.ok(Math.abs(run.w - share) < 1e-9, `${run.id} is drawn in proportion`);
+  }
+  assert.deepEqual(computeRuns([], 0, 100), [], "no root is no comparison");
+});
+
+test("a run whose answers reported no usage has no token figure and no bar", () => {
+  // Stripping the usage of every answer leaves a scope that measured no
+  // tokens, which is absent rather than zero: zero would state that the
+  // run spent nothing.
+  const bare = episode("root.jsonl");
+  const events = bare.events.map((e) =>
+    e.type === "assistant/message" ? { ...e, data: { ...(e.data as object) , usage: undefined } } : e,
+  );
+  const runs = computeRuns([[{ ...bare, events }]], 0, 100);
+  assert.equal(runs[0]!.tokens, null);
+  assert.equal(runs[0]!.w, 0);
 });

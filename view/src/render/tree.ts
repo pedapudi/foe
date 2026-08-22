@@ -6,7 +6,7 @@ import { fmtDate, fmtDuration, fmtInt, h } from "../dom.js";
 import type { Child } from "../dom.js";
 import { outcomeLabel } from "../fold.js";
 import type { Summary } from "../fold.js";
-import { flatten, siblingShares, spentTokens } from "../lineage.js";
+import { flatten, programRuns, shortIdentity, siblingShares, spentTokens } from "../lineage.js";
 import type { TreeNode } from "../lineage.js";
 import { str } from "../types.js";
 import { barSvg, figureSvg, svg } from "./svg.js";
@@ -91,6 +91,20 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
   rows.forEach(({ node, depth }, i) => {
     position.set(node.id, { x: LEFT + depth * INDENT, y: i * ROW + ROW / 2 });
   });
+
+  // A bracket down the left edge spans the rows of one program. Two roots
+  // of one program carry one `episode/start.identity`; without the bracket
+  // the list shows them only as two rows that happen to read alike.
+  const runs = programRuns(rows.map(({ node, depth }) => ({ ...node.summary, depth })));
+  for (const run of runs) {
+    const y1 = run.first * ROW + 4;
+    const y2 = (run.last + 1) * ROW - 4;
+    const bracket = svg("path", { class: "program-run", d: `M 6 ${y1} H 3 V ${y2} H 6` });
+    const runTitle = svg("title");
+    runTitle.textContent = `${run.runs} runs of ${run.name} · one program identity ${shortIdentity(run.identity)}`;
+    bracket.appendChild(runTitle);
+    figure.appendChild(bracket);
+  }
 
   // Edges first so that nodes paint over them.
   for (const { node } of rows) {
@@ -250,6 +264,12 @@ export function renderInfo(s: Summary | null): HTMLElement {
   if (abi !== null || s.sandbox.mode) {
     const landlock = abi === null ? "" : abi === 0 ? "landlock unavailable" : `landlock abi ${abi}`;
     rows.push(["sandbox", parts([landlock, s.sandbox.mode])]);
+  }
+  // The identity is what says whether two episodes ran one program, so the
+  // details name it. The whole hash is long; the row sets its first eight
+  // characters and carries the rest in its tooltip.
+  if (s.identity) {
+    rows.push(["program identity", h("span", { title: s.identity }, shortIdentity(s.identity))]);
   }
   if (s.forkOrigin) rows.push(["fork origin", `${s.forkOrigin.episodeId} at seq ${s.forkOrigin.seq}`]);
   if (s.parentId) rows.push(["parent", s.parentId]);
