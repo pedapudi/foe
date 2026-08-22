@@ -164,6 +164,14 @@ fn ctx(spawner: Option<Arc<dyn Spawner>>) -> CallCtx {
     }
 }
 
+/// docs/log-format.md "Exhausted limits": a structural workflow limit is
+/// model-visible as an execution limit rather than a configured budget.
+#[test]
+fn child_outcomes_name_an_execution_limit() {
+    let outcome = Outcome::Exhausted { limit: foe_log::ExhaustedLimit::WorkflowFirings };
+    assert_eq!(super::render_outcome(&outcome), "reached the workflow_firings limit");
+}
+
 use std::path::PathBuf;
 
 #[tokio::test]

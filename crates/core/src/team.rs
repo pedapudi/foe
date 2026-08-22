@@ -292,7 +292,7 @@ fn render_outcome(outcome: &Outcome) -> String {
     match outcome {
         Outcome::Completed { value } => format!("completed with {value}"),
         Outcome::Blocked { code, message } => format!("blocked ({}): {message}", kebab(code)),
-        Outcome::Exhausted { limit } => format!("exhausted its {} budget", kebab(limit)),
+        Outcome::Exhausted { limit } => format!("reached the {} limit", kebab(limit)),
         Outcome::Failed { error } => format!("failed: {error}"),
     }
 }
