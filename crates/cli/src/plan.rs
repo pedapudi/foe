@@ -7,7 +7,7 @@
 
 use crate::run;
 use foe_core::config::{resolve_node_program, Program};
-use foe_core::registry::{block_spec, resolve_sources, resolve_specs, Source};
+use foe_core::registry::{resolve_sources, resolve_specs, Source};
 use foe_core::workflow::{WorkflowConfig, MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
 use foe_core::{Effect, ToolSpec};
 use serde::Serialize;
@@ -51,6 +51,16 @@ pub fn authority(root: &Program) -> Result<Vec<Authority>, String> {
         .collect())
 }
 
+/// Where each name in `program.tools` resolved, in `tools` order. The
+/// built-in names are the blocking tool and the packs the binary links.
+pub fn tool_sources(program: &Program, extra: &[ToolSpec]) -> Result<Vec<Source>, String> {
+    let mut builtins: Vec<&str> = vec![foe_core::harness_text::BLOCK_NAME];
+    builtins.extend(extra.iter().map(|s| s.name.as_str()));
+    let configured: Vec<&str> = program.tool_defs.keys().map(String::as_str).collect();
+    let host: Vec<&str> = program.host_tools.keys().map(String::as_str).collect();
+    resolve_sources(&program.tools, &builtins, &configured, &host).map_err(|e| e.to_string())
+}
+
 fn collect_authority(
     program: &Program,
     path: &str,
@@ -58,12 +68,7 @@ fn collect_authority(
     found: &mut BTreeMap<AuthorityKey, AuthorityValue>,
 ) -> Result<(), String> {
     let specs = resolve_specs(program, extra).map_err(|e| e.to_string())?;
-    let block = block_spec();
-    let builtins: Vec<&str> =
-        std::iter::once(block.name.as_str()).chain(extra.iter().map(|s| s.name.as_str())).collect();
-    let configured: Vec<&str> = program.tool_defs.keys().map(String::as_str).collect();
-    let host: Vec<&str> = program.host_tools.keys().map(String::as_str).collect();
-    let sources = resolve_sources(&program.tools, &builtins, &configured, &host).map_err(|e| e.to_string())?;
+    let sources = tool_sources(program, extra)?;
     for ((name, source), spec) in program.tools.iter().zip(sources).zip(specs) {
         let (source, definition) = match source {
             Source::Builtin => ("built-in", serde_json::to_value(&spec)),
