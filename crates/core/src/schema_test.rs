@@ -46,6 +46,24 @@ fn invalid_or_different_dialect_schemas_name_the_configuration_key() {
         ConfigError::Invalid { key, rule }
             if key == "done_when.returns" && rule.contains("$schema") && rule.contains(DIALECT)
     ));
+    let error = check(
+        "done_when.returns",
+        &json!({ "properties": { "name": { "$schema": "http://json-schema.org/draft-07/schema#" } } }),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        ConfigError::Invalid { key, rule }
+            if key == "done_when.returns" && rule.contains("schema.properties.name") && rule.contains(DIALECT)
+    ));
+    let error =
+        check("done_when.returns", &json!({ "$vocabulary": { "https://example.com/required-vocabulary": true } }))
+            .unwrap_err();
+    assert!(matches!(
+        error,
+        ConfigError::Invalid { key, rule }
+            if key == "done_when.returns" && rule.contains("$vocabulary") && rule.contains("required-vocabulary")
+    ));
     let error = check("done_when.returns", &json!({ "type": "string", "minLenght": 3 })).unwrap_err();
     assert!(matches!(
         error,
