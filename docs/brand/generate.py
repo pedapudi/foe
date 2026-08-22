@@ -40,18 +40,28 @@ for ch in "foe":
     gname = cmap[ord(ch)]; pen = SVGPathPen(gs)
     gs[gname].draw(TransformPen(pen, (s,0,0,-s,x,base_y))); word.append(f'  <path d="{pen.getCommands()}"/>'); x += f["hmtx"][gname][0]*s
 WORD = "\n".join(word); END_X = round(x,1)
+wb = BoundsPen(gs)
+for ch in "foe":
+    gname = cmap[ord(ch)]
+    gs[gname].draw(TransformPen(wb, (s, 0, 0, -s, 140.0 + sum(f["hmtx"][cmap[ord(c)]][0]*s for c in "foe"[:"foe".index(ch)]), base_y)))
+WX0, WY0, WX1, WY1 = wb.bounds
+PAD = 2 * CORE_R
 def svg(vb, body, bg=None):
     rect = f'\n  <rect width="100%" height="100%" fill="{bg}"/>' if bg else ""
     return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" role="img" aria-label="foe">{rect}\n{body}\n</svg>\n'
 ADAPT, ACC = "currentColor", "var(--foe-accent, #C7791A)"
 LI, LA, LBG = "#15181C", "#C7791A", "#F2EEDE"; DI, DA, DBG = "#EDEAE4", "#E8A43E", "#1E1F1C"
 LOCK = f"0 0 {END_X+14:.0f} 120"
+WORDBOX = f"{WX0-PAD:.1f} {WY0-PAD:.1f} {WX1-WX0+2*PAD:.1f} {WY1-WY0+2*PAD:.1f}"
 files = {
   "foe-mark.svg":         svg("0 0 120 120", mark(ADAPT, ACC)),
   "foe-mark-mono.svg":    svg("0 0 120 120", mark(ADAPT, ADAPT, mono=True)),
   "foe-lockup.svg":       svg(LOCK, mark(ADAPT, ACC) + f'\n<g fill="{ADAPT}">\n{WORD}\n</g>'),
   "foe-lockup-light.svg": svg(LOCK, mark(LI, LA) + f'\n<g fill="{LI}">\n{WORD}\n</g>'),
   "foe-lockup-dark.svg":  svg(LOCK, mark(DI, DA) + f'\n<g fill="{DI}">\n{WORD}\n</g>'),
+  "foe-wordmark.svg":       svg(WORDBOX, f'<g fill="{ADAPT}">\n{WORD}\n</g>'),
+  "foe-wordmark-light.svg": svg(WORDBOX, f'<g fill="{LI}">\n{WORD}\n</g>'),
+  "foe-wordmark-dark.svg":  svg(WORDBOX, f'<g fill="{DI}">\n{WORD}\n</g>'),
   "foe-tile.svg":         svg("0 0 320 320", mark(LI, LA, off=(40,40), scale=2.0), bg=LBG),
   "foe-favicon.svg":      svg("0 0 64 64", mark(ADAPT, ACC, scale=64/120, small=True)),
 }
