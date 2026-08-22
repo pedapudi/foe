@@ -92,9 +92,14 @@ async fn a_real_non_zero_exit_is_a_result() {
 #[tokio::test]
 async fn a_timeout_kills_the_whole_process_group() {
     let fx = Fixture::new();
-    let c = ctx_with_executor(&fx, Arc::new(ProcessGroupExecutor));
+    let mut c = ctx_with_executor(&fx, Arc::new(ProcessGroupExecutor));
+    // The step's deadline bounds the call below the argument's own minimum
+    // of one second, so the wait is a fraction of a second rather than a
+    // whole one. The deadline path is the one an episode near its `seconds`
+    // budget takes.
+    c.deadline = Some(Instant::now() + Duration::from_millis(300));
     let cmd = "sleep 30 & echo $!; wait";
-    let v = Bash::new().call(json!({"command": cmd, "timeout_seconds": 1}), &c).await;
+    let v = Bash::new().call(json!({"command": cmd, "timeout_seconds": 30}), &c).await;
     assert!(!v.is_error, "{v:?}");
     assert_eq!(v.value["timed_out"], true);
     assert!(v.value["exit_code"].is_null());
