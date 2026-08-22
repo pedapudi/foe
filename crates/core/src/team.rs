@@ -128,15 +128,6 @@ pub fn fold(events: &[Event]) -> TeamState {
     state
 }
 
-/// The member's half of the deduplication rule: a peer message whose
-/// `message_id` is already recorded in this log is dropped.
-pub fn is_duplicate(events: &[Event], message_id: &str) -> bool {
-    events.iter().any(|e| match &e.data {
-        EventData::InboxItem(item) => item.message_id.as_deref() == Some(message_id),
-        _ => false,
-    })
-}
-
 /// The lead's side of a team: writes roster and queue events to the lead's
 /// log, delivers messages to members, and answers members' host tool calls.
 pub struct Team {

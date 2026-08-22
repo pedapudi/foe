@@ -558,7 +558,7 @@ impl Episode {
         let findings = self
             .p
             .registry
-            .verify(&self.p.handles, &candidate, self.step, self.spill_dir.clone(), self.deadline())
+            .verify_with(&verifier, &self.p.handles, &candidate, self.step, self.spill_dir.clone(), self.deadline())
             .await
             .map_err(RuntimeError::Protocol)?;
         if findings.is_empty() {

@@ -71,19 +71,6 @@ fn fold_skips_team_events_copied_by_seeding() {
     assert!(state.queue.is_empty());
 }
 
-#[test]
-fn duplicate_peer_messages_are_recognized_by_id() {
-    let item = InboxItem {
-        source: InboxSource::Peer,
-        content: vec![],
-        from: Some("ep_a".into()),
-        message_id: Some("tm_07".into()),
-    };
-    let events = [event(1, EventData::InboxItem(item))];
-    assert!(is_duplicate(&events, "tm_07"));
-    assert!(!is_duplicate(&events, "tm_08"));
-}
-
 fn team() -> (Arc<Team>, Arc<MemLog>, Arc<MemInbox>, Arc<Router>) {
     let log = Arc::new(MemLog::default());
     let inbox = Arc::new(MemInbox::default());
