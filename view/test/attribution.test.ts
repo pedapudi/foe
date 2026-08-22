@@ -84,6 +84,14 @@ test("a tool result is named by its call and costs its size once per request tha
   assert.equal(result.bounded, true);
 });
 
+test("each part names the request that introduced it", () => {
+  const out = attribution(["root.jsonl"]);
+  const result = out.parts.find((p) => p.part.label === "read · tc_01")!;
+  const first = out.requests.find((r) => r.shares.some((s) => s.part === result.part))!;
+  assert.equal(result.part.seq, first.requestSeq);
+  assert.equal(result.part.episodeId, first.episodeId);
+});
+
 test("the parts are ranked by replay cost rather than by size", () => {
   const out = attribution(["root.jsonl"]);
   const labels = out.parts.map((p) => p.part.label);

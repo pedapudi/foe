@@ -123,7 +123,23 @@ export function inputSourceFigure(tools: FigureTools, attribution: Attribution, 
     "where the input came from",
     [
       legend(present, lead),
-      h("table", { class: "stats-table input-table" }, h("tbody", null, rows)),
+      h(
+        "table",
+        { class: "stats-table input-table" },
+        h(
+          "thead",
+          null,
+          h(
+            "tr",
+            null,
+            h("th", null, "request"),
+            h("th", null, "input tokens"),
+            h("th", null, "characters"),
+            h("th", null, ""),
+          ),
+        ),
+        h("tbody", null, rows),
+      ),
     ],
     `Each bar is one request, as long as that request is large in characters and divided by where its text ` +
       `came from. The token column is the input the answer reported. ${spread}`,
@@ -143,7 +159,7 @@ export function replayCostFigure(tools: FigureTools, attribution: Attribution, w
   const measured = attribution.input !== null;
   const barWidth = Math.max(60, Math.min(240, width - 420));
   const ranked = layoutReplayCost(attribution, barWidth, RANKED_ROWS);
-  const rows = ranked.map(({ total, w }) => replayCostRow(tools, total, w, barWidth, measured));
+  const rows = ranked.map(({ total, w }) => replayCostRow(tools, attribution, total, w, barWidth, measured));
   const head = h(
     "thead",
     null,
@@ -151,9 +167,9 @@ export function replayCostFigure(tools: FigureTools, attribution: Attribution, w
       "tr",
       null,
       h("th", null, "part"),
-      h("th", null, "size"),
+      h("th", null, "characters"),
       h("th", null, "sends"),
-      h("th", null, measured ? "replay cost" : "characters sent"),
+      h("th", null, measured ? "replay cost, tokens" : "characters sent"),
       h("th", null, ""),
     ),
   );
@@ -174,7 +190,14 @@ export function replayCostFigure(tools: FigureTools, attribution: Attribution, w
 }
 
 /** One row of the replay-cost table. */
-function replayCostRow(tools: FigureTools, total: PartTotal, w: number, barWidth: number, measured: boolean): HTMLElement {
+function replayCostRow(
+  tools: FigureTools,
+  attribution: Attribution,
+  total: PartTotal,
+  w: number,
+  barWidth: number,
+  measured: boolean,
+): HTMLElement {
   const bar = barSvg("tool-bar", barWidth, 10, "replay cost against the largest");
   bar.appendChild(svg("rect", { class: "seg", x: 0, y: 3, width: Math.max(0.5, w), height: 4 }));
   // A total that spans a request nothing measured is a floor, and a dashed
@@ -184,9 +207,9 @@ function replayCostRow(tools: FigureTools, total: PartTotal, w: number, barWidth
   }
   const row = h(
     "tr",
-    { class: "tool-row" },
+    { class: "tool-row input-row" },
     h("td", { class: "tool-name" }, total.part.label),
-    h("td", { class: "num" }, `${fmtInt(total.part.chars)} ch`),
+    h("td", { class: "num" }, fmtInt(total.part.chars)),
     h("td", { class: "num" }, fmtInt(total.sends)),
     h(
       "td",
@@ -195,6 +218,11 @@ function replayCostRow(tools: FigureTools, total: PartTotal, w: number, barWidth
     ),
     h("td", null, bar),
   );
+  row.addEventListener("click", () => tools.reveal(total.part.episodeId, total.part.seq));
+  const share =
+    measured && total.tokens !== null && attribution.input
+      ? `, which is ${tools.percent(total.tokens / attribution.input)} of the input this scope sent`
+      : "";
   tools.card.attach(
     row,
     () => total.part.label,
@@ -205,7 +233,7 @@ function replayCostRow(tools: FigureTools, total: PartTotal, w: number, barWidth
     () =>
       `${fmtInt(total.part.chars)} characters × ${total.sends} send${total.sends === 1 ? "" : "s"}` +
       (total.bounded ? `, ${total.sends - total.measuredSends} of them unmeasured` : "") +
-      (measured && total.tokens !== null ? ` = ${cost(total.tokens, total.bounded)} input tokens` : ""),
+      (measured && total.tokens !== null ? ` = ${cost(total.tokens, total.bounded)} input tokens${share}` : ""),
   );
   return row;
 }

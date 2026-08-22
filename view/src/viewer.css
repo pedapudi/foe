@@ -2350,8 +2350,12 @@ table.events td.type.error {
   fill-opacity: var(--input-weight, 0.5);
 }
 
+/* The source that dominates takes the accent. Its weight is held below the
+ * neutral ramp's, because the accented channel can cover most of a bar and
+ * the page is otherwise hairlines. */
 .input-seg.lead .seg {
   fill: var(--v2-accent);
+  fill-opacity: calc(var(--input-weight, 0.5) * 0.7);
 }
 
 .input-seg .edge {
