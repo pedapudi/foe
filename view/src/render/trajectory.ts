@@ -174,9 +174,12 @@ export class TrajectoryView {
         )
         .join("|"),
     ].join("~");
+    // A pane the layout has not measured yet draws nothing, and the digest
+    // is left alone so that the draw happens once a width arrives. Storing
+    // it here would make every later draw of the same content a repeat.
+    if (width === 0) return;
     if (!force && digest === this.digest) return;
     this.digest = digest;
-    if (width === 0) return;
     const layout = layoutTrajectory({
       episodes: this.episodes,
       axis: this.axis,
