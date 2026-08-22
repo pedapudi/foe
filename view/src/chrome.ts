@@ -17,7 +17,6 @@ import {
   TYPEFACES,
   leadFamily,
   normaliseScale,
-  specimenLine,
 } from "./appearance.js";
 import type { TypefaceMode } from "./appearance.js";
 import { brandLockup, researchPreview } from "./brand.js";
@@ -230,21 +229,18 @@ export function buildSwatchDropdown(): HTMLElement {
   return wrap;
 }
 
-/** The family the specimen line is set in: the mode's data face or its body face. */
-function specimenFamily(face: (typeof TYPEFACES)[number]): string {
-  return face.mode === "technical" ? face.mono : face.sans;
-}
-
 /** The face's own name, set in that face. */
 function faceName(face: (typeof TYPEFACES)[number], className: string): HTMLElement {
   return h("span", { class: className, style: `font-family:${face.head}` }, face.label);
 }
 
 /**
- * Two letters in the option's body face beside two digits in its data face:
- * enough of the option to recognize it, and the two faces a paired option
- * differs in. The families are set inline, so the specimen shows the option
- * it names whatever the page is currently set in.
+ * Two letters in the option's body face beside two digits in its data face.
+ * The option's name is set in its heading face, so the name and this
+ * specimen together show all three faces an option resolves, in four
+ * glyphs. The families are set inline, so the specimen shows the option it
+ * names whatever the page is currently set in, and the trigger and every
+ * row of the popover carry the same one.
  */
 function microSpecimen(face: (typeof TYPEFACES)[number]): HTMLElement {
   return h(
@@ -278,8 +274,8 @@ export function buildTypefacePopover(): HTMLElement {
               trigger.focus();
             },
           },
+          microSpecimen(face),
           faceName(face, "tf-name"),
-          h("span", { class: "tf-spec", style: `font-family:${specimenFamily(face)}`, "aria-hidden": "true" }, specimenLine(face.mode)),
         ),
       );
     }

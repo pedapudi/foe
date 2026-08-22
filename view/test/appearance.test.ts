@@ -17,7 +17,6 @@ import {
   TYPEFACES,
   leadFamily,
   normaliseScale,
-  specimenLine,
 } from "../src/appearance.js";
 
 test("every default names an option the catalogue holds", () => {
@@ -70,12 +69,6 @@ test("the trigger's name is the option's first family", () => {
   assert.equal(leadFamily("ia writer + jetbrains"), "ia writer");
   assert.equal(leadFamily("barlow + space grotesk"), "barlow");
   for (const face of TYPEFACES) assert.ok(leadFamily(face.label).length > 0, face.id);
-});
-
-test("a technical face specimens code and the other two a sentence", () => {
-  assert.equal(specimenLine("technical"), "let outcome = episode.run();");
-  assert.equal(specimenLine("editorial"), specimenLine("display"));
-  assert.ok(!specimenLine("editorial").includes("="));
 });
 
 test("the page scale clamps to its range and snaps to its step", () => {

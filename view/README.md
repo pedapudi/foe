@@ -340,10 +340,11 @@ here those families resolve when the machine has them and fall back to the
 listed system faces otherwise, because the viewer runs on loopback and in
 environments without a network.
 
-Each typeface option in the picker names itself in its own face over one
-specimen line: a line of code for a technical face and a sentence for an
-editorial or display face. The three text-size controls are each set at the
-size they select.
+Each typeface option in the picker is a micro-specimen, `Aa` in the
+option's body face beside `01` in its data face, followed by the option's
+name set in its heading face. The trigger carries the same specimen. The
+three text-size controls are each set at the size they select, and they
+multiply the 13-pixel base by 1.15, 1.35, and 1.6.
 
 Theme, typeface, text size, page scale, and region sizes persist in
 `localStorage` under `foe.theme`, `foe.typeface`, `foe.fontsize`,

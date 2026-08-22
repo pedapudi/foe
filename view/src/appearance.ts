@@ -78,15 +78,6 @@ export const DEFAULT_TYPEFACE = "technical-inconsolata";
 export const DEFAULT_FONTSIZE = "small";
 
 /**
- * The one line each option sets in its own face. A technical face is a face
- * for reading code, so its specimen is a line of code; an editorial or
- * display face sets a sentence.
- */
-export function specimenLine(mode: TypefaceMode): string {
-  return mode === "technical" ? "let outcome = episode.run();" : "One bounded release of work.";
-}
-
-/**
  * The first family of an option's name. The picker's trigger has room for
  * one family beside its specimen, and an option that pairs two families
  * leads with the one that sets its body text.

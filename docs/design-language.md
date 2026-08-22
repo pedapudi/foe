@@ -86,18 +86,19 @@ data face. Each family is named as short as it stays unambiguous among the
 twelve, so no name repeats a word like Mono that every technical face
 carries.
 
-The typeface picker is a trigger over a grouped popover. The trigger is a
-micro-specimen setting `Aa` in the option's body face beside `01` in its
-data face, then the option's first family, then a caret; the two faces are
-set inline, so the specimen shows the option it names whatever the page is
-currently set in. The popover is three mode headers, each over four faces,
-twelve in total, plus an S, M, L size control whose three controls are each
-set at the size they select. Every option in the popover names itself in
-full, in its own face, over one specimen line in the face that mode uses for
-its content. A technical face is a face for reading code, so its specimen is
-a line of code, `let outcome = episode.run();`; an editorial or display face
-sets a sentence, `One bounded release of work.` No specimen is a run of
-digits or a placeholder word.
+The typeface picker is a trigger over a grouped popover. One micro-specimen
+serves both: `Aa` in the option's body face beside `01` in its data face,
+with the families set inline, so the specimen shows the option it names
+whatever the page is currently set in. The trigger is that specimen, the
+option's first family, and a caret. The popover is three mode headers, each
+over four faces, twelve in total, plus an S, M, L size control whose three
+controls are each set at the size they select. Every option in the popover
+is that same specimen followed by the option's full name set in its own
+heading face. The name is therefore the specimen of the heading face, and
+the two together show all three faces an option resolves in four glyphs of
+sample. No option carries a specimen sentence: a sentence repeats across
+every face of a mode, so it adds width to twelve rows without separating
+any of them, and the specimen is what a reader compares.
 
 Six woff2 files are self-hosted: both weights of Inconsolata, of iA Writer
 Mono, and of JetBrains Mono, which are the families the default face and

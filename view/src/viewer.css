@@ -459,7 +459,7 @@ details[open] > summary::before {
 
 .tf-pop {
   flex-direction: column;
-  min-width: 260px;
+  min-width: 218px;
 }
 
 .cd.open > .tf-pop {
@@ -477,12 +477,31 @@ details[open] > summary::before {
   padding: 0;
 }
 
+/* A row of a popover is a choice within a list rather than a control of its
+ * own, so it drops the border a button carries and fills the list's width.
+ * Every row then starts its name at one x, which is what makes a list of
+ * twelve faces or sixteen themes scannable. */
 .cd-option,
 .tf-option {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  padding: 7px 12px;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 7px;
+  border: none;
+  border-radius: var(--dt-radius-mark);
+  text-align: left;
+}
+
+.cd-option:hover,
+.tf-option:hover,
+.cd-option.active,
+.tf-option.active {
+  background: var(--v2-rule-soft);
+}
+
+.cd-option[aria-selected="true"] .cd-name {
+  color: var(--v2-accent);
 }
 
 /* The typeface trigger is a specimen, one family name, and a caret. The
@@ -507,6 +526,13 @@ details[open] > summary::before {
   line-height: 1.35;
 }
 
+/* In the popover the specimen leads every row, so it takes one width for
+ * all twelve and the names start at one x. */
+.tf-option .tf-micro {
+  min-width: calc(38px * var(--dt-font-scale, 1));
+  justify-content: center;
+}
+
 .tf-micro-body {
   font-size: calc(11px * var(--dt-font-scale, 1));
 }
@@ -523,25 +549,19 @@ details[open] > summary::before {
   text-overflow: ellipsis;
 }
 
-/* Every option names itself in its own face, over one line set in the
- * face that mode uses for its content. */
+/* Every option names itself in its own heading face, beside the same
+ * micro-specimen the trigger carries. The name is the specimen of the
+ * heading face, so the row shows all three faces without a sentence. */
 .tf-name {
   font-size: calc(12.5px * var(--dt-font-scale, 1));
   color: var(--v2-ink-soft);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tf-option[aria-selected="true"] .tf-name {
   color: var(--v2-accent);
-}
-
-.tf-spec {
-  font-size: calc(11.5px * var(--dt-font-scale, 1));
-  color: var(--v2-ink-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
 }
 
 .tf-foot {
