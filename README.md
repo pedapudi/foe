@@ -125,6 +125,15 @@ bazel test //evals:conformance_tests
 The suite requires no model credential. [docs/evaluation.md](docs/evaluation.md)
 specifies the conformance checks and the model-backed benchmark protocol.
 
+The model-backed micro evaluation runs five assessed tasks with combined
+declared limits of 56,000 tokens. Each strict success requires an accepted
+artifact, a completed outcome, the intended harness mechanism, a conformant
+trace, and reported usage within budget:
+
+```sh
+bazel run //evals:micro -- --model openai/gpt-5.6-sol
+```
+
 ## Embedding
 
 A host program launches the binary, reads the log from standard output, and

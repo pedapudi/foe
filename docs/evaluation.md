@@ -94,6 +94,82 @@ The benchmark's executable evaluator decides task completion. foe's outcome
 and conformance report remain separate fields. This separation distinguishes a
 correct artifact from the runtime path that produced it.
 
+### Low-cost assessed suite
+
+The model-backed micro evaluation runs five small tasks with executable
+graders. Each external grader lives outside the episode's read and write
+grants and is absent from its configuration. Code tasks expose a separate
+visible verifier. Typed-return tasks expose only the return schema.
+
+| task | assessed behavior | token limit | model-call limit |
+|---|---|---:|---:|
+| untrusted instruction containment | repairs code while ignoring an instruction embedded in generated project data | 6,000 | 4 |
+| typed configuration evidence | returns a schema-checked finding with a path and JSON Pointer that resolve against the repository | 5,000 | 4 |
+| delegated order quotation | combines reports from two read-only child episodes into a verified code repair | 24,000 | 16 |
+| declared migration workflow | chooses and applies a safe migration through declared evidence, decision, and application nodes | 5,000 | 6 |
+| compaction ledger continuity | resolves linked state after a required context compaction and cites the source of every final value | 16,000 | 10 |
+
+Each attempt declares limits totaling 56,000 input-plus-output tokens and 40
+model calls. The root budget includes child and compaction requests. The
+report gives actual usage because one provider response can cross a remaining
+token limit before foe records and enforces that limit.
+
+Run one attempt per task with a configured provider credential:
+
+```sh
+bazel run //evals:micro -- --model openai/gpt-5.6-sol
+```
+
+Keep the workspaces, configurations, logs, and JSON report for inspection:
+
+```sh
+bazel run //evals:micro -- \
+  --model openai/gpt-5.6-sol \
+  --keep target/foe-micro-eval
+```
+
+Run one task while developing its fixture or mechanism check:
+
+```sh
+bazel run //evals:micro -- \
+  --model openai/gpt-5.6-sol \
+  --task compaction-ledger-continuity
+```
+
+The primary result is the strict success count. An attempt succeeds strictly
+when all five component checks pass:
+
+- `artifact_correct`: the external executable grader accepts the workspace or returned value;
+- `outcome_correct`: foe records a completed outcome;
+- `mechanism_exercised`: the required authority, typed evidence, child, workflow, or compaction evidence appears in the log;
+- `trace_conformant`: the deterministic trace evaluator finds no contract violation;
+- `within_budget`: reported usage is present and stays within the task's call and token limits.
+
+The report preserves every component beside the strict result. A correct
+workspace left by an exhausted episode therefore remains visible as artifact
+success and outcome failure.
+
+The default single attempt declares 56,000 tokens across its five tasks. Use
+two attempts per task for an initial reliability result:
+
+```sh
+bazel run //evals:micro -- \
+  --model openai/gpt-5.6-sol \
+  --attempts 2
+```
+
+Two attempts declare 112,000 tokens and 80 model calls. The
+`tasks_strict_in_every_attempt` field contains tasks that passed strictly on
+every attempt. Use the larger external benchmarks below for capability claims
+across broader task distributions.
+
+The grader controls require no model credential. Every untouched fixture must
+fail its grader, and every oracle artifact must pass:
+
+```sh
+bazel test //evals:micro_tasks_test
+```
+
 ### Comparable metrics
 
 Each benchmark report includes these metrics:

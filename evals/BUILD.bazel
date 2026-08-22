@@ -17,6 +17,17 @@ sh_binary(
     ],
 )
 
+sh_binary(
+    name = "micro",
+    srcs = ["run_micro_evals.py"],
+    args = ["--foe", "$(rootpath //:foe)"],
+    data = [
+        "micro_tasks.py",
+        "trace_quality.py",
+        "//:foe",
+    ],
+)
+
 sh_test(
     name = "trace_quality_test",
     srcs = ["run_unit_tests.sh"],
@@ -39,10 +50,23 @@ sh_test(
     size = "small",
 )
 
+sh_test(
+    name = "micro_tasks_test",
+    srcs = ["run_micro_unit_tests.sh"],
+    data = [
+        "micro_tasks.py",
+        "micro_tasks_test.py",
+        "run_micro_evals.py",
+        "trace_quality.py",
+    ],
+    size = "small",
+)
+
 test_suite(
     name = "conformance_tests",
     tests = [
         ":runtime_evals_test",
+        ":micro_tasks_test",
         ":trace_quality_test",
     ],
 )
