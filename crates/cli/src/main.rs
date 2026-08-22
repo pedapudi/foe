@@ -10,7 +10,7 @@ mod login;
 mod plan;
 mod run;
 
-use foe_core::registry::{block_spec, resolve_sources, resolve_specs, Source};
+use foe_core::registry::{block_spec, resolve_specs, Source};
 use foe_core::ToolSpec;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -181,6 +181,21 @@ fn login(_provider: Option<String>, _model: Option<String>, _status: bool) -> Re
     Err("this binary was built without the transport feature; there is no provider to log in to".into())
 }
 
+/// Starts the user's browser on a URL. A running form calls this before the
+/// process restricts itself, because the browser would otherwise inherit
+/// the restriction.
+fn open_browser(url: &str) {
+    let started = std::process::Command::new("/usr/bin/xdg-open")
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    if let Err(e) = started {
+        eprintln!("foe: /usr/bin/xdg-open: {e}; open the URL by hand");
+    }
+}
+
 fn load(config: &Path) -> Result<foe_core::config::Program, String> {
     foe_core::config::load(config).map_err(|e| format!("{}: {e}", config.display()))
 }
@@ -255,11 +270,7 @@ fn tools(config: Option<&Path>) -> Result<ExitCode, String> {
     let program = load(config)?;
     let extra = run::extra_builtin_specs();
     let specs = resolve_specs(&program, &extra).map_err(|e| format!("{}: {e}", config.display()))?;
-    let mut builtins: Vec<&str> = vec![foe_core::harness_text::BLOCK_NAME];
-    builtins.extend(extra.iter().map(|s| s.name.as_str()));
-    let configured: Vec<&str> = program.tool_defs.keys().map(String::as_str).collect();
-    let host: Vec<&str> = program.host_tools.keys().map(String::as_str).collect();
-    let sources = resolve_sources(&program.tools, &builtins, &configured, &host).map_err(|e| e.to_string())?;
+    let sources = plan::tool_sources(&program, &extra)?;
     for (i, spec) in specs.iter().enumerate() {
         let source = match sources.get(i) {
             Some(Source::Builtin) => "built-in",

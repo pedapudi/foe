@@ -147,16 +147,18 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 
-Six numbers bound the source. Four are line budgets over Rust, excluding
+Seven numbers bound the source. Five are line budgets over Rust, excluding
 tests and generated code: the runtime, which is the log, core, and tool
 crates together, stays under 6,000 lines, the workflow executor stays under
-1,000, the compaction policy under 500, and the viewer crate under 600. The
-viewer is budgeted apart from the runtime because it delivers a record of a
-run rather than running one; its HTML, TypeScript, and CSS count toward no
-line budget at all. `scripts/loc.sh` counts the four, and continuous
-integration fails a build over any of them. The fifth number bounds the
-browser bundle at 150 KB compressed. The sixth is the stripped release
-binary with that bundle embedded, which measured 5,404,568 bytes on
+1,000, the compaction policy under 500, the viewer crate under 600, and the
+command-line crate under 1,500. The viewer is budgeted apart from the
+runtime because it delivers a record of a run rather than running one; its
+HTML, TypeScript, and CSS count toward no line budget at all. The command
+line is budgeted apart from the runtime because it serves a person at a
+terminal rather than an episode. `scripts/loc.sh` counts the five, and
+continuous integration fails a build over any of them. The sixth number
+bounds the browser bundle at 150 KB compressed. The seventh is the stripped
+release binary with that bundle embedded, which measured 5,404,568 bytes on
 2026-08-22; continuous integration builds the bundle before measuring and
 fails a build over 8 MiB.
 

@@ -3,12 +3,15 @@
 //!
 //! Order matters in [`run`]. Everything that reads a file outside the
 //! grants, opens a listening socket, or starts a browser happens before the
-//! process restricts itself, and the restriction is applied on the main
-//! thread before the asynchronous runtime starts, so every thread of the
-//! episode inherits it.
+//! process restricts itself. `foe_core::confine` carries that order: the
+//! policy is assembled through an `Unconfined`, and entering confinement
+//! consumes it, so no later line can add to the policy. The restriction is
+//! applied on the main thread before the asynchronous runtime starts, so
+//! every thread of the episode inherits it.
 
 use foe_core::budget::Pool;
 use foe_core::config::{resolve, Program};
+use foe_core::confine::{Confined, Unconfined};
 use foe_core::context::ContextPolicy;
 use foe_core::exec::LocalExecutor;
 use foe_core::grants::{RootReader, RootWriter};
@@ -203,17 +206,18 @@ pub fn describe_transport(model: &ModelConfig) -> String {
 #[cfg(feature = "transport")]
 fn built_in_transport(
     model: &mut ModelConfig,
-    policy: &mut Policy,
-    sandbox: &Arc<Sandbox>,
+    unconfined: &mut Unconfined,
     log_dir: &Path,
 ) -> Result<Arc<dyn Transport>, String> {
     let plan = foe_transport::plan(model).map_err(|e| e.to_string())?;
+    let policy = unconfined.policy_mut();
     policy.read_files.extend(plan.credential_path.iter().cloned());
-    let executor: Option<Arc<dyn foe_core::Executor>> = plan.exec.as_ref().map(|exec| {
-        policy.exec.push(exec.clone());
-        let spill = log_dir.join("spill");
+    policy.exec.extend(plan.exec.iter().cloned());
+    let executor: Option<Arc<dyn foe_core::Executor>> = plan.exec.as_ref().map(|_| {
+        let (sandbox, policy) = unconfined.parts();
         let cancel = Arc::new(AtomicBool::new(false));
-        Arc::new(LocalExecutor::new(sandbox.clone(), policy.clone(), spill, cancel)) as Arc<dyn foe_core::Executor>
+        Arc::new(LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel))
+            as Arc<dyn foe_core::Executor>
     });
     *model = plan.model.clone();
     foe_transport::build_planned(&plan, executor).map_err(|e| e.to_string())
@@ -222,25 +226,10 @@ fn built_in_transport(
 #[cfg(not(feature = "transport"))]
 fn built_in_transport(
     _model: &mut ModelConfig,
-    _policy: &mut Policy,
-    _sandbox: &Arc<Sandbox>,
+    _unconfined: &mut Unconfined,
     _log_dir: &Path,
 ) -> Result<Arc<dyn Transport>, String> {
     Err("this binary was built without the transport feature; remove `model` and run under a host".into())
-}
-
-/// Starts the user's browser on the viewer. Runs before the process is
-/// restricted, because the browser would otherwise inherit the restriction.
-fn open_browser(url: &str) {
-    let started = std::process::Command::new("/usr/bin/xdg-open")
-        .arg(url)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-    if let Err(e) = started {
-        eprintln!("foe: /usr/bin/xdg-open: {e}");
-    }
 }
 
 pub fn run(options: Options) -> Result<ExitCode, String> {
@@ -254,40 +243,38 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     // Every model node of a workflow is a child program of the spawner, so
     // the policy and the spawner see the same configuration.
     let config = foe_workflow::spawner_config(&config);
-    let mut policy = Policy::for_episode(&config, &log_dir);
+    let mut unconfined = Unconfined::new(sandbox, Policy::for_episode(&config, &log_dir));
     let viewer = match options.host || options.headless {
         true => None,
         false => Some(foe_view::Bound::bind(0).map_err(|e| e.to_string())?),
     };
     if let Some(bound) = &viewer {
-        policy.bind_tcp.push(bound.addr.port());
+        unconfined.policy_mut().bind_tcp.push(bound.addr.port());
         if !options.no_open {
-            open_browser(&bound.url());
+            crate::open_browser(&bound.url());
         }
     }
     let identity = identity(&program)?;
     let context = context_policy(&program)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
     let runtime_info = identity::runtime_info();
     let transport = match &mut program.model {
-        Some(model) => Some(built_in_transport(model, &mut policy, &sandbox, &log_dir)?),
+        Some(model) => Some(built_in_transport(model, &mut unconfined, &log_dir)?),
         None if options.host => None,
         None => return Err("no model: give --model and --key-file, add a `model` block, or run under --host".into()),
     };
-    sandbox.enforce_self(&policy).map_err(|e| e.to_string())?;
-    let setup = Setup {
-        config,
-        program,
-        lineage,
-        log_dir,
-        sandbox,
-        policy,
-        viewer,
-        identity,
-        runtime_info,
-        transport,
-        context,
-        host: options.host,
+    let confined = unconfined.enter().map_err(|e| e.to_string())?;
+    let start = EpisodeStart {
+        id: lineage.episode_id,
+        parent_id: lineage.parent_id,
+        fork_origin: None,
+        team_id: lineage.team_id,
+        program: program.to_value(),
+        identity: identity.hash,
+        task: config.task.clone(),
+        runtime: runtime_info,
+        sandbox: confined.parts().0.info(),
     };
+    let setup = Setup { config, program, log_dir, confined, viewer, transport, context, start, host: options.host };
     let outcome = runtime()?.block_on(episode(setup))?;
     if !options.host {
         println!("{}", serde_json::to_string(&outcome).map_err(|e| e.to_string())?);
@@ -300,38 +287,24 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }))
 }
 
-/// Everything decided before the process restricted itself.
+/// What the episode needs from the work done before the process restricted
+/// itself. It carries a [`Confined`] rather than a policy, so nothing
+/// assembled here can widen what the kernel already holds.
 struct Setup {
     config: Config,
     program: Program,
-    lineage: Lineage,
     log_dir: PathBuf,
-    sandbox: Arc<Sandbox>,
-    policy: Policy,
+    confined: Confined,
     viewer: Option<foe_view::Bound>,
-    identity: Identity,
-    runtime_info: foe_log::RuntimeInfo,
     transport: Option<Arc<dyn Transport>>,
     context: Option<Arc<dyn ContextPolicy>>,
+    start: EpisodeStart,
     host: bool,
 }
 
 async fn episode(setup: Setup) -> Result<Outcome, String> {
-    let Setup {
-        config,
-        program,
-        lineage,
-        log_dir,
-        sandbox,
-        policy,
-        viewer,
-        identity,
-        runtime_info,
-        transport,
-        host,
-        context,
-    } = setup;
-    let id = lineage.episode_id.clone();
+    let Setup { config, program, log_dir, confined, viewer, transport, host, context, start } = setup;
+    let id = start.id.clone();
     let mirror = host.then(stdout_mirror);
     let log = Arc::new(Log::create_or_open(&log_dir, mirror).map_err(|e| format!("{}: {e}", log_dir.display()))?);
     let router = Arc::new(Router::new());
@@ -359,9 +332,10 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         ProcessSpawner::new(id.clone(), log_dir.clone(), config.clone(), uplink, router.clone(), team.clone())
             .map_err(|e| format!("spawner: {e}"))?;
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
-    let executor = LocalExecutor::new(sandbox.clone(), policy, log_dir.join("spill"), cancel);
+    let (sandbox, policy) = confined.parts();
+    let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel);
     let host_tools = if host { protocol.tools(&program) } else { Vec::new() };
-    let parent = lineage.parent_id.is_some().then_some(&protocol);
+    let parent = start.parent_id.is_some().then_some(&protocol);
     let mut builtins: Vec<Box<dyn Tool>> = foe_code::all();
     builtins.extend(team::tools(team.clone(), parent));
     let registry = Registry::new(&program, host_tools, builtins).map_err(|e| format!("config: {e}"))?;
@@ -376,17 +350,6 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         writer,
         executor: Some(Arc::new(executor)),
         spawner: (!program.grants.spawn.is_empty()).then(|| spawner.clone()),
-    };
-    let start = EpisodeStart {
-        id,
-        parent_id: lineage.parent_id,
-        fork_origin: None,
-        team_id: lineage.team_id,
-        program: program.to_value(),
-        identity: identity.hash,
-        task: config.task.clone(),
-        runtime: runtime_info,
-        sandbox: sandbox.info(),
     };
     let server = match viewer {
         Some(bound) => Some(bound.serve(&log_dir).await.map_err(|e| e.to_string())?),
