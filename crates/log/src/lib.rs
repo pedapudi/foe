@@ -296,6 +296,7 @@ pub enum ExhaustedLimit {
     ModelCalls,
     InputTokens,
     OutputTokens,
+    ContextWindow,
     Seconds,
     Depth,
     Episodes,

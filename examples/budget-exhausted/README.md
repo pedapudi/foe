@@ -7,13 +7,13 @@ for. The episode ends with the outcome `{"kind": "exhausted", "limit":
 "model_calls"}`, and the process exits with code 3.
 
 `exhausted` is one of the four outcome kinds a foe episode can end with,
-beside `completed`, `blocked`, and `failed`. It carries one fact: a limit
-the configuration named was reached. The program did not break. Every model
-request was answered, every tool call returned a result, and the work
-stopped at the boundary the configuration set. An operator who reads this
-outcome raises the limit, narrows the task, or decides the work is not worth
-more calls, and looks for no defect. The limits that end an episode this way
-are `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `depth`,
+beside `completed`, `blocked`, and `failed`. It carries one fact: a resource
+limit was reached. The program did not break. Every model request was
+answered, every tool call returned a result, and the work stopped at the
+declared or derived resource boundary. An operator who reads this outcome
+raises the limit, narrows the task, or decides the work is not worth more
+calls. The limits that end an episode this way are `model_calls`,
+`input_tokens`, `output_tokens`, `context_window`, `seconds`, `depth`,
 `episodes`, and `concurrency`;
 [docs/log-format.md](../../docs/log-format.md) lists them.
 

@@ -179,7 +179,7 @@ once: the runtime writes `compaction/end` with `ok: false` and the error,
 writes no `compaction/summary`, and leaves the projection as it was. The
 step's request then proceeds with the existing context when the projection
 still fits within the window itself; when the projection passes the
-window, the episode ends as `exhausted` with limit `input_tokens`. The next
+window, the episode ends as `exhausted` with limit `context_window`. The next
 step projects again and may attempt a new compaction.
 
 ## Identity

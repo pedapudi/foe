@@ -329,7 +329,7 @@ impl Episode {
             Summarized::Failed { error, usage } => (false, usage, cut.projected_tokens, Some(error)),
         };
         self.p.log.append(EventData::CompactionEnd { step, ok, usage, active_estimate, error })?;
-        Ok((!ok && cut.exceeds_window).then_some(Outcome::Exhausted { limit: ExhaustedLimit::InputTokens }))
+        Ok((!ok && cut.exceeds_window).then_some(Outcome::Exhausted { limit: ExhaustedLimit::ContextWindow }))
     }
 
     /// One model request with bounded retries. See docs/design.md "Failure

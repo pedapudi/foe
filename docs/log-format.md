@@ -615,8 +615,10 @@ message. The runtime detects the rest.
 ## Exhausted limits
 
 The `limit` of an `exhausted` outcome is one of `model_calls`,
-`input_tokens`, `output_tokens`, `seconds`, `depth`, `episodes`,
-`concurrency`.
+`input_tokens`, `output_tokens`, `context_window`, `seconds`, `depth`,
+`episodes`, `concurrency`. `context_window` means that the projected request
+exceeded the model window and the compaction attempt did not produce a usable
+summary. It is independent of the program's input-token allowance.
 
 ## Size
 
