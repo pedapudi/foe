@@ -1837,7 +1837,7 @@ table.events td.type.error {
   padding: 6px 9px;
   background: var(--v2-panel);
   border: 1px solid var(--v2-rule);
-  border-radius: var(--dt-radius-card);
+  border-radius: var(--dt-radius-hovercard);
   pointer-events: none;
   font-family: var(--v2-mono);
   font-size: calc(10.5px * var(--dt-font-scale, 1));

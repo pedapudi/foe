@@ -34,15 +34,16 @@ so a size left alone stays derived across a reload. The sidebar opens at
 288 pixels, the rail width the spacing scale names, and the details
 region at 30 percent of the left column.
 
-The trajectory opens at the height its rows need: the axis, the rows, and
-the padding around them, held at or above the shortest pane and at or below
-half the right column. A run of one episode therefore opens a region the
-height of one episode rather than a fixed share of mostly empty ground, and
-a spawn during a live run grows the region as it adds a row. Once a grip has
-moved the trajectory the stored size wins and the row count no longer
-changes it; a double click on a grip drops the stored size and returns the
-region to what derives it. Every region declares a minimum, so none of them
-collapses.
+The trajectory opens at the height its rows need: the axis, the pixels the
+rows take, and the padding around them, held at or above the shortest pane
+and at or below half the right column. A row is as tall as the channels it
+holds, so the height follows the drawing rather than the row count. A run of
+one episode therefore opens a region the height of one episode rather than a
+fixed share of mostly empty ground, and a spawn during a live run grows the
+region as it adds a row. Once a grip has moved the trajectory the stored
+size wins and the rows no longer change it; a double click on a grip drops
+the stored size and returns the region to what derives it. Every region
+declares a minimum, so none of them collapses.
 
 The episodes tree gives each episode a row about 40 pixels tall: a dot
 coloured by outcome, the program name at the page's base size, the episode
@@ -124,9 +125,10 @@ the bundle which episodes exist and in what order.
 ## The trajectory
 
 The trajectory draws one row per episode, in the order the tree lists them,
-indented by lineage. The row label is the program name with the episode id
-in mono, and the selected row carries the figure's one accent as a spine
-down its leading edge.
+indented by lineage. The row label is the program name; the episode id
+stands beside it in the sidebar and in the breadcrumbs, so the row does not
+repeat it. The selected row carries the figure's one accent as a spine down
+its leading edge.
 
 The x axis is wall-clock time, taken from each event's `time`. A control in
 the region's header switches it to log position, where x is the event's
@@ -138,23 +140,42 @@ a bar's length is read against the axis. The figure fits the region's width
 and reflows when the region is resized; it neither pans nor zooms, and it
 redraws only when a digest of what it would draw changes.
 
-A row has two lanes. The episode's own events sit on the lifetime line, and
-tool calls sit in a lane a few pixels below it. The lanes exist because
-duration alone does not separate the two channels: on a run bound by the
-model every tool call is milliseconds against a span of tens of seconds, so
-its segment is drawn at its minimum width. Position separates them where
-length cannot. A request bar sits above the lifetime line rather than
-crossing it, so requests read above the line and tool calls below it.
+### The channels of a row
 
-| mark | lane | drawn from | form |
+An episode's work nests: a workflow node holds model requests, a request
+holds a wait and a stream, one step issues a batch of tool calls, and a
+parent holds children. A row separates those channels by position, because
+duration does not separate them: on a run bound by the model every tool
+call is milliseconds against a span of tens of seconds, so its segment is
+drawn at its minimum width whatever lane it is in.
+
+The order down a row is the order of containment.
+
+1. Model requests sit above the lifetime line, so a request reads above
+   the line and everything the episode did inside it reads below.
+2. The lifetime line runs from `episode/start` to `episode/end` and carries
+   the marks that belong to the episode as a whole.
+3. The node band holds one lane per node of a declared graph that fired,
+   and is absent for an episode that runs the free loop.
+4. The tool lane holds one mark per `tool/result`, below every node lane.
+
+A row is as tall as its own channels, so a plain row is 24 pixels, a row
+with a node band is taller by 9 pixels per lane, and a row whose calls
+stack is taller by 6 pixels per height beyond the first. The region's
+derived height follows the pixels the rows take rather than the row count.
+
+| mark | channel | drawn from | form |
 |---|---|---|---|
 | lifetime | line | `episode/start` to `episode/end` | a hairline bar, continued as a dashed extension to the current time while the episode runs |
-| model request | line | `model/request` to its `assistant/message` | a bar above the line, in two parts, on a hairline stem down to the line |
+| model request | above the line | `model/request` to its `assistant/message` | a bar in two parts, on a hairline stem down to the line |
 | compaction | line | `compaction/start` | a small open diamond in `--v2-caution` |
-| retry | line | `request/retry` | a cross in `--v2-bad` |
+| retry | line | `request/retry` | a cross in `--v2-bad`, with the backoff it imposes running forward from it as a dashed segment |
 | spawn | line | `spawn/start` | a small ring, and the origin of the child's connector |
 | outcome | line | `episode/end` | a glyph at the end of the bar |
-| tool call | tool | `tool/result` | a segment whose width is `duration_ms`, ending at the result |
+| node firing | node band | `workflow/node-start` to its `workflow/node-end` | a bar on the node's own lane |
+| branch | node band | `workflow/branch` | a tick on the choosing node's lane, with the label it chose |
+| recovery | node band | `workflow/recovery` | an open square in `--v2-caution` on the failed node's lane, with the action it applied |
+| tool call | tool lane | `tool/result` | a segment whose width is `duration_ms`, ending at the result |
 
 A model request is a bar rather than a tick, because how long an answer took
 is most of what a run's shape consists of: one request of a four-request
@@ -174,10 +195,11 @@ a request still streaming shows the length it has reached.
 The two parts have a length on the sequence axis as well, because the chunks
 a request produced are events between its call and its answer. A tool call
 has no such length: its duration is in milliseconds and the log records the
-result alone, so on the sequence axis a tool call is a tick and the lane is
-what still separates it from a request. A tool call slow enough to have a
-visible length on the time axis keeps it; a shorter one is drawn at the
-minimum width, so no call disappears.
+result alone, so on the sequence axis a tool call is a tick. A retry's
+backoff has no length there either, for the same reason: a delay is a wait
+between two events rather than a run of them. A tool call slow enough to
+have a visible length on the time axis keeps it; a shorter one is drawn at
+the minimum width, so no call disappears.
 
 Every bar is `rx: 3` and filled at reduced opacity, and lifts to full
 opacity while the pointer is on it.
@@ -185,22 +207,88 @@ opacity while the pointer is on it.
 The outcome glyph is coloured by direction: a filled dot in `--v2-good` for
 `completed`, a cross in `--v2-bad` for `failed`, a triangle in
 `--v2-caution` for `exhausted`, and a flat bar in `--v2-flat` for
-`blocked`. A running episode ends in an open ring. Hovering the glyph names
-the outcome with the code of a `blocked` outcome or the limit of an
-`exhausted` one, and the message the outcome carries.
+`blocked`. A running episode ends in an open ring.
 
-A connector runs from the parent's `spawn/start` mark to the start of the
-child's bar, solid. A fork's connector runs from the origin's position at
-the fork boundary to the start of the fork's bar, dashed.
+### The node band
 
-Hovering a mark opens a hovercard naming the mark, its `seq`, its time, its
-duration when it has one, the wait before its first token when it is a
-request that received one, and one line of detail: a tool call's arguments,
-a retry's step and delay, or a spawned child's program. Clicking a mark
-selects its episode and brings the conversation to that log position, where
-the row is marked until another is.
-Clicking a row label selects that episode, and `j` and `k` move between
-rows.
+An episode whose program declares a graph spends its whole run inside that
+graph, so the trajectory is where the timing of the graph belongs; the
+workflow tab draws the topology. The band holds one lane per node that
+fired, ordered by the first firing of each, which is the order the run
+entered the nodes. A workflow that runs straight through therefore reads as
+a staircase, and a cycle reads as a step back up to a lane already used. A
+node the graph declares and the run never entered has no lane, because it
+has no time to occupy; the workflow tab is where its absence is drawn.
+
+Each lane is named in the label column, one indent deeper than the episode's
+own label, in faint mono. A firing is a bar between its `workflow/node-start`
+and the `workflow/node-end` that closes it, so its width is the interval the
+log observed. The length the node itself reported in `duration_ms` is a
+separate quantity and is given in the hovercard beside the observed one; a
+firing that has not ended reports no length at all, and the hovercard says
+so rather than showing a zero.
+
+A firing takes its colour direction from how it ended: `--v2-bad` for a
+firing whose `workflow/node-end` carries an error, `--v2-good` for one that
+ended cleanly, and neutral ink while it runs. That is the direction the
+workflow tab gives the same firing, so the two figures share one grammar.
+
+A model node's firing ran a child episode, which has a row of its own below.
+Its bar is outlined rather than filled, because the work it stands for is
+drawn in full on that row, and the connector to that row leaves the bar
+rather than the spawn ring on the lifetime line. The firing's bar and the
+child's lifetime bar are then the same interval, one under the other, so the
+correspondence between the graph and the run is visible without hovering.
+
+A branch's label and a recovery's action are written beside their marks. A
+label is dropped where a firing of the same node overlaps the room it
+needs, because a label set over a bar reads as neither; the hovercard names
+every decision whatever is drawn.
+
+### Calls issued together
+
+A model that issues six reads in one turn produces six `tool/result` events
+at one instant, which land on one x. Each call keeps that x and takes the
+lowest height of the tool lane whose last call ended at least two pixels
+before it starts. A run of calls one after another therefore stays on one
+height, and a batch issued together fans into as many heights as it has
+calls, so six parallel reads read as six. The height carries no quantity: it
+is a tie-break, and the calls of one batch stack in log order with the
+earliest nearest the line.
+
+### Lineage
+
+A connector runs from where the parent started the child to the start of the
+child's bar: from the model node's firing when a firing names that child,
+and from the parent's `spawn/start` mark otherwise. It drops at that x,
+turns once in the gap above the child's row, and drops into it, so it
+crosses an intervening row as a hairline rather than sweeping along it. It
+is drawn in the separator ink at 0.9 pixels against a lifetime line of full
+ink at 1.2, because structure recedes behind activity. A fork's connector
+runs from the origin's position at the fork boundary and is dashed.
+
+Depth is carried twice in the label column: each level indents the label by
+16 pixels, and a rail of hairline segments stands at each ancestor's indent.
+The nearest ancestor's segment turns into the row's own label; a further
+one passes through the row when a deeper row follows it. Without the rail a
+three-level tree reads as three indents rather than as a hierarchy.
+
+### Reading a mark
+
+Hovering any mark, firing, decision, or outcome glyph opens the hovercard
+`src/render/hovercard.ts` defines, which every figure in the viewer shares.
+The card names the mark, gives its `seq`, its time, its duration when it has
+one, the wait before its first token when it is a request that received one,
+and one line of detail: a tool call's arguments, a retry's step and attempt,
+a spawned child's program, a firing's reported duration and the child it
+ran, or a decision's cause and target. The card stands below the pointer,
+or above it when it would otherwise leave the pane at the bottom, and never
+crosses the pane's right edge.
+
+Clicking a mark selects its episode and brings the conversation to that log
+position, where the row is marked until another is. Clicking a model node's
+firing selects the child episode it ran. Clicking a row label selects that
+episode, and `j` and `k` move between rows.
 
 ## The workflow view
 
