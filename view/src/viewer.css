@@ -1664,18 +1664,17 @@ table.events td.type.error {
  * reader learns one grammar for both. A bar lifts to full fill on hover. */
 .traj-mark.request .span {
   fill: var(--v2-ink-faint);
-  fill-opacity: 0.5;
+  fill-opacity: 0.7;
   stroke: none;
 }
 
 .traj-mark.request .wait {
   fill: var(--v2-ink-soft);
-  fill-opacity: 0.8;
+  fill-opacity: 1;
   stroke: none;
 }
 
-.traj-mark.request:hover .span,
-.traj-mark.request:hover .wait {
+.traj-mark.request:hover .span {
   fill-opacity: 1;
 }
 
@@ -2159,25 +2158,27 @@ table.events td.type.error {
   color: var(--v2-ink-faint);
 }
 
+/* The same two parts the trajectory's request bars carry: the whole answer
+ * at reduced fill, and the wait before the first token over it. */
 .step-bar .rest {
   fill: var(--v2-ink-faint);
-  opacity: 0.5;
+  fill-opacity: 0.7;
 }
 
 .step-bar .head {
   fill: var(--v2-ink-soft);
-  opacity: 0.75;
+  fill-opacity: 1;
 }
 
 /* The slowest answered request is the row the figure argues. */
 .step-row.lead .step-bar .rest {
   fill: var(--v2-accent);
-  opacity: 0.4;
+  fill-opacity: 0.45;
 }
 
 .step-row.lead .step-bar .head {
   fill: var(--v2-accent);
-  opacity: 1;
+  fill-opacity: 1;
 }
 
 .tool-name {
@@ -2863,4 +2864,11 @@ kbd {
 .schema-table .schema-required {
   font-family: var(--v2-mono);
   color: var(--v2-ink-faint);
+}
+
+/* A value made of several parts wraps between them and never inside one,
+ * so a phrase like `cache read 2,560` stays whole and a hyphenated word
+ * like `best-effort` is not split at its hyphen. */
+.episode-info .part {
+  white-space: nowrap;
 }

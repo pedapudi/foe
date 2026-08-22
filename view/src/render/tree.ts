@@ -171,9 +171,11 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
       const barW = Math.max(12, textW);
       const measure = svg("g", { class: "measure" });
       const measureTitle = svg("title");
-      measureTitle.textContent = `${fmtInt(spentTokens(s))} tokens, ${Math.round(
-        share * 100,
-      )} percent of the most any one episode beside it spent`;
+      const group = "among the episodes with the same parent";
+      measureTitle.textContent =
+        share >= 1
+          ? `${fmtInt(spentTokens(s))} tokens, the largest total ${group}`
+          : `${fmtInt(spentTokens(s))} tokens, ${Math.round(share * 100)} percent of the largest total ${group}`;
       measure.append(
         measureTitle,
         svg("rect", { class: "measure-track", x: textX, y: y + 16, width: barW, height: MEASURE_H, rx: 1 }),
@@ -204,6 +206,19 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
   return host;
 }
 
+/**
+ * A value made of several parts, separated by a middle dot. Each part is
+ * one unbreakable run, so a narrow pane wraps between two parts and never
+ * inside one: `cache read 2,560` stays on one line, and `best-effort` is
+ * never split at its hyphen. An empty part is left out.
+ */
+function parts(list: string[]): Child {
+  const kept = list.filter((p) => p !== "");
+  // The separator leads its part rather than trailing the one before it, so
+  // that a line never ends on a dangling dot.
+  return kept.flatMap((part, i) => [i > 0 ? " " : null, h("span", { class: "part" }, i > 0 ? `· ${part}` : part)]);
+}
+
 export function renderInfo(s: Summary | null): HTMLElement {
   if (!s) return h("div", { class: "episode-info" }, h("span", { class: "sub" }, "select an episode"));
   const rows: [string, Child][] = [];
@@ -221,12 +236,20 @@ export function renderInfo(s: Summary | null): HTMLElement {
   if (tokensUsed > 0) {
     rows.push([
       "tokens",
-      [ratio(tokensUsed, s.budget.tokens, "tokens"), h("div", { class: "sub" }, `in ${fmtInt(s.usage.input)} · out ${fmtInt(s.usage.output)} · cache read ${fmtInt(s.usage.cacheRead)}`)],
+      [
+        ratio(tokensUsed, s.budget.tokens, "tokens"),
+        h(
+          "div",
+          { class: "sub" },
+          parts([`in ${fmtInt(s.usage.input)}`, `out ${fmtInt(s.usage.output)}`, `cache read ${fmtInt(s.usage.cacheRead)}`]),
+        ),
+      ],
     ]);
   }
   const abi = s.sandbox.landlockAbi;
   if (abi !== null || s.sandbox.mode) {
-    rows.push(["sandbox", [abi === null ? "" : abi === 0 ? "landlock unavailable" : `landlock abi ${abi}`, s.sandbox.mode ? `${abi === null ? "" : " · "}${s.sandbox.mode}` : ""]]);
+    const landlock = abi === null ? "" : abi === 0 ? "landlock unavailable" : `landlock abi ${abi}`;
+    rows.push(["sandbox", parts([landlock, s.sandbox.mode])]);
   }
   if (s.forkOrigin) rows.push(["fork origin", `${s.forkOrigin.episodeId} at seq ${s.forkOrigin.seq}`]);
   if (s.parentId) rows.push(["parent", s.parentId]);

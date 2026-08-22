@@ -91,13 +91,16 @@ with no Rust toolchain.
 the tests read the shapes a real provider failure produces. `pnpm fixtures`
 leaves it alone.
 
-Three screenshots of the static export at 1512 by 792 sit beside the source.
-`proof-light.png` and `proof-dark.png` show the `overlap-parent` fixture and
-its two children in the `paper` and `monokai` themes: the tree, both
-connector kinds, and a turn holding Markdown, a table, a fenced block, and
-mathematics. `proof-one-episode.png` shows a recorded run of this repository
-with one root episode and no children, which is the ordinary case and the
-one where the trajectory's height is derived from a single row.
+Three screenshots of the static export at 1512 by 792 sit beside the source,
+each in one of the two default themes. `proof-light.png` and
+`proof-dark.png` show the `overlap-parent` fixture and its two children in
+`google-light` and `google-dark`: the tree with its per-row measure and the
+spine on the selected row, both connector kinds, the trajectory's request
+spans, and a turn holding a diff and a fenced block. `proof-one-episode.png`
+shows a recorded run of this repository in `google-light`, with one root
+episode and no children, which is the ordinary case and the one where the
+trajectory's height is derived from a single row; its four request spans
+differ in length by a factor of seven, and its system prompt is open.
 
 The `messages` list recorded in each `model/request` event is written by
 hand in the generator, so the tests compare it with the list the bundle
