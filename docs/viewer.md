@@ -273,6 +273,13 @@ The nearest ancestor's segment turns into the row's own label; a further
 one passes through the row when a deeper row follows it. Without the rail a
 three-level tree reads as three indents rather than as a hierarchy.
 
+The column is 26 percent of the pane, held at or above 116 pixels plus one
+indent per level of the deepest row, at or below 230 pixels, and at or
+below 45 percent of the pane, because the plot is what the figure is. A
+name still too long for what the column leaves it is set with an ellipsis
+rather than run into the plot, and hovering it gives the whole name, the
+episode id the row no longer prints, and the outcome.
+
 ### Reading a mark
 
 Hovering any mark, firing, decision, or outcome glyph opens the hovercard

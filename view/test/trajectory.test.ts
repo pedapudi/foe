@@ -12,6 +12,7 @@ import {
   ROW_HEIGHT,
   TOOL_LANE,
   TOOL_PITCH,
+  fitLabel,
   guidesFor,
   labelWidthFor,
   layoutTrajectory,
@@ -82,9 +83,33 @@ test("the plot spans the pane to the right of the label column", () => {
 });
 
 test("the label column follows the pane width between its limits", () => {
-  assert.equal(labelWidthFor(2000), 230);
-  assert.equal(labelWidthFor(200), 116);
+  assert.equal(labelWidthFor(2000), 230, "a wide pane stops at the widest column");
+  assert.equal(labelWidthFor(200), 90, "a narrow pane keeps the plot most of itself");
   assert.equal(labelWidthFor(700), Math.round(700 * 0.26));
+});
+
+test("the label column widens by one indent per level of the deepest row", () => {
+  // 26 percent of 400 is under the narrowest column, so the floor decides,
+  // and each level of depth raises that floor by one indent.
+  assert.equal(labelWidthFor(400, 0), 116);
+  assert.equal(labelWidthFor(400, 2), 116 + 2 * DEPTH_INDENT);
+  assert.equal(labelWidthFor(2000, 9), 230, "the widest column still bounds it");
+  const deep = layoutTrajectory(input(workflowTree()));
+  assert.equal(deep.labelWidth, labelWidthFor(WIDTH, 1));
+});
+
+test("a label too long for its column is shortened rather than run into the plot", () => {
+  assert.equal(fitLabel("survey", 100, 6.6), "survey", "a name that fits is left whole");
+  assert.equal(fitLabel("survey-propose-apply", 40, 6.6), "surve\u2026");
+  assert.equal(fitLabel("survey", 4, 6.6), "", "a column with room for nothing sets nothing");
+  const narrow = layoutTrajectory(input(workflowTree(), { width: 320 }));
+  for (const row of narrow.rows) {
+    assert.ok(row.labelX + row.label.length * 6.6 <= narrow.plot.left, `${row.label} stays out of the plot`);
+    for (const lane of row.lanes) {
+      assert.ok(lane.labelX + lane.label.length * 5.4 <= narrow.plot.left, `${lane.label} stays out of the plot`);
+    }
+  }
+  assert.ok(narrow.rows.some((r) => r.label.endsWith("\u2026")), "the widest name was shortened");
 });
 
 test("on the time axis a lifetime bar spans the episode's own clock", () => {

@@ -143,6 +143,8 @@ export interface NodeLane {
   y: number;
   /** Left edge of the lane's name in the label column. */
   labelX: number;
+  /** The node's name shortened to the room the column leaves it. */
+  label: string;
 }
 
 export interface PlacedDecision extends NodeDecision {
@@ -191,6 +193,8 @@ export interface TrajectoryRow {
   guides: RowGuide[];
   /** Left edge of the row's own label. */
   labelX: number;
+  /** The program name shortened to the room the column leaves it. */
+  label: string;
 }
 
 export interface Connector {
@@ -273,6 +277,10 @@ const TICK_TARGET = 5;
 const FAN_GAP = 2;
 /** Pixels one character of a decision label takes, for collision alone. */
 const DECISION_CHAR = 5.4;
+/** Widest a character of a row label sets, which fits it to its column. */
+const NAME_CHAR = 6.6;
+/** The same for a lane's name, which sets smaller and in the data face. */
+const LANE_CHAR = 5.4;
 /** Room a decision's own glyph and the gap after it take before its label. */
 export const DECISION_GLYPH = 8;
 
@@ -286,9 +294,27 @@ export function trajectoryContentHeight(rowsHeight: number): number {
   return AXIS_HEIGHT + AXIS_GAP + Math.max(0, rowsHeight) + PAD_BOTTOM;
 }
 
-/** Room the row labels take, which follows the pane width within limits. */
-export function labelWidthFor(width: number): number {
-  return Math.round(Math.min(LABEL_MAX, Math.max(LABEL_MIN, width * 0.26)));
+/**
+ * Room the row labels take, which follows the pane width within limits and
+ * widens by one indent per level of the deepest row, so that a deep tree
+ * does not spend the whole column on its indents. The column never takes
+ * more than a share of the pane, because the plot is what the figure is.
+ */
+export function labelWidthFor(width: number, depth = 0): number {
+  const wanted = Math.max(LABEL_MIN + Math.max(0, depth) * DEPTH_INDENT, width * 0.26);
+  return Math.round(Math.min(LABEL_MAX, width * 0.45, wanted));
+}
+
+/**
+ * `text` shortened to what fits in `room` pixels, with an ellipsis where
+ * anything was dropped. `charWidth` is the widest a character of the face
+ * is expected to set, so the result never crosses into the plot.
+ */
+export function fitLabel(text: string, room: number, charWidth: number): string {
+  const max = Math.floor(room / charWidth);
+  if (text.length <= max) return text;
+  if (max < 2) return "";
+  return `${text.slice(0, max - 1)}…`;
 }
 
 /**
@@ -349,7 +375,8 @@ function stack(placed: { x: number; w: number }[]): number[] {
 
 export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
   const { episodes, axis, width } = input;
-  const labelWidth = labelWidthFor(width);
+  const deepest = episodes.reduce((most, e) => Math.max(most, e.depth), 0);
+  const labelWidth = labelWidthFor(width, deepest);
   const plotLeft = labelWidth + 10;
   const plotRight = Math.max(plotLeft + 20, width - PAD_RIGHT);
   const top = AXIS_HEIGHT + AXIS_GAP;
@@ -399,6 +426,7 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
 
     const height = bandHeight + ROW_HEIGHT + fan;
     const next = episodes[index + 1];
+    const labelX = LABEL_PAD + episode.depth * DEPTH_INDENT;
     rows.push({
       id: episode.id,
       name: episode.name,
@@ -411,15 +439,15 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
       running,
       outcome: episode.outcome,
       marks,
-      lanes: lanes.map((node) => ({
-        node,
-        y: laneY.get(node)!,
-        labelX: LABEL_PAD + (episode.depth + 1) * DEPTH_INDENT,
-      })),
+      lanes: lanes.map((node) => {
+        const labelX = LABEL_PAD + (episode.depth + 1) * DEPTH_INDENT;
+        return { node, y: laneY.get(node)!, labelX, label: fitLabel(node, labelWidth - labelX, LANE_CHAR) };
+      }),
       firings,
       decisions,
       guides: guidesFor(episode.depth, cursor, height, y, next ? next.depth : -1),
-      labelX: LABEL_PAD + episode.depth * DEPTH_INDENT,
+      labelX,
+      label: fitLabel(episode.name, labelWidth - labelX, NAME_CHAR),
     });
     cursor += height;
   });

@@ -270,13 +270,23 @@ export class TrajectoryView {
     // The label names the program. The episode id stands beside it in the
     // sidebar and in the breadcrumbs, so the row does not repeat it.
     const label = svg("text", { class: "traj-label", x: row.labelX, y: row.y + 3.5 });
-    label.textContent = row.name === row.id ? row.id : row.name;
+    label.textContent = row.label;
     label.addEventListener("click", () => this.handlers.select(row.id));
+    // The card carries the id the label no longer prints, and the whole
+    // program name when the column was too narrow to set it.
+    this.card.attach(
+      label,
+      () => row.name,
+      () => row.id,
+      () => (row.outcome ? outcomeLabel(row.outcome) : "running"),
+    );
     group.appendChild(label);
 
     for (const lane of row.lanes) {
       const name = svg("text", { class: "traj-lane-label", x: lane.labelX, y: lane.y + 3 });
-      name.textContent = lane.node;
+      name.textContent = lane.label;
+      const fires = row.firings.filter((f) => f.node === lane.node).length;
+      this.card.attach(name, () => lane.node, () => (fires === 1 ? "1 firing" : `${fires} firings`), () => "");
       group.appendChild(name);
     }
 
