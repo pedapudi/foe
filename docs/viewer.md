@@ -429,8 +429,10 @@ The statistics tab draws six figures over the selected episode, or over
 that episode together with every episode under it. A control in the tab's
 header switches between the two, because a child spends from the budget
 pool its root holds: the tree is the scope a declared limit actually
-bounds. Every quantity is derived in the browser from events the log
-already carries.
+bounds. Where the viewer holds more than one root, the control offers a
+third setting, **every run**, described below; with one root that setting
+is absent, because a collection of one has nothing to compare. Every
+quantity is derived in the browser from events the log already carries.
 
 Two rules govern the presentation.
 
@@ -513,6 +515,19 @@ share of the limit, and a hairline mark of that share which takes
 **Tool calls** is one row per tool name with its call count, the total
 duration its results report, its error count, and a bar of that duration
 against the longest.
+
+**Every run** replaces the six figures with one row per root episode: the
+program name and episode id, the outcome, the model requests, the tokens,
+the wall clock, the retries, and a bar of that run's tokens against the
+largest run. Each row is counted over that root and its descendants alone.
+
+No column of that table is a total across roots. A budget is a pool a root
+reserves and hands down to its descendants, so adding two roots together
+would state one pool where there are two, which is the same kind of claim
+as reporting an unmeasured quantity as zero. Comparison is what the table
+offers instead: the bar puts each run's spending against the largest run,
+and the other columns stand side by side. Clicking a row selects that
+root.
 
 ## Rendering text
 

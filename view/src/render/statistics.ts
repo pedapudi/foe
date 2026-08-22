@@ -1,6 +1,6 @@
-// The statistics tab: six figures over one episode, or over that episode
-// and its descendants. Line art in the register docs/design-language.md
-// sets out, with two rules of its own.
+// The statistics tab: six figures over one episode, over that episode and
+// its descendants, or one row per root of a collection. Line art in the
+// register docs/design-language.md sets out, with two rules of its own.
 //
 // Every number a reader could not derive by eye carries a hovercard giving
 // the quantity's definition and the values it was computed from, so a cache
@@ -10,12 +10,19 @@
 
 import { clear, fmtDuration, fmtInt, h } from "../dom.js";
 import type { Child } from "../dom.js";
-import { computeStatistics, layoutContextCurve, layoutTools, layoutWallClock } from "../statistics.js";
-import type { CurveLayout, Statistics, StatisticsEpisode, Step } from "../statistics.js";
+import { outcomeLabel } from "../fold.js";
+import { computeRuns, computeStatistics, layoutContextCurve, layoutTools, layoutWallClock } from "../statistics.js";
+import type { CurveLayout, Run, Statistics, StatisticsEpisode, Step } from "../statistics.js";
 import { Hovercard } from "./hovercard.js";
+import { outcomeRole } from "./tree.js";
 import { barSvg, figureSvg, svg } from "./svg.js";
 
-export type Scope = "episode" | "tree";
+/**
+ * What the figures cover: the selected episode alone, that episode with
+ * every episode under it, which is the scope a declared budget bounds, or
+ * every root of the collection reported one row each.
+ */
+export type Scope = "episode" | "tree" | "runs";
 
 /** The word for a quantity no event in the scope measured. */
 const ABSENT = "not measured";
@@ -65,6 +72,8 @@ export class StatisticsView {
   private readonly card: Hovercard;
   private scope: Scope = "episode";
   private episodes: StatisticsEpisode[] = [];
+  /** One scope per root of the collection, for the run comparison. */
+  private roots: StatisticsEpisode[][] = [];
   private names = new Map<string, string>();
   private digest = "";
 
@@ -76,6 +85,7 @@ export class StatisticsView {
       { class: "stats-scope", role: "radiogroup", "aria-label": "statistics scope" },
       this.scopeButton("episode", "this episode"),
       this.scopeButton("tree", "episode tree"),
+      this.scopeButton("runs", "every run"),
     );
     this.el.append(
       h("div", { class: "fig-head" }, h("h3", null, "statistics"), h("span", { class: "spacer" }), this.scopeButtons),
@@ -94,10 +104,11 @@ export class StatisticsView {
         type: "button",
         role: "radio",
         "data-scope": scope,
-        title:
-          scope === "episode"
-            ? "quantities of the selected episode alone"
-            : "quantities of the selected episode and every episode under it, which draw on one budget pool",
+        title: {
+          episode: "quantities of the selected episode alone",
+          tree: "quantities of the selected episode and every episode under it, which draw on one budget pool",
+          runs: "one row per root episode, each counted on its own, because roots hold separate budget pools",
+        }[scope],
         onclick: () => this.setScope(scope),
       },
       label,
@@ -121,11 +132,21 @@ export class StatisticsView {
 
   /**
    * `episodes` is the selected episode followed by its descendants, in tree
-   * order, each with its depth below the selected one.
+   * order, each with its depth below the selected one. `roots` is one such
+   * scope per root of the collection, which the run comparison reads; the
+   * comparison is offered only where there is more than one root, since a
+   * collection of one has nothing to compare.
    */
-  update(episodes: StatisticsEpisode[], names: Map<string, string>): void {
+  update(episodes: StatisticsEpisode[], names: Map<string, string>, roots: StatisticsEpisode[][] = []): void {
     this.episodes = episodes;
     this.names = names;
+    this.roots = roots;
+    const button = this.scopeButtons.querySelector<HTMLElement>('[data-scope="runs"]');
+    if (button) button.hidden = roots.length < 2;
+    if (this.scope === "runs" && roots.length < 2) {
+      this.scope = "episode";
+      this.syncScope();
+    }
     this.draw(false);
   }
 
@@ -136,10 +157,11 @@ export class StatisticsView {
   private draw(force: boolean): void {
     const width = this.body.clientWidth;
     const scope = this.scope === "episode" ? this.episodes.slice(0, 1) : this.episodes;
+    const shown = this.scope === "runs" ? this.roots.flat() : scope;
     const digest = [
       width,
       this.scope,
-      scope.map((e) => `${e.id}:${e.events.length}:${e.endTime ?? "-"}`).join("|"),
+      shown.map((e) => `${e.id}:${e.events.length}:${e.endTime ?? "-"}`).join("|"),
     ].join("~");
     if (!force && digest === this.digest) return;
     // A tab that is not mounted has no width; the digest is kept unset so
@@ -148,8 +170,12 @@ export class StatisticsView {
     this.digest = digest;
     clear(this.body);
     this.card.hide();
-    if (scope.length === 0) {
+    if (shown.length === 0) {
       this.body.appendChild(h("div", { class: "empty sub" }, "no episode selected"));
+      return;
+    }
+    if (this.scope === "runs") {
+      this.body.appendChild(this.runFigure(width));
       return;
     }
     const stats = computeStatistics(scope, Date.now());
@@ -172,6 +198,78 @@ export class StatisticsView {
       h("div", { class: "fig-body" }, body),
       h("div", { class: "fig-caption" }, caption),
     );
+  }
+
+  // ---- one row per run -----------------------------------------------------
+
+  /**
+   * Every root of the collection, one row each. No column is a total over
+   * the roots: each root reserves its own budget pool and settles its own
+   * children, so a sum across them would assert a pool that does not
+   * exist. The bar reads each run's tokens against the largest run, which
+   * is a comparison rather than a total.
+   */
+  private runFigure(width: number): HTMLElement {
+    const barWidth = Math.max(60, Math.min(200, width - 460));
+    const runs = computeRuns(this.roots, Date.now(), barWidth);
+    const head = h(
+      "thead",
+      null,
+      h(
+        "tr",
+        null,
+        h("th", null, "run"),
+        h("th", null, "outcome"),
+        h("th", null, "requests"),
+        h("th", null, "tokens"),
+        h("th", null, "wall clock"),
+        h("th", null, "retries"),
+        h("th", null, ""),
+      ),
+    );
+    const table = h(
+      "table",
+      { class: "stats-table" },
+      head,
+      h("tbody", null, runs.map((run) => this.runRow(run, barWidth))),
+    );
+    return this.figure(
+      "every run",
+      table,
+      `${runs.length} root episodes, each counted over itself and its descendants. ` +
+        "Nothing here is added across roots: every root holds a budget pool of its own, " +
+        "so a total over them would state a pool that does not exist. The bar is each run's " +
+        "tokens against the largest run.",
+    );
+  }
+
+  private runRow(run: Run, barWidth: number): HTMLElement {
+    const stats = run.statistics;
+    const clock = stats.wallClock;
+    const bar = barSvg("tool-bar", barWidth, 10, "tokens against the largest run");
+    bar.appendChild(svg("rect", { class: "seg", x: 0, y: 3, width: Math.max(0.5, run.w), height: 4 }));
+    const role = outcomeRole(run.outcome);
+    const row = h(
+      "tr",
+      { class: "run-row" },
+      h("td", { class: "step-name" }, run.name, h("span", { class: "sub" }, run.id)),
+      h("td", null, h("span", { class: `outcome ${role}` }, outcomeLabel(run.outcome))),
+      h("td", { class: "num" }, fmtInt(stats.requests)),
+      h("td", { class: "num" }, fmtInt(run.tokens)),
+      h("td", { class: "num" }, fmtDuration(clock.totalMs)),
+      h("td", { class: "num" }, fmtInt(stats.retries)),
+      h("td", null, bar),
+    );
+    row.addEventListener("click", () => this.handlers.reveal(run.id, 0));
+    this.card.attach(
+      row,
+      () => `${run.name} · ${run.id}`,
+      () => "this root and every episode under it, counted on their own",
+      () =>
+        `${run.episodes} episode${run.episodes === 1 ? "" : "s"} · ` +
+        `${fmtInt(stats.tokens.input ?? 0)} input plus ${fmtInt(stats.tokens.output ?? 0)} output tokens`,
+    );
+    return row;
   }
 
   // ---- where the wall clock went -------------------------------------------

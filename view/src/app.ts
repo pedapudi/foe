@@ -8,6 +8,7 @@ import { clear, h } from "./dom.js";
 import { EpisodeFold } from "./fold.js";
 import type { Patch, Summary } from "./fold.js";
 import { buildTree, flatten, sharedPrefix } from "./lineage.js";
+import type { TreeNode } from "./lineage.js";
 import { loadPanes, onPanesChange, rowGrip, setTrajectoryHeight, sidebarGrip } from "./panes.js";
 import { ConversationView } from "./render/conversation.js";
 import { DiffView, renderNoDiff } from "./render/diff.js";
@@ -375,40 +376,46 @@ export class App implements Sink {
     const state = this.episodes.get(id);
     if (!state) {
       this.workflow.update(null, null);
-      this.statistics.update([], new Map());
+      this.statistics.update([], new Map(), this.rootScopes());
       return;
     }
     const summary = state.fold.summary;
     this.workflow.update(readWorkflow(summary.program, state.fold.events), id);
     const names = new Map<string, string>();
     for (const s of this.summaries()) names.set(s.id, s.name === s.id ? s.id : `${s.name} ${s.id}`);
-    this.statistics.update(this.statisticsScope(id), names);
+    this.statistics.update(this.statisticsScope(id), names, this.rootScopes());
+  }
+
+  /** One episode and its descendants, each with its depth below it. */
+  private scopeOf(node: TreeNode, depth = 0): StatisticsEpisode[] {
+    const state = this.episodes.get(node.id);
+    const s = node.summary;
+    const own: StatisticsEpisode[] = state
+      ? [
+          {
+            id: s.id,
+            name: s.name,
+            events: state.fold.events,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            program: s.program,
+            depth,
+            outcome: s.outcome,
+          },
+        ]
+      : [];
+    return [...own, ...node.children.flatMap((child) => this.scopeOf(child, depth + 1))];
   }
 
   /** The selected episode followed by its descendants, each with its depth. */
   private statisticsScope(id: string): StatisticsEpisode[] {
-    const roots = buildTree(this.summaries(), this.orderIds);
-    const found = flatten(roots).find((f) => f.node.id === id);
-    if (!found) return [];
-    const out: StatisticsEpisode[] = [];
-    const walk = (node: typeof found.node, depth: number) => {
-      const state = this.episodes.get(node.id);
-      const s = node.summary;
-      if (state) {
-        out.push({
-          id: s.id,
-          name: s.name,
-          events: state.fold.events,
-          startTime: s.startTime,
-          endTime: s.endTime,
-          program: s.program,
-          depth,
-        });
-      }
-      for (const child of node.children) walk(child, depth + 1);
-    };
-    walk(found.node, 0);
-    return out;
+    const found = flatten(buildTree(this.summaries(), this.orderIds)).find((f) => f.node.id === id);
+    return found ? this.scopeOf(found.node) : [];
+  }
+
+  /** One scope per root, which the run comparison reports one row each. */
+  private rootScopes(): StatisticsEpisode[][] {
+    return buildTree(this.summaries(), this.orderIds).map((root) => this.scopeOf(root));
   }
 
   private renderMain(): void {

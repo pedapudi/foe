@@ -2230,7 +2230,8 @@ table.events td.type.error {
   cursor: default;
 }
 
-.step-row {
+.step-row,
+.run-row {
   cursor: pointer;
 }
 
