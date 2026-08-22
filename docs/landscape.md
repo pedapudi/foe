@@ -273,17 +273,20 @@ The comparison below is against documented behavior of the surveyed systems.
 - **Budget as a pool reserved down an episode tree.** Claude Code's
   `--max-budget-usd` is a cap that, when reached, stops running subagents
   and refuses new ones. Managed Agents has session budgets. foe additionally
-  reserves a child's budget from the parent's remainder at spawn and
-  returns the unspent part when the child settles, alongside caps on depth,
+  reserves the budget the child program declares from the parent's remainder
+  at spawn and returns the unspent part when the child settles, alongside
+  caps on depth,
   lifetime episode count, and concurrency. The reservation-and-return
   accounting has no documented counterpart.
 - **Termination that a parent can route on.** A2A's task lifecycle includes
   `INPUT_REQUIRED`, and Claude Code on the web lets a session ask and wait.
-  foe has no waiting state. An episode ends in one of `Completed`,
-  `Blocked` with a code from a fixed vocabulary, `Exhausted`, or `Failed`,
-  and the runtime itself ends an episode that repeats a tool call or a
-  reasoning turn three times. OpenHands headless mode and Antigravity's
-  `/goal` also omit a waiting state. Among the surveyed systems, only foe
+  No foe episode waits for a person. Its `wait` tool holds an episode until
+  the children it started have ended, and nothing holds one for an answer
+  from outside the tree. An episode ends in one of `Completed`, `Blocked`
+  with a code from a fixed vocabulary, `Exhausted`, or `Failed`, and the
+  runtime itself ends an episode that repeats a tool call or a reasoning
+  turn three times. OpenHands headless mode and Antigravity's `/goal` also
+  omit a state that waits for a person. Among the surveyed systems, only foe
   documents a fixed blocking vocabulary for parent routing.
 
 Every hosted product in the first table runs without a person present.
@@ -583,11 +586,14 @@ defines.
 
 What the person gets back:
 
-- An exit status and one JSON line: outcome kind, the returned value or
-  the blocked code and message, budget consumed, and the log directory.
-- The log directory, which a later `foe view` renders as a single HTML file
-  showing the episode tree, every tool call with rendered and canonical
-  forms, budget consumption, sandbox status, and the outcome.
+- An exit status and one JSON line holding the outcome kind and, according
+  to the kind, the returned value, the blocked code and message, or the
+  exhausted limit. The budget consumed and the log directory are read from
+  the log rather than from that line.
+- The log directory, which a later `foe view DIR` writes to standard output
+  as a single HTML file showing the episode tree, every tool call with
+  rendered and canonical forms, budget consumption, sandbox status, and the
+  outcome.
 - The working tree as the episode left it. foe does not commit. If the
   program grants `git`, the instructions can require a commit on a named
   branch, which is how the PR report-back of hosted products is
