@@ -1382,9 +1382,13 @@ pre.text {
 
 /* raw events */
 
+/* The tab is a query container, so a payload's label column answers to the
+ * tab's own width rather than the window's. */
 .raw {
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
+  container-name: raw;
 }
 
 .raw .bar {
@@ -1466,6 +1470,204 @@ table.events td.time {
 
 table.events td.type.error {
   color: var(--v2-bad);
+}
+
+/* ---- an event payload, field by field ---- */
+
+/* A payload is drawn as fields rather than as a block of JSON text. The
+ * kind of a value is carried by its colour, on the register the code
+ * tokenizer already uses: a number in the caution ink, the words `true`,
+ * `false`, and `null` in the accent. A string keeps full ink, because in a
+ * field list the key beside it already says the value is a string, and the
+ * outcome word in the same panel is the one thing here that earns a
+ * direction colour. */
+.payload-body {
+  font-size: calc(11.5px * var(--dt-font-scale, 1));
+  line-height: 1.45;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: minmax(0, 116px) minmax(0, 1fr);
+  gap: 0 var(--dt-gap-edge);
+  align-items: baseline;
+  padding: 1px 0;
+}
+
+/* The field of a message that carries the message's own words takes the
+ * whole width: the role beside it already names the field. */
+.field.lead {
+  display: block;
+}
+
+.field-key {
+  color: var(--v2-ink-faint);
+  overflow-wrap: anywhere;
+}
+
+.field-value {
+  min-width: 0;
+}
+
+/* Under this width a label and its value no longer both fit on one line, so
+ * the value goes under its label rather than breaking a word in two. */
+@container raw (width < 420px) {
+  .field {
+    display: block;
+  }
+
+  .field > .field-value {
+    margin-left: var(--dt-gap-edge);
+  }
+}
+
+.j-str {
+  color: var(--v2-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.j-num {
+  color: var(--v2-caution);
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.j-bool,
+.j-null {
+  color: var(--v2-accent);
+}
+
+.j-empty {
+  color: var(--v2-ink-faint);
+}
+
+.j-bracket {
+  color: var(--v2-ink-faint);
+  letter-spacing: 0.08em;
+}
+
+/* The key names a collapsed object shows, so that a reader knows what is
+ * inside it without opening it. */
+.j-preview {
+  color: var(--v2-ink-faint);
+  margin-left: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* An open node is indented behind a hairline, so that the level a field
+ * sits at is read off the rail rather than counted from the indent. */
+.j-node > .details-body {
+  margin-left: 5px;
+  padding-left: var(--dt-gap-edge);
+  border-left: 1px solid var(--v2-rule-soft);
+}
+
+.j-string > summary .meta,
+.j-literal > summary {
+  color: var(--v2-ink-faint);
+}
+
+.j-literal {
+  margin-top: var(--dt-gap-item);
+  padding-top: var(--dt-gap-item);
+  border-top: 1px solid var(--v2-rule-soft);
+}
+
+/* A derived message inside a `model/request`, set the way the conversation
+ * sets the same message: the role, then the words. */
+.msg {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 0 var(--dt-gap-edge);
+  padding: var(--dt-gap-item) 0;
+  border-top: 1px solid var(--v2-rule-soft);
+}
+
+.msg:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.msg-role {
+  font-weight: 600;
+  color: var(--v2-ink-soft);
+}
+
+.msg-body {
+  min-width: 0;
+}
+
+@container raw (width < 420px) {
+  .msg {
+    display: block;
+  }
+}
+
+.block-type {
+  color: var(--v2-ink-faint);
+}
+
+.payload-body .block + .block {
+  margin-top: var(--dt-gap-item);
+}
+
+/* A token count on one line rather than as a nested object. */
+.usage-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dt-gap-line) var(--dt-gap-group);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-name {
+  color: var(--v2-ink-faint);
+  margin-right: 5px;
+}
+
+/* One streamed fragment. The text it carried is boxed, so that a fragment
+ * of nothing but spaces is still visible as a fragment. */
+.chunk {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--dt-gap-item);
+}
+
+.chunk-kind {
+  color: var(--v2-ink-faint);
+}
+
+.chunk-delta {
+  padding: 0 4px;
+  border: 1px solid var(--v2-rule);
+  border-radius: var(--dt-radius-mark);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The one value in a payload that earns a direction colour: how the episode
+ * or the child ended. */
+.outcome-kind {
+  font-weight: 600;
+}
+
+.outcome-kind.good {
+  color: var(--v2-good);
+}
+
+.outcome-kind.bad {
+  color: var(--v2-bad);
+}
+
+.outcome-kind.caution {
+  color: var(--v2-caution);
+}
+
+.outcome-kind.flat {
+  color: var(--v2-flat);
 }
 
 /* diff */
