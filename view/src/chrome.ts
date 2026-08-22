@@ -419,7 +419,7 @@ export class Topbar {
   private readonly select: (id: string) => void;
 
   setCrumbs(crumbs: Crumb[]): void {
-    const digest = crumbs.map((c) => `${c.id} ${c.label}`).join("");
+    const digest = crumbs.map((c) => `${c.id}\u0000${c.label}`).join("\u0001");
     if (digest === this.crumbDigest) return;
     this.crumbDigest = digest;
     clear(this.crumbs);
