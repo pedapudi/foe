@@ -86,10 +86,12 @@ crate's `exec` feature is enabled, which it is by default. A build without
 that feature contains no code path that starts a process.
 
 Each tool reaches files and processes only through the capability handles
-the runtime passes at dispatch: a reader bounded to the `read` roots, a
-writer bounded to the `write` roots, and an executor. A relative path in an
-argument is taken from the first `read` root, and paths in results are shown
-relative to it.
+the runtime passes at dispatch: a reader bounded to the directories the
+`read` roots named, a writer bounded to the directories the `write` roots
+named, and an executor. Each handle holds those directories open, so an
+operation resolves under the directory the runtime opened rather than under
+the pathname as it now stands. A relative path in an argument is taken from
+the first `read` root, and paths in results are shown relative to it.
 
 | tool | effect | arguments | limits | canonical value |
 |---|---|---|---|---|

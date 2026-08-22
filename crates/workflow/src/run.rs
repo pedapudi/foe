@@ -16,7 +16,8 @@ use foe_core::budget::Pool;
 use foe_core::config::Program;
 use foe_core::harness_text as text;
 use foe_core::loop_::{lock, settle, until, wait_stop, Log, Params, Recorder};
-use foe_core::registry::{conforms, Handles, Registry, Source};
+use foe_core::registry::{Handles, Registry, Source};
+use foe_core::schema::conforms;
 use foe_core::workflow::{ancestors, Node, WorkflowConfig};
 use foe_core::{Effect, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolSpec, ToolValue, Transport};
 use foe_log::{

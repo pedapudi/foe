@@ -340,9 +340,14 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     builtins.extend(team::tools(team.clone(), parent));
     let registry = Registry::new(&program, host_tools, builtins).map_err(|e| format!("config: {e}"))?;
     let write = program.grants.write.clone();
+    let reader = RootReader::new(program.grants.read.clone()).map_err(|e| format!("grants.read: {e}"))?;
+    let writer = match write.is_empty() {
+        true => None,
+        false => Some(Arc::new(RootWriter::new(write).map_err(|e| format!("grants.write: {e}"))?) as Arc<dyn Writer>),
+    };
     let handles = Handles {
-        reader: Some(Arc::new(RootReader::new(program.grants.read.clone()))),
-        writer: (!write.is_empty()).then(|| Arc::new(RootWriter::new(write)) as Arc<dyn Writer>),
+        reader: Some(Arc::new(reader)),
+        writer,
         executor: Some(Arc::new(executor)),
         spawner: (!program.grants.spawn.is_empty()).then(|| spawner.clone()),
     };

@@ -112,6 +112,13 @@ fn every_rule_names_its_key() {
             Box::new(|v| v["host_tools"] = json!({ "h": { "description": "d", "params": [], "effect": "pure" } })),
         ),
         (
+            "host_tools.h.params",
+            Box::new(|v| {
+                v["host_tools"] =
+                    json!({ "h": { "description": "d", "params": { "format": "email" }, "effect": "pure" } });
+            }),
+        ),
+        (
             "host_tools.h.description",
             Box::new(|v| v["host_tools"] = json!({ "h": { "description": "", "params": {}, "effect": "pure" } })),
         ),
@@ -133,6 +140,7 @@ fn every_rule_names_its_key() {
         ("budget.loop_threshold", Box::new(|v| v["budget"]["loop_threshold"] = json!(1))),
         ("done_when.verify", Box::new(|v| v["done_when"] = json!({ "verify": "ghost" }))),
         ("done_when.returns", Box::new(|v| v["done_when"] = json!({ "returns": "string" }))),
+        ("done_when.returns", Box::new(|v| v["done_when"] = json!({ "returns": { "pattern": "^a" } }))),
         ("model.provider", Box::new(|v| v["model"] = json!({ "provider": " ", "model": "m" }))),
         ("model.model", Box::new(|v| v["model"] = json!({ "provider": "anthropic", "model": "" }))),
         (
@@ -156,6 +164,24 @@ fn every_rule_names_its_key() {
     for (key, edit) in cases {
         assert_eq!(rejected(&root, edit), key);
     }
+}
+
+/// docs/workflow.md "Model nodes": a model node's program is validated like
+/// any other, so its `done_when.returns` is checked at its own dotted key.
+#[test]
+fn a_workflow_model_node_schema_is_checked_at_its_dotted_key() {
+    let root = tmp("config-workflow-schema");
+    let key = rejected(&root, |v| {
+        v["workflow"] = json!({ "nodes": { "draft": {
+            "model": {
+                "name": "draft", "instructions": { "role": "draft" }, "tools": ["block"],
+                "grants": { "read": [root] }, "budget": { "model_calls": 1 },
+                "done_when": { "returns": { "type": "string", "format": "uri" } }
+            },
+            "terminal": true
+        } } });
+    });
+    assert_eq!(key, "workflow.nodes.draft.model.done_when.returns");
 }
 
 #[test]

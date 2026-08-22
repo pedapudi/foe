@@ -158,8 +158,8 @@ line is budgeted apart from the runtime because it serves a person at a
 terminal rather than an episode. `scripts/loc.sh` counts the five, and
 continuous integration fails a build over any of them. The sixth number
 bounds the browser bundle at 150 KB compressed. The seventh is the stripped
-release binary with that bundle embedded, which measured 5,347,632 bytes on
-2026-08-21; continuous integration builds the bundle before measuring and
+release binary with that bundle embedded, which measured 5,404,568 bytes on
+2026-08-22; continuous integration builds the bundle before measuring and
 fails a build over 8 MiB.
 
 ## Documents

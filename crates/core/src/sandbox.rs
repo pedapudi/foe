@@ -76,14 +76,15 @@ pub struct Policy {
 }
 
 impl Policy {
-    /// The policy of an episode process: its grants, every configured
-    /// executable, the running binary when it may start children, its log
-    /// directory, and outbound TCP only when the episode itself holds the
-    /// model transport. The credential file the transport reads is not
-    /// known here; the binary appends it to `read_files` after resolving
-    /// the `model` block.
+    /// The policy of an episode process: its grants, the configured
+    /// executable of every program at or below it, the running binary when
+    /// it may start children, its log directory, and outbound TCP only when
+    /// the episode itself holds the model transport. The credential file the
+    /// transport reads is not known here; the binary appends it to
+    /// `read_files` after resolving the `model` block.
     pub fn for_episode(config: &Config, log_dir: &Path) -> Policy {
-        let mut exec: Vec<PathBuf> = config.tool_defs.values().map(|d| d.exec.clone()).collect();
+        let mut exec = Vec::new();
+        configured_executables(&crate::ChildProgram::from(config), &mut exec);
         if !config.grants.spawn.is_empty() {
             exec.extend(std::env::current_exe().ok());
         }
@@ -111,6 +112,38 @@ impl Policy {
             log_dir: None,
             bind_tcp: Vec::new(),
             connect_tcp: network,
+        }
+    }
+}
+
+/// Every `tool_defs` executable `program` declares, followed by those of the
+/// programs below it: its child programs, the model nodes of its workflow,
+/// and so on to the leaves.
+///
+/// A ruleset only narrows, so a descendant episode cannot add an execute rule
+/// its ancestors withheld. An ancestor that reserved only its own executables
+/// would leave a descendant unable to run the tool its own configuration
+/// names. Reserving is what makes the descendant's own narrowing possible;
+/// the descendant's ruleset still holds its own executables alone, so no
+/// episode gains reach over a sibling's tool.
+fn configured_executables(program: &crate::ChildProgram, into: &mut Vec<PathBuf>) {
+    into.extend(program.tool_defs.values().map(|d| d.exec.clone()));
+    let mut models = Vec::new();
+    if let Some(graph) = &program.workflow {
+        model_programs(graph, &mut models);
+    }
+    for below in program.programs.values().chain(models) {
+        configured_executables(below, into);
+    }
+}
+
+/// Every model node's program in `graph`, including those of the workflows
+/// its nodes nest.
+fn model_programs<'a>(graph: &'a crate::workflow::WorkflowConfig, into: &mut Vec<&'a crate::ChildProgram>) {
+    for node in graph.nodes.values() {
+        into.extend(node.model.as_ref());
+        if let Some(nested) = &node.workflow {
+            model_programs(nested, into);
         }
     }
 }
