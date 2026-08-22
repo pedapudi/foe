@@ -262,6 +262,9 @@ lease counts the child and every descendant that may run beside it. A child
 that may spawn receives its declared subtree capacity, capped by the
 parent's remaining slots. A leaf receives one slot. The child's own
 `max_concurrent` is capped at the lease minus the slot occupied by the child.
+An explicit spawn grant and a workflow model node both make a child capable
+of starting descendants. Model nodes inside nested workflows follow the same
+rule.
 `budget/release` returns the lease when the child settles. A value of zero
 forbids child episodes. `loop_threshold` applies to one episode.
 

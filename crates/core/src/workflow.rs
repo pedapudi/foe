@@ -87,6 +87,14 @@ pub struct Node {
 }
 
 impl WorkflowConfig {
+    /// Whether this graph or a nested graph contains a model node, each of
+    /// which runs as a child episode when it fires.
+    pub(crate) fn contains_model_node(&self) -> bool {
+        self.nodes
+            .values()
+            .any(|node| node.model.is_some() || node.workflow.as_ref().is_some_and(Self::contains_model_node))
+    }
+
     /// The data inputs of every node: the `task` source first when the node
     /// follows it, then its other `follows`, then every node whose
     /// `followed_by` names it, in name order, each listed once.
