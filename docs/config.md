@@ -16,7 +16,8 @@ Three rules shape the format.
 
 `foe schema` emits a JSON Schema for this format, so an editor can validate a
 document and offer completions. `foe plan --config FILE` prints the resolved
-program and its identity without running anything.
+program, its identity, and every tool definition the program's reachable
+tree can invoke, without running anything.
 
 ## A complete example
 
@@ -362,7 +363,11 @@ is a full configuration document without `version`, `task`, `model`, or
 
 A child program's grants must be a subset of its parent's, checked at
 construction. Each child program's identity participates in the parent's
-identity.
+identity. Its tool list may differ from its parent's. The effective tool
+authority `foe plan` reports covers the root, each descendant program a
+`grants.spawn` entry reaches, and each workflow model node. A declaration
+no such path reaches stays in the resolved program and is absent from the
+report, because no episode can invoke it.
 
 ### `workflow`
 

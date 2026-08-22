@@ -594,6 +594,81 @@ fn plan(config: &Path) -> Value {
     serde_json::from_str(&line).unwrap()
 }
 
+/// docs/design.md "Subagents and teams": `foe plan` reports each distinct
+/// tool definition throughout the reachable tree, even when names repeat,
+/// and omits a program no `grants.spawn` entry reaches.
+#[test]
+fn plan_reports_effective_authority_across_nested_descendants() {
+    let dir = scratch("plan-authority");
+    let root_exec = dir.join("root-tool");
+    let child_exec = dir.join("child-tool");
+    std::fs::write(&root_exec, "").unwrap();
+    std::fs::write(&child_exec, "").unwrap();
+    let grand = json!({
+        "name": "grand", "instructions": { "role": "inspect" }, "tools": ["inspect"],
+        "host_tools": { "inspect": { "description": "Inspect through the host", "params": {}, "effect": "reads" } },
+        "grants": { "read": [dir] }, "budget": { "model_calls": 1 }
+    });
+    let unused = json!({
+        "name": "unused", "instructions": { "role": "remain unreachable" }, "tools": ["hidden"],
+        "host_tools": { "hidden": { "description": "Hidden declaration", "params": {}, "effect": "pure" } },
+        "grants": { "read": [dir] }, "budget": { "model_calls": 1 }
+    });
+    let child = json!({
+        "name": "child", "instructions": { "role": "delegate" }, "tools": ["inspect", "spawn"],
+        "tool_defs": { "inspect": { "exec": child_exec, "description": "Inspect as the child" } },
+        "grants": { "read": [dir], "spawn": ["grand"] }, "budget": { "model_calls": 2 },
+        "programs": { "grand": grand }
+    });
+    let value = config(&dir, |c| {
+        c["tools"] = json!(["inspect", "spawn"]);
+        c["tool_defs"] = json!({ "inspect": { "exec": root_exec, "description": "Inspect at the root" } });
+        c["grants"]["spawn"] = json!(["child"]);
+        c["programs"] = json!({ "child": child, "unused": unused });
+    });
+    let path = dir.join("config.json");
+    std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let report = plan(&path);
+    let inspect: Vec<&Value> =
+        report["authority"].as_array().unwrap().iter().filter(|row| row["name"] == "inspect").collect();
+    assert_eq!(inspect.len(), 3, "same-name definitions remain distinct: {inspect:?}");
+    assert!(inspect.iter().any(|row| row["programs"] == json!(["program"])));
+    assert!(inspect.iter().any(|row| row["programs"] == json!(["program.programs.child"])));
+    assert!(inspect.iter().any(|row| row["programs"] == json!(["program.programs.child.programs.grand"])));
+    assert!(report["authority"].as_array().unwrap().iter().all(|row| row["name"] != "hidden"));
+}
+
+/// docs/workflow.md "The flow guarantee, stated exactly": plan reports
+/// overlaps for model nodes and effectful tool nodes at every graph depth.
+#[test]
+fn plan_reports_write_overlap_for_every_kind_of_writer() {
+    let dir = scratch("plan-writers");
+    let model = json!({
+        "name": "model", "instructions": { "role": "write" }, "tools": ["block"],
+        "grants": { "read": [dir], "write": [dir] }, "budget": { "model_calls": 1 }
+    });
+    let value = config(&dir, |c| {
+        c["tools"] = json!(["block", "write"]);
+        c["host_tools"] = json!({ "write": {
+            "description": "Write a value", "params": {}, "effect": "writes"
+        }});
+        c["grants"]["write"] = json!([dir]);
+        c["workflow"] = json!({ "nodes": {
+            "direct": { "tool": "write" },
+            "nested": { "workflow": { "nodes": { "inner": { "tool": "write", "terminal": true } } } },
+            "model": { "model": model, "terminal": true }
+        }});
+    });
+    let path = dir.join("config.json");
+    std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let report = plan(&path);
+    let pairs = report["workflow"]["write_overlaps"].as_array().unwrap();
+    assert_eq!(pairs.len(), 3, "three writers produce every pair: {pairs:?}");
+    assert!(pairs
+        .iter()
+        .any(|pair| pair.as_array().is_some_and(|values| values.iter().any(|value| value == "nested/inner"))));
+}
+
 /// docs/design.md "Programs and identity": identity excludes the task and
 /// the resolved paths, so the same program in another directory hashes the
 /// same.
@@ -613,6 +688,11 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
             assert_eq!(first["workflow"]["terminal"], json!(["apply"]), "plan reports the workflow's terminal node");
             assert_eq!(first["workflow"]["cycles"], json!([]));
             assert!(first["program"]["workflow"]["nodes"]["propose"]["model"].is_object());
+            assert!(first["authority"].as_array().unwrap().iter().any(|row| {
+                row["programs"]
+                    .as_array()
+                    .is_some_and(|paths| paths.iter().any(|path| path == "program.workflow.nodes.propose.model"))
+            }));
         } else {
             assert_eq!(first["workflow"], Value::Null);
         }
