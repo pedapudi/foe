@@ -237,9 +237,19 @@ one killed mid-flight.
 
 Ending a child that a model meant to keep is a poor answer, so a parent
 that means to wait says so: the `wait` tool returns once every child it
-started has ended, bounded by the episode's `seconds` budget. A model that
-means to abandon its children ends its turn as usual, and the teardown
-settles them.
+started has ended, bounded by the episode's `seconds` budget. When it
+returns because that budget ran out, it returns an error naming how many
+children are still running, and the episode ends as exhausted at its next
+step. A program that declares no `seconds` gives `wait` no bound of its
+own; the wait then lasts as long as the children do. A model that means to
+abandon its children ends its turn as usual, and the teardown settles them.
+
+`seconds` is the only bound that reaches across the whole tree at once. A
+child's reservation caps its `seconds` at what the parent has left, so one
+deadline ends every episode below it. Without that bound, an episode that
+waits on something that never arrives, such as a host tool call the host
+never answers, waits without end, and every ancestor waiting on it does
+too.
 
 A program's `done_when` field chooses how an episode completes.
 
