@@ -1,8 +1,13 @@
 # Self-extension demo
 
-This example runs foe against a disposable copy of its own `read` tool. The
-task adds a `total_bytes` field to the tool's canonical JSON result. The
-episode also adds a regression assertion and updates the tool specification.
+This example runs foe against a disposable copy of its own `read` tool. One
+form gives the extension task directly to an episode. A second form evaluates
+the source first and gives the findings to a terminal workflow node that
+improves the source.
+
+Both forms add a `total_bytes` field to the tool's canonical JSON result. The
+source change also adds a regression assertion and updates the tool
+specification.
 
 The copied files come from the current checkout:
 
@@ -39,6 +44,28 @@ The same runner is a Bazel test target:
 bazel test //examples/self-extension:self_extension_test
 ```
 
+## Run evaluation before improvement
+
+The self-improvement workflow contains two nodes:
+
+1. `evaluate_read_tool` runs the external checker against the unmodified
+   source. Its findings are the measured evidence for the change.
+2. `improve_read_tool` receives the task and findings. This terminal model
+   node edits the source, test, and specification. The checker verifies its
+   output before the workflow can complete. A clean checker call completes
+   the child without a separate model request.
+
+The runner requires the fresh source to fail the checker. It then requires
+the final source to pass. It also requires recorded `read`, `edit`, and
+`check` tool results and a conformant workflow trace.
+
+Run the deterministic form without a model credential:
+
+```sh
+bazel run //examples/self-extension:self-improvement-workflow
+bazel test //examples/self-extension:self_improvement_workflow_test
+```
+
 ## Run with a model provider
 
 The model-backed runner replaces the scripted transport with
@@ -73,10 +100,34 @@ credit:
 bazel test //examples/self-extension:self_extension_model_runner_test
 ```
 
+## Run the workflow with a model provider
+
+The model-backed workflow declares 72,000 input tokens, 6,000 output tokens,
+and twelve model calls per fresh attempt. The first command prints the spending
+plan. The second command runs three independent attempts:
+
+```sh
+bazel run //examples/self-extension:self-improvement-workflow-model -- \
+  --attempts 3
+bazel run //examples/self-extension:self-improvement-workflow-model -- \
+  --attempts 3 \
+  --confirm-spend
+```
+
+Each attempt starts from a fresh source copy. The command succeeds only when
+every attempt passes the artifact checker and trace evaluator. Select another
+provider with `--model PROVIDER/MODEL` as in the direct model-backed form.
+
+The build tests two fresh workflow attempts with the deterministic transport:
+
+```sh
+bazel test //examples/self-extension:self_improvement_workflow_model_runner_test
+```
+
 ## Episode behavior
 
 The deterministic local model transport makes no provider request and needs
-no credential. It follows the ordinary coding loop:
+no credential. The direct form follows the ordinary coding loop:
 
 1. The model reads the implementation, test, and specification.
 2. The model calls `edit` once for each file.
@@ -98,6 +149,6 @@ stays unchanged:
 ```
 
 The regression test asserts the byte count of its fixture. The tool table and
-the detailed `read` specification describe the new field. `run.sh` checks the
-changed files and confirms that the episode log contains both `read` and
-`edit` tool results.
+the detailed `read` specification describe the new field. Every runner checks
+the changed files and requires recorded `read` and `edit` results. The
+workflow runners also require a `check` result and both workflow node results.

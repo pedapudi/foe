@@ -1,0 +1,74 @@
+{
+  "version": 2,
+  "name": "evaluate-and-improve-foe",
+  "instructions": {
+    "role": "This workflow evaluates a disposable Foe source slice and gives the findings to one model node that improves the source."
+  },
+  "tools": ["read", "edit", "check"],
+  "tool_defs": {
+    "check": {
+      "exec": "/home/user/foe/examples/self-extension/check",
+      "description": "Evaluates whether the read tool reports total_bytes, tests the field, and specifies it. It prints one finding per line and prints nothing when the source passes.",
+      "cwd": "/home/user/project"
+    }
+  },
+  "grants": {
+    "read": ["/home/user/project"],
+    "write": ["/home/user/project"]
+  },
+  "budget": {
+    "model_calls": 12,
+    "input_tokens": 72000,
+    "output_tokens": 6000,
+    "seconds": 240,
+    "max_episodes": 2
+  },
+  "workflow": {
+    "nodes": {
+      "evaluate_read_tool": {
+        "tool": "check",
+        "args": {"args": []}
+      },
+      "improve_read_tool": {
+        "model": {
+          "name": "improve-read-tool",
+          "instructions": {
+            "role": "Improve Foe in the disposable source slice. Use the evaluator findings as evidence. Read every affected file before editing it. Keep the implementation, regression test, and specification consistent. Run check after the edits. A clean check completes the child episode."
+          },
+          "tools": ["read", "edit", "check"],
+          "tool_defs": {
+            "check": {
+              "exec": "/home/user/foe/examples/self-extension/check",
+              "description": "Checks that the read tool exposes total_bytes, its regression test covers the field, and its specification names and explains the field. It prints one finding per line and prints nothing when the source passes.",
+              "cwd": "/home/user/project"
+            }
+          },
+          "grants": {
+            "read": ["/home/user/project"],
+            "write": ["/home/user/project"]
+          },
+          "budget": {
+            "model_calls": 10,
+            "input_tokens": 72000,
+            "output_tokens": 5000,
+            "seconds": 180
+          },
+          "done_when": {
+            "verify": "check",
+            "retries": 1
+          }
+        },
+        "follows": ["task", "evaluate_read_tool"],
+        "terminal": true
+      }
+    },
+    "recovery": {"max_interventions": 1}
+  },
+  "model": {
+    "provider": "exec",
+    "model": "self-improvement-retry-demo",
+    "exec": "/home/user/foe/examples/support/scripted-transport.py"
+  },
+  "sandbox": {"mode": "best-effort"},
+  "task": "Improve Foe's read tool from the evaluator evidence. Preserve rendered output."
+}

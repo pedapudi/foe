@@ -19,7 +19,8 @@ EOF
 cat > "$candidate/docs/tools.md" <<'EOF'
 | `read` | reads | `path` | limited | `path`, `total_bytes`, `content` |
 
-`total_bytes` is the complete file byte count.
+`total_bytes` is the byte
+count of the complete file.
 EOF
 
 findings=$(CDPATH= cd -- "$candidate" && "$checker")

@@ -4,16 +4,16 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 SELF_EXTENSION_DATA = [
     "check",
     "config.json",
+    "workflow-config.json",
     "//:foe",
     "//crates/code:self_extension_sources",
     "//docs:self_extension_sources",
+    "//evals:score-trace",
     "//examples/support:materialize.py",
     "//examples/support:scripted-transport.py",
 ]
 
-SELF_EXTENSION_MODEL_DATA = SELF_EXTENSION_DATA + [
-    "//evals:score-trace",
-]
+SELF_EXTENSION_MODEL_DATA = SELF_EXTENSION_DATA
 
 sh_binary(
     name = "self-extension",
@@ -29,10 +29,41 @@ sh_binary(
     data = SELF_EXTENSION_MODEL_DATA,
 )
 
+sh_binary(
+    name = "self-improvement-workflow",
+    srcs = ["run.sh"],
+    args = [
+        "$(rootpath //:foe)",
+        "--workflow",
+    ],
+    data = SELF_EXTENSION_DATA,
+)
+
+sh_binary(
+    name = "self-improvement-workflow-model",
+    srcs = ["run-model.sh"],
+    args = [
+        "$(rootpath //:foe)",
+        "--workflow",
+    ],
+    data = SELF_EXTENSION_MODEL_DATA,
+)
+
 sh_test(
     name = "self_extension_test",
     srcs = ["run.sh"],
     args = ["$(rootpath //:foe)"],
+    data = SELF_EXTENSION_DATA,
+    size = "small",
+)
+
+sh_test(
+    name = "self_improvement_workflow_test",
+    srcs = ["run.sh"],
+    args = [
+        "$(rootpath //:foe)",
+        "--workflow",
+    ],
     data = SELF_EXTENSION_DATA,
     size = "small",
 )
@@ -52,6 +83,22 @@ sh_test(
         "$(rootpath //:foe)",
         "--model",
         "exec/self-extension-demo",
+        "--confirm-spend",
+    ],
+    data = SELF_EXTENSION_MODEL_DATA,
+    size = "small",
+)
+
+sh_test(
+    name = "self_improvement_workflow_model_runner_test",
+    srcs = ["run-model.sh"],
+    args = [
+        "$(rootpath //:foe)",
+        "--workflow",
+        "--model",
+        "exec/self-improvement-retry-demo",
+        "--attempts",
+        "2",
         "--confirm-spend",
     ],
     data = SELF_EXTENSION_MODEL_DATA,

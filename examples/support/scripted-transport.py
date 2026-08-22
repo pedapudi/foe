@@ -84,78 +84,101 @@ def sandbox(request: dict) -> None:
     done(request_id, "end")
 
 
+def read_self_extension_files(request_id: str) -> None:
+    for call_id, path in [
+        ("read-tool", "crates/code/src/read.rs"),
+        ("read-test", "crates/code/src/read_test.rs"),
+        ("read-doc", "docs/tools.md"),
+    ]:
+        call(request_id, call_id, "read", {"path": path})
+
+
+def edit_read_tool_and_test(request_id: str) -> None:
+    call(
+        request_id,
+        "edit-tool",
+        "edit",
+        {
+            "path": "crates/code/src/read.rs",
+            "edits": [
+                {
+                    "old_text": "        let total = lines.len();\n        let offset = a.offset.unwrap_or(1);\n",
+                    "new_text": (
+                        "        let total = lines.len();\n"
+                        "        let total_bytes = bytes.len();\n"
+                        "        let offset = a.offset.unwrap_or(1);\n"
+                    ),
+                },
+                {
+                    "old_text": '                "total_lines": total,\n                "shown": shown_n,\n',
+                    "new_text": (
+                        '                "total_lines": total,\n'
+                        '                "total_bytes": total_bytes,\n'
+                        '                "shown": shown_n,\n'
+                    ),
+                },
+            ],
+        },
+    )
+    call(
+        request_id,
+        "edit-test",
+        "edit",
+        {
+            "path": "crates/code/src/read_test.rs",
+            "edits": [
+                {
+                    "old_text": '    assert_eq!(v.value["total_lines"], 3);\n',
+                    "new_text": (
+                        '    assert_eq!(v.value["total_bytes"], 14);\n'
+                        '    assert_eq!(v.value["total_lines"], 3);\n'
+                    ),
+                }
+            ],
+        },
+    )
+
+
+def edit_read_tool_docs(request_id: str) -> None:
+    call(
+        request_id,
+        "edit-doc",
+        "edit",
+        {
+            "path": "docs/tools.md",
+            "edits": [
+                {
+                    "old_text": "| `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |",
+                    "new_text": "| `path`, `offset`, `total_lines`, `total_bytes`, `shown`, `truncated`, `content` |",
+                },
+                {
+                    "old_text": (
+                        "caps the window below the line limit; `truncated` is true whenever lines\n"
+                        "remain beyond the window, whatever the cause.\n"
+                    ),
+                    "new_text": (
+                        "caps the window below the line limit; `truncated` is true whenever lines\n"
+                        "remain beyond the window, whatever the cause. The canonical `total_bytes`\n"
+                        "field is the complete source file's byte count, independent of the displayed\n"
+                        "window and before line-ending normalization.\n"
+                    ),
+                },
+            ],
+        },
+    )
+
+
 def self_extension(request: dict) -> None:
     request_id = request["request_id"]
     messages = request["messages"]
     tool_results = [message for message in messages if message["role"] == "tool"]
     if not tool_results:
-        for call_id, path in [
-            ("read-tool", "crates/code/src/read.rs"),
-            ("read-test", "crates/code/src/read_test.rs"),
-            ("read-doc", "docs/tools.md"),
-        ]:
-            call(request_id, call_id, "read", {"path": path})
+        read_self_extension_files(request_id)
         done(request_id, "tool")
         return
     if not any(message.get("name") == "edit" for message in tool_results):
-        call(
-            request_id,
-            "edit-tool",
-            "edit",
-            {
-                "path": "crates/code/src/read.rs",
-                "edits": [
-                    {
-                        "old_text": "        let total = lines.len();\n        let offset = a.offset.unwrap_or(1);\n",
-                        "new_text": (
-                            "        let total = lines.len();\n"
-                            "        let total_bytes = bytes.len();\n"
-                            "        let offset = a.offset.unwrap_or(1);\n"
-                        ),
-                    },
-                    {
-                        "old_text": '                "total_lines": total,\n                "shown": shown_n,\n',
-                        "new_text": (
-                            '                "total_lines": total,\n'
-                            '                "total_bytes": total_bytes,\n'
-                            '                "shown": shown_n,\n'
-                        ),
-                    }
-                ],
-            },
-        )
-        call(
-            request_id,
-            "edit-test",
-            "edit",
-            {
-                "path": "crates/code/src/read_test.rs",
-                "edits": [
-                    {
-                        "old_text": '    assert_eq!(v.value["total_lines"], 3);\n',
-                        "new_text": '    assert_eq!(v.value["total_bytes"], 14);\n    assert_eq!(v.value["total_lines"], 3);\n',
-                    }
-                ],
-            },
-        )
-        call(
-            request_id,
-            "edit-doc",
-            "edit",
-            {
-                "path": "docs/tools.md",
-                "edits": [
-                    {
-                        "old_text": "| `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |",
-                        "new_text": "| `path`, `offset`, `total_lines`, `total_bytes`, `shown`, `truncated`, `content` |",
-                    },
-                    {
-                        "old_text": "caps the window below the line limit; `truncated` is true whenever lines\nremain beyond the window, whatever the cause.\n",
-                        "new_text": "caps the window below the line limit; `truncated` is true whenever lines\nremain beyond the window, whatever the cause. The canonical `total_bytes`\nfield is the complete source file's byte count, independent of the displayed\nwindow and before line-ending normalization.\n",
-                    },
-                ],
-            },
-        )
+        edit_read_tool_and_test(request_id)
+        edit_read_tool_docs(request_id)
         done(request_id, "tool")
         return
     emit(
@@ -163,6 +186,30 @@ def self_extension(request: dict) -> None:
         {"kind": "text", "delta": "Added total_bytes to the read result, its regression test, and its specification."},
     )
     done(request_id, "end")
+
+
+def self_improvement_retry(request: dict) -> None:
+    request_id = request["request_id"]
+    messages = request["messages"]
+    tool_results = [message for message in messages if message["role"] == "tool"]
+    if not tool_results:
+        read_self_extension_files(request_id)
+        done(request_id, "tool")
+        return
+    if not any(message.get("name") == "edit" for message in tool_results):
+        edit_read_tool_and_test(request_id)
+        done(request_id, "tool")
+        return
+    if "Verification by `check` reported" in json.dumps(messages) and not any(
+        message.get("call_id") == "edit-doc" for message in tool_results
+    ):
+        edit_read_tool_docs(request_id)
+        done(request_id, "tool")
+        return
+    docs_edited = any(message.get("call_id") == "edit-doc" for message in tool_results)
+    call_id = "check-complete" if docs_edited else "check-before-docs"
+    call(request_id, call_id, "check", {"args": []})
+    done(request_id, "tool")
 
 
 def main() -> None:
@@ -174,6 +221,8 @@ def main() -> None:
         sandbox(request)
     elif scenario == "self-extension-demo":
         self_extension(request)
+    elif scenario == "self-improvement-retry-demo":
+        self_improvement_retry(request)
     else:
         emit(
             request["request_id"],

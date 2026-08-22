@@ -27,6 +27,7 @@ fi
 if ! grep '^| `read` ' docs/tools.md | grep -Fq '`total_bytes`'; then
   echo 'docs/tools.md does not list total_bytes in the read canonical value'
 fi
-if ! grep -Eq '(complete|entire|full).*(byte|size)|(byte|size).*(complete|entire|full)' docs/tools.md; then
+if ! tr '\n' ' ' < docs/tools.md \
+  | grep -Eq '(complete|entire|full).*(byte|size)|(byte|size).*(complete|entire|full)'; then
   echo 'docs/tools.md does not explain that total_bytes measures the complete file'
 fi

@@ -14,14 +14,36 @@ else
   repo_dir=$(CDPATH= cd -- "$example_dir/../.." && pwd)
 fi
 
-binary=${1:-"target/release/foe"}
+binary=target/release/foe
+if [ "$#" -gt 0 ] && [ "${1#--}" = "$1" ]; then
+  binary=$1
+  shift
+fi
 case "$binary" in
   /*) ;;
   *) binary="$repo_dir/$binary" ;;
 esac
 
+workflow=false
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --workflow) workflow=true ;;
+    *) echo "self-extension demo: unknown option $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+config_template=$example_dir/config.json
+run_prefix=foe-self-extension-demo
+description="self-extension demo"
+if [ "$workflow" = true ]; then
+  config_template=$example_dir/workflow-config.json
+  run_prefix=foe-self-improvement-workflow-demo
+  description="self-improvement workflow demo"
+fi
+
 if [ ! -x "$binary" ]; then
-  echo "self-extension demo: $binary is not executable; run 'bazel run //examples/self-extension'" >&2
+  echo "$description: $binary is not executable; run the matching Bazel target" >&2
   exit 1
 fi
 
@@ -33,7 +55,7 @@ else
   output_dir="$repo_dir/target"
 fi
 mkdir -p "$output_dir"
-run_dir=$(mktemp -d "$output_dir/foe-self-extension-demo.XXXXXX")
+run_dir=$(mktemp -d "$output_dir/$run_prefix.XXXXXX")
 project_dir="$run_dir/foe"
 log_dir="$run_dir/episode"
 mkdir -p "$project_dir/crates/code/src" "$project_dir/docs"
@@ -41,12 +63,18 @@ cp "$repo_dir/crates/code/src/read.rs" "$project_dir/crates/code/src/read.rs"
 cp "$repo_dir/crates/code/src/read_test.rs" "$project_dir/crates/code/src/read_test.rs"
 cp "$repo_dir/docs/tools.md" "$project_dir/docs/tools.md"
 
+initial_findings=$(CDPATH= cd -- "$project_dir" && "$example_dir/check")
+if [ -z "$initial_findings" ]; then
+  echo "$description: the source already passes its evaluator" >&2
+  exit 1
+fi
+
 /usr/bin/python3 "$repo_dir/examples/support/materialize.py" \
-  "$example_dir/config.json" "$run_dir/config.json" \
+  "$config_template" "$run_dir/config.json" \
   /home/user/project "$project_dir" \
   /home/user/foe "$repo_dir"
 
-echo "Running the self-extension demo in $run_dir"
+echo "Running the $description in $run_dir"
 "$binary" --config "$run_dir/config.json" --log-dir "$log_dir" --headless
 
 findings=$(CDPATH= cd -- "$project_dir" && "$example_dir/check")
@@ -54,10 +82,17 @@ if [ -n "$findings" ]; then
   echo "$findings" >&2
   exit 1
 fi
-grep -q '"name":"read"' "$log_dir/episode.jsonl"
-grep -q '"name":"edit"' "$log_dir/episode.jsonl"
+grep -Rq '"type":"tool/result".*"name":"read"' "$log_dir"
+grep -Rq '"type":"tool/result".*"name":"edit"' "$log_dir"
+if [ "$workflow" = true ]; then
+  grep -q '"type":"workflow/node-end".*"node":"evaluate_read_tool"' "$log_dir/episode.jsonl"
+  grep -q '"type":"workflow/node-end".*"node":"improve_read_tool"' "$log_dir/episode.jsonl"
+  grep -Rq '"type":"tool/result".*"name":"check"' "$log_dir"
+  grep -Rq '"type":"inbox/item".*"source":"verify"' "$log_dir"
+fi
+/usr/bin/python3 "$repo_dir/evals/trace_quality.py" --pretty "$log_dir"
 
-echo "Self-extension demo passed. Inspect the extended source under $project_dir."
+echo "The $description passed. Inspect the extended source under $project_dir."
 echo "Inspect the episode with:"
 if [ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]; then
   echo "  bazel run //:foe -- view $log_dir --serve"
