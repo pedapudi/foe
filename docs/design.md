@@ -140,6 +140,14 @@ compiled from its grants. Every process it starts runs under a subset of
 that ruleset. Nothing a child or a tool does can reach further than its
 parent could.
 
+What narrows is reach: read roots, write roots, and the depth still
+available below. A child's tool list is its own and need not be a subset of
+its parent's, so a child may be offered `edit` where its parent has only
+`spawn`. Every such tool is still bounded by the child's grants, which lie
+inside the parent's, and by the ruleset the child inherits. One document
+declares every level, so the tool list of each level is the author's
+choice rather than something the runtime derives.
+
 The log directory is the whole state. Copying it copies the run. The viewer,
 replay, forking, budget accounting, and team coordination all read it and
 nothing else.
