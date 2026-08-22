@@ -23,7 +23,7 @@ declared.
 |---|---|
 | each `grants.read` directory | read files, list directories |
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
-| each `tool_defs` entry's `exec` file | execute and read that file |
+| each `tool_defs` entry's `exec` file, in this program and in every program below it | execute and read that file |
 | the running `foe` binary, when `grants.spawn` is not empty | execute and read that file, so the episode can start children |
 | the credential file the `model` block resolves to, when present | read that file, so a child episode can read the credential after inheriting this domain |
 | the episode's own log directory | read and write |
@@ -84,6 +84,15 @@ ruleset and receives a further one, so an executable or child can reach
 less than the episode and never more. The kernel allows sixteen nested
 rulesets; an episode tree of depth sixteen is the practical limit.
 
+Because a ruleset only narrows, an episode reserves what the programs below
+it need before it restricts itself. A child's read and write roots lie inside
+its parent's, which the configuration requires. A `tool_defs` executable has
+no such rule, because declaring the entry is what permits the execution, so
+an episode's ruleset holds execute on the `tool_defs` executables of every
+program below it as well as its own. Each episode's own ruleset still names
+its own executables alone, so reserving widens no episode's reach except an
+ancestor's, which must hold the union in order to pass it down.
+
 ## The episode process
 
 The episode process applies its own policy to itself at startup, after it
@@ -96,8 +105,8 @@ thread before the asynchronous runtime exists.
 The episode keeps:
 
 - read on its read roots, write on its write roots;
-- execute on every `tool_defs` executable, and on its own binary when it
-  may spawn children;
+- execute on every `tool_defs` executable of its own program and of every
+  program below it, and on its own binary when it may spawn children;
 - read on the key file named by its `model` block, which its children need;
 - read and write on its own log directory, which holds its children's
   directories and its spill files;

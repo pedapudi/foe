@@ -180,3 +180,73 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert_eq!(online.read_files, resolver, "an executable with network keeps the resolver file");
     assert!(!online.read_files.contains(&PathBuf::from("/keys/anthropic")), "and never the credential file");
 }
+
+/// docs/sandbox.md "What is compiled": a ruleset only narrows, so an episode
+/// reserves execute on the configured executable of every program below it.
+/// Without the reservation a child, a grandchild, or a workflow model node
+/// cannot run the tool its own configuration names.
+#[test]
+fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
+    let config: Config = serde_json::from_value(serde_json::json!({
+        "version": 1, "name": "p", "instructions": {"r": "x"}, "tools": ["own"],
+        "tool_defs": {"own": {"exec": "/usr/bin/own", "description": "d"}},
+        "grants": {"read": ["/src"], "spawn": ["kid"]},
+        "budget": {"model_calls": 1},
+        "programs": {"kid": {
+            "name": "kid", "instructions": {"r": "x"}, "tools": ["childs"],
+            "tool_defs": {"childs": {"exec": "/usr/bin/childs", "description": "d"}},
+            "grants": {"read": ["/src"], "spawn": ["grandkid"]}, "budget": {"model_calls": 1},
+            "programs": {"grandkid": {
+                "name": "grandkid", "instructions": {"r": "x"}, "tools": ["grandchilds"],
+                "tool_defs": {"grandchilds": {"exec": "/usr/bin/grandchilds", "description": "d"}},
+                "grants": {"read": ["/src"]}, "budget": {"model_calls": 1}
+            }}
+        }},
+        "workflow": {"nodes": {"draft": {"terminal": true, "model": {
+            "name": "draft", "instructions": {"r": "x"}, "tools": ["nodes"],
+            "tool_defs": {"nodes": {"exec": "/usr/bin/nodes", "description": "d"}},
+            "grants": {"read": ["/src"]}, "budget": {"model_calls": 1}
+        }}}},
+        "task": "t"
+    }))
+    .unwrap();
+    let p = Policy::for_episode(&config, Path::new("/logs/ep"));
+    for named in ["/usr/bin/own", "/usr/bin/childs", "/usr/bin/grandchilds", "/usr/bin/nodes"] {
+        assert!(p.exec.contains(&PathBuf::from(named)), "{named} is missing from {:?}", p.exec);
+    }
+    let mut below = Vec::new();
+    super::configured_executables(&config.programs["kid"], &mut below);
+    assert!(
+        !below.contains(&PathBuf::from("/usr/bin/own")),
+        "a child's own ruleset holds its own executables, never its parent's"
+    );
+}
+
+/// docs/sandbox.md "Executables": the reservation is what lets a descendant
+/// start its configured executable inside the domain it inherits.
+#[test]
+fn a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved() {
+    let Some(s) = sandbox() else { return };
+    let dir = temp_dir("descendant-exec");
+    let tool = dir.join("tool");
+    std::fs::write(&tool, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&tool, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let config: Config = serde_json::from_value(serde_json::json!({
+        "version": 1, "name": "p", "instructions": {"r": "x"}, "tools": ["block"],
+        "grants": {"read": [dir], "spawn": ["kid"]}, "budget": {"model_calls": 1},
+        "programs": {"kid": {
+            "name": "kid", "instructions": {"r": "x"}, "tools": ["t"],
+            "tool_defs": {"t": {"exec": tool, "description": "d"}},
+            "grants": {"read": [dir]}, "budget": {"model_calls": 1}
+        }},
+        "task": "t"
+    }))
+    .unwrap();
+    let ancestor = Policy::for_episode(&config, &dir);
+    let started = s
+        .run_narrowed(&ancestor, || {
+            Command::new(&tool).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status()
+        })
+        .unwrap();
+    assert!(started.is_ok(), "the reserved executable starts under the ancestor's domain: {started:?}");
+}

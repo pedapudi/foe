@@ -19,6 +19,57 @@ document and offer completions. `foe plan --config FILE` prints the resolved
 program, its identity, and every tool definition the program's reachable
 tree can invoke, without running anything.
 
+## JSON Schema subset
+
+Two keys hold a schema written by the document's author: `host_tools.*.params`
+and `done_when.returns`. A workflow model node holds a program of its own, so
+its `done_when.returns` is a third. Every one of them is read as JSON Schema
+Draft 2020-12, whose dialect URI is
+`https://json-schema.org/draft/2020-12/schema`. A schema may omit `$schema`;
+when it is present, in the schema or in any subschema, it names that URI.
+
+The runtime implements these assertions and no others.
+
+| keyword | applies to | meaning |
+|---|---|---|
+| `type` | any value | one type name, or a list of them; an integer satisfies `number` |
+| `enum` | any value | the value is one of the listed values |
+| `const` | any value | the value equals the listed value |
+| `anyOf` | any value | the value satisfies at least one of the listed subschemas |
+| `required` | an object | every named property is present |
+| `properties` | an object | each named property is checked against its subschema |
+| `additionalProperties` | an object | `false` closes the object to the properties `properties` names; a subschema types every property outside them |
+| `items` | an array | every element is checked against the subschema |
+| `minimum`, `maximum` | a number | the number is within the bounds, inclusive |
+| `minLength`, `maxLength` | a string | the count of characters is within the bounds, inclusive |
+| `minItems`, `maxItems` | an array | the count of elements is within the bounds, inclusive |
+
+The annotation keywords `$schema`, `$comment`, `title`, `description`,
+`default`, `examples`, `deprecated`, `readOnly`, and `writeOnly` carry no
+assertion and are accepted anywhere.
+
+Any other keyword is a construction error naming the configuration key, the
+subschema, and the keyword. `pattern`, `format`, `oneOf`, `allOf`, `not`,
+`$ref`, `$defs`, and `prefixItems` are therefore refused rather than ignored.
+A declared constraint is either enforced at every value boundary or refused
+before the episode starts, so a schema in a document that runs is a schema the
+log evidences in full. An author who needs a shape outside the subset
+expresses it in a `done_when.verify` tool, which is a program and has no such
+limit.
+
+The subset covers every schema the Python package derives from a type
+annotation, listed in [sdk.md](sdk.md#parameter-schemas), so a tool or a
+typed return declared there always produces a schema the runtime enforces in
+full.
+
+The runtime checks a tool call's arguments against the tool's parameter
+schema at dispatch, before the tool receives any capability handle, for
+built-in, configured, and host tools alike. A violation is an error result
+naming the failing property, which the model reads like any other result. The
+synthesized `return` tool carries `done_when.returns` under its `value`
+property, so the same check decides whether a returned value completes the
+episode.
+
 ## A complete example
 
 ```json
@@ -177,7 +228,7 @@ implementation.
 |---|---|---|---|
 | `description` | string | yes | sent to the model in the tool schema |
 | `instruction` | string | no | appended to the system prompt |
-| `params` | object | yes | JSON Schema for the arguments |
+| `params` | object | yes | JSON Schema for the arguments, in the subset above; dispatch checks every call against it |
 | `effect` | string | yes | `pure`, `reads`, `writes`, `execs`, or `spawns` |
 
 A host that does not implement a tool named here fails the first call to it.
@@ -194,8 +245,26 @@ Object. Required. Names what the episode may reach.
 | `spawn` | list of strings | no | names from `programs` the episode may start; default empty |
 
 Paths are prefixes. A grant on `/home/user/project` covers every path below
-it. Symbolic links are resolved before the check, and a link that resolves
-outside every granted root is denied. There is no pattern syntax.
+it. There is no pattern syntax.
+
+The runtime opens each granted directory once when the episode starts, and
+every read and write below it names a path relative to that open directory.
+Containment therefore holds at the moment of use rather than at the moment of
+a check: a symbolic link, a `..` component, or a directory component renamed
+after the episode started cannot direct an operation outside the root, and no
+interval exists in which a checked pathname can be repointed before it is
+used. On Linux the kernel performs the resolution with `openat2` and
+`RESOLVE_BENEATH`.
+
+A read follows a symbolic link that stays inside a granted root and is denied
+by one that leaves it. A write names an entry in a granted directory and
+replaces that entry, so writing to a name that is a symbolic link replaces
+the link rather than the file it points at.
+
+The kernel sandbox enforces the same grants on the episode process and on
+every process it starts, which [sandbox.md](sandbox.md) specifies. The open
+directories are what bounds the episode process itself where Landlock is
+unavailable, which `sandbox.mode` `best-effort` permits and `off` requires.
 
 The episode's own log directory is always writable and need not be listed.
 
@@ -250,7 +319,7 @@ episode completes when the model produces a turn with no tool calls.
 |---|---|---|
 | `verify` | string | name of a tool in `tools`; the episode completes when the model finishes and this tool returns no findings |
 | `retries` | integer | how many times findings are fed back; default 2 |
-| `returns` | object | a JSON Schema; the episode completes when the model calls the synthesized `return` tool with a conforming value |
+| `returns` | object | a JSON Schema in the subset above; the episode completes when the model calls the synthesized `return` tool with a conforming value |
 
 `verify` and `returns` may both be present. The verifier then checks the
 returned value.
@@ -400,6 +469,7 @@ The following do not: the paths in `grants`, `model`, `sandbox`, and `task`.
 ## Errors
 
 Every error at construction names the key that caused it and the rule it
-violated. Construction fails before any process starts and before any log is
+violated. An error in an embedded schema also names the subschema and the
+keyword. Construction fails before any process starts and before any log is
 written. A document that passes construction will run; what remains uncertain
 is the model's behavior and the world's.

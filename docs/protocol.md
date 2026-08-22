@@ -65,7 +65,9 @@ which model the host calls, and the log records the route the runtime saw.
 ### `host/tool-call`
 
 Emitted when the model calls a tool that the host registered. The host runs
-the tool and answers with one `tool/result` line.
+the tool and answers with one `tool/result` line. The runtime has already
+checked the arguments against the tool's declared `params` schema, so a call
+that reaches the host conforms to the schema the host declared.
 
 ```json
 {"seq": 9, "time": 1724200000456, "type": "host/tool-call", "data": {
