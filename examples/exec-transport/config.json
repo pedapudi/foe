@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "exec-transport",
   "instructions": {
     "role": "You are a coding agent. Read the file named in the task and summarize it in one sentence."

@@ -169,9 +169,9 @@ that contains the workflow.
 - Every `grants.spawn` name appears in the containing program's
   `grants.spawn`, and the same-named `programs` entry is itself within the
   containing entry of that name.
-- `model_calls`, `tokens`, `seconds`, `max_depth`, and `loop_threshold` are
-  each at most the containing program's value. An omitted `tokens` or
-  `seconds` draws from the containing budget.
+- `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`,
+  and `loop_threshold` are each at most the containing program's value. An
+  omitted optional spend limit draws from the containing budget.
 - The `model` and `sandbox` blocks are inherited and cannot be declared.
 
 `max_episodes` and `max_concurrent` carry no ceiling here. The budget pool
@@ -407,6 +407,10 @@ applied action is the `workflow/recovery` event. A `skip` records the
 `empty` value as the node's output: successors name the recovery event as
 their input, and when the empty value carries a `branch` field the label it
 names is the one chosen.
+
+The recovery request draws from the workflow episode's input and output
+allowances. Its output cap does not exceed the allowance that remains when
+the request starts.
 
 `"recovery": { "enabled": false }` at the workflow level disables it; a
 node failure then ends the episode with the node's outcome.

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "review-and-test",
   "instructions": {
     "10-role": "You lead a team working in a Python repository. You make the code change yourself.",
@@ -13,7 +13,8 @@
   },
   "budget": {
     "model_calls": 60,
-    "tokens": 600000,
+    "input_tokens": 480000,
+    "output_tokens": 120000,
     "seconds": 2400,
     "max_depth": 1,
     "max_episodes": 3,
@@ -29,7 +30,7 @@
       "grants": {
         "read": ["/home/user/project"]
       },
-      "budget": { "model_calls": 12, "tokens": 120000 }
+      "budget": { "model_calls": 12, "input_tokens": 96000, "output_tokens": 24000 }
     },
     "tester": {
       "name": "tester",
@@ -40,7 +41,7 @@
       "grants": {
         "read": ["/home/user/project"]
       },
-      "budget": { "model_calls": 12, "tokens": 120000 }
+      "budget": { "model_calls": 12, "input_tokens": 96000, "output_tokens": 24000 }
     }
   },
   "model": {

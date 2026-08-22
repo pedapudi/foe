@@ -66,7 +66,8 @@ class Budget:
     """
 
     model_calls: int
-    tokens: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
     seconds: int | None = None
     max_depth: int | None = None
     max_episodes: int | None = None
@@ -75,7 +76,15 @@ class Budget:
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"model_calls": self.model_calls}
-        for key in ("tokens", "seconds", "max_depth", "max_episodes", "max_concurrent", "loop_threshold"):
+        for key in (
+            "input_tokens",
+            "output_tokens",
+            "seconds",
+            "max_depth",
+            "max_episodes",
+            "max_concurrent",
+            "loop_threshold",
+        ):
             value = getattr(self, key)
             if value is not None:
                 out[key] = value
@@ -250,7 +259,7 @@ class Program:
         """
         doc: dict[str, Any] = {}
         if not child:
-            doc["version"] = 1
+            doc["version"] = 2
         doc["name"] = self.name
         doc["instructions"] = {k: self.instructions[k] for k in sorted(self.instructions)}
         doc["tools"] = list(self.tools)

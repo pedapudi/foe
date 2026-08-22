@@ -162,10 +162,13 @@ test("tools are grouped by name with their call count and total duration", () =>
 
 test("a limit the program does not declare is left out", () => {
   const out = stats([["compact.jsonl", 0]]);
-  assert.deepEqual(out.limits.map((l) => l.key), ["model_calls", "tokens"]);
-  const tokens = out.limits.find((l) => l.key === "tokens")!;
-  assert.equal(tokens.limit, 100000);
-  assert.equal(tokens.used, 5540 + 136);
+  assert.deepEqual(out.limits.map((l) => l.key), ["model_calls", "input_tokens", "output_tokens"]);
+  const input = out.limits.find((l) => l.key === "input_tokens")!;
+  const output = out.limits.find((l) => l.key === "output_tokens")!;
+  assert.equal(input.limit, 80000);
+  assert.equal(input.used, 5540);
+  assert.equal(output.limit, 20000);
+  assert.equal(output.used, 136);
 });
 
 test("the scope rolls every quantity up across the episode tree", () => {
@@ -199,7 +202,7 @@ test("the context curve places one series per episode against the declared limit
   assert.equal(curve.peak, 1900);
   assert.equal(curve.peakY, points[2]!.y, "the axis labels the peak where the peak sits");
   assert.ok(curve.budget, "the program declares a token limit");
-  assert.equal(curve.budget!.tokens, 100000);
+  assert.equal(curve.budget!.inputTokens, 80000);
   assert.equal(curve.budget!.y, curve.plot.top, "the declared limit sets the top of the plot");
   // A larger input sits higher, because y grows downwards.
   assert.ok(points[2]!.y < points[0]!.y);

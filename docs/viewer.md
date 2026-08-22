@@ -102,10 +102,11 @@ same time each hold the whole interval, so their durations sum past their
 parent's and a bar of one against another would assert a division that did
 not happen.
 
-The details region states the outcome, the model calls and tokens consumed
-against the budget `episode/start.program.budget` declares, the sandbox
-mode and Landlock ABI, the program identity, the lineage, the event count,
-the start time, the duration, and the task. The identity is set as the
+The details region states the outcome, the model calls, input tokens, and
+output tokens consumed against the limits in
+`episode/start.program.budget`. It also states the sandbox mode and Landlock
+ABI, the program identity, the lineage, the event count, the start time, the
+duration, and the task. The identity is set as the
 first eight characters of its digest, with the whole hash in its tooltip. Its text wraps and its numbers are tabular; the
 region scrolls as a whole when its content exceeds it, and nothing inside
 it has a scrollbar of its own.
@@ -517,7 +518,8 @@ that the figure and the runtime never disagree.
 | limit in `program.budget` | what is counted against it |
 |---|---|
 | `model_calls` | one per `model/request`, retried attempts included |
-| `tokens` | `usage.input` plus `usage.output` over every `assistant/message` |
+| `input_tokens` | `usage.input` over every `assistant/message` |
+| `output_tokens` | `usage.output` over every `assistant/message` |
 | `seconds` | the scope root's wall clock |
 | `max_episodes` | the episodes in the scope, the root itself included |
 | `max_depth` | the deepest lineage below the scope's root |
@@ -598,12 +600,12 @@ the bar then divides by that sum and says so, rather than drawing a share
 above one.
 
 **Context growth** plots input tokens against step position, one line per
-episode of the scope, with the longest line accented. The declared token
-limit is a dashed envelope across the plot, and the top of the plot is the
-larger of that limit and the highest point. Context growth against a
-declared limit is what decides whether a run completes, and the curve makes
-visible what a total conceals. A compaction's own call is left out, because
-its input is the summarization prompt rather than the context.
+episode of the scope, with the longest line accented. The declared
+input-token limit is a dashed envelope across the plot, and the top of the
+plot is the larger of that limit and the highest point. The curve shows how
+provider-reported request input approaches the declared limit. A compaction's
+own call is left out because its input is the summarization prompt rather
+than the context.
 
 **Where the input came from** is one bar per request, divided into the
 parts that request carried and as long as that request is large in

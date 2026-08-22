@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// The configuration format version this crate accepts.
-pub const CONFIG_VERSION: u32 = 1;
+pub const CONFIG_VERSION: u32 = 2;
 
 /// A configuration with `task` removed, every path canonical, and child
 /// programs resolved recursively. What `episode/start.program` records.
@@ -158,7 +158,8 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
     }
     let b = &s.budget;
     require(b.model_calls > 0, key("budget.model_calls"), "is greater than 0")?;
-    require(b.tokens != Some(0), key("budget.tokens"), "is greater than 0")?;
+    require(b.input_tokens != Some(0), key("budget.input_tokens"), "is greater than 0")?;
+    require(b.output_tokens != Some(0), key("budget.output_tokens"), "is greater than 0")?;
     require(b.seconds != Some(0), key("budget.seconds"), "is greater than 0")?;
     require(b.max_episodes > 0, key("budget.max_episodes"), "is at least 1, counting this episode")?;
     require(b.loop_threshold >= 2, key("budget.loop_threshold"), "is at least 2")?;
@@ -307,7 +308,8 @@ fn within_ceiling(prefix: &str, node: &Program, ceiling: &Program) -> Result<(),
     let within = |value: Option<u64>, limit: Option<u64>| value.is_none_or(|v| limit.is_none_or(|l| v <= l));
     for (field, holds) in [
         ("model_calls", own.model_calls <= cap.model_calls),
-        ("tokens", within(own.tokens, cap.tokens)),
+        ("input_tokens", within(own.input_tokens, cap.input_tokens)),
+        ("output_tokens", within(own.output_tokens, cap.output_tokens)),
         ("seconds", within(own.seconds, cap.seconds)),
         ("max_depth", own.max_depth <= cap.max_depth),
         ("loop_threshold", own.loop_threshold <= cap.loop_threshold),

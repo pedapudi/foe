@@ -106,7 +106,7 @@ impl Fixture {
         let mut names: Vec<&str> = vec!["block"];
         names.extend(tools);
         let config = json!({
-            "version": 1, "name": "wf", "instructions": { "r": "test" }, "tools": names,
+            "version": 2, "name": "wf", "instructions": { "r": "test" }, "tools": names,
             "grants": { "read": [dir] }, "budget": { "model_calls": 10 }, "task": "run the graph",
             "workflow": workflow
         });

@@ -4,6 +4,7 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 sh_binary(
     name = "score-trace",
     srcs = ["trace_quality.py"],
+    visibility = ["//visibility:public"],
 )
 
 sh_binary(

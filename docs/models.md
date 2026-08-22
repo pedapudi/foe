@@ -62,7 +62,7 @@ build and lists the known names.
 |---|---|---|---|
 | `provider` | string | yes | a name from the table above |
 | `model` | string | yes | the model identifier the provider expects |
-| `max_output_tokens` | integer | no | per-request output limit; the default is the provider's |
+| `max_output_tokens` | integer | no | per-request output limit for a provider that accepts one; the default is the provider's |
 | any other key | string | per provider | a provider-specific option |
 
 Every provider-specific option is a flat string. The options by provider:
@@ -78,6 +78,11 @@ Every provider-specific option is a flat string. The options by provider:
 | `reasoning_effort` | `openai`, `openai-codex` | sent as `reasoning.effort`; models without reasoning reject it |
 | `include_thoughts` | `vertex` with Gemini models | `"false"` leaves `thinkingConfig` out, for models without thinking |
 | `exec` | `exec` | absolute path of the program; required |
+
+The public OpenAI Responses API accepts `max_output_tokens`. The ChatGPT
+Codex backend used by `openai-codex` rejects that field, so foe omits it on
+that route. Foe charges the output usage that the backend reports after each
+response. One response can cross the remaining output-token allowance.
 
 `base_url` follows each provider's own convention. For `anthropic` it is an
 origin, `https://api.anthropic.com`, and `/v1/messages` is appended. For the

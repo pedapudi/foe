@@ -367,7 +367,7 @@ export class StatisticsView {
         }),
       );
       const label = svg("text", { class: "curve-budget-label", x: curve.plot.right, y: curve.budget.y - 4, "text-anchor": "end" });
-      label.textContent = `${fmtInt(curve.budget.tokens)} token budget`;
+      label.textContent = `${fmtInt(curve.budget.inputTokens)} input-token budget`;
       figure.appendChild(label);
     }
     const leading = curve.series.reduce((a, b) => (a.points.length >= b.points.length ? a : b));
@@ -391,7 +391,9 @@ export class StatisticsView {
     const first = leading.points[0]!;
     const last = leading.points[leading.points.length - 1]!;
     const growth = first.input > 0 ? `${(last.input / first.input).toFixed(1)} times` : "an unmeasured factor";
-    const share = curve.budget ? ` and reaches ${percent(last.input / curve.budget.tokens)} of the declared budget` : "";
+    const share = curve.budget
+      ? ` and reaches ${percent(last.input / curve.budget.inputTokens)} of the declared input-token budget`
+      : "";
     return this.figure(
       "context growth",
       figure,

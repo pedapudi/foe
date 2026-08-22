@@ -34,12 +34,12 @@ class HarnessError(Exception):
 
 def base_config(name: str, root: Path, transport: Path) -> dict[str, Any]:
     return {
-        "version": 1,
+        "version": 2,
         "name": name,
         "instructions": {"role": "Follow the deterministic evaluation task."},
         "tools": ["read"],
         "grants": {"read": [str(root)]},
-        "budget": {"model_calls": 8, "tokens": 10000, "seconds": 60},
+        "budget": {"model_calls": 8, "input_tokens": 8000, "output_tokens": 2000, "seconds": 60},
         "model": {
             "provider": "exec",
             "model": name,
@@ -101,7 +101,7 @@ def authority_config(root: Path, transport: Path) -> dict[str, Any]:
 
 def workflow_config(root: Path, transport: Path) -> dict[str, Any]:
     config = base_config("eval-workflow", root, transport)
-    config["tools"] = ["record"]
+    config["tools"] = ["read", "record"]
     config["tool_defs"] = {
         "record": {
             "exec": "/usr/bin/printf",
@@ -117,7 +117,7 @@ def workflow_config(root: Path, transport: Path) -> dict[str, Any]:
                     "instructions": {"role": "Return the declared workflow branch and plan."},
                     "tools": ["read"],
                     "grants": {"read": [str(root)]},
-                    "budget": {"model_calls": 2, "tokens": 1000},
+                    "budget": {"model_calls": 2, "input_tokens": 800, "output_tokens": 200},
                     "done_when": {
                         "returns": {
                             "type": "object",

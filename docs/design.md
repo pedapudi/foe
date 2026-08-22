@@ -55,9 +55,9 @@ reconstructs the run without the process that made it.
 
 **Nobody corrects course, so the cost must be bounded.** A person notices
 when an agent spends an hour in a loop. A runtime has to enforce limits on
-model calls, tokens, wall-clock time, recursion depth, and the number of
-processes an agent may start, and it has to hold those limits as one pool
-across every subagent the run creates.
+model calls, input tokens, output tokens, wall-clock time, recursion depth,
+and the number of processes an agent may start. It has to hold those limits
+as one pool across every subagent the run creates.
 
 **Nobody reviews each action, so permission must be structural.** A per-action
 prompt is how interactive harnesses contain risk. Without a person to answer
@@ -282,13 +282,19 @@ A program's `done_when` field chooses how an episode completes.
 | `done_when` | the episode completes when |
 |---|---|
 | absent | the model produces a turn containing no tool calls; the value is that turn's text |
-| `{ "verify": TOOL, "retries": N }` | the model produces a turn with no tool calls and TOOL returns no findings; findings are fed back for up to N further attempts |
+| `{ "verify": TOOL, "retries": N }` | the model produces a turn with no tool calls or a non-error call to TOOL, then TOOL returns no findings as a verifier |
 | `{ "returns": SCHEMA }` | the model calls a synthesized tool named `return` with a value conforming to SCHEMA |
 
 The `verify` and `returns` forms combine: a returned value may be verified.
 A program author declares a schema only when the output has a known shape.
 A verifier is a tool, so an author who can check a result without being able
 to describe its shape declares the verifier alone.
+
+For a verifier without a return schema, a non-error ordinary call to the
+declared verifier also signals completion. The runtime invokes the verifier
+again after every tool effect in the turn has settled. Acceptance completes
+the episode without a separate model request. Findings enter the inbox under
+the same retry limit as findings after a turn with no tool calls.
 
 ### Failure of a model request
 
@@ -429,7 +435,7 @@ separate process with its own log, its own grants, and a budget reserved from
 its parent's remaining budget. The child's log header names the parent.
 
 ```
-   root   budget: 40 calls, 400k tokens
+   root   budget: 40 calls, 320k input, 80k output
     │
     ├── reserve 10 calls ──► child A   (spent 7, returned 3)
     │
@@ -439,10 +445,18 @@ its parent's remaining budget. The child's log header names the parent.
 ```
 
 Budget is a pool held by the root. Every spawn reserves from the parent's
-remainder, and unspent reservation returns when the child settles. No path
-through the tree can spend more than the root's total. Structural caps on
-depth, lifetime episode count, and concurrency sit beside the spend caps. A
-spawn that would pass any cap fails as a tool call with a result naming the
+remainder, and unspent reservation returns when the child settles. Model
+calls, input tokens, and output tokens are separate dimensions. Structural
+caps on depth, lifetime episode count, and concurrency sit beside them.
+
+After each completed response, the runtime charges the provider-reported
+input to the tree. It starts another request only while some input allowance
+remains. Foe does not send a per-request input cap, so one response can cross
+its remaining input allowance. Concurrent descendants can each cross their
+reserved allowances. The runtime clamps a supported provider's output cap to
+the remaining output allowance.
+
+A spawn that would pass a cap fails as a tool call with a result naming the
 limit, and no child starts; the model reads that result like any other.
 A parent observes a child as settled only after it has appended `spawn/end`
 and `budget/release` and returned the child's reservation to the pool, so

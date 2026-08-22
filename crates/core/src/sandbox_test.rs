@@ -115,7 +115,7 @@ fn tcp_connect_is_denied_from_abi_4() {
 fn network_policy_can_read_resolver_configuration() {
     let Some(s) = sandbox() else { return };
     let config: Config = serde_json::from_value(serde_json::json!({
-        "version": 1, "name": "network", "instructions": {"role": "x"}, "tools": [],
+        "version": 2, "name": "network", "instructions": {"role": "x"}, "tools": [],
         "grants": {"read": [], "write": []}, "budget": {"model_calls": 1},
         "model": {"provider": "openai", "model": "m"}, "task": "t"
     }))
@@ -151,7 +151,7 @@ fn tcp_bind_is_limited_to_listed_ports_from_abi_4() {
 #[test]
 fn episode_policy_follows_grants_and_tool_defs() {
     let config: Config = serde_json::from_value(serde_json::json!({
-        "version": 1, "name": "p", "instructions": {"r": "x"}, "tools": ["ruff"],
+        "version": 2, "name": "p", "instructions": {"r": "x"}, "tools": ["ruff"],
         "tool_defs": {"ruff": {"exec": "/usr/bin/ruff", "description": "d"}},
         "grants": {"read": ["/src"], "write": ["/src/out"]},
         "budget": {"model_calls": 1}, "task": "t"
@@ -187,7 +187,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
 #[test]
 fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
     let config: Config = serde_json::from_value(serde_json::json!({
-        "version": 1, "name": "p", "instructions": {"r": "x"}, "tools": ["own"],
+        "version": 2, "name": "p", "instructions": {"r": "x"}, "tools": ["own"],
         "tool_defs": {"own": {"exec": "/usr/bin/own", "description": "d"}},
         "grants": {"read": ["/src"], "spawn": ["kid"]},
         "budget": {"model_calls": 1},
@@ -231,7 +231,7 @@ fn a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved() {
     std::fs::write(&tool, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&tool, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let config: Config = serde_json::from_value(serde_json::json!({
-        "version": 1, "name": "p", "instructions": {"r": "x"}, "tools": ["block"],
+        "version": 2, "name": "p", "instructions": {"r": "x"}, "tools": ["block"],
         "grants": {"read": [dir], "spawn": ["kid"]}, "budget": {"model_calls": 1},
         "programs": {"kid": {
             "name": "kid", "instructions": {"r": "x"}, "tools": ["t"],

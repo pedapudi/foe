@@ -79,7 +79,7 @@ that runs with the built-in model transport.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "name": "hello",
   "instructions": { "role": "You are a coding agent." },
   "tools": ["read", "grep", "edit", "bash"],
@@ -127,11 +127,11 @@ The suite requires no model credential. [docs/evaluation.md](docs/evaluation.md)
 specifies the conformance checks and the model-backed benchmark protocol.
 
 The model-backed micro evaluation runs five assessed tasks with combined
-declared limits of 56,000 tokens. Each strict success requires an accepted
-artifact, a completed outcome, the intended harness mechanism, a conformant
-trace, and reported usage within budget. It calls a real provider, so it
-prints the largest spend it can incur and launches nothing until
-`--confirm-spend` is given:
+declared limits of 44,800 input tokens and 11,200 output tokens. Each strict
+success requires an accepted artifact, a completed outcome, the intended
+harness mechanism, a conformant trace, and reported usage within budget. It
+calls a real provider, so it prints the largest spend it can incur and
+launches nothing until `--confirm-spend` is given:
 
 ```sh
 bazel run //evals:micro -- --model openai/gpt-5.6-sol
@@ -169,6 +169,7 @@ fails a build over 8 MiB.
 | [docs/build.md](docs/build.md) | how to install, build with Bazel, run the end-to-end demos, and use Cargo for Rust development |
 | [docs/design.md](docs/design.md) | what foe guarantees and the structure that delivers it |
 | [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
+| [docs/self-improvement.md](docs/self-improvement.md) | how foe evaluates and improves its own source, including measured results and operating guidance |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |

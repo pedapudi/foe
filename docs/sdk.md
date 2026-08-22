@@ -48,7 +48,7 @@ program = foe.Program(
     instructions={"10-charter": "You propose experiments.", "20-grounding": "Ground every claim."},
     tools=["read", "grep", mutation_usage],
     grants=foe.Grants(read=["/gen/v37/snapshot"], write=["/tmp/scratch"]),
-    budget=foe.Budget(model_calls=12, tokens=200_000, seconds=600),
+    budget=foe.Budget(model_calls=12, input_tokens=160_000, output_tokens=40_000, seconds=600),
     done_when=foe.Verified(verify=validate_patches, retries=2),
 )
 
@@ -440,7 +440,7 @@ Each member is a frozen dataclass that supports pattern matching.
 |---|---|---|
 | `Completed` | `value` | the program's termination condition was met |
 | `Blocked` | `code`, `message` | the agent recognized that it cannot proceed; `code` is from the closed vocabulary in log-format.md |
-| `Exhausted` | `limit` | a budget limit was reached; one of `model_calls`, `tokens`, `seconds`, `depth`, `episodes`, `concurrency` |
+| `Exhausted` | `limit` | a resource limit was reached; one of `model_calls`, `input_tokens`, `output_tokens`, `context_window`, `seconds`, `depth`, `episodes`, `concurrency` |
 | `Failed` | `error` | the runtime could not continue |
 
 The outcome is parsed from the `episode/end` event. When the binary exits

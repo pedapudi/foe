@@ -8,8 +8,8 @@
   "required": ["version", "name", "instructions", "tools", "grants", "budget", "task"],
   "properties": {
     "version": {
-      "description": "The configuration format version. This schema describes version 1.",
-      "const": 1
+      "description": "The configuration format version. This schema describes version 2.",
+      "const": 2
     },
     "name": {
       "description": "A short name for the program. Shown in the viewer and written into the log. Participates in identity.",
@@ -120,7 +120,8 @@
       "required": ["model_calls"],
       "properties": {
         "model_calls": { "description": "Maximum model requests, including retries.", "type": "integer", "minimum": 1 },
-        "tokens": { "description": "Maximum input plus output tokens across all requests; unlimited when absent.", "type": "integer", "minimum": 1 },
+        "input_tokens": { "description": "Maximum provider-reported input tokens across all requests, including cache-read input; unlimited when absent.", "type": "integer", "minimum": 1 },
+        "output_tokens": { "description": "Maximum provider-reported output tokens across all requests, including reasoning when the provider includes it; unlimited when absent.", "type": "integer", "minimum": 1 },
         "seconds": { "description": "Wall-clock limit for the episode; unlimited when absent.", "type": "integer", "minimum": 1 },
         "max_depth": { "description": "How many levels of child episodes may exist below this one; 0 forbids spawning.", "type": "integer", "minimum": 0, "default": 1 },
         "max_episodes": { "description": "Lifetime count of episodes in the tree, including this one.", "type": "integer", "minimum": 1, "default": 8 },

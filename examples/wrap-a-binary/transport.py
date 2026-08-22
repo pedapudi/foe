@@ -1,13 +1,12 @@
 #!/usr/bin/python3
 """The model answers that drive the wrap-a-binary example.
 
-Six turns, one per model call. The model runs the wrapped checker, resolves
-one of its two findings, and finishes. The runtime then runs the same
-executable as the `done_when` verifier, which still reports the other
-finding, so the episode does not complete: the findings arrive as an inbox
-item and the model gets another turn. It resolves the second finding, runs
-the checker again, and finishes; this time the verifier prints nothing and
-the episode completes.
+Five turns, one per model call. The model runs the wrapped checker, which
+also proposes completion because the checker is the `done_when` verifier.
+The verifier reports both findings as an inbox item. The model resolves one
+finding and finishes, so the verifier reports the remaining finding. The
+model resolves that finding and runs the checker again. The empty verifier
+result completes the episode without a redundant final model request.
 
 The runner copies this file to `tools/transport.py` inside the disposable
 project and `chunks.py` to `support/chunks.py` beside it. The transport runs
@@ -49,9 +48,6 @@ RETURN_AFTER = """    fields = {
 
 FIRST_REPORT = "Removed the unused math import."
 
-SECOND_REPORT = "Split the long return statement so that no line is over 88 columns."
-
-
 def edit(request: dict, call_id: str, before: str, after: str) -> None:
     call(request, call_id, "edit", {"path": SOURCE, "edits": [{"old_text": before, "new_text": after}]})
 
@@ -72,9 +68,7 @@ def main() -> None:
     elif turn == 4:
         call(request, "tc_4", "style", {"args": []})
     else:
-        text(request, SECOND_REPORT)
-        done(request, "end")
-        return
+        raise SystemExit(f"unexpected request turn {turn}")
     done(request, "tool")
 
 

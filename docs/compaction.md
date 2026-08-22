@@ -26,10 +26,11 @@ projected = last.input + last.output
 ```
 
 `last` is the usage the most recent ordinary response reported. `estimate`
-counts one token per four bytes of text. `max_output` is
-`model.max_output_tokens`, or 0 when the configuration sets none.
-`margin` is `context.margin_tokens`. Compaction runs, before the request is
-assembled, when
+counts one token per four bytes of text. `max_output` is the smaller of
+`model.max_output_tokens` and the remaining episode-wide output allowance.
+When only one exists, it supplies the value. When neither exists, the value
+is 0. `margin` is `context.margin_tokens`. Compaction runs, before the
+request is assembled, when
 
 ```
 projected > window_tokens - reserve_tokens
@@ -98,7 +99,7 @@ has no part in it:
 | `files.read`, `files.written`, `files.edited` | the `path` argument of every `read`, `write`, and `edit` call in the covered span whose result was not an error, joined with every earlier summary's lists, sorted, without duplicates |
 | `children` | every child that ended within the covered span, with the program its `spawn/start` named and its outcome, after those earlier summaries carried |
 | `covered` | the first and last `seq` of the span this compaction summarized directly |
-| `budget_remaining` | the episode's remaining model calls, tokens, and seconds when the compaction began |
+| `budget_remaining` | the episode's remaining model calls, input tokens, output tokens, and seconds when the compaction began |
 
 The file lists are the structural record of what the model has touched.
 The model is never asked for them, so they cannot drift from the log.
@@ -120,13 +121,14 @@ request/header       { reason: "change", ... the ordinary header restored }
 model/request        { request_id: "rq_NNNN", messages: [ <the compacted list> ] }
 ```
 
-The summarization request is an ordinary request in every respect but its
+The summarization request is an ordinary request in every respect except its
 id prefix. It draws its number from the same counter as the step's own
-requests, counts as one model call, and its usage counts against the token
-budget. `reserved` in `compaction/start` is the budget that was left when
-the compaction began, which is what the call drew on. `active_estimate` is
-the estimated size of the request that follows. [log-format.md](log-format.md)
-lists every field.
+requests. It counts as one model call. Its reported input and output count
+against their respective episode-wide allowances. The runtime clamps its
+output cap before sending it. `reserved` in `compaction/start` is the budget
+that was left when the compaction began. `active_estimate` is the estimated
+size of the request that follows. [log-format.md](log-format.md) lists every
+field.
 
 ## How it is derived
 
@@ -153,7 +155,7 @@ below the label, or by `(none)` for an empty list:
 ## Continuation state
 
 covered: seq 1 to 57
-done_when: a turn with no tool calls, then `check` reports no findings
+done_when: a turn with no tool calls or a non-error `check` call, then `check` reports no findings
 outstanding_findings: (none)
 files_read:
 - src/parser.py
@@ -162,7 +164,7 @@ files_written: (none)
 files_edited:
 - src/parser.py
 children: (none)
-budget_remaining: model_calls 22, tokens 310400, seconds unlimited
+budget_remaining: model_calls 22, input_tokens 280000, output_tokens 30400, seconds unlimited
 
 ## Summary
 
@@ -177,8 +179,8 @@ once: the runtime writes `compaction/end` with `ok: false` and the error,
 writes no `compaction/summary`, and leaves the projection as it was. The
 step's request then proceeds with the existing context when the projection
 still fits within the window itself; when the projection passes the
-window, the episode ends as `exhausted` with limit `tokens`. The next step
-projects again and may attempt a new compaction.
+window, the episode ends as `exhausted` with limit `context_window`. The next
+step projects again and may attempt a new compaction.
 
 ## Identity
 

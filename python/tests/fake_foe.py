@@ -206,6 +206,7 @@ class Episode:
                         "header_seq": header_seq,
                         "consumed": consumed,
                         "messages": messages,
+                        "max_output_tokens": config["budget"].get("output_tokens"),
                     },
                 )
                 text, calls_made, stop, usage, error = self.collect_response(step, request_id)

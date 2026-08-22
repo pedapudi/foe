@@ -195,12 +195,13 @@ class Handle:
             message = f"model/request {request_id}: request/header {data['header_seq']} was never received"
             await self._write(envelope({"kind": "error", "message": message, "retryable": False}))
             return
+        caps = [cap for cap in (self._max_output_tokens, data.get("max_output_tokens")) if isinstance(cap, int)]
         body: dict[str, Any] = {
             "request_id": request_id,
             "system": header.get("system", ""),
             "tools": list(header.get("tools") or []),
             "messages": list(data.get("messages") or []),
-            "max_output_tokens": self._max_output_tokens,
+            "max_output_tokens": min(caps) if caps else None,
         }
         terminal = False
         try:

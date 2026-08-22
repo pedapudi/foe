@@ -458,7 +458,8 @@ impl Executor {
         } else if let Some(program) = &node.model {
             let reserve = BudgetAmount {
                 model_calls: Some(program.budget.model_calls),
-                tokens: program.budget.tokens,
+                input_tokens: program.budget.input_tokens,
+                output_tokens: program.budget.output_tokens,
                 seconds: program.budget.seconds,
                 episodes: None,
             };
@@ -740,15 +741,12 @@ impl Executor {
             return Ok(Decision::End(Outcome::Exhausted { limit }));
         }
         let system = text::WORKFLOW_RECOVERY_INSTRUCTION.to_string();
+        let tools = vec![spec.schema()];
         let header_seq = {
             let mut current = lock(&sh.header);
             let reason = if current.is_some() { HeaderReason::Change } else { HeaderReason::Initial };
-            let header = RequestHeader {
-                reason,
-                system: system.clone(),
-                tools: vec![spec.schema()],
-                model: sh.transport.route(),
-            };
+            let header =
+                RequestHeader { reason, system: system.clone(), tools: tools.clone(), model: sh.transport.route() };
             let same =
                 |h: &RequestHeader| h.system == header.system && h.tools == header.tools && h.model == header.model;
             if !current.as_ref().is_some_and(|(_, h)| same(h)) {
@@ -763,6 +761,11 @@ impl Executor {
         let step = self.next_step();
         let request_id = format!("rq_{step:04}");
         let messages = vec![Message::User { content }];
+        let configured = sh.program.model.as_ref().and_then(|m| m.max_output_tokens);
+        let max_output_tokens = match lock(&sh.pool).request_max_output(configured) {
+            Ok(cap) => cap,
+            Err(limit) => return Ok(Decision::End(Outcome::Exhausted { limit })),
+        };
         sh.log.append(EventData::ModelRequest(ModelRequest {
             step,
             attempt: 1,
@@ -770,15 +773,10 @@ impl Executor {
             header_seq,
             consumed: vec![item.seq],
             messages: messages.clone(),
+            max_output_tokens,
         }))?;
         lock(&sh.pool).note_request();
-        let body = ModelRequestBody {
-            request_id: request_id.clone(),
-            system,
-            tools: vec![spec.schema()],
-            messages,
-            max_output_tokens: sh.program.model.as_ref().and_then(|m| m.max_output_tokens),
-        };
+        let body = ModelRequestBody { request_id: request_id.clone(), system, tools, messages, max_output_tokens };
         let mut recorder = Recorder::new(sh.log.clone(), step, request_id);
         let ended = tokio::select! {
             _ = sh.transport.stream(body, &mut recorder) => None,

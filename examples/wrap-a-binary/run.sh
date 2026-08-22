@@ -116,18 +116,23 @@ if checks[1]["data"]["value"]["stdout"] != "":
     fail(f"the checker after the last edit printed {checks[1]['data']['value']['stdout']!r}")
 
 finished = [event for event in only("assistant/message") if event["data"]["stop"] == "end"]
-if len(finished) != 2:
-    fail(f"the model finished {len(finished)} times; the verifier sends it back exactly once")
+if len(finished) != 1:
+    fail(f"the model finished {len(finished)} times rather than once")
 verifications = [event for event in only("inbox/item") if event["data"]["source"] == "verify"]
-if len(verifications) != 1:
-    fail(f"{len(verifications)} verify inbox items; findings are fed back once")
-findings = verifications[0]["data"]["content"][0]["text"]
-if "line-too-long" not in findings:
-    fail(f"the fed-back findings are {findings!r}")
-if not edits[0]["seq"] < finished[0]["seq"] < verifications[0]["seq"] < edits[1]["seq"]:
-    fail("the verify item does not sit between the model's first finish and its second edit")
-if verifications[0]["seq"] > finished[1]["seq"]:
-    fail("the fed-back findings follow the model's last turn")
+if len(verifications) != 2:
+    fail(f"{len(verifications)} verify inbox items rather than two")
+first_findings = verifications[0]["data"]["content"][0]["text"]
+if "unused-import" not in first_findings or "line-too-long" not in first_findings:
+    fail(f"the first fed-back findings are {first_findings!r}")
+second_findings = verifications[1]["data"]["content"][0]["text"]
+if "unused-import" in second_findings or "line-too-long" not in second_findings:
+    fail(f"the second fed-back findings are {second_findings!r}")
+if not checks[0]["seq"] < verifications[0]["seq"] < edits[0]["seq"]:
+    fail("the first verify item does not follow the model's checker call")
+if not edits[0]["seq"] < finished[0]["seq"] < verifications[1]["seq"] < edits[1]["seq"]:
+    fail("the second verify item does not follow the model's finish")
+if checks[1]["seq"] < edits[1]["seq"]:
+    fail("the successful checker call precedes the last edit")
 
 end = events[-1]
 if end["type"] != "episode/end":

@@ -1,13 +1,14 @@
 use super::{parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
 use crate::config::Program;
+use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::harness_text as text;
 use crate::registry::{Handles, Registry};
 use crate::test_util::{call, done, program_with, text as text_chunk, tmp, turn, Probe, ScriptedTransport, Verifier};
 use crate::{Effect, Tool, Transport};
 use foe_log::{
-    BlockedCode, Chunk, EpisodeStart, Event, EventData, ExhaustedLimit, InboxSource, Outcome, RuntimeInfo, SandboxInfo,
-    SandboxMode, StopReason,
+    BlockedCode, Chunk, Covered, EpisodeStart, Event, EventData, ExhaustedLimit, InboxSource, Outcome, RuntimeInfo,
+    SandboxInfo, SandboxMode, StopReason, Usage,
 };
 use serde_json::json;
 use std::sync::{Arc, Mutex};
@@ -33,6 +34,7 @@ struct Fixture {
     program: Program,
     tools: Vec<Box<dyn Tool>>,
     transport: Arc<dyn Transport>,
+    context: Option<Arc<dyn ContextPolicy>>,
     stop: watch::Sender<Option<String>>,
     stop_rx: watch::Receiver<Option<String>>,
 }
@@ -45,11 +47,25 @@ impl Fixture {
         let program = program_with(&root, edit).unwrap();
         let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
         let (stop, stop_rx) = watch::channel(None);
-        Self { dir, log, program, tools: vec![], transport: Arc::new(ScriptedTransport::new(responses)), stop, stop_rx }
+        Self {
+            dir,
+            log,
+            program,
+            tools: vec![],
+            transport: Arc::new(ScriptedTransport::new(responses)),
+            context: None,
+            stop,
+            stop_rx,
+        }
     }
 
     fn tool(mut self, tool: impl Tool + 'static) -> Self {
         self.tools.push(Box::new(tool));
+        self
+    }
+
+    fn context(mut self, policy: impl ContextPolicy + 'static) -> Self {
+        self.context = Some(Arc::new(policy));
         self
     }
 
@@ -65,12 +81,35 @@ impl Fixture {
             pool: Arc::new(Mutex::new(Pool::new(self.program.budget.clone()))),
             stop: self.stop_rx,
             children: None,
-            context: None,
+            context: self.context,
         };
         let outcome = run(params).await.unwrap();
         let events = foe_log::fold::read_all(&self.dir).unwrap();
         foe_log::fold::fold(&events).expect("the log is well-formed");
         (outcome, events)
+    }
+}
+
+struct FailedWindowCompaction;
+
+#[async_trait::async_trait]
+impl ContextPolicy for FailedWindowCompaction {
+    fn plan(&self, _state: &ContextState) -> Option<Cut> {
+        Some(Cut {
+            first_kept_seq: 2,
+            covered: Covered { first_seq: 1, last_seq: 1 },
+            projected_tokens: 10_000,
+            exceeds_window: true,
+        })
+    }
+
+    async fn summarize(
+        &self,
+        _state: &ContextState<'_>,
+        _cut: &Cut,
+        _call: &mut dyn SummaryCall,
+    ) -> Result<Summarized, crate::RuntimeError> {
+        Ok(Summarized::Failed { error: "summary unavailable".into(), usage: Usage::default() })
     }
 }
 
@@ -116,6 +155,16 @@ async fn a_turn_without_tool_calls_completes_with_its_text() {
     let EventData::RequestHeader(header) = &events[2].data else { panic!() };
     assert_eq!(header.reason, foe_log::HeaderReason::Initial);
     assert_eq!(header.tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), vec!["block"]);
+}
+
+/// docs/compaction.md "When it fails": a failed summary for a request that
+/// exceeds the model window reports the window, independent of any input
+/// allowance in the program budget.
+#[tokio::test]
+async fn failed_compaction_beyond_the_model_window_names_the_context_window() {
+    let fx = Fixture::new("loop-context-window", |_| {}, vec![]).context(FailedWindowCompaction);
+    let (outcome, _) = fx.run().await;
+    assert_eq!(outcome, Outcome::Exhausted { limit: ExhaustedLimit::ContextWindow });
 }
 
 #[tokio::test]
@@ -207,7 +256,10 @@ async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_co
     let started = tokio::time::Instant::now();
     let fx = Fixture::new(
         "loop-retry",
-        |v| v["budget"]["model_calls"] = json!(3),
+        |v| {
+            v["budget"]["model_calls"] = json!(3);
+            v["budget"]["output_tokens"] = json!(30);
+        },
         vec![
             vec![Chunk::Error { message: "rate limited (429)".into(), retryable: true }],
             vec![text_chunk("partial text"), Chunk::Error { message: "gone".into(), retryable: true }],
@@ -228,6 +280,14 @@ async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_co
     assert_eq!(started.elapsed().as_millis() as u64, announced, "each delay the log announces was waited");
     let requests: Vec<_> = events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).collect();
     assert_eq!(requests.len(), 3);
+    let output_caps: Vec<Option<u32>> = requests
+        .iter()
+        .map(|e| match &e.data {
+            EventData::ModelRequest(request) => request.max_output_tokens,
+            _ => unreachable!(),
+        })
+        .collect();
+    assert_eq!(output_caps, [Some(30), Some(30), Some(30)], "each retry recalculates the remaining allowance");
     let EventData::ModelRequest(third) = &requests[2].data else { panic!() };
     assert_eq!((third.step, third.attempt), (1, 3));
     assert!(third.consumed.is_empty(), "the task was consumed by the first attempt");
@@ -364,6 +424,50 @@ async fn verifier_findings_return_as_inbox_items_until_accepted_or_retries_are_s
     let fx = Fixture::new("loop-verify-spent", edit, vec![turn("1", vec![]), turn("2", vec![])]);
     let (outcome, _) = fx.tool(stubborn).run().await;
     assert!(matches!(outcome, Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, .. }), "{outcome:?}");
+}
+
+/// docs/design.md "Termination": calling the declared verifier is a
+/// completion signal, so a verified artifact completes on the last call.
+#[tokio::test]
+async fn a_declared_verifier_call_can_complete_on_the_last_model_call() {
+    let verifier = Verifier {
+        spec: crate::test_util::spec("check", Effect::Pure),
+        findings: Mutex::new(vec![vec![], vec![]].into()),
+    };
+    let fx = Fixture::new(
+        "loop-verify-last-call",
+        |v| {
+            v["tools"] = json!(["block", "check"]);
+            v["budget"]["model_calls"] = json!(1);
+            v["done_when"] = json!({ "verify": "check" });
+        },
+        vec![turn("artifact ready", vec![call("verify", "check", "{}")])],
+    );
+    let (outcome, events) = fx.tool(verifier).run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("artifact ready") });
+    assert_eq!(events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).count(), 1);
+}
+
+/// docs/design.md "Termination": a verifier call does not override its
+/// findings when the call budget has no request left for a correction.
+#[tokio::test]
+async fn verifier_findings_on_the_last_model_call_leave_the_episode_exhausted() {
+    let verifier = Verifier {
+        spec: crate::test_util::spec("check", Effect::Pure),
+        findings: Mutex::new(vec![vec!["missing".into()], vec!["missing".into()]].into()),
+    };
+    let fx = Fixture::new(
+        "loop-verify-findings-last-call",
+        |v| {
+            v["tools"] = json!(["block", "check"]);
+            v["budget"]["model_calls"] = json!(1);
+            v["done_when"] = json!({ "verify": "check" });
+        },
+        vec![turn("still working", vec![call("verify", "check", "{}")])],
+    );
+    let (outcome, events) = fx.tool(verifier).run().await;
+    assert_eq!(outcome, Outcome::Exhausted { limit: ExhaustedLimit::ModelCalls });
+    assert!(events.iter().any(|e| matches!(&e.data, EventData::InboxItem(i) if i.source == InboxSource::Verify)));
 }
 
 #[tokio::test]

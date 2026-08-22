@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "self-extension",
   "instructions": {
     "role": "You are extending foe in a disposable copy of its own source. Read each affected file before editing it. Keep the implementation, regression test, and specification consistent."
@@ -24,5 +24,5 @@
     "exec": "/home/user/foe/examples/support/scripted-transport.py"
   },
   "sandbox": { "mode": "best-effort" },
-  "task": "Extend foe's read tool so its canonical JSON result reports the source file's complete byte count as total_bytes. Add a regression assertion and document the field. Keep rendered output unchanged."
+  "task": "Extend foe's read tool in crates/code/src/read.rs so its canonical JSON result reports the source file's complete byte count as total_bytes. Add a regression assertion in crates/code/src/read_test.rs. Document the field in docs/tools.md. Keep rendered output unchanged."
 }

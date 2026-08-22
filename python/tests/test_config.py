@@ -38,13 +38,13 @@ def make_program() -> foe.Program:
         instructions={"20-grounding": "Ground every claim.", "10-charter": "You propose experiments."},
         tools=["read", "grep", mutation_usage],
         grants=foe.Grants(read=["/gen/v37/snapshot"], write=["/tmp/scratch"]),
-        budget=foe.Budget(model_calls=12, tokens=200_000, seconds=600),
+        budget=foe.Budget(model_calls=12, input_tokens=160_000, output_tokens=40_000, seconds=600),
         done_when=foe.Verified(verify=validate_patches, retries=2),
     )
 
 
 EXPECTED = {
-    "version": 1,
+    "version": 2,
     "name": "zicato-proposer",
     "instructions": {"10-charter": "You propose experiments.", "20-grounding": "Ground every claim."},
     "tools": ["read", "grep", "mutation_usage", "validate_patches"],
@@ -71,7 +71,7 @@ EXPECTED = {
         },
     },
     "grants": {"read": ["/gen/v37/snapshot"], "write": ["/tmp/scratch"]},
-    "budget": {"model_calls": 12, "tokens": 200000, "seconds": 600},
+    "budget": {"model_calls": 12, "input_tokens": 160000, "output_tokens": 40000, "seconds": 600},
     "done_when": {"verify": "validate_patches", "retries": 2},
 }
 

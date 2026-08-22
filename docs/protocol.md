@@ -52,15 +52,18 @@ ending with a `done` or `error` chunk.
 ```json
 {"seq": 4, "time": 1724200000123, "type": "model/request", "data": {
   "step": 1, "attempt": 1, "request_id": "rq_01", "header_seq": 1,
-  "consumed": [1], "messages": [ { "role": "user", "content": [ { "type": "text", "text": "…" } ] } ]
+  "consumed": [1], "messages": [ { "role": "user", "content": [ { "type": "text", "text": "…" } ] } ],
+  "max_output_tokens": 2048
 }}
 ```
 
 The header referenced by `header_seq` carries the system prompt, the tool
 schemas, and the model route. The host combines it with `messages` to form
-the provider request. When the host supplies the transport, the route's
-`provider` and `model` are both the word `host`: the runtime does not know
-which model the host calls, and the log records the route the runtime saw.
+the provider request. The host applies `max_output_tokens` as a provider
+output cap. A host-specific cap may make it smaller. When the host supplies
+the transport, the route's `provider` and `model` are both the word `host`.
+The runtime does not know which model the host calls, and the log records
+the route the runtime saw.
 
 ### `host/tool-call`
 
@@ -105,8 +108,13 @@ outstanding `model/request`.
 | `done` | `stop`, `usage` | the response ended; `stop` is `end`, `tool`, or `length` |
 | `error` | `message`, `retryable` | the request failed; `retryable` tells foe whether to retry |
 
-`usage` is `{ "input": N, "output": N, "cache_read": N }`. A host that
-cannot report a field sends 0.
+`usage` is `{ "input": N, "output": N, "cache_read": N }`. `input`
+includes `cache_read`. `output` includes reasoning when the provider counts
+reasoning as output. A host that cannot report a field sends 0.
+
+An `error` chunk carries no usage. Provider work that ends in an error is
+therefore outside the runtime's token account. Each retry still recomputes
+its output cap from the allowance that remains.
 
 foe records every chunk as an `assistant/chunk` event, assembles the
 `assistant/message` on `done`, and applies the length rule when `stop` is

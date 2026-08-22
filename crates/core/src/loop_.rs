@@ -329,7 +329,7 @@ impl Episode {
             Summarized::Failed { error, usage } => (false, usage, cut.projected_tokens, Some(error)),
         };
         self.p.log.append(EventData::CompactionEnd { step, ok, usage, active_estimate, error })?;
-        Ok((!ok && cut.exceeds_window).then_some(Outcome::Exhausted { limit: ExhaustedLimit::Tokens }))
+        Ok((!ok && cut.exceeds_window).then_some(Outcome::Exhausted { limit: ExhaustedLimit::ContextWindow }))
     }
 
     /// One model request with bounded retries. See docs/design.md "Failure
@@ -359,6 +359,11 @@ impl Episode {
                 }
             };
             let (header_seq, header) = self.header.clone().expect("header written before the request");
+            let configured = self.p.program.model.as_ref().and_then(|m| m.max_output_tokens);
+            let max_output_tokens = match lock(&self.p.pool).request_max_output(configured) {
+                Ok(cap) => cap,
+                Err(limit) => return Ok(Answer::Ended(Outcome::Exhausted { limit })),
+            };
             if let Some((cause, delay_ms)) = retried.take() {
                 let (step, failed) = (self.step, attempt - 1);
                 self.p.log.append(EventData::RequestRetry { step, attempt: failed, cause, delay_ms })?;
@@ -370,6 +375,7 @@ impl Episode {
                 header_seq,
                 consumed: consumed.clone(),
                 messages: messages.clone(),
+                max_output_tokens,
             }))?;
             self.request_seq = event.seq;
             self.inbox.consume(&consumed);
@@ -379,7 +385,7 @@ impl Episode {
                 system: header.system,
                 tools: header.tools,
                 messages,
-                max_output_tokens: self.p.program.model.as_ref().and_then(|m| m.max_output_tokens),
+                max_output_tokens,
             };
             let mut recorder = Recorder::new(self.p.log.clone(), self.step, request_id);
             let transport = self.p.transport.clone();
@@ -543,6 +549,13 @@ impl Episode {
             return Ok(Some(outcome));
         }
         let finished = message.tool_calls.is_empty() && !message.interrupted && message.stop != StopReason::Length;
+        let verifier_called = self
+            .p
+            .program
+            .done_when
+            .as_ref()
+            .and_then(|done| done.verify.as_deref())
+            .is_some_and(|name| succeeded(name).is_some());
         let candidate = if self.p.registry.has_return() {
             match succeeded(text::RETURN_NAME) {
                 Some(returned) => Some(returned.value["value"].clone()),
@@ -553,7 +566,7 @@ impl Episode {
                 None => None,
             }
         } else {
-            finished.then(|| Value::String(message.text.clone()))
+            (finished || verifier_called).then(|| Value::String(message.text.clone()))
         };
         let Some(candidate) = candidate else { return Ok(None) };
         let Some(done) = self.p.program.done_when.clone().filter(|d| d.verify.is_some()) else {

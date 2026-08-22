@@ -34,7 +34,9 @@ BLOCKED_CODES = {
 
 EXHAUSTED_LIMITS = {
     "model_calls",
-    "tokens",
+    "input_tokens",
+    "output_tokens",
+    "context_window",
     "seconds",
     "depth",
     "episodes",
@@ -314,7 +316,8 @@ def _render_continuation(summary: dict[str, Any]) -> str:
         f"files_edited:{list_value(files.get('edited'))}",
         f"children:{list_value(child_lines)}",
         "budget_remaining: "
-        f"model_calls {amount('model_calls')}, tokens {amount('tokens')}, seconds {amount('seconds')}",
+        f"model_calls {amount('model_calls')}, input_tokens {amount('input_tokens')}, "
+        f"output_tokens {amount('output_tokens')}, seconds {amount('seconds')}",
     ]
     return (
         "## Continuation state\n\n"
@@ -684,18 +687,34 @@ def _check_outcome(evaluation: Evaluation, log: EpisodeLog) -> None:
 
 def _subtree_spend(log: EpisodeLog, children_by_parent: dict[str, list[EpisodeLog]]) -> dict[str, int]:
     calls = sum(_event_type(event) == "model/request" for event in log.events)
-    tokens = 0
+    input_tokens = 0
+    output_tokens = 0
     for event in log.events:
         if _event_type(event) != "assistant/message":
             continue
         usage = _event_data(event).get("usage", {})
         if isinstance(usage, dict):
-            tokens += sum(value for key in ("input", "output") if isinstance((value := usage.get(key)), int))
+            if isinstance(usage.get("input"), int):
+                input_tokens += usage["input"]
+            if isinstance(usage.get("output"), int):
+                output_tokens += usage["output"]
     for child in children_by_parent.get(log.episode_id, []):
         spent = _subtree_spend(child, children_by_parent)
         calls += spent["model_calls"]
-        tokens += spent["tokens"]
-    return {"model_calls": calls, "tokens": tokens}
+        input_tokens += spent["input_tokens"]
+        output_tokens += spent["output_tokens"]
+    return {"model_calls": calls, "input_tokens": input_tokens, "output_tokens": output_tokens}
+
+
+def _output_allowance_is_enforced(log: EpisodeLog) -> bool:
+    """Whether every recorded route accepts the runtime's output cap."""
+    for event in log.events:
+        if _event_type(event) != "request/header":
+            continue
+        model = _event_data(event).get("model")
+        if isinstance(model, dict) and model.get("provider") == "openai-codex":
+            return False
+    return True
 
 
 def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
@@ -720,9 +739,10 @@ def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
         dimension = "hierarchical_budgets"
         evaluation.check(dimension, isinstance(budget, dict), "program.budget is absent", log, 0)
         budget = budget if isinstance(budget, dict) else {}
-        totals = {name: budget.get(name) for name in ("model_calls", "tokens")}
-        own_spent = {"model_calls": 0, "tokens": 0}
-        child_spent = {"model_calls": 0, "tokens": 0}
+        names = ("model_calls", "input_tokens", "output_tokens")
+        totals = {name: budget.get(name) for name in names}
+        own_spent = {name: 0 for name in names}
+        child_spent = {name: 0 for name in names}
         active: dict[str, dict[str, int]] = {}
         running: set[str] = set()
         seen_children: set[str] = set()
@@ -735,9 +755,10 @@ def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
             elif kind == "assistant/message":
                 usage = data.get("usage", {})
                 if isinstance(usage, dict):
-                    own_spent["tokens"] += sum(
-                        value for name in ("input", "output") if isinstance((value := usage.get(name)), int)
-                    )
+                    if isinstance(usage.get("input"), int):
+                        own_spent["input_tokens"] += usage["input"]
+                    if isinstance(usage.get("output"), int):
+                        own_spent["output_tokens"] += usage["output"]
             elif kind == "budget/reserve":
                 child_id = data.get("child_id")
                 reserved = data.get("reserved")
@@ -752,7 +773,7 @@ def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
                 if valid:
                     normalized = {
                         name: value
-                        for name in ("model_calls", "tokens")
+                        for name in names
                         if isinstance((value := reserved.get(name)), int)
                     }
                     active[child_id] = normalized
@@ -833,16 +854,22 @@ def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
                     reserved = active.pop(child_id)
                     child = by_id.get(child_id)
                     measured = _subtree_spend(child, children_by_parent) if child is not None else None
-                    for name in ("model_calls", "tokens"):
+                    for name in names:
                         value = spent.get(name)
                         if isinstance(value, int):
-                            evaluation.check(
-                                dimension,
-                                value <= reserved.get(name, value),
-                                f"released child spend exceeds its {name} reservation",
-                                log,
-                                index,
+                            bounded = name != "input_tokens" and not (
+                                name == "output_tokens"
+                                and child is not None
+                                and not _output_allowance_is_enforced(child)
                             )
+                            if bounded:
+                                evaluation.check(
+                                    dimension,
+                                    value <= reserved.get(name, value),
+                                    f"released child spend exceeds its {name} reservation",
+                                    log,
+                                    index,
+                                )
                             if measured is not None:
                                 evaluation.check(
                                     dimension,

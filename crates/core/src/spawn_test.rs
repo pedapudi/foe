@@ -28,7 +28,7 @@ impl ChildObserver for Seen {
 
 pub(crate) fn parent_config() -> Config {
     serde_json::from_value(serde_json::json!({
-        "version": 1, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
+        "version": 2, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
         "grants": {"read": ["/src"], "spawn": ["worker"]},
         "budget": {"model_calls": 20, "max_depth": 2},
         "sandbox": {"mode": "off"},
@@ -76,7 +76,7 @@ pub(crate) fn fake_child(dir: &Path) -> Vec<OsString> {
 /// that what it reports covers a subtree rather than itself alone.
 pub(crate) const NESTING_CHILD: &str = r#"#!/bin/sh
 echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{},"identity":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
-echo '{"seq":1,"time":1,"type":"budget/release","data":{"child_id":"ep_grand","spent":{"model_calls":3,"tokens":50,"episodes":2}}}'
+echo '{"seq":1,"time":1,"type":"budget/release","data":{"child_id":"ep_grand","spent":{"model_calls":3,"input_tokens":40,"output_tokens":10,"episodes":2}}}'
 echo '{"seq":2,"time":1,"type":"episode/end","data":{"outcome":{"kind":"completed","value":"done"}}}'
 "#;
 
@@ -204,7 +204,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
         program: "worker".into(),
         task: "do it".into(),
         context: SpawnContext::Fresh,
-        reserve: BudgetAmount { model_calls: Some(5), tokens: None, seconds: None, episodes: None },
+        reserve: BudgetAmount { model_calls: Some(5), ..Default::default() },
         call_id: "tc_spawn".into(),
     };
     let handle = spawner.spawn(req).unwrap();
@@ -247,7 +247,8 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     assert_eq!(value[1], serde_json::from_str::<serde_json::Value>(&result).unwrap(), "routed by child id");
     assert_eq!(settled.usage, Usage { input: 10, output: 5, cache_read: 0 });
     assert_eq!(settled.spent.model_calls, Some(1));
-    assert_eq!(settled.spent.tokens, Some(15));
+    assert_eq!(settled.spent.input_tokens, Some(10));
+    assert_eq!(settled.spent.output_tokens, Some(5));
     let (outcome, _) = handle.run.wait().await;
     assert!(matches!(outcome, Outcome::Completed { .. }));
     assert!(!router.has_child(&handle.child_id));

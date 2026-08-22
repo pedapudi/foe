@@ -88,13 +88,13 @@ start the transport its inherited `model` block names.
 ## The budget pool
 
 Budget is one pool held by the root episode. The parent declares 40 model
-calls, 400,000 tokens, and 1,800 seconds. A `spawn` call names no amount, so
-the reservation is what the child program declares: 8 calls and 60,000
-tokens. Both reservations stand at once, so 16 of the parent's 40 calls are
-held for its children while they run. When a child settles, the runtime
-debits what the child spent and returns the rest, so the pool ends the run
-down by 3 calls per child rather than by 8. No path through the tree can
-spend more than the root declared.
+calls, 320,000 input tokens, 80,000 output tokens, and 1,800 seconds. A
+`spawn` call names no amount, so the reservation is what the child program
+declares: 8 calls, 48,000 input tokens, and 12,000 output tokens. Both
+reservations stand at once, so 16 of the parent's 40 calls are held for its
+children while they run. When a child settles, the runtime debits what the
+child spent and returns the rest. The pool ends the run down by 3 calls per
+child rather than by 8.
 
 Three structural caps sit beside the spend caps. `max_depth: 1` allows
 children and forbids grandchildren. `max_episodes: 4` allows four episodes
@@ -112,7 +112,7 @@ the child and the amount taken from the remainder, then a `spawn/start` with
 `context: "fresh"` and the id of the tool call that spawned it:
 
 ```json
-{"seq": 12, "type": "budget/reserve", "data": { "child_id": "ep_ff6cef6d", "reserved": { "model_calls": 8, "tokens": 60000, "seconds": 1800, "episodes": 1 } }}
+{"seq": 12, "type": "budget/reserve", "data": { "child_id": "ep_ff6cef6d", "reserved": { "model_calls": 8, "input_tokens": 48000, "output_tokens": 12000, "seconds": 1800, "episodes": 1 } }}
 {"seq": 13, "type": "spawn/start", "data": { "child_id": "ep_ff6cef6d", "program": "survey", "context": "fresh", "call_id": "tc_spawn_config" }}
 ```
 
@@ -126,7 +126,7 @@ report, a second one stating that the child ended, a `spawn/end` with the
 child's outcome, and a `budget/release` with what the child spent:
 
 ```json
-{"seq": 35, "type": "budget/release", "data": { "child_id": "ep_ff6cef6d", "spent": { "model_calls": 3, "tokens": 0, "seconds": 0, "episodes": 1 } }}
+{"seq": 35, "type": "budget/release", "data": { "child_id": "ep_ff6cef6d", "spent": { "model_calls": 3, "input_tokens": 0, "output_tokens": 0, "seconds": 0, "episodes": 1 } }}
 ```
 
 The runner checks all of this. In the parent's log it requires two
@@ -139,17 +139,17 @@ parent id that names the root, grants without a write root and without a
 spawn root, and a call budget below the parent's. It then checks that both
 modules read `timeout_seconds` and that neither still reads `timeout`.
 
-The tokens each child reports spending are zero, because the scripted
-transport reports no usage. A run against a provider records real usage
-here, and the release then returns the tokens the child did not use.
+The input and output tokens each child reports spending are zero because the
+scripted transport reports no usage. A run against a provider records real
+usage here. The release returns the unused allowance.
 
 In the viewer, the episodes region at the top of the left column shows the
 tree: the parent with both children hanging under it on a solid connector,
 each with its own outcome. Selecting a child shows that child's
-conversation. The details region counts the selected episode's model calls
-and tokens against the budget its own `episode/start.program.budget`
-declares, and the trajectory region above the main region draws each child's
-span inside the parent's.
+conversation. The details region counts the selected episode's model calls,
+input tokens, and output tokens against the limits its own
+`episode/start.program.budget` declares. The trajectory region above the
+main region draws each child's span inside the parent's.
 
 ## Against a real model
 

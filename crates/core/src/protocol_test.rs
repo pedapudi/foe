@@ -62,6 +62,7 @@ fn request(log: &Log, id: &str) -> ModelRequestBody {
         header_seq: 2,
         consumed: vec![1],
         messages: vec![],
+        max_output_tokens: None,
     }))
     .unwrap();
     ModelRequestBody {

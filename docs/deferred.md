@@ -1,10 +1,10 @@
 # Deferred features
 
-This document lists features that the design anticipates and version 1 does
+This document lists features that the design anticipates and version 2 does
 not implement. Each section states what the feature is, that it is absent,
 and which log event types, event field values, or configuration keys are
 reserved for it. A reserved event type has a variant in `crates/log/src/lib.rs`
-so that a version 1 reader parses a later log; nothing in version 1 emits it.
+so that a version 2 reader parses a later log; nothing in version 2 emits it.
 A feature with nothing reserved is listed so that a reader does not search
 for it.
 

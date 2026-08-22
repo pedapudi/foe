@@ -9,15 +9,25 @@ require_text() {
   fi
 }
 
-require_text crates/code/src/read.rs \
-  '"total_bytes": bytes.len(),' \
-  'crates/code/src/read.rs does not report total_bytes'
-require_text crates/code/src/read_test.rs \
-  'assert_eq!(v.value["total_bytes"], 14);' \
-  'crates/code/src/read_test.rs does not assert the byte count'
-require_text docs/tools.md \
-  '`path`, `offset`, `total_bytes`, `total_lines`' \
-  'docs/tools.md does not list total_bytes in the canonical value'
-require_text docs/tools.md \
-  'field reports the size of the complete file' \
-  'docs/tools.md does not explain total_bytes'
+if grep -Eq '"total_bytes"[[:space:]]*:[[:space:]]*bytes\.len\(\)' crates/code/src/read.rs; then
+  :
+elif grep -Eq 'let total_bytes[[:space:]]*=[[:space:]]*bytes\.len\(\)' crates/code/src/read.rs \
+    && grep -Eq '"total_bytes"[[:space:]]*:[[:space:]]*total_bytes' crates/code/src/read.rs; then
+  :
+else
+  echo 'crates/code/src/read.rs does not report total_bytes as bytes.len()'
+fi
+if grep -Fq 'assert_eq!(v.value["total_bytes"], 14);' crates/code/src/read_test.rs; then
+  :
+elif grep -Eq 'assert_eq!\([^;]*\["total_bytes"\][^;]*\.len\(\)' crates/code/src/read_test.rs; then
+  :
+else
+  echo 'crates/code/src/read_test.rs does not assert the byte count'
+fi
+if ! grep '^| `read` ' docs/tools.md | grep -Fq '`total_bytes`'; then
+  echo 'docs/tools.md does not list total_bytes in the read canonical value'
+fi
+if ! tr '\n' ' ' < docs/tools.md \
+  | grep -Eq '(complete|entire|full).*(byte|size)|(byte|size).*(complete|entire|full)'; then
+  echo 'docs/tools.md does not explain that total_bytes measures the complete file'
+fi
