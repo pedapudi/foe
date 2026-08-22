@@ -1,13 +1,14 @@
 # Documents
 
-Each document covers one subject. Read `design.md` first; the others
-specify one piece each.
+Each document covers one subject. Read `design.md` first, then use the table
+to find the relevant specification, report, or guide.
 
 | document | subject |
 |---|---|
 | [build.md](build.md) | how to install foe, build it with Bazel, run the end-to-end demos, and use Cargo for Rust development |
 | [design.md](design.md) | the guarantees foe makes and the structure that delivers each |
 | [evaluation.md](evaluation.md) | how runtime conformance and model-backed task quality are measured |
+| [self-improvement.md](self-improvement.md) | how foe evaluates and improves a disposable copy of its own source, including measured results and operating guidance |
 | [config.md](config.md) | what a configuration document may contain and what each key means |
 | [models.md](models.md) | which model providers exist, where their credentials live, how `foe login` sets them up, and how a program of your own answers model requests |
 | [log-format.md](log-format.md) | what an episode log contains and how a model request is derived from it |

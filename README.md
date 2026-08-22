@@ -169,6 +169,7 @@ fails a build over 8 MiB.
 | [docs/build.md](docs/build.md) | how to install, build with Bazel, run the end-to-end demos, and use Cargo for Rust development |
 | [docs/design.md](docs/design.md) | what foe guarantees and the structure that delivers it |
 | [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
+| [docs/self-improvement.md](docs/self-improvement.md) | how foe evaluates and improves its own source, including measured results and operating guidance |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |
