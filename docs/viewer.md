@@ -159,10 +159,10 @@ The order down a row is the order of containment.
    and is absent for an episode that runs the free loop.
 4. The tool lane holds one mark per `tool/result`, below every node lane.
 
-A row is as tall as its own channels, so a plain row is 24 pixels, a row
-with a node band is taller by 9 pixels per lane, and a row whose calls
-stack is taller by 6 pixels per height beyond the first. The region's
-derived height follows the pixels the rows take rather than the row count.
+A row is as tall as its own channels. A plain row is 24 pixels; a node band
+adds 9 pixels per lane, and a stack of calls adds 6 pixels per height beyond
+the first. The region's derived height follows the pixels the rows take
+rather than the row count.
 
 | mark | channel | drawn from | form |
 |---|---|---|---|
@@ -224,8 +224,8 @@ Each lane is named in the label column, one indent deeper than the episode's
 own label, in faint mono. A firing is a bar between its `workflow/node-start`
 and the `workflow/node-end` that closes it, so its width is the interval the
 log observed. The length the node itself reported in `duration_ms` is a
-separate quantity and is given in the hovercard beside the observed one; a
-firing that has not ended reports no length at all, and the hovercard says
+separate quantity, and the hovercard gives it beside the observed one. A
+firing that has not ended reported no length at all, and the hovercard says
 so rather than showing a zero.
 
 A firing takes its colour direction from how it ended: `--v2-bad` for a
@@ -273,12 +273,12 @@ The nearest ancestor's segment turns into the row's own label; a further
 one passes through the row when a deeper row follows it. Without the rail a
 three-level tree reads as three indents rather than as a hierarchy.
 
-The column is 26 percent of the pane, held at or above 116 pixels plus one
-indent per level of the deepest row, at or below 230 pixels, and at or
-below 45 percent of the pane, because the plot is what the figure is. A
-name still too long for what the column leaves it is set with an ellipsis
-rather than run into the plot, and hovering it gives the whole name, the
-episode id the row no longer prints, and the outcome.
+The column is 26 percent of the pane. That share is held at or above 116
+pixels plus one indent per level of the deepest row, and at or below both
+230 pixels and 45 percent of the pane, because the plot is what the figure
+is. A name still too long for what the column leaves it is set with an
+ellipsis rather than run into the plot. Hovering it gives the whole name,
+the episode id the row no longer prints, and the outcome.
 
 ### Reading a mark
 
