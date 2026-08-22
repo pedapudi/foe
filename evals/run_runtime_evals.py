@@ -368,7 +368,7 @@ def corrupt_compaction_task(events: list[dict[str, Any]]) -> None:
     first_event(events, "compaction/summary")["data"]["state"]["task"] = "altered task"
 
 
-def mutation_checks(run_root: Path, logs: dict[str, Path]) -> None:
+def mutation_checks(run_root: Path, logs: dict[str, Path]) -> int:
     cases: list[tuple[str, str, Mutation]] = [
         ("declared_authority", "typed-outcome", corrupt_authority),
         ("reconstructable_evidence", "typed-outcome", corrupt_request_messages),
@@ -377,8 +377,14 @@ def mutation_checks(run_root: Path, logs: dict[str, Path]) -> None:
         ("workflow_provenance", "workflow-provenance", corrupt_workflow_branch),
         ("compaction_continuity", "context-compaction", corrupt_compaction_task),
     ]
+    uncovered = sorted(set(DIMENSIONS) - {dimension for dimension, _, _ in cases})
+    if uncovered:
+        raise HarnessError("no trace corruption exercises: " + ", ".join(uncovered))
     mutation_root = run_root / "mutations"
-    mutation_root.mkdir()
+    try:
+        mutation_root.mkdir()
+    except OSError as error:
+        raise HarnessError(f"the corruption directory could not be created: {error}") from error
     for dimension, case_name, mutate in cases:
         destination = mutation_root / dimension
         shutil.copytree(logs[case_name], destination)
@@ -390,7 +396,8 @@ def mutation_checks(run_root: Path, logs: dict[str, Path]) -> None:
         report = evaluate([destination])
         detected = any(item["dimension"] == dimension for item in report["violations"])
         if not detected:
-            raise HarnessError(f"the {dimension} evaluator did not detect its trace mutation")
+            raise HarnessError(f"the {dimension} evaluator did not detect its trace corruption")
+    return len(cases)
 
 
 def parse_args() -> argparse.Namespace:
@@ -458,8 +465,7 @@ def run(args: argparse.Namespace, run_root: Path) -> int:
     report["observations"]["compaction_continuation_probe"] = (
         "passed" if not compaction_findings else "failed"
     )
-    mutation_checks(run_root, logs)
-    report["observations"]["trace_mutation_checks"] = len(DIMENSIONS)
+    report["observations"]["trace_mutation_checks"] = mutation_checks(run_root, logs)
     uncovered = sorted(
         name for name in DIMENSIONS if report["metrics"][name]["covered_episodes"] == 0
     )
