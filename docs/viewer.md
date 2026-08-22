@@ -31,7 +31,8 @@ The sizes persist in `localStorage` under `foe.panes` as one object with
 the sidebar width in pixels and the two row splits as a fraction of the
 column each divides. The object names only the sizes the reader has moved,
 so a size left alone stays derived across a reload. The sidebar opens at
-300 pixels and the details region at 30 percent of the left column.
+288 pixels, the rail width the spacing scale names, and the details
+region at 30 percent of the left column.
 
 The trajectory opens at the height its rows need: the axis, the rows, and
 the padding around them, held at or above the shortest pane and at or below
@@ -555,7 +556,7 @@ malformed.
 ## Embedding the bundle
 
 `crates/view/build.rs` copies `view/dist/viewer.js`, `view/dist/viewer.css`,
-and the four font files under `view/fonts/` into the crate's build output,
+and the six font files under `view/fonts/` into the crate's build output,
 where `include_str!` and `include_bytes!` embed them. The bundle is built
 with `pnpm install && pnpm build` in `view/`; a rebuild of `foe-view` then
 picks it up. When the script or stylesheet is absent, the build script
