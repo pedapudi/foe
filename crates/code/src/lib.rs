@@ -20,12 +20,11 @@ mod read;
 #[cfg(test)]
 #[path = "handles_test.rs"]
 mod testing;
-mod truncate;
 
 /// Longest output any tool inlines into a result, in lines.
 pub const OUTPUT_MAX_LINES: usize = 2_000;
-/// Longest output any tool inlines into a result, in bytes.
-pub const OUTPUT_MAX_BYTES: usize = 50 * 1024;
+/// Longest output any tool collects into a result, in characters.
+pub const OUTPUT_MAX_CHARS: usize = 50 * 1024;
 /// Longest line `grep` returns before clamping it, in characters.
 pub const GREP_LINE_MAX_CHARS: usize = 500;
 /// Matches `grep` renders when the call names no `limit`.

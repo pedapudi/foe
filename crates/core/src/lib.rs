@@ -69,6 +69,24 @@ impl Effect {
     }
 }
 
+/// How many lines from `lines`, in the order given, fit within `max_lines`
+/// lines and `max_chars` characters, and how many characters they take.
+/// Each line counts the newline that follows it, and is taken whole or not
+/// at all, so a cut on this boundary never splits a character. Every bound
+/// on how much of a result a tool shows is measured this way.
+pub fn fitting<'a>(lines: impl Iterator<Item = &'a &'a str>, max_lines: usize, max_chars: usize) -> (usize, usize) {
+    let (mut kept, mut used) = (0, 0);
+    for line in lines.take(max_lines) {
+        let width = line.chars().count() + 1;
+        if used + width > max_chars {
+            break;
+        }
+        used += width;
+        kept += 1;
+    }
+    (kept, used)
+}
+
 /// What identity hashes and what the model sees. See docs/design.md "Tools".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolSpec {

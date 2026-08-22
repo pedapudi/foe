@@ -40,26 +40,27 @@ async fn truncates_at_the_line_limit_and_names_the_next_offset() {
 }
 
 #[tokio::test]
-async fn truncates_at_the_byte_limit_without_splitting_a_line() {
+async fn truncates_at_the_character_limit_without_splitting_a_line() {
     let fx = Fixture::new();
     let line = format!("{}\n", "é".repeat(1000));
     fx.write("wide.txt", &line.repeat(100));
     let v = read(&fx, json!({"path": "wide.txt"})).await;
     let shown = v.value["shown"].as_u64().unwrap() as usize;
-    assert!(shown * (line.len()) <= OUTPUT_MAX_BYTES);
-    assert!((shown + 1) * line.len() > OUTPUT_MAX_BYTES);
+    let width = line.chars().count();
+    assert!(shown * width <= OUTPUT_MAX_CHARS);
+    assert!((shown + 1) * width > OUTPUT_MAX_CHARS);
     assert!(v.rendered.unwrap().contains(&format!("Use offset={} to continue", shown + 1)));
 }
 
 #[tokio::test]
-async fn a_single_line_over_the_byte_limit_suggests_bash() {
+async fn a_single_line_over_the_character_limit_suggests_bash() {
     let fx = Fixture::new();
-    fx.write("one.txt", &"x".repeat(OUTPUT_MAX_BYTES + 10));
+    fx.write("one.txt", &"x".repeat(OUTPUT_MAX_CHARS + 10));
     let v = read(&fx, json!({"path": "one.txt"})).await;
     assert!(!v.is_error);
     assert_eq!(v.value["shown"], 0);
     let r = v.rendered.unwrap();
-    assert!(r.contains(&format!("is {} bytes", OUTPUT_MAX_BYTES + 10)), "{r}");
+    assert!(r.contains(&format!("is {} characters", OUTPUT_MAX_CHARS + 10)), "{r}");
     assert!(r.contains("sed -n '1p' 'one.txt' | head -c"), "{r}");
 }
 

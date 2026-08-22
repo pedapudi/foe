@@ -42,7 +42,8 @@ does not exist is refused with the key and the path.
 Every tool returns a canonical value, which is JSON, and may return a
 rendered string. The log stores the canonical value in full. The model
 receives the rendered string when present and a compact rendering of the
-value otherwise.
+value otherwise. The rendering, and only the rendering, is bounded by the
+turn budget specified below.
 
 ## Configured executables
 
@@ -95,35 +96,38 @@ the first `read` root, and paths in results are shown relative to it.
 
 | tool | effect | arguments | limits | canonical value |
 |---|---|---|---|---|
-| `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 50 KiB per call, whichever comes first; binary files are refused | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |
+| `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |
 | `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 500 characters per line; the search stops after 10,000 matches; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
 | `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each `old_text` occurs exactly once; matches do not overlap; the result differs from the original | `path`, `edits`, `added`, `removed`, `diff` |
-| `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 50 KiB of output are shown; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
+| `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
 
 The limits in the table are constants in the crate, and every tool
 description sent to the model is formatted from the same constants.
 
-### Shared truncation
+### Shared line fitting
 
-`read` and `bash` cut long output with one pair of rules. A cut keeps whole
-lines: a line is shown entirely or omitted, so a cut never splits a UTF-8
-sequence. The byte measure counts each line plus one byte for its newline.
-`read` keeps the head of its window; `bash` keeps the tail of its output,
-because the end of a build or test run usually carries the verdict.
+Every bound on how much text a result carries is measured by one function,
+`foe_core::fitting`. It answers how many lines from a sequence, taken in the
+order given, fit within a line count and a character count. A line is taken
+whole or not at all, so a cut on this boundary never splits a character, and
+each line counts the newline that follows it. `read` fits the head of its
+window; `bash` fits the tail of its output, because the end of a build or
+test run usually carries the verdict.
 
 ### `read`
 
-The rendered form numbers each line as `N<TAB>text`, with `N` counted from
-the start of the file. A carriage return before a newline is dropped from
-the rendering. When lines remain after the window, the rendering ends with
+`offset` and `limit` select a range of lines, which is the way to look at
+part of a large file. The rendered form numbers each line as `N<TAB>text`,
+with `N` counted from the start of the file. A carriage return before a
+newline is dropped from the rendering. When lines remain after the window, the rendering ends with
 a notice that names the next offset, for example
 `[Showing lines 1-2000 of 8431. Use offset=2001 to continue.]`. `limit`
 caps the window below the line limit; `truncated` is true whenever lines
 remain beyond the window, whatever the cause.
 
-A single line longer than the byte limit cannot be shown whole. The tool
-then returns no content and a notice naming the line's size and a `bash`
-command that shows a slice of it with `sed` and `head -c`.
+A single line longer than the character limit cannot be shown whole. The
+tool then returns no content and a notice naming the line's size and a
+`bash` command that shows a slice of it with `sed` and `head -c`.
 
 A file that contains a NUL byte or is not valid UTF-8 is reported as binary
 with its size in bytes, and the call is an error. An offset past the end of
@@ -192,12 +196,15 @@ The executor owns the process. On timeout it kills the whole process group,
 so a command that backgrounded a child does not leave it running. The result
 then has `timed_out` true and `exit_code` null.
 
-Standard output and standard error are rendered in that order, separated by
-a `--- stderr ---` line when standard error is non-empty. The combined text
-is cut to its last 2,000 lines or 50 KiB. When a cut happens, the full text
-is written to a file named `CALL_ID-bash.txt` under the episode's `spill/`
-directory, and the first line of the rendering names that file. The last
-line states the exit code and duration, or the timeout.
+The rendering opens with the exit status: the exit code and the duration,
+or a statement that the command timed out or was killed by a signal. The
+status leads so that a later cut of the middle of the rendering cannot
+remove it. Standard output and standard error follow in that order,
+separated by a `--- stderr ---` line when standard error is non-empty. The
+combined text is cut to its last 2,000 lines or 51,200 characters. When a
+cut happens, the full text is written to a file named `CALL_ID-bash.txt`
+under the episode's `spill/` directory, and a line after the status names
+that file.
 
 A non-zero exit is a result. The call is an error only when the arguments
 are invalid, the executor refuses the request, or the tool was dispatched
