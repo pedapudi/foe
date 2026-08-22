@@ -6,32 +6,20 @@ this program once per model request. The request says which episode is
 asking: the parent is the episode offered the `spawn` tool, and a survey
 child is offered `notify` instead.
 
-The parent spawns one survey per module named in the task, waits until both
-children have ended, and only then edits. Waiting is a rotation of three
-read-only calls, so that no call repeats in three consecutive steps and the
-loop detector stays quiet.
+The parent spawns one survey per module named in the task, calls `wait`,
+which returns once both children have ended, and only then edits. One call
+buys the whole wait, so the parent spends no model call on filler and
+depends on nothing about how long a child takes.
 """
 
 import re
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "support"))
 from chunks import call, done, error, read_request, step, text, tool_names
 
 MODULES = ["src/config.py", "src/client.py"]
-
-# One waiting step is one model call and one process. The children end
-# within a fraction of a second; the limit bounds a run whose children
-# never report, which fails with the message below rather than hanging.
-WAIT_SECONDS = 0.05
-WAIT_LIMIT = 60
-WAITING = [
-    ("read", {"path": "src/config.py"}),
-    ("read", {"path": "src/client.py"}),
-    ("grep", {"pattern": "timeout", "path": "src"}),
-]
 
 # The rename the task asks for, one entry per module.
 EDITS = {
@@ -80,18 +68,6 @@ def children_ended(request: dict) -> int:
     return sum(1 for item in user_texts(request) if " ended: " in item)
 
 
-def wait(request: dict) -> None:
-    """One step of the parent's wait: a read-only call and a short pause."""
-    n = step(request)
-    if n > WAIT_LIMIT:
-        error(request, f"the survey children did not end within {WAIT_LIMIT} steps")
-        return
-    time.sleep(WAIT_SECONDS)
-    name, args = WAITING[n % len(WAITING)]
-    call(request, f"tc_wait_{n}", name, args)
-    done(request, "tool")
-
-
 def parent(request: dict) -> None:
     if step(request) == 0:
         for module in MODULES:
@@ -100,8 +76,12 @@ def parent(request: dict) -> None:
             call(request, f"tc_spawn_{name}", "spawn", {"program": "survey", "name": f"{name}-survey", "task": task})
         done(request, "tool")
         return
+    if not called(request, "wait"):
+        call(request, "tc_wait", "wait", {})
+        done(request, "tool")
+        return
     if children_ended(request) < len(MODULES):
-        wait(request)
+        error(request, "wait returned before every child had ended")
         return
     if not called(request, "edit"):
         for module, edits in EDITS.items():

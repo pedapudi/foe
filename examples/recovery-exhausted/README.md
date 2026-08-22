@@ -3,9 +3,9 @@
 An episode that never gets an answer to its first request. The transport
 reports a retryable provider error every time. The runtime makes five
 attempts at the one step, waiting a delay that doubles from 500 milliseconds
-to 8 seconds after each failure. The episode ends with the outcome `{"kind":
+to 4 seconds between them. The episode ends with the outcome `{"kind":
 "blocked", "code": "recovery-exhausted", "message": "5 attempts at step 1
-failed"}`, and the process exits with code 2. The whole run takes about 15
+failed"}`, and the process exits with code 2. The whole run takes about 8
 seconds, almost all of it spent in those delays.
 
 `blocked` is the outcome kind for an episode the runtime stopped because it
@@ -73,8 +73,9 @@ The runner asserts what this example claims.
 - The exit code is 2.
 - The five `model/request` events all belong to step 1 and carry the same
   messages.
-- The five `request/retry` events record the delays 500, 1000, 2000, 4000,
-  and 8000 milliseconds.
+- The four `request/retry` events record the delays 500, 1000, 2000, and
+  4000 milliseconds, and each one is followed by the `model/request` it
+  announces.
 - No `assistant/message` and no `tool/result` was written.
 
 ## What to look for
@@ -87,21 +88,23 @@ all five are identical, which is what makes them attempts at one step rather
 than five steps.
 
 After each request comes one `assistant/chunk` holding the transport's error
-chunk, then one `request/retry` with the `cause` and the `delay_ms` the
-runtime waited. The cause here is `provider`, because the program reported
-an error; `transport` names a stream that ended with no final chunk,
-`rate-limit` names a message mentioning a rate limit or a 429, and
-`interrupted` names a failure after text had already arrived.
+chunk. When a further attempt is permitted, the runtime waits the delay and
+then writes one `request/retry` naming the attempt that failed, the `cause`,
+and the `delay_ms` it waited, immediately before the attempt that follows.
+The cause here is `provider`, because the program reported an error;
+`transport` names a stream that ended with no final chunk, `rate-limit`
+names a message mentioning a rate limit or a 429, and `interrupted` names a
+failure after text had already arrived.
 
-The five delays double: 500, 1000, 2000, 4000, 8000. A reader who has not
-watched the run learns from that shape alone that the endpoint was never
-reachable, rather than briefly overloaded. The error message repeats
-unchanged in every attempt, so it names the condition to fix.
+The four delays double: 500, 1000, 2000, 4000. A reader who has not watched
+the run learns from that shape alone that the endpoint was never reachable,
+rather than briefly overloaded. The error message repeats unchanged in every
+attempt, so it names the condition to fix.
 
-The fifth `request/retry` is followed by no sixth `model/request`. The
-runtime records the delay and waits it out before it tests the attempt
-ceiling, so the last eight seconds of the episode are a wait for an attempt
-that is never made.
+There are five attempts and four retries. The fifth attempt is the last the
+ceiling allows, so its failure ends the episode with no delay waited and no
+retry recorded: a `request/retry` states that a request is being retried,
+and the log format requires the attempt it announces to follow it.
 
 No `assistant/message` is written, because none was assembled. No
 `tool/result` is written, because no tool ran. The episode read nothing from

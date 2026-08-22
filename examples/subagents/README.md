@@ -5,8 +5,8 @@ for itself. The runner creates a small Python project, runs the episode
 against a scripted model transport, and checks the parent's log, both
 children's logs, and the edited files.
 
-The parent lists the `spawn` tool, and `grants.spawn` names the one child
-program it may start, `survey`. `programs.survey` is a complete child
+The parent lists the `spawn` and `wait` tools, and `grants.spawn` names the
+one child program it may start, `survey`. `programs.survey` is a complete child
 configuration: its own instructions, tools, grants, and budget. It omits
 `version`, `task`, `model`, and `sandbox`, which a child inherits. The
 child's grants are a subset of the parent's; construction refuses a child
@@ -52,10 +52,25 @@ The project holds two modules that read a configuration key named
    reporting where its module reads the key.
 2. Each child greps its module, reports what it found with `notify`, and
    ends. The report reaches the parent as a message.
-3. While the surveys run, the parent answers with read-only calls: a report
-   arrives when the child sends it, which is after the parent's next request
-   has already been formed. The parent edits once both children have ended.
+3. The parent calls `wait`, which returns once every child it started has
+   ended and the `spawn/end` and `budget/release` each one owes are in the
+   parent's log. Both reports have arrived by then.
 4. The parent applies the rename to both modules and finishes.
+
+## Waiting for the children
+
+`wait` is a built-in tool that takes no arguments. It returns when no child
+of this episode is still running, or when the episode's `seconds` budget
+runs out, and it reports an error in the second case. One call buys the
+whole wait, so the parent spends one model call on waiting rather than one
+per poll.
+
+Without it a parent has no way to hold: `spawn` returns as soon as the child
+starts, and an assistant turn with no tool calls completes the parent at
+once. A parent that means to abandon its children still ends that way. The
+episode's teardown then asks each child still running to end and waits for
+its `spawn/end` and `budget/release`, so the log accounts for every
+reservation the episode made whichever way the parent finishes.
 
 ## The grants
 
@@ -113,10 +128,11 @@ child's outcome, and a `budget/release` with what the child spent:
 ```
 
 The runner checks all of this. In the parent's log it requires two
-reservations of the amount the `survey` program declares and two
-`spawn/start` events with a fresh context. It requires two children that
-ended `completed`, each releasing less than it reserved, and four messages
-from children, of which two are reports. In each child's log it requires a
+reservations of the amount the `survey` program declares, two `spawn/start`
+events with a fresh context, and one `wait` result that lands after all four
+settlement events. It requires two children that ended `completed`, each
+releasing less than it reserved, and four messages from children, of which
+two are reports. In each child's log it requires a
 parent id that names the root, grants without a write root and without a
 spawn root, and a call budget below the parent's. It then checks that both
 modules read `timeout_seconds` and that neither still reads `timeout`.

@@ -58,8 +58,16 @@ yet have.
    changed file and asks the tester, with `send`, which checks cover it.
 4. The tester answers with `send`. Each then reports to the lead with
    `notify` and ends.
-5. The lead, which has been asking the roster with `team` and making
-   read-only calls while its members worked, finishes once both have ended.
+5. The lead calls `wait`, which returns once both members have ended and
+   their `spawn/end` and `budget/release` events are in the lead's log, and
+   then finishes.
+
+The members wait differently, because they wait for each other rather than
+for a child. `wait` covers children alone, and no tool holds an episode
+until a peer message arrives, so each member answers with a rotation of
+three read-only calls until the message it needs is in its inbox. The
+rotation exists so that no call repeats in three consecutive steps, which
+would end the episode as `looping-tool-call`.
 
 ## The roster
 

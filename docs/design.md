@@ -214,16 +214,31 @@ Three rules hold in every step. Each exists because its absence loses data.
   every tool call rejected. Streamed tool-call arguments are recovered by a
   tolerant parser, so a truncated call can parse and validate while missing
   its tail. The model receives one error per call and reissues them.
-- Every tool call in the log has a result. When an episode is interrupted
-  after a call and before its result, the log is completed during seeding with
-  a synthetic error result for that call. A log that seeds a fork is therefore
-  always well-formed.
+- Every pairing the log opens is closed before `episode/end`. A tool call
+  owes a result, a reservation owes a release, a spawn owes an end, a
+  compaction owes an end, and a retry owes the attempt it announces.
+  [log-format.md](log-format.md#open-obligations) lists them and states the
+  rule; the episode's teardown writes whatever the episode itself did not,
+  and seeding applies the same repair to a copied prefix.
 - Tool calls are preflighted one at a time in the order the model issued
   them. Calls whose declared effect is `pure` or `reads` run concurrently.
   Calls that write, execute, or spawn run one at a time in issue order. Results
   are appended in issue order regardless of completion order.
 
 ### Termination
+
+An episode ends by writing `episode/end`, and before that it closes every
+obligation its log still holds. A child still running is asked to end, and
+the `spawn/end` and `budget/release` its reservation owes are awaited. A
+tool call left without a result receives a synthetic error result. The
+record of a completed run is therefore never mistakable for the record of
+one killed mid-flight.
+
+Ending a child that a model meant to keep is a poor answer, so a parent
+that means to wait says so: the `wait` tool returns once every child it
+started has ended, bounded by the episode's `seconds` budget. A model that
+means to abandon its children ends its turn as usual, and the teardown
+settles them.
 
 A program's `done_when` field chooses how an episode completes.
 
@@ -246,6 +261,12 @@ discarded and retried. A request that fails after a tool call started is
 recorded as an interrupted assistant message; its tool calls receive synthetic
 error results, and the next step continues from there. Retries consume the
 episode's request budget. There is no unbounded retry.
+
+The attempt ceiling is tested before the delay is computed, and the
+`request/retry` event is written immediately before the attempt it
+announces. A step whose last permitted attempt fails therefore ends at
+once, with no delay waited and no retry recorded for a request that is
+never made.
 
 ### Blocking conditions the runtime detects
 
@@ -369,7 +390,9 @@ limit, and no child starts; the model reads that result like any other.
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent
 the same way. A steer arrives in the child's next request; nothing
-interrupts a request in flight.
+interrupts a request in flight. A parent that has delegated work calls
+`wait` to hold until its children have ended, so that their reports are in
+the request that follows.
 
 A team is a set of episodes that share a lead. The lead's log holds the
 roster and the queue of messages between members.
@@ -382,9 +405,9 @@ roster and the queue of messages between members.
    team/delivered {id, to}                 ◄──  (written after the member's append)
 ```
 
-Five built-in tools serve teams. `spawn` and `steer` act on an episode's
-own children. `notify`, `send`, and `team` act on the team the episode
-belongs to: in an episode with a parent they are host tool calls that the
+Six built-in tools serve teams. `spawn`, `wait`, and `steer` act on an
+episode's own children. `notify`, `send`, and `team` act on the team the
+episode belongs to: in an episode with a parent they are host tool calls that the
 parent answers, as the [protocol](protocol.md#children) describes; in a
 root, `send` and `team` act on its own roster, and `notify` fails because
 no parent exists.
