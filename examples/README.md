@@ -5,15 +5,15 @@ answers the model from a script rather than a provider, checks its own
 result, and leaves an episode log to read. None needs a credential, a
 network, or a repository of your own.
 
-Ten examples are started by `run.sh` and two by `run.py`:
+Eleven examples are started by `run.sh` and two by `run.py`:
 
 ```sh
 sh examples/minimal/run.sh
 python3 examples/embed-in-a-program/run.py
 ```
 
-The workflow and sandbox examples also have Bazel targets, which are the
-two the build runs as tests:
+The workflow, sandbox, and self-extension examples also have Bazel targets,
+which are the three the build runs as tests:
 
 ```sh
 bazel run //examples/workflow
@@ -107,6 +107,6 @@ The Rust integration tests validate every `config.json` against the printed
 schema, materialize its markers, and run `foe plan`, which catches a missing
 executable, a grant that cannot hold, and a workflow graph that cannot run.
 `cargo test --workspace` runs them. `bazel test //examples/...` runs the
-workflow and sandbox examples themselves, so each of those two READMEs
-describes a log the build produces. Running the other ten is what checks
-that their "What to look for" sections still hold.
+workflow, sandbox, and self-extension examples themselves, so each of those
+three READMEs describes a log the build produces. Running the other ten is
+what checks that their "What to look for" sections still hold.
