@@ -25,17 +25,14 @@ impl Read {
             spec: ToolSpec {
                 name: "read".into(),
                 description: format!(
-                    "Read a text file with line numbers. offset and limit select a range of lines. \
-                     At most {OUTPUT_MAX_LINES} lines or {kib} KiB are collected per call, never \
-                     splitting a line; when more remains, the result ends with a notice naming the \
-                     offset to continue from. Binary files are reported with their size rather than \
-                     shown."
+                    "Read a text file with line numbers. Shows at most {OUTPUT_MAX_LINES} lines or \
+                     {kib} KiB per call, never splitting a line; when more remains, the result ends \
+                     with a notice naming the offset to continue from. Binary files are reported \
+                     with their size rather than shown."
                 ),
                 instruction: Some(
-                    "Use read to look at a file before editing it. Give offset and limit when only \
-                     part of a large file matters: the results of one turn share a character \
-                     budget. Continue from the offset a truncation notice names rather than \
-                     rereading from the start."
+                    "Use read to look at a file before editing it. For a long file, continue from the \
+                     offset the truncation notice names rather than rereading from the start."
                         .into(),
                 ),
                 params: json!({

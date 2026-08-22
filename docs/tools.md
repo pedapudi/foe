@@ -118,10 +118,7 @@ end of a rendering carries its information.
 
 ### `read`
 
-`offset` and `limit` select a range of lines, which is the way to look at
-part of a large file. The tool's instruction says so and states why: the
-results of one turn share a character budget, so a large read leaves less
-room for the other calls of the same turn. The rendered form numbers each
+`offset` and `limit` select a range of lines. The rendered form numbers each
 line as `N<TAB>text`, with `N` counted from the start of the file. That
 shape is also what tells the turn budget it is looking at a window of a
 file. A carriage return before a newline is dropped from the rendering. When lines remain after the window, the rendering ends with
