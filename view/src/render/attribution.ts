@@ -244,6 +244,11 @@ function replayCostRow(
  * the two rather than taken out of either. A cached token is an input token
  * in the provider's accounting, so subtracting it here would present it as
  * a saving in the token metric.
+ *
+ * Where every request carried everything the request before it carried, the
+ * split is the difference of counts the provider reported and the figure
+ * says so. Where a compaction broke that chain, the requests it broke were
+ * apportioned by characters, and the caption names how many.
  */
 export function inputOriginFigure(tools: FigureTools, attribution: Attribution, width: number): HTMLElement {
   const barWidth = Math.max(80, width - 24);
@@ -271,9 +276,12 @@ export function inputOriginFigure(tools: FigureTools, attribution: Attribution, 
       group,
       () => `${share.name} input`,
       () =>
-        share.name === "unique"
+        (share.name === "unique"
           ? "input tokens carrying text no earlier request of the episode had sent"
-          : "input tokens carrying text an earlier request of the episode had already sent",
+          : "input tokens carrying text an earlier request of the episode had already sent") +
+        (attribution.originDerived === 0
+          ? "; each request's own share is its reported input less the previous request's"
+          : "; apportioned by characters where a compaction dropped text the previous request carried"),
       () =>
         `${fmtInt(Math.round(share.tokens))} ÷ ${fmtInt(attribution.input ?? 0)} = ${tools.percent(share.fraction)}`,
     );
@@ -299,11 +307,21 @@ export function inputOriginFigure(tools: FigureTools, attribution: Attribution, 
   const floor = attribution.bounded
     ? ` ${attribution.unmeasured} request${attribution.unmeasured === 1 ? "" : "s"} in this scope reported no input count, so both shares are floors.`
     : "";
+  // Two consecutive requests differ by the text new to the later one, so
+  // the difference between the counts the provider reported for them is a
+  // measurement of what that text cost.
+  const source =
+    attribution.originDerived === 0
+      ? "Both shares are measured: each request's input less the input of the request before it is what the " +
+        "text new to it cost."
+      : `${attribution.originDerived} request${attribution.originDerived === 1 ? "" : "s"} dropped text the ` +
+        "request before had carried, which a compaction does, so those requests were apportioned by characters " +
+        "while the rest are the difference of two reported counts.";
   return tools.figure(
     "unique against replayed input",
     [figure, beside],
     `${tools.percent(shares[1]!.fraction)} of the input was the transcript being resent. The size of tool ` +
       `results moves the unique share and the number of turns moves the replayed one, so which of the two ` +
-      `dominates decides which is worth attacking.${floor}`,
+      `dominates decides which is worth attacking. ${source}${floor}`,
   );
 }

@@ -112,6 +112,25 @@ test("unique and replayed input add to the input the answers reported", () => {
   assert.ok(out.unique! > 0 && out.replayed! > 0);
 });
 
+test("the split of the input is the difference between consecutive reported counts", () => {
+  // Every request of this log carries everything the request before it
+  // carried, so the text new to each one cost exactly the difference
+  // between the two counts the provider reported.
+  const out = attribution(["root.jsonl"]);
+  assert.equal(out.originDerived, 0, "nothing had to be apportioned");
+  assert.equal(out.unique, 410 + (520 - 410) + (610 - 520) + (680 - 610));
+  assert.equal(out.replayed, 0 + 410 + 520 + 610);
+});
+
+test("a compaction drops text, so the requests it breaks are apportioned instead", () => {
+  const out = attribution(["compact.jsonl"]);
+  // The summarization call carries neither the schemas nor the transcript
+  // as messages, and the request after it carries neither the summarization
+  // prompt nor the tool results the summary replaced.
+  assert.equal(out.originDerived, 2);
+  assert.ok(Math.abs(out.unique! + out.replayed! - out.input!) < 1e-9);
+});
+
 test("cache reads are totalled beside the input and never inside it", () => {
   const out = attribution(["root.jsonl"]);
   assert.equal(out.cacheRead, 0 + 400 + 520 + 600);
@@ -149,6 +168,7 @@ test("a scope whose answers reported no usage has characters and no token figure
   assert.equal(out.cacheRead, null);
   assert.equal(out.unique, null);
   assert.equal(out.replayed, null);
+  assert.equal(out.originDerived, 0, "no split was apportioned, because none was computed at all");
   assert.equal(out.unmeasured, 5);
   assert.equal(out.chars, 3928 * 5);
   for (const part of out.parts) {

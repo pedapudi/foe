@@ -130,6 +130,12 @@ export interface Attribution {
   unique: number | null;
   /** Input tokens carrying text an earlier request had already sent. */
   replayed: number | null;
+  /**
+   * Requests whose unique and replayed shares had to be apportioned because
+   * the request before them carried text they do not. Zero means the whole
+   * split is the difference of counts the provider reported.
+   */
+  originDerived: number;
   /** True when a request reported no usage, so every token total is a floor. */
   bounded: boolean;
   /** Requests whose answer reported no input count. */
@@ -224,6 +230,35 @@ function usageOf(episode: StatisticsEpisode): Map<string, { input: number | null
 }
 
 /**
+ * The input tokens of one request that carried text no earlier request had
+ * sent.
+ *
+ * Where the request before it carried nothing this one lacks, the answer is
+ * a measurement rather than an apportionment: the two requests differ by
+ * the text new to the later one, so the difference between the two counts
+ * the provider reported is what that text cost. The first request of an
+ * episode is the same measurement with nothing before it, since all of its
+ * text is new.
+ *
+ * A request that dropped text the one before it carried, which a compaction
+ * does, has no such predecessor. Its shares are apportioned by characters
+ * instead and `derived` is called, so that a figure can say how much of the
+ * split was measured.
+ */
+function uniqueOf(
+  shares: PartShare[],
+  previous: { keys: Set<string>; input: number } | null,
+  reported: number,
+  derived: () => void,
+): number {
+  if (previous === null) return reported;
+  const kept = [...previous.keys].every((key) => shares.some((share) => share.part.key === key));
+  if (kept && reported >= previous.input) return reported - previous.input;
+  derived();
+  return shares.reduce((sum, share) => sum + (share.replayed ? 0 : (share.tokens ?? 0)), 0);
+}
+
+/**
  * Every request of the scope with the parts its input was made of, every
  * part with the input it accounted for over the whole scope, and the split
  * of that input into text sent once and text resent.
@@ -240,11 +275,15 @@ export function computeAttribution(scope: StatisticsEpisode[]): Attribution {
   let unique: number | null = null;
   let chars = 0;
   let unmeasured = 0;
+  let originDerived = 0;
 
   for (const episode of scope) {
     const usage = usageOf(episode);
     const headers = new Map<number, HeaderText>();
     const seen = new Set<string>();
+    // The last request of this episode whose answer reported an input count,
+    // against which the next such request's new text is measured.
+    let previous: { keys: Set<string>; input: number } | null = null;
     // Labels are positional, so a compaction that restarts the message list
     // can produce a second part with the label of an earlier one. The step
     // that introduced the later part tells the two apart.
@@ -301,10 +340,13 @@ export function computeAttribution(scope: StatisticsEpisode[]): Attribution {
           total.tokens = (total.tokens ?? 0) + share.tokens;
         }
         totals.set(share.part.key, total);
-        if (share.tokens !== null && !share.replayed) unique = (unique ?? 0) + share.tokens;
       }
       if (reported === null) unmeasured += 1;
-      else input = (input ?? 0) + reported;
+      else {
+        input = (input ?? 0) + reported;
+        unique = (unique ?? 0) + uniqueOf(shares, previous, reported, () => (originDerived += 1));
+        previous = { keys: new Set(shares.map((share) => share.part.key)), input: reported };
+      }
       if (answer?.cacheRead != null) cacheRead = (cacheRead ?? 0) + answer.cacheRead;
       chars += requestChars;
       requests.push({
@@ -336,6 +378,7 @@ export function computeAttribution(scope: StatisticsEpisode[]): Attribution {
     cacheRead,
     unique,
     replayed,
+    originDerived,
     bounded: unmeasured > 0,
     unmeasured,
     chars,

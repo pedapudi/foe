@@ -2368,9 +2368,16 @@ table.events td.type.error {
 }
 
 /* The bars of two rows are read against each other, so the column that
- * holds them takes the width every row leaves. */
+ * holds them takes the width every row leaves. The label and the numbers
+ * keep their line, because a bar column that takes the rest of the width
+ * would otherwise wrap them and set every row at a different height. */
 .input-table {
   width: 100%;
+}
+
+.input-table th,
+.input-table .step-name {
+  white-space: nowrap;
 }
 
 .input-row {
