@@ -252,9 +252,10 @@ step. A program that declares no `seconds` gives `wait` no bound of its
 own; the wait then lasts as long as the children do. A model that means to
 abandon its children ends its turn as usual, and the teardown settles them.
 
-`seconds` is the only bound that reaches across the whole tree at once. A
-child's reservation caps its `seconds` at what the parent has left, so one
-deadline ends every episode below it. Without that bound, an episode that
+`seconds` is the one bound that every episode in the tree shares as a
+single deadline rather than dividing between children. A child's
+reservation caps its `seconds` at what the parent has left, so one deadline
+ends every episode below it. Without that bound, an episode that
 waits on something that never arrives, such as a host tool call the host
 never answers, waits without end, and every ancestor waiting on it does
 too.

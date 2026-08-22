@@ -133,7 +133,7 @@ kernel ruleset still binds it.
 
 A child episode is a further `foe` process. The parent starts it without
 narrowing, because the child applies its own policy to itself at startup.
-Two independent rules keep that policy inside the parent's.
+Two independent rules keep that policy inside the parent's policy.
 
 Resolving the configuration checks containment before any process starts:
 each child program's read roots must lie within its parent program's read
