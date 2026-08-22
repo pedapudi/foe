@@ -60,6 +60,8 @@ async fn a_spawn_reserves_records_and_releases_budget() {
 
     let handle = spawner.spawn(request("worker", BudgetAmount { model_calls: Some(5), ..Default::default() })).unwrap();
     assert_eq!(types(&log), ["episode/start", "budget/reserve", "spawn/start"]);
+    let EventData::BudgetReserve { reserved, .. } = &log.events()[1].data else { panic!() };
+    assert_eq!(reserved.concurrent, Some(1), "a leaf child holds one concurrent slot");
     assert_eq!(lock(&pool).remaining().model_calls, Some(15), "5 of 20 calls are reserved");
     let child_id = handle.child_id.clone();
     wait_for(|| router.has_child(&child_id).then_some(()));
@@ -74,6 +76,7 @@ async fn a_spawn_reserves_records_and_releases_budget() {
     let EventData::BudgetRelease { spent, .. } = &log.events()[4].data else { panic!() };
     assert_eq!(*spent, settled.spent);
     assert_eq!(spent.model_calls, Some(1));
+    assert_eq!(spent.concurrent, None, "settlement returns the reusable concurrent slot");
     assert_eq!(lock(&pool).remaining().model_calls, Some(19), "the reservation is returned and the spend debited");
     assert_eq!(lock(&pool).active_children(), 0);
 }

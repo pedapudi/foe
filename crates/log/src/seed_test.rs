@@ -101,3 +101,16 @@ fn closing_events_names_every_unsettled_call() {
     let [EventData::ToolResult(orphan)] = closing.as_slice() else { panic!("one closing event: {closing:?}") };
     assert_eq!((orphan.step, orphan.call_id.as_str()), (3, "a"));
 }
+
+/// docs/log-format.md "Seeding": a synthetic release charges spend
+/// dimensions and returns the concurrent lease.
+#[test]
+fn a_synthetic_release_returns_concurrent_slots() {
+    let reserved = BudgetAmount { model_calls: Some(3), episodes: Some(2), concurrent: Some(2), ..Default::default() };
+    let events = fx::number(vec![EventData::BudgetReserve { child_id: "ep_child".into(), reserved }]);
+    let closing = closing_events(&events);
+    let [EventData::BudgetRelease { spent, .. }] = closing.as_slice() else { panic!() };
+    assert_eq!(spent.model_calls, Some(3));
+    assert_eq!(spent.episodes, Some(2));
+    assert_eq!(spent.concurrent, None);
+}

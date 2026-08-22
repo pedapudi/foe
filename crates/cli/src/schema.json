@@ -124,7 +124,7 @@
         "seconds": { "description": "Wall-clock limit for the episode; unlimited when absent.", "type": "integer", "minimum": 1 },
         "max_depth": { "description": "How many levels of child episodes may exist below this one; 0 forbids spawning.", "type": "integer", "minimum": 0, "default": 1 },
         "max_episodes": { "description": "Lifetime count of episodes in the tree, including this one.", "type": "integer", "minimum": 1, "default": 8 },
-        "max_concurrent": { "description": "Children running at once.", "type": "integer", "minimum": 1, "default": 4 },
+        "max_concurrent": { "description": "Child episodes running at once anywhere below this episode.", "type": "integer", "minimum": 0, "default": 4 },
         "loop_threshold": { "description": "Consecutive identical tool calls, or identical assistant turns, that end the episode as blocked.", "type": "integer", "minimum": 2, "default": 3 }
       }
     },

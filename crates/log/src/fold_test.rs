@@ -125,7 +125,7 @@ fn compaction_summary(
             files,
             children: vec![],
             covered: Covered { first_seq: 1, last_seq: first_kept_seq - 1 },
-            budget_remaining: BudgetAmount { model_calls: Some(4), tokens: None, seconds: None, episodes: None },
+            budget_remaining: BudgetAmount { model_calls: Some(4), ..Default::default() },
         },
         first_kept_seq,
         summary_request_seq,
@@ -345,7 +345,7 @@ fn episode_end_is_last() {
 /// Every pairing docs/log-format.md defines, as the opening event and the
 /// closing event that the log owes it.
 fn pairings() -> Vec<(EventData, EventData)> {
-    let reserved = BudgetAmount { model_calls: Some(2), tokens: None, seconds: None, episodes: None };
+    let reserved = BudgetAmount { model_calls: Some(2), ..Default::default() };
     vec![
         (assistant(3, "", vec![call("tc_x")], false), result(3, "tc_x", "ok")),
         (
@@ -533,7 +533,12 @@ fn every_event_variant_round_trips() {
         inbox(InboxSource::Request, "reserved source"),
         EventData::BudgetReserve {
             child_id: "k".into(),
-            reserved: BudgetAmount { model_calls: Some(1), tokens: None, seconds: Some(3), episodes: None },
+            reserved: BudgetAmount {
+                model_calls: Some(1),
+                seconds: Some(3),
+                concurrent: Some(1),
+                ..Default::default()
+            },
         },
         EventData::BudgetRelease { child_id: "k".into(), spent: BudgetAmount::default() },
         EventData::SpawnStart {
@@ -561,7 +566,7 @@ fn every_event_variant_round_trips() {
             covered: Covered { first_seq: 1, last_seq: 7 },
             trigger: CompactionTrigger::Threshold,
             projected_tokens: 190_000,
-            reserved: BudgetAmount { model_calls: Some(3), tokens: None, seconds: None, episodes: None },
+            reserved: BudgetAmount { model_calls: Some(3), ..Default::default() },
         }),
         compaction_summary(3, 8, 13, "first summary", &["a"]),
         EventData::CompactionEnd {

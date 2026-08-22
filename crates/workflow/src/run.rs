@@ -334,8 +334,10 @@ impl Executor {
                         format!("node `{}` would fire again beyond its max_fires of {bound}", self.full(&name));
                     return Ok(Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message });
                 }
-                let cap = self.shared.program.budget.max_concurrent as usize;
-                if node.model.is_some() && lock(&self.shared.pool).active_children() >= cap {
+                if node.model.is_some() && lock(&self.shared.pool).remaining().concurrent == Some(0) {
+                    if lock(&self.shared.pool).active_children() == 0 {
+                        return Ok(Outcome::Exhausted { limit: ExhaustedLimit::Concurrency });
+                    }
                     deferred = true;
                     continue;
                 }
@@ -405,6 +407,7 @@ impl Executor {
                 tokens: program.budget.tokens,
                 seconds: program.budget.seconds,
                 episodes: None,
+                concurrent: None,
             };
             let task = sections.join("\n\n");
             let req = SpawnRequest { program: full.clone(), task, context: SpawnContext::Fresh, reserve, call_id };

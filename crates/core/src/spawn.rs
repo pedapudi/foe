@@ -218,6 +218,7 @@ impl ProcessSpawner {
             tokens: b.tokens,
             seconds: b.seconds,
             episodes: None,
+            concurrent: None,
         };
         let program = self.config.programs.get(&req.program);
         let declared = program.filter(|_| req.reserve.model_calls.is_none());
@@ -230,12 +231,16 @@ impl ProcessSpawner {
             true => u64::from(p.budget.max_episodes),
             false => 1,
         });
+        amount.concurrent = program.map(|p| match self.spawns_below(p) {
+            true => u64::from(p.budget.max_concurrent).saturating_add(1).min(u64::from(p.budget.max_episodes)),
+            false => 1,
+        });
         amount
     }
 
     /// Whether a child running `program` could start children in turn.
     fn spawns_below(&self, program: &ChildProgram) -> bool {
-        self.config.budget.max_depth > 1 && !program.grants.spawn.is_empty()
+        self.config.budget.max_depth > 1 && program.budget.max_depth > 0 && !program.grants.spawn.is_empty()
     }
 
     /// A fresh child id. A caller that reserves budget under the id before
@@ -261,6 +266,9 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
     budget.max_depth = budget.max_depth.min(parent.budget.max_depth.saturating_sub(1));
     if let Some(episodes) = reserve.episodes {
         budget.max_episodes = budget.max_episodes.min(episodes.try_into().unwrap_or(u32::MAX));
+    }
+    if let Some(concurrent) = reserve.concurrent {
+        budget.max_concurrent = budget.max_concurrent.min(concurrent.saturating_sub(1).try_into().unwrap_or(u32::MAX));
     }
     Config {
         version: parent.version,
@@ -453,6 +461,7 @@ impl Reader {
             // The child itself, plus every episode its own releases account
             // for. A process that started counts even when it wrote no log.
             episodes: Some(1 + below.episodes.unwrap_or(0)),
+            concurrent: None,
         };
         Settled { outcome, usage, spent }
     }

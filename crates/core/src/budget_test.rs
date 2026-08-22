@@ -45,17 +45,21 @@ fn seconds_elapse_on_the_wall_clock() {
 fn reservation_debits_the_remainder_until_release() {
     let mut pool = Pool::new(budget());
     pool.note_request();
-    let granted = pool
-        .reserve("child", BudgetAmount { model_calls: Some(4), tokens: None, seconds: None, episodes: None })
-        .unwrap();
+    let granted = pool.reserve("child", BudgetAmount { model_calls: Some(4), ..Default::default() }).unwrap();
     assert_eq!(
         granted,
-        BudgetAmount { model_calls: Some(4), tokens: Some(1000), seconds: None, episodes: Some(2) },
+        BudgetAmount {
+            model_calls: Some(4),
+            tokens: Some(1000),
+            episodes: Some(2),
+            concurrent: Some(1),
+            ..Default::default()
+        },
         "an unset dimension receives the remainder"
     );
     assert_eq!(pool.remaining().model_calls, Some(5));
     assert_eq!(pool.remaining().tokens, Some(0));
-    pool.release("child", BudgetAmount { model_calls: Some(1), tokens: Some(200), seconds: None, episodes: None });
+    pool.release("child", BudgetAmount { model_calls: Some(1), tokens: Some(200), ..Default::default() });
     assert_eq!(pool.remaining().model_calls, Some(8));
     assert_eq!(pool.remaining().tokens, Some(800));
 }
@@ -63,12 +67,10 @@ fn reservation_debits_the_remainder_until_release() {
 #[test]
 fn reservation_beyond_the_remainder_names_the_limit() {
     let mut pool = Pool::new(budget());
-    let err = pool
-        .reserve("child", BudgetAmount { model_calls: Some(11), tokens: None, seconds: None, episodes: None })
-        .unwrap_err();
+    let err = pool.reserve("child", BudgetAmount { model_calls: Some(11), ..Default::default() }).unwrap_err();
     assert_eq!(err, ExhaustedLimit::ModelCalls);
     let err = pool
-        .reserve("child", BudgetAmount { model_calls: Some(1), tokens: Some(5000), seconds: None, episodes: None })
+        .reserve("child", BudgetAmount { model_calls: Some(1), tokens: Some(5000), ..Default::default() })
         .unwrap_err();
     assert_eq!(err, ExhaustedLimit::Tokens);
 }
@@ -123,12 +125,44 @@ fn the_episode_allowance_is_shared_out_and_reported_back() {
     assert_eq!(pool.reserve("c", BudgetAmount::default()).unwrap_err(), ExhaustedLimit::Episodes);
 }
 
+/// docs/config.md `budget`: `max_concurrent` bounds every child episode
+/// running below this episode. Each active subtree holds its granted slots.
+#[test]
+fn concurrent_slots_are_leased_to_active_subtrees() {
+    let mut pool = Pool::new(Budget { max_episodes: 6, max_concurrent: 3, ..budget() });
+    let subtree = pool
+        .reserve(
+            "subtree",
+            BudgetAmount {
+                model_calls: Some(1),
+                tokens: Some(1),
+                episodes: Some(2),
+                concurrent: Some(2),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(subtree.concurrent, Some(2));
+    assert_eq!(pool.remaining().concurrent, Some(1));
+    let leaf = || BudgetAmount {
+        model_calls: Some(1),
+        tokens: Some(1),
+        episodes: Some(1),
+        concurrent: Some(1),
+        ..Default::default()
+    };
+    pool.reserve("leaf", leaf()).unwrap();
+    assert_eq!(pool.reserve("blocked", leaf()).unwrap_err(), ExhaustedLimit::Concurrency);
+    pool.release("subtree", BudgetAmount::default());
+    assert_eq!(pool.remaining().concurrent, Some(2), "settling a subtree returns its concurrent slots");
+}
+
 #[test]
 fn folding_reserve_and_release_events_matches_live_calls() {
     let mut live = Pool::new(budget());
     live.note_request();
     let granted = live.reserve("k", BudgetAmount { model_calls: Some(3), ..Default::default() }).unwrap();
-    live.release("k", BudgetAmount { model_calls: Some(2), tokens: Some(10), seconds: None, episodes: None });
+    live.release("k", BudgetAmount { model_calls: Some(2), tokens: Some(10), ..Default::default() });
 
     let mut folded = Pool::new(budget());
     folded.apply(&EventData::ModelRequest(foe_log::ModelRequest {
@@ -142,7 +176,7 @@ fn folding_reserve_and_release_events_matches_live_calls() {
     folded.apply(&EventData::BudgetReserve { child_id: "k".into(), reserved: granted });
     folded.apply(&EventData::BudgetRelease {
         child_id: "k".into(),
-        spent: BudgetAmount { model_calls: Some(2), tokens: Some(10), seconds: None, episodes: None },
+        spent: BudgetAmount { model_calls: Some(2), tokens: Some(10), ..Default::default() },
     });
     assert_eq!(folded.remaining(), live.remaining());
     assert_eq!(folded.active_children(), 0);
