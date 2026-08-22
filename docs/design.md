@@ -406,6 +406,9 @@ through the tree can spend more than the root's total. Structural caps on
 depth, lifetime episode count, and concurrency sit beside the spend caps. A
 spawn that would pass any cap fails as a tool call with a result naming the
 limit, and no child starts; the model reads that result like any other.
+A parent observes a child as settled only after it has appended `spawn/end`
+and `budget/release` and returned the child's reservation to the pool, so
+anything waiting on the child sees the account of it already closed.
 
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent
