@@ -140,6 +140,14 @@ compiled from its grants. Every process it starts runs under a subset of
 that ruleset. Nothing a child or a tool does can reach further than its
 parent could.
 
+What narrows is reach: read roots, write roots, and the depth still
+available below. A child's tool list is its own and need not be a subset of
+its parent's, so a child may be offered `edit` where its parent has only
+`spawn`. Every such tool is still bounded by the child's grants, which lie
+inside the parent's, and by the ruleset the child inherits. One document
+declares every level, so the tool list of each level is the author's
+choice rather than something the runtime derives.
+
 The log directory is the whole state. Copying it copies the run. The viewer,
 replay, forking, budget accounting, and team coordination all read it and
 nothing else.
@@ -237,9 +245,20 @@ one killed mid-flight.
 
 Ending a child that a model meant to keep is a poor answer, so a parent
 that means to wait says so: the `wait` tool returns once every child it
-started has ended, bounded by the episode's `seconds` budget. A model that
-means to abandon its children ends its turn as usual, and the teardown
-settles them.
+started has ended, bounded by the episode's `seconds` budget. When it
+returns because that budget ran out, it returns an error naming how many
+children are still running, and the episode ends as exhausted at its next
+step. A program that declares no `seconds` gives `wait` no bound of its
+own; the wait then lasts as long as the children do. A model that means to
+abandon its children ends its turn as usual, and the teardown settles them.
+
+`seconds` is the one bound that every episode in the tree shares as a
+single deadline rather than dividing between children. A child's
+reservation caps its `seconds` at what the parent has left, so one deadline
+ends every episode below it. Without that bound, an episode that
+waits on something that never arrives, such as a host tool call the host
+never answers, waits without end, and every ancestor waiting on it does
+too.
 
 A program's `done_when` field chooses how an episode completes.
 

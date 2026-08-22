@@ -45,15 +45,17 @@ fn seconds_elapse_on_the_wall_clock() {
 fn reservation_debits_the_remainder_until_release() {
     let mut pool = Pool::new(budget());
     pool.note_request();
-    let granted = pool.reserve("child", BudgetAmount { model_calls: Some(4), tokens: None, seconds: None }).unwrap();
+    let granted = pool
+        .reserve("child", BudgetAmount { model_calls: Some(4), tokens: None, seconds: None, episodes: None })
+        .unwrap();
     assert_eq!(
         granted,
-        BudgetAmount { model_calls: Some(4), tokens: Some(1000), seconds: None },
+        BudgetAmount { model_calls: Some(4), tokens: Some(1000), seconds: None, episodes: Some(2) },
         "an unset dimension receives the remainder"
     );
     assert_eq!(pool.remaining().model_calls, Some(5));
     assert_eq!(pool.remaining().tokens, Some(0));
-    pool.release("child", BudgetAmount { model_calls: Some(1), tokens: Some(200), seconds: None });
+    pool.release("child", BudgetAmount { model_calls: Some(1), tokens: Some(200), seconds: None, episodes: None });
     assert_eq!(pool.remaining().model_calls, Some(8));
     assert_eq!(pool.remaining().tokens, Some(800));
 }
@@ -61,11 +63,23 @@ fn reservation_debits_the_remainder_until_release() {
 #[test]
 fn reservation_beyond_the_remainder_names_the_limit() {
     let mut pool = Pool::new(budget());
-    let err = pool.reserve("child", BudgetAmount { model_calls: Some(11), tokens: None, seconds: None }).unwrap_err();
+    let err = pool
+        .reserve("child", BudgetAmount { model_calls: Some(11), tokens: None, seconds: None, episodes: None })
+        .unwrap_err();
     assert_eq!(err, ExhaustedLimit::ModelCalls);
-    let err =
-        pool.reserve("child", BudgetAmount { model_calls: Some(1), tokens: Some(5000), seconds: None }).unwrap_err();
+    let err = pool
+        .reserve("child", BudgetAmount { model_calls: Some(1), tokens: Some(5000), seconds: None, episodes: None })
+        .unwrap_err();
     assert_eq!(err, ExhaustedLimit::Tokens);
+}
+
+#[test]
+fn a_grant_of_zero_on_any_dimension_names_that_limit() {
+    let mut pool = Pool::new(budget());
+    pool.note_usage(Usage { input: 1000, output: 0, cache_read: 0 });
+    let err = pool.reserve("child", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap_err();
+    assert_eq!(err, ExhaustedLimit::Tokens, "the whole token remainder is zero, so no child could start");
+    assert_eq!(pool.active_children(), 0, "a refused reservation holds nothing");
 }
 
 #[test]
@@ -74,11 +88,12 @@ fn structural_caps_refuse_a_spawn() {
     assert_eq!(pool.reserve("a", BudgetAmount::default()).unwrap_err(), ExhaustedLimit::Depth);
 
     let mut pool = Pool::new(budget());
-    pool.reserve("a", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap();
+    let one_episode = |calls| BudgetAmount { model_calls: Some(calls), episodes: Some(1), ..Default::default() };
+    pool.reserve("a", one_episode(1)).unwrap();
     assert_eq!(pool.reserve("b", BudgetAmount::default()).unwrap_err(), ExhaustedLimit::Concurrency);
-    pool.release("a", BudgetAmount::default());
-    pool.reserve("b", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap();
-    pool.release("b", BudgetAmount::default());
+    pool.release("a", one_episode(1));
+    pool.reserve("b", one_episode(1)).unwrap();
+    pool.release("b", one_episode(1));
     assert_eq!(
         pool.reserve("c", BudgetAmount::default()).unwrap_err(),
         ExhaustedLimit::Episodes,
@@ -86,12 +101,34 @@ fn structural_caps_refuse_a_spawn() {
     );
 }
 
+/// docs/config.md `budget`: `max_episodes` is the lifetime count of
+/// episodes in the tree, this one included. The count reaches the pool
+/// through the reservation a child receives and the count it reports back.
+#[test]
+fn the_episode_allowance_is_shared_out_and_reported_back() {
+    let mut pool = Pool::new(Budget { max_episodes: 4, max_concurrent: 2, ..budget() });
+    let first = pool.reserve("a", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap();
+    assert_eq!(first.episodes, Some(3), "a request that names no count takes the whole remainder");
+    assert_eq!(
+        pool.reserve("b", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap_err(),
+        ExhaustedLimit::Episodes,
+        "the first reservation holds the rest of the allowance"
+    );
+
+    let mut pool = Pool::new(Budget { max_episodes: 4, max_concurrent: 2, ..budget() });
+    pool.reserve("a", BudgetAmount { model_calls: Some(1), episodes: Some(2), ..Default::default() }).unwrap();
+    pool.release("a", BudgetAmount { model_calls: Some(1), episodes: Some(2), ..Default::default() });
+    assert_eq!(pool.remaining().episodes, Some(1), "a settled subtree of two keeps its share");
+    pool.reserve("b", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap();
+    assert_eq!(pool.reserve("c", BudgetAmount::default()).unwrap_err(), ExhaustedLimit::Episodes);
+}
+
 #[test]
 fn folding_reserve_and_release_events_matches_live_calls() {
     let mut live = Pool::new(budget());
     live.note_request();
     let granted = live.reserve("k", BudgetAmount { model_calls: Some(3), ..Default::default() }).unwrap();
-    live.release("k", BudgetAmount { model_calls: Some(2), tokens: Some(10), seconds: None });
+    live.release("k", BudgetAmount { model_calls: Some(2), tokens: Some(10), seconds: None, episodes: None });
 
     let mut folded = Pool::new(budget());
     folded.apply(&EventData::ModelRequest(foe_log::ModelRequest {
@@ -105,7 +142,7 @@ fn folding_reserve_and_release_events_matches_live_calls() {
     folded.apply(&EventData::BudgetReserve { child_id: "k".into(), reserved: granted });
     folded.apply(&EventData::BudgetRelease {
         child_id: "k".into(),
-        spent: BudgetAmount { model_calls: Some(2), tokens: Some(10), seconds: None },
+        spent: BudgetAmount { model_calls: Some(2), tokens: Some(10), seconds: None, episodes: None },
     });
     assert_eq!(folded.remaining(), live.remaining());
     assert_eq!(folded.active_children(), 0);

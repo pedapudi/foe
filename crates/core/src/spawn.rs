@@ -213,9 +213,29 @@ impl ProcessSpawner {
     /// grants the parent's whole remainder for it. Reserving the remainder
     /// for every dimension would exhaust the parent while one child runs.
     pub fn reserve_for(&self, req: &SpawnRequest) -> BudgetAmount {
-        let all = |b: &Budget| BudgetAmount { model_calls: Some(b.model_calls), tokens: b.tokens, seconds: b.seconds };
-        let declared = self.config.programs.get(&req.program).filter(|_| req.reserve.model_calls.is_none());
-        declared.map_or(req.reserve, |p| all(&p.budget))
+        let all = |b: &Budget| BudgetAmount {
+            model_calls: Some(b.model_calls),
+            tokens: b.tokens,
+            seconds: b.seconds,
+            episodes: None,
+        };
+        let program = self.config.programs.get(&req.program);
+        let declared = program.filter(|_| req.reserve.model_calls.is_none());
+        let mut amount = declared.map_or(req.reserve, |p| all(&p.budget));
+        // A child that can start no children of its own holds exactly one
+        // episode, whatever allowance its program declares. Asking for the
+        // declared allowance would hold the parent's whole remainder
+        // against a leaf and starve the leaf's siblings.
+        amount.episodes = program.map(|p| match self.spawns_below(p) {
+            true => u64::from(p.budget.max_episodes),
+            false => 1,
+        });
+        amount
+    }
+
+    /// Whether a child running `program` could start children in turn.
+    fn spawns_below(&self, program: &ChildProgram) -> bool {
+        self.config.budget.max_depth > 1 && !program.grants.spawn.is_empty()
     }
 
     /// A fresh child id. A caller that reserves budget under the id before
@@ -229,8 +249,9 @@ impl ProcessSpawner {
 }
 
 /// The configuration a child is launched with. Budget dimensions the parent
-/// reserved replace the program's own when they are tighter, and the depth
-/// below the child is one less than below the parent.
+/// reserved replace the program's own when they are tighter, the episode
+/// allowance is the share the parent granted, and the depth below the child
+/// is one less than below the parent.
 pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reserve: BudgetAmount) -> Config {
     let mut budget = program.budget.clone();
     let tighter = |own: Option<u64>, reserved: Option<u64>| reserved.map_or(own, |n| Some(own.map_or(n, |t| t.min(n))));
@@ -238,6 +259,9 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
     budget.tokens = tighter(budget.tokens, reserve.tokens);
     budget.seconds = tighter(budget.seconds, reserve.seconds);
     budget.max_depth = budget.max_depth.min(parent.budget.max_depth.saturating_sub(1));
+    if let Some(episodes) = reserve.episodes {
+        budget.max_episodes = budget.max_episodes.min(episodes.try_into().unwrap_or(u32::MAX));
+    }
     Config {
         version: parent.version,
         name: program.name.clone(),
@@ -406,6 +430,7 @@ impl Reader {
                 EventData::BudgetRelease { spent, .. } => {
                     below.model_calls = Some(below.model_calls.unwrap_or(0) + spent.model_calls.unwrap_or(0));
                     below.tokens = Some(below.tokens.unwrap_or(0) + spent.tokens.unwrap_or(0));
+                    below.episodes = Some(below.episodes.unwrap_or(0) + spent.episodes.unwrap_or(0));
                 }
                 EventData::EpisodeEnd { outcome: o } => outcome = Some(o.clone()),
                 _ => {}
@@ -425,6 +450,9 @@ impl Reader {
             model_calls: Some(calls + below.model_calls.unwrap_or(0)),
             tokens: Some(usage.input + usage.output + below.tokens.unwrap_or(0)),
             seconds: Some(start.elapsed().as_secs()),
+            // The child itself, plus every episode its own releases account
+            // for. A process that started counts even when it wrote no log.
+            episodes: Some(1 + below.episodes.unwrap_or(0)),
         };
         Settled { outcome, usage, spent }
     }

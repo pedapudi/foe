@@ -68,6 +68,18 @@ pub(crate) fn fake_child(dir: &Path) -> Vec<OsString> {
     script(dir, "fake-foe.sh", FAKE_CHILD)
 }
 
+/// A stand-in child that settles one child of its own and then ends, so
+/// that what it reports covers a subtree rather than itself alone.
+pub(crate) const NESTING_CHILD: &str = r#"#!/bin/sh
+echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{},"identity":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
+echo '{"seq":1,"time":1,"type":"budget/release","data":{"child_id":"ep_grand","spent":{"model_calls":3,"tokens":50,"episodes":2}}}'
+echo '{"seq":2,"time":1,"type":"episode/end","data":{"outcome":{"kind":"completed","value":"done"}}}'
+"#;
+
+pub(crate) fn nesting_child(dir: &Path) -> Vec<OsString> {
+    script(dir, "nesting-foe.sh", NESTING_CHILD)
+}
+
 fn script(dir: &Path, name: &str, body: &str) -> Vec<OsString> {
     let script = dir.join(name);
     std::fs::write(&script, body).unwrap();
@@ -83,6 +95,49 @@ pub(crate) fn wait_for<T>(mut probe: impl FnMut() -> Option<T>) -> T {
         std::thread::sleep(Duration::from_millis(10));
     }
     panic!("condition not met within 5 seconds");
+}
+
+/// docs/config.md `budget`: `max_episodes` bounds the whole tree. A child
+/// that can start no children of its own asks for one episode, so a leaf
+/// does not hold its parent's whole allowance against its siblings, and
+/// the share the parent grants caps what the child's own document declares.
+#[test]
+fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
+    let dir = scratch("spawn", "episode-share");
+    let mut config = parent_config();
+    let worker = config.programs["worker"].clone();
+    let mut nested = worker.clone();
+    nested.name = "nested".into();
+    nested.grants.spawn = vec!["worker".into()];
+    nested.programs.insert("worker".into(), worker);
+    nested.budget.max_episodes = 5;
+    config.programs.insert("nested".into(), nested);
+    config.grants.spawn.push("nested".into());
+    let spawner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir,
+        config.clone(),
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        Arc::new(Seen::default()),
+    )
+    .unwrap();
+    let ask = |program: &str| {
+        let req = SpawnRequest {
+            program: program.into(),
+            task: "t".into(),
+            context: SpawnContext::Fresh,
+            reserve: BudgetAmount::default(),
+            call_id: "tc".into(),
+        };
+        spawner.reserve_for(&req).episodes
+    };
+    assert_eq!(ask("worker"), Some(1), "a child with no spawn grant holds one episode");
+    assert_eq!(ask("nested"), Some(5), "a child that may spawn asks for the allowance it declares");
+
+    let granted = BudgetAmount { model_calls: Some(5), episodes: Some(2), ..Default::default() };
+    let child = child_config(&config, &config.programs["nested"], "t".into(), granted);
+    assert_eq!(child.budget.max_episodes, 2, "the granted share caps the child's own allowance");
 }
 
 #[tokio::test]
@@ -105,7 +160,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
         program: "worker".into(),
         task: "do it".into(),
         context: SpawnContext::Fresh,
-        reserve: BudgetAmount { model_calls: Some(5), tokens: None, seconds: None },
+        reserve: BudgetAmount { model_calls: Some(5), tokens: None, seconds: None, episodes: None },
         call_id: "tc_spawn".into(),
     };
     let handle = spawner.spawn(req).unwrap();
