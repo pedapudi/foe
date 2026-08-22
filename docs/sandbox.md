@@ -111,9 +111,10 @@ The episode keeps:
 ## Executables
 
 A configured executable runs under the episode's ruleset narrowed once
-more. The narrowed policy keeps the read roots, the write roots, the
-loader, system, and device paths, and execute on the one file named by the
-tool definition. It drops the log directory, the key file, execute on every
+more. Program construction opens and verifies the executable, and each call
+executes a duplicate of that descriptor. The narrowed policy keeps the read
+roots, the write roots, the loader, system, and device paths, and execute on
+that descriptor. It drops the log directory, the key file, execute on every
 other executable, and TCP unless the tool definition sets `network: true`.
 
 This crate forbids unsafe code, so the narrowing is applied by a short-lived

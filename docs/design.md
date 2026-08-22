@@ -328,10 +328,11 @@ different directory yields the same identity. Runtime-contributed strings are
 included so that upgrading foe changes identity when and only when the model
 would see different text.
 
-`identity` reads files named in the configuration in order to hash them. It
-executes nothing and opens no socket. A system that records which program
-produced which result, such as an evaluation harness, can therefore compute
-identity on a machine that never runs the program.
+Program resolution reads files named in the configuration so that identity
+can include their hashes. Identity computation executes nothing and opens no
+socket. A system that records which program produced which result, such as
+an evaluation harness, can therefore compute identity on a machine that
+never runs the program.
 
 ## Tools
 
@@ -351,10 +352,11 @@ ToolSpec {
 The effect is the tool's declared interaction with the world. The registry
 refuses a tool whose effect the grants do not cover, at program construction.
 At dispatch, the runtime passes the tool only the capability handles its
-effect entitles it to. The handles are a filesystem reader bounded to the read
-roots, a writer bounded to the write roots, an executor bounded to the
-declared executables, and a spawner bounded to the declared child programs.
-A tool that declares `reads` receives no writer.
+effect entitles it to. The handles are a filesystem reader bounded to opened
+read-root descriptors, a writer bounded to opened write-root descriptors, an
+executor bounded to verified executable descriptors, and a spawner bounded
+to the declared child programs. A tool that declares `reads` receives no
+writer.
 
 ```
    grants                    registry (construction)          dispatch (per call)

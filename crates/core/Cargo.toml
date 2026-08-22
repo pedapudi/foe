@@ -16,5 +16,6 @@ sha2.workspace = true
 hex.workspace = true
 async-trait.workspace = true
 ignore.workspace = true
+cap-std.workspace = true
 landlock = "0.4"
-nix = { version = "0.31", features = ["signal", "process"] }
+nix = { version = "0.31", features = ["fs", "signal", "process"] }

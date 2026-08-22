@@ -15,6 +15,7 @@ use crate::{
 use foe_log::ToolCall;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::io::{Read, Seek};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -205,7 +206,8 @@ impl Registry {
             let name = spec.name.as_str();
             let mut exec = None;
             let (tool, source): (Arc<dyn Tool>, Source) = if let Some(def) = program.tool_defs.get(name) {
-                let tool = Arc::new(ExecTool { spec: spec.clone(), def: def.clone() });
+                let program = open_verified(name, def)?;
+                let tool = Arc::new(ExecTool { spec: spec.clone(), def: def.clone(), program });
                 exec = Some(tool.clone());
                 (tool, Source::Configured)
             } else if program.host_tools.contains_key(name) {
@@ -362,12 +364,37 @@ impl Registry {
 pub struct ExecTool {
     spec: ToolSpec,
     def: ToolDef,
+    program: Arc<std::fs::File>,
+}
+
+pub(crate) fn open_verified(name: &str, def: &ToolDef) -> Result<Arc<std::fs::File>, ConfigError> {
+    let key = format!("tool_defs.{name}.exec");
+    let mut file = std::fs::File::open(&def.exec).map_err(|e| ConfigError::Invalid {
+        key: key.clone(),
+        rule: format!("is readable for execution: {}: {e}", def.exec.display()),
+    })?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).map_err(|e| ConfigError::Invalid {
+        key: key.clone(),
+        rule: format!("is readable for execution: {}: {e}", def.exec.display()),
+    })?;
+    let actual = crate::identity::sha256_hex(&bytes);
+    let expected = def.exec_sha256.as_deref().unwrap_or_default();
+    if actual != expected {
+        return Err(ConfigError::Invalid {
+            key,
+            rule: format!("still has the content hash recorded at resolution; expected {expected}, found {actual}"),
+        });
+    }
+    file.rewind().map_err(ConfigError::Io)?;
+    Ok(Arc::new(file))
 }
 
 impl ExecTool {
     fn request(&self, args: Vec<String>) -> ExecRequest {
         ExecRequest {
             program: self.def.exec.clone(),
+            verified_program: Some(self.program.clone()),
             args,
             cwd: self.def.cwd.clone().unwrap_or_default(),
             env: BTreeMap::new(),

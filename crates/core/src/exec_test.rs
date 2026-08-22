@@ -1,6 +1,7 @@
 use super::*;
 use foe_log::SandboxMode;
 use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 /// A fresh directory under the build tree for one test.
@@ -23,6 +24,7 @@ fn executor(name: &str, read: Vec<PathBuf>, exec: Vec<PathBuf>) -> (LocalExecuto
 fn request(program: &str, args: &[&str], cwd: &Path) -> ExecRequest {
     ExecRequest {
         program: program.into(),
+        verified_program: None,
         args: args.iter().map(|s| s.to_string()).collect(),
         cwd: cwd.to_path_buf(),
         env: BTreeMap::new(),
@@ -123,4 +125,33 @@ fn reads_outside_the_roots_are_denied_under_landlock() {
     let b = ex.run(request("/bin/cat", &[outside.join("b").to_str().unwrap()], &dir)).unwrap();
     assert_ne!(b.exit_code, Some(0));
     assert!(String::from_utf8_lossy(&b.stderr).contains("Permission denied"));
+}
+
+/// docs/config.md `tool_defs`: calls execute the immutable bytes verified at
+/// registry construction.
+#[test]
+fn a_verified_descriptor_executes_the_bytes_opened_before_path_replacement() {
+    let (ex, dir, _) = executor("verified", vec!["/bin".into()], vec![]);
+    let program = dir.join("program");
+    let original = b"#!/bin/sh\necho original\n";
+    std::fs::write(&program, original).unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let def = crate::ToolDef {
+        exec: program.clone(),
+        exec_sha256: Some(crate::identity::sha256_hex(original)),
+        description: "test executable".into(),
+        instruction: None,
+        network: false,
+        timeout_seconds: 10,
+        cwd: Some(dir.clone()),
+    };
+    let opened = crate::registry::open_verified("test", &def).unwrap();
+    std::fs::rename(&program, dir.join("verified-program")).unwrap();
+    std::fs::write(&program, "#!/bin/sh\necho replacement\n").unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut req = request(program.to_str().unwrap(), &[], &dir);
+    req.verified_program = Some(opened);
+    let out = ex.run(req).unwrap();
+    assert_eq!(out.exit_code, Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), "original\n");
 }
