@@ -86,8 +86,8 @@ temporary projects under Bazel's test directory:
 bazel test //examples/...
 ```
 
-These two are the only examples with Bazel targets. `examples/` holds
-twelve runnable programs in all, each started by its own `run.sh` or
+These three are the only examples with Bazel targets. `examples/` holds
+thirteen runnable programs in all, each started by its own `run.sh` or
 `run.py`; [`examples/README.md`](../examples/README.md) indexes them.
 
 ## Use Cargo for Rust development
