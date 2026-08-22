@@ -158,18 +158,21 @@ function renderToolSchema(tool: ToolSchema): HTMLElement {
 }
 
 function renderUser(row: UserRow): HTMLElement {
-  const meta: string[] = [];
+  // Where the message came from leads the row's metadata. Provenance takes
+  // one of six words, and a six-glyph alphabet would be learned rather than
+  // read, so it stays text beside the sender and the message id.
+  const meta: string[] = [row.source];
   if (row.from) meta.push(`from ${row.from}`);
   if (row.messageId) meta.push(row.messageId);
   return h(
     "div",
     { class: "row user", "data-key": row.key },
     gutter(row),
-    h("div", { class: "role" }, "user", h("span", { class: "source" }, row.source)),
+    h("div", { class: "role" }, "user"),
     h(
       "div",
       { class: "body" },
-      meta.length ? h("div", { class: "meta" }, meta.join(" · ")) : null,
+      h("div", { class: "meta" }, meta.join(" · ")),
       row.content.length ? row.content.map((b, i) => renderBlock(b, `block:${i}`)) : h("pre", { class: "text" }, "(no content)"),
     ),
   );
@@ -277,10 +280,15 @@ function renderTool(row: ToolRow): HTMLElement {
         h("span", { class: "tool-name" }, row.name),
         row.isError ? markSvg("error") : null,
         row.synthetic ? markSvg("synthetic") : null,
-        row.spill
-          ? h("span", { class: "meta", title: "canonical value stored under spill/" }, `spill ${row.spill}`)
-          : null,
-        h("span", { class: "meta" }, meta.join(" · ")),
+        // Where the canonical value is stored is a locator a reader reads
+        // and copies, so it stays text, and it joins the rest of the row's
+        // metadata under the same separator rather than standing apart.
+        h(
+          "span",
+          { class: "meta" },
+          row.spill ? [h("span", { title: "canonical value stored under spill/" }, `spill ${row.spill}`), " · "] : null,
+          meta.join(" · "),
+        ),
       ),
       row.rendered
         ? renderToolText(row.rendered, languageForPath(str(obj(row.value).path)))

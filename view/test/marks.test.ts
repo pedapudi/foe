@@ -42,6 +42,39 @@ function points(mark: Mark): { x: number; y: number }[] {
   return out;
 }
 
+/** One part reduced to its geometry, so two marks can be compared as drawings. */
+type Figure = { circle: [number, number, number] } | { line: { x: number; y: number }[] };
+
+/** Coordinates are compared after rounding, because a mirrored coordinate is
+ * a subtraction and a subtraction of decimals does not land exactly. */
+const round = (n: number) => Number(n.toFixed(4));
+
+function figures(mark: Mark): Figure[] {
+  return mark.parts.map((part) =>
+    part.shape === "circle"
+      ? {
+          circle: [round(Number(part.attrs.cx)), round(Number(part.attrs.cy)), round(Number(part.attrs.r))] as [
+            number,
+            number,
+            number,
+          ],
+        }
+      : { line: points({ ...mark, parts: [part] }).map((p) => ({ x: round(p.x), y: round(p.y) })) },
+  );
+}
+
+/** The same drawing reflected about the vertical centre of the mark's box. */
+function reflected(mark: Mark): Figure[] {
+  const flip = (x: number) => round(MARK_WIDTH - x);
+  return figures(mark)
+    .map((f) =>
+      "circle" in f
+        ? { circle: [flip(f.circle[0]), f.circle[1], f.circle[2]] as [number, number, number] }
+        : { line: f.line.map((p) => ({ x: flip(p.x), y: p.y })).reverse() },
+    )
+    .reverse();
+}
+
 test("the catalogue holds one mark for each state the conversation draws", () => {
   assert.deepEqual(Object.keys(MARKS).sort(), [...KINDS].sort());
 });
@@ -94,5 +127,26 @@ test("the interrupted stream runs and stops, and the live stream is its mirror",
   assert.equal(stopped[1]!.shape, "circle");
   assert.equal(running[0]!.shape, "circle");
   assert.equal(running[1]!.shape, "path");
-  assert.ok(Number(stopped[1]!.attrs.cx) > Number(running[0]!.attrs.cx));
+  // Reflection about the box's vertical centre, part for part. Direction is
+  // the whole of the difference between the two, so nothing else may
+  // differ: a ring one mark drew larger than the other would read as a
+  // second distinction that means nothing.
+  assert.deepEqual(reflected(MARKS.live), figures(MARKS.interrupted));
+});
+
+test("the ring stays open at the smallest size a reader can set", () => {
+  // A ring closes into a dot once its hole falls under about three device
+  // pixels, and the two mirrored marks then read as one. The worst case a
+  // reader can produce is the smallest text size, which leaves the base 13
+  // pixels unscaled, at the lowest page scale of 70 percent; the stylesheet
+  // gives a mark a height of 1.2em and a 1.2-pixel stroke that the box does
+  // not scale.
+  const stroke = 1.2;
+  const perUnit = (13 * 1.2 * 0.7) / MARK_HEIGHT;
+  for (const kind of ["interrupted", "live"] as const) {
+    const ring = MARKS[kind].parts.find((p) => p.shape === "circle");
+    assert.ok(ring, `${kind} has no ring`);
+    const hole = 2 * Number(ring.attrs.r) * perUnit - stroke;
+    assert.ok(hole >= 3, `${kind} ring hole falls to ${hole.toFixed(2)}px, under the 3px that still reads as open`);
+  }
 });

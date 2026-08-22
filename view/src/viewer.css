@@ -1199,9 +1199,9 @@ svg.mark .fill.caution {
  * scale and the page-scale control without a rule of its own. */
 svg.mark {
   display: inline-block;
-  height: 1em;
-  width: 1.167em;
-  vertical-align: -0.16em;
+  height: 1.2em;
+  width: 1.4em;
+  vertical-align: -0.26em;
   margin-left: var(--dt-gap-item);
   fill: none;
   stroke: currentColor;
@@ -1235,17 +1235,7 @@ svg.mark.synthetic {
 }
 
 svg.mark.synthetic path {
-  stroke-dasharray: 3 2.2;
-}
-
-/* Where a message came from. Six short words say provenance plainly, and a
- * six-glyph alphabet would obscure it, so this stays text. */
-.row.user > .role > .source {
-  display: block;
-  font-family: var(--v2-mono);
-  font-size: calc(9.5px * var(--dt-font-scale, 1));
-  font-weight: 400;
-  color: var(--v2-ink-faint);
+  stroke-dasharray: 1.6 2;
 }
 
 pre.text {
