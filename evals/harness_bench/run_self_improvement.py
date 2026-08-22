@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
-LIMITS = {"model_calls": 22, "input_tokens": 400_000, "output_tokens": 50_000, "seconds": 1_800}
+LIMITS = {"model_calls": 24, "input_tokens": 650_000, "output_tokens": 60_000, "seconds": 1_800}
 ALLOWED_PREFIXES = ("crates/core/src/", "crates/code/src/", "crates/cli/src/", "docs/")
 
 
@@ -87,7 +87,7 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
         "instructions": {
             "10-role": "Improve one general Foe runtime behavior using the supplied assessed evidence.",
             "20-scope": "Diagnose the mechanism before editing. Change runtime source, a regression test, and every affected specification. Do not change evaluation code, benchmark adapters, tasks, graders, budgets, or model routes. Do not encode benchmark identifiers, fixture values, or grader rules.",
-            "30-quality": "Prefer a small behavioral change supported by more than one observation. Preserve trace reconstruction, declared authority, separate token budgets, and existing completion semantics unless the evidence justifies a specified semantic change.",
+            "30-quality": "Prefer a small behavioral change supported by more than one observation. Preserve trace reconstruction, declared authority, separate token budgets, and explicit completion semantics. A successful tool action alone never proves that an open-ended task is complete.",
             "40-validation": "Read every file before editing it. Use check after the change. State the expected accuracy, token, latency, and compatibility effects in the final result. Full repository validation runs outside this episode.",
         },
         "tools": ["read", "grep", "edit", "bash", "check"],
@@ -130,7 +130,7 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
         },
         "model": model,
         "sandbox": {"mode": "best-effort"},
-        "task": "Use the assessed micro and Harness-Bench outcomes to implement one general improvement in Foe. A correct artifact followed by exhaustion is a quality failure. Retain strict finite budgets while removing avoidable work or termination failure.",
+        "task": "Use the assessed micro and Harness-Bench outcomes to improve budget-aware model behavior. A correct artifact followed by exhaustion is a quality failure. Bounded child episodes also need enough awareness to return available evidence before spending their final request on repeated exploration. Retain strict finite budgets and explicit completion signals.",
     }
 
 
