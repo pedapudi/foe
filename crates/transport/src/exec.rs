@@ -176,7 +176,8 @@ mod tests {
                 .stderr(Stdio::piped())
                 .spawn()?;
             if let Some(bytes) = req.stdin {
-                child.stdin.take().unwrap().write_all(&bytes)?;
+                // A child may exit before reading; production still settles it after the closed pipe.
+                let _ = child.stdin.take().unwrap().write_all(&bytes);
             }
             let output = child.wait_with_output()?;
             Ok(ExecResult {
