@@ -31,7 +31,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::sync::watch;
+use tokio::sync::{watch, OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
 
 /// Everything one workflow episode needs: what the agent loop takes, the
@@ -70,6 +70,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
         task,
         step: AtomicU32::new(0),
         header: Mutex::new(None),
+        effectful: Arc::new(Semaphore::new(1)),
     });
     let mut executor = Executor::new(shared, String::new(), &params.workflow);
     let outcome = match executor.drive().await {
@@ -99,6 +100,12 @@ struct Shared {
     /// request's id is drawn from it.
     step: AtomicU32,
     header: Mutex<Option<(u64, RequestHeader)>>,
+    /// Held by one firing at a time for the duration of a tool call whose
+    /// effect is not concurrent, across nested workflows as well as this
+    /// one. The agent loop serializes such calls the same way, and a graph
+    /// that fires two writing nodes at once would otherwise escape the
+    /// effect model the rest of the runtime holds to.
+    effectful: Arc<Semaphore>,
 }
 
 /// Why a firing produced no value. `settled` marks a failure a second
@@ -339,7 +346,19 @@ impl Executor {
                     deferred = true;
                     continue;
                 }
-                self.launch(&name)?;
+                let serial =
+                    node.tool.as_ref().and_then(|t| self.shared.registry.effect(t)).is_some_and(|e| !e.concurrent());
+                let permit = match serial {
+                    false => None,
+                    true => match self.shared.effectful.clone().try_acquire_owned() {
+                        Ok(permit) => Some(permit),
+                        Err(_) => {
+                            deferred = true;
+                            continue;
+                        }
+                    },
+                };
+                self.launch(&name, permit)?;
             }
             if self.tasks.is_empty() {
                 if deferred {
@@ -365,7 +384,7 @@ impl Executor {
     }
 
     /// Starts one firing of a ready node and records `workflow/node-start`.
-    fn launch(&mut self, name: &str) -> Result<(), RuntimeError> {
+    fn launch(&mut self, name: &str, permit: Option<OwnedSemaphorePermit>) -> Result<(), RuntimeError> {
         let sh = self.shared.clone();
         let node: Node = self.sched.nodes[name].clone();
         let full = self.full(name);
@@ -394,6 +413,7 @@ impl Executor {
                     let (deadline, spill) = (self.deadline(), sh.log.dir().join("spill"));
                     let configured = sh.registry.source(tool) == Some(Source::Configured);
                     Box::pin(async move {
+                        let _permit = permit;
                         let value = sh.registry.dispatch(&sh.handles, &call, step, spill, deadline).await;
                         classify_tool(value, configured)
                     })
@@ -455,6 +475,12 @@ impl Executor {
 
     async fn verify_with(&self, verifier: &str, value: &Value) -> Result<Vec<String>, RuntimeError> {
         let sh = &self.shared;
+        let serial = sh.registry.effect(verifier).is_some_and(|effect| !effect.concurrent());
+        let _permit = if serial {
+            Some(sh.effectful.clone().acquire_owned().await.expect("the semaphore is open"))
+        } else {
+            None
+        };
         sh.registry
             .verify_with(verifier, &sh.handles, value, self.next_step(), sh.log.dir().join("spill"), self.deadline())
             .await

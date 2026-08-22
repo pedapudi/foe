@@ -253,7 +253,13 @@ branch label names, and let that node feed the cycle.
 Firing a node a second time re-fires every node downstream of it, because
 their inputs became fresh. Recovery uses this. Model nodes fire at most
 `budget.max_concurrent` at a time; a ready model node waits for a running
-one when the cap is reached.
+one when the cap is reached. A tool node whose effect is `pure` or `reads`
+runs beside any other node. A tool node whose effect is `writes`, `execs`,
+or `spawns` runs alone, in node-start order, and the same holds for a
+verifier with such an effect. The order covers the whole episode: a node of
+a nested workflow waits for an effectful node of the graph containing it.
+This is the effect rule the agent loop applies to one turn's tool calls,
+applied to one episode's firings.
 
 ### Completion
 
