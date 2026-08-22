@@ -1,36 +1,93 @@
 # Examples
 
-Each directory contains one configuration and a README that explains the
-runtime mechanism it exercises. Configuration files use visible absolute
-path markers such as `/home/user/project`. Replace each marker before running
-a template against another repository.
-
-Two examples include self-contained runners. They create disposable projects
-under `target/`, use a deterministic local model transport, and check their
-own results. They require no provider credential.
+Every example runs. Each creates a disposable project under `target/`,
+answers the model from a script rather than a provider, checks its own
+result, and leaves an episode log to read. None needs a credential, a
+network, or a repository of your own.
 
 ```sh
-bazel run //examples/workflow
-bazel run //examples/sandbox
-bazel test //examples/...
+sh examples/minimal/run.sh          # or: bazel run //examples/minimal
+bazel test //examples/...           # every example at once
 ```
 
-Each `bazel run` command builds foe and leaves an inspectable episode under
-`target/`. The `bazel test` command validates both examples under Bazel's test
-directory. The sandbox example requires Linux with Landlock support.
+A run prints the command that opens its episode in the viewer. The sandbox
+example needs Linux with Landlock; the rest run anywhere foe builds.
 
-| example | mechanism | execution |
+## Start here
+
+| I want to | example |
+|---|---|
+| fix a failing test without watching it | [minimal](minimal/) |
+| give the agent a tool that knows nothing about foe | [wrap-a-binary](wrap-a-binary/) |
+| stop when a checker says the work is done, not when the model says so | [wrap-a-binary](wrap-a-binary/) |
+| delegate reading to cheap children and make the change myself | [subagents](subagents/) |
+| have children report to each other, not only to me | [team](team/) |
+| fix the order of the work and let the model choose only within it | [workflow](workflow/) |
+| prove the agent cannot read what I did not grant | [sandbox](sandbox/) |
+| drive foe from my own program | [embed-in-a-program](embed-in-a-program/) |
+| reach a model foe has no provider for | [exec-transport](exec-transport/), [host-transport](host-transport/) |
+
+## When a run does not succeed
+
+An episode ends in one of four ways, and a program that runs unattended has
+to recognise all of them. These three examples produce the ones that are not
+success, so that the log an operator will one day have to read is one they
+have seen before.
+
+| outcome | what it means | example |
 |---|---|---|
-| [workflow](workflow/) | declared tool and model nodes, typed branching, verification, and child logs | self-contained end-to-end runner |
-| [sandbox](sandbox/) | a configured executable restricted by a required Landlock policy | self-contained end-to-end runner |
-| [minimal](minimal/) | the smallest model-backed coding program | configuration template |
-| [wrap-a-binary](wrap-a-binary/) | an executable used as a model tool and verifier | configuration template plus wrapper |
-| [subagents](subagents/) | child programs with narrower grants and reserved budgets | configuration template |
-| [team](team/) | child programs that exchange durable peer messages | configuration template |
-| [host-transport](host-transport/) | a host process that supplies model chunks over the line protocol | Python runner with scripted responses |
-| [exec-transport](exec-transport/) | an executable that translates foe requests to another model client | configuration template plus transport |
+| `exhausted` | the program did not break; it ran out of the allowance the configuration gave it | [budget-exhausted](budget-exhausted/) |
+| `blocked` · `recovery-exhausted` | the provider failed every attempt the retry ceiling allowed | [recovery-exhausted](recovery-exhausted/) |
+| `blocked` · `verification-unsatisfiable` | the model reported the work finished and the declared verifier disagreed, repeatedly | [verification-unsatisfiable](verification-unsatisfiable/) |
 
-Every `config.json` is validated against the printed schema by the Rust test
-suite. The integration tests also materialize each path marker and run
-`foe plan`, which catches missing executables, invalid grant relationships,
-and workflow graph errors.
+## What each one exercises
+
+| example | mechanism |
+|---|---|
+| [minimal](minimal/) | the smallest model-backed coding program |
+| [wrap-a-binary](wrap-a-binary/) | an executable serving as both a model tool and a `done_when` verifier |
+| [subagents](subagents/) | child programs under narrower grants, with budget reserved from the parent's pool and returned |
+| [team](team/) | children exchanging durable peer messages through their lead |
+| [workflow](workflow/) | declared tool and model nodes, typed branching, verification, and recovery |
+| [sandbox](sandbox/) | a configured executable under a required Landlock policy |
+| [embed-in-a-program](embed-in-a-program/) | the Python SDK: a program supplying the model, its own host tools, and acting on the outcome |
+| [exec-transport](exec-transport/) | an executable translating foe's requests for another model client |
+| [host-transport](host-transport/) | a host process supplying model chunks over the line protocol |
+| [budget-exhausted](budget-exhausted/) | a limit reached while the work is unfinished |
+| [recovery-exhausted](recovery-exhausted/) | the retry ceiling, its growing delay, and what the log records |
+| [verification-unsatisfiable](verification-unsatisfiable/) | `done_when`, the `verify` inbox source, and a condition the work never meets |
+
+## Reading a configuration
+
+A configuration carries visible absolute path markers such as
+`/home/user/project`. Each runner replaces them through
+[`support/materialize.py`](support/) before running, so a marker is what you
+edit when you point an example at a repository of your own, and nothing you
+have to fix before an example will run.
+
+`foe plan` does not accept a configuration that still holds its markers,
+because it resolves every grant and every executable path against the
+filesystem. Run it against the materialized configuration a runner leaves in
+its run directory.
+
+Every example that runs without a provider names the `exec` provider and
+points it at a transport script. [`support/README.md`](support/) explains
+where such a script may run and what it may read, which is narrower than it
+looks.
+
+## Against a real model
+
+Each README gives the two-line `model` block that points its example at a
+provider. A block that names no key file reads the credential
+`foe login <provider>` writes, at
+`~/.config/foe/credentials/<provider>.json`. Naming `api_key_file` is for
+deployments that dictate where a credential lives.
+
+## What the build checks
+
+The Rust integration tests validate every `config.json` against the printed
+schema, materialize its markers, and run `foe plan`, which catches a missing
+executable, a grant that cannot hold, and a workflow graph that cannot run.
+`bazel test //examples/...` runs the examples themselves, so each README's
+"What to look for" section describes a log the build produces rather than one
+a reader is asked to imagine.
