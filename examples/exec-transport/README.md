@@ -60,9 +60,10 @@ request with a `read` call on the path the option names, and the second with
 one sentence of text.
 
 The program runs under the episode's sandbox, narrowed as for a configured
-tool. It may read the episode's read roots, it may execute its own file, it
-may open TCP connections, and it starts with an empty environment. Every
-other file it opens must therefore lie under a read root. `run.sh` copies
+tool. It may read the episode's read roots, it may write the write roots, it
+may execute its own file, it may open TCP connections, it may read the
+resolver configuration, and it starts with an empty environment. Every other
+file it opens must therefore lie under a read root. `run.sh` copies
 both `scripted-transport.py` and `examples/support/chunks.py` into the
 project directory for that reason, and `model.exec` names the copy.
 
