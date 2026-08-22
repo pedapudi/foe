@@ -45,7 +45,7 @@ impl Pool {
     /// `budget/release` move reservations. Other events change nothing.
     pub fn apply(&mut self, data: &EventData) {
         match data {
-            EventData::ModelRequest(_) => self.requests += 1,
+            EventData::ModelRequest(_) => self.requests = self.requests.saturating_add(1),
             EventData::AssistantMessage(message) => self.note_usage(message.usage),
             EventData::BudgetReserve { child_id, reserved } => {
                 self.active.insert(child_id.clone(), *reserved);
@@ -56,12 +56,12 @@ impl Pool {
     }
 
     pub fn note_request(&mut self) {
-        self.requests += 1;
+        self.requests = self.requests.saturating_add(1);
     }
 
     pub fn note_usage(&mut self, usage: Usage) {
-        self.input_tokens += usage.input;
-        self.output_tokens += usage.output;
+        self.input_tokens = self.input_tokens.saturating_add(usage.input);
+        self.output_tokens = self.output_tokens.saturating_add(usage.output);
     }
 
     /// The instant the `seconds` limit elapses, when there is one.
@@ -74,13 +74,14 @@ impl Pool {
     /// `episodes` counts this episode against the limit, so it is the
     /// number of further episodes the tree below here may still hold.
     pub fn remaining(&self) -> BudgetAmount {
-        let reserved = |f: fn(&BudgetAmount) -> Option<u64>| self.active.values().filter_map(f).sum::<u64>();
-        let calls_used = self.requests + self.children_spent.model_calls.unwrap_or(0) + reserved(|a| a.model_calls);
-        let input_used =
-            self.input_tokens + self.children_spent.input_tokens.unwrap_or(0) + reserved(|a| a.input_tokens);
-        let output_used =
-            self.output_tokens + self.children_spent.output_tokens.unwrap_or(0) + reserved(|a| a.output_tokens);
-        let episodes_used = 1 + self.children_spent.episodes.unwrap_or(0) + reserved(|a| a.episodes);
+        let reserved =
+            |f: fn(&BudgetAmount) -> Option<u64>| self.active.values().filter_map(f).fold(0, u64::saturating_add);
+        let used =
+            |own: u64, children: Option<u64>, held: u64| own.saturating_add(children.unwrap_or(0)).saturating_add(held);
+        let calls_used = used(self.requests, self.children_spent.model_calls, reserved(|a| a.model_calls));
+        let input_used = used(self.input_tokens, self.children_spent.input_tokens, reserved(|a| a.input_tokens));
+        let output_used = used(self.output_tokens, self.children_spent.output_tokens, reserved(|a| a.output_tokens));
+        let episodes_used = used(1, self.children_spent.episodes, reserved(|a| a.episodes));
         BudgetAmount {
             model_calls: Some(self.limits.model_calls.saturating_sub(calls_used)),
             input_tokens: self.limits.input_tokens.map(|t| t.saturating_sub(input_used)),
@@ -176,7 +177,7 @@ impl Pool {
         self.active.remove(child_id);
         let add = |total: &mut Option<u64>, amount: Option<u64>| {
             if let Some(a) = amount {
-                *total = Some(total.unwrap_or(0) + a);
+                *total = Some(total.unwrap_or(0).saturating_add(a));
             }
         };
         add(&mut self.children_spent.model_calls, spent.model_calls);

@@ -35,6 +35,15 @@ fn input_and_output_tokens_have_independent_remainders() {
 }
 
 #[test]
+fn external_usage_saturates_instead_of_overflowing_the_account() {
+    let mut pool = Pool::new(budget());
+    pool.note_usage(Usage { input: u64::MAX, output: u64::MAX, cache_read: 0 });
+    pool.note_usage(Usage { input: 1, output: 1, cache_read: 0 });
+    assert_eq!(pool.remaining().input_tokens, Some(0));
+    assert_eq!(pool.remaining().output_tokens, Some(0));
+}
+
+#[test]
 fn seconds_elapse_on_the_wall_clock() {
     let pool = Pool::new(Budget { seconds: Some(1), ..budget() });
     assert!(pool.deadline().is_some());
