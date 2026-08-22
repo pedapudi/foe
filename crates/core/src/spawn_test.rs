@@ -52,9 +52,25 @@ read -r result
 echo "{\"seq\":4,\"time\":1,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":[$answer,$result]}}}"
 "#;
 
+/// A stand-in child that runs until the parent writes it a line. The
+/// parent's teardown writes `cancel`, which is what ends it.
+pub(crate) const WAITING_CHILD: &str = r#"#!/bin/sh
+echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{},"identity":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
+read -r line
+echo '{"seq":1,"time":1,"type":"episode/end","data":{"outcome":{"kind":"failed","error":"cancelled"}}}'
+"#;
+
+pub(crate) fn waiting_child(dir: &Path) -> Vec<OsString> {
+    script(dir, "waiting-foe.sh", WAITING_CHILD)
+}
+
 pub(crate) fn fake_child(dir: &Path) -> Vec<OsString> {
-    let script = dir.join("fake-foe.sh");
-    std::fs::write(&script, FAKE_CHILD).unwrap();
+    script(dir, "fake-foe.sh", FAKE_CHILD)
+}
+
+fn script(dir: &Path, name: &str, body: &str) -> Vec<OsString> {
+    let script = dir.join(name);
+    std::fs::write(&script, body).unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     vec!["/bin/sh".into(), script.into_os_string()]
 }
