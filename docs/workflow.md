@@ -98,7 +98,9 @@ lists the source when any node follows it.
 
 ### Nodes
 
-A node is one of three kinds.
+A node carries thirteen keys at most, and any key outside the two tables
+below is refused at construction. One of the first three names the node's
+kind, and exactly one of them is present.
 
 | kind | fires | produces |
 |---|---|---|
@@ -106,7 +108,10 @@ A node is one of three kinds.
 | `model` | one child episode whose task is built from the node's inputs | the episode's outcome value |
 | `workflow` | one nested workflow | its terminal node's value |
 
-Every node has these fields.
+A `tool` node also takes `args`, specified under "Tool nodes" below. No
+other key accompanies a kind.
+
+The nine remaining fields apply to a node of any kind.
 
 | field | type | meaning |
 |---|---|---|
@@ -118,9 +123,20 @@ Every node has these fields.
 | `max_fires` | integer | how many times this node may fire in one episode; default 1 for an acyclic position, required for a node on a cycle |
 | `terminal` | boolean | completing this node completes the workflow; at least one node is terminal |
 | `empty` | any JSON | the value this node contributes when recovery skips it; without it, skip is not offered |
+| `recovery` | object | widens what this node's recovery decision reads; its one key is `follows`, a list of further node names. See "Recovery" below |
+
+`branches` is the one key whose own keys an author invents: each is a label
+the model may choose, specified under "Choice points" below. Every other
+key in this document is a fixed name.
 
 A `follows` entry and a `followed_by` entry that name the same edge are one
 edge. The graph is the union. Duplicate edges are not an error.
+
+`foe schema` prints the JSON Schema of the whole configuration, including
+`workflow`, `workflow_node`, and the recovery blocks, with
+`additionalProperties` false throughout. It is the machine-readable form of
+this document and of [config.md](config.md), and an editor validates and
+completes against it.
 
 ### Tool nodes
 
