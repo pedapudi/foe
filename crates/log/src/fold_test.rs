@@ -342,16 +342,102 @@ fn episode_end_is_last() {
     assert!(validate_next(&state, &events[11]).is_ok());
 }
 
+/// Every pairing docs/log-format.md defines, as the opening event and the
+/// closing event that the log owes it.
+fn pairings() -> Vec<(EventData, EventData)> {
+    let reserved = BudgetAmount { model_calls: Some(2), tokens: None, seconds: None };
+    vec![
+        (assistant(3, "", vec![call("tc_x")], false), result(3, "tc_x", "ok")),
+        (
+            EventData::RequestRetry { step: 3, attempt: 1, cause: RetryCause::Provider, delay_ms: 500 },
+            EventData::ModelRequest(ModelRequest {
+                step: 3,
+                attempt: 2,
+                request_id: "rq_3".into(),
+                header_seq: 2,
+                consumed: vec![],
+                messages: vec![],
+            }),
+        ),
+        (
+            EventData::CompactionStart(CompactionStart {
+                step: 3,
+                covered: Covered { first_seq: 1, last_seq: 5 },
+                trigger: CompactionTrigger::Threshold,
+                projected_tokens: 100,
+                reserved,
+            }),
+            EventData::CompactionEnd { step: 3, ok: true, usage: Usage::default(), active_estimate: 10, error: None },
+        ),
+        (
+            EventData::SpawnStart {
+                child_id: "ep_c".into(),
+                program: "survey".into(),
+                context: SpawnContext::Fresh,
+                call_id: "tc_s".into(),
+            },
+            EventData::SpawnEnd {
+                child_id: "ep_c".into(),
+                outcome: Outcome::Completed { value: serde_json::Value::Null },
+            },
+        ),
+        (
+            EventData::BudgetReserve { child_id: "ep_c".into(), reserved },
+            EventData::BudgetRelease { child_id: "ep_c".into(), spent: reserved },
+        ),
+    ]
+}
+
+fn ended(seq: u64) -> Event {
+    let outcome = Outcome::Failed { error: "x".into() };
+    Event { seq, time: 0, data: EventData::EpisodeEnd { outcome } }
+}
+
 #[test]
-fn ended_log_gives_every_call_a_result() {
+fn every_obligation_the_log_opened_is_closed_before_episode_end() {
+    for (opening, closing) in pairings() {
+        let mut events = fixture();
+        events.push(Event { seq: 11, time: 0, data: opening.clone() });
+        events.push(ended(12));
+        let opened = opening.type_name();
+        assert!(
+            matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("closed before episode/end")),
+            "an episode/end after {opened} with nothing closing it is invalid"
+        );
+        events[12] = Event { seq: 12, time: 0, data: closing };
+        events.push(ended(13));
+        fold(&events).unwrap_or_else(|e| panic!("{opened} closed before episode/end is valid: {e}"));
+    }
+}
+
+#[test]
+fn an_obligation_is_closed_once_and_only_after_it_was_opened() {
+    for (opening, closing) in pairings() {
+        let mut events = fixture();
+        events.push(Event { seq: 11, time: 0, data: closing.clone() });
+        let opened = opening.type_name();
+        assert!(
+            matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("an earlier event opened")),
+            "closing what no {opened} opened is invalid"
+        );
+        events[11] = Event { seq: 11, time: 0, data: opening };
+        events.push(Event { seq: 12, time: 0, data: closing.clone() });
+        events.push(Event { seq: 13, time: 0, data: closing });
+        assert!(
+            matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("closed once")),
+            "closing what {opened} opened twice is invalid"
+        );
+    }
+}
+
+#[test]
+fn a_team_message_may_stand_undelivered_at_episode_end() {
     let mut events = fixture();
-    events.truncate(10);
-    events.push(Event {
-        seq: 10,
-        time: 0,
-        data: EventData::EpisodeEnd { outcome: Outcome::Failed { error: "x".into() } },
-    });
-    assert!(matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("every tool call")));
+    let message =
+        EventData::TeamMessage { message_id: "tm_01".into(), from: "ep_a".into(), to: "ep_b".into(), content: vec![] };
+    events.push(Event { seq: 11, time: 0, data: message });
+    events.push(ended(12));
+    fold(&events).expect("the lead requeues an undelivered message when the target restarts");
 }
 
 #[test]

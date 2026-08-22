@@ -6,10 +6,10 @@
 //! `model/request.messages` has found a runtime defect.
 
 use crate::{
-    CompactionSummary, ContentBlock, Event, EventData, InboxSource, LogError, Message, Outcome, State,
+    CompactionSummary, ContentBlock, Event, EventData, InboxSource, LogError, Message, Obligation, Outcome, State,
     SUMMARY_REQUEST_PREFIX,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -56,9 +56,16 @@ fn parse_lines(bytes: &[u8]) -> Result<(Vec<Event>, u64), LogError> {
 
 /// Folds events into [`State`]. Validates the structural rules: `seq`
 /// contiguous from 0, `episode/start` first, at most one `episode/end` and
-/// it is last, at most one result per tool call and none without a call.
-/// A log that has ended must also give every tool call a result; a log
-/// still in progress may have calls awaiting their results.
+/// it is last, and every pairing of [`Obligation`] opened before it is
+/// closed and closed once.
+///
+/// A log that has ended must leave no obligation open. A log still in
+/// progress may hold open ones: a tool call awaiting its result, a child
+/// still running. The two cases are distinct records. A log that stops
+/// without `episode/end` was cut short by a crash and states nothing about
+/// what it left open; a log that ends with an obligation open asserts a
+/// completed episode whose account does not balance, which no writer may
+/// produce.
 pub fn fold(events: &[Event]) -> Result<State, LogError> {
     let mut state = State::default();
     for (index, event) in events.iter().enumerate() {
@@ -68,17 +75,34 @@ pub fn fold(events: &[Event]) -> Result<State, LogError> {
         validate_next(&state, event)?;
         apply(&mut state, event);
     }
-    if state.outcome.is_some() && !state.pending_calls.is_empty() {
+    if state.outcome.is_some() && state.open.iter().any(|(kind, _)| kind.must_close()) {
         return Err(LogError::Invalid {
             seq: events.len() as u64 - 1,
-            rule: "every tool call has a result before episode/end",
+            rule: "every obligation the log opened is closed before episode/end",
         });
     }
     Ok(state)
 }
 
+/// The obligations `events` opened and have not closed, excluding the one
+/// pairing a log may leave open. Seeding and the runtime's teardown both
+/// ask for these before writing the events that close them.
+pub fn open_obligations(events: &[Event]) -> BTreeSet<(Obligation, String)> {
+    let mut state = State::default();
+    events.iter().for_each(|event| apply(&mut state, event));
+    state.open.into_iter().filter(|(kind, _)| kind.must_close()).collect()
+}
+
 /// Advances `state` by one event. Performs no validation.
 pub fn apply(state: &mut State, event: &Event) {
+    for (kind, key, opens) in crate::obligations(&event.data) {
+        let (from, to) = match opens {
+            true => (&mut state.closed, &mut state.open),
+            false => (&mut state.open, &mut state.closed),
+        };
+        from.remove(&(kind, key.clone()));
+        to.insert((kind, key));
+    }
     match &event.data {
         EventData::EpisodeStart(start) => state.start = Some(start.clone()),
         EventData::EpisodeEnd { outcome } => state.outcome = Some(outcome.clone()),
@@ -99,14 +123,6 @@ pub fn apply(state: &mut State, event: &Event) {
             state.usage.input += message.usage.input;
             state.usage.output += message.usage.output;
             state.usage.cache_read += message.usage.cache_read;
-            for call in &message.tool_calls {
-                state.settled_calls.remove(&call.id);
-                state.pending_calls.insert(call.id.clone());
-            }
-        }
-        EventData::ToolResult(result) => {
-            state.pending_calls.remove(&result.call_id);
-            state.settled_calls.insert(result.call_id.clone());
         }
         EventData::InboxItem(item) => {
             state.inbox.insert(event.seq, (item.clone(), false));
@@ -264,14 +280,20 @@ pub fn validate_next(prior: &State, event: &Event) -> Result<(), LogError> {
                 return invalid("consumed names earlier inbox items that no earlier request consumed");
             }
         }
-        EventData::ToolResult(result) if prior.settled_calls.contains(&result.call_id) => {
-            return invalid("exactly one tool/result per tool call");
-        }
-        EventData::ToolResult(result) if !prior.pending_calls.contains(&result.call_id) => {
-            return invalid("tool/result names a tool call in an earlier assistant/message");
-        }
         EventData::SeedEnd {} if prior.seeded_through.is_some() => return invalid("at most one seed/end per log"),
         _ => {}
+    }
+    // One rule for every pairing: a `tool/result` names a tool call an
+    // earlier `assistant/message` issued, a `budget/release` names a
+    // reservation, a `model/request` past its first attempt names the retry
+    // that announced it, and each closes what it names once.
+    for (kind, key, _) in crate::obligations(&event.data).into_iter().filter(|(k, _, opens)| k.must_close() && !opens) {
+        if prior.closed.contains(&(kind, key.clone())) {
+            return invalid("an obligation is closed once");
+        }
+        if !prior.open.contains(&(kind, key)) {
+            return invalid("an event that closes an obligation names one an earlier event opened");
+        }
     }
     Ok(())
 }

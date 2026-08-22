@@ -88,7 +88,8 @@ fn team() -> (Arc<Team>, Arc<MemLog>, Arc<MemInbox>, Arc<Router>) {
     let log = Arc::new(MemLog::default());
     let inbox = Arc::new(MemInbox::default());
     let router = Arc::new(Router::new());
-    let team = Arc::new(Team::new("ep_lead".into(), log.clone(), inbox.clone(), router.clone()));
+    let pool = Arc::new(Mutex::new(Pool::new(crate::budget::tests::budget())));
+    let team = Arc::new(Team::new("ep_lead".into(), log.clone(), inbox.clone(), router.clone(), pool));
     (team, log, inbox, router)
 }
 
@@ -137,15 +138,15 @@ fn send_queues_a_message_and_peer_receipt_records_delivery() {
     assert_eq!(listed.rendered.as_deref(), Some("tester\tep_b\tactive"));
 }
 
-/// docs/config.md `tools`: the five team tools are built in. A root answers
+/// docs/config.md `tools`: the six team tools are built in. A root answers
 /// `send` and `team` from its own roster and has no parent to notify.
 #[tokio::test]
 async fn a_root_serves_send_and_team_from_its_own_roster() {
     let (team, log, _, _) = team();
     let names: Vec<String> = tools(team.clone(), None).iter().map(|t| t.spec().name.clone()).collect();
-    assert_eq!(names, ["spawn", "steer", "notify", "send", "team"]);
+    assert_eq!(names, ["spawn", "wait", "steer", "notify", "send", "team"]);
     assert_eq!(builtin_specs().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), names);
-    assert_eq!(builtin_specs()[3].effect, Effect::Pure);
+    assert_eq!(builtin_specs()[4].effect, Effect::Pure);
     let tools = tools(team, None);
     let by_name = |name: &str| tools.iter().find(|t| t.spec().name == name).unwrap();
     assert!(by_name("notify").call(serde_json::json!({ "content": "x" }), &ctx(None)).await.is_error);

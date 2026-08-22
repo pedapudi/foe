@@ -64,6 +64,7 @@ impl Fixture {
             transport: self.transport,
             pool: Arc::new(Mutex::new(Pool::new(self.program.budget.clone()))),
             stop: self.stop_rx,
+            children: None,
             context: None,
         };
         let outcome = run(params).await.unwrap();
@@ -404,6 +405,7 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
         transport: Arc::new(ScriptedTransport::new(vec![turn("forked end", vec![])])),
         pool: Arc::new(Mutex::new(Pool::new(program.budget.clone()))),
         stop: stop_rx,
+        children: None,
         context: None,
     };
     let outcome = run(params).await.unwrap();

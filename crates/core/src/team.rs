@@ -5,9 +5,9 @@
 //! between members, and [`fold`] derives both from it. No other team state
 //! exists. See docs/design.md "Subagents and teams".
 //!
-//! Five built-in tools belong here. `spawn` and `steer` act on this
-//! episode's own team. `notify`, `send`, and `team` act on the team this
-//! episode belongs to: in an episode with a parent they are host tool calls
+//! Six built-in tools belong here. `spawn`, `wait`, and `steer` act on
+//! this episode's own team. `notify`, `send`, and `team` act on the team
+//! this episode belongs to: in an episode with a parent they are host tool calls
 //! that the parent answers, and in a root they act on its own roster, with
 //! `notify` an error because no parent exists. When the lead answers a
 //! member, a `notify` becomes an inbox item in the lead's log with source
@@ -16,6 +16,8 @@
 //! the roster. When the target records the peer item, the lead sees it and
 //! writes `team/delivered`. See docs/protocol.md "Children".
 
+use crate::budget::Pool;
+use crate::loop_::settled_children;
 use crate::protocol::{Host, InboxSink};
 use crate::spawn::{ChildObserver, Router};
 use crate::{CallCtx, CapError, Effect, SpawnHandle, SpawnRequest, Spawner, Tool, ToolSpec, ToolValue};
@@ -142,6 +144,8 @@ pub struct Team {
     log: Arc<dyn LeadLog>,
     inbox: Arc<dyn InboxSink>,
     router: Arc<Router>,
+    /// Read by `wait`, which returns once no reservation is outstanding.
+    pool: Arc<Mutex<Pool>>,
     /// Held across a spawn and across every roster write, so that a member's
     /// `provisioning` entry precedes its `active` one.
     roster_lock: Mutex<()>,
@@ -149,8 +153,14 @@ pub struct Team {
 }
 
 impl Team {
-    pub fn new(lead_id: String, log: Arc<dyn LeadLog>, inbox: Arc<dyn InboxSink>, router: Arc<Router>) -> Self {
-        Team { lead_id, log, inbox, router, roster_lock: Mutex::new(()), messages: AtomicU64::new(0) }
+    pub fn new(
+        lead_id: String,
+        log: Arc<dyn LeadLog>,
+        inbox: Arc<dyn InboxSink>,
+        router: Arc<Router>,
+        pool: Arc<Mutex<Pool>>,
+    ) -> Self {
+        Team { lead_id, log, inbox, router, pool, roster_lock: Mutex::new(()), messages: AtomicU64::new(0) }
     }
 
     pub fn state(&self) -> TeamState {
@@ -306,11 +316,12 @@ fn arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, ToolValue>
 
 // ---- tools --------------------------------------------------------------------
 
-/// The five team tools; the serialized name is the tool name.
+/// The six team tools; the serialized name is the tool name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum Kind {
     Spawn,
+    Wait,
     Steer,
     Notify,
     Send,
@@ -334,6 +345,13 @@ impl Kind {
                     &["program", "task"],
                 ),
                 Effect::Spawns,
+            ),
+            Kind::Wait => (
+                "Wait until every child episode this one started has ended. Their reports are in the request that \
+follows. Returns at once when no child is running. Use it before acting on work delegated to children; an episode \
+that ends while a child runs ends that child.",
+                object(serde_json::json!({}), &[]),
+                Effect::Pure,
             ),
             Kind::Steer => (
                 "Send a message to a running child, addressed by roster name. It arrives in the child's next request.",
@@ -359,15 +377,15 @@ impl Kind {
     }
 }
 
-const KINDS: [Kind; 5] = [Kind::Spawn, Kind::Steer, Kind::Notify, Kind::Send, Kind::Team];
+const KINDS: [Kind; 6] = [Kind::Spawn, Kind::Wait, Kind::Steer, Kind::Notify, Kind::Send, Kind::Team];
 
-/// The specifications of the five team tools, in the order [`tools`] lists
+/// The specifications of the six team tools, in the order [`tools`] lists
 /// them. Identity and `foe tools` use this without a running team.
 pub fn builtin_specs() -> Vec<ToolSpec> {
     KINDS.into_iter().map(Kind::spec).collect()
 }
 
-/// The five team tools. `parent` is the link to the process hosting this
+/// The six team tools. `parent` is the link to the process hosting this
 /// episode, when it has one; `notify`, `send`, and `team` then go to the
 /// parent as host tool calls. `spawn` takes its [`Spawner`] from the call
 /// context.
@@ -441,6 +459,12 @@ impl Tool for TeamTool {
                     Err(e) => ToolValue::error(format!("steer: {e}")),
                 }
             }
+            Kind::Wait => match settled_children(&self.team.pool, ctx.deadline).await {
+                0 => ToolValue::ok(serde_json::json!({ "running": 0 }), "every child has ended"),
+                running => ToolValue::error(format!(
+                    "wait: {running} child episode(s) were still running when the seconds budget ran out"
+                )),
+            },
             Kind::Notify => ToolValue::error("notify: this episode has no parent to notify"),
             Kind::Team => self.team.roster(),
         }

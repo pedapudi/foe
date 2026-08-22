@@ -15,12 +15,12 @@ use crate::graph::{Produced, Scheduler};
 use foe_core::budget::Pool;
 use foe_core::config::Program;
 use foe_core::harness_text as text;
-use foe_core::loop_::{lock, until, wait_stop, Log, Params, Recorder};
+use foe_core::loop_::{lock, settle, until, wait_stop, Log, Params, Recorder};
 use foe_core::registry::{conforms, Handles, Registry, Source};
 use foe_core::workflow::{ancestors, Node, WorkflowConfig};
 use foe_core::{Effect, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolSpec, ToolValue, Transport};
 use foe_log::{
-    seed, BlockedCode, BudgetAmount, Chunk, ContentBlock, Event, EventData, ExhaustedLimit, HeaderReason, InboxItem,
+    BlockedCode, BudgetAmount, Chunk, ContentBlock, Event, EventData, ExhaustedLimit, HeaderReason, InboxItem,
     InboxSource, Message, ModelRequest, Outcome, RequestHeader, SpawnContext, ToolCall, ToolResult, WorkflowBranch,
     WorkflowNodeEnd, WorkflowNodeStart, WorkflowRecovery,
 };
@@ -57,6 +57,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
     // The task item is at seq 1 in every log (docs/log-format.md), so a
     // firing that follows `task` names that event among its inputs.
     let task = Produced { value: Value::String(text.clone()), rendered: text, seq: 1 };
+    let (shared_pool, children) = (p.pool.clone(), p.children.clone());
     let shared = Arc::new(Shared {
         log: log.clone(),
         registry: p.registry,
@@ -76,10 +77,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
         Err(RuntimeError::Log(e)) => return Err(e.into()),
         Err(e) => Outcome::Failed { error: e.to_string() },
     };
-    for result in log.with_events(seed::orphan_results) {
-        log.append(EventData::ToolResult(ToolResult { rendered: text::INTERRUPTED_RESULT.into(), ..result }))?;
-    }
-    log.sync()?;
+    settle(&log, &shared_pool, children.as_deref()).await?;
     log.append(EventData::EpisodeEnd { outcome: outcome.clone() })?;
     log.sync()?;
     Ok(outcome)

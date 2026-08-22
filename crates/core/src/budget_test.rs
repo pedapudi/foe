@@ -2,7 +2,7 @@ use super::Pool;
 use crate::Budget;
 use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
 
-fn budget() -> Budget {
+pub fn budget() -> Budget {
     Budget {
         model_calls: 10,
         tokens: Some(1000),

@@ -74,10 +74,10 @@ fn writer_rejects_a_duplicate_or_orphan_tool_result() {
     writer.append(fx::header()).unwrap();
     writer.append(fx::request(1, 2, vec![1], vec![])).unwrap();
     writer.append(fx::assistant(1, "", vec![fx::call("tc_1")], false)).unwrap();
-    assert_eq!(writer.state().pending_calls.len(), 1);
+    assert_eq!(writer.state().open.len(), 1);
     assert!(matches!(writer.append(fx::result(1, "tc_9", "x")), Err(LogError::Invalid { seq: 5, .. })));
     writer.append(fx::result(1, "tc_1", "x")).unwrap();
-    assert!(writer.state().pending_calls.is_empty());
+    assert!(writer.state().open.is_empty());
     assert!(matches!(writer.append(fx::result(1, "tc_1", "again")), Err(LogError::Invalid { seq: 6, .. })));
     assert_eq!(read_all(&dir).unwrap().len(), 6);
 }
