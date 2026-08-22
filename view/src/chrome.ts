@@ -69,6 +69,16 @@ export function currentFontSize(): string {
   return document.documentElement.dataset.fontsize ?? DEFAULT_FONTSIZE;
 }
 
+/**
+ * The multiplier the chosen text size applies to the base size. A figure
+ * laid out in pixels reads it, because a figure's rows and lanes hold text
+ * and must grow with it; the stylesheet reads the same number from
+ * `--dt-font-scale`.
+ */
+export function currentFontScale(): number {
+  return (FONT_SIZES.find((o) => o.id === currentFontSize()) ?? FONT_SIZES[0]!).scale;
+}
+
 let scaleRoot: HTMLElement | null = null;
 let currentScaleValue = SCALE_DEFAULT;
 

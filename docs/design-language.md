@@ -117,8 +117,13 @@ The brand mark, the wordmark's construction, and the brand accent are
 specified in [brand/README.md](brand/README.md). The brand accent is a
 separate token from `--v2-accent` and appears on the mark's peak dot only.
 
-Base size is `13px` scaled by the page-scale pill. Numbers in columns or
-that animate use `font-variant-numeric: tabular-nums`.
+Base size is `13px`, multiplied by the text size the S, M, L control
+selects and then by the page-scale pill. The three multipliers are 1.15,
+1.35, and 1.6, giving 15, 17.5, and 20.8 pixels. Each step is about 17
+percent over the one below it, so the three are evenly spaced on a ratio
+scale; equal pixel differences would read as a smaller step at the top of
+the range than at the bottom. The smallest is the default. Numbers in
+columns or that animate use `font-variant-numeric: tabular-nums`.
 
 ## Spacing
 

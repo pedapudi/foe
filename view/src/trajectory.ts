@@ -313,13 +313,17 @@ const LANE_CHAR = 5.4;
 export const DECISION_GLYPH = 8;
 
 /**
- * The height the figure needs to show rows totalling `rowsHeight` pixels:
- * the axis, the gap below it, the rows themselves, and the padding under
- * the last row. The pane's default height is derived from this, so a run
- * with one episode opens a pane the size of one episode.
+ * The height the figure needs to show rows totalling `rowsHeight` layout
+ * units: the axis, the gap below it, the rows themselves, and the padding
+ * under the last row. The pane's default height is derived from this, so a
+ * run with one episode opens a pane the size of one episode.
+ *
+ * `fontScale` is the multiplier the reader's text size applies. The figure
+ * is laid out in units of the default text size and drawn at that
+ * multiple, so the pane it needs grows with the type it holds.
  */
-export function trajectoryContentHeight(rowsHeight: number): number {
-  return AXIS_HEIGHT + AXIS_GAP + Math.max(0, rowsHeight) + PAD_BOTTOM;
+export function trajectoryContentHeight(rowsHeight: number, fontScale = 1): number {
+  return (AXIS_HEIGHT + AXIS_GAP + Math.max(0, rowsHeight) + PAD_BOTTOM) * fontScale;
 }
 
 /**

@@ -24,17 +24,28 @@ export function svg<K extends keyof SVGElementTagNameMap>(
   return el;
 }
 
-/** A figure whose marks keep their shape: uniform scale, top left anchored. */
+/**
+ * A figure whose marks keep their shape: uniform scale, top left anchored.
+ *
+ * `scale` draws the figure larger than the units it was laid out in, which
+ * is how a figure follows the reader's chosen text size. Laying out in one
+ * set of units and drawing at another keeps every part of the figure in
+ * proportion: a lane that must clear its own label still clears it when the
+ * label grows, and a mark keeps its share of the row. `non-scaling-stroke`
+ * holds every hairline at its own width through the same scale, so a larger
+ * figure is a larger drawing rather than a heavier one.
+ */
 export function figureSvg(
   className: string,
   width: number,
   height: number,
   label: string,
+  scale = 1,
 ): SVGSVGElement {
   return svg("svg", {
     class: className,
     width: "100%",
-    height,
+    height: Math.max(1, height) * scale,
     viewBox: `0 0 ${Math.max(1, width)} ${Math.max(1, height)}`,
     preserveAspectRatio: "xMinYMin meet",
     role: "img",

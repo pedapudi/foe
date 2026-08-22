@@ -2,7 +2,7 @@
 // per episode; one tree; one optional diff. Views are patched, never rebuilt,
 // when events arrive, and the tree pane redraws only when its digest changes.
 
-import { Topbar } from "./chrome.js";
+import { Topbar, currentFontScale, onSettingsChange } from "./chrome.js";
 import type { ConnectionState, Crumb } from "./chrome.js";
 import { clear, h } from "./dom.js";
 import { EpisodeFold } from "./fold.js";
@@ -115,6 +115,14 @@ export class App implements Sink {
     root.append(this.topbar.el, left, sidebarGrip(), right, keys);
     loadPanes({ root, left, right });
     onPanesChange(() => this.trajectory.resized());
+    // A figure is laid out in pixels, so a change of text size changes what
+    // it should draw even when nothing resized the pane it sits in.
+    onSettingsChange(() => {
+      this.trajectory.resized();
+      this.workflow.resized();
+      this.statistics.resized();
+      setTrajectoryHeight(this.trajectory.rowsHeight(), this.trajectory.chromeHeight(), currentFontScale());
+    });
     document.addEventListener("keydown", (e) => this.onKey(e));
     if (typeof ResizeObserver !== "undefined") {
       const redraw = new ResizeObserver(() => {
@@ -329,7 +337,7 @@ export class App implements Sink {
     // one episode does not open a region of mostly empty ground. A row is
     // as tall as its own channels, so the height follows the drawing rather
     // than the row count.
-    setTrajectoryHeight(this.trajectory.rowsHeight(), this.trajectory.chromeHeight());
+    setTrajectoryHeight(this.trajectory.rowsHeight(), this.trajectory.chromeHeight(), currentFontScale());
     this.topbar.setCrumbs(this.lineage());
     this.renderTabs();
   }

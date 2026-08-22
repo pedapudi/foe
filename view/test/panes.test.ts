@@ -99,6 +99,17 @@ test("each further row raises the derived height by one row", () => {
   assert.equal(five - three, 2 * ROW_HEIGHT);
 });
 
+test("a larger text size raises the height the same rows need", () => {
+  const rows = 3 * ROW_HEIGHT;
+  assert.equal(trajectoryContentHeight(rows, 1), trajectoryContentHeight(rows));
+  assert.equal(trajectoryContentHeight(rows, 2), 2 * trajectoryContentHeight(rows));
+  const column = 700;
+  const small = fitTrajectory(rows, column, CHROME, 1) * column;
+  const large = fitTrajectory(rows, column, CHROME, 1.6) * column;
+  assert.ok(large > small, "the same rows take more of the column at a larger text size");
+  assert.equal(large, CHROME + trajectoryContentHeight(rows, 1.6));
+});
+
 test("many rows stop at half the column, leaving the conversation the rest", () => {
   const column = 700;
   assert.equal(fitTrajectory(40 * ROW_HEIGHT, column, CHROME), 0.5);

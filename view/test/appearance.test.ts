@@ -82,11 +82,21 @@ test("the page scale clamps to its range and snaps to its step", () => {
   assert.equal((SCALE_MAX - SCALE_MIN) % SCALE_STEP, 0);
 });
 
-test("a text size scales up and never down", () => {
-  assert.equal(FONT_SIZES[0]!.scale, 1);
+test("the smallest text size is the default and every step above it is larger", () => {
+  assert.equal(FONT_SIZES[0]!.id, DEFAULT_FONTSIZE);
   for (let i = 1; i < FONT_SIZES.length; i += 1) {
     assert.ok(FONT_SIZES[i]!.scale > FONT_SIZES[i - 1]!.scale, FONT_SIZES[i]!.id);
   }
+});
+
+test("the three text sizes step by an even ratio rather than an even difference", () => {
+  const steps = FONT_SIZES.slice(1).map((o, i) => o.scale / FONT_SIZES[i]!.scale);
+  for (const step of steps) assert.ok(step > 1.1 && step < 1.25, String(step));
+  assert.ok(Math.abs(steps[0]! - steps[1]!) < 0.03, steps.join(" "));
+});
+
+test("the smallest text size sets the 13-pixel base above 13 pixels", () => {
+  assert.ok(FONT_SIZES[0]!.scale * 13 >= 14.5, "the default reads at arm's length");
 });
 
 test("every theme previews six chips as six hex colours", () => {

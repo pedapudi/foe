@@ -13,6 +13,7 @@
 // hovercard: it is handed the episodes and redraws when a digest of what
 // it would draw changes.
 
+import { currentFontScale } from "../chrome.js";
 import { clear, fmtDuration, fmtTime, h } from "../dom.js";
 import { outcomeLabel } from "../fold.js";
 import { shortIdentity } from "../lineage.js";
@@ -168,9 +169,10 @@ export class TrajectoryView {
   }
 
   /**
-   * Pixels the rows of the last drawing took. The pane's derived height is
-   * this plus the axis and the heading, so a row with a node band opens a
-   * region tall enough to hold it.
+   * Layout units the rows of the last drawing took. The pane's derived
+   * height is this plus the axis and the heading, taken at the reader's
+   * text size, so a row with a node band opens a region tall enough to
+   * hold it.
    */
   rowsHeight(): number {
     return this.rows;
@@ -186,12 +188,18 @@ export class TrajectoryView {
   }
 
   private draw(force: boolean): void {
-    const width = this.figure.clientWidth;
-    const height = this.figure.clientHeight;
+    // The figure is laid out in units of the default text size and drawn at
+    // the reader's, so the pane's own pixels are divided by that multiple
+    // before the layout sees them. A lane whose pitch is fixed in layout
+    // units then still clears the lane label, which grows with the type.
+    const scale = currentFontScale();
+    const width = this.figure.clientWidth / scale;
+    const height = this.figure.clientHeight / scale;
     const digest = [
       this.axis,
       width,
       height,
+      scale,
       this.state.selected,
       this.state.cursor,
       this.episodes
@@ -221,11 +229,11 @@ export class TrajectoryView {
       this.figure.appendChild(h("div", { class: "empty sub" }, "no episodes"));
       return;
     }
-    this.figure.appendChild(this.build(layout, width));
+    this.figure.appendChild(this.build(layout, width, scale));
   }
 
-  private build(layout: TrajectoryLayout, width: number): SVGSVGElement {
-    const figure = figureSvg("traj", width, layout.height, "episode trajectory");
+  private build(layout: TrajectoryLayout, width: number, scale: number): SVGSVGElement {
+    const figure = figureSvg("traj", width, layout.height, "episode trajectory", scale);
 
     // The axis: leader ticks with a small mono label, each carrying a
     // gridline down the plot. A span's length is read against the axis, so

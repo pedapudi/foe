@@ -1819,6 +1819,10 @@ table.events td.type.error {
   overflow-x: hidden;
 }
 
+/* The trajectory is laid out in units of the default text size and drawn at
+ * the reader's, so its own text is set at the size the layout assumed. The
+ * drawing carries the reader's size; taking it here as well would apply it
+ * twice. */
 .traj {
   display: block;
 }
@@ -1846,7 +1850,7 @@ table.events td.type.error {
 .traj .tick-label {
   fill: var(--v2-ink-faint);
   font-family: var(--v2-mono);
-  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-size: 9.5px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1881,7 +1885,7 @@ table.events td.type.error {
 .traj-label {
   fill: var(--v2-ink-soft);
   font-family: var(--v2-sans);
-  font-size: calc(11px * var(--dt-font-scale, 1));
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -1917,7 +1921,7 @@ table.events td.type.error {
 .traj-lane-label {
   fill: var(--v2-ink-faint);
   font-family: var(--v2-mono);
-  font-size: calc(9px * var(--dt-font-scale, 1));
+  font-size: 9px;
 }
 
 .traj-life {
@@ -2053,7 +2057,7 @@ table.events td.type.error {
 .traj-decision-label {
   fill: var(--v2-ink-soft);
   font-family: var(--v2-mono);
-  font-size: calc(9px * var(--dt-font-scale, 1));
+  font-size: 9px;
 }
 
 .traj-decision.recovery .traj-decision-label {
