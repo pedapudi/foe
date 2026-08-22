@@ -408,6 +408,20 @@ rendered string when present and a compact rendering of the value otherwise.
 The separation is the runtime's main token lever: a search over a large tree
 can record every match and show the model a count and the first twenty.
 
+The runtime applies that lever to every tool through one budget. A tool
+result is re-sent in every request after the step that produced it, so the
+cost of a rendering is its size multiplied by the number of later requests.
+The renderings of one model turn therefore share one character budget, which
+the calls of that turn divide between them, and a rendering over its part
+ends with a notice stating what was removed and naming the call that shows
+it. No tool retrieves the removed part: the tool that produced the rendering
+is called again, so recovery costs no vocabulary. The canonical value is
+untouched, so nothing is lost from the log, and the cut is applied before
+the result is appended, so no earlier turn is ever rewritten and a
+provider's key-value cache of the prefix stays valid.
+[tools.md](tools.md#the-turn-budget) specifies the division and the
+notice.
+
 ## Subagents and teams
 
 An episode with a `spawn` grant may start child episodes. A child is a
@@ -617,6 +631,7 @@ not finished.
                              identity,    ├── crates/workflow
                              spawn,       │    graph scheduling and recovery
                              teams,       │
+                        result budget,    │
                              exec,        ├── crates/context
                              landlock,    │    projection, cut, summarization prompt
                              protocol,    │

@@ -32,6 +32,7 @@ pub mod inbox;
 pub mod loop_;
 pub mod protocol;
 pub mod registry;
+pub mod result_budget;
 pub mod sandbox;
 pub mod schema;
 pub mod spawn;
@@ -73,7 +74,7 @@ impl Effect {
 /// lines and `max_chars` characters, and how many characters they take.
 /// Each line counts the newline that follows it, and is taken whole or not
 /// at all, so a cut on this boundary never splits a character. Every bound
-/// on how much of a result a tool shows is measured this way.
+/// on how much of a result the model sees is measured this way.
 pub fn fitting<'a>(lines: impl Iterator<Item = &'a &'a str>, max_lines: usize, max_chars: usize) -> (usize, usize) {
     let (mut kept, mut used) = (0, 0);
     for line in lines.take(max_lines) {

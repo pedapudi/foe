@@ -151,7 +151,8 @@ impl Tool for Probe {
             "args": args,
         });
         if let Some(big) = args.get("big").and_then(Value::as_u64) {
-            return ToolValue::ok(value, "x".repeat(big as usize));
+            let text = "x".repeat(big as usize);
+            return ToolValue::ok(json!({ "big": text }), text);
         }
         ToolValue::ok(value, format!("{} ran", self.spec.name))
     }

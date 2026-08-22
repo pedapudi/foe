@@ -32,8 +32,10 @@ impl Read {
                      shown."
                 ),
                 instruction: Some(
-                    "Use read to look at a file before editing it. For a long file, continue from the \
-                     offset the truncation notice names rather than rereading from the start."
+                    "Use read to look at a file before editing it. Give offset and limit when only \
+                     part of a large file matters: the results of one turn share a character \
+                     budget. Continue from the offset a truncation notice names rather than \
+                     rereading from the start."
                         .into(),
                 ),
                 params: json!({

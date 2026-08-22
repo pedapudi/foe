@@ -21,6 +21,16 @@ pub const RETURN_DESCRIPTION: &str = "Finish the task by returning its result. T
 declared schema. A conforming value ends the episode; a value that does not conform is rejected with the \
 reason, and the episode continues.";
 
+/// Ends a numbered window of a file that the turn budget shortened. `read`
+/// produced it, so `read` is what shows the rest.
+pub const CUT_WINDOW: &str = "[Cut to fit this turn's result budget: {omitted} more lines, {characters} \
+characters in all. Read the same path again with offset={next} to continue from here.]";
+
+/// Ends any other rendering that the turn budget shortened. The tool that
+/// produced it is what shows the rest.
+pub const CUT_OUTPUT: &str = "[Cut to fit this turn's result budget: {omitted} of {total} lines omitted here, \
+{characters} characters in all. Issue the call again, narrowed, for the part you need.]";
+
 /// Shown as a system inbox item when the model finishes a turn without
 /// calling `return` although the program requires a returned value.
 pub const RETURN_REQUIRED: &str = "This task is finished by calling the `return` tool with a value that \
@@ -40,8 +50,8 @@ call in it ran. Reissue each call in a shorter response.";
 pub const INTERRUPTED_RESULT: &str = "The request was interrupted before this call ran; no result was recorded.";
 
 /// Result text when the canonical value was written to the spill directory.
-pub const SPILL_FRAME: &str = "The result was {bytes} bytes, which exceeds the inline limit. The complete value \
-is stored in the file {path}. The first {head_bytes} bytes follow.\n\n{head}";
+pub const SPILL_FRAME: &str = "The canonical value was {bytes} bytes, which exceeds the inline limit, and is \
+stored in the file {path}. The rendering of the result follows.\n\n{head}";
 
 /// Appended to a configured executable's standard output when it wrote to
 /// standard error, when it exited, and when it was killed at its timeout.
@@ -122,6 +132,8 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
     vec![
         ("block.description", BLOCK_DESCRIPTION),
         ("return.description", RETURN_DESCRIPTION),
+        ("cut.window", CUT_WINDOW),
+        ("cut.output", CUT_OUTPUT),
         ("return.required", RETURN_REQUIRED),
         ("verify.findings", VERIFY_FINDINGS),
         ("length_limit_error", LENGTH_LIMIT_ERROR),

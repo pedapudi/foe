@@ -5,8 +5,9 @@ specification, which is what the model sees and what identity hashes, and an
 implementation, which runs when the model calls it. [design.md](design.md)
 defines the specification (`ToolSpec`), the declared effect, and how the
 registry checks effects against grants. This document specifies where tools
-come from, the contract for tools that are executables, and the four
-built-in coding tools.
+come from, the contract for tools that are executables, the four built-in
+coding tools, and the budget that bounds what one model turn's results
+show.
 
 ## Where tools come from
 
@@ -112,14 +113,18 @@ order given, fit within a line count and a character count. A line is taken
 whole or not at all, so a cut on this boundary never splits a character, and
 each line counts the newline that follows it. `read` fits the head of its
 window; `bash` fits the tail of its output, because the end of a build or
-test run usually carries the verdict.
+test run usually carries the verdict. The turn budget below fits whichever
+end of a rendering carries its information.
 
 ### `read`
 
 `offset` and `limit` select a range of lines, which is the way to look at
-part of a large file. The rendered form numbers each line as `N<TAB>text`,
-with `N` counted from the start of the file. A carriage return before a
-newline is dropped from the rendering. When lines remain after the window, the rendering ends with
+part of a large file. The tool's instruction says so and states why: the
+results of one turn share a character budget, so a large read leaves less
+room for the other calls of the same turn. The rendered form numbers each
+line as `N<TAB>text`, with `N` counted from the start of the file. That
+shape is also what tells the turn budget it is looking at a window of a
+file. A carriage return before a newline is dropped from the rendering. When lines remain after the window, the rendering ends with
 a notice that names the next offset, for example
 `[Showing lines 1-2000 of 8431. Use offset=2001 to continue.]`. `limit`
 caps the window below the line limit; `truncated` is true whenever lines
@@ -209,3 +214,83 @@ that file.
 A non-zero exit is a result. The call is an error only when the arguments
 are invalid, the executor refuses the request, or the tool was dispatched
 without the handles it needs.
+
+## The turn budget
+
+A tool result is re-sent to the model in every request after the step that
+produced it, so a result of `n` characters in a step followed by `k` further
+requests costs `n` times `k` characters of input. `read` and `bash` each
+bound one call, so what is left unbounded is the turn: ten parallel reads
+each within their own limit still arrive together. The renderings of one
+model turn therefore share one budget.
+
+The budget is 50,000 characters per turn. Every call of the turn may show an
+equal part of it. A call whose rendering is shorter than its part leaves the
+remainder to the others, and the remainder is divided again until no part
+goes unused, so a turn of one large result and five small ones gives the
+large one almost the whole budget. No result is held below a floor of 4,000
+characters, so a turn of many calls may cost more than the turn budget, and
+never more than 4,000 characters times the number of calls. These three
+figures are constants in `crates/core/src/result_budget.rs`.
+
+The budget is a bound rather than a saving. One call is already held below
+50,000 characters by the limits of `read` and `bash`, so a turn of one large
+call passes almost whole and ordinary work is untouched; what the budget
+catches is a turn whose calls together would fill the context. A lower
+budget would shorten ordinary results, and every result the model asks about
+again costs a whole turn, which resends the entire transcript. A cut that
+saves characters and costs a turn is a loss, so the budget is set where it
+rarely binds.
+
+The bound is the same for every turn. What a result costs is its size times
+the number of requests that still follow, and that number is unknown when
+the result is produced, so an early result cannot be bounded more tightly
+than a late one on the evidence available. Tightening it afterwards would
+rewrite an earlier turn, which the append-only rule forbids.
+
+### What a cut keeps
+
+A rendering that exceeds its part ends with a notice stating what was
+removed and naming the call that shows it. No tool exists for retrieving the
+removed part. The tool that produced the rendering can be called again, and
+the notice says how, so recovery uses a tool the model already has rather
+than one it must learn.
+
+Which end is kept depends on the shape of the rendering, because the two
+shapes carry their information in different places.
+
+- A **numbered window** is a rendering whose first line begins with a
+  decimal number and a tab, which is how `read` numbers a file. It is cut to
+  its head alone, and the notice names the file line to resume at, taken
+  from the number on the last line shown. A reader who wants more of a file
+  wants the lines after the ones already shown, so a kept tail would spend
+  the budget on lines nobody asked for and leave a hole in the middle. The
+  notice reads:
+
+  ```
+  [Cut to fit this turn's result budget: 596 more lines, 54830 characters
+  in all. Read the same path again with offset=338 to continue from here.]
+  ```
+
+- **Any other rendering** keeps its head and its tail, two thirds of the room
+  going to the head. A command's output carries its verdict at both ends:
+  `bash` states its exit status on the first line for this reason, and the
+  end of a build or test run usually carries what failed. The notice reads:
+
+  ```
+  [Cut to fit this turn's result budget: 1092 of 1598 lines omitted here,
+  51369 characters in all. Issue the call again, narrowed, for the part you
+  need.]
+  ```
+
+Two properties hold. The canonical value is untouched, so the log, the
+viewer, and any later analysis still see the whole result; the budget bounds
+what the model reads and nothing else. The cut is applied before the result
+is appended, so the request that first carries the result and every request
+after it carry the same text. No earlier turn is ever rewritten, which is
+what lets a provider reuse the key-value cache of the prefix.
+
+The per-call limits of `read` and `bash` remain as bounds on what a tool
+collects into its canonical value and into the log. Parallel calls no longer
+multiply: six calls in one turn divide one budget rather than taking six
+limits.
