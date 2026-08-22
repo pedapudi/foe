@@ -13,11 +13,18 @@ built-in coding tools.
 The `tools` list in the configuration names every tool the model may call.
 Each name resolves against three sources, checked in this order.
 
-1. **Built-in tools.** Implemented in the runtime: the four coding tools
-   `read`, `grep`, `edit`, and `bash` specified below, the `block` tool by
-   which the model reports a blocking condition, and the spawn and team
-   tools. [design.md](design.md) and [log-format.md](log-format.md) specify
-   `block`, spawning, and teams.
+1. **Built-in tools.** Implemented in the runtime. There are eleven: the
+   four coding tools `read`, `grep`, `edit`, and `bash` specified below;
+   `block`, by which the model reports a blocking condition; `spawn`, which
+   starts a child episode, and `wait`, which blocks until every child this
+   episode started has ended; `steer`, which sends a message to a running
+   child, and `notify`, which sends one to the episode that started this
+   one; and `send` and `team`, which address a teammate through the lead
+   and list the team's roster. [design.md](design.md) and
+   [log-format.md](log-format.md) specify `block`, spawning, waiting, and
+   teams. One further tool, `return`, is synthesized rather than named in
+   `tools`: a `done_when.returns` schema adds it to the registry, and
+   [config.md](config.md) specifies that key.
 2. **Configured executables.** Entries in `tool_defs`, each naming an
    executable by absolute path. Any program with a command line becomes a
    tool without modification.
@@ -28,7 +35,9 @@ Each name resolves against three sources, checked in this order.
 A name that resolves in two sources is an error at construction, and so is
 a name that resolves in none. `foe tools` lists the built-in tools; `foe
 tools --config FILE` lists the resolved set for a document with each tool's
-source.
+source. The second form resolves every path the document names, as
+`foe plan` does, so a document whose grants or `tool_defs` name a path that
+does not exist is refused with the key and the path.
 
 Every tool returns a canonical value, which is JSON, and may return a
 rendered string. The log stores the canonical value in full. The model

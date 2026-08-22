@@ -108,7 +108,11 @@ cannot report a field sends 0.
 
 foe records every chunk as an `assistant/chunk` event, assembles the
 `assistant/message` on `done`, and applies the length rule when `stop` is
-`length`.
+`length`. When a stream that has already begun a tool call ends without a
+`done` chunk, because an `error` chunk arrived, because the host sent
+`cancel`, or because the budget's `seconds` elapsed, foe writes the partial
+`assistant/message` with `stop` set to `interrupted`. That is a fourth
+value a reader of the log meets and a host never sends.
 
 ### `tool/result`
 

@@ -97,9 +97,11 @@ down by 3 calls per child rather than by 8. No path through the tree can
 spend more than the root declared.
 
 Three structural caps sit beside the spend caps. `max_depth: 1` allows
-children and forbids grandchildren. `max_episodes: 4` allows the parent and
-three children over the life of the run. `max_concurrent: 2` allows two
-children running at once. A `spawn` call that would pass any cap, or that
+children and forbids grandchildren. `max_episodes: 4` allows four episodes
+in the whole tree over the life of the run, which here is the parent and
+three children; it is a reservation dimension like the others, and a child
+that may start none of its own asks for one. `max_concurrent: 2` allows two
+children running at once, counting one episode's direct children alone. A `spawn` call that would pass any cap, or that
 asks for more budget than remains, returns an error result naming the limit,
 and no child starts; the model reads that result like any other.
 
@@ -110,7 +112,7 @@ the child and the amount taken from the remainder, then a `spawn/start` with
 `context: "fresh"` and the id of the tool call that spawned it:
 
 ```json
-{"seq": 12, "type": "budget/reserve", "data": { "child_id": "ep_ff6cef6d", "reserved": { "model_calls": 8, "tokens": 60000, "seconds": 1800 } }}
+{"seq": 12, "type": "budget/reserve", "data": { "child_id": "ep_ff6cef6d", "reserved": { "model_calls": 8, "tokens": 60000, "seconds": 1800, "episodes": 1 } }}
 {"seq": 13, "type": "spawn/start", "data": { "child_id": "ep_ff6cef6d", "program": "survey", "context": "fresh", "call_id": "tc_spawn_config" }}
 ```
 
@@ -124,7 +126,7 @@ report, a second one stating that the child ended, a `spawn/end` with the
 child's outcome, and a `budget/release` with what the child spent:
 
 ```json
-{"seq": 35, "type": "budget/release", "data": { "child_id": "ep_ff6cef6d", "spent": { "model_calls": 3, "tokens": 0, "seconds": 0 } }}
+{"seq": 35, "type": "budget/release", "data": { "child_id": "ep_ff6cef6d", "spent": { "model_calls": 3, "tokens": 0, "seconds": 0, "episodes": 1 } }}
 ```
 
 The runner checks all of this. In the parent's log it requires two

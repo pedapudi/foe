@@ -90,12 +90,15 @@ combines their results, which the runtime executes as one tool call, rather
 than issuing each call as a separate model turn. Code mode is not
 implemented. No event type or configuration key is reserved.
 
-## A Bazel build
+## Bazel targets for the browser bundle and the Python package
 
-A Bazel build would define every crate, the browser bundle, and the Python
-package as Bazel targets so that a repository that already builds with Bazel
-can depend on foe without invoking Cargo. The build is Cargo only. No event
-type or configuration key is reserved.
+Bazel is the primary build interface: every Rust crate is a Bazel target,
+`//:foe` builds the binary, and [build.md](build.md) specifies the targets.
+The browser bundle and the Python package are not Bazel targets. The
+bundle is checked into `view/dist` and consumed as a filegroup, and the
+Python package builds through its own tooling. A reproducibility check
+comparing the Bazel and Cargo binaries is also absent. No event type or
+configuration key is reserved.
 
 ## A TypeScript SDK
 
@@ -106,12 +109,16 @@ event type or configuration key is reserved.
 
 ## Additional viewer axes
 
-The viewer organizes episodes by lineage: the tree of parents and children
-with the conversation of each. Further axes would organize the same logs by
-program identity, so that every episode of one program is compared side by
-side, and by tool, so that every call of one tool across episodes is listed
-together. Axes other than lineage are not implemented. No event type or
-configuration key is reserved.
+The viewer organizes episodes by lineage: one tree of parents and children
+per root episode, with the conversation, the raw events, the diffs, the
+declared workflow, and the statistics of the selected episode beside it.
+Two further axes
+would organize the same logs differently. One is program identity, so that
+every episode of one program is compared side by side. The other is the
+individual tool call, so that every call of one tool across episodes is
+listed together; the statistics view already totals durations by tool name,
+and listing the calls themselves is what is absent. Neither axis is
+implemented. No event type or configuration key is reserved.
 
 ## macOS sandboxing
 

@@ -2,8 +2,10 @@
 
 foe builds as one Rust binary with the browser viewer embedded. Building and
 installing the binary requires neither Node.js nor a JavaScript package
-manager. The compiled viewer assets are checked into `view/dist`. TypeScript
-development commands are documented in [`view/README.md`](../view/README.md).
+manager. The compiled viewer assets are checked into `view/dist`, and the
+font files the viewer serves itself are checked into `view/fonts`; the
+build script of `crates/view` embeds both. TypeScript development commands
+are documented in [`view/README.md`](../view/README.md).
 
 ## Install from source
 
@@ -83,6 +85,10 @@ temporary projects under Bazel's test directory:
 ```sh
 bazel test //examples/...
 ```
+
+These three are the only examples with Bazel targets. `examples/` holds
+thirteen runnable programs in all, each started by its own `run.sh` or
+`run.py`; [`examples/README.md`](../examples/README.md) indexes them.
 
 ## Use Cargo for Rust development
 

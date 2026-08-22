@@ -50,9 +50,9 @@ attempt, with the message as the error.
 
 Both copies lie inside the read root the configuration grants. An executable
 the episode starts runs under the episode's sandbox with an empty
-environment. It may read the read roots and its own file and nothing else,
-so a transport left in this directory could not import the helper it shares
-with the other examples. `support` sits beside `tools` in the project as it
+environment. It reads no path outside the read roots and executes no file
+other than its own, so a transport left in this directory could not import
+the helper it shares with the other examples. `support` sits beside `tools` in the project as it
 does in `examples`, so the import path is the same in both places.
 
 ## Run
@@ -112,4 +112,5 @@ the project it was granted. The last event is `episode/end` with the blocked
 outcome.
 
 In the viewer, the step shows its five attempts with the delay between them,
-and the outcome line names the code.
+and the details region's outcome row reads
+`blocked · recovery-exhausted`.

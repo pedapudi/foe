@@ -108,8 +108,9 @@ credential or a network. Three of them end in the outcomes that are not
 success, because a program that runs unattended has to recognise those too:
 
 ```sh
-sh examples/minimal/run.sh          # or: bazel run //examples/minimal
-bazel test //examples/...           # every example at once
+sh examples/minimal/run.sh          # any example with a run.sh
+python3 examples/embed-in-a-program/run.py
+bazel test //examples/...           # the three with Bazel targets
 ```
 
 ## Evaluation
@@ -146,18 +147,18 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 
-Several numbers bound the runtime. The Rust source of the log, core, and
-tool crates stays under 6,000 lines, excluding tests and generated code, the
-workflow executor stays under 1,000 on the same terms, and the compaction
-policy under 500. The viewer is budgeted apart from the runtime, at 600 lines
-for its crate and 150 KB compressed for its browser bundle, because it
-delivers a record of a run rather than running one; its HTML, TypeScript, and
-CSS count toward that compressed size and toward no line budget. `scripts/loc.sh` counts
-the Rust budgets and continuous integration fails a build over any of them.
-The
-stripped release binary measured 5,228,760 bytes on 2026-08-21 with the
-viewer bundle embedded; continuous integration builds the bundle before
-measuring and fails a build over 8 MiB.
+Six numbers bound the source. Four are line budgets over Rust, excluding
+tests and generated code: the runtime, which is the log, core, and tool
+crates together, stays under 6,000 lines, the workflow executor stays under
+1,000, the compaction policy under 500, and the viewer crate under 600. The
+viewer is budgeted apart from the runtime because it delivers a record of a
+run rather than running one; its HTML, TypeScript, and CSS count toward no
+line budget at all. `scripts/loc.sh` counts the four, and continuous
+integration fails a build over any of them. The fifth number bounds the
+browser bundle at 150 KB compressed. The sixth is the stripped release
+binary with that bundle embedded, which measured 5,347,632 bytes on
+2026-08-21; continuous integration builds the bundle before measuring and
+fails a build over 8 MiB.
 
 ## Documents
 
@@ -176,7 +177,10 @@ measuring and fails a build over 8 MiB.
 | [docs/viewer.md](docs/viewer.md) | the trajectory viewer |
 | [docs/landscape.md](docs/landscape.md) | where foe sits among agent runtimes |
 | [docs/deferred.md](docs/deferred.md) | features with reserved names and no implementation |
+| [docs/workflow.md](docs/workflow.md) | declared graphs, the judgment the model keeps inside one, and recovery |
+| [docs/compaction.md](docs/compaction.md) | when the context is compacted, where it is cut, and what the summary carries |
 | [docs/design-language.md](docs/design-language.md) | the visual language the viewer follows |
+| [docs/brand/README.md](docs/brand/README.md) | the name, the mark, the wordmark, the accent, and their use |
 
 `docs/README.md` lists the same documents with the question each answers.
 `AGENTS.md` states the rules for changing this repository.

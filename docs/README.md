@@ -24,5 +24,6 @@ specify one piece each.
 | [brand/README.md](brand/README.md) | the name, the mark, the wordmark, the accent, and the rules for using them |
 
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the
-rules for changing the repository. `examples/` holds one configuration per
-mechanism and three self-contained end-to-end runners.
+rules for changing the repository. `examples/` holds thirteen runnable
+programs, one per mechanism, each of which answers the model from a script
+and checks its own result; `examples/README.md` indexes them.

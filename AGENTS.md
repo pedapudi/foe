@@ -5,9 +5,10 @@ Rules for anyone, human or agent, changing this repository.
 ## Read first
 
 `docs/design.md` is the design. `docs/log-format.md`, `docs/protocol.md`,
-and `docs/config.md` are specifications; code implements them and does not
-reinterpret them. When code and a specification disagree, the specification
-is wrong only if a written change to it is made in the same commit.
+`docs/config.md`, `docs/workflow.md`, and `docs/compaction.md` are
+specifications; code implements them and does not reinterpret them. When
+code and a specification disagree, the specification is wrong only if a
+written change to it is made in the same commit.
 
 ## Prose
 
@@ -34,8 +35,10 @@ sentence on first reading.
 
 - Rust 2021, toolchain pinned in `rust-toolchain.toml`. `cargo fmt` and
   `cargo clippy -- -D warnings` pass before every commit.
-- `crates/log` depends on serde and nothing else. `crates/core` depends on
-  `crates/log`. Nothing depends on `crates/view` except the binary.
+- `crates/log` depends on serde, serde_json, and thiserror, and on no
+  crate of this repository. The only crate of this repository that
+  `crates/core` depends on is `crates/log`. Nothing depends on
+  `crates/view` except the binary.
 - No environment variable is read anywhere. Configuration arrives as a file.
 - No path list is searched. Executables are named by absolute path.
 - Every error names the key, event, or rule involved.

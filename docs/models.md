@@ -228,9 +228,10 @@ and `model/request.messages`. `options` carries every key of the `model`
 block other than `provider`, `model`, `max_output_tokens`, and `exec`, which
 is how the program learns where its own credential lives. The program runs
 under the episode's sandbox narrowed as for a configured tool: it reads the
-read roots and the loader directories, it may open TCP connections, and it
-starts with an empty environment. A credential file it reads must therefore
-lie under a read root.
+read roots and the loader directories, it may open TCP connections, it
+reads the resolver configuration that turns a host name into an address,
+and it starts with an empty environment. A credential file it reads must
+therefore lie under a read root.
 
 The chunks reach the episode when the program exits, because the executor
 captures output whole. A program that exits without a final `done` or
@@ -238,17 +239,22 @@ captures output whole. A program that exits without a final `done` or
 is not retried, an exit of zero without a final chunk is.
 
 [`examples/exec-transport/`](../examples/exec-transport/) holds two such
-programs and the configuration that runs them: one of thirty-odd lines that
-answers through `litellm`, and one that answers with fixed chunks so that
-the example runs without a credential. Its README states which lines to
+programs and the configuration that runs them: `litellm-transport`, of
+about fifty lines, which answers through `litellm`, and
+`scripted-transport.py`, which answers with fixed chunks so that the
+example runs without a credential. Its README states which lines to
 change to reach a provider.
 
 ## Formats and credential sources
 
 The transport crate is organized as a table of wire formats times credential
-sources. A provider is one row: a name, a format, a credential source, a
-default base URL, the options it requires, the models `foe login` offers,
-and any fixed headers. Each format and each source sits behind a Cargo
+sources. A provider is one row of twelve fields: the name a configuration
+writes, the title and one-line description `foe login` prints, the wire
+format, the credential source, the default base URL, the path appended to
+it, the options the `model` block must carry, the models `foe login`
+offers, the context windows by model-name prefix, any fixed headers, and
+how `foe login` proves a credential works. Each format and each source sits
+behind a Cargo
 feature of the `foe-transport` crate, and the default feature set enables
 all of them. A row exists only when both of its features are enabled, so
 `foe login` and `foe plan` describe the build that is running.
@@ -269,7 +275,8 @@ all of them. A row exists only when both of its features are enabled, so
 Adding a provider that speaks an existing format with an existing source is
 one row in `crates/transport/src/providers.rs`. A provider that serves the
 Chat Completions API at `https://api.example.com/v1` with a bearer key,
-offers two models, and answers `GET /models` would be:
+offers two models with a 128,000-token window, and answers `GET /models`
+would be:
 
 ```rust
 #[cfg(all(feature = "chat", feature = "api-key"))]
@@ -283,6 +290,7 @@ Provider {
     path: "/chat/completions",
     required: &[],
     presets: &["example-large", "example-small"],
+    windows: &[("example-", 128_000)],
     headers: &[],
     verify: Verify::GetJson("/models"),
 },

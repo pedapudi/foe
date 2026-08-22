@@ -116,7 +116,8 @@ because the configuration declares no other completion rule.
 
 ## In the viewer
 
-The left pane shows one episode. The budget line counts six model calls
-against twenty. The sandbox line shows the Landlock version the kernel
-provided, or 0 when it provided none. The conversation shows the `edit` call
-with its unified diff, and both `bash` calls with their exit codes.
+The episodes region lists one episode, because the run directory holds one
+log and no children. The details region below it counts six model calls
+against twenty and states the Landlock version the kernel provided, or 0
+when it provided none. The conversation tab shows the `edit` call with its
+unified diff, and both `bash` calls with their exit codes.
