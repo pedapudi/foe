@@ -540,6 +540,11 @@ pub struct BudgetAmount {
     pub tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seconds: Option<u64>,
+    /// Episodes, counting the one the amount is granted to. In a
+    /// `budget/reserve` this is the child's whole subtree allowance; in a
+    /// `budget/release` it is how many episodes the subtree held.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episodes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

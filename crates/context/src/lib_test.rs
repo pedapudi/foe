@@ -98,7 +98,7 @@ fn config(window: Option<u64>, reserve: u64, keep: u64) -> ContextConfig {
 }
 
 fn state(events: &[Event]) -> ContextState<'_> {
-    ContextState { events, remaining: BudgetAmount { model_calls: Some(7), tokens: None, seconds: None } }
+    ContextState { events, remaining: BudgetAmount { model_calls: Some(7), ..Default::default() } }
 }
 
 /// docs/compaction.md "When it triggers": the projection is the last

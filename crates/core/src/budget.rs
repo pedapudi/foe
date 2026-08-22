@@ -20,10 +20,8 @@ pub struct Pool {
     tokens: u64,
     /// Reservations of children that have not settled, by child id.
     active: BTreeMap<String, BudgetAmount>,
-    /// Totals reported by children that settled.
+    /// Totals reported by children that settled, subtrees included.
     children_spent: BudgetAmount,
-    /// Episodes in the tree so far, this one included.
-    episodes: u32,
 }
 
 impl Pool {
@@ -36,7 +34,6 @@ impl Pool {
             tokens: 0,
             active: BTreeMap::new(),
             children_spent: BudgetAmount::default(),
-            episodes: 1,
         }
     }
 
@@ -48,7 +45,6 @@ impl Pool {
             EventData::ModelRequest(_) => self.requests += 1,
             EventData::AssistantMessage(message) => self.note_usage(message.usage),
             EventData::BudgetReserve { child_id, reserved } => {
-                self.episodes += 1;
                 self.active.insert(child_id.clone(), *reserved);
             }
             EventData::BudgetRelease { child_id, spent } => self.release(child_id, *spent),
@@ -71,14 +67,18 @@ impl Pool {
 
     /// What remains for this episode after its own spend, its settled
     /// children, and its active reservations. `None` means unlimited.
+    /// `episodes` counts this episode against the limit, so it is the
+    /// number of further episodes the tree below here may still hold.
     pub fn remaining(&self) -> BudgetAmount {
         let reserved = |f: fn(&BudgetAmount) -> Option<u64>| self.active.values().filter_map(f).sum::<u64>();
         let calls_used = self.requests + self.children_spent.model_calls.unwrap_or(0) + reserved(|a| a.model_calls);
         let tokens_used = self.tokens + self.children_spent.tokens.unwrap_or(0) + reserved(|a| a.tokens);
+        let episodes_used = 1 + self.children_spent.episodes.unwrap_or(0) + reserved(|a| a.episodes);
         BudgetAmount {
             model_calls: Some(self.limits.model_calls.saturating_sub(calls_used)),
             tokens: self.limits.tokens.map(|t| t.saturating_sub(tokens_used)),
             seconds: self.limits.seconds.map(|s| s.saturating_sub(self.started.elapsed().as_secs())),
+            episodes: Some(u64::from(self.limits.max_episodes).saturating_sub(episodes_used)),
         }
     }
 
@@ -106,9 +106,6 @@ impl Pool {
         if self.limits.max_depth == 0 {
             return Err(ExhaustedLimit::Depth);
         }
-        if self.episodes >= self.limits.max_episodes {
-            return Err(ExhaustedLimit::Episodes);
-        }
         if self.active.len() as u32 >= self.limits.max_concurrent {
             return Err(ExhaustedLimit::Concurrency);
         }
@@ -118,10 +115,18 @@ impl Pool {
             (Some(a), _) => Ok(Some(a)),
             (None, l) => Ok(l),
         };
+        // The episode allowance is clamped rather than refused, because a
+        // child program declares its own `max_episodes` without knowing
+        // what its parent has left; the child receives what remains.
+        let episodes_left = remaining.episodes.unwrap_or(0);
+        if episodes_left == 0 {
+            return Err(ExhaustedLimit::Episodes);
+        }
         let granted = BudgetAmount {
             model_calls: within(request.model_calls, remaining.model_calls, ExhaustedLimit::ModelCalls)?,
             tokens: within(request.tokens, remaining.tokens, ExhaustedLimit::Tokens)?,
             seconds: within(request.seconds, remaining.seconds, ExhaustedLimit::Seconds)?,
+            episodes: Some(request.episodes.map_or(episodes_left, |a| a.min(episodes_left))),
         };
         // A grant of zero on any dimension is refused rather than passed
         // down. A configuration whose budget holds a zero is invalid, so a
@@ -136,13 +141,13 @@ impl Pool {
         if let Some((_, limit)) = zero.into_iter().find(|(amount, _)| *amount == Some(0)) {
             return Err(limit);
         }
-        self.episodes += 1;
         self.active.insert(child_id.to_string(), granted);
         Ok(granted)
     }
 
     /// Settles a child: its reservation ends and what it reports spent is
-    /// debited permanently. The caller records `budget/release`.
+    /// debited permanently. The caller records `budget/release`. Episodes
+    /// are a lifetime count, so a subtree that has ended keeps its share.
     pub fn release(&mut self, child_id: &str, spent: BudgetAmount) {
         self.active.remove(child_id);
         let add = |total: &mut Option<u64>, amount: Option<u64>| {
@@ -152,6 +157,7 @@ impl Pool {
         };
         add(&mut self.children_spent.model_calls, spent.model_calls);
         add(&mut self.children_spent.tokens, spent.tokens);
+        add(&mut self.children_spent.episodes, spent.episodes);
     }
 
     /// Children running now.

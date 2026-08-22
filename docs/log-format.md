@@ -267,15 +267,24 @@ The values `request` and `response` are reserved for correlated exchanges.
 episode's remainder.
 
 ```json
-{ "child_id": "ep_9c21", "reserved": { "model_calls": 6, "tokens": 60000 } }
+{ "child_id": "ep_9c21", "reserved": { "model_calls": 6, "tokens": 60000, "episodes": 3 } }
 ```
 
 `budget/release` — implemented. A child settled and returned its unspent
 reservation.
 
 ```json
-{ "child_id": "ep_9c21", "spent": { "model_calls": 4, "tokens": 41200 } }
+{ "child_id": "ep_9c21", "spent": { "model_calls": 4, "tokens": 41200, "episodes": 2 } }
 ```
+
+An amount holds four optional fields: `model_calls`, `tokens`, `seconds`,
+and `episodes`. An absent field means the dimension is unlimited. In
+`reserved`, `episodes` is how many episodes the child's subtree may hold,
+the child itself included; it is the child's `budget.max_episodes` once the
+parent's share is applied. In `spent`, `episodes` is how many episodes that
+subtree held, so a leaf child reports one. A parent adds each released
+count to a lifetime total that never returns to the pool, which is how one
+`max_episodes` bounds a whole tree.
 
 `spawn/start` — implemented.
 

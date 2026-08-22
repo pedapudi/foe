@@ -404,6 +404,7 @@ impl Executor {
                 model_calls: Some(program.budget.model_calls),
                 tokens: program.budget.tokens,
                 seconds: program.budget.seconds,
+                episodes: None,
             };
             let task = sections.join("\n\n");
             let req = SpawnRequest { program: full.clone(), task, context: SpawnContext::Fresh, reserve, call_id };

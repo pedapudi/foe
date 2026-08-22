@@ -216,11 +216,21 @@ Object. Required.
 | `seconds` | integer | no | unlimited | wall-clock limit for the episode |
 | `max_depth` | integer | no | 1 | how many levels of child episodes may exist below this one; 0 forbids spawning |
 | `max_episodes` | integer | no | 8 | lifetime count of episodes in the tree, including this one |
-| `max_concurrent` | integer | no | 4 | children running at once |
+| `max_concurrent` | integer | no | 4 | direct children of this episode running at once |
 | `loop_threshold` | integer | no | 3 | consecutive identical tool calls, or identical assistant turns, that end the episode as blocked |
 
-Every limit applies to the whole tree below this episode. A child's budget is
-reserved from its parent's remainder.
+`model_calls`, `tokens`, `seconds`, `max_depth`, and `max_episodes` apply to
+the whole tree below this episode. A child's budget is reserved from its
+parent's remainder: the spawn grants the child a share, the child cannot
+exceed it, and the child reports back what its whole subtree used. A child
+program that declares a limit larger than the share it receives runs under
+the share.
+
+`max_concurrent` and `loop_threshold` apply to one episode. `max_concurrent`
+counts the direct children of the episode that declares it, so a child with
+its own children answers to its own value. The number of episodes running at
+once anywhere in the tree is bounded instead by `max_episodes`, which every
+episode in the tree draws from.
 
 ### `done_when`
 
