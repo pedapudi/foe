@@ -7,6 +7,7 @@ specify one piece each.
 |---|---|
 | [build.md](build.md) | how to install foe, build it with Bazel, run the end-to-end demos, and use Cargo for Rust development |
 | [design.md](design.md) | the guarantees foe makes and the structure that delivers each |
+| [evaluation.md](evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [config.md](config.md) | what a configuration document may contain and what each key means |
 | [models.md](models.md) | which model providers exist, where their credentials live, how `foe login` sets them up, and how a program of your own answers model requests |
 | [log-format.md](log-format.md) | what an episode log contains and how a model request is derived from it |
