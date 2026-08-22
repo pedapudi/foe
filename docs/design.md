@@ -415,6 +415,8 @@ The concurrency lease returns at settlement. Both counts include every
 descendant represented by a child's reservation. Depth bounds each lineage.
 A spawn that would pass a cap fails as a tool call with a result naming the
 limit, and no child starts; the model reads that result like any other.
+The parent observes a child as settled after it records `spawn/end` and
+`budget/release` and returns the reservation to the pool.
 
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent
