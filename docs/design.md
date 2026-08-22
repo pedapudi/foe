@@ -630,9 +630,15 @@ that grows must not force the runtime to shrink. The browser viewer's HTML,
 TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
 
-Rust outside every line budget, in the built-in transport and in the
-command-line binary, is bounded by the size of the binary it compiles into.
-Continuous integration enforces every budget as a test.
+The command line is budgeted apart from the runtime as well: `crates/cli`
+under 1,500 lines. It is separate because it serves a person at a terminal
+rather than an episode. What it holds is what belongs to a process rather
+than to a run: argument parsing, the plan reports, credential acquisition,
+the browser, the outcome line, and the exit codes.
+
+Rust outside every line budget, in the built-in transport, is bounded by the
+size of the binary it compiles into. Continuous integration enforces every
+budget as a test.
 
 The budget is a design constraint rather than an aspiration. A runtime that
 other systems embed and audit earns trust in proportion to how little of it
