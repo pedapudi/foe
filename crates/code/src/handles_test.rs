@@ -73,6 +73,19 @@ impl Reader for Bounded {
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError> {
         Ok(std::fs::metadata(self.check(path)?)?)
     }
+    fn files(&self, path: &Path) -> Result<Vec<PathBuf>, CapError> {
+        let root = self.check(path)?;
+        if root.is_file() {
+            return Ok(vec![root]);
+        }
+        Ok(ignore::WalkBuilder::new(root)
+            .require_git(false)
+            .build()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
+            .map(|entry| entry.into_path())
+            .collect())
+    }
     fn roots(&self) -> &[PathBuf] {
         &self.roots
     }

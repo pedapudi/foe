@@ -74,8 +74,12 @@ under this contract.
   episode's `spill/` directory, and the captured text ends with a line
   naming that file.
 
-The executable's content is hashed into the program's identity, so a
-replaced binary at the same path changes identity.
+The executable's content is hashed into the program's identity. Registry
+construction opens the file and verifies its content. Every call executes a
+duplicate of that file descriptor. Replacing the configured path after
+construction cannot redirect a call to a different file. A script sees the
+descriptor path as `$0`; it should locate sibling files from its configured
+working directory.
 
 ## Built-in coding tools
 
@@ -86,10 +90,10 @@ crate's `exec` feature is enabled, which it is by default. A build without
 that feature contains no code path that starts a process.
 
 Each tool reaches files and processes only through the capability handles
-the runtime passes at dispatch: a reader bounded to the `read` roots, a
-writer bounded to the `write` roots, and an executor. A relative path in an
-argument is taken from the first `read` root, and paths in results are shown
-relative to it.
+the runtime passes at dispatch: a reader bounded to opened `read` directory
+descriptors, a writer bounded to opened `write` directory descriptors, and
+an executor. A relative path in an argument is taken from the first `read`
+root, and paths in results are shown relative to it.
 
 | tool | effect | arguments | limits | canonical value |
 |---|---|---|---|---|
@@ -130,12 +134,11 @@ the file is an error that states the file's line count.
 ### `grep`
 
 Searching runs in process through the `grep-searcher`, `grep-regex`,
-`grep-matcher`, and `ignore` libraries; no process is started. The tree
-below `path` is walked with the rules of `.gitignore` and `.ignore` files
-applied, whether or not the directory is a git checkout, and hidden entries
-are skipped. Each file's bytes are read through the reader, so a symbolic
-link that leaves the read roots is skipped rather than followed. Files that
-contain a NUL byte are skipped.
+`grep-matcher`, and `ignore` libraries; no process is started. The reader
+walks the tree relative to an opened read-root descriptor. Rules from
+`.gitignore` and `.ignore` files apply whether or not the directory is a git
+checkout, and hidden entries are skipped. Symbolic links are skipped. Files
+that contain a NUL byte are skipped.
 
 `pattern` uses Rust regex syntax. With `literal` true, the pattern is
 matched as a fixed string. `glob` restricts the search to files whose path

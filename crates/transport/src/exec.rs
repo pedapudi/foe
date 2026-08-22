@@ -103,6 +103,7 @@ impl Transport for ExecTransport {
     async fn stream(&self, req: ModelRequestBody, sink: &mut (dyn foe_core::ChunkSink + Send)) {
         let request = ExecRequest {
             program: self.program.clone(),
+            verified_program: None,
             args: vec![self.model.clone()],
             cwd: self.program.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/")),
             env: BTreeMap::new(),

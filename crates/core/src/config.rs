@@ -231,11 +231,14 @@ fn resolve_section(
         let k = |field: &str| key(&format!("tool_defs.{name}.{field}"));
         let exec = canonical(k("exec"), &def.exec)?;
         require(exec.is_file(), k("exec"), "names a file")?;
+        let bytes = std::fs::read(&exec)
+            .map_err(|e| invalid(k("exec"), format!("is readable for hashing: {}: {e}", exec.display())))?;
+        let exec_sha256 = Some(crate::identity::sha256_hex(&bytes));
         let cwd = match &def.cwd {
             Some(cwd) => canonical(k("cwd"), cwd)?,
             None => grants.read[0].clone(),
         };
-        tool_defs.insert(name.clone(), ToolDef { exec, cwd: Some(cwd), ..def.clone() });
+        tool_defs.insert(name.clone(), ToolDef { exec, exec_sha256, cwd: Some(cwd), ..def.clone() });
     }
     let mut programs = BTreeMap::new();
     for (name, child) in &s.programs {

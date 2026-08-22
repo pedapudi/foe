@@ -179,8 +179,13 @@ without a shell. Standard input is `/dev/null`. Standard output and standard
 error are captured. The exit code is reported as part of the result. An exit
 code other than zero is a result rather than an error.
 
-The executable is hashed into identity by content. A replaced binary at the
-same path changes identity.
+The runtime hashes the executable during program resolution. Registry
+construction opens the file and checks that hash. Calls execute a duplicate
+of the verified file descriptor. A path replacement before registry
+construction is refused when its content differs. A path replacement after
+construction cannot redirect a call to a different file. A script sees the
+descriptor path as `$0`; it should locate sibling files from its configured
+working directory.
 
 Declaring an entry in `tool_defs` is what permits the episode to execute that
 file. There is no separate execute grant.
@@ -214,8 +219,13 @@ Object. Required. Names what the episode may reach.
 | `spawn` | list of strings | no | names from `programs` the episode may start; default empty |
 
 Paths are prefixes. A grant on `/home/user/project` covers every path below
-it. Symbolic links are resolved before the check, and a link that resolves
-outside every granted root is denied. There is no pattern syntax.
+it. The runtime opens each granted directory once at episode start. Reads,
+writes, and directory walks resolve relative to that descriptor at the time
+of use. On Linux, resolution uses `openat2` with `RESOLVE_BENEATH` and
+`RESOLVE_NO_MAGICLINKS` when the kernel provides it. The descriptor-relative
+fallback enforces the same boundary on older kernels and other supported Unix
+systems. A symbolic link or renamed path component cannot redirect an
+operation outside the opened root. There is no pattern syntax.
 
 The episode's own log directory is always writable and need not be listed.
 

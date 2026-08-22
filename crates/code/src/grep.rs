@@ -11,7 +11,6 @@ use foe_core::{CallCtx, Effect, Tool, ToolSpec, ToolValue};
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use ignore::overrides::OverrideBuilder;
-use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt::Write;
@@ -155,25 +154,26 @@ impl Tool for Grep {
             (None, None) => return ToolValue::error("grep: no read root to search"),
         };
         let root_shown = display(roots, &root);
-        if let Err(e) = reader.metadata(&root) {
-            return ToolValue::error(format!("grep: {root_shown}: {e}"));
-        }
         let matcher =
             match RegexMatcherBuilder::new().case_insensitive(a.ignore_case).fixed_strings(a.literal).build(&a.pattern)
             {
                 Ok(m) => m,
                 Err(e) => return ToolValue::error(format!("grep: invalid pattern: {e}")),
             };
-        let mut walk = WalkBuilder::new(&root);
-        walk.require_git(false);
+        let mut overrides = OverrideBuilder::new(&root);
         if let Some(glob) = &a.glob {
-            let mut ov = OverrideBuilder::new(&root);
-            let built = ov.add(glob).and_then(|b| b.build());
-            match built {
-                Ok(ov) => walk.overrides(ov),
-                Err(e) => return ToolValue::error(format!("grep: invalid glob {glob:?}: {e}")),
-            };
+            if let Err(e) = overrides.add(glob) {
+                return ToolValue::error(format!("grep: invalid glob {glob:?}: {e}"));
+            }
         }
+        let overrides = match overrides.build() {
+            Ok(overrides) => overrides,
+            Err(e) => return ToolValue::error(format!("grep: invalid glob {:?}: {e}", a.glob.unwrap_or_default())),
+        };
+        let candidates = match reader.files(&root) {
+            Ok(files) => files,
+            Err(e) => return ToolValue::error(format!("grep: {root_shown}: {e}")),
+        };
         let mut searcher = SearcherBuilder::new()
             .line_number(true)
             .before_context(a.context)
@@ -182,16 +182,15 @@ impl Tool for Grep {
             .build();
         let mut collected = Collected { hits: Vec::new(), matches: 0, complete: true };
         let mut searched = 0usize;
-        for entry in walk.build() {
-            let Ok(entry) = entry else { continue };
-            if !entry.file_type().is_some_and(|t| t.is_file()) {
+        for path in candidates {
+            if overrides.matched(&path, false).is_ignore() {
                 continue;
             }
-            let Ok(bytes) = reader.read(entry.path()) else {
+            let Ok(bytes) = reader.read(&path) else {
                 continue;
             };
             searched += 1;
-            let sink = Collect { path: entry.path(), into: &mut collected };
+            let sink = Collect { path: &path, into: &mut collected };
             let _ = searcher.search_slice(&matcher, &bytes, sink);
             if !collected.complete {
                 break;

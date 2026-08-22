@@ -126,6 +126,8 @@ pub struct CallCtx {
 pub trait Reader: Send + Sync {
     fn read(&self, path: &Path) -> Result<Vec<u8>, CapError>;
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError>;
+    /// Files below `path`, opened for traversal through this capability.
+    fn files(&self, path: &Path) -> Result<Vec<PathBuf>, CapError>;
     fn roots(&self) -> &[PathBuf];
 }
 
@@ -146,6 +148,8 @@ pub trait Executor: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct ExecRequest {
     pub program: PathBuf,
+    /// The configured executable after its bytes were checked against identity.
+    pub verified_program: Option<Arc<std::fs::File>>,
     pub args: Vec<String>,
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
@@ -283,6 +287,9 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct ToolDef {
     pub exec: PathBuf,
+    /// Filled while resolving a program and excluded from configuration JSON.
+    #[serde(skip)]
+    pub exec_sha256: Option<String>,
     pub description: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instruction: Option<String>,

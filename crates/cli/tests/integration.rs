@@ -300,7 +300,7 @@ fn a_failed_tool_node_is_retried_through_recovery() {
     let script = dir.join("flaky");
     std::fs::write(
         &script,
-        "#!/bin/sh\nstate=\"$(dirname \"$0\")/state\"\nif [ ! -f \"$state\" ]; then touch \"$state\"; echo failing; exit 1; fi\necho fine\n",
+        "#!/bin/sh\nstate=state\nif [ ! -f \"$state\" ]; then touch \"$state\"; echo failing; exit 1; fi\necho fine\n",
     )
     .unwrap();
     std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();

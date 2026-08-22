@@ -96,6 +96,7 @@ impl Tool for Bash {
         }
         let req = ExecRequest {
             program: PathBuf::from(SHELL),
+            verified_program: None,
             args: vec!["-c".into(), a.command.clone()],
             env: environment(&cwd),
             cwd,

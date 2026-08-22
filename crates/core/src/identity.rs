@@ -3,8 +3,8 @@
 //! Implements docs/design.md (Programs and identity). The identity
 //! document lists everything that shapes what the model sees and nothing
 //! else: resolved paths, the `model` block, `sandbox`, and the task are
-//! absent. Computing it reads the executables named in `tool_defs` to hash
-//! their content, executes nothing, and opens no socket.
+//! absent. Program resolution supplies executable content hashes. Computing
+//! identity executes nothing and opens no socket.
 
 use crate::config::{resolve_node_program, Program};
 use crate::workflow::WorkflowConfig;
@@ -49,11 +49,11 @@ pub fn compute(program: &Program, extra_builtins: &[ToolSpec], runtime: &Runtime
     for spec in registry::resolve_specs(program, extra_builtins)? {
         let mut entry = serde_json::to_value(&spec)?;
         if let Some(def) = program.tool_defs.get(&spec.name) {
-            let bytes = std::fs::read(&def.exec).map_err(|e| ConfigError::Invalid {
+            let digest = def.exec_sha256.as_ref().ok_or_else(|| ConfigError::Invalid {
                 key: format!("tool_defs.{}.exec", spec.name),
-                rule: format!("is readable for hashing: {}: {e}", def.exec.display()),
+                rule: "has a content hash from program resolution".into(),
             })?;
-            entry["exec_sha256"] = Value::String(sha256_hex(&bytes));
+            entry["exec_sha256"] = Value::String(digest.clone());
         }
         tools.push(entry);
     }

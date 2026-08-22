@@ -13,8 +13,9 @@
 use crate::sandbox::{Policy, Sandbox};
 use crate::{CapError, ExecRequest, ExecResult, Executor};
 use nix::sys::signal::{killpg, Signal};
-use nix::unistd::Pid;
+use nix::unistd::{dup, Pid};
 use std::io::{Read, Write};
+use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -51,8 +52,15 @@ impl Executor for LocalExecutor {
     fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError> {
         let start = Instant::now();
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
-        let mut cmd = Command::new(&req.program);
-        cmd.args(&req.args)
+        let inherited = req
+            .verified_program
+            .as_ref()
+            .map(|file| dup(file.as_ref()).map_err(|e| CapError::Invalid(format!("duplicate executable: {e}"))))
+            .transpose()?;
+        let launched = inherited.as_ref().map_or_else(|| req.program.clone(), descriptor_path);
+        let mut cmd = Command::new(&launched);
+        cmd.arg0(&req.program)
+            .args(&req.args)
             .current_dir(&req.cwd)
             .env_clear()
             .envs(&req.env)
@@ -60,7 +68,7 @@ impl Executor for LocalExecutor {
             .stdin(if req.stdin.is_some() { Stdio::piped() } else { Stdio::null() })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let narrowed = self.policy.for_executable(&req.program, req.network);
+        let narrowed = self.policy.for_executable(&launched, req.network);
         let mut child = self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::Invalid(e.to_string()))?;
         let group = Pid::from_raw(child.id() as i32);
         if let (Some(bytes), Some(mut stdin)) = (req.stdin, child.stdin.take()) {
@@ -94,6 +102,11 @@ impl Executor for LocalExecutor {
             duration: start.elapsed(),
         })
     }
+}
+
+fn descriptor_path(fd: &std::os::fd::OwnedFd) -> PathBuf {
+    let base = if cfg!(target_os = "linux") { "/proc/self/fd" } else { "/dev/fd" };
+    PathBuf::from(format!("{base}/{}", fd.as_raw_fd()))
 }
 
 /// SIGTERM to the group, [`TERM_GRACE`] for the leader to exit, then SIGKILL.

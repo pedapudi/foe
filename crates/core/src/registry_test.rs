@@ -53,6 +53,38 @@ fn names_resolve_in_source_order_and_schemas_follow_tools_order() {
     assert_eq!(specs.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), names);
 }
 
+/// docs/config.md `tool_defs`: registry construction verifies the resolved
+/// executable and retains that open file for every call.
+#[test]
+fn configured_executable_bytes_are_verified_and_retained_at_construction() {
+    let root = tmp("registry-verified-exec");
+    let exec = root.join("t.sh");
+    std::fs::write(&exec, b"original").unwrap();
+    let program = program_with(&root, |v| {
+        v["tools"] = json!(["t"]);
+        v["tool_defs"] = json!({ "t": { "exec": exec, "description": "d" } });
+    })
+    .unwrap();
+
+    std::fs::write(&exec, b"changed before construction").unwrap();
+    let error = match Registry::new(&program, vec![], vec![]) {
+        Err(error) => error,
+        Ok(_) => panic!("changed executable was accepted"),
+    };
+    assert!(matches!(error, ConfigError::Invalid { ref key, .. } if key == "tool_defs.t.exec"));
+
+    std::fs::write(&exec, b"original").unwrap();
+    let registry = Registry::new(&program, vec![], vec![]).unwrap();
+    let verified = &registry.entries[0].exec.as_ref().unwrap().program;
+    let replaced = root.join("replaced.sh");
+    std::fs::rename(&exec, &replaced).unwrap();
+    std::fs::write(&exec, b"changed after construction").unwrap();
+    let mut copy = verified.try_clone().unwrap();
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut copy, &mut bytes).unwrap();
+    assert_eq!(bytes, b"original");
+}
+
 #[test]
 fn duplicate_and_unresolved_names_are_errors_naming_the_tool() {
     let root = tmp("registry-dupes");
@@ -104,8 +136,8 @@ async fn dispatch_passes_only_the_handles_the_effect_entitles() {
     ];
     let registry = Registry::new(&program, vec![], tools).unwrap();
     let handles = Handles {
-        reader: Some(Arc::new(RootReader::new(program.grants.read.clone()))),
-        writer: Some(Arc::new(RootWriter::new(program.grants.write.clone()))),
+        reader: Some(Arc::new(RootReader::new(program.grants.read.clone()).unwrap())),
+        writer: Some(Arc::new(RootWriter::new(program.grants.write.clone()).unwrap())),
         executor: Some(Arc::new(FakeExecutor::default())),
         spawner: None,
     };
