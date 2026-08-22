@@ -54,21 +54,33 @@ fn parallel_calls_divide_one_budget() {
 #[test]
 fn a_short_result_leaves_its_remainder_to_the_others() {
     let mut values = vec![value(200), value(90_000)];
+    let short = values[0].rendered.clone().unwrap();
     bound(&mut values);
-    assert_eq!(values[0].rendered.as_deref().unwrap().chars().count(), 240, "the short result is untouched");
+    assert_eq!(values[0].rendered.as_deref(), Some(short.as_str()), "the short result is untouched");
     let large = values[1].rendered.as_deref().unwrap().chars().count();
     assert!(large > TURN_BUDGET_CHARS / 2, "the large result received only {large} characters");
 }
 
-/// docs/tools.md: no result shows less than the floor, whatever the
-/// division leaves it.
+/// docs/tools.md "The turn budget": no result is held below a floor of
+/// 4,000 characters, whatever the division leaves it, so a turn of many
+/// calls costs more than the turn budget and never more than the floor
+/// times the number of calls.
 #[test]
 fn no_result_is_held_below_the_floor() {
-    let mut values: Vec<ToolValue> = (0..40).map(|_| value(60_000)).collect();
+    const CALLS: usize = 40;
+    let mut values: Vec<ToolValue> = (0..CALLS).map(|_| value(60_000)).collect();
     bound(&mut values);
     for v in &values {
-        assert!(v.rendered.as_deref().unwrap().chars().count() >= RESULT_FLOOR_CHARS / 2);
+        // The share is the floor; the notice naming what was removed is
+        // taken out of it, and the cut lands on a line boundary.
+        let each = v.rendered.as_deref().unwrap().chars().count();
+        let room = RESULT_FLOOR_CHARS - NOTICE_CHARS;
+        assert!(each >= room, "a result showed {each} of the {RESULT_FLOOR_CHARS} floor");
+        assert!(each <= RESULT_FLOOR_CHARS, "a result showed {each}, above the {RESULT_FLOOR_CHARS} floor");
     }
+    let total = shown(&values);
+    assert!(total > TURN_BUDGET_CHARS, "the floor lifted every result above an equal division: {total}");
+    assert!(total <= RESULT_FLOOR_CHARS * CALLS, "a turn costs no more than the floor times its calls: {total}");
 }
 
 /// docs/tools.md: a numbered window keeps its head alone, and the notice
@@ -143,3 +155,4 @@ fn a_result_without_a_rendering_is_rendered_and_counted() {
     bound(&mut values);
     assert!(values[0].rendered.as_deref().unwrap().chars().count() <= TURN_BUDGET_CHARS);
 }
+
