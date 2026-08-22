@@ -64,12 +64,8 @@ impl Bound {
     /// Binds `127.0.0.1:port`, or an ephemeral port when that one is taken,
     /// and draws the token from `/dev/urandom`.
     pub fn bind(port: u16) -> Result<Bound, Error> {
-        let listener = match std::net::TcpListener::bind(("127.0.0.1", port)) {
-            Ok(listener) => listener,
-            Err(_) => {
-                std::net::TcpListener::bind(("127.0.0.1", 0)).map_err(|e| Error::Io("bind 127.0.0.1".into(), e))?
-            }
-        };
+        let loopback = |port| std::net::TcpListener::bind(("127.0.0.1", port));
+        let listener = loopback(port).or_else(|_| loopback(0)).map_err(|e| Error::Io("bind 127.0.0.1".into(), e))?;
         let addr = listener.local_addr().map_err(|e| Error::Io("local address".into(), e))?;
         let mut bytes = [0u8; 16];
         std::fs::File::open("/dev/urandom")

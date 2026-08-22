@@ -1,7 +1,10 @@
 # Viewer
 
-The viewer renders an episode directory: the log of one episode and the
-logs of every descendant under `children/`. It has two halves. A browser
+The viewer renders an episode directory, which is the log of one episode
+and the logs of every descendant under `children/`, or a directory of such
+directories, whose episodes are shown side by side as independent runs.
+"The episode tree" below states which of the two a directory is read as.
+The viewer has two halves. A browser
 bundle, built from `view/` into `view/dist/viewer.js` and
 `view/dist/viewer.css`, renders the page. The `foe-view` crate embeds that
 bundle into the binary at build time and supplies it with events in one of
@@ -564,9 +567,33 @@ that identify the episode and its lineage, the outcome when the log has an
 
 `name` is `program.name` from `episode/start` and is null when the program
 has no name. Children are the episodes whose directories lie under the
-parent's `children/`, sorted by directory name. A directory holds one root
-log, so `roots` has one element once that log exists and none before it
-does.
+parent's `children/`, sorted by directory name.
+
+### What a directory holds
+
+The directory the viewer is pointed at is read in one of two layouts, and
+what is on disk decides which; no option selects a layout.
+
+- A directory holding `episode.jsonl` is one **episode directory**. It is
+  its own single root, and its descendants are the logs under `children/`.
+  Every runner and every example passes a directory of this kind.
+- A directory holding no log of its own is a **collection**. Each of its
+  immediate subdirectories that holds an `episode.jsonl` is a root, sorted
+  by directory name, and each root keeps its own descendants under its own
+  `children/`. A subdirectory with no log, such as one holding notes, is
+  passed over. This is the layout a log directory accumulates when several
+  runs write into it, as `.foe` does.
+
+`roots` therefore has one element for an episode directory and one per
+entry for a collection. Both are empty until the first `episode/start` is
+readable. Roots are independent: nothing is nested under a fabricated
+parent, because a parent means a shared budget pool and a settled child,
+and neither holds between two runs that merely share a directory.
+
+A directory that is neither, such as a path that does not exist, is read
+as an episode directory, so the failure names the `episode.jsonl` that is
+missing. Live mode tolerates that failure and retries, so a server started
+on an empty directory picks up each run as its log appears.
 
 ## Live mode
 
@@ -657,8 +684,8 @@ script, stylesheet, fonts, and events are all inside it. Its size is the
 bundle plus the fonts plus the logs, and `assistant/chunk` and
 `model/request` events make the logs several times the size of the
 conversation they describe; see [log-format.md](log-format.md#size). The
-export fails, naming the file, when any log under `dir` is missing or
-malformed.
+export fails, naming the file, when a log under `dir` is malformed and
+when `dir` is neither an episode directory nor a directory holding one.
 
 ## Embedding the bundle
 

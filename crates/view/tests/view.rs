@@ -13,6 +13,13 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run")
 }
 
+/// A directory of episode directories: two independent runs of one
+/// program, one of which spawned a child, beside a directory that holds no
+/// log at all.
+fn collection() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/collection")
+}
+
 /// Starts a server on an ephemeral port. The runtime is returned so the
 /// caller keeps it alive for the test's duration.
 fn start(dir: &Path, port: u16) -> (tokio::runtime::Runtime, SocketAddr, String) {
@@ -119,6 +126,36 @@ fn projects_tree_with_spawned_and_forked_children() {
     assert_eq!((origin.episode_id.as_str(), origin.seq), ("ep_root", 7));
     assert_eq!(fork.outcome, Some(Outcome::Exhausted { limit: ExhaustedLimit::ModelCalls }));
     assert!(fork.children.is_empty());
+}
+
+#[test]
+fn projects_one_root_per_episode_directory_of_a_collection() {
+    let tree = foe_view::project(&collection()).unwrap();
+    let ids: Vec<&str> = tree.roots.iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(ids, ["ep_first", "ep_second"], "each entry holding a log is a root, in directory order");
+    assert!(tree.roots.iter().all(|r| r.parent_id.is_none() && r.fork_origin.is_none()));
+    // A root of a collection keeps the descendants under its own
+    // `children/`, so nesting and collection are the same projection.
+    let second = &tree.roots[1];
+    assert_eq!(second.children.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["ep_second_child"]);
+    assert!(matches!(second.outcome, Some(Outcome::Blocked { .. })));
+    assert_eq!((second.usage.input, second.usage.output), (2400, 60));
+}
+
+#[test]
+fn projects_an_episode_directory_of_a_collection_on_its_own() {
+    let tree = foe_view::project(&collection().join("ep_first")).unwrap();
+    assert_eq!(tree.roots.len(), 1, "a directory with a log of its own is one episode directory");
+    assert_eq!(tree.roots[0].id, "ep_first");
+}
+
+#[test]
+fn exports_every_root_of_a_collection() {
+    let html = foe_view::export(&collection()).unwrap();
+    for id in ["ep_first", "ep_second", "ep_second_child"] {
+        assert!(html.contains(&format!("\"id\":\"{id}\"")), "{id} missing from the export");
+    }
+    assert!(html.contains("\"tree\":{\"roots\":[{\"id\":\"ep_first\""));
 }
 
 #[test]

@@ -1,0 +1,1 @@
+A directory that holds no log is not an episode, and the projection passes over it.

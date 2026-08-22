@@ -1,0 +1,5 @@
+{"seq":0,"time":1724203600000,"type":"episode/start","data":{"id":"ep_second","parent_id":null,"fork_origin":null,"team_id":null,"program":{"name":"coding","budget":{"model_calls":40}},"identity":"sha256:coding","task":"Describe what this repository does.","runtime":{"version":"0.1.0","build":"unknown"},"sandbox":{"mode":"best-effort","landlock_abi":7}}}
+{"seq":1,"time":1724203600010,"type":"model/request","data":{"step":1,"attempt":1,"request_id":"rq_01","header_seq":0,"consumed":[],"messages":[]}}
+{"seq":2,"time":1724203600400,"type":"assistant/message","data":{"step":1,"request_id":"rq_01","text":"Reading the repository.","tool_calls":[],"stop":"end","usage":{"input":2400,"output":60,"cache_read":1000},"interrupted":false}}
+{"seq":3,"time":1724203600500,"type":"spawn/start","data":{"child_id":"ep_second_child","program":"survey","context":"fresh","call_id":"tc_01"}}
+{"seq":4,"time":1724203601000,"type":"episode/end","data":{"outcome":{"kind":"blocked","code":"recovery-exhausted","message":"5 attempts at step 1 failed"}}}
