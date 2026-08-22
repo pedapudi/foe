@@ -169,6 +169,14 @@ first:
 bazel run //evals:micro -- --model openai/gpt-5.6-sol
 ```
 
+`--model` names a provider and a model as `PROVIDER/MODEL`. The provider is
+whichever one holds a credential on the machine running the suite: `foe login
+openai` writes `~/.config/foe/credentials/openai.json` and `foe login
+openai-codex` writes `openai-codex.json`, and both offer the `gpt-5.6-sol`
+preset. A route naming a provider with no credential file fails at startup,
+before any task runs. Substitute the provider you logged in to for every
+command below.
+
 Run one attempt per task with a configured provider credential:
 
 ```sh
