@@ -23,13 +23,13 @@ declared.
 |---|---|
 | each `grants.read` directory | read files, list directories |
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
-| each `tool_defs` entry's `exec` file | execute and read that file |
+| each `tool_defs` entry's `exec` file in the program or its spawn-reachable descendants | execute and read that file |
 | the running `foe` binary, when `grants.spawn` is not empty | execute and read that file, so the episode can start children |
 | the credential file the `model` block resolves to, when present | read that file, so a child episode can read the credential after inheriting this domain |
 | the episode's own log directory | read and write |
 | the loader directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib`, `/bin`, `/usr/bin`, `/usr/local/bin` | read and execute |
 | the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |
-| the resolved target of `/etc/resolv.conf`, when the process may connect | read that file |
+| the resolved target of `/etc/resolv.conf`, when the process or a spawn-reachable configured executable may connect | read that file |
 | the device files `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty` | read and write |
 | TCP | bind: listed ports only; connect: all ports or none |
 
@@ -96,8 +96,8 @@ thread before the asynchronous runtime exists.
 The episode keeps:
 
 - read on its read roots, write on its write roots;
-- execute on every `tool_defs` executable, and on its own binary when it
-  may spawn children;
+- execute on every `tool_defs` executable in its spawn-reachable program
+  tree, and on its own binary when it may spawn children;
 - read on the key file named by its `model` block, which its children need;
 - read and write on its own log directory, which holds its children's
   directories and its spill files;
@@ -106,7 +106,10 @@ The episode keeps:
   episode then calls the provider itself;
 - inbound TCP on the viewer's port alone, when the episode serves a viewer;
   the command line adds that one port to the policy before applying it;
-- no outbound TCP when a host process holds the transport.
+- outbound TCP when a configured executable in its spawn-reachable program
+  tree declares `network: true`;
+- no outbound TCP when a host process holds the transport and every
+  spawn-reachable configured executable declares `network: false`.
 
 ## Executables
 
@@ -147,6 +150,12 @@ parent restricts its main thread before it starts any other thread, and a
 Landlock domain passes to every thread and process created afterwards, so
 the child inherits the parent's domain before it executes. The child's own
 ruleset nests inside that one, and the child's reach is the intersection.
+
+The parent policy includes each configured executable in the
+spawn-reachable program tree. It also permits outbound TCP when one of those
+executables declares `network: true`. Each executable receives a narrower
+policy when it runs. This ancestor reservation is necessary because an
+inherited Landlock domain cannot be widened by a child process.
 
 ## Modes
 

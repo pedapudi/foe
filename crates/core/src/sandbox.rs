@@ -11,7 +11,7 @@
 //! itself rather than through a `pre_exec` hook. The effect is the same: the
 //! child inherits the narrower domain before it executes anything.
 
-use crate::{Config, RuntimeError};
+use crate::{ChildProgram, Config, RuntimeError};
 use foe_log::{SandboxInfo, SandboxMode};
 use landlock::{
     Access, AccessFs, AccessNet, BitFlags, CompatLevel, Compatible, LandlockStatus, NetPort, PathBeneath, PathFd,
@@ -83,11 +83,12 @@ impl Policy {
     /// known here; the binary appends it to `read_files` after resolving
     /// the `model` block.
     pub fn for_episode(config: &Config, log_dir: &Path) -> Policy {
-        let mut exec: Vec<PathBuf> = config.tool_defs.values().map(|d| d.exec.clone()).collect();
+        let mut exec = Vec::new();
+        let mut network = config.model.is_some();
+        reachable_authority(&ChildProgram::from(config), &mut exec, &mut network);
         if !config.grants.spawn.is_empty() {
             exec.extend(std::env::current_exe().ok());
         }
-        let network = config.model.is_some();
         Policy {
             read: config.grants.read.clone(),
             write: config.grants.write.clone(),
@@ -112,6 +113,16 @@ impl Policy {
             bind_tcp: Vec::new(),
             connect_tcp: network,
         }
+    }
+}
+
+fn reachable_authority(program: &ChildProgram, exec: &mut Vec<PathBuf>, network: &mut bool) {
+    for tool in program.tool_defs.values() {
+        exec.push(tool.exec.clone());
+        *network |= tool.network;
+    }
+    for child in program.grants.spawn.iter().filter_map(|name| program.programs.get(name)) {
+        reachable_authority(child, exec, network);
     }
 }
 

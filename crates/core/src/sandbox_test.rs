@@ -180,3 +180,74 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert_eq!(online.read_files, resolver, "an executable with network keeps the resolver file");
     assert!(!online.read_files.contains(&PathBuf::from("/keys/anthropic")), "and never the credential file");
 }
+
+/// docs/sandbox.md "Children": an episode policy contains the process
+/// authority of the complete spawn-reachable tree and omits unreachable
+/// declarations.
+#[test]
+fn episode_policy_collects_spawn_reachable_process_authority() {
+    let config: Config = serde_json::from_value(serde_json::json!({
+        "version": 1, "name": "host", "instructions": {"role": "x"}, "tools": ["spawn"],
+        "grants": {"read": [], "spawn": ["worker"]}, "budget": {"model_calls": 1}, "task": "t",
+        "programs": {
+            "worker": {"name": "worker", "instructions": {"role": "x"}, "tools": ["spawn", "check"],
+                "tool_defs": {"check": {"exec": "/opt/worker/check", "description": "check"}},
+                "grants": {"read": [], "spawn": ["nested"]}, "budget": {"model_calls": 1},
+                "programs": {"nested": {"name": "nested", "instructions": {"role": "x"}, "tools": ["fetch"],
+                    "tool_defs": {"fetch": {"exec": "/opt/nested/fetch", "description": "fetch", "network": true}},
+                    "grants": {"read": []}, "budget": {"model_calls": 1}}}},
+            "unused": {"name": "unused", "instructions": {"role": "x"}, "tools": ["unused"],
+                "tool_defs": {"unused": {"exec": "/opt/unused/run", "description": "unused", "network": true}},
+                "grants": {"read": []}, "budget": {"model_calls": 1}}
+        }
+    }))
+    .unwrap();
+    let policy = Policy::for_episode(&config, Path::new("/logs/ep"));
+    assert!(policy.exec.contains(&PathBuf::from("/opt/worker/check")));
+    assert!(policy.exec.contains(&PathBuf::from("/opt/nested/fetch")));
+    assert!(!policy.exec.contains(&PathBuf::from("/opt/unused/run")));
+    assert!(policy.connect_tcp, "the nested reachable executable declares network authority");
+}
+
+/// docs/sandbox.md "Children": the ancestor policy reserves execute access
+/// for every configured executable in the spawn-reachable tree.
+#[test]
+fn descendant_executable_outside_loader_directories_runs_under_the_ancestor_policy() {
+    let Some(s) = sandbox() else { return };
+    let dir = temp_dir("descendant-exec");
+    let exec = dir.join("true");
+    std::fs::copy("/bin/true", &exec).unwrap();
+    let config: Config = serde_json::from_value(serde_json::json!({
+        "version": 1, "name": "host", "instructions": {"role": "x"}, "tools": ["spawn"],
+        "grants": {"read": [], "spawn": ["worker"]}, "budget": {"model_calls": 1}, "task": "t",
+        "programs": {"worker": {"name": "worker", "instructions": {"role": "x"}, "tools": ["check"],
+            "tool_defs": {"check": {"exec": exec, "description": "check"}},
+            "grants": {"read": []}, "budget": {"model_calls": 1}}}
+    }))
+    .unwrap();
+    let policy = Policy::for_episode(&config, &dir);
+    assert!(policy.exec.contains(&exec));
+    let ran = s.spawn_narrowed(&policy, Command::new(&exec)).unwrap().wait().unwrap().success();
+    assert!(ran, "the ancestor domain permits its reachable descendant executable");
+}
+
+/// docs/sandbox.md "Children": a hosted episode reserves outbound TCP when
+/// a spawn-reachable configured executable declares network authority.
+#[test]
+fn hosted_parent_keeps_descendant_executable_network_authority() {
+    let Some(s) = sandbox() else { return };
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let config: Config = serde_json::from_value(serde_json::json!({
+        "version": 1, "name": "host", "instructions": {"role": "x"}, "tools": ["spawn"],
+        "grants": {"read": [], "spawn": ["worker"]}, "budget": {"model_calls": 1}, "task": "t",
+        "programs": {"worker": {"name": "worker", "instructions": {"role": "x"}, "tools": ["fetch"],
+            "tool_defs": {"fetch": {"exec": "/bin/true", "description": "fetch", "network": true}},
+            "grants": {"read": []}, "budget": {"model_calls": 1}}}
+    }))
+    .unwrap();
+    let policy = Policy::for_episode(&config, Path::new("/logs/ep"));
+    assert!(policy.connect_tcp, "the model-less parent keeps the descendant tool's network authority");
+    let connected = s.run_narrowed(&policy, || std::net::TcpStream::connect(addr).is_ok()).unwrap();
+    assert!(connected, "the ancestor domain permits the descendant connection");
+}
