@@ -19,9 +19,9 @@ example needs Linux with Landlock; the rest run anywhere foe builds.
 |---|---|
 | fix a failing test without watching it | [minimal](minimal/) |
 | give the agent a tool that knows nothing about foe | [wrap-a-binary](wrap-a-binary/) |
-| stop when a checker says the work is done, not when the model says so | [wrap-a-binary](wrap-a-binary/) |
+| stop when a checker says the work is done rather than when the model says so | [wrap-a-binary](wrap-a-binary/) |
 | delegate reading to cheap children and make the change myself | [subagents](subagents/) |
-| have children report to each other, not only to me | [team](team/) |
+| have children report to each other rather than only to me | [team](team/) |
 | fix the order of the work and let the model choose only within it | [workflow](workflow/) |
 | prove the agent cannot read what I did not grant | [sandbox](sandbox/) |
 | drive foe from my own program | [embed-in-a-program](embed-in-a-program/) |
