@@ -132,10 +132,20 @@ kernel ruleset still binds it.
 ## Children
 
 A child episode is a further `foe` process. The parent starts it without
-narrowing, because the child applies its own policy to itself at startup,
-and that policy is compiled from grants the parent's registry already
-verified to be a subset of the parent's. The child's ruleset nests inside
-the parent's, so the child's reach is the intersection.
+narrowing, because the child applies its own policy to itself at startup.
+Two independent rules keep that policy inside the parent's.
+
+Resolving the configuration checks containment before any process starts:
+each child program's read roots must lie within its parent program's read
+roots and its write roots within its parent's write roots, applied at every
+level of `programs`. A document that fails the check is refused with the
+dotted key of the offending root, and no episode begins.
+
+The kernel enforces the same containment whatever the document says. The
+parent restricts its main thread before it starts any other thread, and a
+Landlock domain passes to every thread and process created afterwards, so
+the child inherits the parent's domain before it executes. The child's own
+ruleset nests inside that one, and the child's reach is the intersection.
 
 ## Modes
 
