@@ -143,7 +143,8 @@ pub fn append_inbox_item(log: &Log, item: InboxItem) -> Result<Option<Event>, Lo
     log.append(EventData::InboxItem(item)).map(Some)
 }
 
-/// Runs the episode to its end and writes `episode/end`.
+/// Runs the episode to its end, closes what its log left open through
+/// [`settle`], and writes `episode/end`.
 pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
     let (log, pool, children) = (params.log.clone(), params.pool.clone(), params.children.clone());
     let driven = match Episode::new(params) {

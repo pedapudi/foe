@@ -141,9 +141,7 @@ impl EventData {
 
 /// A pairing of events the format defines: one event opens an obligation
 /// and a later event closes it, the two matched by a key. See
-/// docs/log-format.md "Open obligations". An `episode/end` that leaves any
-/// obligation open, other than the one [`Obligation::must_close`] excludes,
-/// makes the log invalid.
+/// docs/log-format.md "Open obligations".
 ///
 /// This list and [`obligations`] are the only places that name a pairing.
 /// A new paired event type is added here, and the check in
@@ -172,15 +170,19 @@ pub enum Obligation {
 }
 
 impl Obligation {
-    /// Whether a log must close this pairing before `episode/end`.
+    /// Whether the format binds the log to this pairing. Three rules follow
+    /// from being bound: a closing event names an obligation an earlier
+    /// event opened, it closes that obligation once, and no obligation
+    /// stands open at `episode/end`.
     ///
-    /// Every pairing must, except `Delivery`. A `team/message` that no
+    /// Every pairing is bound except `Delivery`. A `team/message` that no
     /// `team/delivered` follows is a message the lead queued and the target
-    /// never recorded; the format has the lead offer it again when the
-    /// target restarts, and defines no event for a message given up on. An
-    /// undelivered message is therefore a state the log records rather than
-    /// a defect the runtime repairs.
-    pub fn must_close(self) -> bool {
+    /// never recorded. The format has the lead offer such a message again
+    /// when the target restarts, which produces a second delivery record
+    /// for one message, and it defines no event for a message given up on.
+    /// An undelivered message is therefore a state the log records rather
+    /// than a defect a writer may not produce.
+    pub fn is_binding(self) -> bool {
         self != Obligation::Delivery
     }
 }

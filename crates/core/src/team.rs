@@ -5,9 +5,9 @@
 //! between members, and [`fold`] derives both from it. No other team state
 //! exists. See docs/design.md "Subagents and teams".
 //!
-//! Six built-in tools belong here. `spawn`, `wait`, and `steer` act on
-//! this episode's own team. `notify`, `send`, and `team` act on the team
-//! this episode belongs to: in an episode with a parent they are host tool calls
+//! Six built-in tools belong here. `spawn`, `wait`, and `steer` act on this
+//! episode's own team. `notify`, `send`, and `team` act on the team this
+//! episode belongs to: in an episode with a parent they are host tool calls
 //! that the parent answers, and in a root they act on its own roster, with
 //! `notify` an error because no parent exists. When the lead answers a
 //! member, a `notify` becomes an inbox item in the lead's log with source

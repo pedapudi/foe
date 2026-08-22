@@ -54,18 +54,17 @@ fn parse_lines(bytes: &[u8]) -> Result<(Vec<Event>, u64), LogError> {
     Ok((events, consumed as u64))
 }
 
-/// Folds events into [`State`]. Validates the structural rules: `seq`
-/// contiguous from 0, `episode/start` first, at most one `episode/end` and
-/// it is last, and every pairing of [`Obligation`] opened before it is
-/// closed and closed once.
+/// Folds events into [`State`]. Validates the structural rules: `seq` is
+/// contiguous from 0, `episode/start` is first, there is at most one
+/// `episode/end` and it is last, and every binding [`Obligation`] the log
+/// opened is closed before that end.
 ///
-/// A log that has ended must leave no obligation open. A log still in
-/// progress may hold open ones: a tool call awaiting its result, a child
-/// still running. The two cases are distinct records. A log that stops
-/// without `episode/end` was cut short by a crash and states nothing about
-/// what it left open; a log that ends with an obligation open asserts a
-/// completed episode whose account does not balance, which no writer may
-/// produce.
+/// A log still in progress may hold open obligations: a tool call awaiting
+/// its result, a child still running. A log that stops without
+/// `episode/end` was cut short by a crash and states nothing about what it
+/// left open, which the seeding rules repair when the log is copied. A log
+/// that ends with an obligation open asserts a complete episode whose
+/// account does not balance, which no writer may produce.
 pub fn fold(events: &[Event]) -> Result<State, LogError> {
     let mut state = State::default();
     for (index, event) in events.iter().enumerate() {
@@ -75,7 +74,7 @@ pub fn fold(events: &[Event]) -> Result<State, LogError> {
         validate_next(&state, event)?;
         apply(&mut state, event);
     }
-    if state.outcome.is_some() && state.open.iter().any(|(kind, _)| kind.must_close()) {
+    if state.outcome.is_some() && state.open.iter().any(|(kind, _)| kind.is_binding()) {
         return Err(LogError::Invalid {
             seq: events.len() as u64 - 1,
             rule: "every obligation the log opened is closed before episode/end",
@@ -84,13 +83,13 @@ pub fn fold(events: &[Event]) -> Result<State, LogError> {
     Ok(state)
 }
 
-/// The obligations `events` opened and have not closed, excluding the one
-/// pairing a log may leave open. Seeding and the runtime's teardown both
-/// ask for these before writing the events that close them.
+/// The binding obligations `events` opened and have not closed. Seeding
+/// and the runtime's teardown both ask for these before writing the events
+/// that close them.
 pub fn open_obligations(events: &[Event]) -> BTreeSet<(Obligation, String)> {
     let mut state = State::default();
     events.iter().for_each(|event| apply(&mut state, event));
-    state.open.into_iter().filter(|(kind, _)| kind.must_close()).collect()
+    state.open.into_iter().filter(|(kind, _)| kind.is_binding()).collect()
 }
 
 /// Advances `state` by one event. Performs no validation.
@@ -283,11 +282,12 @@ pub fn validate_next(prior: &State, event: &Event) -> Result<(), LogError> {
         EventData::SeedEnd {} if prior.seeded_through.is_some() => return invalid("at most one seed/end per log"),
         _ => {}
     }
-    // One rule for every pairing: a `tool/result` names a tool call an
-    // earlier `assistant/message` issued, a `budget/release` names a
-    // reservation, a `model/request` past its first attempt names the retry
-    // that announced it, and each closes what it names once.
-    for (kind, key, _) in crate::obligations(&event.data).into_iter().filter(|(k, _, opens)| k.must_close() && !opens) {
+    // Two rules over every pairing at once. A `tool/result` names a tool
+    // call an earlier `assistant/message` issued, a `budget/release` names
+    // a reservation, a `model/request` past its first attempt names the
+    // retry that announced it, and each closes what it names once.
+    let closings = crate::obligations(&event.data).into_iter().filter(|(k, _, opens)| k.is_binding() && !opens);
+    for (kind, key, _) in closings {
         if prior.closed.contains(&(kind, key.clone())) {
             return invalid("an obligation is closed once");
         }

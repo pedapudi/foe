@@ -453,17 +453,21 @@ obligation and a later event closes it, the two matched by a key.
 | `budget/reserve` | `budget/release` | the child id |
 | `team/message` | `team/delivered` | the message id |
 
-Three rules hold for every pair. An event that closes an obligation names
-one that an earlier event opened. It closes that obligation once; a second
-closing event for the same key is invalid until an opening event reopens
-it, which a reissued tool call does. And a log whose `episode/end` leaves
-an obligation open is invalid.
+Three rules hold for every pair.
 
-A queued team message is the one exception to the third rule. A
+1. An event that closes an obligation names one that an earlier event
+   opened.
+2. It closes that obligation once. A second closing event for the same key
+   is invalid until an opening event reopens it, which a reissued tool call
+   does.
+3. A log whose `episode/end` leaves an obligation open is invalid.
+
+A queued team message is the one pair the three rules do not bind. A
 `team/message` with no `team/delivered` is a message the target never
-recorded, the lead offers it again when the target restarts, and no event
-records a message given up on, so an undelivered message may stand at
-`episode/end`.
+recorded. The lead offers such a message again when the target restarts,
+which records a second delivery for one message, and no event records a
+message given up on. An undelivered message may therefore stand at
+`episode/end`, and a message may be delivered more than once.
 
 A log that stops without `episode/end` is a different record from a log
 that ends with an obligation open. The first was cut short: the process
