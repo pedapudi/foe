@@ -13,9 +13,18 @@
 // down the row is the order of containment: the episode, the nodes of its
 // graph, and the calls it made.
 
+import { programRuns } from "./lineage.js";
 import type { Outcome } from "./types.js";
 
-export type Axis = "time" | "sequence";
+/**
+ * What x measures. `time` is the wall clock, which is right for one tree,
+ * where two rows at one x ran at one moment. `elapsed` is the time since
+ * the start of the row's own root, which lets runs started days apart be
+ * read against each other: every root begins at zero and the axis spans
+ * the longest run rather than the interval between the runs. `sequence` is
+ * the log position.
+ */
+export type Axis = "time" | "elapsed" | "sequence";
 
 export type MarkKind = "request" | "tool" | "compaction" | "retry" | "spawn";
 
@@ -91,6 +100,8 @@ export interface NodeDecision {
 export interface TrajectoryEpisode {
   id: string;
   name: string;
+  /** `episode/start.identity`, which is equal for two runs of one program. */
+  identity: string;
   /** Depth in the episode tree, which indents the row label. */
   depth: number;
   startTime: number;
@@ -218,8 +229,25 @@ export interface Plot {
   bottom: number;
 }
 
+/**
+ * The rows of one program, bracketed beside the plot. A bracket is drawn
+ * only where two or more roots carry one identity, because a bracket
+ * around a single row groups nothing.
+ */
+export interface ProgramGroup {
+  identity: string;
+  /** The program name, which every root of the group shares. */
+  name: string;
+  /** Roots in the group, which is how many runs of the program there are. */
+  runs: number;
+  x: number;
+  y1: number;
+  y2: number;
+}
+
 export interface TrajectoryLayout {
   rows: TrajectoryRow[];
+  groups: ProgramGroup[];
   connectors: Connector[];
   ticks: AxisTick[];
   plot: Plot;
@@ -318,11 +346,31 @@ export function fitLabel(text: string, room: number, charWidth: number): string 
 }
 
 /**
- * The axis value of one point of one episode. On the time axis the value
- * is the wall clock; on the sequence axis it is the log position.
+ * The axis value of one point of one episode. On the wall-clock axis the
+ * value is the clock reading; on the elapsed axis it is the time since
+ * `origin`, the start of the row's own root; on the sequence axis it is
+ * the log position.
  */
-function value(axis: Axis, time: number, seq: number): number {
-  return axis === "time" ? time : seq;
+function value(axis: Axis, time: number, seq: number, origin: number): number {
+  if (axis === "sequence") return seq;
+  return axis === "elapsed" ? time - origin : time;
+}
+
+/**
+ * The clock reading each row measures from: the start of the root of its
+ * own tree. Episodes arrive in tree order, so every row after a root and
+ * before the next one belongs to that root. A child keeps its offset from
+ * its root, so the elapsed axis aligns independent runs at zero and leaves
+ * the shape of a tree intact.
+ */
+export function originsOf(episodes: TrajectoryEpisode[]): Map<string, number> {
+  const origins = new Map<string, number>();
+  let origin = 0;
+  for (const episode of episodes) {
+    if (episode.depth === 0) origin = episode.startTime;
+    origins.set(episode.id, origin);
+  }
+  return origins;
 }
 
 /**
@@ -382,7 +430,8 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
   const plotLeft = labelWidth + 10;
   const plotRight = Math.max(plotLeft + 20, width - PAD_RIGHT);
   const top = AXIS_HEIGHT + AXIS_GAP;
-  const domain = domainOf(episodes, axis, input.now);
+  const origins = originsOf(episodes);
+  const domain = domainOf(episodes, axis, input.now, origins);
   const span = domain[1] - domain[0];
   const scale = (v: number): number =>
     span <= 0 ? plotLeft : plotLeft + ((v - domain[0]) / span) * (plotRight - plotLeft);
@@ -397,12 +446,13 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
     const y = cursor + ROW_HEIGHT / 2;
     const laneY = new Map(lanes.map((node, i) => [node, y + TOOL_LANE + i * NODE_LANE + NODE_LANE / 2]));
     rowY.set(episode.id, y);
+    const origin = origins.get(episode.id) ?? episode.startTime;
     const running = episode.endTime === null;
     const endValue = running
-      ? value(axis, input.now, episode.lastSeq)
-      : value(axis, episode.endTime!, episode.lastSeq);
+      ? value(axis, input.now, episode.lastSeq, origin)
+      : value(axis, episode.endTime!, episode.lastSeq, origin);
 
-    const marks: PlacedMark[] = episode.marks.map((mark) => placeMark(mark, episode.id, axis, scale, y));
+    const marks: PlacedMark[] = episode.marks.map((mark) => placeMark(mark, episode.id, axis, scale, y, origin));
     const tools = marks.filter((m) => m.kind === "tool");
     const heights = stack(tools);
     tools.forEach((mark, i) => {
@@ -413,11 +463,11 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
     const fan = heights.reduce((deepest, height) => Math.max(deepest, height), 0) * TOOL_PITCH;
 
     const firings: PlacedFiring[] = episode.firings.map((firing) => {
-      const start = scale(value(axis, firing.startTime, firing.startSeq));
+      const start = scale(value(axis, firing.startTime, firing.startSeq, origin));
       const end =
         firing.endTime === null || firing.endSeq === null
-          ? scale(value(axis, input.now, episode.lastSeq))
-          : scale(value(axis, firing.endTime, firing.endSeq));
+          ? scale(value(axis, input.now, episode.lastSeq, origin))
+          : scale(value(axis, firing.endTime, firing.endSeq, origin));
       return {
         ...firing,
         episodeId: episode.id,
@@ -426,7 +476,7 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
         y: laneY.get(firing.node) ?? y,
       };
     });
-    const decisions = placeDecisions(episode, firings, axis, scale, laneY, y);
+    const decisions = placeDecisions(episode, firings, axis, scale, laneY, y, origin);
 
     const height = bandHeight + ROW_HEIGHT + fan;
     const next = episodes[index + 1];
@@ -438,7 +488,7 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
       y,
       top: cursor,
       height,
-      x1: scale(value(axis, episode.startTime, 0)),
+      x1: scale(value(axis, episode.startTime, 0, origin)),
       x2: scale(endValue),
       running,
       outcome: episode.outcome,
@@ -459,7 +509,8 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
   const plot: Plot = { left: plotLeft, right: plotRight, top, bottom: cursor };
   return {
     rows,
-    connectors: connectorsFor(episodes, byId, rowY, rows, axis, scale),
+    groups: groupsFor(episodes, rows, plotLeft - 5),
+    connectors: connectorsFor(episodes, byId, rowY, rows, axis, scale, origins),
     ticks: ticksFor(domain, axis, scale),
     plot,
     domain,
@@ -480,29 +531,31 @@ function placeMark(
   axis: Axis,
   scale: (v: number) => number,
   y: number,
+  origin: number,
 ): PlacedMark {
-  const at = scale(value(axis, mark.time, mark.seq));
-  if (mark.kind === "tool" && mark.durationMs > 0 && axis === "time") {
+  const at = scale(value(axis, mark.time, mark.seq, origin));
+  if (mark.kind === "tool" && mark.durationMs > 0 && axis !== "sequence") {
     // A tool result is written when the call returns, so the segment runs
     // back from the event by the duration the result reports.
-    const x1 = scale(mark.time - mark.durationMs);
+    const x1 = scale(value(axis, mark.time - mark.durationMs, mark.seq, origin));
     return { ...mark, episodeId, x: x1, w: Math.max(MARK_MIN_WIDTH, at - x1), head: 0, y };
   }
-  if (mark.kind === "retry" && mark.durationMs > 0 && axis === "time") {
+  if (mark.kind === "retry" && mark.durationMs > 0 && axis !== "sequence") {
     // The backoff runs forward from the decision to retry, so the segment
     // ends where the next attempt is allowed to start. A delay has no
     // length in log positions, so on the sequence axis the mark is a tick.
-    return { ...mark, episodeId, x: at, w: scale(mark.time + mark.durationMs) - at, head: 0, y };
+    const end = scale(value(axis, mark.time + mark.durationMs, mark.seq, origin));
+    return { ...mark, episodeId, x: at, w: end - at, head: 0, y };
   }
   // A request occupies the interval from the call to the answer, so it is a
   // span rather than a point. Its leading part is the wait before the first
   // token; the rest of it is the answer streaming in.
   if (mark.span) {
-    const end = scale(value(axis, mark.span.endTime, mark.span.endSeq));
+    const end = scale(value(axis, mark.span.endTime, mark.span.endSeq, origin));
     const first =
       mark.span.firstTokenTime === null || mark.span.firstTokenSeq === null
         ? null
-        : scale(value(axis, mark.span.firstTokenTime, mark.span.firstTokenSeq));
+        : scale(value(axis, mark.span.firstTokenTime, mark.span.firstTokenSeq, origin));
     return {
       ...mark,
       episodeId,
@@ -529,10 +582,11 @@ function placeDecisions(
   scale: (v: number) => number,
   laneY: Map<string, number>,
   fallbackY: number,
+  origin: number,
 ): PlacedDecision[] {
   const taken = new Map<string, number>();
   return episode.decisions.map((decision) => {
-    const x = scale(value(axis, decision.time, decision.seq));
+    const x = scale(value(axis, decision.time, decision.seq, origin));
     const from = x + DECISION_GLYPH;
     const right = from + decision.label.length * DECISION_CHAR;
     const clear =
@@ -585,13 +639,17 @@ function connectorsFor(
   rows: TrajectoryRow[],
   axis: Axis,
   scale: (v: number) => number,
+  origins: Map<string, number>,
 ): Connector[] {
   const rowById = new Map(rows.map((r) => [r.id, r]));
   const connectors: Connector[] = [];
   for (const episode of episodes) {
     const childY = rowY.get(episode.id);
     if (childY === undefined) continue;
-    const childX = scale(value(axis, episode.startTime, 0));
+    // A child and the episode that started it share a root, so one origin
+    // places both ends of the connector.
+    const origin = origins.get(episode.id) ?? episode.startTime;
+    const childX = scale(value(axis, episode.startTime, 0, origin));
     if (episode.parentId && byId.has(episode.parentId)) {
       const parent = byId.get(episode.parentId)!;
       const parentRow = rowById.get(parent.id)!;
@@ -601,7 +659,9 @@ function connectorsFor(
         continue;
       }
       const spawn = parent.marks.find((m) => m.kind === "spawn" && m.label === episode.id);
-      const originValue = spawn ? value(axis, spawn.time, spawn.seq) : value(axis, parent.startTime, 0);
+      const originValue = spawn
+        ? value(axis, spawn.time, spawn.seq, origin)
+        : value(axis, parent.startTime, 0, origin);
       connectors.push({
         from: { x: scale(originValue), y: rowY.get(parent.id)! },
         to: { x: childX, y: childY },
@@ -612,10 +672,10 @@ function connectorsFor(
     }
     const fork = episode.forkOrigin;
     if (fork && byId.has(fork.episodeId)) {
-      const origin = byId.get(fork.episodeId)!;
-      const originValue = value(axis, timeAtSeq(origin, fork.seq), fork.seq);
+      const source = byId.get(fork.episodeId)!;
+      const originValue = value(axis, timeAtSeq(source, fork.seq), fork.seq, origin);
       connectors.push({
-        from: { x: scale(originValue), y: rowY.get(origin.id)! },
+        from: { x: scale(originValue), y: rowY.get(source.id)! },
         to: { x: childX, y: childY },
         fork: true,
         childId: episode.id,
@@ -625,7 +685,12 @@ function connectorsFor(
   return connectors;
 }
 
-function domainOf(episodes: TrajectoryEpisode[], axis: Axis, now: number): [number, number] {
+function domainOf(
+  episodes: TrajectoryEpisode[],
+  axis: Axis,
+  now: number,
+  origins: Map<string, number>,
+): [number, number] {
   if (episodes.length === 0) return [0, 1];
   if (axis === "sequence") {
     let high = 0;
@@ -635,18 +700,38 @@ function domainOf(episodes: TrajectoryEpisode[], axis: Axis, now: number): [numb
   let low = Infinity;
   let high = -Infinity;
   for (const e of episodes) {
-    low = Math.min(low, e.startTime);
-    high = Math.max(high, e.endTime ?? now);
+    // On the elapsed axis every reading is taken from the start of the
+    // row's own root, so the extent is the longest run rather than the
+    // interval that separates the runs.
+    const at = (time: number) => value(axis, time, 0, origins.get(e.id) ?? e.startTime);
+    low = Math.min(low, at(e.startTime));
+    high = Math.max(high, at(e.endTime ?? now));
     for (const mark of e.marks) {
       // A retry's duration is the backoff that follows it, so it extends the
       // domain; a tool call's duration precedes its event and does not.
       const end = mark.span ? mark.span.endTime : mark.kind === "retry" ? mark.time + mark.durationMs : mark.time;
-      high = Math.max(high, end);
+      high = Math.max(high, at(end));
     }
-    for (const firing of e.firings) high = Math.max(high, firing.endTime ?? firing.startTime);
+    for (const firing of e.firings) high = Math.max(high, at(firing.endTime ?? firing.startTime));
   }
   if (!Number.isFinite(low) || !Number.isFinite(high)) return [0, 1];
   return [low, Math.max(high, low + 1)];
+}
+
+/**
+ * One bracket per program with more than one root in the figure, spanning
+ * every row of those roots, placed in the gutter between the label column
+ * and the plot.
+ */
+function groupsFor(episodes: TrajectoryEpisode[], rows: TrajectoryRow[], x: number): ProgramGroup[] {
+  return programRuns(episodes).map((span) => ({
+    identity: span.identity,
+    name: span.name,
+    runs: span.runs,
+    x,
+    y1: rows[span.first]!.top + 2,
+    y2: rows[span.last]!.top + rows[span.last]!.height - 2,
+  }));
 }
 
 /**

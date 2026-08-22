@@ -48,6 +48,28 @@ size wins and the rows no longer change it; a double click on a grip drops
 the stored size and returns the region to what derives it. Every region
 declares a minimum, so none of them collapses.
 
+### Runs of one program
+
+`episode/start.identity` is a hash over everything that shapes what the
+model sees, which [design.md](design.md) specifies under "Programs and
+identity". Two episodes of one program carry one identity and unrelated
+episodes carry different ones, so it is what separates runs that may be
+compared from episodes that merely sit in one directory.
+
+Roots that carry one identity stand together in the episode list and in
+the trajectory, and a hairline bracket spans their rows: down the left
+edge of the episode list, and in the gutter between the label column and
+the plot in the trajectory. A root's descendants are inside its bracket,
+because they are part of that run. A program with a single root in view
+gets no bracket, since a bracket around one row groups nothing, and an
+episode whose `episode/start` has not been read yet has no identity and
+stands alone until it has. Hovering a bracket names the program, the
+number of runs, and the identity they share.
+
+A rebuild of the runtime changes identity, because the runtime's version
+and build hash are part of it. Two runs of one configuration separated by
+a rebuild are therefore two programs here, and they are drawn as two.
+
 The episodes tree gives each episode a row about 40 pixels tall: a dot
 coloured by outcome, the program name at the page's base size, the episode
 id in mono beside it, a second line reading the outcome word with the code
@@ -74,8 +96,9 @@ not happen.
 
 The details region states the outcome, the model calls and tokens consumed
 against the budget `episode/start.program.budget` declares, the sandbox
-mode and Landlock ABI, the lineage, the event count, the start time, the
-duration, and the task. Its text wraps and its numbers are tabular; the
+mode and Landlock ABI, the program identity, the lineage, the event count,
+the start time, the duration, and the task. The identity is set as the
+first eight characters of its digest, with the whole hash in its tooltip. Its text wraps and its numbers are tabular; the
 region scrolls as a whole when its content exceeds it, and nothing inside
 it has a scrollbar of its own.
 
@@ -145,10 +168,24 @@ stands beside it in the sidebar and in the breadcrumbs, so the row does not
 repeat it. The selected row carries the figure's one accent as a spine down
 its leading edge.
 
-The x axis is wall-clock time, taken from each event's `time`. A control in
-the region's header switches it to log position, where x is the event's
-`seq`. Both axes map linearly onto the same plot area, so switching moves
-the marks and changes nothing else. The axis carries small mono labels on
+A control in the region's header sets what x measures, and the three
+settings map linearly onto the same plot area, so switching moves the
+marks and changes nothing else.
+
+- **wall clock** places a mark at its event's `time`. Two marks at one x
+  happened at one moment, which is what a reader of a single tree wants.
+- **elapsed** places a mark at the time since the start of its row's own
+  root episode. Every root then begins at the left edge, and the axis
+  spans the longest run rather than the interval between the runs. A child
+  keeps its offset from its root, so a tree holds its shape and only whole
+  trees are moved.
+- **sequence** places a mark at its event's `seq`.
+
+The figure opens on the axis its content calls for: elapsed when it holds
+more than one root, because independent runs started days apart would each
+draw as a sliver of an axis spanning those days, and wall clock inside one
+tree, where simultaneity between rows is real. Once the reader has picked
+a setting, that setting stays. The axis carries small mono labels on
 leader ticks at round offsets from the start of the run, and each tick
 carries a gridline down the plot in `--v2-rule-soft` at 0.6 pixels, because
 a bar's length is read against the axis. The figure fits the region's width

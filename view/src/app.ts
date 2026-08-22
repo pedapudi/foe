@@ -294,7 +294,7 @@ export class App implements Sink {
     const roots = buildTree(summaries, this.orderIds);
     const width = Math.max(160, this.treeHost.clientWidth - 16);
     const structural = summaries
-      .map((s) => [s.id, s.name, s.parentId, s.forkOrigin?.episodeId, s.forkOrigin?.seq, s.outcome ? JSON.stringify(s.outcome) : "", s.lastSeq >= 0 ? 1 : 0].join(""))
+      .map((s) => [s.id, s.name, s.identity, s.parentId, s.forkOrigin?.episodeId, s.forkOrigin?.seq, s.outcome ? JSON.stringify(s.outcome) : "", s.lastSeq >= 0 ? 1 : 0].join(""))
       .join("");
     const treeDigest = [structural, this.selected, this.cursor, this.compare.join(","), width, this.orderIds.join(",")].join("");
     if (treeDigest !== this.treeDigest) {
@@ -340,6 +340,7 @@ export class App implements Sink {
       return {
         id: s.id,
         name: s.name,
+        identity: s.identity,
         depth,
         startTime: s.startTime,
         endTime: s.endTime,

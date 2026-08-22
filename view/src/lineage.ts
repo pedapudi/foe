@@ -12,9 +12,38 @@ export interface TreeNode {
 }
 
 /**
+ * The identity hash shortened to the first eight characters of its digest,
+ * which is enough to tell two programs apart by eye. The whole value goes
+ * in the hovercard beside it.
+ */
+export function shortIdentity(identity: string): string {
+  const digest = identity.startsWith("sha256:") ? identity.slice(7) : identity;
+  return digest.length <= 8 ? digest : `${digest.slice(0, 8)}…`;
+}
+
+/**
+ * Roots of one program stand together. Two episodes of one program carry
+ * one `identity`, the hash over everything that shapes what the model
+ * sees, so grouping by it puts comparable runs side by side and leaves
+ * unrelated episodes apart. A root whose `episode/start` has not been read
+ * has no identity and stands alone until it has.
+ */
+function byProgram(roots: TreeNode[]): TreeNode[] {
+  const groups = new Map<string, TreeNode[]>();
+  for (const root of roots) {
+    const identity = root.summary.identity;
+    const group = identity === "" ? undefined : groups.get(identity);
+    if (group) group.push(root);
+    else groups.set(identity === "" ? `episode:${root.id}` : identity, [root]);
+  }
+  return [...groups.values()].flat();
+}
+
+/**
  * Builds the forest. A spawned child hangs under `parent_id`; an episode
  * with a fork origin and no parent hangs under the origin. An episode whose
- * parent is absent from the set is a root.
+ * parent is absent from the set is a root, and roots of one program stand
+ * together.
  */
 export function buildTree(summaries: Summary[], order: string[] = []): TreeNode[] {
   const rank = new Map(order.map((id, i) => [id, i]));
@@ -43,7 +72,41 @@ export function buildTree(summaries: Summary[], order: string[] = []): TreeNode[
     for (const n of list) sortAll(n.children);
   };
   sortAll(roots);
-  return roots;
+  return byProgram(roots);
+}
+
+/** Consecutive rows that are runs of one program, in `programRuns`. */
+export interface ProgramRun {
+  identity: string;
+  /** The program name, which every root of the group carries. */
+  name: string;
+  /** Roots in the group, which is how many runs of the program there are. */
+  runs: number;
+  /** First and last row of the group in the order given. */
+  first: number;
+  last: number;
+}
+
+/**
+ * The programs that more than one root of `rows` ran, as spans of
+ * consecutive rows. Roots of one program stand together and each root's
+ * descendants follow it, so a program's rows are one span. A program with
+ * a single root is left out: a bracket around one row groups nothing.
+ * `rows` is the flattened tree, root rows at depth 0.
+ */
+export function programRuns(rows: { identity: string; name: string; depth: number }[]): ProgramRun[] {
+  const spans: ProgramRun[] = [];
+  rows.forEach((row, index) => {
+    let span = spans[spans.length - 1];
+    if (row.depth === 0 && !(span && span.identity === row.identity)) {
+      spans.push({ identity: row.identity, name: row.name, runs: 1, first: index, last: index });
+      return;
+    }
+    if (!span) return;
+    if (row.depth === 0) span.runs += 1;
+    span.last = index;
+  });
+  return spans.filter((span) => span.runs > 1 && span.identity !== "");
 }
 
 /** Depth-first order with depth, for keyboard navigation and rendering. */

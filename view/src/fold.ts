@@ -124,6 +124,14 @@ export interface Summary {
   parentId: string | null;
   forkOrigin: { episodeId: string; seq: number } | null;
   teamId: string | null;
+  /**
+   * `episode/start.identity`: the hash over everything that shapes what the
+   * model sees, which docs/design.md "Programs and identity" defines. Two
+   * episodes of one program under one runtime build carry the same value,
+   * so it is what tells runs of one program apart from unrelated episodes.
+   * Empty until `episode/start` has been read.
+   */
+  identity: string;
   task: string;
   startTime: number;
   endTime: number | null;
@@ -161,6 +169,7 @@ export function emptySummary(id: string): Summary {
     parentId: null,
     forkOrigin: null,
     teamId: null,
+    identity: "",
     task: "",
     startTime: 0,
     endTime: null,
@@ -479,6 +488,7 @@ export class EpisodeFold {
     s.forkOrigin =
       typeof origin.episode_id === "string" ? { episodeId: origin.episode_id, seq: num(origin.seq) } : null;
     s.teamId = typeof data.team_id === "string" ? data.team_id : null;
+    s.identity = str(data.identity);
     s.task = str(data.task);
     s.startTime = ev.time;
     s.budget = {
