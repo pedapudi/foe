@@ -9,8 +9,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from micro_tasks import TASKS
-from run_micro_evals import assess_mechanism, episode_logs
+from micro_tasks import TASKS, task_by_name
+from run_micro_evals import (
+    aggregate,
+    assess_mechanism,
+    episode_logs,
+    infrastructure_fault,
+    unstarted_result,
+)
 
 
 def grade(check: Path, workspace: Path, candidate: object) -> list[str]:
@@ -75,6 +81,33 @@ class MicroTaskTests(unittest.TestCase):
     def test_one_attempt_has_the_documented_cost_ceiling(self) -> None:
         self.assertEqual(sum(task.model_calls for task in TASKS), 40)
         self.assertEqual(sum(task.tokens for task in TASKS), 56000)
+
+    def test_an_attempt_that_never_reached_the_model_is_a_deployment_fault(self) -> None:
+        task = task_by_name("typed-configuration-evidence")
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "episode"
+            process = {"exit_code": 1, "stdout": "", "stderr": "credential file is absent"}
+            self.assertIn("wrote no episode log", infrastructure_fault(log, [], process) or "")
+            write_log(log / "episode.jsonl", [event("episode/start", {"id": "ep_test"})])
+            fault = infrastructure_fault(log, episode_logs(log), process)
+            self.assertIn("no model response", fault or "")
+            write_log(
+                log / "episode.jsonl",
+                [
+                    event("episode/start", {"id": "ep_test"}),
+                    event("assistant/message", {"tool_calls": []}),
+                ],
+            )
+            self.assertIsNone(infrastructure_fault(log, episode_logs(log), process))
+
+            unstarted = unstarted_result(task, 1, Path(directory), "the task fixture did not materialize")
+            self.assertFalse(unstarted["strict_success"])
+            self.assertIsNone(unstarted["usage"]["billed_budget_tokens"])
+            summary = aggregate([unstarted], 1, (task,))
+            self.assertEqual(summary["infrastructure_failures"], 1)
+            self.assertEqual(summary["attempts_with_evaluated_components"], 0)
+            self.assertEqual(summary["component_passes"]["artifact_correct"], 0)
+            self.assertIsNone(summary["usage"]["billed_budget_tokens"])
 
     def test_each_mechanism_check_accepts_required_evidence_and_rejects_its_absence(self) -> None:
         tasks = {task.name: task for task in TASKS}

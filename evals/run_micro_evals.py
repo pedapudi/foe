@@ -64,6 +64,14 @@ def all_events(logs: Iterable[tuple[Path, list[dict[str, Any]]]]) -> Iterable[di
 
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "billed_budget_tokens")
 
+COMPONENTS = (
+    "artifact_correct",
+    "outcome_correct",
+    "mechanism_exercised",
+    "trace_conformant",
+    "within_budget",
+)
+
 
 def usage(logs: list[tuple[Path, list[dict[str, Any]]]]) -> dict[str, Any]:
     """Total the token spend the logs recorded, or state that nobody measured it.
@@ -312,6 +320,52 @@ def run_grader(check: Path, workspace: Path, candidate: Any) -> tuple[bool, list
     return not findings and result.returncode == 0, findings, result.stderr
 
 
+def unstarted_result(task: Task, attempt: int, case: Path, fault: str) -> dict[str, Any]:
+    """Describe an attempt that never reached the model, so it scores nothing."""
+    return {
+        "task": task.name,
+        "purpose": task.purpose,
+        "attempt": attempt,
+        "strict_success": False,
+        "components": {name: None for name in COMPONENTS},
+        "outcome": {},
+        "usage": usage([]),
+        "limits": {"model_calls": task.model_calls, "tokens": task.tokens, "seconds": task.seconds},
+        "duration_seconds": None,
+        "mechanism": {},
+        "grader_findings": [],
+        "trace_violations": [],
+        "trace_metrics": {},
+        "trace_observations": {},
+        "infrastructure_error": fault,
+        "process": {"exit_code": None, "stdout": "", "stderr": ""},
+        "grader_stderr": "",
+        "program_identity": None,
+        "runtime": None,
+        "sandbox": None,
+        "artifact_directory": str(case),
+    }
+
+
+def infrastructure_fault(log_dir: Path, logs: list[tuple[Path, list[dict[str, Any]]]], process: dict[str, Any]) -> str | None:
+    """Name the deployment fault that stopped an attempt from evaluating the model.
+
+    An attempt that recorded no episode log, or that recorded one and never
+    received a model response, measured nothing about the model or the harness
+    it was launched to assess.
+    """
+    if not (log_dir / "episode.jsonl").is_file():
+        detail = process.get("stderr") or f"foe exited {process.get('exit_code')}"
+        return f"foe wrote no episode log under {log_dir}: {detail}"
+    responses = sum(
+        event.get("type") == "assistant/message" for _, events in logs for event in events
+    )
+    if responses == 0:
+        detail = process.get("stderr") or f"foe exited {process.get('exit_code')}"
+        return f"no model response reached the episode: {detail}"
+    return None
+
+
 def run_task(
     binary: Path,
     root: Path,
@@ -323,14 +377,17 @@ def run_task(
     workspace = case / "workspace"
     grader = case / "grader"
     log_dir = case / "episode"
-    workspace.mkdir(parents=True)
-    grader.mkdir()
-    metadata = task.materialize(workspace, grader)
-    check = Path(metadata["check"]).resolve()
-    grade = Path(metadata.get("grade", metadata["check"])).resolve()
-    config = task.config(workspace.resolve(), check, model_route)
-    config_path = case / "config.json"
-    write_json(config_path, config)
+    try:
+        workspace.mkdir(parents=True)
+        grader.mkdir()
+        metadata = task.materialize(workspace, grader)
+        check = Path(metadata["check"]).resolve()
+        grade = Path(metadata.get("grade", metadata["check"])).resolve()
+        config = task.config(workspace.resolve(), check, model_route)
+        config_path = case / "config.json"
+        write_json(config_path, config)
+    except (OSError, KeyError, ValueError) as error:
+        return unstarted_result(task, attempt, case, f"the task fixture did not materialize: {error!r}")
 
     started = time.monotonic()
     infrastructure_error = None
@@ -354,10 +411,14 @@ def run_task(
             "stdout": (error.stdout or "").strip() if isinstance(error.stdout, str) else "",
             "stderr": (error.stderr or "").strip() if isinstance(error.stderr, str) else "",
         }
+    except OSError as error:
+        return unstarted_result(task, attempt, case, f"foe could not be launched: {error}")
     duration = time.monotonic() - started
 
     outcome = root_outcome(log_dir)
     logs = episode_logs(log_dir)
+    if infrastructure_error is None:
+        infrastructure_error = infrastructure_fault(log_dir, logs, process)
     candidate = outcome.get("value") if outcome.get("kind") == "completed" else None
     artifact_correct, findings, grader_stderr = run_grader(grade, workspace, candidate)
     trace = evaluate([log_dir]) if logs else {"valid": False, "violations": [{"message": "episode log is absent"}]}
@@ -413,15 +474,9 @@ def run_task(
 def aggregate(results: list[dict[str, Any]], attempts: int, tasks: tuple[Task, ...]) -> dict[str, Any]:
     count = len(results)
     component_counts = {
-        name: sum(result["components"][name] for result in results)
-        for name in [
-            "artifact_correct",
-            "outcome_correct",
-            "mechanism_exercised",
-            "trace_conformant",
-            "within_budget",
-        ]
+        name: sum(result["components"][name] is True for result in results) for name in COMPONENTS
     }
+    evaluated = [result for result in results if result["components"]["artifact_correct"] is not None]
     outcomes: dict[str, int] = {}
     for result in results:
         outcome = result["outcome"]
@@ -446,7 +501,9 @@ def aggregate(results: list[dict[str, Any]], attempts: int, tasks: tuple[Task, .
         "launched_attempts": count,
         "strict_successes": strict_count,
         "strict_success_rate": strict_count / count if count else None,
+        "infrastructure_failures": sum(result["infrastructure_error"] is not None for result in results),
         "component_passes": component_counts,
+        "attempts_with_evaluated_components": len(evaluated),
         "tasks_strict_in_every_attempt": reliable,
         "task_count_strict_in_every_attempt": len(reliable),
         "outcomes": dict(sorted(outcomes.items())),
@@ -509,7 +566,14 @@ def main() -> int:
     for attempt in range(1, args.attempts + 1):
         for task in selected:
             print(f"micro eval: attempt {attempt}, {task.name}", file=sys.stderr, flush=True)
-            results.append(run_task(binary, run_root, task, model_route, attempt))
+            result = run_task(binary, run_root, task, model_route, attempt)
+            if result["infrastructure_error"] is not None:
+                print(
+                    f"micro eval: {task.name} did not evaluate the model: {result['infrastructure_error']}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            results.append(result)
     report = {
         "schema_version": 1,
         "evaluation": "foe-model-backed-micro",
