@@ -25,15 +25,24 @@ impl Uplink for StdoutUplink {
             eprintln!("foe: forwarding to the host: {e}");
         }
     }
+
+    fn answers(&self) -> bool {
+        true
+    }
 }
 
 /// Drops forwarded lines, for a process with no host. A descendant's
-/// `model/request` then records a call the descendant makes itself, and
-/// nothing above this process could answer a `host/tool-call`.
+/// `model/request` then records a call the descendant makes itself, and no
+/// process above this one can answer a `host/tool-call`, which the spawner
+/// refuses in place rather than forwarding.
 pub struct NoHostUplink;
 
 impl Uplink for NoHostUplink {
     fn forward(&self, _line: &str) {}
+
+    fn answers(&self) -> bool {
+        false
+    }
 }
 
 impl Downlink for Router {

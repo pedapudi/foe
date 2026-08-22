@@ -216,6 +216,138 @@ fn a_spent_model_call_budget_exhausts_the_episode() {
     assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "exhausted", "limit": "model_calls" }));
 }
 
+/// A model transport for a headless run: one shell script for the whole
+/// tree, which tells the episodes apart by the marker each program's
+/// instructions carry. The root spawns the middle episode and waits, the
+/// middle spawns the leaf and waits, and the leaf calls the host tool
+/// `ask_host` once.
+const TREE_TRANSPORT: &str = r#"#!/bin/sh
+read -r request
+id=$(printf '%s' "$request" | sed 's/.*"request_id":"\([^"]*\)".*/\1/')
+emit() { printf '{"type":"model/chunk","request_id":"%s","chunk":%s}\n' "$id" "$1"; }
+tool_call() {
+  emit "{\"kind\":\"tool_call_start\",\"id\":\"$1\",\"name\":\"$2\"}"
+  emit "{\"kind\":\"tool_call_delta\",\"id\":\"$1\",\"delta\":\"$3\"}"
+  emit "{\"kind\":\"tool_call_end\",\"id\":\"$1\"}"
+  emit '{"kind":"done","stop":"tool","usage":{"input":1,"output":1,"cache_read":0}}'
+}
+finish() {
+  emit "{\"kind\":\"text\",\"delta\":\"$1\"}"
+  emit '{"kind":"done","stop":"end","usage":{"input":1,"output":1,"cache_read":0}}'
+}
+step=$(printf '%s' "$request" | grep -o '"role":"assistant"' | wc -l | tr -d ' ')
+marked() { printf '%s' "$request" | grep -q "$1"; }
+if marked ROLE_LEAF; then
+  case $step in
+    0) tool_call tc_leaf ask_host '{}' ;;
+    *) finish "the leaf is done" ;;
+  esac
+elif marked ROLE_MIDDLE; then
+  case $step in
+    0) tool_call tc_middle_spawn spawn '{\"program\":\"leaf\",\"task\":\"ask the host\"}' ;;
+    1) tool_call tc_middle_wait wait '{}' ;;
+    *) finish "the middle episode is done" ;;
+  esac
+else
+  case $step in
+    0) tool_call tc_root_spawn spawn '{\"program\":\"middle\",\"task\":\"start the leaf\"}' ;;
+    1) tool_call tc_root_wait wait '{}' ;;
+    *) finish "the root is done" ;;
+  esac
+fi
+"#;
+
+/// Runs the binary headless over the tree the configuration declares, and
+/// returns the log of the root and of every descendant, roots first.
+fn headless_run(dir: &Path, config: &Value) -> (Vec<Vec<Value>>, i32) {
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(config).unwrap()).unwrap();
+    let log_dir = dir.join("log");
+    let code = Command::new(FOE)
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--log-dir")
+        .arg(&log_dir)
+        .arg("--headless")
+        .status()
+        .unwrap()
+        .code()
+        .unwrap();
+    fn read(dir: &Path, logs: &mut Vec<Vec<Value>>) {
+        let file = std::fs::read_to_string(dir.join("episode.jsonl")).unwrap();
+        logs.push(file.lines().map(|l| serde_json::from_str(l).unwrap()).collect());
+        let children = dir.join("children");
+        for child in std::fs::read_dir(children).into_iter().flatten().flatten() {
+            read(&child.path(), logs);
+        }
+    }
+    let mut logs = Vec::new();
+    read(&log_dir, &mut logs);
+    (logs, code)
+}
+
+/// Writes `body` to `dir/name` as an executable script and returns its path.
+fn executable(dir: &Path, name: &str, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join(name);
+    std::fs::write(&path, body).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+/// docs/protocol.md "Children": a `host/tool-call` forwarded to a process
+/// with no host is answered with an error naming the tool. The tree below
+/// declares no `seconds`, so nothing else bounds the wait; every episode in
+/// it still reaches `episode/end`.
+#[test]
+fn a_host_tool_call_no_host_can_answer_ends_every_episode_in_the_tree() {
+    let dir = scratch("no-host-uplink");
+    let transport = executable(&dir, "transport.sh", TREE_TRANSPORT);
+    let leaf = json!({
+        "name": "leaf",
+        "instructions": { "role": "ROLE_LEAF: call ask_host once." },
+        "tools": ["ask_host"],
+        "host_tools": { "ask_host": {
+            "description": "Ask the host. Nothing in this tree answers it.",
+            "params": { "type": "object", "properties": {}, "additionalProperties": false },
+            "effect": "pure"
+        }},
+        "grants": { "read": [dir] },
+        "budget": { "model_calls": 4 }
+    });
+    let middle = json!({
+        "name": "middle",
+        "instructions": { "role": "ROLE_MIDDLE: spawn the leaf and wait." },
+        "tools": ["spawn", "wait", "notify"],
+        "grants": { "read": [dir], "spawn": ["leaf"] },
+        "budget": { "model_calls": 6, "max_depth": 1, "max_episodes": 2 },
+        "programs": { "leaf": leaf }
+    });
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["spawn", "wait"]);
+        c["grants"] = json!({ "read": [dir], "spawn": ["middle"] });
+        c["budget"] = json!({ "model_calls": 12, "max_depth": 2, "max_episodes": 4 });
+        c["model"] = json!({ "provider": "exec", "model": "tree", "exec": transport });
+        c["programs"] = json!({ "middle": middle });
+    });
+    let (logs, code) = headless_run(&dir, &config);
+    assert_eq!(code, 0);
+    assert_eq!(logs.len(), 3, "the root, the middle episode, and the leaf each wrote a log");
+    for log in &logs {
+        let end = log.last().unwrap();
+        assert_eq!(end["type"], "episode/end", "every episode ends: {:?}", types(log));
+        assert_eq!(end["data"]["outcome"]["kind"], "completed");
+    }
+    let refused = logs
+        .iter()
+        .flatten()
+        .find(|e| e["type"] == "tool/result" && e["data"]["name"] == "ask_host")
+        .expect("the leaf recorded a result for its host tool call");
+    assert_eq!(refused["data"]["is_error"], true);
+    let rendered = refused["data"]["rendered"].as_str().unwrap();
+    assert!(rendered.contains("ask_host") && rendered.contains("no host"), "{rendered}");
+}
+
 /// A child program for a workflow model node, reading `dir`.
 fn node_program(name: &str, dir: &Path) -> Value {
     json!({

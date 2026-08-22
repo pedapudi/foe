@@ -7,7 +7,7 @@
 //! a descendant's `episode_id` is handed to the [`Downlink`] unchanged.
 
 use crate::config::Program;
-use crate::loop_::{append_inbox_item, lock, Log};
+use crate::loop_::{append_inbox_item, lock, until, wait_stop, Log};
 use crate::registry::host_spec;
 use crate::{CallCtx, ChunkSink, ModelRequestBody, Tool, ToolSpec, ToolValue, Transport};
 use foe_log::{Chunk, EventData, InboxItem, InboxSource, ModelRoute};
@@ -324,9 +324,28 @@ impl Tool for HostTool {
             lock(&inner.calls).remove(&ctx.call_id);
             return ToolValue::error(format!("`{}` could not be recorded: {e}", self.spec.name));
         }
-        match rx.await {
-            Ok(value) => value,
-            Err(_) => ToolValue::error(format!("the host closed standard input before answering `{}`", self.spec.name)),
+        // The wait ends three ways besides the answer: standard input
+        // closed, the stop signal, and the `seconds` budget. A wait that
+        // ends without an answer forgets the call, so a `tool/result` that
+        // arrives afterwards is the protocol error it is.
+        let name = &self.spec.name;
+        let unanswered = |why: String| {
+            lock(&inner.calls).remove(&ctx.call_id);
+            ToolValue::error(format!("`{name}` went unanswered: {why}"))
+        };
+        let stopped = |reason| format!("the episode stopped: {reason}");
+        tokio::select! {
+            answer = rx => match answer {
+                Ok(value) => value,
+                // The sender is dropped both when standard input ends and
+                // when the episode stops; the stop signal says which.
+                Err(_) => match inner.stop.borrow().clone() {
+                    Some(reason) => unanswered(stopped(reason)),
+                    None => unanswered("the host closed standard input".into()),
+                },
+            },
+            reason = wait_stop(inner.stop.subscribe()) => unanswered(stopped(reason)),
+            _ = until(ctx.deadline) => unanswered("the budget's seconds elapsed".into()),
         }
     }
 }

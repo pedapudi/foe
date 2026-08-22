@@ -11,6 +11,10 @@ impl Uplink for Lines {
     fn forward(&self, line: &str) {
         self.0.lock().unwrap().push(line.to_string());
     }
+
+    fn answers(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Default)]
@@ -273,6 +277,72 @@ fn spawn_refuses_programs_outside_the_grant() {
     };
     let err = spawner.spawn(req).err().unwrap().to_string();
     assert!(err.contains("grants.spawn"), "{err}");
+}
+
+/// A stand-in child that makes one host tool call on behalf of a
+/// descendant and one of its own, waits for both answers, and ends with
+/// them as its value.
+const ASKING_CHILD: &str = r#"#!/bin/sh
+echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{},"identity":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
+echo '{"seq":7,"time":1,"type":"host/tool-call","episode_id":"ep_grand","data":{"step":1,"call_id":"tc_g","name":"ask_host","args":{}}}'
+read -r grand
+echo '{"seq":1,"time":1,"type":"host/tool-call","data":{"step":1,"call_id":"tc_1","name":"ask_host","args":{}}}'
+read -r own
+echo "{\"seq\":2,\"time\":1,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":[$grand,$own]}}}"
+"#;
+
+/// An uplink for a process with no host, which answers nothing.
+#[derive(Default)]
+struct NoHost(Mutex<Vec<String>>);
+
+impl Uplink for NoHost {
+    fn forward(&self, line: &str) {
+        self.0.lock().unwrap().push(line.to_string());
+    }
+
+    fn answers(&self) -> bool {
+        false
+    }
+}
+
+/// docs/protocol.md "Children": a `host/tool-call` that reaches a process
+/// with no host above it is answered with an error naming the tool, whether
+/// the caller is the direct child or a descendant below it, rather than
+/// dropped for the caller to wait on.
+#[tokio::test]
+async fn a_host_call_no_host_can_answer_is_refused_at_once() {
+    let dir = scratch("spawn", "no-host");
+    let uplink = Arc::new(NoHost::default());
+    let spawner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir.clone(),
+        parent_config(),
+        uplink.clone(),
+        Arc::new(Router::new()),
+        Arc::new(Seen::default()),
+    )
+    .unwrap()
+    .with_launcher(script(&dir, "asking-foe.sh", ASKING_CHILD));
+    let req = SpawnRequest {
+        program: "worker".into(),
+        task: "ask".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        call_id: "tc_spawn".into(),
+    };
+    let handle = spawner.spawn(req).unwrap();
+    let settled = handle.run.clone().settle().await;
+    let Outcome::Completed { value } = &settled.outcome else { panic!("{:?}", settled.outcome) };
+    let answers: Vec<serde_json::Value> = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(answers[0]["call_id"], "tc_g", "the descendant's call is answered");
+    assert_eq!(answers[0]["episode_id"], "ep_grand", "the answer carries the descendant's tag");
+    assert_eq!(answers[1]["call_id"], "tc_1", "the child's own call is answered");
+    for answer in &answers {
+        assert_eq!(answer["is_error"], true);
+        let rendered = answer["rendered"].as_str().unwrap();
+        assert!(rendered.contains("ask_host") && rendered.contains("no host"), "{rendered}");
+    }
+    assert!(uplink.0.lock().unwrap().is_empty(), "a call that cannot be answered above is not forwarded");
 }
 
 #[test]
