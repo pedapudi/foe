@@ -244,8 +244,26 @@ Object. Required. Names what the episode may reach.
 | `spawn` | list of strings | no | names from `programs` the episode may start; default empty |
 
 Paths are prefixes. A grant on `/home/user/project` covers every path below
-it. Symbolic links are resolved before the check, and a link that resolves
-outside every granted root is denied. There is no pattern syntax.
+it. There is no pattern syntax.
+
+The runtime opens each granted directory once when the episode starts, and
+every read and write below it names a path relative to that open directory.
+Containment therefore holds at the moment of use rather than at the moment of
+a check: a symbolic link, a `..` component, or a directory component renamed
+after the episode started cannot direct an operation outside the root, and no
+interval exists in which a checked pathname can be repointed before it is
+used. On Linux the kernel performs the resolution with `openat2` and
+`RESOLVE_BENEATH`.
+
+A read follows a symbolic link that stays inside a granted root and is denied
+by one that leaves it. A write names an entry in a granted directory and
+replaces that entry, so writing to a name that is a symbolic link replaces
+the link rather than the file it points at.
+
+The kernel sandbox enforces the same grants on the episode process and on
+every process it starts, which [sandbox.md](sandbox.md) specifies. The open
+directories are what bounds the episode process itself where Landlock is
+unavailable, which `sandbox.mode` `best-effort` permits and `off` requires.
 
 The episode's own log directory is always writable and need not be listed.
 

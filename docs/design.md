@@ -356,10 +356,12 @@ its own schema rejects. [config.md](config.md#json-schema-subset) lists the
 assertions the runtime implements; a schema asking for more is a construction
 error rather than a constraint the runtime silently drops.
 At dispatch, the runtime passes the tool only the capability handles its
-effect entitles it to. The handles are a filesystem reader bounded to the read
-roots, a writer bounded to the write roots, an executor bounded to the
+effect entitles it to. The handles are a filesystem reader holding the read
+roots open, a writer holding the write roots open, an executor bounded to the
 declared executables, and a spawner bounded to the declared child programs.
-A tool that declares `reads` receives no writer.
+A tool that declares `reads` receives no writer. The reader and the writer
+hold their roots open for the episode's lifetime, so containment holds when
+an operation runs rather than when a pathname was last checked.
 
 ```
    grants                    registry (construction)          dispatch (per call)

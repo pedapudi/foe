@@ -103,7 +103,7 @@
       }
     },
     "grants": {
-      "description": "What the episode may reach. Paths are absolute directory prefixes; symbolic links are resolved before the check. The kinds present and the count of each participate in identity; the paths do not.",
+      "description": "What the episode may reach. Paths are absolute directory prefixes, opened once at episode start; every read and write resolves under the open directory. The kinds present and the count of each participate in identity; the paths do not.",
       "type": "object",
       "additionalProperties": false,
       "required": ["read"],
