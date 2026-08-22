@@ -23,7 +23,9 @@ program and its identity without running anything.
 Every schema embedded in a configuration uses JSON Schema Draft 2020-12.
 The dialect URI is `https://json-schema.org/draft/2020-12/schema`. An
 embedded schema may omit `$schema`. When present, `$schema` must equal that
-URI.
+URI in every subschema. A required `$vocabulary` must be one of the standard
+vocabularies supported by foe's Draft 2020-12 validator. An optional unknown
+vocabulary may be ignored as Draft 2020-12 permits.
 
 Foe validates every embedded schema during construction. An invalid schema,
 an unknown keyword, or an unknown format is a construction error naming the
