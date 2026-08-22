@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "recovery-exhausted",
+  "instructions": {
+    "role": "You are a coding agent working in a Python repository. Read the module named in the task before changing anything."
+  },
+  "tools": ["read", "grep"],
+  "grants": {
+    "read": ["/home/user/project"]
+  },
+  "budget": { "model_calls": 20, "seconds": 300 },
+  "model": {
+    "provider": "exec",
+    "exec": "/home/user/project/tools/unreachable-provider-transport",
+    "model": "recovery-exhausted"
+  },
+  "task": "Summarize what src/calculator.py does."
+}

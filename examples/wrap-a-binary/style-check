@@ -1,0 +1,66 @@
+#!/usr/bin/python3
+"""Reports Python style findings, one per line.
+
+Given no argument the checker walks `src` below the working directory, which
+is the episode's first read root. Given paths it checks those instead. A
+finding is `path:line:column: rule message`; empty output means the files are
+clean.
+
+Two rules are implemented. `line-too-long` reports a line wider than 88
+columns. `unused-import` reports an `import NAME` line whose name appears on
+no other line of the file, which is a scan for the name as a substring rather
+than a parse of the module.
+
+The same file is the `done_when` verifier of this example, so it obeys the
+verifier contract: findings go to standard output and the exit status stays
+zero whether or not any were found, leaving a non-zero exit to mean that the
+checker itself failed. It ignores standard input, where the runtime writes
+the candidate result a verifier judges.
+"""
+
+import sys
+from pathlib import Path
+
+LIMIT = 88
+
+
+def imported_name(line: str) -> str | None:
+    """The name bound by a plain `import NAME` line, if the line is one."""
+    if not line.startswith("import "):
+        return None
+    name = line[len("import ") :].strip()
+    return name if name.isidentifier() else None
+
+
+def findings(path: Path, root: Path) -> list[str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    shown = path.relative_to(root) if path.is_relative_to(root) else path
+    found = []
+    for number, line in enumerate(lines, start=1):
+        if len(line) > LIMIT:
+            found.append(f"{shown}:{number}:{LIMIT + 1}: line-too-long {len(line)} columns, over {LIMIT}")
+        name = imported_name(line)
+        if name is not None and sum(1 for other in lines if name in other) == 1:
+            found.append(f"{shown}:{number}:1: unused-import {name} is imported and never used")
+    return found
+
+
+def main() -> None:
+    root = Path.cwd().resolve()
+    targets = [Path(argument) for argument in sys.argv[1:]] or [root / "src"]
+    for target in targets:
+        resolved = target if target.is_absolute() else root / target
+        if resolved.is_dir():
+            paths = sorted(resolved.rglob("*.py"))
+        elif resolved.is_file():
+            paths = [resolved]
+        else:
+            print(f"{target}:1:1: missing-path no such file or directory")
+            continue
+        for path in paths:
+            for finding in findings(path.resolve(), root):
+                print(finding)
+
+
+if __name__ == "__main__":
+    main()

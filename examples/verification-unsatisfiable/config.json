@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "verification-unsatisfiable",
+  "instructions": {
+    "role": "You are a coding agent working in a Python repository. Resolve the TODO comment named in the task and finish with one sentence stating what you changed."
+  },
+  "tools": ["read", "grep", "edit", "todo-check"],
+  "tool_defs": {
+    "todo-check": {
+      "exec": "/home/user/project/tools/todo-check",
+      "description": "Prints one line per TODO comment left under src and prints nothing when there are none."
+    }
+  },
+  "grants": {
+    "read": ["/home/user/project"],
+    "write": ["/home/user/project/src"]
+  },
+  "budget": { "model_calls": 8, "seconds": 120 },
+  "done_when": { "verify": "todo-check", "retries": 2 },
+  "model": {
+    "provider": "exec",
+    "exec": "/home/user/project/tools/claims-completion-transport",
+    "model": "verification-unsatisfiable"
+  },
+  "task": "Implement add in src/calculator.py and remove the TODO comment above it."
+}

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Prints one line per TODO comment left under the project's source directory.
+# As a done_when verifier it reports findings on standard output and exits 0
+# whether or not it found any; docs/config.md states that contract. The
+# candidate arrives on standard input and is not read, because what this
+# check judges is the state of the files the episode was to change.
+grep -rn TODO /home/user/project/src
+[ $? -le 1 ]

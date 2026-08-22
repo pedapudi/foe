@@ -556,7 +556,7 @@ not finished.
                                                  crates/cli ◄── all of the above
 
    python/foe    a thin host: builds config, runs the binary, serves the protocol
-   examples/     runnable configurations, one mechanism each
+   examples/     one runnable example per job, each checking its own result
 ```
 
 `crates/log` depends on serde alone and defines every event type, including

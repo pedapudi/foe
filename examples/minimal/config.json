@@ -10,6 +10,10 @@
     "write": ["/home/user/project"]
   },
   "budget": { "model_calls": 20 },
-  "model": { "provider": "anthropic", "model": "claude-opus-5" },
-  "task": "tests/test_parser.py::test_nested_brackets fails. Make it pass without changing the test."
+  "model": {
+    "provider": "exec",
+    "model": "minimal-demo",
+    "exec": "/home/user/project/tools/transport.py"
+  },
+  "task": "test_brackets.py fails at test_nested_brackets. Make it pass without changing the test."
 }
