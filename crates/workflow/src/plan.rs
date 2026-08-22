@@ -7,21 +7,18 @@ use foe_core::workflow::{Node, WorkflowConfig, TASK_SOURCE};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
+type SuccessorMap = BTreeMap<String, BTreeSet<String>>;
+
 /// Every elementary cycle, each listed once starting from its smallest
 /// node name, as the sequence of nodes along it.
 pub fn cycles(wf: &WorkflowConfig) -> Vec<Vec<String>> {
-    let mut succs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut succs = SuccessorMap::new();
     for (target, sources) in wf.predecessors() {
         for source in sources {
             succs.entry(source).or_default().insert(target.clone());
         }
     }
-    fn walk(
-        start: &str,
-        path: &mut Vec<String>,
-        succs: &BTreeMap<String, BTreeSet<String>>,
-        out: &mut Vec<Vec<String>>,
-    ) {
+    fn walk(start: &str, path: &mut Vec<String>, succs: &SuccessorMap, out: &mut Vec<Vec<String>>) {
         let last = path.last().cloned().expect("a path has a start");
         for next in succs.get(&last).into_iter().flatten() {
             if next == start {

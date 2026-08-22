@@ -104,6 +104,7 @@ struct Shared {
 /// Why a firing produced no value. `settled` marks a failure a second
 /// attempt cannot change, which ends the episode with `outcome`; otherwise
 /// `outcome` is what the episode ends with when recovery is disabled.
+#[derive(Clone)]
 struct Trouble {
     cause: String,
     detail: String,
@@ -310,7 +311,7 @@ impl Executor {
             while let Some(joined) = self.tasks.join_next().await {
                 if let Ok(f) = joined {
                     self.sched.finish(&f.node);
-                    self.node_end(&f.node, f.fire, f.started, &f.result, None)?;
+                    self.node_end(&f, None)?;
                 }
             }
             outcome
@@ -406,8 +407,7 @@ impl Executor {
                 model_calls: Some(program.budget.model_calls),
                 tokens: program.budget.tokens,
                 seconds: program.budget.seconds,
-                episodes: None,
-                concurrent: None,
+                ..Default::default()
             };
             let task = sections.join("\n\n");
             let req = SpawnRequest { program: full.clone(), task, context: SpawnContext::Fresh, reserve, call_id };
@@ -439,20 +439,14 @@ impl Executor {
 
     /// Records `workflow/node-end`. `error` overrides the result's own
     /// error text when given.
-    fn node_end(
-        &self,
-        name: &str,
-        fire: u32,
-        started: Instant,
-        result: &Output,
-        error: Option<String>,
-    ) -> Result<Event, RuntimeError> {
-        let (value, rendered, error) = match result {
+    fn node_end(&self, fired: &Fired, error: Option<String>) -> Result<Event, RuntimeError> {
+        let (value, rendered, error) = match &fired.result {
             Ok((value, rendered)) => (value.clone(), rendered.clone(), error),
             Err(trouble) => (Value::Null, String::new(), Some(trouble.detail.clone())),
         };
-        let duration_ms = started.elapsed().as_millis() as u64;
-        let end = WorkflowNodeEnd { node: self.full(name), fire, value, rendered, error, duration_ms };
+        let duration_ms = fired.started.elapsed().as_millis() as u64;
+        let end =
+            WorkflowNodeEnd { node: self.full(&fired.node), fire: fired.fire, value, rendered, error, duration_ms };
         self.log(EventData::WorkflowNodeEnd(end))
     }
 
@@ -466,22 +460,21 @@ impl Executor {
 
     /// Verifies, records, and propagates a finished firing. `Some` ends the episode.
     async fn settle(&mut self, fired: Fired) -> Result<Option<Outcome>, RuntimeError> {
-        let (name, fire, started) = (fired.node.clone(), fired.fire, fired.started);
+        let (name, fire) = (fired.node.clone(), fired.fire);
         self.sched.finish(&name);
         let node = self.sched.nodes[&name].clone();
         if fired.result.is_err() {
-            self.node_end(&name, fire, started, &fired.result, None)?;
+            self.node_end(&fired, None)?;
         }
-        let (value, rendered) = match fired.result {
-            Ok(produced) => produced,
-            Err(trouble) => return self.trouble(&name, fire, trouble).await,
+        let (value, rendered) = match &fired.result {
+            Ok(produced) => produced.clone(),
+            Err(trouble) => return self.trouble(&name, fire, trouble.clone()).await,
         };
-        let result = Ok((value.clone(), rendered.clone()));
         if let Some(verifier) = &node.verify {
             let findings = self.verify_with(verifier, &value).await?;
             if !findings.is_empty() {
                 let error = format!("`{verifier}` reported {} finding(s)", findings.len());
-                self.node_end(&name, fire, started, &result, Some(error))?;
+                self.node_end(&fired, Some(error))?;
                 let state = self.sched.state.get_mut(&name).expect("a known node");
                 if state.verify_attempts < node.retries {
                     state.verify_attempts += 1;
@@ -498,12 +491,12 @@ impl Executor {
         if !node.branches.is_empty() && label.is_none() {
             let labels: Vec<&String> = node.branches.keys().collect();
             let detail = format!("the value names no branch label among {labels:?}");
-            self.node_end(&name, fire, started, &result, Some(detail.clone()))?;
+            self.node_end(&fired, Some(detail.clone()))?;
             let outcome = Outcome::Failed { error: format!("node `{}`: {detail}", self.full(&name)) };
             return self.trouble(&name, fire, Trouble::recoverable("branch-missing", detail, outcome)).await;
         }
         let label = label.map(str::to_string);
-        let event = self.node_end(&name, fire, started, &result, None)?;
+        let event = self.node_end(&fired, None)?;
         self.produce(&name, fire, Produced { value, rendered, seq: event.seq }, label).await
     }
 
