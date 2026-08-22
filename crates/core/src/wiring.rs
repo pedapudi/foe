@@ -106,14 +106,18 @@ impl Spawner for BudgetedSpawner {
         let (log, pool, run) = (self.log.clone(), self.pool.clone(), handle.run.clone());
         tokio::spawn(async move {
             let settled = run.settle().await;
-            lock(&pool).release(&child_id, settled.spent);
             let end = EventData::SpawnEnd { child_id: child_id.clone(), outcome: settled.outcome };
-            let release = EventData::BudgetRelease { child_id, spent: settled.spent };
+            let release = EventData::BudgetRelease { child_id: child_id.clone(), spent: settled.spent };
             for event in [end, release] {
                 if let Err(e) = log.append(event) {
                     eprintln!("foe: recording a child's end: {e}");
                 }
             }
+            // The pool is released last. A waiter watches the pool, so
+            // releasing first would let it see a settled child whose
+            // `spawn/end` and `budget/release` are not yet in the log, and
+            // the teardown would then write a second pair of its own.
+            lock(&pool).release(&child_id, settled.spent);
         });
         Ok(handle)
     }
