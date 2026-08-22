@@ -64,6 +64,10 @@ def all_events(logs: Iterable[tuple[Path, list[dict[str, Any]]]]) -> Iterable[di
 
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "billed_budget_tokens")
 
+EVALUATED = 0
+DEPLOYMENT_FAULT = 1
+NOTHING_LAUNCHED = 2
+
 COMPONENTS = (
     "artifact_correct",
     "outcome_correct",
@@ -516,30 +520,83 @@ def aggregate(results: list[dict[str, Any]], attempts: int, tasks: tuple[Task, .
     }
 
 
+def spending_plan(selected: tuple[Task, ...], attempts: int, model_route: dict[str, str]) -> str:
+    """State the largest spend the run can incur before any model is called."""
+    attempt_word = "attempt" if attempts == 1 else "attempts"
+    task_word = "task" if len(selected) == 1 else "tasks"
+    lines = [
+        f"This evaluation calls {model_route['provider']}/{model_route['model']} and spends real credit.",
+        f"Largest spend it can incur, at {attempts} {attempt_word} of each of "
+        f"{len(selected)} {task_word}:",
+        "",
+        f"  {'model calls':>11}  {'tokens':>7}  task",
+    ]
+    for task in selected:
+        calls = task.model_calls * attempts
+        tokens = task.tokens * attempts
+        lines.append(f"  {calls:>11}  {tokens:>7,}  {task.name}")
+    total_calls = sum(task.model_calls for task in selected) * attempts
+    total_tokens = sum(task.tokens for task in selected) * attempts
+    lines.extend(
+        [
+            f"  {total_calls:>11}  {total_tokens:>7,}  every selected task",
+            "",
+            "A token count is input plus output. foe stops an episode at its declared",
+            "limit, so these figures bound the run. The report states the tokens the",
+            "attempts actually billed.",
+            "",
+            "No attempt was launched. Add --confirm-spend to launch them.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=(
+            "Exit status 0 means every attempt evaluated the model, 1 means at least one "
+            "attempt hit a deployment fault, and 2 means nothing was launched."
+        ),
+    )
     parser.add_argument("--foe", type=Path, required=True, help="Path to the built foe binary.")
     parser.add_argument("--model", required=True, help="Provider and model as PROVIDER/MODEL.")
+    parser.add_argument(
+        "--confirm-spend",
+        action="store_true",
+        help=(
+            "Launch the attempts. Without this flag the runner prints the largest spend the "
+            "run can incur and launches nothing."
+        ),
+    )
     parser.add_argument("--attempts", type=int, default=1, help="Independent attempts per task; default 1.")
     parser.add_argument("--task", action="append", help="Run only this task; may be repeated.")
     parser.add_argument("--keep", type=Path, help="Keep configurations, workspaces, and logs in this directory.")
     args = parser.parse_args()
+
+    def refuse(message: str) -> int:
+        print(message, file=sys.stderr)
+        return NOTHING_LAUNCHED
+
     if args.attempts < 1 or args.attempts > 3:
-        raise SystemExit("--attempts must be between 1 and 3")
+        return refuse("--attempts must be between 1 and 3")
     try:
         model_route = route(args.model)
     except ValueError as error:
-        raise SystemExit(str(error)) from error
+        return refuse(str(error))
     binary = args.foe.resolve()
     if not binary.is_file():
-        raise SystemExit(f"foe binary does not exist: {binary}")
+        return refuse(f"foe binary does not exist: {binary}")
     try:
         selected = tuple(task_by_name(name) for name in args.task) if args.task else TASKS
     except KeyError as error:
         choices = ", ".join(task.name for task in TASKS)
-        raise SystemExit(f"unknown --task {error.args[0]}; choose from: {choices}") from error
+        return refuse(f"unknown --task {error.args[0]}; choose from: {choices}")
     if len({task.name for task in selected}) != len(selected):
-        raise SystemExit("each --task may be given once")
+        return refuse("each --task may be given once")
+    if not args.confirm_spend:
+        print(spending_plan(selected, args.attempts, model_route))
+        return NOTHING_LAUNCHED
 
     temporary: tempfile.TemporaryDirectory[str] | None = None
     if args.keep is None:
@@ -560,7 +617,9 @@ def main() -> int:
         if (run_root / f"attempt-{attempt:02d}" / task.name).exists()
     ]
     if conflicts:
-        raise SystemExit(f"evaluation output already exists: {conflicts[0]}")
+        if temporary is not None:
+            temporary.cleanup()
+        return refuse(f"evaluation output already exists: {conflicts[0]}")
 
     results = []
     for attempt in range(1, args.attempts + 1):
@@ -590,7 +649,7 @@ def main() -> int:
     infrastructure_failed = any(result["infrastructure_error"] is not None for result in results)
     if temporary is not None:
         temporary.cleanup()
-    return 1 if infrastructure_failed else 0
+    return DEPLOYMENT_FAULT if infrastructure_failed else EVALUATED
 
 
 if __name__ == "__main__":
