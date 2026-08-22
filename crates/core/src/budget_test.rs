@@ -176,17 +176,19 @@ fn folding_reserve_and_release_events_matches_live_calls() {
 fn request_output_is_clamped_to_the_remaining_allowance() {
     let mut pool = Pool::new(budget());
     pool.note_usage(Usage { input: 10, output: 350, cache_read: 0 });
-    assert_eq!(pool.request_max_output(20, Some(200)), Ok(Some(50)));
-    assert_eq!(pool.request_max_output(20, Some(25)), Ok(Some(25)));
+    assert_eq!(pool.request_max_output(Some(200)), Ok(Some(50)));
+    assert_eq!(pool.request_max_output(Some(25)), Ok(Some(25)));
 }
 
-/// docs/config.md `budget`: the runtime uses an approximate input count
-/// before a request and provider-reported usage after the response.
+/// docs/config.md `budget`: provider-reported usage charges the input
+/// allowance after a response, so one response can cross the allowance.
 #[test]
-fn estimated_input_that_exceeds_the_remainder_refuses_the_request() {
+fn reported_input_can_cross_the_allowance_before_the_next_request() {
     let mut pool = Pool::new(budget());
     pool.note_usage(Usage { input: 990, output: 0, cache_read: 900 });
-    assert_eq!(pool.request_max_output(11, None), Err(ExhaustedLimit::InputTokens));
+    assert_eq!(pool.request_max_output(None), Ok(Some(400)));
+    pool.note_usage(Usage { input: 20, output: 0, cache_read: 0 });
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
 }
 
 /// docs/compaction.md "How it is recorded": the summary response's

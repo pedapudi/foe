@@ -443,12 +443,12 @@ remainder, and unspent reservation returns when the child settles. Model
 calls, input tokens, and output tokens are separate dimensions. Structural
 caps on depth, lifetime episode count, and concurrency sit beside them.
 
-Before each request, the runtime refuses an estimated input that does not
-fit and clamps the provider's output cap to the remaining output allowance.
-The input estimate uses one token per four serialized bytes because foe has
-no provider tokenizer. A request can therefore cross its remaining input
-allowance. Concurrent descendants can each cross their reserved allowances.
-Provider-reported usage becomes the account of what the tree spent.
+After each completed response, the runtime charges the provider-reported
+input to the tree. It starts another request only while some input allowance
+remains. Foe does not send a per-request input cap, so one response can cross
+its remaining input allowance. Concurrent descendants can each cross their
+reserved allowances. The runtime clamps a supported provider's output cap to
+the remaining output allowance.
 
 A spawn that would pass a cap fails as a tool call with a result naming the
 limit, and no child starts; the model reads that result like any other.

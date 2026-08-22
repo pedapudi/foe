@@ -287,8 +287,8 @@ Object. Required.
 | field | type | required | default | meaning |
 |---|---|---|---|---|
 | `model_calls` | integer | yes | | maximum model requests, including retries |
-| `input_tokens` | integer | no | unlimited | maximum provider-reported input tokens across all requests, including cache-read input |
-| `output_tokens` | integer | no | unlimited | maximum provider-reported output tokens across all requests, including reasoning when the provider includes it |
+| `input_tokens` | integer | no | unlimited | provider-reported input allowance across all requests, including cache-read input |
+| `output_tokens` | integer | no | unlimited | provider-reported output allowance across all requests, including reasoning when the provider includes it |
 | `seconds` | integer | no | unlimited | wall-clock limit for the episode |
 | `max_depth` | integer | no | 1 | how many levels of child episodes may exist below this one; 0 forbids spawning |
 | `max_episodes` | integer | no | 8 | lifetime count of episodes in the tree, including this one |
@@ -301,11 +301,10 @@ is reserved from its parent's remainder. The child reports what its whole
 subtree used. A child program that declares a larger limit runs under its
 reserved share.
 
-Before each request, the runtime estimates the model-visible input at one
-token per four serialized bytes. It refuses a request whose estimate exceeds
-the remaining input allowance. Provider-reported usage is authoritative and
-can exceed the allowance because the runtime has no provider tokenizer.
-Cached input remains part of `input_tokens`.
+The runtime charges provider-reported input after each completed response.
+It starts another request only while some input allowance remains. Foe does
+not send a per-request input cap, so one response can cross the remaining
+input allowance. Cached input remains part of `input_tokens`.
 
 For a provider that accepts a per-request output cap, the runtime clamps the
 cap to the remaining `output_tokens`. This applies to ordinary requests,

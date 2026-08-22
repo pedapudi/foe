@@ -551,9 +551,9 @@ def spending_plan(selected: tuple[Task, ...], attempts: int, model_route: dict[s
         [
             f"  {total_calls:>11}  {total_input:>7,}  {total_output:>7,}  every selected task",
             "",
-            "The output allowance is capped before each request. The input preflight uses",
-            "an estimate because exact provider tokenization is unavailable. The report",
-            "states the provider-reported input and output for every attempt.",
+            "The output allowance is capped before each request when the provider accepts",
+            "a cap. Input is charged from provider-reported usage after each response.",
+            "The report states the input and output for every attempt.",
             "",
             "No attempt was launched. Add --confirm-spend to launch them.",
         ]

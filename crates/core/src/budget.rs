@@ -7,7 +7,7 @@
 //! not spend.
 
 use crate::Budget;
-use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Message, ToolSchema, Usage};
+use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -107,17 +107,10 @@ impl Pool {
         }
     }
 
-    /// Checks the approximate input size and clamps the provider's output
-    /// cap to the output allowance that remains across this episode tree.
-    pub fn request_max_output(
-        &self,
-        estimated_input: u64,
-        configured: Option<u32>,
-    ) -> Result<Option<u32>, ExhaustedLimit> {
+    /// Clamps the provider's output cap to the output allowance that
+    /// remains across this episode tree.
+    pub fn request_max_output(&self, configured: Option<u32>) -> Result<Option<u32>, ExhaustedLimit> {
         let remaining = self.remaining();
-        if remaining.input_tokens.is_some_and(|left| estimated_input > left) {
-            return Err(ExhaustedLimit::InputTokens);
-        }
         match (configured, remaining.output_tokens) {
             (_, Some(0)) => Err(ExhaustedLimit::OutputTokens),
             (Some(cap), Some(left)) => Ok(Some(cap.min(u32::try_from(left).unwrap_or(u32::MAX)))),
@@ -196,16 +189,6 @@ impl Pool {
     pub fn active_children(&self) -> usize {
         self.active.len()
     }
-}
-
-/// Estimates the provider input from the model-visible request parts. The
-/// estimate uses one token per four serialized bytes because the runtime has
-/// no provider tokenizer. Provider-reported usage remains authoritative.
-pub fn estimate_request_input(system: &str, tools: &[ToolSchema], messages: &[Message]) -> u64 {
-    let bytes = system.len()
-        + serde_json::to_vec(tools).map_or(0, |v| v.len())
-        + serde_json::to_vec(messages).map_or(0, |v| v.len());
-    bytes.div_ceil(4) as u64
 }
 
 #[cfg(test)]

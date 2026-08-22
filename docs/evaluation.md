@@ -281,16 +281,17 @@ fail its grader, and every oracle artifact must pass:
 bazel test //evals:micro_tasks_test
 ```
 
-#### Input estimation and reserved child budgets
+#### Provider-reported input and reserved child budgets
 
-The runtime estimates request input because it has no provider tokenizer.
-A provider can report more input than the preflight estimate. One response
-can therefore cross the remaining input allowance. The root account records
-the reported usage, including an overrun in a descendant.
+The runtime charges provider-reported input after each completed response.
+It starts another request only while some input allowance remains. Foe does
+not send a per-request input cap, so one response can cross the remaining
+input allowance. The root account records the reported usage, including an
+overrun in a descendant.
 
 The runner treats such an attempt as outside budget. The trace evaluator
 still checks that the released input equals the child log. It does not claim
-that an estimated input reservation strictly bounds provider-reported input.
+that an input reservation strictly bounds provider-reported input.
 
 A provider that accepts a per-request output cap receives the remaining
 output allowance. The ChatGPT Codex backend rejects that field. An

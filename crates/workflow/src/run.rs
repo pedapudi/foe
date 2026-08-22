@@ -12,7 +12,7 @@
 
 use crate::bind;
 use crate::graph::{Produced, Scheduler};
-use foe_core::budget::{estimate_request_input, Pool};
+use foe_core::budget::Pool;
 use foe_core::config::Program;
 use foe_core::harness_text as text;
 use foe_core::loop_::{lock, settle, until, wait_stop, Log, Params, Recorder};
@@ -762,8 +762,7 @@ impl Executor {
         let request_id = format!("rq_{step:04}");
         let messages = vec![Message::User { content }];
         let configured = sh.program.model.as_ref().and_then(|m| m.max_output_tokens);
-        let estimate = estimate_request_input(&system, &tools, &messages);
-        let max_output_tokens = match lock(&sh.pool).request_max_output(estimate, configured) {
+        let max_output_tokens = match lock(&sh.pool).request_max_output(configured) {
             Ok(cap) => cap,
             Err(limit) => return Ok(Decision::End(Outcome::Exhausted { limit })),
         };

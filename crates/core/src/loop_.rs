@@ -7,7 +7,7 @@
 //! consults the context policy, which may replace the oldest part of the
 //! projection with a summary; docs/compaction.md specifies that.
 
-use crate::budget::{estimate_request_input, Pool};
+use crate::budget::Pool;
 use crate::config::Program;
 use crate::context::{Answer, ContextPolicy, ContextState, Summarized, SummaryCall};
 use crate::harness_text as text;
@@ -360,8 +360,7 @@ impl Episode {
             };
             let (header_seq, header) = self.header.clone().expect("header written before the request");
             let configured = self.p.program.model.as_ref().and_then(|m| m.max_output_tokens);
-            let estimate = estimate_request_input(&header.system, &header.tools, &messages);
-            let max_output_tokens = match lock(&self.p.pool).request_max_output(estimate, configured) {
+            let max_output_tokens = match lock(&self.p.pool).request_max_output(configured) {
                 Ok(cap) => cap,
                 Err(limit) => return Ok(Answer::Ended(Outcome::Exhausted { limit })),
             };

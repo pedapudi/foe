@@ -411,7 +411,7 @@ function rich() {
     "| limit | unit | checked |",
     "|:---|:---:|---:|",
     "| `model_calls` | calls | before each request |",
-    "| `input_tokens` | tokens | estimated before and counted after each request |",
+    "| `input_tokens` | tokens | counted after each response |",
     "| `output_tokens` | tokens | capped before and counted after each request |",
     "",
     "The check itself is one comparison:",

@@ -114,7 +114,7 @@ reasoning as output. A host that cannot report a field sends 0.
 
 An `error` chunk carries no usage. Provider work that ends in an error is
 therefore outside the runtime's token account. Each retry still recomputes
-its input preflight and output cap from the allowance that remains.
+its output cap from the allowance that remains.
 
 foe records every chunk as an `assistant/chunk` event, assembles the
 `assistant/message` on `done`, and applies the length rule when `stop` is
