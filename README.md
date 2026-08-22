@@ -151,7 +151,8 @@ tool crates stays under 6,000 lines, excluding tests and generated code, the
 workflow executor stays under 1,000 on the same terms, and the compaction
 policy under 500. The viewer is budgeted apart from the runtime, at 600 lines
 for its crate and 150 KB compressed for its browser bundle, because it
-delivers a record of a run rather than running one. `scripts/loc.sh` counts
+delivers a record of a run rather than running one; its HTML, TypeScript, and
+CSS count toward that compressed size and toward no line budget. `scripts/loc.sh` counts
 the Rust budgets and continuous integration fails a build over any of them.
 The
 stripped release binary measured 5,228,760 bytes on 2026-08-21 with the

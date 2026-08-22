@@ -603,9 +603,13 @@ compaction policy in `crates/context` under 500.
 The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
 and the browser bundle it serves under 150 KB compressed. It is separate
 because it delivers a record of a run rather than running one, so a viewer
-that grows must not force the runtime to shrink. The built-in transport and
-the binary are budgeted separately again. Continuous integration enforces
-every budget as a test.
+that grows must not force the runtime to shrink. The browser viewer's HTML,
+TypeScript, and CSS count toward that compressed size and toward no line
+budget at all.
+
+Rust outside every line budget, in the built-in transport and in the
+command-line binary, is bounded by the size of the binary it compiles into.
+Continuous integration enforces every budget as a test.
 
 The budget is a design constraint rather than an aspiration. A runtime that
 other systems embed and audit earns trust in proportion to how little of it
