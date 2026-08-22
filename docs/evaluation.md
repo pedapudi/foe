@@ -320,6 +320,44 @@ task and model route. Keep task containers, evaluators, aggregate budgets, and
 timeouts fixed. Report the per-task results so aggregate differences remain
 auditable.
 
+### Comparative hypotheses
+
+foe has no comparative result against Claude Code or Codex CLI yet. The table
+below records expectations to test rather than results. A failed or exhausted
+attempt cannot count as an efficiency win merely because it stopped early.
+Token and latency comparisons use successful attempts, with all-attempt
+figures reported beside them.
+
+| benchmark slice | expected advantage | reason | confidence |
+|---|---|---|---|
+| minimal typed repository lookup | lower input tokens than Claude Code and Codex CLI; slightly lower wall time than Claude Code | foe sends a small fixed charter and three task-relevant tool schemas, and starts no plugin, MCP, hook, or project-instruction discovery | medium |
+| micro untrusted instruction containment and AgentDojo workspace tasks | higher strict completion under policy and lower attack success | read and write roots are capabilities enforced below the model, so a successful injection cannot widen authority | high for denial, medium for useful completion |
+| micro typed configuration evidence and Harness-Bench evidence-grounded tasks | higher grounded-result accuracy under a fixed schema | the return value is schema checked, and the grader resolves each cited path and pointer against evidence the episode read | medium |
+| micro declared migration workflow | higher strict accuracy; higher tokens and latency | typed dataflow separates evidence, decision, and application, while the write grant excludes application code; the two model nodes add requests | medium |
+| micro compaction ledger continuity and CompactBench locked-obligation cases | higher retention of the task, completion rule, file history, child outcomes, and verifier findings | foe carries these fields from typed events rather than asking the summary model to remember them | medium |
+| micro delegated order quotation | lower latency only against a sequential delegation baseline; no expected advantage against tuned parallel subagents | foe starts independent children concurrently and preserves their typed reports, while Claude Code and Codex CLI can also run parallel agents | low |
+| selected Harness-Bench permission-sensitive and long-running tasks | higher strict completion when completion includes policy and trace conformance | declared authority, typed outcomes, hierarchical budgets, and request reconstruction are part of the score | medium |
+| Terminal-Bench and SWE-bench Verified broad coding sets | no expected advantage | mature vendor harnesses have more tool tuning, language integrations, and benchmark exposure; foe's control mechanisms add overhead that these scorers mostly ignore | high |
+
+The minimal lookup is a controlled harness-overhead benchmark. Give every
+harness the same small repository and ask for one schema-constrained fact with
+its source path. Disable optional plugins, MCP servers, and user instructions.
+Run foe and Claude Code with the same Claude model. Run foe and Codex CLI with
+the same OpenAI model. A three-way comparison with different models measures
+model and harness together and cannot isolate foe's contribution.
+
+[Official OpenAI model guidance](https://developers.openai.com/api/docs/guides/latest-model)
+describes lean prompts as a possible source of token savings and parallel
+multi-agent execution as a possible source of lower wall time. Both effects
+remain workload-dependent. The delegated comparison therefore gives foe no
+expected latency advantage over a tuned parallel Codex configuration.
+
+Report provider-observed input, output, cache-read, and compaction tokens.
+Report cold and warm wall time separately. Warm time starts after process and
+credential initialization. The accuracy comparison uses at least five paired
+attempts per task because the proposed micro slices contain too few tasks for
+a one-attempt difference to be meaningful.
+
 The [Inspect evaluation checklist](https://github.com/UKGovernmentBEIS/inspect_evals/blob/main/EVALUATION_CHECKLIST.md)
 provides additional evaluator controls. Applicable controls include an oracle
 run, negative controls, trajectory review, and proof that the scorer can
