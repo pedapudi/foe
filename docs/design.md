@@ -257,18 +257,25 @@ single deadline rather than dividing between children. A child's
 reservation caps its `seconds` at what the parent has left, so one deadline
 ends every episode below it.
 
-A program need not declare `seconds`, and one that does not still ends. Two
-rules hold in place of a deadline. Every wait the runtime performs is
-cancellable, so the stop signal, which a host raises with `cancel` and the
-terminal raises with an interrupt, ends the wait and the episode with it.
-And a wait for an answer that cannot arrive is never entered: a host tool
-call that reaches a process with no host is answered there with an error
-naming the tool, which [protocol.md](protocol.md#children) states, so no
-episode waits on a line nothing above it would read. What a program without
-`seconds` gives up is the bound on an answer that could still arrive, from a
-live host or from a child that is still working. An operator who wants that
-bound declares `seconds`, and a program that means to wait longer than any
-deadline it could name declares none.
+A program need not declare `seconds`. An episode that declares none still
+reaches an outcome, and two rules stand in place of the deadline.
+
+The first is that every wait the runtime performs is cancellable. The stop
+signal, which a host raises by sending `cancel` and a terminal raises by
+interrupting, ends the wait and the episode holding it, at whatever depth
+of the tree that episode sits.
+
+The second is that a wait for an answer no process can give is never
+entered. A host tool call that reaches a process with no host is answered
+there with an error naming the tool, which
+[protocol.md](protocol.md#children) states, so no episode waits on a line
+that nothing above it would read.
+
+What an episode without `seconds` gives up is the bound on an answer that
+could still arrive: one owed by a live host, or one owed by a child that is
+still working. An operator who wants that bound declares `seconds`. A
+program whose work legitimately outlasts any deadline its author could name
+declares none, and ends when its host cancels it.
 
 A program's `done_when` field chooses how an episode completes.
 

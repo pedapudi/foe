@@ -177,16 +177,18 @@ error result naming the tool and the reason.
 
 A program that declares no `seconds` gives its waits no wall-clock bound.
 Two rules keep such an episode from waiting on an answer that can never
-arrive. A document that names a tool in `host_tools` and runs in a process
-with no host is refused at construction, because the tool has no
-implementation to register. A call forwarded to a process with no host is
-answered there with an error, which the [Children](#children) section
-states. What is left unbounded is a call a live host has received and not
-yet answered. The host owes that answer; foe waits for it, and `cancel` is
-what ends the wait when the host decides not to answer. A program that
-means to wait a long time therefore either declares a `seconds` budget
-large enough for the longest answer it expects, or declares none and relies
-on its host to answer or to cancel.
+arrive. A configuration with a `host_tools` entry is refused at
+construction when the process has no host, because the tool named there has
+no implementation to register. A call forwarded to a process with no host
+is answered there with an error, which the [Children](#children) section
+states.
+
+What remains unbounded is a call a live host has received and not yet
+answered. The host owes that answer. foe waits for it, and `cancel` is what
+ends the wait when the host decides to give no answer. A program that means
+to wait a long time therefore does one of two things: it declares a
+`seconds` budget large enough for the longest answer it expects, or it
+declares none and relies on its host to answer or to cancel.
 
 ## Children
 
