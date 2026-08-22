@@ -177,18 +177,24 @@ impl Tool for Verifier {
     }
 }
 
-/// Records every request and answers with its standard input echoed to
-/// standard output, the arguments joined on standard error, and
-/// `exit_code`, which is 0 by default.
+/// Records every request and answers with `stdout`, or with its standard
+/// input echoed back when `stdout` is unset, the arguments joined on
+/// standard error, and `exit_code`, which is 0 by default.
 #[derive(Default)]
 pub struct FakeExecutor {
     pub requests: Mutex<Vec<ExecRequest>>,
     pub exit_code: i32,
+    /// Written to standard output in place of the echoed input, for a
+    /// verifier whose findings are the subject.
+    pub stdout: Option<String>,
 }
 
 impl Executor for FakeExecutor {
     fn run(&self, req: ExecRequest) -> Result<ExecResult, crate::CapError> {
-        let stdout = req.stdin.clone().unwrap_or_default();
+        let stdout = match &self.stdout {
+            Some(text) => text.clone().into_bytes(),
+            None => req.stdin.clone().unwrap_or_default(),
+        };
         let stderr = req.args.join(" ").into_bytes();
         self.requests.lock().unwrap().push(req);
         let exit_code = Some(self.exit_code);

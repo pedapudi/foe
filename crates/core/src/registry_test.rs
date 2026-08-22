@@ -264,12 +264,25 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     let registry = Registry::new(&program, vec![], vec![]).unwrap();
     let executor = Arc::new(FakeExecutor::default());
     let handles = Handles { executor: Some(executor.clone()), ..Default::default() };
-    let findings =
-        registry.verify_with("v", &handles, &json!("line one\n\nline two"), 1, root.clone(), None).await.unwrap();
-    assert_eq!(findings, vec![r#""line one\n\nline two""#], "stdout lines are findings; the executor echoed stdin");
+    let findings = registry.verify_with("v", &handles, &json!("candidate"), 1, root.clone(), None).await.unwrap();
+    assert_eq!(findings, vec![r#""candidate""#], "stdout is a finding; this executor echoed stdin");
     let req = executor.requests.lock().unwrap().pop().unwrap();
     assert!(req.args.is_empty(), "a verifier receives an empty argument vector");
-    assert_eq!(req.stdin.as_deref(), Some(br#""line one\n\nline two""#.as_slice()));
+    assert_eq!(req.stdin.as_deref(), Some(br#""candidate""#.as_slice()));
+
+    // Each line of standard output is one finding, and a blank line is not
+    // a finding, so a verifier may separate what it reports.
+    let reporting =
+        Arc::new(FakeExecutor { stdout: Some("first finding\n\n  \nsecond finding\n".into()), ..Default::default() });
+    let handles = Handles { executor: Some(reporting), ..Default::default() };
+    let findings = registry.verify_with("v", &handles, &json!("candidate"), 1, root.clone(), None).await.unwrap();
+    assert_eq!(findings, vec!["first finding", "second finding"]);
+
+    let accepting = Arc::new(FakeExecutor { stdout: Some(String::new()), ..Default::default() });
+    let handles = Handles { executor: Some(accepting), ..Default::default() };
+    let accepted = registry.verify_with("v", &handles, &json!("candidate"), 1, root.clone(), None).await.unwrap();
+    assert!(accepted.is_empty(), "empty standard output with exit 0 accepts the candidate");
+
     let crashing = Arc::new(FakeExecutor { exit_code: 1, ..Default::default() });
     let handles = Handles { executor: Some(crashing), ..Default::default() };
     let error = registry.verify_with("v", &handles, &json!(""), 1, root.clone(), None).await.unwrap_err();
