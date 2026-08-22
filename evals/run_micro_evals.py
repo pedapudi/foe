@@ -62,27 +62,42 @@ def all_events(logs: Iterable[tuple[Path, list[dict[str, Any]]]]) -> Iterable[di
         yield from events
 
 
+TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "billed_budget_tokens")
+
+
 def usage(logs: list[tuple[Path, list[dict[str, Any]]]]) -> dict[str, Any]:
+    """Total the token spend the logs recorded, or state that nobody measured it.
+
+    A token total is the sum over every model response. A response that carried
+    no usage block leaves the total unknown rather than unchanged, so the token
+    fields read as absent unless every response reported its own usage.
+    """
     messages = [event_data(event) for event in all_events(logs) if event.get("type") == "assistant/message"]
     requests = [event for event in all_events(logs) if event.get("type") == "model/request"]
     totals = {"input": 0, "output": 0, "cache_read": 0}
-    usage_reported = bool(messages)
+    responses_with_usage = 0
     for message in messages:
         measured = message.get("usage")
         if not isinstance(measured, dict) or not isinstance(measured.get("input"), int) or measured["input"] <= 0:
-            usage_reported = False
             continue
+        responses_with_usage += 1
         for name in totals:
             value = measured.get(name, 0)
             if isinstance(value, int):
                 totals[name] += value
-    return {
-        "model_calls": len(requests),
+    usage_reported = bool(messages) and responses_with_usage == len(messages)
+    measured_tokens = {
         "input_tokens": totals["input"],
         "output_tokens": totals["output"],
         "cache_read_tokens": totals["cache_read"],
         "billed_budget_tokens": totals["input"] + totals["output"],
+    }
+    return {
+        "model_calls": len(requests),
+        "model_responses": len(messages),
+        "responses_with_usage": responses_with_usage,
         "usage_reported": usage_reported,
+        **(measured_tokens if usage_reported else {name: None for name in TOKEN_FIELDS}),
     }
 
 
@@ -419,15 +434,18 @@ def aggregate(results: list[dict[str, Any]], attempts: int, tasks: tuple[Task, .
         matching = [result for result in results if result["task"] == task.name]
         if len(matching) == attempts and all(result["strict_success"] for result in matching):
             reliable.append(task.name)
-    total_usage = {
-        name: sum(result["usage"][name] for result in results)
-        for name in ["model_calls", "input_tokens", "output_tokens", "cache_read_tokens", "billed_budget_tokens"]
+    measured = [result for result in results if result["usage"]["usage_reported"]]
+    total_usage: dict[str, Any] = {
+        "model_calls": sum(result["usage"]["model_calls"] for result in results),
+        "attempts_with_reported_usage": len(measured),
     }
+    for name in TOKEN_FIELDS:
+        total_usage[name] = sum(result["usage"][name] for result in measured) if measured else None
     strict_count = sum(result["strict_success"] for result in results)
     return {
         "launched_attempts": count,
         "strict_successes": strict_count,
-        "strict_success_rate": strict_count / count if count else 0,
+        "strict_success_rate": strict_count / count if count else None,
         "component_passes": component_counts,
         "tasks_strict_in_every_attempt": reliable,
         "task_count_strict_in_every_attempt": len(reliable),
