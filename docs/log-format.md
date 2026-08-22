@@ -140,9 +140,10 @@ model received and a pointer to the header in effect.
 `consumed` lists the `seq` of every `inbox/item` that entered this request
 for the first time. `messages` is the full derived message list, in the
 form defined under [Derived messages](#derived-messages).
-`max_output_tokens` is the per-request cap after the runtime applies the
-remaining episode-wide output allowance. It is omitted when neither the
-configuration nor the budget supplies a cap.
+`max_output_tokens` is the cap the runtime asks the transport to apply after
+considering the remaining episode-wide output allowance. It is omitted when
+neither the configuration nor the budget supplies a cap. A provider can lack
+an equivalent request field; [models.md](models.md) records those cases.
 
 `request/retry` — implemented. A model request failed and is being retried.
 `attempt` names the attempt that failed and `delay_ms` the delay waited

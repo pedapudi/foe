@@ -291,7 +291,11 @@ the reported usage, including an overrun in a descendant.
 The runner treats such an attempt as outside budget. The trace evaluator
 still checks that the released input equals the child log. It does not claim
 that an estimated input reservation strictly bounds provider-reported input.
-Output has a provider cap derived from the remaining output allowance.
+
+A provider that accepts a per-request output cap receives the remaining
+output allowance. The ChatGPT Codex backend rejects that field. An
+`openai-codex` response can therefore cross the allowance before foe charges
+its reported usage.
 
 ### Comparable metrics
 

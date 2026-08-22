@@ -80,7 +80,10 @@ impl Responses {
 
 impl Format for Responses {
     fn body(&self, req: &ModelRequestBody) -> Value {
-        request_body(&self.model, req.max_output_tokens.or(self.max_tokens), self.reasoning_effort.as_deref(), req)
+        // The ChatGPT Codex backend shares the Responses event format but
+        // rejects the public API's per-request output cap.
+        let max_tokens = (self.provider != "openai-codex").then(|| req.max_output_tokens.or(self.max_tokens)).flatten();
+        request_body(&self.model, max_tokens, self.reasoning_effort.as_deref(), req)
     }
 
     fn decoder(&self) -> Box<dyn Decoder> {
@@ -604,5 +607,13 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
         assert!(body.get("max_output_tokens").is_none());
         req.max_output_tokens = Some(9);
         assert_eq!(Responses::new("openai", "gpt-5".into(), Some(2048), None).body(&req)["max_output_tokens"], 9);
+    }
+
+    #[test]
+    fn codex_backend_omits_the_output_cap_it_does_not_accept() {
+        let mut req = request();
+        req.max_output_tokens = Some(9);
+        let body = Responses::new("openai-codex", "gpt-5.6-sol".into(), Some(2048), None).body(&req);
+        assert!(body.get("max_output_tokens").is_none());
     }
 }

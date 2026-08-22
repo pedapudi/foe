@@ -307,10 +307,14 @@ the remaining input allowance. Provider-reported usage is authoritative and
 can exceed the allowance because the runtime has no provider tokenizer.
 Cached input remains part of `input_tokens`.
 
-The runtime clamps each request's output cap to the remaining
-`output_tokens`. This applies to ordinary requests, retries, workflow
-recovery decisions, and compaction summaries. A configured
-`model.max_output_tokens` can make the per-request cap smaller.
+For a provider that accepts a per-request output cap, the runtime clamps the
+cap to the remaining `output_tokens`. This applies to ordinary requests,
+retries, workflow recovery decisions, and compaction summaries. A configured
+`model.max_output_tokens` can make the cap smaller.
+
+The ChatGPT Codex backend used by `openai-codex` rejects a per-request output
+cap. Foe omits the unsupported field and charges the usage reported after
+each response. One response can cross the remaining output-token allowance.
 
 The episode share a spawn asks for depends on whether the child can start
 descendants at all. A child that can start none asks for one episode, so a
