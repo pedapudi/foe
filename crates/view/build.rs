@@ -39,4 +39,12 @@ fn main() {
     for name in FONTS {
         copy(&view.join("fonts").join(name), b"");
     }
+    // The crate includes this array rather than repeating the list, so
+    // FONTS above is the one place a self-hosted font is named.
+    let entries: String = FONTS
+        .iter()
+        .map(|name| format!("    ({name:?}, include_bytes!(concat!(env!(\"OUT_DIR\"), \"/{name}\")) as &[u8]),\n"))
+        .collect();
+    let array = format!("const FONTS: [(&str, &[u8]); {}] = [\n{entries}];\n", FONTS.len());
+    fs::write(out.join("fonts.rs"), array).expect("write fonts.rs into OUT_DIR");
 }
