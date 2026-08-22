@@ -77,3 +77,49 @@ async fn a_spawn_reserves_records_and_releases_budget() {
     assert_eq!(lock(&pool).remaining().model_calls, Some(19), "the reservation is returned and the spend debited");
     assert_eq!(lock(&pool).active_children(), 0);
 }
+
+/// docs/config.md "budget": a child's budget is reserved from its parent's
+/// remainder. A `spawn` tool call names no amount, so the reservation is
+/// the amount the child program declares, which leaves the parent its own
+/// remainder and room for a second child up to `max_concurrent`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
+    let dir = scratch("wiring", "declared");
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
+    log.append(EventData::EpisodeStart(start())).unwrap();
+    let config: crate::Config = serde_json::from_value(serde_json::json!({
+        "version": 1, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
+        "grants": {"read": ["/src"], "spawn": ["worker"]},
+        "budget": {"model_calls": 20, "tokens": 1000},
+        "sandbox": {"mode": "off"},
+        "programs": {"worker": {
+            "name": "worker", "instructions": {"r": "work"}, "tools": ["notify"],
+            "grants": {"read": ["/src"]}, "budget": {"model_calls": 5, "tokens": 100}
+        }},
+        "task": "lead task"
+    }))
+    .unwrap();
+    let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
+    let router = Arc::new(Router::new());
+    let inner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir.clone(),
+        config,
+        Arc::new(Lines::default()),
+        router.clone(),
+        Arc::new(Seen::default()),
+    )
+    .unwrap()
+    .with_launcher(fake_child(&dir));
+    let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
+
+    spawner.spawn(request("worker", BudgetAmount::default())).unwrap();
+    let EventData::BudgetReserve { reserved, .. } = &log.events()[1].data else { panic!() };
+    assert_eq!(reserved.model_calls, Some(5), "the child program declares five calls");
+    assert_eq!(reserved.tokens, Some(100), "the child program declares a hundred tokens");
+    assert_eq!(lock(&pool).remaining().model_calls, Some(15), "the parent keeps the rest of the pool");
+
+    spawner.spawn(request("worker", BudgetAmount::default())).unwrap();
+    assert_eq!(lock(&pool).active_children(), 2, "a second child fits beside the first");
+    assert_eq!(lock(&pool).remaining().model_calls, Some(10));
+}

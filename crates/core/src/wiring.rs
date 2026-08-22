@@ -83,7 +83,7 @@ impl BudgetedSpawner {
 impl Spawner for BudgetedSpawner {
     fn spawn(&self, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
         let child_id = self.inner.child_id();
-        let reserved = lock(&self.pool).reserve(&child_id, req.reserve).map_err(|limit| {
+        let reserved = lock(&self.pool).reserve(&child_id, self.inner.reserve_for(&req)).map_err(|limit| {
             let limit = serde_json::to_value(limit).ok().and_then(|v| v.as_str().map(str::to_string));
             CapError::Invalid(format!("budget: the {} limit leaves no room for a child", limit.unwrap_or_default()))
         })?;

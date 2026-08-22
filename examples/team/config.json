@@ -3,12 +3,12 @@
   "name": "review-and-test",
   "instructions": {
     "10-role": "You lead a team working in a Python repository. You make the code change yourself.",
-    "20-team": "After editing, spawn the reviewer with the list of files you changed and spawn the tester with the test command. Use send to answer a question from either member. Use team to check who is still active. Finish when both members have reported."
+    "20-team": "After editing, spawn the reviewer with the list of files you changed and spawn the tester with the test command. Use team to see who is still active. Each member reports to you when it is done, and a further message arrives when it ends. Finish when both members have ended."
   },
-  "tools": ["read", "grep", "edit", "bash", "spawn", "send", "team"],
+  "tools": ["read", "grep", "edit", "spawn", "team"],
   "grants": {
     "read": ["/home/user/project"],
-    "write": ["/home/user/project/src", "/home/user/project/tests"],
+    "write": ["/home/user/project/src"],
     "spawn": ["reviewer", "tester"]
   },
   "budget": {
@@ -23,7 +23,7 @@
     "reviewer": {
       "name": "reviewer",
       "instructions": {
-        "role": "You review a change for correctness. Read the files named in the task. Use send to ask the tester which tests cover a file. Use notify to report your findings to the lead as a numbered list, or to report that there are none."
+        "role": "You review a change for correctness. Read the files named in the task. Use send to ask the tester which checks cover a file. Use notify to report your findings to the lead as a numbered list, or to report that there are none."
       },
       "tools": ["read", "grep", "send", "notify"],
       "grants": {
@@ -34,7 +34,7 @@
     "tester": {
       "name": "tester",
       "instructions": {
-        "role": "You run the test command named in the task and report the result. Answer questions from the reviewer with send. Use notify to report pass or fail to the lead, with the failing test names when any fail."
+        "role": "You run the test command named in the task and report the result. Answer a question from the reviewer with send. Use notify to report pass or fail to the lead, with the failing check names when any fail."
       },
       "tools": ["read", "grep", "bash", "send", "notify"],
       "grants": {
@@ -44,9 +44,9 @@
     }
   },
   "model": {
-    "provider": "anthropic",
-    "model": "claude-opus-5",
-    "api_key_file": "/home/user/.config/foe/anthropic.key"
+    "provider": "exec",
+    "model": "team-demo",
+    "exec": "/home/user/project/tools/transport.py"
   },
-  "task": "Add a `--dry-run` flag to src/cli.py that prints the planned actions without performing them. Run `pytest tests/` to confirm nothing else changed."
+  "task": "Add a `--dry-run` flag to src/cli.py that prints the planned actions without performing them. Run `python3 -B tests/check.py` to confirm nothing else changed."
 }
