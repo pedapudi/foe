@@ -266,9 +266,9 @@ opacity while the pointer is on it.
 
 ### Telling one kind of mark from another
 
-Seven kinds of mark share a row, and colour does not separate them: hue
-carries direction alone, so a mark that earned no direction is neutral
-whatever kind it is. `docs/design-language.md`, "What separates one kind of
+The ten kinds of mark in the table above can all fall on one row, and
+colour does not separate them: hue carries direction alone, so a mark that
+earned no direction is neutral whatever kind it is. `docs/design-language.md`, "What separates one kind of
 mark from another", states why and gives the rule. Four channels carry kind
 here.
 
