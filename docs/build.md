@@ -102,3 +102,26 @@ cargo fmt --all --check
 ```
 
 The Cargo release binary is `target/release/foe`.
+
+## The two tiers of the test suite
+
+`cargo test --workspace` is the fast tier: about six seconds on a warm tree.
+No test in it waits on a real clock. Where a rule is about elapsed time, the
+test runs on tokio's virtual clock, which advances to each sleep's deadline
+as soon as the episode is idle, so the delay is measured rather than served.
+Two tests still start real child processes to prove that a timeout kills a
+whole process group, and one drives a real loopback server; each costs about
+a second.
+
+`scripts/examples.sh` is the slow tier: about fifteen seconds, and it needs a
+built binary. The examples show an operator what a real run looks like, so
+they wait real time where the runtime does. Eight of the fifteen seconds are
+the recovery-exhausted example waiting out the retry backoff.
+
+```sh
+cargo build -p foe
+scripts/examples.sh target/debug/foe
+```
+
+Continuous integration runs both tiers, along with `scripts/loc.sh`, the
+browser suite in `view/`, and the Python suite in `python/`.

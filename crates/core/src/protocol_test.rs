@@ -7,6 +7,19 @@ use serde_json::json;
 use std::sync::{Arc, Mutex};
 use tokio::io::AsyncWriteExt;
 
+/// Polls `probe` between yields to the runtime until it answers. The fast
+/// tier waits on no real clock, so the wait is over as soon as the task
+/// under test has run rather than after a span guessed in advance.
+async fn yield_until<T>(mut probe: impl FnMut() -> Option<T>) -> T {
+    for _ in 0..10_000 {
+        if let Some(value) = probe() {
+            return value;
+        }
+        tokio::task::yield_now().await;
+    }
+    panic!("the condition was never met");
+}
+
 fn log(name: &str) -> (Arc<Log>, std::path::PathBuf) {
     let root = tmp(name);
     let dir = root.join("episode");
@@ -128,10 +141,11 @@ async fn host_tool_calls_emit_an_event_and_wait_for_the_answer() {
         let dir = root.clone();
         async move { tool.call(json!({ "q": 1 }), &ctx("tc_1", &dir)).await }
     });
-    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    let emitted = log.events().pop().unwrap();
+    let emitted = yield_until(|| log.events().pop().filter(|e| matches!(e.data, EventData::HostToolCall { .. }))).await;
     assert!(
-        matches!(&emitted.data, EventData::HostToolCall { call_id, name, args, .. } if call_id == "tc_1" && name == "h" && args == &json!({ "q": 1 }))
+        matches!(&emitted.data, EventData::HostToolCall { call_id, name, args, .. } if call_id == "tc_1" && name == "h" && args == &json!({ "q": 1 })),
+        "the call is announced before the answer is awaited: {:?}",
+        emitted.data
     );
     writer
         .write_all(br#"{"type":"tool/result","call_id":"tc_1","value":{"count":3},"rendered":"3 refs"}"#)

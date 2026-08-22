@@ -201,8 +201,10 @@ async fn a_failure_after_a_tool_call_started_is_recorded_as_interrupted_and_the_
     );
 }
 
-#[tokio::test]
+/// The clock is virtual; see `the_last_permitted_attempt_records_no_retry`.
+#[tokio::test(start_paused = true)]
 async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_consume_budget() {
+    let started = tokio::time::Instant::now();
     let fx = Fixture::new(
         "loop-retry",
         |v| v["budget"]["model_calls"] = json!(3),
@@ -222,6 +224,8 @@ async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_co
         })
         .collect();
     assert_eq!(retries, vec![(1, foe_log::RetryCause::RateLimit, 500), (2, foe_log::RetryCause::Interrupted, 1000)]);
+    let announced: u64 = retries.iter().map(|(_, _, delay)| delay).sum();
+    assert_eq!(started.elapsed().as_millis() as u64, announced, "each delay the log announces was waited");
     let requests: Vec<_> = events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).collect();
     assert_eq!(requests.len(), 3);
     let EventData::ModelRequest(third) = &requests[2].data else { panic!() };
@@ -234,12 +238,15 @@ async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_co
 /// when the attempt it announces follows it. The last attempt the ceiling
 /// allows therefore records no retry, and its failure ends the episode
 /// without waiting a delay for a request that is never made.
-#[tokio::test]
+/// The clock is virtual, so the backoff is measured rather than waited: the
+/// scripted transport never touches the world, and tokio advances the clock
+/// to each sleep's deadline as soon as the episode is idle.
+#[tokio::test(start_paused = true)]
 async fn the_last_permitted_attempt_records_no_retry() {
     let failure = || vec![Chunk::Error { message: "unreachable".into(), retryable: true }];
     let responses: Vec<_> = (0..MAX_ATTEMPTS).map(|_| failure()).collect();
     let fx = Fixture::new("loop-ceiling", |v| v["budget"]["model_calls"] = json!(20), responses);
-    let started = std::time::Instant::now();
+    let started = tokio::time::Instant::now();
     let (outcome, events) = fx.run().await;
     let expected = format!("{MAX_ATTEMPTS} attempts at step 1 failed");
     assert_eq!(outcome, Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message: expected });
@@ -254,7 +261,7 @@ async fn the_last_permitted_attempt_records_no_retry() {
     }
     let waited: u64 = (0..MAX_ATTEMPTS - 1).map(|n| 500u64 << n).sum();
     let elapsed = started.elapsed().as_millis() as u64;
-    assert!(elapsed < waited + (500 << (MAX_ATTEMPTS - 1)), "the last delay was waited: {elapsed} ms");
+    assert_eq!(elapsed, waited, "the episode waited every delay it announced and no delay it did not");
 }
 
 #[tokio::test]

@@ -160,12 +160,11 @@ fn episode_policy_follows_grants_and_tool_defs() {
     let p = Policy::for_episode(&config, Path::new("/logs/ep"));
     assert_eq!(p.read, vec![PathBuf::from("/src")]);
     assert_eq!(p.write, vec![PathBuf::from("/src/out")]);
-    assert_eq!(p.exec, vec![PathBuf::from("/usr/bin/ruff")]);
+    assert_eq!(p.exec, vec![PathBuf::from("/usr/bin/ruff")], "the configured tool alone; no child program to start");
     assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
     assert!(!p.connect_tcp, "an episode without a model block holds no transport");
     let resolver: Vec<PathBuf> = std::fs::canonicalize("/etc/resolv.conf").into_iter().collect();
     assert!(p.read_files.is_empty(), "an episode that opens no connection reads no resolver file");
-    assert_eq!(p.exec.len(), 1, "no child program to start");
     let mut with_children = config.clone();
     with_children.grants.spawn = vec!["survey".into()];
     with_children.model = Some(crate::ModelConfig::new("anthropic", "m"));

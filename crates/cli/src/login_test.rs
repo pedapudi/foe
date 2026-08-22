@@ -120,7 +120,11 @@ fn a_rejected_key_says_what_to_do_and_writes_nothing() {
     let endpoints = Endpoints { base_url: Some(server.base.clone()), ..Endpoints::default() };
     let mut session = make_session(&home, &mut input, &mut output, endpoints);
     let err = run(&mut session, Options { provider: Some("anthropic".into()), ..Default::default() }).unwrap_err();
-    assert_eq!(err, "the provider rejected the key (HTTP 401: authentication_error: invalid x-api-key); check the key and run `foe login anthropic` again");
+    // The error carries the status, the provider's own reason, and the
+    // command that retries. Its wording is not the subject.
+    for part in ["401", "authentication_error", "invalid x-api-key", "foe login anthropic"] {
+        assert!(err.contains(part), "the rejection does not say {part}: {err}");
+    }
     assert!(!home.join(".config/foe/credentials/anthropic.json").exists());
     assert!(default_model_in(&home).unwrap().is_none());
 }

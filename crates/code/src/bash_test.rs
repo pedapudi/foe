@@ -89,19 +89,27 @@ async fn a_real_non_zero_exit_is_a_result() {
     assert_eq!(v.value["stderr"], "err\n");
 }
 
+/// A run the executor cut short is a result rather than an error: the model
+/// is told the command timed out and what it printed first. Killing the
+/// process group is the executor's own rule and is tested where the runtime
+/// implements it, in `foe_core::exec`; this test double only stands in for
+/// it.
 #[tokio::test]
-async fn a_timeout_kills_the_whole_process_group() {
+async fn a_timed_out_run_is_reported_as_a_result_with_the_output_it_produced() {
     let fx = Fixture::new();
-    let c = ctx_with_executor(&fx, Arc::new(ProcessGroupExecutor));
-    let cmd = "sleep 30 & echo $!; wait";
-    let v = Bash::new().call(json!({"command": cmd, "timeout_seconds": 1}), &c).await;
+    let timed_out = ExecResult {
+        exit_code: None,
+        stdout: "partial\n".into(),
+        stderr: Vec::new(),
+        timed_out: true,
+        duration: Duration::from_millis(300),
+    };
+    let c = ctx_with_executor(&fx, Arc::new(FakeExecutor::new(timed_out)));
+    let v = Bash::new().call(json!({"command": "sleep 30", "timeout_seconds": 1}), &c).await;
     assert!(!v.is_error, "{v:?}");
     assert_eq!(v.value["timed_out"], true);
-    assert!(v.value["exit_code"].is_null());
-    assert!(v.rendered.as_deref().unwrap().contains("[timed out after"));
-    let grandchild = v.value["stdout"].as_str().unwrap().trim().to_owned();
-    assert!(!grandchild.is_empty(), "bash printed the background pid before the kill");
-    let state = std::fs::read_to_string(format!("/proc/{grandchild}/stat")).unwrap_or_default();
-    let alive = !state.is_empty() && !state.contains(") Z ") && !state.contains(") X ");
-    assert!(!alive, "sleep {grandchild} outlived the timeout: {state}");
+    assert!(v.value["exit_code"].is_null(), "a killed command has no exit code");
+    let rendered = v.rendered.unwrap();
+    assert!(rendered.contains("[timed out after"), "{rendered}");
+    assert!(rendered.contains("partial"), "the output before the kill reaches the model: {rendered}");
 }

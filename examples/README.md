@@ -12,8 +12,19 @@ sh examples/minimal/run.sh
 python3 examples/embed-in-a-program/run.py
 ```
 
+`scripts/examples.sh` runs all thirteen against one binary and reports how
+long each took. Continuous integration runs it, and it is the slow tier of
+the test suite: about fifteen seconds, of which the recovery-exhausted
+example is eight, because that example waits the whole retry backoff rather
+than pretending to.
+
+```sh
+cargo build -p foe
+scripts/examples.sh target/debug/foe
+```
+
 The workflow, sandbox, and self-extension examples also have Bazel targets,
-which are the three the build runs as tests:
+which run them against the release binary:
 
 ```sh
 bazel run //examples/workflow

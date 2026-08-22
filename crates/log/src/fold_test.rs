@@ -612,5 +612,16 @@ fn every_event_variant_round_trips() {
         assert_eq!(back, event);
         assert_eq!(serde_json::to_string(&back).unwrap(), line);
     }
-    assert_eq!(seen.len(), 27, "one of each event type, reserved ones included");
+    // The expected set is read from the declaration of `EventData` rather
+    // than written here, so a variant added to the enum and not to the list
+    // above fails this test instead of passing unnoticed.
+    let declared: std::collections::BTreeSet<String> = include_str!("lib.rs")
+        .lines()
+        .skip_while(|line| !line.starts_with("pub enum EventData"))
+        .take_while(|line| *line != "}")
+        .filter_map(|line| line.split_once("rename = \"").and_then(|(_, rest)| rest.split_once('"')))
+        .map(|(name, _)| name.to_string())
+        .collect();
+    assert!(declared.len() > 20, "the declaration of EventData was not found");
+    assert_eq!(seen, declared, "one of each event type, reserved ones included");
 }

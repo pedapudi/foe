@@ -46,7 +46,14 @@ async fn overlapping_edits_are_rejected() {
     let v =
         edit(&fx, json!({"path": "f.txt", "edits": [replace("one two", "1 2"), replace("two three", "2 3")]})).await;
     assert!(v.is_error);
-    assert_eq!(v.rendered.as_deref(), Some("edits[0] and edits[1] overlap in f.txt; merge them into one edit"));
+    // The rejection names both edits and the file, so the model can tell
+    // which pair to merge. Its wording is not the subject.
+    let rendered = v.rendered.unwrap();
+    for part in ["edits[0]", "edits[1]", "f.txt"] {
+        assert!(rendered.contains(part), "the rejection does not name {part}: {rendered}");
+    }
+    assert_eq!(fx.read("f.txt"), "one two three\n", "a rejected edit leaves the file alone");
+    assert_eq!(fx.writes(), 0);
     let v = edit(&fx, json!({"path": "f.txt", "edits": [replace("one ", "1 "), replace("two", "2")]})).await;
     assert!(!v.is_error, "touching spans are allowed");
     assert_eq!(fx.read("f.txt"), "1 2 three\n");

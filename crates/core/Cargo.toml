@@ -19,3 +19,8 @@ ignore.workspace = true
 cap-std.workspace = true
 landlock = "0.4"
 nix = { version = "0.31", features = ["signal", "process"] }
+
+# The tests of the retry backoff run on a virtual clock, which tokio offers
+# only under this feature.
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

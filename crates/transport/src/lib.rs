@@ -686,11 +686,10 @@ mod tests {
     #[test]
     fn an_unknown_provider_lists_the_known_ones() {
         let err = plan_with_home(&model("bedrock"), &fake_home("unknown")).unwrap_err().to_string();
-        assert!(
-            err.starts_with("model.provider: `bedrock` is unknown to this build; known providers: anthropic, "),
-            "{err}"
-        );
-        assert!(err.contains("exec"), "{err}");
+        assert!(err.contains("model.provider") && err.contains("`bedrock`"), "{err}");
+        for name in known_providers() {
+            assert!(err.contains(name), "the rejection does not list {name}: {err}");
+        }
     }
 
     #[test]

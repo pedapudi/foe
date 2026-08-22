@@ -34,7 +34,23 @@ async fn matches_are_sorted_by_path_then_line_and_honor_gitignore() {
         ]
     );
     assert_eq!(v.value["matches"], 4);
+    assert_eq!(v.value["complete"], true, "a search under the collection limit is complete");
+    assert!(v.value["searched_files"].as_u64().unwrap() >= 3, "{}", v.value["searched_files"]);
     assert!(!r.contains("build/out.rs"));
+}
+
+/// docs/tools.md `grep`: the search stops after `GREP_COLLECT_MAX` matches.
+/// The result then says so, both in the value and in the rendering, so the
+/// model does not read a partial answer as the whole one.
+#[tokio::test]
+async fn a_search_that_reaches_the_collection_limit_says_it_stopped() {
+    let fx = Fixture::new();
+    let body: String = (0..GREP_COLLECT_MAX + 100).map(|n| format!("needle {n}\n")).collect();
+    fx.write("many.txt", &body);
+    let v = grep(&fx, json!({"pattern": "needle", "limit": 1})).await;
+    assert_eq!(v.value["complete"], false);
+    assert_eq!(v.value["matches"], GREP_COLLECT_MAX);
+    assert!(v.rendered.unwrap().contains(&format!("search stopped at {GREP_COLLECT_MAX} matches")));
 }
 
 #[tokio::test]
@@ -63,12 +79,14 @@ async fn limit_caps_the_rendering_while_the_value_keeps_every_match() {
 #[tokio::test]
 async fn context_lines_are_marked_and_long_lines_are_clamped() {
     let fx = Fixture::new();
-    fx.write("c.txt", &format!("before\nneedle {}\nafter\n", "x".repeat(600)));
+    let long = format!("needle {}", "x".repeat(600));
+    fx.write("c.txt", &format!("before\n{long}\nafter\n"));
     let v = grep(&fx, json!({"pattern": "needle", "context": 1})).await;
     let r = v.rendered.unwrap();
     assert!(r.contains("c.txt:1-before\n"), "{r}");
     assert!(r.contains("c.txt:3-after"), "{r}");
-    assert!(r.contains(" [clamped at 500 chars; 107 more]"), "{r}");
+    let dropped = long.chars().count() - GREP_LINE_MAX_CHARS;
+    assert!(r.contains(&format!(" [clamped at {GREP_LINE_MAX_CHARS} chars; {dropped} more]")), "{r}");
 }
 
 #[tokio::test]
