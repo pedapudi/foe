@@ -189,7 +189,8 @@ fn load(config: &Path) -> Result<foe_core::config::Program, String> {
 /// object with `identity` and `program`, which the Python package parses,
 /// `context` with the compaction policy in one line when the program
 /// compacts, and `workflow` when the program declares one: its cycles, the
-/// nodes sharing write roots, and its terminal nodes. Both forms report the
+/// nodes sharing write roots, its terminal nodes, and how many firings it
+/// can perform against the bound the runtime enforces. Both forms report the
 /// tool authority reachable from the root. Without `--json`, a workflow is
 /// followed by the report docs/workflow.md "Firing" describes.
 fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
@@ -206,7 +207,9 @@ fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
                 let terminal: Vec<&String> = wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k).collect();
                 let overlaps = plan::write_overlaps(&program)?;
                 Some(serde_json::json!({
-                    "cycles": plan::cycles(wf), "write_overlaps": overlaps, "terminal": terminal
+                    "cycles": plan::cycles(wf), "write_overlaps": overlaps, "terminal": terminal,
+                    "possible_firings": wf.possible_firings(),
+                    "max_possible_firings": foe_core::workflow::MAX_POSSIBLE_FIRINGS,
                 }))
             }
         };

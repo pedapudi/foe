@@ -242,6 +242,19 @@ episode's budget, which bounds everything. `foe plan` reports every cycle
 and the bound that closes it. A node that would fire beyond its
 `max_fires` ends the episode as `blocked` with `recovery-exhausted`.
 
+A graph states how much work it can perform before it runs. Its possible
+firings are the sum, over every node, of that node's effective `max_fires`;
+a nested workflow node contributes its own `max_fires` multiplied by one
+plus the possible firings of the graph it holds, because each firing of the
+node runs that graph once from the start. A graph whose possible firings
+exceed 4,096 is refused at construction, naming the count and the bound.
+That number is a runtime constant rather than a configuration key: an
+episode running unattended needs a bound on its work that a reader can
+check before it starts, and `max_fires` multiplies through nesting. The
+bound also caps the node count and the nesting depth, because every node
+contributes at least one firing. `foe plan` reports the count beside the
+bound.
+
 A cycle needs a node outside it to start it. Because a branch edge makes
 its target a successor, a label that points back at the graph's only
 source leaves that source with a predecessor and no node ready at the

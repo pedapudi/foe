@@ -687,6 +687,8 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
         if name == "workflow" {
             assert_eq!(first["workflow"]["terminal"], json!(["apply"]), "plan reports the workflow's terminal node");
             assert_eq!(first["workflow"]["cycles"], json!([]));
+            assert_eq!(first["workflow"]["possible_firings"], json!(4), "survey once, propose once, apply twice");
+            assert_eq!(first["workflow"]["max_possible_firings"], json!(4096));
             assert!(first["program"]["workflow"]["nodes"]["propose"]["model"].is_object());
             assert!(first["authority"].as_array().unwrap().iter().any(|row| {
                 row["programs"]

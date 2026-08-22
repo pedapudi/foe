@@ -12,6 +12,15 @@ use std::collections::{BTreeMap, BTreeSet};
 /// invocation task, available from the start and produced exactly once.
 pub const TASK_SOURCE: &str = "task";
 
+/// The most firings a declared graph may describe. This is a runtime
+/// constant rather than a configuration key, because a graph beyond it is
+/// a declaration mistake rather than a choice: an episode that runs
+/// unattended needs a bound on its work that a reader can check before it
+/// starts, and `max_fires` multiplies through nested workflows. The bound
+/// covers the node count and the nesting depth as well, since every node
+/// contributes at least one firing.
+pub const MAX_POSSIBLE_FIRINGS: u64 = 4096;
+
 /// A declared graph. Model node programs are kept as written; the spawner
 /// resolves each when the node fires, as it does for `programs`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -96,6 +105,19 @@ impl WorkflowConfig {
             .any(|node| node.model.is_some() || node.workflow.as_ref().is_some_and(Self::contains_model_node))
     }
 
+    /// The most node firings this graph can perform in one episode. A node
+    /// contributes its effective `max_fires`. A nested workflow node
+    /// contributes that count multiplied by one plus the firings of the
+    /// graph it holds, because each firing of the node runs that graph once
+    /// from the start. The count saturates rather than overflowing.
+    pub fn possible_firings(&self) -> u64 {
+        self.nodes.values().fold(0, |total, node| {
+            let fires = u64::from(node.max_fires.unwrap_or(1));
+            let inner = node.workflow.as_ref().map_or(0, Self::possible_firings);
+            total.saturating_add(fires.saturating_mul(inner.saturating_add(1)))
+        })
+    }
+
     /// The data inputs of every node: the `task` source first when the node
     /// follows it, then its other `follows`, then every node whose
     /// `followed_by` names it, in name order, each listed once.
@@ -172,6 +194,11 @@ pub fn check(
     program: &mut dyn FnMut(&str, &ChildProgram) -> Result<(), ConfigError>,
 ) -> Result<(), ConfigError> {
     let invalid = |key: String, rule: String| ConfigError::Invalid { key, rule };
+    let firings = wf.possible_firings();
+    if firings > MAX_POSSIBLE_FIRINGS {
+        let rule = format!("describes {firings} possible firings; the runtime permits at most {MAX_POSSIBLE_FIRINGS}");
+        return Err(invalid(prefix.into(), rule));
+    }
     let (inputs, cyclic) = (wf.inputs(), wf.on_cycles());
     for (name, node) in &wf.nodes {
         let key = |field: &str| format!("{prefix}.nodes.{name}.{field}");

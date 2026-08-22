@@ -8,7 +8,7 @@
 use crate::run;
 use foe_core::config::{resolve_node_program, Program};
 use foe_core::registry::{block_spec, resolve_sources, resolve_specs, Source};
-use foe_core::workflow::{WorkflowConfig, TASK_SOURCE};
+use foe_core::workflow::{WorkflowConfig, MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
 use foe_core::{Effect, ToolSpec};
 use serde::Serialize;
 use serde_json::Value;
@@ -271,6 +271,7 @@ pub fn workflow_report(program: &Program) -> Result<String, String> {
         (true, false) => "no terminal node and no empty branch: runs until the budget is spent".to_string(),
     };
     writeln!(out, "workflow completion  {completion}").ok();
+    writeln!(out, "workflow firings     {} possible, at most {MAX_POSSIBLE_FIRINGS}", wf.possible_firings()).ok();
     Ok(out)
 }
 
