@@ -45,6 +45,24 @@ function renderField(field: PayloadField, data: Record<string, unknown>): HTMLEl
   return h("div", { class: "field" }, h("div", { class: "field-key" }, field.key), value);
 }
 
+/**
+ * The keys of a value that a rendering drew part of, set as ordinary fields
+ * under it. They go through the general renderer, so a key holding a long
+ * value, such as a provider's replay token, still collapses.
+ */
+function remainingFields(value: Record<string, unknown>, drawn: string[]): HTMLElement[] {
+  return Object.keys(value)
+    .filter((key) => !drawn.includes(key))
+    .map((key) =>
+      h(
+        "div",
+        { class: "field" },
+        h("div", { class: "field-key" }, key),
+        h("div", { class: "field-value" }, renderJson(value[key], 1)),
+      ),
+    );
+}
+
 function renderForm(form: FieldForm, value: unknown, data: Record<string, unknown>): Child {
   switch (form) {
     case "messages":
@@ -120,34 +138,27 @@ function renderUsage(value: unknown): HTMLElement {
 function renderCall(raw: unknown): HTMLElement {
   const call = obj(raw);
   const args = typeof call.args === "string" ? call.args : compact(call.args);
-  const rest = Object.keys(call).filter((key) => key !== "name" && key !== "args");
   return h(
     "div",
     { class: "call" },
-    h("span", { class: "call-name" }, str(call.name, "?")),
-    args.length <= INLINE_ARGS_CHARS
-      ? h("code", { class: "args" }, args)
-      : lazyDetails([h("span", { class: "meta" }, `${fmtInt(args.length)} characters of arguments`)], () =>
-          renderJson(call.args, 1),
-        ),
-    rest.map((key) => h("span", { class: "meta" }, `${key} ${compact(call[key])}`)),
+    h(
+      "div",
+      { class: "call-head" },
+      h("span", { class: "call-name" }, str(call.name, "?")),
+      args.length <= INLINE_ARGS_CHARS
+        ? h("code", { class: "args" }, args)
+        : lazyDetails([h("span", { class: "meta" }, `${fmtInt(args.length)} characters of arguments`)], () =>
+            renderJson(call.args, 1),
+          ),
+    ),
+    remainingFields(call, ["name", "args"]),
   );
 }
 
 /** One reasoning block: its text, with the provider's replay token beside it. */
 function renderThinking(raw: unknown): HTMLElement {
   const block = obj(raw);
-  const rest = Object.keys(block).filter((key) => key !== "text");
-  return h(
-    "div",
-    { class: "block" },
-    h("pre", { class: "text" }, str(block.text)),
-    rest.map((key) =>
-      lazyDetails([h("span", { class: "meta" }, key)], () => h("pre", { class: "text" }, pretty(block[key])), {
-        class: "j-string",
-      }),
-    ),
-  );
+  return h("div", { class: "block" }, h("pre", { class: "text" }, str(block.text)), remainingFields(block, ["text"]));
 }
 
 /**
@@ -157,14 +168,19 @@ function renderThinking(raw: unknown): HTMLElement {
  */
 function renderChunk(value: unknown): HTMLElement {
   const chunk = obj(value);
-  const rest = Object.keys(chunk).filter((key) => key !== "kind" && key !== "delta");
+  const rest = remainingFields(chunk, ["kind", "delta"]);
+  const delta = typeof chunk.delta === "string";
   return h(
     "div",
     { class: "chunk" },
-    h("span", { class: "chunk-kind" }, str(chunk.kind, "?")),
-    typeof chunk.delta === "string" ? h("code", { class: "chunk-delta" }, chunk.delta) : null,
-    rest.map((key) => h("span", { class: "meta" }, `${key} ${compact(chunk[key])}`)),
-    typeof chunk.delta === "string" || rest.length > 0 ? null : h("span", { class: "meta" }, "no text"),
+    h(
+      "div",
+      { class: "chunk-head" },
+      h("span", { class: "chunk-kind" }, str(chunk.kind, "?")),
+      delta ? h("code", { class: "chunk-delta" }, chunk.delta as string) : null,
+      delta || rest.length > 0 ? null : h("span", { class: "meta" }, "no text"),
+    ),
+    rest,
   );
 }
 
@@ -177,13 +193,10 @@ function renderOutcome(value: unknown): HTMLElement {
   const outcome = obj(value);
   const kind = str(outcome.kind, "?");
   const role = outcomeRole({ kind } as { kind: string });
-  const rest = Object.keys(outcome).filter((key) => key !== "kind");
   return h(
     "div",
     { class: "outcome-value" },
     h("span", { class: `outcome-kind ${role}` }, kind),
-    rest.map((key) =>
-      h("div", { class: "field" }, h("div", { class: "field-key" }, key), h("div", { class: "field-value" }, renderJson(outcome[key], 1))),
-    ),
+    remainingFields(outcome, ["kind"]),
   );
 }

@@ -58,8 +58,8 @@ function renderString(text: string): HTMLElement {
 function renderNode(value: unknown, depth: number): HTMLElement {
   const kind = jsonKind(value);
   const members = children(value);
-  const brackets = kind === "array" ? "[ ]" : "{ }";
-  if (members.length === 0) return h("span", { class: "j-empty" }, brackets.replace(" ", ""));
+  const brackets = kind === "array" ? "[…]" : "{…}";
+  if (members.length === 0) return h("span", { class: "j-empty" }, kind === "array" ? "[]" : "{}");
   const preview = previewLabel(value);
   return lazyDetails(
     [

@@ -1565,6 +1565,38 @@ table.events td.type.error {
   border-left: 1px solid var(--v2-rule-soft);
 }
 
+/* An array's members are labelled by position, and a position needs no
+ * label column: the numbers sit against the values they belong to. */
+.j-node.array > .details-body > .field {
+  grid-template-columns: minmax(0, 3em) minmax(0, 1fr);
+}
+
+.j-node.array > .details-body > .field > .field-key {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Prose inside a payload sets as prose, the way the conversation sets a
+ * user message, rather than in the box a preformatted value takes. */
+.msg pre.text,
+.field.lead pre.text {
+  background: transparent;
+  border: none;
+  padding: 0;
+  max-height: none;
+  font-family: var(--v2-sans);
+  font-size: calc(12.5px * var(--dt-font-scale, 1));
+}
+
+/* A long result keeps its own scroll rather than pushing every field below
+ * it off the panel. Nothing is cut: the box scrolls to the end of the text. */
+.payload-body .src-lines,
+.payload-body .diff-lines,
+.payload-body .code-pre {
+  max-height: 26em;
+  overflow: auto;
+}
+
 .j-string > summary .meta,
 .j-literal > summary {
   color: var(--v2-ink-faint);
@@ -1629,7 +1661,8 @@ table.events td.type.error {
 
 /* One streamed fragment. The text it carried is boxed, so that a fragment
  * of nothing but spaces is still visible as a fragment. */
-.chunk {
+.chunk-head,
+.call-head {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
