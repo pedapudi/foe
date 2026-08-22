@@ -123,8 +123,18 @@ impl Pool {
             tokens: within(request.tokens, remaining.tokens, ExhaustedLimit::Tokens)?,
             seconds: within(request.seconds, remaining.seconds, ExhaustedLimit::Seconds)?,
         };
-        if granted.model_calls == Some(0) {
-            return Err(ExhaustedLimit::ModelCalls);
+        // A grant of zero on any dimension is refused rather than passed
+        // down. A configuration whose budget holds a zero is invalid, so a
+        // child launched with one refuses it at startup and writes no log,
+        // which reaches the parent as a failure rather than as the limit
+        // that was actually reached.
+        let zero = [
+            (granted.model_calls, ExhaustedLimit::ModelCalls),
+            (granted.tokens, ExhaustedLimit::Tokens),
+            (granted.seconds, ExhaustedLimit::Seconds),
+        ];
+        if let Some((_, limit)) = zero.into_iter().find(|(amount, _)| *amount == Some(0)) {
+            return Err(limit);
         }
         self.episodes += 1;
         self.active.insert(child_id.to_string(), granted);

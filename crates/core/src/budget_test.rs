@@ -69,6 +69,15 @@ fn reservation_beyond_the_remainder_names_the_limit() {
 }
 
 #[test]
+fn a_grant_of_zero_on_any_dimension_names_that_limit() {
+    let mut pool = Pool::new(budget());
+    pool.note_usage(Usage { input: 1000, output: 0, cache_read: 0 });
+    let err = pool.reserve("child", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap_err();
+    assert_eq!(err, ExhaustedLimit::Tokens, "the whole token remainder is zero, so no child could start");
+    assert_eq!(pool.active_children(), 0, "a refused reservation holds nothing");
+}
+
+#[test]
 fn structural_caps_refuse_a_spawn() {
     let mut pool = Pool::new(Budget { max_depth: 0, ..budget() });
     assert_eq!(pool.reserve("a", BudgetAmount::default()).unwrap_err(), ExhaustedLimit::Depth);
