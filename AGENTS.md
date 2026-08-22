@@ -44,6 +44,12 @@ sentence on first reading.
 - Every error names the key, event, or rule involved.
 - Tests live beside the code they test. A specification rule that can be
   tested has a test that cites the rule.
+- The suite has two tiers. `cargo test --workspace` is the fast one and
+  waits on no real clock: a test of a rule about elapsed time runs on
+  tokio's virtual clock, under `#[tokio::test(start_paused = true)]`.
+  `scripts/examples.sh` is the slow one and runs every example against a
+  built binary. Continuous integration runs both. See docs/build.md
+  "The two tiers of the test suite".
 - Line budget: the runtime, which is `log`, `core`, and `code` together,
   stays under 6,000 lines of Rust excluding tests and generated code;
   `workflow` stays under 1,000 on the same terms, `context` under 500,

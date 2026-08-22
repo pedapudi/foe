@@ -58,6 +58,14 @@ jobs:
       - name: Line budget
         run: scripts/loc.sh
 
+      # The slow tier. `cargo test --workspace` waits on no real clock; the
+      # examples do, so they are a separate command. Three of them also have
+      # Bazel targets, which the bazel job runs against the release binary.
+      - name: Examples
+        run: |
+          cargo build -p foe
+          scripts/examples.sh target/debug/foe
+
       - name: Install pnpm at the version pinned in view/package.json
         uses: pnpm/action-setup@v4
         with:
