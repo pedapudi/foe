@@ -107,7 +107,7 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
         "version": 2,
         "name": "assessed-evidence-self-improvement",
         "instructions": {"role": "Run the declared evidence collection and self-improvement workflow."},
-        "tools": ["evidence", "check"],
+        "tools": ["read", "grep", "edit", "bash", "evidence", "check"],
         "tool_defs": {
             "evidence": {
                 "exec": "/usr/bin/cat",
@@ -116,7 +116,7 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
             "check": check_def,
         },
         "grants": {"read": read, "write": write},
-        "budget": {**LIMITS, "max_depth": 1, "max_episodes": 2},
+        "budget": {**LIMITS, "max_depth": 1, "max_episodes": 2, "loop_threshold": 5},
         "workflow": {
             "nodes": {
                 "collect-assessed-evidence": {"tool": "evidence", "args": {"args": [str(evidence)]}},
