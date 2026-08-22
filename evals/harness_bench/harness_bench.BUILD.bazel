@@ -1,0 +1,31 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "development_tasks",
+    srcs = glob([
+        "tasks/015-security-injection-defense/**",
+        "tasks/043-db-migration-safety/**",
+        "tasks/078-local-api-cursor-retry-ledger/**",
+        "tasks/083-monorepo-interface-repair/**",
+    ]),
+)
+
+filegroup(
+    name = "task_015_yaml",
+    srcs = ["tasks/015-security-injection-defense/task.yaml"],
+)
+
+filegroup(
+    name = "task_043_yaml",
+    srcs = ["tasks/043-db-migration-safety/task.yaml"],
+)
+
+filegroup(
+    name = "task_078_yaml",
+    srcs = ["tasks/078-local-api-cursor-retry-ledger/task.yaml"],
+)
+
+filegroup(
+    name = "task_083_yaml",
+    srcs = ["tasks/083-monorepo-interface-repair/task.yaml"],
+)

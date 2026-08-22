@@ -133,6 +133,12 @@ Every reported configuration identifies:
 - the sandbox mode and observed Landlock ABI;
 - the number of independent attempts per task.
 
+The four-case Harness-Bench development runner and its evidence-guided
+self-improvement workflow are documented in
+[`evals/harness_bench/README.md`](../evals/harness_bench/README.md). The runner
+uses the pinned benchmark's unchanged programmatic graders. Its diagnostic
+sample is separate from an official complete-benchmark score.
+
 The benchmark's executable evaluator decides task completion. foe's outcome
 and conformance report remain separate fields. This separation distinguishes a
 correct artifact from the runtime path that produced it.

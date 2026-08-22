@@ -7,6 +7,16 @@ bazel_dep(name = "rules_rust", version = "0.73.0")
 bazel_dep(name = "rules_shell", version = "0.8.0")
 bazel_dep(name = "platforms", version = "1.1.0")
 
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "harness_bench",
+    build_file = "//evals/harness_bench:harness_bench.BUILD.bazel",
+    sha256 = "4c461ba3af647bad9eaa5c59b875236893ef16880b812eb524f2efdc1b7c4ce7",
+    strip_prefix = "harness-bench-1025086a446653702b80cfb48babbeec35db6b2c",
+    urls = ["https://github.com/Qihoo360/harness-bench/archive/1025086a446653702b80cfb48babbeec35db6b2c.tar.gz"],
+)
+
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
 rust.toolchain(
     edition = "2021",
