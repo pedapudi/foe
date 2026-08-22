@@ -4,6 +4,8 @@
 
 import { fmtInt } from "./dom.js";
 import { renderContinuation } from "./messages.js";
+import { headerDifference } from "./prompt.js";
+import type { HeaderParts } from "./prompt.js";
 import type { Mark } from "./trajectory.js";
 import { arr, num, obj, str } from "./types.js";
 import type {
@@ -27,6 +29,13 @@ export interface HeaderRow extends RowBase {
   system: string;
   tools: ToolSchema[];
   model: string;
+  /**
+   * The instruction sections `episode/start.program` declares, by key. They
+   * name the parts of the system prompt, which the log stores rendered.
+   */
+  instructions: Record<string, string>;
+  /** What this header changed, empty for the first header of an episode. */
+  changed: string[];
 }
 
 export interface UserRow extends RowBase {
@@ -193,6 +202,8 @@ export class EpisodeFold {
    * and the events between them close the span as they are read.
    */
   private readonly requests = new Map<string, Mark>();
+  /** The header in effect, against which the next one states its change. */
+  private header: HeaderParts | null = null;
   private readonly stream: boolean;
 
   /** `stream` makes `assistant/chunk` events build a row token by token. */
@@ -223,17 +234,28 @@ export class EpisodeFold {
       case "seed/end":
         s.seedEnd = ev.seq;
         return this.note(ev, "seed end", "events above were copied from the fork origin", "info", null);
-      case "request/header":
+      case "request/header": {
+        const parts = {
+          system: str(data.system),
+          tools: arr(data.tools).map((t) => obj(t) as ToolSchema),
+          model: modelLabel(data.model),
+        };
+        // A header other than the first was written because one of those
+        // three parts differs from the header in effect, so the row says
+        // which; `docs/log-format.md` states that rule.
+        const changed = this.header ? headerDifference(this.header, parts, this.instructions()) : [];
+        this.header = parts;
         return this.append({
           kind: "header",
           key: `header:${ev.seq}`,
           seq: ev.seq,
           time: ev.time,
           reason: str(data.reason, "initial"),
-          system: str(data.system),
-          tools: arr(data.tools).map((t) => obj(t) as ToolSchema),
-          model: modelLabel(data.model),
+          instructions: this.instructions(),
+          changed,
+          ...parts,
         });
+      }
       case "model/request": {
         s.modelCalls += 1;
         const consumed = arr(data.consumed).length;
@@ -583,6 +605,21 @@ export class EpisodeFold {
       patches.push({ op: "update", row });
     }
     return patches;
+  }
+
+  /**
+   * The instruction sections the program declares, by key. `episode/start`
+   * precedes every `request/header`, so the map is complete by the time a
+   * header needs it; a log that carries no program yields an empty map and
+   * the prompt is then shown unsplit.
+   */
+  private instructions(): Record<string, string> {
+    const declared = obj(this.summary.program.instructions);
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(declared)) {
+      if (typeof value === "string") out[key] = value;
+    }
+    return out;
   }
 
   /** Records one trajectory mark. Marks arrive in seq order and stay so. */

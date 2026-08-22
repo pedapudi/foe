@@ -79,6 +79,33 @@ The conversation is derived from the log by the rule in
 and tool schemas from `request/header`, each inbox item, and each assistant
 turn.
 
+The system prompt is the best available account of why an agent behaved as
+it did, so it is rendered the way an assistant message is: as Markdown,
+behind an expander whose summary names the reason the header was written,
+the route, the number of tools, and the length of the prompt.
+
+The prompt is shown under the names its author gave its parts.
+`episode/start.program.instructions` maps a key to the text of one section,
+and the runtime renders those sections in lexicographic order of their keys,
+joined by a blank line, before it appends the instruction of every tool that
+has one; [config.md](config.md#instructions) states that rule. The viewer
+reads the rendered prompt back through the same rule and heads each section
+with its key. The walk stops at the first section whose text is not where
+the rule puts it, and the rest is rendered as one piece, so a prompt the
+program did not compose is shown whole rather than split wrongly.
+
+Each tool's schema is a table of its parameters, one row per parameter with
+its type, whether it is required, and its description, under the tool's name
+and the description the model was given. An enumerated parameter names its
+options in its description. The schema's JSON says the same thing in a
+shape that has to be parsed by eye before it can be read.
+
+A `request/header` whose `reason` is not `initial` was written because the
+prompt, the tool schemas, or the route differ from the header in effect. It
+carries a list of what differs, above the prompt: the route it replaced,
+each instruction section added, rewritten, or removed, whether the appended
+tool instructions changed, and each tool added, removed, or redeclared.
+
 An assistant turn assembled from `assistant/chunk` events is marked `live`
 in the accent while its response is still arriving. A turn still assembling
 when `episode/end` is read is a stream that was cut off, so it is marked

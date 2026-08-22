@@ -2752,3 +2752,115 @@ kbd {
   fill: var(--v2-accent);
   fill-opacity: 0.9;
 }
+
+/* The system prompt, rendered the way an assistant message is. Each
+ * declared section carries the key its author gave it as a heading, so the
+ * prompt reads as the parts it was composed from rather than as one wall
+ * of text (docs/config.md, "instructions"). */
+.prompt {
+  margin-top: var(--dt-gap-item);
+}
+
+.prompt-name {
+  margin-top: var(--dt-gap-group);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--v2-ink-faint);
+  border-bottom: 1px solid var(--v2-rule-soft);
+  padding-bottom: 2px;
+}
+
+.prompt-name:first-child {
+  margin-top: 0;
+}
+
+/* A header the runtime wrote because the prompt, the tools, or the route
+ * changed says which of the three, before it shows what they became. */
+.header-changed {
+  margin: var(--dt-gap-item) 0;
+  padding: var(--dt-gap-item) var(--dt-gap-edge);
+  border: 1px solid var(--v2-rule);
+  border-radius: var(--dt-radius-panel);
+  background: var(--v2-panel);
+}
+
+.header-changed-lab {
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--v2-caution);
+}
+
+.header-changed ul {
+  margin: var(--dt-gap-line) 0 0;
+  padding-left: 18px;
+}
+
+.header-changed li {
+  font-family: var(--v2-mono);
+  font-size: calc(11px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-soft);
+}
+
+.tool-schema {
+  margin-top: var(--dt-gap-group);
+}
+
+.tool-schema-head {
+  display: flex;
+  gap: var(--dt-gap-item);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+/* The parameters of a tool as a table. The schema's JSON says the same
+ * thing in a shape that has to be parsed by eye before it can be read. */
+.schema-table {
+  margin-top: var(--dt-gap-line);
+  border-collapse: collapse;
+  width: 100%;
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.schema-table th {
+  text-align: left;
+  font-weight: 400;
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--v2-ink-faint);
+  border-bottom: 1px solid var(--v2-rule);
+  padding: 2px var(--dt-gap-item) 2px 0;
+}
+
+.schema-table td {
+  vertical-align: top;
+  padding: var(--dt-gap-line) var(--dt-gap-item) var(--dt-gap-line) 0;
+  border-bottom: 1px solid var(--v2-rule-soft);
+  color: var(--v2-ink-soft);
+}
+
+/* The first three columns are as narrow as their content, so the
+ * description keeps the rest of the row rather than starting halfway
+ * across the pane. */
+.schema-table th:not(:last-child),
+.schema-table td:not(:last-child) {
+  width: 1%;
+  white-space: nowrap;
+  padding-right: var(--dt-gap-group);
+}
+
+.schema-table .schema-name {
+  font-family: var(--v2-mono);
+  color: var(--v2-ink);
+}
+
+.schema-table .schema-type,
+.schema-table .schema-required {
+  font-family: var(--v2-mono);
+  color: var(--v2-ink-faint);
+}
