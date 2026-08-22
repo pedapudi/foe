@@ -106,8 +106,20 @@ def self_extension(request: dict) -> None:
                 "path": "crates/code/src/read.rs",
                 "edits": [
                     {
-                        "old_text": '                "offset": offset,\n                "total_lines": total,\n',
-                        "new_text": '                "offset": offset,\n                "total_bytes": bytes.len(),\n                "total_lines": total,\n',
+                        "old_text": "        let total = lines.len();\n        let offset = a.offset.unwrap_or(1);\n",
+                        "new_text": (
+                            "        let total = lines.len();\n"
+                            "        let total_bytes = bytes.len();\n"
+                            "        let offset = a.offset.unwrap_or(1);\n"
+                        ),
+                    },
+                    {
+                        "old_text": '                "total_lines": total,\n                "shown": shown_n,\n',
+                        "new_text": (
+                            '                "total_lines": total,\n'
+                            '                "total_bytes": total_bytes,\n'
+                            '                "shown": shown_n,\n'
+                        ),
                     }
                 ],
             },
@@ -135,11 +147,11 @@ def self_extension(request: dict) -> None:
                 "edits": [
                     {
                         "old_text": "| `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |",
-                        "new_text": "| `path`, `offset`, `total_bytes`, `total_lines`, `shown`, `truncated`, `content` |",
+                        "new_text": "| `path`, `offset`, `total_lines`, `total_bytes`, `shown`, `truncated`, `content` |",
                     },
                     {
                         "old_text": "caps the window below the line limit; `truncated` is true whenever lines\nremain beyond the window, whatever the cause.\n",
-                        "new_text": "caps the window below the line limit; `truncated` is true whenever lines\nremain beyond the window, whatever the cause. The canonical `total_bytes`\nfield reports the size of the complete file, including bytes outside the window.\n",
+                        "new_text": "caps the window below the line limit; `truncated` is true whenever lines\nremain beyond the window, whatever the cause. The canonical `total_bytes`\nfield is the complete source file's byte count, independent of the displayed\nwindow and before line-ending normalization.\n",
                     },
                 ],
             },
