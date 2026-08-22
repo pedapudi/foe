@@ -26,3 +26,9 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Dependencies are optimized in the development profile. Identity hashes the
+# running binary, which is 112 MB unoptimized, and an unoptimized SHA-256 over
+# it costs seconds on every `foe plan` and every episode a test starts.
+[profile.dev.package."*"]
+opt-level = 3
