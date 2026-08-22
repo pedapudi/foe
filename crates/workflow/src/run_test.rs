@@ -674,13 +674,21 @@ fn node_error(events: &[Event], node: &str) -> Option<String> {
 /// completes is awaited only as far as the episode's `seconds` budget. The
 /// budget elapsing abandons the firing, records its end with the bound that
 /// abandoned it, and leaves the outcome the graph reached standing.
-#[tokio::test]
+/// The clock is virtual: the lingering tool sleeps for a minute and nothing
+/// in the fixture touches the world, so tokio advances to the budget's
+/// deadline as soon as the episode is idle and the wait is measured rather
+/// than served.
+#[tokio::test(start_paused = true)]
 async fn a_firing_still_running_when_the_seconds_budget_elapses_is_abandoned() {
     let mut fx = draining("drain-seconds");
     fx.config["budget"]["seconds"] = json!(1);
-    let started = Instant::now();
+    let started = tokio::time::Instant::now();
     let (outcome, events) = fx.run().await;
-    assert!(started.elapsed() < Duration::from_secs(30), "the drain ended at the budget rather than with the firing");
+    let elapsed = started.elapsed();
+    assert!(
+        (Duration::from_secs(1)..Duration::from_secs(2)).contains(&elapsed),
+        "the drain ended at the budget rather than with the firing, which sleeps for a minute: {elapsed:?}"
+    );
     assert_eq!(outcome, Outcome::Completed { value: json!({ "done": true }) });
     assert_eq!(node_error(&events, "finish"), Some(String::new()), "the terminal node ended with no error");
     let error = node_error(&events, "linger").expect("the abandoned firing was given an end");
@@ -689,13 +697,15 @@ async fn a_firing_still_running_when_the_seconds_budget_elapses_is_abandoned() {
 
 /// docs/workflow.md "Completion": the stop signal ends the wait for the
 /// firings still running, whether or not the program declares `seconds`.
-#[tokio::test]
+/// The clock is virtual; see
+/// `a_firing_still_running_when_the_seconds_budget_elapses_is_abandoned`.
+#[tokio::test(start_paused = true)]
 async fn a_firing_still_running_when_the_episode_stops_is_abandoned() {
     let mut fx = draining("drain-stop");
     fx.stop_after = Some(Duration::from_millis(200));
-    let started = Instant::now();
+    let started = tokio::time::Instant::now();
     let (outcome, events) = fx.run().await;
-    assert!(started.elapsed() < Duration::from_secs(30), "the drain ended at the stop signal");
+    assert_eq!(started.elapsed(), Duration::from_millis(200), "the drain ended at the stop signal");
     assert_eq!(outcome, Outcome::Completed { value: json!({ "done": true }) });
     let error = node_error(&events, "linger").expect("the abandoned firing was given an end");
     assert!(error.contains("stopped") && error.contains("cancelled"), "{error}");
