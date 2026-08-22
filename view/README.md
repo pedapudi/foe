@@ -238,9 +238,20 @@ The main region has five tabs.
   stylesheet alone. Every other event type, including the reserved ones
   and types this bundle does not know, appears as a compact row with the
   event type as its label and the payload behind an expander.
-- **raw events**: a table of every event with seq, time, and type. The
-  filter matches the seq, the type, or any text in the payload. Clicking a
-  row expands its payload.
+- **raw events**: a table of every event with seq, time, and type. Clicking
+  a row opens its payload, drawn field by field in the order the log wrote
+  the keys. A field whose shape this runtime writes often is set the way the
+  rest of the viewer sets it: a request's messages read as messages, a
+  response's text as Markdown, a tool result's text as a diff or as coloured
+  source, a token count as one line of numbers, an outcome in the colour of
+  its direction. Every other field goes to the structured renderer, whose
+  objects and arrays open and close and state how much they hold while
+  closed. Nothing is dropped: a collapsed node opens to the literal value
+  and one control holds the payload's own JSON text. The filter matches the
+  seq, the type, or any text in that JSON, so it reaches values inside nodes
+  the reader has not opened. `src/json.ts` and `src/payload.ts` hold the
+  rules and `src/render/json.ts` and `src/render/payload.ts` build the
+  elements.
 - **diff**: for two episodes that share a fork prefix. The shared events are
   shown once, collapsed, under the label `shared, seq 0-N`; the two
   suffixes follow side by side. Two episodes share a prefix when one is a
@@ -380,7 +391,11 @@ src/render/workflow.ts        the declared graph with the run over it
 src/render/statistics.ts      the statistics figures over timing, budget, and tools
 src/render/attribution.ts     the three figures over the input tokens
 src/render/hovercard.ts       the one card every mark is explained in
+src/json.ts                   how a JSON value is read for display
+src/payload.ts                which payload fields have a rendering of their own
 src/render/raw.ts             the raw events table
+src/render/json.ts            a JSON value as a structure a reader walks
+src/render/payload.ts         one event payload, field by field
 src/render/diff.ts            two forked episodes side by side
 src/render/markdown.ts        the Markdown parser
 src/render/markup.ts          elements for Markdown, code, diffs, and math

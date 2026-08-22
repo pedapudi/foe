@@ -665,6 +665,57 @@ usage at all has no token figure and no bar, for the same reason a run
 with no cache-read figure has no hit rate. Clicking a row selects that
 root.
 
+## The raw events tab
+
+The tab is a table of every event of the selected episode: its `seq`, its
+time, and its type. Clicking a row opens the event's payload under it.
+
+A payload written by this runtime is not anonymous JSON. A `model/request`
+carries a conversation, an `assistant/message` carries a token count, a
+`tool/result` carries a diff. Setting those as nested braces makes a reader
+parse a shape the viewer already knows how to draw, so the payload is drawn
+field by field, in the order the log wrote the keys, and a field whose shape
+recurs is set the way the rest of the viewer sets it. `src/payload.ts` holds
+the table of shapes and `src/render/payload.ts` builds the elements.
+
+| event type | field | how it is set |
+|---|---|---|
+| `model/request` | `messages` | as messages: each one's role, then its own words |
+| `inbox/item`, `team/message` | `content` | as content blocks, a text block being its text |
+| `assistant/message` | `text` | as Markdown |
+| `assistant/message` | `thinking` | one reasoning block per entry, its replay token beside it |
+| `assistant/message` | `tool_calls` | each call's name over its arguments |
+| `assistant/message`, `compaction/end` | `usage` | one line of labelled numbers |
+| `assistant/chunk` | `chunk` | the fragment's kind over the text it carried |
+| `tool/result`, `workflow/node-end` | `rendered` | by the text's own shape, as a diff, as JSON, or as numbered source |
+| `request/header` | `system` | as Markdown |
+| `request/header` | `tools` | one table of parameters per tool, as the conversation sets a schema |
+| `episode/end`, `spawn/end` | `outcome` | the kind in the colour of its direction, then its other keys |
+| `episode/start` | `task` | as preformatted text |
+| `compaction/summary` | `summary` | as Markdown |
+
+A field this table does not name, and every field of an event type it does
+not name, goes to the structured renderer. An object or an array there opens
+and closes and states how many keys or items it holds while closed, an
+object also naming its first four keys. A value's kind is carried by its
+colour, on the register the code tokenizer uses: a number in `--v2-caution`,
+the words `true`, `false`, and `null` in `--v2-accent`, and a string in full
+ink, because in a field list the key beside a string already says it is one.
+A string of at most 140 characters holding no line break sets on its key's
+line; a longer one sets its first line and its length over the whole text.
+Keys keep the order the log wrote them; nothing is sorted. A node opens
+without being asked when it is at most two levels down and would take at
+most twelve lines open.
+
+Two properties hold whatever the payload contains. Nothing is dropped: every
+key yields a field, a field whose value does not have the shape its
+rendering expects falls back to the structured renderer rather than being
+drawn wrongly, every collapsed node opens to the literal value, and one
+control at the foot of the panel holds the payload's own JSON text. And the
+filter still searches that JSON text rather than the drawn elements, so a
+query matches the seq, the type, or any value the payload holds, including
+values inside nodes the reader has not opened.
+
 ## Rendering text
 
 The bundle renders four kinds of rich text. Every element is built with

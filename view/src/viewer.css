@@ -1597,9 +1597,12 @@ table.events td.type.error {
 }
 
 /* Prose inside a payload sets as prose, the way the conversation sets a
- * user message, rather than in the box a preformatted value takes. */
-.msg pre.text,
-.field.lead pre.text {
+ * user message, rather than in the box a preformatted value takes. A tool
+ * message is left in the box, because what a tool returned is data rather
+ * than prose and the box is what caps its height. */
+.msg.user pre.text,
+.msg.assistant pre.text,
+.payload-body .block > pre.text {
   background: transparent;
   border: none;
   padding: 0;
