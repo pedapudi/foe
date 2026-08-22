@@ -196,7 +196,10 @@ fn the_prompt_is_labeled_plain_text_with_the_earlier_summary_first() {
 fn the_completion_condition_renders_in_one_line() {
     assert_eq!(done_when_line(None), "a turn with no tool calls");
     let verified = DoneWhen { verify: Some("check".into()), retries: 2, returns: None };
-    assert_eq!(done_when_line(Some(&verified)), "a turn with no tool calls, then `check` reports no findings");
+    assert_eq!(
+        done_when_line(Some(&verified)),
+        "a turn with no tool calls or a non-error `check` call, then `check` reports no findings"
+    );
     let returned = DoneWhen { verify: None, retries: 2, returns: Some(json!({ "type": "object" })) };
     assert_eq!(done_when_line(Some(&returned)), "a call to `return` with a value conforming to its schema");
 }
@@ -250,7 +253,10 @@ async fn summarize_builds_the_state_from_events_and_the_narrative_from_the_model
     assert_eq!(summary.summary_request_seq, 14);
     assert_eq!(summary.step, 4);
     assert_eq!(summary.state.task, "fix the parser");
-    assert_eq!(summary.state.done_when, "a turn with no tool calls, then `check` reports no findings");
+    assert_eq!(
+        summary.state.done_when,
+        "a turn with no tool calls or a non-error `check` call, then `check` reports no findings"
+    );
     assert_eq!(
         summary.state.files,
         CompactedFiles { read: vec!["a".into()], written: vec![], edited: vec!["c".into()] }

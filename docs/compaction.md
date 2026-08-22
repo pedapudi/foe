@@ -155,7 +155,7 @@ below the label, or by `(none)` for an empty list:
 ## Continuation state
 
 covered: seq 1 to 57
-done_when: a turn with no tool calls, then `check` reports no findings
+done_when: a turn with no tool calls or a non-error `check` call, then `check` reports no findings
 outstanding_findings: (none)
 files_read:
 - src/parser.py

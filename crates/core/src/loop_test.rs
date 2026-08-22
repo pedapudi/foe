@@ -377,6 +377,50 @@ async fn verifier_findings_return_as_inbox_items_until_accepted_or_retries_are_s
     assert!(matches!(outcome, Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, .. }), "{outcome:?}");
 }
 
+/// docs/design.md "Termination": calling the declared verifier is a
+/// completion signal, so a verified artifact completes on the last call.
+#[tokio::test]
+async fn a_declared_verifier_call_can_complete_on_the_last_model_call() {
+    let verifier = Verifier {
+        spec: crate::test_util::spec("check", Effect::Pure),
+        findings: Mutex::new(vec![vec![], vec![]].into()),
+    };
+    let fx = Fixture::new(
+        "loop-verify-last-call",
+        |v| {
+            v["tools"] = json!(["block", "check"]);
+            v["budget"]["model_calls"] = json!(1);
+            v["done_when"] = json!({ "verify": "check" });
+        },
+        vec![turn("artifact ready", vec![call("verify", "check", "{}")])],
+    );
+    let (outcome, events) = fx.tool(verifier).run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("artifact ready") });
+    assert_eq!(events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).count(), 1);
+}
+
+/// docs/design.md "Termination": a verifier call does not override its
+/// findings when the call budget has no request left for a correction.
+#[tokio::test]
+async fn verifier_findings_on_the_last_model_call_leave_the_episode_exhausted() {
+    let verifier = Verifier {
+        spec: crate::test_util::spec("check", Effect::Pure),
+        findings: Mutex::new(vec![vec!["missing".into()], vec!["missing".into()]].into()),
+    };
+    let fx = Fixture::new(
+        "loop-verify-findings-last-call",
+        |v| {
+            v["tools"] = json!(["block", "check"]);
+            v["budget"]["model_calls"] = json!(1);
+            v["done_when"] = json!({ "verify": "check" });
+        },
+        vec![turn("still working", vec![call("verify", "check", "{}")])],
+    );
+    let (outcome, events) = fx.tool(verifier).run().await;
+    assert_eq!(outcome, Outcome::Exhausted { limit: ExhaustedLimit::ModelCalls });
+    assert!(events.iter().any(|e| matches!(&e.data, EventData::InboxItem(i) if i.source == InboxSource::Verify)));
+}
+
 #[tokio::test]
 async fn a_returns_program_completes_only_through_the_return_tool() {
     let edit =

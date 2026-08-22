@@ -286,6 +286,9 @@ pub fn done_when_line(done_when: Option<&DoneWhen>) -> String {
         false => "a turn with no tool calls",
     };
     match verify {
+        Some(tool) if !returns => {
+            format!("a turn with no tool calls or a non-error `{tool}` call, then `{tool}` reports no findings")
+        }
         Some(tool) => format!("{finish}, then `{tool}` reports no findings"),
         None => finish.to_string(),
     }

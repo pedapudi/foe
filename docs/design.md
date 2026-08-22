@@ -282,13 +282,19 @@ A program's `done_when` field chooses how an episode completes.
 | `done_when` | the episode completes when |
 |---|---|
 | absent | the model produces a turn containing no tool calls; the value is that turn's text |
-| `{ "verify": TOOL, "retries": N }` | the model produces a turn with no tool calls and TOOL returns no findings; findings are fed back for up to N further attempts |
+| `{ "verify": TOOL, "retries": N }` | the model produces a turn with no tool calls or a non-error call to TOOL, then TOOL returns no findings as a verifier |
 | `{ "returns": SCHEMA }` | the model calls a synthesized tool named `return` with a value conforming to SCHEMA |
 
 The `verify` and `returns` forms combine: a returned value may be verified.
 A program author declares a schema only when the output has a known shape.
 A verifier is a tool, so an author who can check a result without being able
 to describe its shape declares the verifier alone.
+
+For a verifier without a return schema, a non-error ordinary call to the
+declared verifier also signals completion. The runtime invokes the verifier
+again after every tool effect in the turn has settled. Acceptance completes
+the episode without a separate model request. Findings enter the inbox under
+the same retry limit as findings after a turn with no tool calls.
 
 ### Failure of a model request
 

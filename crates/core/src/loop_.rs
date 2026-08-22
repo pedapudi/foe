@@ -549,6 +549,13 @@ impl Episode {
             return Ok(Some(outcome));
         }
         let finished = message.tool_calls.is_empty() && !message.interrupted && message.stop != StopReason::Length;
+        let verifier_called = self
+            .p
+            .program
+            .done_when
+            .as_ref()
+            .and_then(|done| done.verify.as_deref())
+            .is_some_and(|name| succeeded(name).is_some());
         let candidate = if self.p.registry.has_return() {
             match succeeded(text::RETURN_NAME) {
                 Some(returned) => Some(returned.value["value"].clone()),
@@ -559,7 +566,7 @@ impl Episode {
                 None => None,
             }
         } else {
-            finished.then(|| Value::String(message.text.clone()))
+            (finished || verifier_called).then(|| Value::String(message.text.clone()))
         };
         let Some(candidate) = candidate else { return Ok(None) };
         let Some(done) = self.p.program.done_when.clone().filter(|d| d.verify.is_some()) else {

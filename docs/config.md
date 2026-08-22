@@ -336,7 +336,7 @@ episode completes when the model produces a turn with no tool calls.
 
 | field | type | meaning |
 |---|---|---|
-| `verify` | string | name of a tool in `tools`; the episode completes when the model finishes and this tool returns no findings |
+| `verify` | string | name of a tool in `tools`; a turn with no tool calls or a non-error ordinary call to this tool supplies a candidate, which the tool accepts by returning no findings as a verifier |
 | `retries` | integer | how many times findings are fed back; default 2 |
 | `returns` | object | a JSON Schema in the subset above; the episode completes when the model calls the synthesized `return` tool with a conforming value |
 
@@ -357,6 +357,11 @@ verifier. A verifier is therefore a program written to this contract; a
 general-purpose linter is wrapped by a short script that reads the
 candidate, runs the linter, prints its findings, and exits with status zero
 whether or not it found any.
+
+Without `returns`, a non-error ordinary call to the declared verifier asks
+the runtime to verify the assistant text after the turn settles. Acceptance
+completes the episode without another model request. The ordinary call and
+the authoritative verifier invocation remain separate tool executions.
 
 ### `context`
 
