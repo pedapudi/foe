@@ -101,8 +101,9 @@ each in one of the two default themes. `proof-light.png` and
 `proof-dark.png` show the `overlap-parent` fixture and its two children in
 `google-light` and `google-dark`: the tree with its per-row measure and the
 spine on the selected row, the rail that carries depth in the trajectory's
-label column, the trajectory's request spans, a retry with the backoff it
-imposed, and a turn holding a diff and a fenced block. `proof-one-episode.png`
+label column, the trajectory's three ink weights over its request spans,
+node firings, and tool calls, a retry with the backoff it imposed, and a
+turn holding a diff and a fenced block. `proof-one-episode.png`
 shows a recorded run of this repository in `google-light`, with one root
 episode and no children, which is the ordinary case and the one where the
 trajectory's height is derived from a single row; its four request spans
