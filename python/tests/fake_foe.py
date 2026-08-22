@@ -172,7 +172,11 @@ class Episode:
                 tool_schemas.append(BUILTIN_SCHEMAS[name])
         done_when = config.get("done_when") or {}
         if "returns" in done_when:
-            tool_schemas.append({"name": "return", "description": "Return the result.", "parameters": done_when["returns"]})
+            # The runtime nests the declared schema under a required `value`;
+            # see crates/core/src/registry.rs::return_spec. A double that
+            # advertises the bare schema teaches callers the wrong call.
+            wrapped = {"type": "object", "properties": {"value": done_when["returns"]}, "required": ["value"]}
+            tool_schemas.append({"name": "return", "description": "Return the result.", "parameters": wrapped})
         header_seq = self.log.emit(
             "request/header",
             {"reason": "initial", "system": instructions, "tools": tool_schemas, "model": {"provider": "host", "model": "host"}},
@@ -233,7 +237,7 @@ class Episode:
                         blocked = {"kind": "blocked", "code": call["args"]["code"], "message": call["args"].get("message", "")}
                         self.tool_result(step, call, {"ok": True}, "blocked", False)
                     elif name == "return":
-                        returned = (call["args"],)
+                        returned = (call["args"]["value"],)
                         self.tool_result(step, call, {"ok": True}, "returned", False)
                     else:
                         self.tool_result(step, call, {"ok": True}, "ok", False)

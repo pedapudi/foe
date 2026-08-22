@@ -238,7 +238,10 @@ def test_returns_and_verify(fake_binary: Path, tmp_path: Path) -> None:
         program.run(
             task="t",
             transport=scripted(
-                [tool_response(("return", {"title": ""})), tool_response(("return", {"title": "Experiment 7"}))],
+                [
+                    tool_response(("return", {"value": {"title": ""}})),
+                    tool_response(("return", {"value": {"title": "Experiment 7"}})),
+                ],
                 requests,
             ),
             binary=fake_binary,
