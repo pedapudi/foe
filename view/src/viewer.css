@@ -1565,6 +1565,13 @@ table.events td.type.error {
   opacity: 0.7;
 }
 
+/* A gridline per tick, thin enough to read a span's length against without
+ * competing with the spans themselves. */
+.traj .grid {
+  stroke: var(--v2-rule-soft);
+  stroke-width: 0.6;
+}
+
 .traj .tick-label {
   fill: var(--v2-ink-faint);
   font-family: var(--v2-mono);
@@ -1606,8 +1613,10 @@ table.events td.type.error {
   cursor: pointer;
 }
 
+/* The spine is the figure's one accent, so the selected row's label reads
+ * in full ink rather than taking a second one. */
 .traj-row.selected .traj-label {
-  fill: var(--v2-accent);
+  fill: var(--v2-ink);
 }
 
 .traj-id {
@@ -1622,7 +1631,7 @@ table.events td.type.error {
 }
 
 .traj-row.selected .traj-life {
-  stroke: var(--v2-accent);
+  stroke: var(--v2-ink-soft);
 }
 
 /* A running episode has no recorded end, so its bar continues as a dashed
@@ -1641,17 +1650,39 @@ table.events td.type.error {
  * structure above it. */
 .traj-mark .seg {
   fill: var(--v2-ink-soft);
-  opacity: 0.75;
+  fill-opacity: 0.75;
+  stroke: none;
 }
 
 .traj-mark:hover .seg {
-  opacity: 1;
+  fill-opacity: 1;
 }
 
-.traj-mark.request .tick {
-  stroke: var(--v2-ink-soft);
+/* A request is a bar above the lifetime line: the whole answer at reduced
+ * fill, and the wait before its first token over it at full fill. The two
+ * are the same encoding the statistics view's per-step bars use, so a
+ * reader learns one grammar for both. A bar lifts to full fill on hover. */
+.traj-mark.request .span {
+  fill: var(--v2-ink-faint);
+  fill-opacity: 0.5;
+  stroke: none;
+}
+
+.traj-mark.request .wait {
+  fill: var(--v2-ink-soft);
+  fill-opacity: 0.8;
+  stroke: none;
+}
+
+.traj-mark.request:hover .span,
+.traj-mark.request:hover .wait {
+  fill-opacity: 1;
+}
+
+.traj-mark.request .stem {
+  stroke: var(--v2-ink-faint);
   stroke-width: 1;
-  opacity: 0.75;
+  opacity: 0.7;
 }
 
 .traj-mark.retry .glyph {

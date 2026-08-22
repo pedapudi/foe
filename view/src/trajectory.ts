@@ -12,6 +12,21 @@ export type Axis = "time" | "sequence";
 
 export type MarkKind = "request" | "tool" | "compaction" | "retry" | "spawn";
 
+/**
+ * Where a mark that occupies an interval ends, and where the first token of
+ * a model request arrived inside it. Both axes are carried, because a
+ * request spans events as well as time: the chunks it produced sit between
+ * its `model/request` and its `assistant/message`, so it has a length in
+ * log positions too.
+ */
+export interface Span {
+  endTime: number;
+  endSeq: number;
+  /** Absent for a request that no token answered. */
+  firstTokenTime: number | null;
+  firstTokenSeq: number | null;
+}
+
 export interface Mark {
   kind: MarkKind;
   seq: number;
@@ -19,6 +34,8 @@ export interface Mark {
   time: number;
   /** Milliseconds the mark spans; zero for an instant. */
   durationMs: number;
+  /** The interval a request occupies, absent for a mark drawn at a point. */
+  span: Span | null;
   /** Tool name, retry cause, compaction trigger, or spawned child id. */
   label: string;
   /** One line of detail for the hovercard. */
@@ -56,6 +73,11 @@ export interface PlacedMark extends Mark {
   x: number;
   /** Width of the mark; zero for a tick. */
   w: number;
+  /**
+   * Width of the leading part of a request's span: the wait before its
+   * first token. Zero when the mark has no such part.
+   */
+  head: number;
   y: number;
 }
 
@@ -194,14 +216,32 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
       // of tens of seconds, so its segment is a hairline; the lane is what
       // keeps a tool call apart from a model request at that width.
       const lane = mark.kind === "tool" ? y + TOOL_LANE : y;
+      const at = scale(value(axis, mark.time, mark.seq));
       if (mark.kind === "tool" && mark.durationMs > 0 && axis === "time") {
         // A tool result is written when the call returns, so the segment
         // runs back from the event by the duration the result reports.
         const x1 = scale(mark.time - mark.durationMs);
-        const x2 = scale(mark.time);
-        return { ...mark, episodeId: episode.id, x: x1, w: Math.max(MARK_MIN_WIDTH, x2 - x1), y: lane };
+        return { ...mark, episodeId: episode.id, x: x1, w: Math.max(MARK_MIN_WIDTH, at - x1), head: 0, y: lane };
       }
-      return { ...mark, episodeId: episode.id, x: scale(value(axis, mark.time, mark.seq)), w: 0, y: lane };
+      // A request occupies the interval from the call to the answer, so it
+      // is a span rather than a point. Its leading part is the wait before
+      // the first token; the rest of it is the answer streaming in.
+      if (mark.span) {
+        const end = scale(value(axis, mark.span.endTime, mark.span.endSeq));
+        const first =
+          mark.span.firstTokenTime === null || mark.span.firstTokenSeq === null
+            ? null
+            : scale(value(axis, mark.span.firstTokenTime, mark.span.firstTokenSeq));
+        return {
+          ...mark,
+          episodeId: episode.id,
+          x: at,
+          w: Math.max(MARK_MIN_WIDTH, end - at),
+          head: first === null ? 0 : Math.max(0, first - at),
+          y: lane,
+        };
+      }
+      return { ...mark, episodeId: episode.id, x: at, w: 0, head: 0, y: lane };
     });
     return {
       id: episode.id,
@@ -273,7 +313,7 @@ function domainOf(episodes: TrajectoryEpisode[], axis: Axis, now: number): [numb
   for (const e of episodes) {
     low = Math.min(low, e.startTime);
     high = Math.max(high, e.endTime ?? now);
-    for (const mark of e.marks) high = Math.max(high, mark.time);
+    for (const mark of e.marks) high = Math.max(high, mark.span ? mark.span.endTime : mark.time);
   }
   if (!Number.isFinite(low) || !Number.isFinite(high)) return [0, 1];
   return [low, Math.max(high, low + 1)];

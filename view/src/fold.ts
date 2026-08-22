@@ -187,6 +187,12 @@ export class EpisodeFold {
   private readonly byKey = new Map<string, Row>();
   /** One line of arguments per tool call id, for the trajectory hovercard. */
   private readonly callArgs = new Map<string, string>();
+  /**
+   * The mark of each request still in flight, by `request_id`. A request
+   * spans its `model/request` to the `assistant/message` that answers it,
+   * and the events between them close the span as they are read.
+   */
+  private readonly requests = new Map<string, Mark>();
   private readonly stream: boolean;
 
   /** `stream` makes `assistant/chunk` events build a row token by token. */
@@ -234,7 +240,12 @@ export class EpisodeFold {
         const detail = `step ${num(data.step)} · attempt ${num(data.attempt)} · header seq ${num(
           data.header_seq,
         )}${consumed ? ` · consumed ${consumed}` : ""}`;
-        this.mark(ev, "request", `step ${num(data.step)}`, detail, 0);
+        const mark = this.mark(ev, "request", `step ${num(data.step)}`, detail, 0);
+        // The span opens with no length. The chunks the request produces
+        // and the message that answers it give it one as they are read.
+        mark.span = { endTime: ev.time, endSeq: ev.seq, firstTokenTime: null, firstTokenSeq: null };
+        const requestId = str(data.request_id);
+        if (requestId) this.requests.set(requestId, mark);
         return this.note(ev, "request", detail, "info", data);
       }
       case "request/retry":
@@ -256,8 +267,12 @@ export class EpisodeFold {
           data,
         );
       case "assistant/chunk":
+        // The span is closed whether or not the pane assembles the chunk
+        // into a row, because the trajectory draws it either way.
+        this.extendRequest(ev, data);
         return this.stream ? this.chunk(ev, data) : [];
       case "assistant/message":
+        this.closeRequest(ev, str(data.request_id));
         return this.message(ev, data);
       case "tool/result":
         this.mark(
@@ -571,8 +586,39 @@ export class EpisodeFold {
   }
 
   /** Records one trajectory mark. Marks arrive in seq order and stay so. */
-  private mark(ev: LogEvent, kind: Mark["kind"], label: string, detail: string, durationMs: number): void {
-    this.summary.marks.push({ kind, seq: ev.seq, time: ev.time, durationMs, label, detail });
+  private mark(ev: LogEvent, kind: Mark["kind"], label: string, detail: string, durationMs: number): Mark {
+    const mark: Mark = { kind, seq: ev.seq, time: ev.time, durationMs, span: null, label, detail };
+    this.summary.marks.push(mark);
+    return mark;
+  }
+
+  /**
+   * Extends the span of the request a chunk belongs to, and records where
+   * its first token arrived. A chunk carrying an error produced no token,
+   * so it moves the end of the span and leaves the first token unset. The
+   * end moves with every chunk, so a request still streaming shows the
+   * length it has reached rather than none.
+   */
+  private extendRequest(ev: LogEvent, data: Record<string, unknown>): void {
+    const mark = this.requests.get(str(data.request_id));
+    if (!mark || !mark.span) return;
+    mark.span.endTime = ev.time;
+    mark.span.endSeq = ev.seq;
+    mark.durationMs = ev.time - mark.time;
+    if (mark.span.firstTokenTime !== null) return;
+    if (str(obj(data.chunk).kind) === "error") return;
+    mark.span.firstTokenTime = ev.time;
+    mark.span.firstTokenSeq = ev.seq;
+  }
+
+  /** Closes the span of the request an `assistant/message` answers. */
+  private closeRequest(ev: LogEvent, requestId: string): void {
+    const mark = this.requests.get(requestId);
+    if (!mark || !mark.span) return;
+    mark.span.endTime = ev.time;
+    mark.span.endSeq = ev.seq;
+    mark.durationMs = ev.time - mark.time;
+    this.requests.delete(requestId);
   }
 
   private append(row: Row): Patch[] {
