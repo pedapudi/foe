@@ -74,18 +74,18 @@ test("the defaults themselves survive clamping at a common window size", () => {
 
 const CHROME = 28;
 
-test("the figure's content height grows by one row height per row", () => {
-  const one = trajectoryContentHeight(1);
-  assert.equal(trajectoryContentHeight(2) - one, ROW_HEIGHT);
+test("the figure's content height grows by the pixels its rows take", () => {
+  const one = trajectoryContentHeight(ROW_HEIGHT);
+  assert.equal(trajectoryContentHeight(2 * ROW_HEIGHT) - one, ROW_HEIGHT);
   assert.equal(trajectoryContentHeight(0), one - ROW_HEIGHT);
-  assert.equal(trajectoryContentHeight(-3), trajectoryContentHeight(0), "a negative count is no rows");
+  assert.equal(trajectoryContentHeight(-3), trajectoryContentHeight(0), "a negative extent is no rows");
 });
 
 test("one episode takes the height of one episode rather than a fixed share", () => {
   const column = 700;
-  const height = fitTrajectory(1, column, CHROME) * column;
+  const height = fitTrajectory(ROW_HEIGHT, column, CHROME) * column;
   // One row wants less than the shortest pane, so the floor decides.
-  assert.equal(CHROME + trajectoryContentHeight(1), 86);
+  assert.equal(CHROME + trajectoryContentHeight(ROW_HEIGHT), 86);
   assert.equal(height, PANE_LIMITS.rowMin);
   assert.ok(height < PANE_DEFAULTS.trajectory * column, "the derived height is under the fixed default");
 });
@@ -93,16 +93,16 @@ test("one episode takes the height of one episode rather than a fixed share", ()
 test("each further row raises the derived height by one row", () => {
   const column = 700;
   // Counted from a row count whose content already clears the floor.
-  const three = fitTrajectory(3, column, CHROME) * column;
-  const five = fitTrajectory(5, column, CHROME) * column;
-  assert.equal(three, CHROME + trajectoryContentHeight(3));
+  const three = fitTrajectory(3 * ROW_HEIGHT, column, CHROME) * column;
+  const five = fitTrajectory(5 * ROW_HEIGHT, column, CHROME) * column;
+  assert.equal(three, CHROME + trajectoryContentHeight(3 * ROW_HEIGHT));
   assert.equal(five - three, 2 * ROW_HEIGHT);
 });
 
 test("many rows stop at half the column, leaving the conversation the rest", () => {
   const column = 700;
-  assert.equal(fitTrajectory(40, column, CHROME), 0.5);
-  assert.equal(fitTrajectory(400, column, CHROME), 0.5);
+  assert.equal(fitTrajectory(40 * ROW_HEIGHT, column, CHROME), 0.5);
+  assert.equal(fitTrajectory(400 * ROW_HEIGHT, column, CHROME), 0.5);
 });
 
 test("a row count too small to reach the shortest pane still reaches it", () => {

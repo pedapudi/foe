@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EpisodeFold } from "../src/fold.js";
 import { buildTree, flatten } from "../src/lineage.js";
-import { MARK_MIN_WIDTH, ROW_HEIGHT, TOOL_LANE, labelWidthFor, layoutTrajectory, niceStep, tickLabel, timeAtSeq } from "../src/trajectory.js";
+import { MARK_MIN_WIDTH, ROW_HEIGHT, TOOL_LANE, TOOL_PITCH, labelWidthFor, layoutTrajectory, niceStep, tickLabel, timeAtSeq } from "../src/trajectory.js";
 import type { TrajectoryEpisode, TrajectoryInput } from "../src/trajectory.js";
 import { fixture } from "./helpers.js";
 
@@ -35,6 +35,8 @@ function episodes(...names: string[]): TrajectoryEpisode[] {
       parentId: s.parentId,
       forkOrigin: s.forkOrigin,
       marks: s.marks,
+      firings: s.firings,
+      decisions: s.decisions,
     };
   });
 }
@@ -48,8 +50,13 @@ test("rows follow the tree order and sit one row height apart", () => {
   const out = layoutTrajectory(input(list));
   assert.deepEqual(out.rows.map((r) => r.id), ["ep_over_parent", "ep_over_child"]);
   assert.deepEqual(out.rows.map((r) => r.depth), [0, 1]);
-  assert.equal(out.rows[1]!.y - out.rows[0]!.y, ROW_HEIGHT);
+  assert.equal(out.rows[0]!.top, out.plot.top);
   assert.equal(out.rows[0]!.y, out.plot.top + ROW_HEIGHT / 2);
+  // The parent's three calls overlap in time and take three heights of the
+  // tool lane; the child's one call takes one, so its row is the plain
+  // height and its lifetime line sits below everything the parent drew.
+  assert.deepEqual(out.rows.map((r) => r.height), [ROW_HEIGHT + 2 * TOOL_PITCH, ROW_HEIGHT]);
+  assert.equal(out.rows[1]!.top, out.rows[0]!.top + out.rows[0]!.height);
 });
 
 test("the plot spans the pane to the right of the label column", () => {
@@ -105,6 +112,7 @@ test("a single instant gives a degenerate domain and no division by zero", () =>
     id: "ep_one", name: "one", depth: 0, startTime: 5, endTime: 5, lastSeq: 0,
     outcome: { kind: "completed" }, parentId: null, forkOrigin: null,
     marks: [{ kind: "request", seq: 0, time: 5, durationMs: 0, span: null, label: "", detail: "" }],
+    firings: [], decisions: [],
   };
   const out = layoutTrajectory(input([one]));
   assert.ok(Number.isFinite(out.rows[0]!.x1));
@@ -134,8 +142,11 @@ test("tool marks take a lane below the lifetime line and every other mark stays 
     const out = layoutTrajectory(input(episodes("overlap-parent.jsonl", "overlap-child.jsonl"), { axis }));
     for (const row of out.rows) {
       for (const mark of row.marks) {
-        const expected = mark.kind === "tool" ? row.y + TOOL_LANE : row.y;
-        assert.equal(mark.y, expected, `${axis}: ${mark.kind} at seq ${mark.seq}`);
+        if (mark.kind === "tool") {
+          assert.ok(mark.y >= row.y + TOOL_LANE, `${axis}: tool at seq ${mark.seq} is below the line`);
+          continue;
+        }
+        assert.equal(mark.y, row.y, `${axis}: ${mark.kind} at seq ${mark.seq}`);
       }
     }
   }
@@ -152,6 +163,7 @@ test("the lane keeps a hairline tool call apart from a request tick at the same 
       { kind: "request", seq: 1, time: start + 10_000, durationMs: 0, span: null, label: "step 1", detail: "" },
       { kind: "tool", seq: 2, time: start + 10_000, durationMs: 4, span: null, label: "read", detail: "" },
     ],
+    firings: [], decisions: [],
   };
   const out = layoutTrajectory(input([one]));
   const [request, tool] = out.rows[0]!.marks as [(typeof out.rows)[0]["marks"][0], (typeof out.rows)[0]["marks"][0]];
