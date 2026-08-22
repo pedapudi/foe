@@ -170,6 +170,9 @@ happens within.
 A model node that feeds a tool node declares `done_when.returns` so that
 the tool node's bindings have a shape to bind to. A model node that feeds
 only other model nodes may leave the shape open; its text is its output.
+The workflow executor validates a completed model node value against its
+declared `done_when.returns` before recording `workflow/node-end`. A mismatch
+is a recoverable node failure, and the recorded node value is null.
 
 ### Choice points
 

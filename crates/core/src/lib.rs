@@ -32,6 +32,7 @@ pub mod loop_;
 pub mod protocol;
 pub mod registry;
 pub mod sandbox;
+pub mod schema;
 pub mod spawn;
 pub mod team;
 #[cfg(test)]
@@ -74,7 +75,7 @@ pub struct ToolSpec {
     pub description: String,
     /// Appended to the system prompt after the instructions, in `tools` order.
     pub instruction: Option<String>,
-    /// JSON Schema for the arguments.
+    /// Draft 2020-12 JSON Schema for the arguments.
     pub params: serde_json::Value,
     pub effect: Effect,
 }

@@ -473,9 +473,8 @@ budget, which keeps single-episode and multi-episode configurations comparable.
 ## Current limits
 
 The deterministic cases use scripted responses, so they measure runtime
-mechanics without measuring model judgment. The JSON Schema checker covers the
-types, required fields, properties, arrays, items, and enums used by the
-generated typed-return case. It is not a complete JSON Schema implementation.
+mechanics without measuring model judgment. The typed-return case exercises a
+small part of the runtime's Draft 2020-12 JSON Schema implementation.
 
 The suite does not yet cover retries, teams, peer delivery, replay, forks,
 workflow recovery, symlink escapes, or network denial. New cases should add a

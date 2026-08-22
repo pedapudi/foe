@@ -320,6 +320,8 @@ mod tests {
     #[test]
     fn the_schema_is_json_and_names_every_key_of_the_document() {
         let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
+        assert_eq!(schema["$schema"], foe_core::schema::DIALECT);
+        foe_core::schema::check("schema", &schema).unwrap();
         let keys: Vec<&str> = schema["properties"].as_object().unwrap().keys().map(String::as_str).collect();
         let expected = [
             "budget",

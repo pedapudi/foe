@@ -1,4 +1,4 @@
-use super::{run, WorkflowParams};
+use super::{output_of, run, WorkflowParams};
 use foe_core::budget::Pool;
 use foe_core::config::resolve;
 use foe_core::loop_::{Log, Params};
@@ -85,6 +85,17 @@ fn recover(args: Value) -> Vec<Chunk> {
         Chunk::ToolCallEnd { id: "tc_r".into() },
         Chunk::Done { stop: StopReason::Tool, usage: Usage { input: 10, output: 5, cache_read: 0 } },
     ]
+}
+
+/// docs/workflow.md "Model nodes": a completed child value must conform
+/// before it can become a workflow node's canonical output.
+#[test]
+fn model_node_values_are_checked_before_recording() {
+    let schema = json!({ "type": "object", "properties": { "score": { "type": "integer", "minimum": 1 } }, "required": ["score"] });
+    assert!(output_of(Outcome::Completed { value: json!({ "score": 1 }) }, Some(&schema), false).is_ok());
+    let error = output_of(Outcome::Completed { value: json!({ "score": 0 }) }, Some(&schema), false).unwrap_err();
+    assert_eq!(error.cause, "schema-violation");
+    assert!(error.detail.contains("value.score"), "{}", error.detail);
 }
 
 struct Fixture {

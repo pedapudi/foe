@@ -343,13 +343,16 @@ ToolSpec {
   name            unique within the program
   description     shown to the model in the tool schema
   instruction     optional; appended to the system prompt after the instructions
-  params          JSON Schema for the arguments
+  params          Draft 2020-12 JSON Schema for the arguments
   effect          pure | reads | writes | execs | spawns
 }
 ```
 
 The effect is the tool's declared interaction with the world. The registry
 refuses a tool whose effect the grants do not cover, at program construction.
+The registry also compiles every parameter schema at construction. It rejects
+a call whose arguments do not conform before the tool receives capability
+handles or performs an effect.
 At dispatch, the runtime passes the tool only the capability handles its
 effect entitles it to. The handles are a filesystem reader bounded to the read
 roots, a writer bounded to the write roots, an executor bounded to the

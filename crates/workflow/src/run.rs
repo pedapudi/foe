@@ -138,9 +138,15 @@ type Firing = Pin<Box<dyn Future<Output = Output> + Send>>;
 /// An episode's outcome as a node's output: a child's blocked, failed, or
 /// exhausted end is recoverable; a nested workflow that exhausted the
 /// shared budget is settled.
-fn output_of(outcome: Outcome, nested: bool) -> Output {
+fn output_of(outcome: Outcome, schema: Option<&Value>, nested: bool) -> Output {
     match outcome {
-        Outcome::Completed { value } => Ok((value.clone(), render(&value))),
+        Outcome::Completed { value } => match schema.and_then(|s| conforms(s, &value).err()) {
+            Some(reason) => {
+                let detail = format!("the model node value does not conform to done_when.returns: {reason}");
+                Err(Trouble::recoverable("schema-violation", detail.clone(), Outcome::Failed { error: detail }))
+            }
+            None => Ok((value.clone(), render(&value))),
+        },
         Outcome::Exhausted { limit } if nested => Err(Trouble::settled(Outcome::Exhausted { limit })),
         Outcome::Blocked { code, message } => {
             let cause = format!("blocked: {}", limit_or_code(code));
@@ -199,12 +205,7 @@ fn section(name: &str, body: &str) -> String {
     text::fill(text::WORKFLOW_SECTION, &[("name", name), ("body", body)])
 }
 
-struct Fired {
-    node: String,
-    fire: u32,
-    started: Instant,
-    result: Output,
-}
+type Fired = (String, u32, Instant, Output);
 
 enum Action {
     Retry(String),
@@ -309,8 +310,9 @@ impl Executor {
             let outcome = self.schedule().await;
             while let Some(joined) = self.tasks.join_next().await {
                 if let Ok(f) = joined {
-                    self.sched.finish(&f.node);
-                    self.node_end(&f.node, f.fire, f.started, &f.result, None)?;
+                    let (name, fire, started, result) = f;
+                    self.sched.finish(&name);
+                    self.node_end(&name, fire, started, &result, None)?;
                 }
             }
             outcome
@@ -400,6 +402,7 @@ impl Executor {
                 }
             }
         } else if let Some(program) = &node.model {
+            let returns = program.done_when.as_ref().and_then(|d| d.returns.clone());
             let reserve = BudgetAmount {
                 model_calls: Some(program.budget.model_calls),
                 tokens: program.budget.tokens,
@@ -411,7 +414,7 @@ impl Executor {
             match sh.spawner.spawn(req) {
                 Ok(handle) => {
                     child_id = Some(handle.child_id.clone());
-                    Box::pin(async move { output_of(handle.run.wait().await.0, false) })
+                    Box::pin(async move { output_of(handle.run.wait().await.0, returns.as_ref(), false) })
                 }
                 Err(e) => {
                     let outcome = settled_in(&e.to_string()).unwrap_or(Outcome::Failed { error: e.to_string() });
@@ -423,14 +426,14 @@ impl Executor {
             let mut nested = Executor::new(sh.clone(), format!("{full}/"), &inner);
             Box::pin(async move {
                 match nested.drive().await {
-                    Ok(outcome) => output_of(outcome, true),
+                    Ok(outcome) => output_of(outcome, None, true),
                     Err(e) => Err(Trouble::settled(Outcome::Failed { error: e.to_string() })),
                 }
             })
         };
         self.log(EventData::WorkflowNodeStart(WorkflowNodeStart { node: full, fire, inputs: input_seqs, child_id }))?;
         let name = name.to_string();
-        self.tasks.spawn(async move { Fired { node: name, fire, started, result: task.await } });
+        self.tasks.spawn(async move { (name, fire, started, task.await) });
         Ok(())
     }
 
@@ -463,13 +466,13 @@ impl Executor {
 
     /// Verifies, records, and propagates a finished firing. `Some` ends the episode.
     async fn settle(&mut self, fired: Fired) -> Result<Option<Outcome>, RuntimeError> {
-        let (name, fire, started) = (fired.node.clone(), fired.fire, fired.started);
+        let (name, fire, started, result) = fired;
         self.sched.finish(&name);
         let node = self.sched.nodes[&name].clone();
-        if fired.result.is_err() {
-            self.node_end(&name, fire, started, &fired.result, None)?;
+        if result.is_err() {
+            self.node_end(&name, fire, started, &result, None)?;
         }
-        let (value, rendered) = match fired.result {
+        let (value, rendered) = match result {
             Ok(produced) => produced,
             Err(trouble) => return self.trouble(&name, fire, trouble).await,
         };

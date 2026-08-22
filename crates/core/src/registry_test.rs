@@ -168,7 +168,7 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
 }
 
 #[test]
-fn conforms_checks_the_supported_schema_subset() {
+fn conforms_checks_nested_object_and_array_constraints() {
     let schema = json!({
         "type": "object", "additionalProperties": false, "required": ["items"],
         "properties": { "items": { "type": "array", "items": { "type": ["string", "null"] } }, "kind": { "enum": ["a", "b"] } }
@@ -176,9 +176,35 @@ fn conforms_checks_the_supported_schema_subset() {
     assert!(conforms(&schema, &json!({ "items": ["x", null], "kind": "a" })).is_ok());
     assert!(conforms(&schema, &json!({ "items": [1] })).unwrap_err().contains("value.items[0]"));
     assert!(conforms(&schema, &json!({ "items": [], "kind": "c" })).unwrap_err().contains("one of"));
-    assert!(conforms(&schema, &json!({ "items": [], "extra": 1 })).unwrap_err().contains("`extra`"));
-    assert!(conforms(&schema, &json!({})).unwrap_err().contains("`items`"));
+    assert!(conforms(&schema, &json!({ "items": [], "extra": 1 })).unwrap_err().contains("extra"));
+    assert!(conforms(&schema, &json!({})).unwrap_err().contains("items"));
     assert!(conforms(&json!({ "type": "number" }), &json!(2)).is_ok(), "an integer is a number");
+}
+
+/// docs/config.md `host_tools`: dispatch validates arguments against the
+/// complete declared schema before the implementation receives a call.
+#[tokio::test]
+async fn dispatch_enforces_host_tool_schema_constraints() {
+    let root = tmp("registry-host-schema");
+    let program = program_with(&root, |v| {
+        v["tools"] = json!(["lookup"]);
+        v["host_tools"] = json!({ "lookup": {
+            "description": "lookup", "effect": "pure",
+            "params": {
+                "type": "object", "$defs": { "key": { "type": "string", "pattern": "^[A-Z]+$" } },
+                "properties": { "key": { "$ref": "#/$defs/key" }, "limit": { "type": "integer", "minimum": 1 } },
+                "required": ["key", "limit"], "additionalProperties": false
+            }
+        }});
+    })
+    .unwrap();
+    let registry = Registry::new(&program, vec![probe("lookup", Effect::Pure)], vec![]).unwrap();
+    let rejected = registry
+        .dispatch(&Handles::default(), &call("lookup", json!({ "key": "lower", "limit": 0 })), 1, root, None)
+        .await;
+    assert!(rejected.is_error);
+    let rendered = rejected.rendered.unwrap();
+    assert!(rendered.contains("value.key") || rendered.contains("value.limit"), "{rendered}");
 }
 
 #[tokio::test]

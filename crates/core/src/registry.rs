@@ -9,6 +9,7 @@
 
 use crate::config::Program;
 use crate::harness_text as text;
+use crate::schema;
 use crate::{
     CallCtx, ConfigError, Effect, ExecRequest, ExecResult, Executor, HostToolDef, Tool, ToolDef, ToolSpec, ToolValue,
 };
@@ -38,6 +39,7 @@ pub enum Source {
 
 struct Entry {
     spec: ToolSpec,
+    params: jsonschema::Validator,
     tool: Arc<dyn Tool>,
     source: Source,
     /// Set for a `tool_defs` entry, which verification runs differently.
@@ -214,12 +216,13 @@ impl Registry {
                     .ok_or_else(|| invalid(format!("host tool `{name}` has no implementation registered")))?;
                 (tool, Source::Host)
             } else if name == text::RETURN_NAME && !program.tools.iter().any(|t| t == name) {
-                let schema = program.done_when.as_ref().and_then(|d| d.returns.clone()).unwrap_or(Value::Null);
-                (Arc::new(ReturnTool { spec: spec.clone(), schema }), Source::Builtin)
+                (Arc::new(ReturnTool { spec: spec.clone() }), Source::Builtin)
             } else {
                 (builtins.remove(name).expect("resolved as built in"), Source::Builtin)
             };
-            entries.push(Entry { spec, tool, source, exec });
+            let params = schema::compile(&spec.params)
+                .map_err(|rule| ConfigError::Invalid { key: format!("tools.{}.params", spec.name), rule })?;
+            entries.push(Entry { spec, params, tool, source, exec });
         }
         Ok(Self { entries })
     }
@@ -306,6 +309,10 @@ impl Registry {
                 text::INVALID_ARGS,
                 &[("name", &call.name), ("reason", "arguments are a JSON object")],
             ));
+        }
+        if let Err(error) = entry.params.validate(&call.args) {
+            let reason = schema::value_error(error);
+            return ToolValue::error(text::fill(text::INVALID_ARGS, &[("name", &call.name), ("reason", &reason)]));
         }
         let ctx = self.ctx(entry.spec.effect, handles, call.id.clone(), step, spill_dir, deadline);
         entry.tool.call(call.args.clone(), &ctx).await
@@ -460,7 +467,6 @@ impl Tool for BlockTool {
 /// The synthesized `return` tool. A conforming value completes the episode.
 struct ReturnTool {
     spec: ToolSpec,
-    schema: Value,
 }
 
 #[async_trait::async_trait]
@@ -471,76 +477,11 @@ impl Tool for ReturnTool {
 
     async fn call(&self, args: Value, _ctx: &CallCtx) -> ToolValue {
         let value = args.get("value").cloned().unwrap_or(Value::Null);
-        match conforms(&self.schema, &value) {
-            Ok(()) => ToolValue::ok(json!({ "value": value }), "Returned."),
-            Err(reason) => {
-                ToolValue::error(text::fill(text::INVALID_ARGS, &[("name", text::RETURN_NAME), ("reason", &reason)]))
-            }
-        }
+        ToolValue::ok(json!({ "value": value }), "Returned.")
     }
 }
 
-/// Checks `value` against the subset of JSON Schema the runtime supports:
-/// `type` (one name or a list), `enum`, `const`, `required`, `properties`,
-/// `additionalProperties: false`, and `items`. Other keywords are accepted
-/// without being checked.
-pub fn conforms(schema: &Value, value: &Value) -> Result<(), String> {
-    fn check(schema: &Value, value: &Value, path: String) -> Result<(), String> {
-        let Some(obj) = schema.as_object() else { return Ok(()) };
-        let type_name = match value {
-            Value::Null => "null",
-            Value::Bool(_) => "boolean",
-            Value::Number(n) if n.is_i64() || n.is_u64() => "integer",
-            Value::Number(_) => "number",
-            Value::String(_) => "string",
-            Value::Array(_) => "array",
-            Value::Object(_) => "object",
-        };
-        let allowed: Vec<&str> = match obj.get("type") {
-            Some(Value::String(t)) => vec![t.as_str()],
-            Some(Value::Array(ts)) => ts.iter().filter_map(Value::as_str).collect(),
-            _ => vec![],
-        };
-        if !allowed.is_empty() && !allowed.iter().any(|t| *t == type_name || (*t == "number" && type_name == "integer"))
-        {
-            return fail(&path, format!("expected type {}, found {type_name}", allowed.join(" or ")));
-        }
-        if let Some(options) = obj.get("enum").and_then(Value::as_array) {
-            if !options.contains(value) {
-                return fail(&path, format!("is not one of {}", Value::Array(options.clone())));
-            }
-        }
-        if obj.get("const").is_some_and(|c| c != value) {
-            return fail(&path, format!("is not the constant {}", obj["const"]));
-        }
-        if let (Some(fields), Some(required)) = (value.as_object(), obj.get("required").and_then(Value::as_array)) {
-            if let Some(missing) = required.iter().filter_map(Value::as_str).find(|r| !fields.contains_key(*r)) {
-                return fail(&path, format!("lacks required property `{missing}`"));
-            }
-        }
-        if let (Some(fields), Some(props)) = (value.as_object(), obj.get("properties").and_then(Value::as_object)) {
-            for (name, field) in fields {
-                match props.get(name) {
-                    Some(sub) => check(sub, field, format!("{path}.{name}"))?,
-                    None if obj.get("additionalProperties") == Some(&Value::Bool(false)) => {
-                        return fail(&path, format!("has unexpected property `{name}`"));
-                    }
-                    None => {}
-                }
-            }
-        }
-        if let (Some(items), Some(sub)) = (value.as_array(), obj.get("items")) {
-            for (i, item) in items.iter().enumerate() {
-                check(sub, item, format!("{path}[{i}]"))?;
-            }
-        }
-        Ok(())
-    }
-    fn fail(path: &str, what: String) -> Result<(), String> {
-        Err(format!("{path}: {what}"))
-    }
-    check(schema, value, "value".to_string())
-}
+pub use schema::conforms;
 
 #[cfg(test)]
 #[path = "registry_test.rs"]
