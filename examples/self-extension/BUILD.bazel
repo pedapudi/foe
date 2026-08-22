@@ -11,6 +11,10 @@ SELF_EXTENSION_DATA = [
     "//examples/support:scripted-transport.py",
 ]
 
+SELF_EXTENSION_MODEL_DATA = SELF_EXTENSION_DATA + [
+    "//evals:score-trace",
+]
+
 sh_binary(
     name = "self-extension",
     srcs = ["run.sh"],
@@ -18,10 +22,30 @@ sh_binary(
     data = SELF_EXTENSION_DATA,
 )
 
+sh_binary(
+    name = "self-extension-model",
+    srcs = ["run-model.sh"],
+    args = ["$(rootpath //:foe)"],
+    data = SELF_EXTENSION_MODEL_DATA,
+)
+
 sh_test(
     name = "self_extension_test",
     srcs = ["run.sh"],
     args = ["$(rootpath //:foe)"],
     data = SELF_EXTENSION_DATA,
+    size = "small",
+)
+
+sh_test(
+    name = "self_extension_model_runner_test",
+    srcs = ["run-model.sh"],
+    args = [
+        "$(rootpath //:foe)",
+        "--model",
+        "exec/self-extension-demo",
+        "--confirm-spend",
+    ],
+    data = SELF_EXTENSION_MODEL_DATA,
     size = "small",
 )

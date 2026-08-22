@@ -39,6 +39,40 @@ The same runner is a Bazel test target:
 bazel test //examples/self-extension:self_extension_test
 ```
 
+## Run with a model provider
+
+The model-backed runner replaces the scripted transport with
+`openai-codex/gpt-5.6-sol`. It keeps the same disposable source, grants,
+task, and verifier. The episode has declared limits of 10,000
+input-plus-output tokens and five model calls.
+
+The runner prints the limits and starts no episode until the command includes
+`--confirm-spend`:
+
+```sh
+bazel run //examples/self-extension:self-extension-model
+bazel run //examples/self-extension:self-extension-model -- --confirm-spend
+```
+
+Select another configured provider with `--model PROVIDER/MODEL`:
+
+```sh
+bazel run //examples/self-extension:self-extension-model -- \
+  --model openai/gpt-5.6-sol \
+  --confirm-spend
+```
+
+The runner checks the candidate source and episode trace after foe exits. It
+prints the artifact directory and a viewer command. The source checkout stays
+outside the episode's read and write grants.
+
+The model-backed runner has a deterministic test route that spends no model
+credit:
+
+```sh
+bazel test //examples/self-extension:self_extension_model_runner_test
+```
+
 ## Episode behavior
 
 The deterministic local model transport makes no provider request and needs
