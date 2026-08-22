@@ -2728,3 +2728,27 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+
+/* The per-row measure in the episode tree: how much of a sibling group's
+ * tokens this episode spent. Faint, so the tree still reads as names and
+ * outcomes first; the selected row's bar takes the accent that marks it. */
+.tree .measure-track {
+  fill: var(--v2-ink-faint);
+  fill-opacity: 0.16;
+  stroke: none;
+}
+
+.tree .measure-fill {
+  fill: var(--v2-ink-faint);
+  fill-opacity: 0.55;
+  stroke: none;
+}
+
+.tree .node:hover .measure-fill {
+  fill-opacity: 0.85;
+}
+
+.tree .node.selected .measure-fill {
+  fill: var(--v2-accent);
+  fill-opacity: 0.9;
+}

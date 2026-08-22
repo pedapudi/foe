@@ -45,10 +45,27 @@ collapses.
 
 The episodes tree gives each episode a row about 40 pixels tall: a dot
 coloured by outcome, the program name at the page's base size, the episode
-id in mono beside it, and a second line reading the outcome word with the
-code of a `blocked` outcome or the limit of an `exhausted` one. A spawned
-child hangs under its parent on a solid connector and a fork under its
-origin on a dashed one, both two pixels wide in `--v2-ink-faint`.
+id in mono beside it, a second line reading the outcome word with the code
+of a `blocked` outcome or the limit of an `exhausted` one, and under those a
+measure of what the episode spent. A spawned child hangs under its parent on
+a solid connector and a fork under its origin on a dashed one, both two
+pixels wide in `--v2-ink-faint`.
+
+The measure is a hairline bar whose fill is the episode's tokens as a
+fraction of the largest token total among the episodes with the same parent,
+itself included, so the biggest spender of every sibling group draws a full
+bar. Hovering it gives the token count and the fraction. The bar is faint,
+because the tree reads as names and outcomes first; the selected row's bar
+takes the accent that marks the row.
+
+The quantity is tokens rather than wall clock, because tokens are the one
+spendable thing a tree divides without overlap. A parent and its
+descendants draw on one budget pool, and the tokens each of them reports
+are its own, so a group's bars are comparable and their sum is the group's
+spending. Wall clock does not divide that way: siblings that ran at the
+same time each hold the whole interval, so their durations sum past their
+parent's and a bar of one against another would assert a division that did
+not happen.
 
 The details region states the outcome, the model calls and tokens consumed
 against the budget `episode/start.program.budget` declares, the sandbox

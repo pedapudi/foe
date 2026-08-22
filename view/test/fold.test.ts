@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EpisodeFold } from "../src/fold.js";
 import type { AssistantRow, CompactionRow, NoteRow, Row, ToolRow, UserRow } from "../src/fold.js";
-import { buildTree, flatten, sharedPrefix } from "../src/lineage.js";
+import { buildTree, flatten, sharedPrefix, siblingShares, spentTokens } from "../src/lineage.js";
 import { fixture } from "./helpers.js";
 
 function fold(name: string, stream = false): EpisodeFold {
@@ -221,4 +221,42 @@ test("sharedPrefix is the seed boundary for a fork and its origin, and the small
   map.set("ep_fork3", nested);
   assert.equal(sharedPrefix("ep_fork3", "ep_root", map), 12, "a fork of a fork shares the shorter boundary with the root");
   assert.equal(sharedPrefix("ep_fork3", "ep_fork", map), 15);
+});
+
+test("a row's measure is its tokens against the largest spender beside it", () => {
+  const parent = fold("overlap-parent.jsonl").summary;
+  const child = fold("overlap-child.jsonl").summary;
+  const roots = buildTree([parent, child]);
+  const shares = siblingShares(roots);
+  // The parent is the only root, so it is the largest among its siblings.
+  assert.equal(shares.get(parent.id), 1);
+  // The child is the only child, so it is the largest among its siblings.
+  assert.equal(shares.get(child.id), 1);
+  assert.equal(spentTokens(parent), parent.usage.input + parent.usage.output);
+});
+
+test("two siblings measure against the larger of the two", () => {
+  const one = fold("workflow-propose-1.jsonl").summary;
+  const two = fold("workflow-propose-2.jsonl").summary;
+  const roots = buildTree([one, two]);
+  const shares = siblingShares(roots);
+  const larger = spentTokens(one) >= spentTokens(two) ? one : two;
+  const smaller = larger === one ? two : one;
+  assert.equal(shares.get(larger.id), 1);
+  assert.ok(shares.get(smaller.id)! <= 1);
+  assert.equal(shares.get(smaller.id), spentTokens(smaller) / spentTokens(larger));
+});
+
+test("an episode whose siblings all spent nothing has no measure", () => {
+  const s = fold("workflow.jsonl").summary;
+  const empty = { ...s, id: "ep_nothing", usage: { input: 0, output: 0, cacheRead: 0 } };
+  const shares = siblingShares(buildTree([empty]));
+  assert.equal(shares.get("ep_nothing"), undefined);
+});
+
+test("a measure never exceeds the whole", () => {
+  const roots = buildTree([fold("root.jsonl").summary, fold("child.jsonl").summary]);
+  for (const [id, share] of siblingShares(roots)) {
+    assert.ok(share > 0 && share <= 1, `${id} measures ${share}`);
+  }
 });

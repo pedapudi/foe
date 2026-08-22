@@ -6,7 +6,7 @@ import { fmtDate, fmtDuration, fmtInt, h } from "../dom.js";
 import type { Child } from "../dom.js";
 import { outcomeLabel } from "../fold.js";
 import type { Summary } from "../fold.js";
-import { flatten } from "../lineage.js";
+import { flatten, siblingShares, spentTokens } from "../lineage.js";
 import type { TreeNode } from "../lineage.js";
 import { str } from "../types.js";
 import { barSvg, figureSvg, svg } from "./svg.js";
@@ -27,6 +27,8 @@ const INDENT = 18;
 const LEFT = 12;
 const DOT_R = 4;
 const COMPARE_W = 40;
+/** Height of the per-row measure bar. */
+const MEASURE_H = 2.5;
 /** Advance of one character at the base and the secondary size, in pixels. */
 const NAME_CHAR = 7.6;
 const SUB_CHAR = 6.2;
@@ -83,6 +85,7 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     return host;
   }
   const height = rows.length * ROW;
+  const shares = siblingShares(roots);
   const figure = figureSvg("tree-figure", width, height, "episodes by lineage");
   const position = new Map<string, { x: number; y: number }>();
   rows.forEach(({ node, depth }, i) => {
@@ -159,6 +162,25 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
       sub.appendChild(detail);
     }
     g.appendChild(sub);
+
+    // Third line: how much of the sibling group's spending this episode
+    // did. The tree names episodes and outcomes; the question in front of
+    // a tree is where the work went, and this answers it without a click.
+    const share = shares.get(node.id);
+    if (share !== undefined) {
+      const barW = Math.max(12, textW);
+      const measure = svg("g", { class: "measure" });
+      const measureTitle = svg("title");
+      measureTitle.textContent = `${fmtInt(spentTokens(s))} tokens, ${Math.round(
+        share * 100,
+      )} percent of the most any one episode beside it spent`;
+      measure.append(
+        measureTitle,
+        svg("rect", { class: "measure-track", x: textX, y: y + 16, width: barW, height: MEASURE_H, rx: 1 }),
+        svg("rect", { class: "measure-fill", x: textX, y: y + 16, width: Math.max(1, share * barW), height: MEASURE_H, rx: 1 }),
+      );
+      g.appendChild(measure);
+    }
 
     const comparing = state.compare.includes(node.id);
     const boxX = width - COMPARE_W;
