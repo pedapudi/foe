@@ -7,7 +7,7 @@
 //! not spend.
 
 use crate::Budget;
-use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
+use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Message, ToolSchema, Usage};
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -16,8 +16,10 @@ pub struct Pool {
     started: Instant,
     /// Model requests this episode made, retries included.
     requests: u64,
-    /// Input plus output tokens this episode consumed.
-    tokens: u64,
+    /// Provider-reported input tokens this episode consumed.
+    input_tokens: u64,
+    /// Provider-reported output tokens this episode consumed.
+    output_tokens: u64,
     /// Reservations of children that have not settled, by child id.
     active: BTreeMap<String, BudgetAmount>,
     /// Totals reported by children that settled, subtrees included.
@@ -31,7 +33,8 @@ impl Pool {
             limits,
             started: Instant::now(),
             requests: 0,
-            tokens: 0,
+            input_tokens: 0,
+            output_tokens: 0,
             active: BTreeMap::new(),
             children_spent: BudgetAmount::default(),
         }
@@ -57,7 +60,8 @@ impl Pool {
     }
 
     pub fn note_usage(&mut self, usage: Usage) {
-        self.tokens += usage.input + usage.output;
+        self.input_tokens += usage.input;
+        self.output_tokens += usage.output;
     }
 
     /// The instant the `seconds` limit elapses, when there is one.
@@ -72,11 +76,15 @@ impl Pool {
     pub fn remaining(&self) -> BudgetAmount {
         let reserved = |f: fn(&BudgetAmount) -> Option<u64>| self.active.values().filter_map(f).sum::<u64>();
         let calls_used = self.requests + self.children_spent.model_calls.unwrap_or(0) + reserved(|a| a.model_calls);
-        let tokens_used = self.tokens + self.children_spent.tokens.unwrap_or(0) + reserved(|a| a.tokens);
+        let input_used =
+            self.input_tokens + self.children_spent.input_tokens.unwrap_or(0) + reserved(|a| a.input_tokens);
+        let output_used =
+            self.output_tokens + self.children_spent.output_tokens.unwrap_or(0) + reserved(|a| a.output_tokens);
         let episodes_used = 1 + self.children_spent.episodes.unwrap_or(0) + reserved(|a| a.episodes);
         BudgetAmount {
             model_calls: Some(self.limits.model_calls.saturating_sub(calls_used)),
-            tokens: self.limits.tokens.map(|t| t.saturating_sub(tokens_used)),
+            input_tokens: self.limits.input_tokens.map(|t| t.saturating_sub(input_used)),
+            output_tokens: self.limits.output_tokens.map(|t| t.saturating_sub(output_used)),
             seconds: self.limits.seconds.map(|s| s.saturating_sub(self.started.elapsed().as_secs())),
             episodes: Some(u64::from(self.limits.max_episodes).saturating_sub(episodes_used)),
         }
@@ -88,12 +96,33 @@ impl Pool {
         let remaining = self.remaining();
         if remaining.model_calls == Some(0) {
             Some(ExhaustedLimit::ModelCalls)
-        } else if remaining.tokens == Some(0) {
-            Some(ExhaustedLimit::Tokens)
+        } else if remaining.input_tokens == Some(0) {
+            Some(ExhaustedLimit::InputTokens)
+        } else if remaining.output_tokens == Some(0) {
+            Some(ExhaustedLimit::OutputTokens)
         } else if self.deadline().is_some_and(|d| Instant::now() >= d) {
             Some(ExhaustedLimit::Seconds)
         } else {
             None
+        }
+    }
+
+    /// Checks the approximate input size and clamps the provider's output
+    /// cap to the output allowance that remains across this episode tree.
+    pub fn request_max_output(
+        &self,
+        estimated_input: u64,
+        configured: Option<u32>,
+    ) -> Result<Option<u32>, ExhaustedLimit> {
+        let remaining = self.remaining();
+        if remaining.input_tokens.is_some_and(|left| estimated_input > left) {
+            return Err(ExhaustedLimit::InputTokens);
+        }
+        match (configured, remaining.output_tokens) {
+            (_, Some(0)) => Err(ExhaustedLimit::OutputTokens),
+            (Some(cap), Some(left)) => Ok(Some(cap.min(u32::try_from(left).unwrap_or(u32::MAX)))),
+            (None, Some(left)) => Ok(Some(u32::try_from(left).unwrap_or(u32::MAX))),
+            (cap, None) => Ok(cap),
         }
     }
 
@@ -124,7 +153,8 @@ impl Pool {
         }
         let granted = BudgetAmount {
             model_calls: within(request.model_calls, remaining.model_calls, ExhaustedLimit::ModelCalls)?,
-            tokens: within(request.tokens, remaining.tokens, ExhaustedLimit::Tokens)?,
+            input_tokens: within(request.input_tokens, remaining.input_tokens, ExhaustedLimit::InputTokens)?,
+            output_tokens: within(request.output_tokens, remaining.output_tokens, ExhaustedLimit::OutputTokens)?,
             seconds: within(request.seconds, remaining.seconds, ExhaustedLimit::Seconds)?,
             episodes: Some(request.episodes.map_or(episodes_left, |a| a.min(episodes_left))),
         };
@@ -135,7 +165,8 @@ impl Pool {
         // that was actually reached.
         let zero = [
             (granted.model_calls, ExhaustedLimit::ModelCalls),
-            (granted.tokens, ExhaustedLimit::Tokens),
+            (granted.input_tokens, ExhaustedLimit::InputTokens),
+            (granted.output_tokens, ExhaustedLimit::OutputTokens),
             (granted.seconds, ExhaustedLimit::Seconds),
         ];
         if let Some((_, limit)) = zero.into_iter().find(|(amount, _)| *amount == Some(0)) {
@@ -156,7 +187,8 @@ impl Pool {
             }
         };
         add(&mut self.children_spent.model_calls, spent.model_calls);
-        add(&mut self.children_spent.tokens, spent.tokens);
+        add(&mut self.children_spent.input_tokens, spent.input_tokens);
+        add(&mut self.children_spent.output_tokens, spent.output_tokens);
         add(&mut self.children_spent.episodes, spent.episodes);
     }
 
@@ -164,6 +196,16 @@ impl Pool {
     pub fn active_children(&self) -> usize {
         self.active.len()
     }
+}
+
+/// Estimates the provider input from the model-visible request parts. The
+/// estimate uses one token per four serialized bytes because the runtime has
+/// no provider tokenizer. Provider-reported usage remains authoritative.
+pub fn estimate_request_input(system: &str, tools: &[ToolSchema], messages: &[Message]) -> u64 {
+    let bytes = system.len()
+        + serde_json::to_vec(tools).map_or(0, |v| v.len())
+        + serde_json::to_vec(messages).map_or(0, |v| v.len());
+    bytes.div_ceil(4) as u64
 }
 
 #[cfg(test)]

@@ -68,11 +68,12 @@ if [ -z "$provider" ] || [ -z "$model" ]; then
   exit 2
 fi
 
-token_limit=10000
-model_call_limit=5
+input_token_limit=20000
+output_token_limit=4000
+model_call_limit=8
 if [ "$confirmed" != true ]; then
   echo "The self-extension run uses $model_route."
-  echo "Its declared limit is $token_limit input-plus-output tokens across $model_call_limit model calls."
+  echo "Its declared limits are $input_token_limit input tokens and $output_token_limit output tokens across $model_call_limit model calls."
   echo "No episode was started. Add --confirm-spend to run it."
   exit 2
 fi
@@ -104,7 +105,7 @@ cp "$repo_dir/docs/tools.md" "$project_dir/docs/tools.md"
   /home/user/project "$project_dir" \
   /home/user/foe "$repo_dir"
 
-/usr/bin/python3 - "$run_dir/config.json" "$provider" "$model" "$token_limit" "$model_call_limit" <<'PY'
+/usr/bin/python3 - "$run_dir/config.json" "$provider" "$model" "$input_token_limit" "$output_token_limit" "$model_call_limit" <<'PY'
 import json
 from pathlib import Path
 import sys
@@ -116,8 +117,9 @@ if provider == "exec":
     config["model"]["model"] = model
 else:
     config["model"] = {"provider": provider, "model": model}
-config["budget"]["tokens"] = int(sys.argv[4])
-config["budget"]["model_calls"] = int(sys.argv[5])
+config["budget"]["input_tokens"] = int(sys.argv[4])
+config["budget"]["output_tokens"] = int(sys.argv[5])
+config["budget"]["model_calls"] = int(sys.argv[6])
 path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 PY
 

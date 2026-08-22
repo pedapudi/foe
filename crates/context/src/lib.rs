@@ -67,7 +67,12 @@ impl Policy {
 #[async_trait::async_trait]
 impl ContextPolicy for Policy {
     fn plan(&self, state: &ContextState) -> Option<Cut> {
-        let projected = projected(state.events, self.max_output, self.cfg.margin_tokens)?;
+        let max_output = match (self.max_output, state.remaining.output_tokens) {
+            (0, Some(left)) => left.min(u64::from(u32::MAX)),
+            (configured, Some(left)) => configured.min(left),
+            (configured, None) => configured,
+        };
+        let projected = projected(state.events, max_output, self.cfg.margin_tokens)?;
         if projected <= self.window.saturating_sub(self.cfg.reserve_tokens) {
             return None;
         }

@@ -35,7 +35,8 @@ export interface EpisodeStart {
 
 export interface Budget {
   model_calls?: number;
-  tokens?: number;
+  input_tokens?: number;
+  output_tokens?: number;
   seconds?: number;
 }
 

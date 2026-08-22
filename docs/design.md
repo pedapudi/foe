@@ -55,9 +55,9 @@ reconstructs the run without the process that made it.
 
 **Nobody corrects course, so the cost must be bounded.** A person notices
 when an agent spends an hour in a loop. A runtime has to enforce limits on
-model calls, tokens, wall-clock time, recursion depth, and the number of
-processes an agent may start, and it has to hold those limits as one pool
-across every subagent the run creates.
+model calls, input tokens, output tokens, wall-clock time, recursion depth,
+and the number of processes an agent may start. It has to hold those limits
+as one pool across every subagent the run creates.
 
 **Nobody reviews each action, so permission must be structural.** A per-action
 prompt is how interactive harnesses contain risk. Without a person to answer
@@ -429,7 +429,7 @@ separate process with its own log, its own grants, and a budget reserved from
 its parent's remaining budget. The child's log header names the parent.
 
 ```
-   root   budget: 40 calls, 400k tokens
+   root   budget: 40 calls, 320k input, 80k output
     │
     ├── reserve 10 calls ──► child A   (spent 7, returned 3)
     │
@@ -439,10 +439,18 @@ its parent's remaining budget. The child's log header names the parent.
 ```
 
 Budget is a pool held by the root. Every spawn reserves from the parent's
-remainder, and unspent reservation returns when the child settles. No path
-through the tree can spend more than the root's total. Structural caps on
-depth, lifetime episode count, and concurrency sit beside the spend caps. A
-spawn that would pass any cap fails as a tool call with a result naming the
+remainder, and unspent reservation returns when the child settles. Model
+calls, input tokens, and output tokens are separate dimensions. Structural
+caps on depth, lifetime episode count, and concurrency sit beside them.
+
+Before each request, the runtime refuses an estimated input that does not
+fit and clamps the provider's output cap to the remaining output allowance.
+The input estimate uses one token per four serialized bytes because foe has
+no provider tokenizer. A request can therefore cross its remaining input
+allowance. Concurrent descendants can each cross their reserved allowances.
+Provider-reported usage becomes the account of what the tree spent.
+
+A spawn that would pass a cap fails as a tool call with a result naming the
 limit, and no child starts; the model reads that result like any other.
 A parent observes a child as settled only after it has appended `spawn/end`
 and `budget/release` and returned the child's reservation to the pool, so

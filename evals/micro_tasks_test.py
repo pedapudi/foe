@@ -70,7 +70,8 @@ class MicroTaskTests(unittest.TestCase):
                 metadata = task.materialize(workspace, grader)
                 config = task.config(workspace.resolve(), Path(metadata["check"]).resolve(), route)
                 self.assertEqual(config["budget"]["model_calls"], task.model_calls)
-                self.assertEqual(config["budget"]["tokens"], task.tokens)
+                self.assertEqual(config["budget"]["input_tokens"], task.input_tokens)
+                self.assertEqual(config["budget"]["output_tokens"], task.output_tokens)
                 self.assertEqual(config["budget"]["seconds"], task.seconds)
                 read_roots = [Path(path) for path in config["grants"]["read"]]
                 self.assertFalse(any(Path(metadata["check"]).is_relative_to(path) for path in read_roots))
@@ -80,7 +81,8 @@ class MicroTaskTests(unittest.TestCase):
 
     def test_one_attempt_has_the_documented_cost_ceiling(self) -> None:
         self.assertEqual(sum(task.model_calls for task in TASKS), 40)
-        self.assertEqual(sum(task.tokens for task in TASKS), 56000)
+        self.assertEqual(sum(task.input_tokens for task in TASKS), 44800)
+        self.assertEqual(sum(task.output_tokens for task in TASKS), 11200)
 
     def test_an_attempt_that_never_reached_the_model_is_a_deployment_fault(self) -> None:
         task = task_by_name("typed-configuration-evidence")
@@ -102,12 +104,12 @@ class MicroTaskTests(unittest.TestCase):
 
             unstarted = unstarted_result(task, 1, Path(directory), "the task fixture did not materialize")
             self.assertFalse(unstarted["strict_success"])
-            self.assertIsNone(unstarted["usage"]["billed_budget_tokens"])
+            self.assertIsNone(unstarted["usage"]["total_tokens"])
             summary = aggregate([unstarted], 1, (task,))
             self.assertEqual(summary["infrastructure_failures"], 1)
             self.assertEqual(summary["attempts_with_evaluated_components"], 0)
             self.assertEqual(summary["component_passes"]["artifact_correct"], 0)
-            self.assertIsNone(summary["usage"]["billed_budget_tokens"])
+            self.assertIsNone(summary["usage"]["total_tokens"])
 
     def test_each_mechanism_check_accepts_required_evidence_and_rejects_its_absence(self) -> None:
         tasks = {task.name: task for task in TASKS}

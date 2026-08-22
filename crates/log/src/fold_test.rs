@@ -48,6 +48,7 @@ pub fn request(step: u32, header_seq: u64, consumed: Vec<u64>, messages: Vec<Mes
         header_seq,
         consumed,
         messages,
+        max_output_tokens: None,
     })
 }
 
@@ -95,6 +96,7 @@ fn summary_request(step: u32, header_seq: u64) -> EventData {
         header_seq,
         consumed: vec![],
         messages: vec![Message::User { content: text("transcript") }],
+        max_output_tokens: None,
     })
 }
 
@@ -125,7 +127,7 @@ fn compaction_summary(
             files,
             children: vec![],
             covered: Covered { first_seq: 1, last_seq: first_kept_seq - 1 },
-            budget_remaining: BudgetAmount { model_calls: Some(4), tokens: None, seconds: None, episodes: None },
+            budget_remaining: BudgetAmount { model_calls: Some(4), ..Default::default() },
         },
         first_kept_seq,
         summary_request_seq,
@@ -187,7 +189,9 @@ fn derivation_after_one_compaction_opens_with_task_and_continuation() {
         .starts_with("## Continuation state\n\ncovered: seq 1 to 7\ndone_when: a turn with no tool calls\n"));
     assert!(continuation.contains("\noutstanding_findings: (none)\nfiles_read:\n- a\nfiles_written: (none)\n"));
     assert!(continuation
-        .contains("\nchildren: (none)\nbudget_remaining: model_calls 4, tokens unlimited, seconds unlimited"));
+        .contains(
+            "\nchildren: (none)\nbudget_remaining: model_calls 4, input_tokens unlimited, output_tokens unlimited, seconds unlimited"
+        ));
     assert!(continuation.ends_with("\n\n## Summary\n\nfirst summary"));
     assert_eq!(messages[0], Message::User { content: text("fix it") });
     assert_eq!(messages[1], Message::User { content: text(&continuation) });
@@ -345,7 +349,7 @@ fn episode_end_is_last() {
 /// Every pairing docs/log-format.md defines, as the opening event and the
 /// closing event that the log owes it.
 fn pairings() -> Vec<(EventData, EventData)> {
-    let reserved = BudgetAmount { model_calls: Some(2), tokens: None, seconds: None, episodes: None };
+    let reserved = BudgetAmount { model_calls: Some(2), ..Default::default() };
     vec![
         (assistant(3, "", vec![call("tc_x")], false), result(3, "tc_x", "ok")),
         (
@@ -357,6 +361,7 @@ fn pairings() -> Vec<(EventData, EventData)> {
                 header_seq: 2,
                 consumed: vec![],
                 messages: vec![],
+                max_output_tokens: None,
             }),
         ),
         (
@@ -533,7 +538,7 @@ fn every_event_variant_round_trips() {
         inbox(InboxSource::Request, "reserved source"),
         EventData::BudgetReserve {
             child_id: "k".into(),
-            reserved: BudgetAmount { model_calls: Some(1), tokens: None, seconds: Some(3), episodes: None },
+            reserved: BudgetAmount { model_calls: Some(1), seconds: Some(3), ..Default::default() },
         },
         EventData::BudgetRelease { child_id: "k".into(), spent: BudgetAmount::default() },
         EventData::SpawnStart {
@@ -561,7 +566,7 @@ fn every_event_variant_round_trips() {
             covered: Covered { first_seq: 1, last_seq: 7 },
             trigger: CompactionTrigger::Threshold,
             projected_tokens: 190_000,
-            reserved: BudgetAmount { model_calls: Some(3), tokens: None, seconds: None, episodes: None },
+            reserved: BudgetAmount { model_calls: Some(3), ..Default::default() },
         }),
         compaction_summary(3, 8, 13, "first summary", &["a"]),
         EventData::CompactionEnd {

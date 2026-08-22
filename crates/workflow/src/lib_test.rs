@@ -4,7 +4,7 @@ use serde_json::json;
 
 fn config() -> Config {
     serde_json::from_value(json!({
-        "version": 1, "name": "wf", "instructions": { "r": "x" }, "tools": ["block"],
+        "version": 2, "name": "wf", "instructions": { "r": "x" }, "tools": ["block"],
         "grants": { "read": ["/p"], "spawn": ["helper"] }, "budget": { "model_calls": 10 }, "task": "t",
         "programs": { "helper": { "name": "helper", "instructions": { "r": "h" }, "tools": ["block"],
                                   "grants": { "read": ["/p"] }, "budget": { "model_calls": 1 } } },

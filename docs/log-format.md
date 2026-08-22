@@ -7,7 +7,7 @@ specifies the log completely. Nothing that reaches a model request may exist
 outside it.
 
 Stability: the event envelope, the event types marked implemented, and the
-seeding rules are frozen at version 1. Adding an event type is compatible.
+seeding rules are frozen at version 2. Adding an event type is compatible.
 Changing an existing type's data requires a new log version.
 
 ## Directory layout
@@ -58,8 +58,8 @@ this before appending.
 
 ## Event types
 
-Status is one of: **implemented** in version 1, or **reserved**, meaning the
-type is defined so that future logs remain readable by version 1 tools, and
+Status is one of: **implemented** in version 2, or **reserved**, meaning the
+type is defined so that future logs remain readable by version 2 tools, and
 nothing emits it.
 
 ### Lifecycle
@@ -97,7 +97,7 @@ The outcome is one of:
 ```json
 { "kind": "completed", "value": ANY }
 { "kind": "blocked",   "code": "looping-tool-call", "message": "…" }
-{ "kind": "exhausted", "limit": "tokens" }
+{ "kind": "exhausted", "limit": "input_tokens" }
 { "kind": "failed",    "error": "…" }
 ```
 
@@ -132,13 +132,17 @@ model received and a pointer to the header in effect.
   "request_id": "rq_01",
   "header_seq": 1,
   "consumed": [2, 9],
-  "messages": []
+  "messages": [],
+  "max_output_tokens": 2048
 }
 ```
 
 `consumed` lists the `seq` of every `inbox/item` that entered this request
 for the first time. `messages` is the full derived message list, in the
 form defined under [Derived messages](#derived-messages).
+`max_output_tokens` is the per-request cap after the runtime applies the
+remaining episode-wide output allowance. It is omitted when neither the
+configuration nor the budget supplies a cap.
 
 `request/retry` — implemented. A model request failed and is being retried.
 `attempt` names the attempt that failed and `delay_ms` the delay waited
@@ -197,6 +201,9 @@ The message also carries `thinking`, a list of reasoning blocks
 replays these blocks to the same model route, where a provider may require
 them for a turn that continues after a tool call, and omits them for any
 other route.
+
+`usage.input` includes cache-read input. `usage.output` includes reasoning
+when the provider reports reasoning inside its output count.
 
 ### Tools
 
@@ -276,24 +283,24 @@ The values `request` and `response` are reserved for correlated exchanges.
 episode's remainder.
 
 ```json
-{ "child_id": "ep_9c21", "reserved": { "model_calls": 6, "tokens": 60000, "episodes": 3 } }
+{ "child_id": "ep_9c21", "reserved": { "model_calls": 6, "input_tokens": 48000, "output_tokens": 12000, "episodes": 3 } }
 ```
 
 `budget/release` — implemented. A child settled and returned its unspent
 reservation.
 
 ```json
-{ "child_id": "ep_9c21", "spent": { "model_calls": 4, "tokens": 41200, "episodes": 2 } }
+{ "child_id": "ep_9c21", "spent": { "model_calls": 4, "input_tokens": 38400, "output_tokens": 2800, "episodes": 2 } }
 ```
 
-An amount holds four optional fields: `model_calls`, `tokens`, `seconds`,
-and `episodes`. An absent field means the dimension is unlimited. In
-`reserved`, `episodes` is how many episodes the child's subtree may hold,
-the child itself included; it is the child's `budget.max_episodes` once the
-parent's share is applied. In `spent`, `episodes` is how many episodes that
-subtree held, so a leaf child reports one. A parent adds each released
-count to a lifetime total that never returns to the pool, which is how one
-`max_episodes` bounds a whole tree.
+An amount holds five optional fields: `model_calls`, `input_tokens`,
+`output_tokens`, `seconds`, and `episodes`. An absent field means the
+dimension is unlimited. In `reserved`, `episodes` is how many episodes the
+child's subtree may hold, the child itself included. It is the child's
+`budget.max_episodes` after the parent's share is applied. In `spent`,
+`episodes` is how many episodes that subtree held, so a leaf child reports
+one. A parent adds each released count to a lifetime total that never
+returns to the pool. This is how one `max_episodes` bounds a whole tree.
 
 `spawn/start` — implemented.
 
@@ -346,9 +353,9 @@ redelivered when the target restarts. The target deduplicates by
 `sandbox/denied` — reserved. An access the kernel refused, captured from
 the audit log. Reading Landlock audit records requires the `CAP_AUDIT_READ`
 capability or access to the audit daemon's log, which an unprivileged foe
-process does not have, so nothing emits this event in version 1. The type
+process does not have, so nothing emits this event in version 2. The type
 is defined so that a privileged deployment or a later version can emit it
-and a version 1 reader will render it.
+and a version 2 reader will render it.
 
 ```json
 { "pid": 4120, "comm": "ruff", "path": "/etc/shadow", "access": "read" }
@@ -419,7 +426,7 @@ the summarization call draws on.
   "covered": { "first_seq": 1, "last_seq": 57 },
   "trigger": "threshold",
   "projected_tokens": 186240,
-  "reserved": { "model_calls": 22, "tokens": 310400 }
+  "reserved": { "model_calls": 22, "input_tokens": 280000, "output_tokens": 30400 }
 }
 ```
 
@@ -441,7 +448,7 @@ the kept suffix. `summary_request_seq` names the `cmp_` request.
     "files": { "read": ["src/parser.py"], "written": [], "edited": ["src/parser.py"] },
     "children": [],
     "covered": { "first_seq": 1, "last_seq": 57 },
-    "budget_remaining": { "model_calls": 22, "tokens": 310400 }
+    "budget_remaining": { "model_calls": 22, "input_tokens": 280000, "output_tokens": 30400 }
   },
   "first_kept_seq": 58,
   "summary_request_seq": 61
@@ -586,7 +593,7 @@ responses replayed from `assistant/chunk` events rather than requested.
 ## Blocked codes
 
 The `code` of a `blocked` outcome is one of the following. The list is closed
-in version 1. A supervising episode routes on it.
+in version 2. A supervising episode routes on it.
 
 | code | meaning |
 |---|---|
@@ -606,8 +613,9 @@ message. The runtime detects the rest.
 
 ## Exhausted limits
 
-The `limit` of an `exhausted` outcome is one of `model_calls`, `tokens`,
-`seconds`, `depth`, `episodes`, `concurrency`.
+The `limit` of an `exhausted` outcome is one of `model_calls`,
+`input_tokens`, `output_tokens`, `seconds`, `depth`, `episodes`,
+`concurrency`.
 
 ## Size
 

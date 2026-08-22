@@ -18,7 +18,15 @@ fn inbox(source: InboxSource, s: &str) -> EventData {
 
 fn request(step: u32, id: &str, consumed: Vec<u64>) -> EventData {
     let request_id = id.to_string();
-    EventData::ModelRequest(ModelRequest { step, attempt: 1, request_id, header_seq: 2, consumed, messages: vec![] })
+    EventData::ModelRequest(ModelRequest {
+        step,
+        attempt: 1,
+        request_id,
+        header_seq: 2,
+        consumed,
+        messages: vec![],
+        max_output_tokens: None,
+    })
 }
 
 fn assistant(step: u32, id: &str, body: &str, calls: Vec<ToolCall>, input: u64) -> EventData {

@@ -246,19 +246,17 @@ export function renderInfo(s: Summary | null): HTMLElement {
       [ratio(s.modelCalls, s.budget.modelCalls, "calls"), s.retries ? h("div", { class: "sub" }, `${s.retries} retr${s.retries === 1 ? "y" : "ies"} included`) : null],
     ]);
   }
-  const tokensUsed = s.usage.input + s.usage.output;
-  if (tokensUsed > 0) {
+  if (s.usage.input > 0) {
     rows.push([
-      "tokens",
+      "input tokens",
       [
-        ratio(tokensUsed, s.budget.tokens, "tokens"),
-        h(
-          "div",
-          { class: "sub" },
-          parts([`in ${fmtInt(s.usage.input)}`, `out ${fmtInt(s.usage.output)}`, `cache read ${fmtInt(s.usage.cacheRead)}`]),
-        ),
+        ratio(s.usage.input, s.budget.inputTokens, "tokens"),
+        h("div", { class: "sub" }, `cache read ${fmtInt(s.usage.cacheRead)}`),
       ],
     ]);
+  }
+  if (s.usage.output > 0) {
+    rows.push(["output tokens", ratio(s.usage.output, s.budget.outputTokens, "tokens")]);
   }
   const abi = s.sandbox.landlockAbi;
   if (abi !== null || s.sandbox.mode) {

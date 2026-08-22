@@ -35,7 +35,7 @@ def valid_events() -> list[dict[str, Any]]:
                     "tools": ["block"],
                     "tool_defs": {},
                     "grants": {"read": ["/tmp/project"], "write": [], "spawn": []},
-                    "budget": {"model_calls": 2, "tokens": 1000},
+                    "budget": {"model_calls": 2, "input_tokens": 800, "output_tokens": 200},
                     "done_when": {
                         "returns": {
                             "type": "object",

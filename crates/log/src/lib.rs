@@ -20,7 +20,7 @@ pub mod fold;
 pub mod seed;
 
 /// The log format version this crate writes and reads.
-pub const LOG_VERSION: u32 = 1;
+pub const LOG_VERSION: u32 = 2;
 
 /// One line of the log.
 ///
@@ -37,8 +37,8 @@ pub struct Event {
 /// Every event type, implemented or reserved.
 ///
 /// The `type` field on the wire is the variant's `serde(rename)`. Reserved
-/// variants exist so that a version 1 reader can parse logs written by a
-/// later version; nothing in version 1 emits them.
+/// variants exist so that a version 2 reader can parse logs written by a
+/// later version; nothing in version 2 emits them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum EventData {
@@ -294,7 +294,8 @@ pub enum BlockedCode {
 #[serde(rename_all = "snake_case")]
 pub enum ExhaustedLimit {
     ModelCalls,
-    Tokens,
+    InputTokens,
+    OutputTokens,
     Seconds,
     Depth,
     Episodes,
@@ -345,6 +346,8 @@ pub struct ModelRequest {
     pub header_seq: u64,
     pub consumed: Vec<u64>,
     pub messages: Vec<Message>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -537,7 +540,9 @@ pub struct BudgetAmount {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_calls: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tokens: Option<u64>,
+    pub input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seconds: Option<u64>,
     /// Episodes, counting the one the amount is granted to. In a

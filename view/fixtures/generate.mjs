@@ -80,7 +80,7 @@ function root() {
     parent_id: null,
     fork_origin: null,
     team_id: null,
-    program: program("fix-test", { model_calls: 10, tokens: 100000 }),
+    program: program("fix-test", { model_calls: 10, input_tokens: 80000, output_tokens: 20000 }),
     identity: "sha256:aaaa",
     task: taskText,
     runtime,
@@ -128,7 +128,7 @@ function root() {
     usage: { input: 520, output: 31, cache_read: 400 },
     interrupted: false,
   });
-  log.ev("budget/reserve", { child_id: "ep_child", reserved: { model_calls: 3, tokens: 20000 } });
+  log.ev("budget/reserve", { child_id: "ep_child", reserved: { model_calls: 3, input_tokens: 16000, output_tokens: 4000 } });
   log.ev("spawn/start", { child_id: "ep_child", program: "survey", context: "fresh", call_id: "tc_02" });
   log.ev("team/roster", { member_id: "ep_child", name: "surveyor", description: "Lists parser tests.", phase: "provisioning" });
   log.ev("team/roster", { member_id: "ep_child", name: "surveyor", description: "Lists parser tests.", phase: "active" }, 300);
@@ -136,7 +136,7 @@ function root() {
   log.ev("team/delivered", { message_id: "tm_01", to: "ep_child" }, 40);
   log.ev("sandbox/denied", { pid: 4120, comm: "ruff", path: "/etc/shadow", access: "read" }, 800);
   log.ev("spawn/end", { child_id: "ep_child", outcome: { kind: "completed", value: { tests: ["test_parse"] } } }, 1500);
-  log.ev("budget/release", { child_id: "ep_child", spent: { model_calls: 2, tokens: 1340 } });
+  log.ev("budget/release", { child_id: "ep_child", spent: { model_calls: 2, input_tokens: 1300, output_tokens: 40 } });
   log.ev("tool/result", { step: 2, call_id: "tc_02", name: "spawn", value: { tests: ["test_parse"] }, rendered: "tests: test_parse", is_error: false, spill: null, duration_ms: 2700, synthetic: false });
   const note = log.ev("inbox/item", { source: "child", content: [text("Survey complete: 1 test.")], from: "ep_child", message_id: null });
 
@@ -184,7 +184,7 @@ function child() {
     parent_id: "ep_root",
     fork_origin: null,
     team_id: "ep_root",
-    program: program("survey", { model_calls: 3, tokens: 20000 }),
+    program: program("survey", { model_calls: 3, input_tokens: 16000, output_tokens: 4000 }),
     identity: "sha256:bbbb",
     task: taskText,
     runtime,
@@ -252,7 +252,7 @@ function compact() {
     files: { read: ["src/a.py"], written: [], edited: [] },
     children: [],
     covered: { first_seq: 1, last_seq: 8 },
-    budget_remaining: { model_calls: 7, tokens: 95000 },
+    budget_remaining: { model_calls: 7, input_tokens: 76000, output_tokens: 19000 },
   };
   const continuation = [
     "## Continuation state",
@@ -264,7 +264,7 @@ function compact() {
     "files_written: (none)",
     "files_edited: (none)",
     "children: (none)",
-    "budget_remaining: model_calls 7, tokens 95000, seconds unlimited",
+    "budget_remaining: model_calls 7, input_tokens 76000, output_tokens 19000, seconds unlimited",
     "",
     "## Summary",
     "",
@@ -277,7 +277,7 @@ function compact() {
     parent_id: null,
     fork_origin: null,
     team_id: null,
-    program: { ...program("rename-helper", { model_calls: 10, tokens: 100000 }), context: { compact: true, window_tokens: 4000, reserve_tokens: 500, keep_recent_tokens: 40 } },
+    program: { ...program("rename-helper", { model_calls: 10, input_tokens: 80000, output_tokens: 20000 }), context: { compact: true, window_tokens: 4000, reserve_tokens: 500, keep_recent_tokens: 40 } },
     identity: "sha256:cccc",
     task: taskText,
     runtime,
@@ -300,7 +300,7 @@ function compact() {
   // Step 4 begins with a compaction: the projection of the next request
   // crosses the threshold, the oldest two steps are summarized through a
   // request with a cmp_ id under its own header, and the header returns.
-  log.ev("compaction/start", { step: 4, covered: { first_seq: 1, last_seq: 8 }, trigger: "threshold", projected_tokens: 3982, reserved: { model_calls: 7, tokens: 95000 } });
+  log.ev("compaction/start", { step: 4, covered: { first_seq: 1, last_seq: 8 }, trigger: "threshold", projected_tokens: 3982, reserved: { model_calls: 7, input_tokens: 76000, output_tokens: 19000 } });
   const summaryHeader = log.ev("request/header", { reason: "change", system: "A coding agent's conversation is being condensed.", tools: [], model });
   const transcript = `# Transcript\n\n[user]\n${taskText}\n\n[assistant]\nI will grep for callers.\n[call grep {"pattern":"helper("}]\n\n[result grep]\n${grepOut}\n\n[assistant]\nReading a.\n[call read {"path":"src/a.py"}]\n\n[result read]\n${readOut}`;
   const summaryRequest = log.ev("model/request", { step: 4, attempt: 1, request_id: "cmp_0004", header_seq: summaryHeader, consumed: [], messages: [user(text(transcript))] });
@@ -332,7 +332,7 @@ function overlapParent() {
     parent_id: null,
     fork_origin: null,
     team_id: null,
-    program: program("lead", { model_calls: 20, tokens: 200000 }),
+    program: program("lead", { model_calls: 20, input_tokens: 160000, output_tokens: 40000 }),
     identity: "sha256:cccc",
     task: taskText,
     runtime,
@@ -342,19 +342,19 @@ function overlapParent() {
   const header = log.ev("request/header", { reason: "initial", system: "You lead a survey.", tools, model });
   log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_p1", header_seq: header, consumed: [task], messages: [user(text(taskText))] }, 1000);
   log.ev("assistant/message", { step: 1, request_id: "rq_p1", text: "Spawning a surveyor.", tool_calls: [spawnCall], stop: "tool", usage: { input: 400, output: 20, cache_read: 0 }, interrupted: false }, 900);
-  log.ev("budget/reserve", { child_id: "ep_over_child", reserved: { model_calls: 8, tokens: 80000 } });
+  log.ev("budget/reserve", { child_id: "ep_over_child", reserved: { model_calls: 8, input_tokens: 64000, output_tokens: 16000 } });
   log.ev("spawn/start", { child_id: "ep_over_child", program: "surveyor", context: "fresh", call_id: "tc_p1" }, 90);
   // The parent keeps working while the child runs.
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_p2", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 500);
   log.ev("assistant/message", { step: 2, request_id: "rq_p2", text: "Reading the workspace manifest.", tool_calls: [readCall, writeCall], stop: "tool", usage: { input: 500, output: 18, cache_read: 400 }, interrupted: false }, 700);
   log.ev("tool/result", { step: 2, call_id: "tc_p2", name: "read", value: { path: "Cargo.toml" }, rendered: "1\t[workspace]\n2\tresolver = \"2\"", is_error: false, spill: null, duration_ms: 1400, synthetic: false }, 1400);
-  log.ev("budget/reserve", { child_id: "ep_rich", reserved: { model_calls: 6, tokens: 60000 } });
+  log.ev("budget/reserve", { child_id: "ep_rich", reserved: { model_calls: 6, input_tokens: 48000, output_tokens: 12000 } });
   log.ev("spawn/start", { child_id: "ep_rich", program: "writer", context: "fresh", call_id: "tc_p3" }, 90);
   log.ev("spawn/end", { child_id: "ep_rich", outcome: { kind: "completed", value: "The parser now propagates the error." } }, 2200);
-  log.ev("budget/release", { child_id: "ep_rich", spent: { model_calls: 2, tokens: 2629 } });
+  log.ev("budget/release", { child_id: "ep_rich", spent: { model_calls: 2, input_tokens: 2200, output_tokens: 429 } });
   log.ev("tool/result", { step: 2, call_id: "tc_p3", name: "spawn", value: "The parser now propagates the error.", rendered: "The parser now propagates the error.", is_error: false, spill: null, duration_ms: 2290, synthetic: false });
   log.ev("spawn/end", { child_id: "ep_over_child", outcome: { kind: "completed", value: { crates: 8 } } }, 3800);
-  log.ev("budget/release", { child_id: "ep_over_child", spent: { model_calls: 3, tokens: 9100 } });
+  log.ev("budget/release", { child_id: "ep_over_child", spent: { model_calls: 3, input_tokens: 9000, output_tokens: 100 } });
   log.ev("tool/result", { step: 1, call_id: "tc_p1", name: "spawn", value: { crates: 8 }, rendered: "crates: 8", is_error: false, spill: null, duration_ms: 8000, synthetic: false });
   log.ev("model/request", { step: 3, attempt: 1, request_id: "rq_p3", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 200);
   log.ev("assistant/message", { step: 3, request_id: "rq_p3", text: "Eight crates.", tool_calls: [], stop: "end", usage: { input: 900, output: 6, cache_read: 800 }, interrupted: false }, 700);
@@ -372,7 +372,7 @@ function overlapChild() {
     parent_id: "ep_over_parent",
     fork_origin: null,
     team_id: null,
-    program: program("surveyor", { model_calls: 8, tokens: 80000 }),
+    program: program("surveyor", { model_calls: 8, input_tokens: 64000, output_tokens: 16000 }),
     identity: "sha256:dddd",
     task: taskText,
     runtime,
@@ -383,7 +383,7 @@ function overlapChild() {
   log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_c1", header_seq: header, consumed: [task], messages: [user(text(taskText))] }, 800);
   log.ev("assistant/message", { step: 1, request_id: "rq_c1", text: "", tool_calls: [call], stop: "tool", usage: { input: 200, output: 12, cache_read: 0 }, interrupted: false }, 600);
   log.ev("tool/result", { step: 1, call_id: "tc_c1", name: "bash", value: { exit: 0 }, rendered: "cli\ncode\ncore\nlog", is_error: false, spill: null, duration_ms: 2600, synthetic: false }, 2600);
-  log.ev("compaction/start", { step: 2, covered: { first_seq: 1, last_seq: 5 }, trigger: "threshold", projected_tokens: 74000, reserved: { model_calls: 6, tokens: 70000 } }, 400);
+  log.ev("compaction/start", { step: 2, covered: { first_seq: 1, last_seq: 5 }, trigger: "threshold", projected_tokens: 74000, reserved: { model_calls: 6, input_tokens: 56000, output_tokens: 14000 } }, 400);
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_c2", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 900);
   log.ev("request/retry", { step: 2, attempt: 1, cause: "rate-limit", delay_ms: 1000 }, 300);
   log.ev("model/request", { step: 2, attempt: 2, request_id: "rq_c3", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 1000);
@@ -411,7 +411,8 @@ function rich() {
     "| limit | unit | checked |",
     "|:---|:---:|---:|",
     "| `model_calls` | calls | before each request |",
-    "| `tokens` | tokens | after each response |",
+    "| `input_tokens` | tokens | estimated before and counted after each request |",
+    "| `output_tokens` | tokens | capped before and counted after each request |",
     "",
     "The check itself is one comparison:",
     "",
@@ -464,7 +465,7 @@ function rich() {
     parent_id: "ep_over_parent",
     fork_origin: null,
     team_id: null,
-    program: program("writer", { model_calls: 6, tokens: 60000 }),
+    program: program("writer", { model_calls: 6, input_tokens: 48000, output_tokens: 12000 }),
     identity: "sha256:eeee",
     task: taskText,
     runtime,
@@ -632,7 +633,7 @@ function workflowConfig(root) {
     ...extra,
   });
   return {
-    version: 1,
+    version: 2,
     name: "survey-propose-apply",
     instructions: { role: "The ceiling of a declared workflow. Each model node carries its own instructions." },
     tools: ["read", "grep", "edit", "bash", "check"],
@@ -644,7 +645,7 @@ function workflowConfig(root) {
       },
     },
     grants: { read: [`${root}/project`], write: [`${root}/project/src`] },
-    budget: { model_calls: 30, tokens: 300000, max_episodes: 6 },
+    budget: { model_calls: 30, input_tokens: 240000, output_tokens: 60000, max_episodes: 6 },
     sandbox: { mode: "off" },
     model: { provider: "exec", model: "scripted-answers", exec: `${root}/model` },
     workflow: {

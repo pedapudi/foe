@@ -228,7 +228,8 @@ impl ProcessSpawner {
     pub fn reserve_for(&self, req: &SpawnRequest) -> BudgetAmount {
         let all = |b: &Budget| BudgetAmount {
             model_calls: Some(b.model_calls),
-            tokens: b.tokens,
+            input_tokens: b.input_tokens,
+            output_tokens: b.output_tokens,
             seconds: b.seconds,
             episodes: None,
         };
@@ -274,7 +275,8 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
     let mut budget = program.budget.clone();
     let tighter = |own: Option<u64>, reserved: Option<u64>| reserved.map_or(own, |n| Some(own.map_or(n, |t| t.min(n))));
     budget.model_calls = tighter(Some(budget.model_calls), reserve.model_calls).unwrap_or(budget.model_calls);
-    budget.tokens = tighter(budget.tokens, reserve.tokens);
+    budget.input_tokens = tighter(budget.input_tokens, reserve.input_tokens);
+    budget.output_tokens = tighter(budget.output_tokens, reserve.output_tokens);
     budget.seconds = tighter(budget.seconds, reserve.seconds);
     budget.max_depth = budget.max_depth.min(parent.budget.max_depth.saturating_sub(1));
     if let Some(episodes) = reserve.episodes {
@@ -472,7 +474,8 @@ impl Reader {
                 }
                 EventData::BudgetRelease { spent, .. } => {
                     below.model_calls = Some(below.model_calls.unwrap_or(0) + spent.model_calls.unwrap_or(0));
-                    below.tokens = Some(below.tokens.unwrap_or(0) + spent.tokens.unwrap_or(0));
+                    below.input_tokens = Some(below.input_tokens.unwrap_or(0) + spent.input_tokens.unwrap_or(0));
+                    below.output_tokens = Some(below.output_tokens.unwrap_or(0) + spent.output_tokens.unwrap_or(0));
                     below.episodes = Some(below.episodes.unwrap_or(0) + spent.episodes.unwrap_or(0));
                 }
                 EventData::EpisodeEnd { outcome: o } => outcome = Some(o.clone()),
@@ -491,7 +494,8 @@ impl Reader {
         self.observer.ended(&self.child_id, &outcome);
         let spent = BudgetAmount {
             model_calls: Some(calls + below.model_calls.unwrap_or(0)),
-            tokens: Some(usage.input + usage.output + below.tokens.unwrap_or(0)),
+            input_tokens: Some(usage.input + below.input_tokens.unwrap_or(0)),
+            output_tokens: Some(usage.output + below.output_tokens.unwrap_or(0)),
             seconds: Some(start.elapsed().as_secs()),
             // The child itself, plus every episode its own releases account
             // for. A process that started counts even when it wrote no log.

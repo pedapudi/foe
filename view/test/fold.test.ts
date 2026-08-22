@@ -62,7 +62,7 @@ test("summary carries lineage, budget, usage, and sandbox from the log", () => {
   assert.equal(s.forkOrigin, null);
   assert.equal(s.modelCalls, 5, "every model/request counts, including the retried attempt");
   assert.equal(s.retries, 1);
-  assert.deepEqual(s.budget, { modelCalls: 10, tokens: 100000 });
+  assert.deepEqual(s.budget, { modelCalls: 10, inputTokens: 80000, outputTokens: 20000 });
   assert.equal(s.usage.input, 410 + 520 + 610 + 680);
   assert.equal(s.usage.output, 28 + 31 + 14 + 9);
   assert.equal(s.usage.cacheRead, 400 + 520 + 600);
@@ -265,11 +265,14 @@ test("a measure never exceeds the whole", () => {
 
 test("each node-start opens a firing that its node-end closes", () => {
   const s = fold("workflow.jsonl").summary;
+  const reported = fixture("workflow.jsonl")
+    .filter((event) => event.type === "workflow/node-end")
+    .map((event) => Number((event.data as Record<string, unknown>).duration_ms));
   assert.deepEqual(
     s.firings.map((f) => `${f.node}#${f.fire}`),
     ["manifest#1", "survey#1", "propose#1", "survey#2", "propose#2", "apply#1", "verify_change#1", "verify_change#2"],
   );
-  assert.deepEqual(s.firings.map((f) => f.durationMs), [0, 0, 47, 0, 48, 70, 10, 10], "the length each node reported");
+  assert.deepEqual(s.firings.map((f) => f.durationMs), reported, "the length each node reported");
   for (const firing of s.firings) {
     assert.ok(firing.endSeq !== null && firing.endTime !== null, `${firing.node}#${firing.fire} ended`);
     assert.ok(firing.endSeq! > firing.startSeq, "an end follows its own start");

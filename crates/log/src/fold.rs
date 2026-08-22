@@ -237,7 +237,13 @@ pub fn render_continuation(summary: &CompactionSummary) -> String {
         list(&s.files.written),
         list(&s.files.edited),
         list(&children),
-        format!(" model_calls {}, tokens {}, seconds {}", amount(b.model_calls), amount(b.tokens), amount(b.seconds)),
+        format!(
+            " model_calls {}, input_tokens {}, output_tokens {}, seconds {}",
+            amount(b.model_calls),
+            amount(b.input_tokens),
+            amount(b.output_tokens),
+            amount(b.seconds)
+        ),
     ];
     let lines: Vec<String> = STATE_LABELS.iter().zip(values).map(|(label, value)| format!("{label}:{value}")).collect();
     CONTINUATION_MESSAGE.replace("{state}", &lines.join("\n")).replace("{summary}", &summary.summary)

@@ -14,13 +14,19 @@ import foe
 from scripted import scripted, text_response, tool_response
 
 
-def program_with(tools: list[str | foe.HostTool], *, model_calls: int = 5, done_when: foe.DoneWhen | None = None) -> foe.Program:
+def program_with(
+    tools: list[str | foe.HostTool],
+    *,
+    model_calls: int = 5,
+    output_tokens: int | None = None,
+    done_when: foe.DoneWhen | None = None,
+) -> foe.Program:
     return foe.Program(
         name="test",
         instructions={"role": "You are under test."},
         tools=tools,
         grants=foe.Grants(read=["/"]),
-        budget=foe.Budget(model_calls=model_calls),
+        budget=foe.Budget(model_calls=model_calls, output_tokens=output_tokens),
         done_when=done_when,
     )
 
@@ -91,6 +97,21 @@ def test_full_run_with_host_tool(fake_binary: Path, tmp_path: Path) -> None:
     result_event = next(e for e in events if e.type == "tool/result")
     assert result_event.data["value"] == {"count": 3, "mutation_id": "m_41"}
     assert result_event.data["rendered"] == "3 references"
+
+
+def test_runtime_output_allowance_clamps_the_host_setting(fake_binary: Path, tmp_path: Path) -> None:
+    requests: list[dict[str, Any]] = []
+    outcome = asyncio.run(
+        program_with(["read"], output_tokens=30).run(
+            task="Finish.",
+            transport=scripted([text_response("Done.")], requests),
+            binary=fake_binary,
+            log_dir=tmp_path / "episode",
+            max_output_tokens=100,
+        )
+    )
+    assert outcome == foe.Completed("Done.")
+    assert requests[0]["max_output_tokens"] == 30
 
 
 def test_host_tool_exception_becomes_an_error_result(fake_binary: Path, tmp_path: Path) -> None:

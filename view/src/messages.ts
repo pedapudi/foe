@@ -124,9 +124,9 @@ export function renderContinuation(data: Record<string, unknown>): string {
     `files_written:${list(arr(files.written))}`,
     `files_edited:${list(arr(files.edited))}`,
     `children:${list(children)}`,
-    `budget_remaining: model_calls ${amount(budget.model_calls)}, tokens ${amount(budget.tokens)}, seconds ${amount(
-      budget.seconds,
-    )}`,
+    `budget_remaining: model_calls ${amount(budget.model_calls)}, input_tokens ${amount(
+      budget.input_tokens,
+    )}, output_tokens ${amount(budget.output_tokens)}, seconds ${amount(budget.seconds)}`,
   ];
   return `## Continuation state\n\n${lines.join("\n")}\n\n## Summary\n\n${str(data.summary)}`;
 }

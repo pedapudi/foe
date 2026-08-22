@@ -139,7 +139,7 @@ export interface Summary {
   modelCalls: number;
   retries: number;
   usage: { input: number; output: number; cacheRead: number };
-  budget: { modelCalls: number | null; tokens: number | null };
+  budget: { modelCalls: number | null; inputTokens: number | null; outputTokens: number | null };
   sandbox: { mode: string; landlockAbi: number | null };
   children: Map<string, { program: string; context: string }>;
   roster: Map<string, { name: string; phase: string }>;
@@ -177,7 +177,7 @@ export function emptySummary(id: string): Summary {
     modelCalls: 0,
     retries: 0,
     usage: { input: 0, output: 0, cacheRead: 0 },
-    budget: { modelCalls: null, tokens: null },
+    budget: { modelCalls: null, inputTokens: null, outputTokens: null },
     sandbox: { mode: "", landlockAbi: null },
     children: new Map(),
     roster: new Map(),
@@ -356,7 +356,7 @@ export class EpisodeFold {
         return this.note(
           ev,
           "reserve",
-          `${str(data.child_id)} · ${num(r.model_calls)} calls · ${num(r.tokens)} tokens`,
+          `${str(data.child_id)} · ${num(r.model_calls)} calls · ${num(r.input_tokens)} input · ${num(r.output_tokens)} output`,
           "info",
           data,
           str(data.child_id),
@@ -367,7 +367,7 @@ export class EpisodeFold {
         return this.note(
           ev,
           "release",
-          `${str(data.child_id)} · spent ${num(r.model_calls)} calls · ${num(r.tokens)} tokens`,
+          `${str(data.child_id)} · spent ${num(r.model_calls)} calls · ${num(r.input_tokens)} input · ${num(r.output_tokens)} output`,
           "info",
           data,
           str(data.child_id),
@@ -493,7 +493,8 @@ export class EpisodeFold {
     s.startTime = ev.time;
     s.budget = {
       modelCalls: typeof budget.model_calls === "number" ? budget.model_calls : null,
-      tokens: typeof budget.tokens === "number" ? budget.tokens : null,
+      inputTokens: typeof budget.input_tokens === "number" ? budget.input_tokens : null,
+      outputTokens: typeof budget.output_tokens === "number" ? budget.output_tokens : null,
     };
     s.sandbox = {
       mode: str(sandbox.mode),

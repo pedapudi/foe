@@ -175,7 +175,7 @@ fn builtin_config(task: String, mut model: ModelConfig, key_file: Option<&Path>)
         model.options.insert("api_key_file".to_string(), key_file.to_string_lossy().into_owned());
     }
     let document = serde_json::json!({
-        "version": 1,
+        "version": foe_core::config::CONFIG_VERSION,
         "name": "coding",
         "instructions": { "role": BUILTIN_INSTRUCTION },
         "tools": ["read", "grep", "edit", "bash"],

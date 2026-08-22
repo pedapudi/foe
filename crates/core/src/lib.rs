@@ -350,7 +350,9 @@ pub struct Grants {
 pub struct Budget {
     pub model_calls: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tokens: Option<u64>,
+    pub input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seconds: Option<u64>,
     #[serde(default = "u32_default::<1>")]

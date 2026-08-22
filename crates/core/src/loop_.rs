@@ -7,7 +7,7 @@
 //! consults the context policy, which may replace the oldest part of the
 //! projection with a summary; docs/compaction.md specifies that.
 
-use crate::budget::Pool;
+use crate::budget::{estimate_request_input, Pool};
 use crate::config::Program;
 use crate::context::{Answer, ContextPolicy, ContextState, Summarized, SummaryCall};
 use crate::harness_text as text;
@@ -329,7 +329,7 @@ impl Episode {
             Summarized::Failed { error, usage } => (false, usage, cut.projected_tokens, Some(error)),
         };
         self.p.log.append(EventData::CompactionEnd { step, ok, usage, active_estimate, error })?;
-        Ok((!ok && cut.exceeds_window).then_some(Outcome::Exhausted { limit: ExhaustedLimit::Tokens }))
+        Ok((!ok && cut.exceeds_window).then_some(Outcome::Exhausted { limit: ExhaustedLimit::InputTokens }))
     }
 
     /// One model request with bounded retries. See docs/design.md "Failure
@@ -359,6 +359,12 @@ impl Episode {
                 }
             };
             let (header_seq, header) = self.header.clone().expect("header written before the request");
+            let configured = self.p.program.model.as_ref().and_then(|m| m.max_output_tokens);
+            let estimate = estimate_request_input(&header.system, &header.tools, &messages);
+            let max_output_tokens = match lock(&self.p.pool).request_max_output(estimate, configured) {
+                Ok(cap) => cap,
+                Err(limit) => return Ok(Answer::Ended(Outcome::Exhausted { limit })),
+            };
             if let Some((cause, delay_ms)) = retried.take() {
                 let (step, failed) = (self.step, attempt - 1);
                 self.p.log.append(EventData::RequestRetry { step, attempt: failed, cause, delay_ms })?;
@@ -370,6 +376,7 @@ impl Episode {
                 header_seq,
                 consumed: consumed.clone(),
                 messages: messages.clone(),
+                max_output_tokens,
             }))?;
             self.request_seq = event.seq;
             self.inbox.consume(&consumed);
@@ -379,7 +386,7 @@ impl Episode {
                 system: header.system,
                 tools: header.tools,
                 messages,
-                max_output_tokens: self.p.program.model.as_ref().and_then(|m| m.max_output_tokens),
+                max_output_tokens,
             };
             let mut recorder = Recorder::new(self.p.log.clone(), self.step, request_id);
             let transport = self.p.transport.clone();

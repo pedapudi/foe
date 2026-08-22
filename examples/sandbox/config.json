@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "sandbox-required",
   "instructions": {
     "role": "Use the cat tool to read both files named in the task. Report which read succeeded and which read the kernel denied."

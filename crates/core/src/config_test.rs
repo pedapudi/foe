@@ -55,7 +55,7 @@ fn every_rule_names_its_key() {
     std::fs::create_dir_all(root.join("child")).unwrap();
     type Case<'a> = (&'a str, Box<dyn FnOnce(&mut Value)>);
     let cases: Vec<Case> = vec![
-        ("version", Box::new(|v| v["version"] = json!(2))),
+        ("version", Box::new(|v| v["version"] = json!(1))),
         ("name", Box::new(|v| v["name"] = json!(" "))),
         ("task", Box::new(|v| v["task"] = json!(""))),
         ("instructions", Box::new(|v| v["instructions"] = json!({}))),
@@ -134,7 +134,8 @@ fn every_rule_names_its_key() {
         ("grants.write[0]", Box::new(|v| v["grants"]["write"] = json!(["relative"]))),
         ("grants.spawn[0]", Box::new(|v| v["grants"]["spawn"] = json!(["ghost"]))),
         ("budget.model_calls", Box::new(|v| v["budget"]["model_calls"] = json!(0))),
-        ("budget.tokens", Box::new(|v| v["budget"]["tokens"] = json!(0))),
+        ("budget.input_tokens", Box::new(|v| v["budget"]["input_tokens"] = json!(0))),
+        ("budget.output_tokens", Box::new(|v| v["budget"]["output_tokens"] = json!(0))),
         ("budget.seconds", Box::new(|v| v["budget"]["seconds"] = json!(0))),
         ("budget.max_episodes", Box::new(|v| v["budget"]["max_episodes"] = json!(0))),
         ("budget.loop_threshold", Box::new(|v| v["budget"]["loop_threshold"] = json!(1))),
@@ -229,7 +230,7 @@ fn a_workflow_model_node_stays_within_its_ceiling() {
         value["tool_defs"] = json!({ "bounded": { "exec": exec, "cwd": tool_home,
             "description": "bounded", "timeout_seconds": 5 } });
         value["host_tools"] = json!({ "observe": { "description": "observe", "params": {}, "effect": "reads" } });
-        value["budget"] = json!({ "model_calls": 4, "tokens": 100, "seconds": 30,
+        value["budget"] = json!({ "model_calls": 4, "input_tokens": 100, "output_tokens": 50, "seconds": 30,
             "max_depth": 2, "loop_threshold": 4 });
         value["programs"] = json!({ "helper": node("helper", &root) });
         value["grants"]["spawn"] = json!(["helper"]);
@@ -278,7 +279,8 @@ fn a_workflow_model_node_stays_within_its_ceiling() {
             }),
         ),
         ("workflow.nodes.work.model.budget.model_calls", Box::new(|p| p["budget"]["model_calls"] = json!(5))),
-        ("workflow.nodes.work.model.budget.tokens", Box::new(|p| p["budget"]["tokens"] = json!(101))),
+        ("workflow.nodes.work.model.budget.input_tokens", Box::new(|p| p["budget"]["input_tokens"] = json!(101))),
+        ("workflow.nodes.work.model.budget.output_tokens", Box::new(|p| p["budget"]["output_tokens"] = json!(51))),
         ("workflow.nodes.work.model.budget.seconds", Box::new(|p| p["budget"]["seconds"] = json!(31))),
         ("workflow.nodes.work.model.budget.max_depth", Box::new(|p| p["budget"]["max_depth"] = json!(3))),
         ("workflow.nodes.work.model.budget.loop_threshold", Box::new(|p| p["budget"]["loop_threshold"] = json!(5))),
@@ -306,7 +308,8 @@ fn a_workflow_model_node_stays_within_its_ceiling() {
     child["tool_defs"]["bounded"]["description"] = json!("A node-specific description");
     child["tool_defs"]["bounded"]["instruction"] = json!("Use this tool once.");
     child["budget"] = value["budget"].clone();
-    child["budget"].as_object_mut().unwrap().remove("tokens");
+    child["budget"].as_object_mut().unwrap().remove("input_tokens");
+    child["budget"].as_object_mut().unwrap().remove("output_tokens");
     child["budget"].as_object_mut().unwrap().remove("seconds");
     value["workflow"] = json!({ "nodes": { "work": { "model": child, "terminal": true } } });
     assert!(resolve(&parse(&value.to_string()).unwrap()).is_ok());

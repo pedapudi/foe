@@ -87,13 +87,14 @@ async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
     let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
     log.append(EventData::EpisodeStart(start())).unwrap();
     let config: crate::Config = serde_json::from_value(serde_json::json!({
-        "version": 1, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
+        "version": 2, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
         "grants": {"read": ["/src"], "spawn": ["worker"]},
-        "budget": {"model_calls": 20, "tokens": 1000},
+        "budget": {"model_calls": 20, "input_tokens": 1000, "output_tokens": 500},
         "sandbox": {"mode": "off"},
         "programs": {"worker": {
             "name": "worker", "instructions": {"r": "work"}, "tools": ["notify"],
-            "grants": {"read": ["/src"]}, "budget": {"model_calls": 5, "tokens": 100}
+            "grants": {"read": ["/src"]},
+            "budget": {"model_calls": 5, "input_tokens": 100, "output_tokens": 50}
         }},
         "task": "lead task"
     }))
@@ -115,7 +116,8 @@ async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
     spawner.spawn(request("worker", BudgetAmount::default())).unwrap();
     let EventData::BudgetReserve { reserved, .. } = &log.events()[1].data else { panic!() };
     assert_eq!(reserved.model_calls, Some(5), "the child program declares five calls");
-    assert_eq!(reserved.tokens, Some(100), "the child program declares a hundred tokens");
+    assert_eq!(reserved.input_tokens, Some(100), "the child program declares a hundred input tokens");
+    assert_eq!(reserved.output_tokens, Some(50), "the child program declares fifty output tokens");
     assert_eq!(lock(&pool).remaining().model_calls, Some(15), "the parent keeps the rest of the pool");
 
     spawner.spawn(request("worker", BudgetAmount::default())).unwrap();

@@ -207,7 +207,10 @@ async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_co
     let started = tokio::time::Instant::now();
     let fx = Fixture::new(
         "loop-retry",
-        |v| v["budget"]["model_calls"] = json!(3),
+        |v| {
+            v["budget"]["model_calls"] = json!(3);
+            v["budget"]["output_tokens"] = json!(30);
+        },
         vec![
             vec![Chunk::Error { message: "rate limited (429)".into(), retryable: true }],
             vec![text_chunk("partial text"), Chunk::Error { message: "gone".into(), retryable: true }],
@@ -228,6 +231,14 @@ async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_co
     assert_eq!(started.elapsed().as_millis() as u64, announced, "each delay the log announces was waited");
     let requests: Vec<_> = events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).collect();
     assert_eq!(requests.len(), 3);
+    let output_caps: Vec<Option<u32>> = requests
+        .iter()
+        .map(|e| match &e.data {
+            EventData::ModelRequest(request) => request.max_output_tokens,
+            _ => unreachable!(),
+        })
+        .collect();
+    assert_eq!(output_caps, [Some(30), Some(30), Some(30)], "each retry recalculates the remaining allowance");
     let EventData::ModelRequest(third) = &requests[2].data else { panic!() };
     assert_eq!((third.step, third.attempt), (1, 3));
     assert!(third.consumed.is_empty(), "the task was consumed by the first attempt");

@@ -62,7 +62,7 @@ def all_events(logs: Iterable[tuple[Path, list[dict[str, Any]]]]) -> Iterable[di
         yield from events
 
 
-TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "billed_budget_tokens")
+TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "total_tokens")
 
 EVALUATED = 0
 DEPLOYMENT_FAULT = 1
@@ -102,7 +102,7 @@ def usage(logs: list[tuple[Path, list[dict[str, Any]]]]) -> dict[str, Any]:
         "input_tokens": totals["input"],
         "output_tokens": totals["output"],
         "cache_read_tokens": totals["cache_read"],
-        "billed_budget_tokens": totals["input"] + totals["output"],
+        "total_tokens": totals["input"] + totals["output"],
     }
     return {
         "model_calls": len(requests),
@@ -334,7 +334,12 @@ def unstarted_result(task: Task, attempt: int, case: Path, fault: str) -> dict[s
         "components": {name: None for name in COMPONENTS},
         "outcome": {},
         "usage": usage([]),
-        "limits": {"model_calls": task.model_calls, "tokens": task.tokens, "seconds": task.seconds},
+        "limits": {
+            "model_calls": task.model_calls,
+            "input_tokens": task.input_tokens,
+            "output_tokens": task.output_tokens,
+            "seconds": task.seconds,
+        },
         "duration_seconds": None,
         "mechanism": {},
         "grader_findings": [],
@@ -431,7 +436,8 @@ def run_task(
     within_budget = (
         measured["usage_reported"]
         and measured["model_calls"] <= task.model_calls
-        and measured["billed_budget_tokens"] <= task.tokens
+        and measured["input_tokens"] <= task.input_tokens
+        and measured["output_tokens"] <= task.output_tokens
     )
     components = {
         "artifact_correct": artifact_correct,
@@ -456,7 +462,8 @@ def run_task(
         "usage": measured,
         "limits": {
             "model_calls": task.model_calls,
-            "tokens": task.tokens,
+            "input_tokens": task.input_tokens,
+            "output_tokens": task.output_tokens,
             "seconds": task.seconds,
         },
         "duration_seconds": round(duration, 3),
@@ -514,7 +521,8 @@ def aggregate(results: list[dict[str, Any]], attempts: int, tasks: tuple[Task, .
         "usage": total_usage,
         "declared_maximum": {
             "model_calls": sum(task.model_calls for task in tasks) * attempts,
-            "tokens": sum(task.tokens for task in tasks) * attempts,
+            "input_tokens": sum(task.input_tokens for task in tasks) * attempts,
+            "output_tokens": sum(task.output_tokens for task in tasks) * attempts,
             "seconds": sum(task.seconds for task in tasks) * attempts,
         },
     }
@@ -529,21 +537,23 @@ def spending_plan(selected: tuple[Task, ...], attempts: int, model_route: dict[s
         f"Largest spend it can incur, at {attempts} {attempt_word} of each of "
         f"{len(selected)} {task_word}:",
         "",
-        f"  {'model calls':>11}  {'tokens':>7}  task",
+        f"  {'model calls':>11}  {'input':>7}  {'output':>7}  task",
     ]
     for task in selected:
         calls = task.model_calls * attempts
-        tokens = task.tokens * attempts
-        lines.append(f"  {calls:>11}  {tokens:>7,}  {task.name}")
+        input_tokens = task.input_tokens * attempts
+        output_tokens = task.output_tokens * attempts
+        lines.append(f"  {calls:>11}  {input_tokens:>7,}  {output_tokens:>7,}  {task.name}")
     total_calls = sum(task.model_calls for task in selected) * attempts
-    total_tokens = sum(task.tokens for task in selected) * attempts
+    total_input = sum(task.input_tokens for task in selected) * attempts
+    total_output = sum(task.output_tokens for task in selected) * attempts
     lines.extend(
         [
-            f"  {total_calls:>11}  {total_tokens:>7,}  every selected task",
+            f"  {total_calls:>11}  {total_input:>7,}  {total_output:>7,}  every selected task",
             "",
-            "A token count is input plus output. foe stops an episode at its declared",
-            "limit, so these figures bound the run. The report states the tokens the",
-            "attempts actually billed.",
+            "The output allowance is capped before each request. The input preflight uses",
+            "an estimate because exact provider tokenization is unavailable. The report",
+            "states the provider-reported input and output for every attempt.",
             "",
             "No attempt was launched. Add --confirm-spend to launch them.",
         ]

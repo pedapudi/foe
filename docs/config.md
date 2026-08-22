@@ -74,7 +74,7 @@ episode.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "name": "fix-parser-test",
 
   "instructions": {
@@ -102,7 +102,12 @@ episode.
     "spawn": []
   },
 
-  "budget": { "model_calls": 40, "tokens": 400000, "seconds": 1800 },
+  "budget": {
+    "model_calls": 40,
+    "input_tokens": 320000,
+    "output_tokens": 80000,
+    "seconds": 1800
+  },
 
   "done_when": { "verify": "check", "retries": 2 },
 
@@ -120,7 +125,7 @@ episode.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "name": "hello",
   "instructions": { "role": "You are a coding agent." },
   "tools": ["read", "grep", "edit", "bash"],
@@ -141,7 +146,7 @@ is omitted.
 ### `version`
 
 Integer. Required. The configuration format version. This document describes
-version 1.
+version 2.
 
 ### `name`
 
@@ -282,19 +287,30 @@ Object. Required.
 | field | type | required | default | meaning |
 |---|---|---|---|---|
 | `model_calls` | integer | yes | | maximum model requests, including retries |
-| `tokens` | integer | no | unlimited | maximum input plus output tokens across all requests |
+| `input_tokens` | integer | no | unlimited | maximum provider-reported input tokens across all requests, including cache-read input |
+| `output_tokens` | integer | no | unlimited | maximum provider-reported output tokens across all requests, including reasoning when the provider includes it |
 | `seconds` | integer | no | unlimited | wall-clock limit for the episode |
 | `max_depth` | integer | no | 1 | how many levels of child episodes may exist below this one; 0 forbids spawning |
 | `max_episodes` | integer | no | 8 | lifetime count of episodes in the tree, including this one |
 | `max_concurrent` | integer | no | 4 | direct children of this episode running at once |
 | `loop_threshold` | integer | no | 3 | consecutive identical tool calls, or identical assistant turns, that end the episode as blocked |
 
-`model_calls`, `tokens`, `seconds`, `max_depth`, and `max_episodes` apply to
-the whole tree below this episode. A child's budget is reserved from its
-parent's remainder: the spawn grants the child a share, the child cannot
-exceed it, and the child reports back what its whole subtree used. A child
-program that declares a limit larger than the share it receives runs under
-the share.
+`model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`, and
+`max_episodes` apply to the whole tree below this episode. A child's budget
+is reserved from its parent's remainder. The child reports what its whole
+subtree used. A child program that declares a larger limit runs under its
+reserved share.
+
+Before each request, the runtime estimates the model-visible input at one
+token per four serialized bytes. It refuses a request whose estimate exceeds
+the remaining input allowance. Provider-reported usage is authoritative and
+can exceed the allowance because the runtime has no provider tokenizer.
+Cached input remains part of `input_tokens`.
+
+The runtime clamps each request's output cap to the remaining
+`output_tokens`. This applies to ordinary requests, retries, workflow
+recovery decisions, and compaction summaries. A configured
+`model.max_output_tokens` can make the per-request cap smaller.
 
 The episode share a spawn asks for depends on whether the child can start
 descendants at all. A child that can start none asks for one episode, so a

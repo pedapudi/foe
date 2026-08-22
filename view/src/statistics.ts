@@ -192,7 +192,8 @@ function limitsOf(root: StatisticsEpisode, counts: Record<string, number>): Limi
   const budget = obj(obj(root.program).budget);
   const declared: [string, string, string, number, string][] = [
     ["model_calls", "model calls", "calls", counts.requests!, "one per `model/request`, retried attempts included"],
-    ["tokens", "tokens", "tokens", counts.tokens!, "input plus output over every `assistant/message`"],
+    ["input_tokens", "input tokens", "tokens", counts.input!, "input over every `assistant/message`"],
+    ["output_tokens", "output tokens", "tokens", counts.output!, "output over every `assistant/message`"],
     ["seconds", "wall clock", "seconds", counts.seconds!, "from the root's `episode/start` to its end"],
     ["max_episodes", "episodes", "episodes", counts.episodes!, "one per log under this episode, itself included"],
     ["max_depth", "depth", "levels", counts.depth!, "the deepest lineage below this episode"],
@@ -270,7 +271,8 @@ export function computeStatistics(scope: StatisticsEpisode[], now: number): Stat
       ? []
       : limitsOf(root, {
           requests: steps.length,
-          tokens: (input ?? 0) + (output ?? 0),
+          input: input ?? 0,
+          output: output ?? 0,
           seconds: totalMs / 1000,
           episodes: scope.length,
           depth,
@@ -362,8 +364,8 @@ export interface CurveLayout {
   peakY: number;
   /** Longest series, which is the x extent. */
   steps: number;
-  /** The declared token limit and its y, absent when none is declared. */
-  budget: { tokens: number; y: number } | null;
+  /** The declared input-token limit and its y, absent when none is declared. */
+  budget: { inputTokens: number; y: number } | null;
   plot: { left: number; right: number; top: number; bottom: number };
   width: number;
   height: number;
@@ -389,7 +391,7 @@ export function layoutContextCurve(
     if (list) list.push(step);
     else byEpisode.set(step.episodeId, [step]);
   }
-  const declared = stats.limits.find((l) => l.key === "tokens");
+  const declared = stats.limits.find((l) => l.key === "input_tokens");
   const left = 52;
   const right = Math.max(left + 20, width - 14);
   const top = 10;
@@ -421,7 +423,7 @@ export function layoutContextCurve(
     peak,
     peakY: y(peak),
     steps,
-    budget: declared ? { tokens: declared.limit, y: y(declared.limit) } : null,
+    budget: declared ? { inputTokens: declared.limit, y: y(declared.limit) } : null,
     plot: { left, right, top, bottom },
     width,
     height,
@@ -470,4 +472,3 @@ export function layoutTools(tools: ToolGroup[], width: number): { name: string; 
   const longest = Math.max(1, ...tools.map((t) => t.durationMs));
   return tools.map((group) => ({ name: group.name, w: (group.durationMs / longest) * width, group }));
 }
-

@@ -36,7 +36,7 @@ fn call(id: &str, name: &str, args: &str) -> Vec<Value> {
 
 fn config(dir: &Path, edit: impl FnOnce(&mut Value)) -> Value {
     let mut value = json!({
-        "version": 1,
+        "version": 2,
         "name": "test",
         "instructions": { "role": "You are under test." },
         "tools": ["read"],
@@ -484,6 +484,8 @@ fn a_failed_tool_node_is_retried_through_recovery() {
         c["tools"] = json!(["flaky"]);
         c["tool_defs"] = json!({ "flaky": { "exec": script, "description": "Fails once." } });
         c["grants"]["write"] = json!([dir]);
+        c["budget"]["input_tokens"] = json!(1000);
+        c["budget"]["output_tokens"] = json!(12);
         c["workflow"] = json!({ "nodes": {
             "only": { "tool": "flaky", "args": { "args": [] }, "max_fires": 2, "terminal": true }
         } });
@@ -505,6 +507,8 @@ fn a_failed_tool_node_is_retried_through_recovery() {
     assert!(first_end["data"]["error"].as_str().unwrap().contains("exit code 1"));
     let header = events.iter().find(|e| e["type"] == "request/header").unwrap();
     assert_eq!(header["data"]["tools"][0]["name"], "recover");
+    let request = events.iter().find(|e| e["type"] == "model/request").unwrap();
+    assert_eq!(request["data"]["max_output_tokens"], 12, "workflow recovery uses the remaining output allowance");
     let item = events.iter().find(|e| e["type"] == "inbox/item" && e["data"]["source"] == "system").unwrap();
     assert!(item["data"]["content"][0]["text"].as_str().unwrap().contains("Node `only` failed on firing 1"));
 }
@@ -583,7 +587,7 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     let dir = scratch("compaction");
     std::fs::write(dir.join("f.txt"), "line\n").unwrap();
     let config = config(&dir, |c| {
-        c["budget"] = json!({ "model_calls": 4 });
+        c["budget"] = json!({ "model_calls": 4, "input_tokens": 1000, "output_tokens": 25 });
         c["context"] = context.clone();
     });
     let (events, code) = host_run(&dir, &config, responses(), |_, _| Value::Null);
@@ -591,11 +595,21 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     let requests: Vec<&Value> = events.iter().filter(|e| e["type"] == "model/request").collect();
     let ids: Vec<&str> = requests.iter().map(|r| r["data"]["request_id"].as_str().unwrap()).collect();
     assert_eq!(ids, ["rq_0001", "rq_0002", "cmp_0003", "rq_0004"], "one counter numbers every request");
+    let output_caps: Vec<u64> = requests.iter().map(|r| r["data"]["max_output_tokens"].as_u64().unwrap()).collect();
+    assert_eq!(
+        output_caps,
+        [25, 20, 15, 10],
+        "ordinary, compaction, and post-compaction requests share one output allowance"
+    );
     let by_type = |t: &str| events.iter().find(|e| e["type"] == t).unwrap_or_else(|| panic!("no {t}"));
     let start = by_type("compaction/start");
     assert_eq!(start["data"]["step"], 3);
     assert_eq!(start["data"]["trigger"], "threshold");
-    assert_eq!(start["data"]["projected_tokens"], 90 + 5 + 2, "input, output, and the result that followed");
+    assert_eq!(
+        start["data"]["projected_tokens"],
+        90 + 5 + 2 + 15,
+        "input, output, result estimate, and the remaining output cap"
+    );
     assert_eq!(start["data"]["reserved"]["model_calls"], 2);
     let summary = by_type("compaction/summary");
     assert_eq!(summary["data"]["first_kept_seq"], requests[1]["seq"], "the cut is the second step's request");

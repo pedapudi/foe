@@ -128,7 +128,8 @@ Every reported configuration identifies:
 - the foe program identity and runtime build hash;
 - the provider, model identifier, and model options;
 - the benchmark name, dataset version, and task identifier;
-- the root token, model-call, episode, concurrency, and time limits;
+- the root input-token, output-token, model-call, episode, concurrency, and
+  time limits;
 - the sandbox mode and observed Landlock ABI;
 - the number of independent attempts per task.
 
@@ -143,27 +144,26 @@ graders. Each external grader lives outside the episode's read and write
 grants and is absent from its configuration. Code tasks expose a separate
 visible verifier. Typed-return tasks expose only the return schema.
 
-| task | assessed behavior | token limit | model-call limit |
-|---|---|---:|---:|
-| untrusted instruction containment | repairs code while ignoring an instruction embedded in generated project data | 6,000 | 4 |
-| typed configuration evidence | returns a schema-checked finding with a path and JSON Pointer that resolve against the repository | 5,000 | 4 |
-| delegated order quotation | combines reports from two read-only child episodes into a verified code repair | 24,000 | 16 |
-| declared migration workflow | chooses and applies a safe migration through declared evidence, decision, and application nodes | 5,000 | 6 |
-| compaction ledger continuity | resolves linked state after a required context compaction and cites the source of every final value | 16,000 | 10 |
+| task | assessed behavior | input-token limit | output-token limit | model-call limit |
+|---|---|---:|---:|---:|
+| untrusted instruction containment | repairs code while ignoring an instruction embedded in generated project data | 4,800 | 1,200 | 4 |
+| typed configuration evidence | returns a schema-checked finding with a path and JSON Pointer that resolve against the repository | 4,000 | 1,000 | 4 |
+| delegated order quotation | combines reports from two read-only child episodes into a verified code repair | 19,200 | 4,800 | 16 |
+| declared migration workflow | chooses and applies a safe migration through declared evidence, decision, and application nodes | 4,000 | 1,000 | 6 |
+| compaction ledger continuity | resolves linked state after a required context compaction and cites the source of every final value | 12,800 | 3,200 | 10 |
 
-Each attempt declares limits totaling 56,000 input-plus-output tokens and 40
-model calls. The root budget includes child and compaction requests. The
-report gives actual usage because one provider response can cross a remaining
-token limit before foe records and enforces that limit.
+Each attempt declares limits totaling 44,800 input tokens, 11,200 output
+tokens, and 40 model calls. The root budget includes child and compaction
+requests. The report gives provider-reported usage for both token dimensions.
 
 #### Knowing the spend before the run
 
 This suite calls a real provider and bills real credit, so it launches nothing
 until the spend is confirmed. Invoked without `--confirm-spend`, the runner
 prints the model route it would call, the declared model-call and token
-ceiling of every selected task, and the total for the requested number of
-attempts, then exits 2 without contacting the provider. Read that output
-first:
+allowances of every selected task, and the total for the requested number
+of attempts. It then exits 2 without contacting the provider. Read that
+output first:
 
 ```sh
 bazel run //evals:micro -- --model openai/gpt-5.6-sol
@@ -210,7 +210,8 @@ when it hit no deployment fault and all five component checks pass:
 - `outcome_correct`: foe records a completed outcome;
 - `mechanism_exercised`: the required authority, typed evidence, child, workflow, or compaction evidence appears in the log;
 - `trace_conformant`: the deterministic trace evaluator finds no contract violation;
-- `within_budget`: every model response reported its usage, and that usage stays within the task's call and token limits.
+- `within_budget`: every model response reported its usage, and input,
+  output, and model-call usage stay within their respective limits.
 
 The report preserves every component beside the strict result. A correct
 workspace left by an exhausted episode therefore remains visible as artifact
@@ -242,8 +243,8 @@ exits 1 when any attempt hit a fault.
 
 Token totals are present only when every model response in an attempt reported
 its own usage. Otherwise `input_tokens`, `output_tokens`, `cache_read_tokens`,
-and `billed_budget_tokens` are null, because a spend nobody measured is
-unknown rather than zero. `model_responses` and `responses_with_usage` state
+and `total_tokens` are null, because a spend nobody measured is unknown rather
+than zero. `model_responses` and `responses_with_usage` state
 how many responses the judgement rests on. The aggregate totals tokens over
 attempts with reported usage and states that number in
 `attempts_with_reported_usage`. `model_calls` is always present, since counting
@@ -256,8 +257,9 @@ so it does not change the exit status.
 
 #### Reliability across attempts
 
-The default single attempt declares 56,000 tokens across its five tasks. Use
-two attempts per task for an initial reliability result:
+The default single attempt declares 44,800 input tokens and 11,200 output
+tokens across its five tasks. Use two attempts per task for an initial
+reliability result:
 
 ```sh
 bazel run //evals:micro -- \
@@ -266,7 +268,8 @@ bazel run //evals:micro -- \
   --attempts 2
 ```
 
-Two attempts declare 112,000 tokens and 80 model calls. The
+Two attempts declare 89,600 input tokens, 22,400 output tokens, and 80 model
+calls. The
 `tasks_strict_in_every_attempt` field contains tasks that passed strictly on
 every attempt. Use the larger external benchmarks below for capability claims
 across broader task distributions.
@@ -278,22 +281,17 @@ fail its grader, and every oracle artifact must pass:
 bazel test //evals:micro_tasks_test
 ```
 
-#### The delegated case and reserved child budgets
+#### Input estimation and reserved child budgets
 
-The delegated order quotation case exposes a runtime defect that the other
-four do not reach. A child episode's reservation is debited after the provider
-reports usage, so a child can spend more than it reserved by up to one
-response. The root episode then absorbs the overspend and can exhaust its own
-token budget while its children hold reservations.
+The runtime estimates request input because it has no provider tokenizer.
+A provider can report more input than the preflight estimate. One response
+can therefore cross the remaining input allowance. The root account records
+the reported usage, including an overrun in a descendant.
 
-An attempt that meets this condition ends `exhausted` by `tokens`, and the
-trace evaluator records a `hierarchical_budgets` violation reading "released
-child spend exceeds its tokens reservation". The workspace can still be
-correct, so the attempt shows artifact success beside outcome, mechanism,
-trace, and budget failure. Issue 26, "Reserve token allowance before each
-model request", is the open cause. This case is the regression signal for that
-issue. An attempt fails it whenever a child's final response crosses that
-child's reservation, which the runtime currently permits.
+The runner treats such an attempt as outside budget. The trace evaluator
+still checks that the released input equals the child log. It does not claim
+that an estimated input reservation strictly bounds provider-reported input.
+Output has a provider cap derived from the remaining output allowance.
 
 ### Comparable metrics
 
