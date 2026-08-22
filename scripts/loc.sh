@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Three budgets: 6000 over log, core, code, and view together; 1000 over
-# workflow; 500 over context. See docs/design.md "Size".
+# Four budgets: 6000 over the runtime, which is log, core, and code together;
+# 1000 over workflow; 500 over context; 600 over view. The viewer is budgeted
+# apart from the runtime because it delivers a record of a run rather than
+# running one, and its browser bundle is bounded by size instead, in view/.
+# See docs/design.md "Size".
 set -euo pipefail
 cd "$(dirname "$0")/.."
 count() {
@@ -9,13 +12,15 @@ count() {
       -exec cat {} + | grep -cvE '^\s*$|^\s*//' || true
 }
 total=0
-for c in log core code view; do
+for c in log core code; do
   n=$(count "$c")
   printf '%-8s %6d\n' "$c" "$n"; total=$((total + n))
 done
-printf '%-8s %6d  (budget 6000)\n' total "$total"
+printf '%-8s %6d  (budget 6000)\n' runtime "$total"
 workflow=$(count workflow)
 printf '%-8s %6d  (budget 1000)\n' workflow "$workflow"
 context=$(count context)
 printf '%-8s %6d  (budget 500)\n' context "$context"
-[ "$total" -le 6000 ] && [ "$workflow" -le 1000 ] && [ "$context" -le 500 ]
+view=$(count view)
+printf '%-8s %6d  (budget 600)\n' view "$view"
+[ "$total" -le 6000 ] && [ "$workflow" -le 1000 ] && [ "$context" -le 500 ] && [ "$view" -le 600 ]

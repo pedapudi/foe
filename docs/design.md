@@ -595,12 +595,17 @@ model call. Nothing depends on `crates/view` except the binary.
 
 ## Size
 
-The Rust source across `log`, `core`, `code`, and `view` stays under 6,000
-lines, excluding tests and generated code. The workflow executor in
+The runtime is `log`, `core`, and `code`, and its Rust source stays under
+6,000 lines, excluding tests and generated code. The workflow executor in
 `crates/workflow` stays under 1,000 lines on the same terms, and the
-compaction policy in `crates/context` under 500. The browser bundle stays
-under 150 KB compressed. The built-in transport and the binary are budgeted
-separately. Continuous integration enforces all five as tests.
+compaction policy in `crates/context` under 500.
+
+The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
+and the browser bundle it serves under 150 KB compressed. It is separate
+because it delivers a record of a run rather than running one, so a viewer
+that grows must not force the runtime to shrink. The built-in transport and
+the binary are budgeted separately again. Continuous integration enforces
+every budget as a test.
 
 The budget is a design constraint rather than an aspiration. A runtime that
 other systems embed and audit earns trust in proportion to how little of it
