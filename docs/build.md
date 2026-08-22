@@ -61,22 +61,24 @@ Later builds use the Bazel repository and action caches.
 
 ## Run the end-to-end demos
 
-Two executable targets demonstrate workflows and kernel-enforced sandboxing:
+Three executable targets demonstrate workflows, kernel-enforced sandboxing,
+and foe extending a disposable copy of its own source:
 
 ```sh
 bazel run //examples/workflow
 bazel run //examples/sandbox
+bazel run //examples/self-extension
 ```
 
 Each target builds the foe binary, creates a disposable project under
 `target/`, runs one complete episode, checks the result, and prints a viewer
-command. The workflow target uses a deterministic local transport. The
-sandbox target requires Linux with Landlock support. Both targets require
-`/usr/bin/python3`. The demo episodes need no model credential and make no
-network requests.
+command. The workflow and self-extension targets use a deterministic local
+transport. The sandbox target requires Linux with Landlock support. Every
+target requires `/usr/bin/python3`. The demo episodes need no model credential
+and make no network requests.
 
-Bazel can run both demonstrations as tests. Test runs place their temporary
-projects under Bazel's test directory:
+Bazel can run all three demonstrations as tests. Test runs place their
+temporary projects under Bazel's test directory:
 
 ```sh
 bazel test //examples/...

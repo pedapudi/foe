@@ -25,4 +25,4 @@ specify one piece each.
 
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the
 rules for changing the repository. `examples/` holds one configuration per
-mechanism and two self-contained end-to-end runners.
+mechanism and three self-contained end-to-end runners.

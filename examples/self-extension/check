@@ -1,0 +1,23 @@
+#!/bin/sh
+
+require_text() {
+  path=$1
+  expected=$2
+  finding=$3
+  if ! grep -Fq "$expected" "$path"; then
+    echo "$finding"
+  fi
+}
+
+require_text crates/code/src/read.rs \
+  '"total_bytes": bytes.len(),' \
+  'crates/code/src/read.rs does not report total_bytes'
+require_text crates/code/src/read_test.rs \
+  'assert_eq!(v.value["total_bytes"], 14);' \
+  'crates/code/src/read_test.rs does not assert the byte count'
+require_text docs/tools.md \
+  '`path`, `offset`, `total_bytes`, `total_lines`' \
+  'docs/tools.md does not list total_bytes in the canonical value'
+require_text docs/tools.md \
+  'field reports the size of the complete file' \
+  'docs/tools.md does not explain total_bytes'

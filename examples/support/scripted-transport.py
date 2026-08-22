@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Return deterministic model chunks for the workflow and sandbox demos."""
+"""Return deterministic model chunks for the end-to-end demos."""
 
 import json
 import sys
@@ -84,6 +84,75 @@ def sandbox(request: dict) -> None:
     done(request_id, "end")
 
 
+def self_extension(request: dict) -> None:
+    request_id = request["request_id"]
+    messages = request["messages"]
+    tool_results = [message for message in messages if message["role"] == "tool"]
+    if not tool_results:
+        for call_id, path in [
+            ("read-tool", "crates/code/src/read.rs"),
+            ("read-test", "crates/code/src/read_test.rs"),
+            ("read-doc", "docs/tools.md"),
+        ]:
+            call(request_id, call_id, "read", {"path": path})
+        done(request_id, "tool")
+        return
+    if not any(message.get("name") == "edit" for message in tool_results):
+        call(
+            request_id,
+            "edit-tool",
+            "edit",
+            {
+                "path": "crates/code/src/read.rs",
+                "edits": [
+                    {
+                        "old_text": '                "offset": offset,\n                "total_lines": total,\n',
+                        "new_text": '                "offset": offset,\n                "total_bytes": bytes.len(),\n                "total_lines": total,\n',
+                    }
+                ],
+            },
+        )
+        call(
+            request_id,
+            "edit-test",
+            "edit",
+            {
+                "path": "crates/code/src/read_test.rs",
+                "edits": [
+                    {
+                        "old_text": '    assert_eq!(v.value["total_lines"], 3);\n',
+                        "new_text": '    assert_eq!(v.value["total_bytes"], 14);\n    assert_eq!(v.value["total_lines"], 3);\n',
+                    }
+                ],
+            },
+        )
+        call(
+            request_id,
+            "edit-doc",
+            "edit",
+            {
+                "path": "docs/tools.md",
+                "edits": [
+                    {
+                        "old_text": "| `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |",
+                        "new_text": "| `path`, `offset`, `total_bytes`, `total_lines`, `shown`, `truncated`, `content` |",
+                    },
+                    {
+                        "old_text": "caps the window below the line limit; `truncated` is true whenever lines\nremain beyond the window, whatever the cause.\n",
+                        "new_text": "caps the window below the line limit; `truncated` is true whenever lines\nremain beyond the window, whatever the cause. The canonical `total_bytes`\nfield reports the size of the complete file, including bytes outside the window.\n",
+                    },
+                ],
+            },
+        )
+        done(request_id, "tool")
+        return
+    emit(
+        request_id,
+        {"kind": "text", "delta": "Added total_bytes to the read result, its regression test, and its specification."},
+    )
+    done(request_id, "end")
+
+
 def main() -> None:
     request = json.loads(sys.stdin.readline())
     scenario = request["model"]
@@ -91,6 +160,8 @@ def main() -> None:
         workflow(request)
     elif scenario == "sandbox-demo":
         sandbox(request)
+    elif scenario == "self-extension-demo":
+        self_extension(request)
     else:
         emit(
             request["request_id"],

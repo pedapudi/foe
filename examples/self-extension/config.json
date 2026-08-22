@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "self-extension",
+  "instructions": {
+    "role": "You are extending foe in a disposable copy of its own source. Read each affected file before editing it. Keep the implementation, regression test, and specification consistent."
+  },
+  "tools": ["read", "edit", "check"],
+  "tool_defs": {
+    "check": {
+      "exec": "/home/user/foe/examples/self-extension/check",
+      "description": "Checks that the read tool exposes total_bytes, its regression test covers the field, and its specification names and explains the field. Prints one finding per line and prints nothing when the source passes.",
+      "cwd": "/home/user/project"
+    }
+  },
+  "grants": {
+    "read": ["/home/user/project"],
+    "write": ["/home/user/project"]
+  },
+  "budget": { "model_calls": 5, "seconds": 120 },
+  "done_when": { "verify": "check", "retries": 1 },
+  "model": {
+    "provider": "exec",
+    "model": "self-extension-demo",
+    "exec": "/home/user/foe/examples/support/scripted-transport.py"
+  },
+  "sandbox": { "mode": "best-effort" },
+  "task": "Extend foe's read tool so its canonical JSON result reports the source file's complete byte count as total_bytes. Add a regression assertion and document the field. Keep rendered output unchanged."
+}

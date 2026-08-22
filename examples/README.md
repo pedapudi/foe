@@ -25,6 +25,7 @@ example needs Linux with Landlock; the rest run anywhere foe builds.
 | fix the order of the work and let the model choose only within it | [workflow](workflow/) |
 | prove the agent cannot read what I did not grant | [sandbox](sandbox/) |
 | drive foe from my own program | [embed-in-a-program](embed-in-a-program/) |
+| watch foe change its own source, its test, and its specification together | [self-extension](self-extension/) |
 | reach a model foe has no provider for | [exec-transport](exec-transport/), [host-transport](host-transport/) |
 
 ## When a run does not succeed
@@ -51,6 +52,7 @@ have seen before.
 | [workflow](workflow/) | declared tool and model nodes, typed branching, verification, and recovery |
 | [sandbox](sandbox/) | a configured executable under a required Landlock policy |
 | [embed-in-a-program](embed-in-a-program/) | the Python SDK: a program supplying the model, its own host tools, and acting on the outcome |
+| [self-extension](self-extension/) | an episode editing a disposable copy of foe's own source, with a verifier holding the change, its test, and its specification together |
 | [exec-transport](exec-transport/) | an executable translating foe's requests for another model client |
 | [host-transport](host-transport/) | a host process supplying model chunks over the line protocol |
 | [budget-exhausted](budget-exhausted/) | a limit reached while the work is unfinished |
