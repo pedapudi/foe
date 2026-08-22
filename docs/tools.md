@@ -35,7 +35,9 @@ Each name resolves against three sources, checked in this order.
 A name that resolves in two sources is an error at construction, and so is
 a name that resolves in none. `foe tools` lists the built-in tools; `foe
 tools --config FILE` lists the resolved set for a document with each tool's
-source.
+source. The second form resolves every path the document names, as
+`foe plan` does, so a document whose grants or `tool_defs` name a path that
+does not exist is refused with the key and the path.
 
 Every tool returns a canonical value, which is JSON, and may return a
 rendered string. The log stores the canonical value in full. The model
