@@ -240,7 +240,7 @@ fn browser_login(session: &mut Session) -> Result<auth::token_file::Token, Strin
     say(session, "Open this URL in your browser to sign in:")?;
     say(session, &url)?;
     if session.endpoints.open_browser {
-        open_browser(&url);
+        crate::open_browser(&url);
     }
     say(session, &format!("waiting for the browser to return to {redirect_uri} ..."))?;
     let code = wait_for_code(&listener, &state)?;
@@ -320,18 +320,6 @@ fn percent_decode(text: &str) -> String {
         }
     }
     String::from_utf8_lossy(&out).into_owned()
-}
-
-fn open_browser(url: &str) {
-    let started = std::process::Command::new("/usr/bin/xdg-open")
-        .arg(url)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-    if let Err(e) = started {
-        eprintln!("foe: /usr/bin/xdg-open: {e}; open the URL by hand");
-    }
 }
 
 // ---- the default model ----------------------------------------------------------

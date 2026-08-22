@@ -22,6 +22,7 @@ pub use foe_log::{BlockedCode, Chunk, ContentBlock, Message, Outcome, StopReason
 
 pub mod budget;
 pub mod config;
+pub mod confine;
 pub mod context;
 pub mod exec;
 pub mod grants;

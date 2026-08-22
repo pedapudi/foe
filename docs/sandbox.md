@@ -93,6 +93,25 @@ afterwards; a thread created before the ruleset is applied stays
 unrestricted. The runtime therefore applies the ruleset from the main
 thread before the asynchronous runtime exists.
 
+Part of the policy is known only after work that the policy itself would
+forbid: the port the viewer listens on, and the credential file the
+resolved model transport reads. `crates/core/src/confine.rs` holds that
+assembly. A value of type `Unconfined` owns the policy while the process is
+still unrestricted and is the only source of a mutable reference to it.
+Entering confinement consumes that value and returns a `Confined`, which
+lends the policy for reading alone. A change to the policy after
+enforcement therefore does not compile, and a second enforcement of the
+same policy does not compile.
+
+Those two properties concern the policy rather than the process. A file
+read, a socket bind, or a process start written after confinement is
+entered still compiles and still runs; the kernel refuses it when the
+policy does not allow it, which is the reason for enforcing at all. The
+types settle that the policy the kernel receives is final and that the
+kernel receives it once. They do not settle that confinement is entered
+from the main thread before any other thread exists, which the runtime does
+and no type expresses.
+
 The episode keeps:
 
 - read on its read roots, write on its write roots;

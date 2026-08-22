@@ -181,6 +181,21 @@ fn login(_provider: Option<String>, _model: Option<String>, _status: bool) -> Re
     Err("this binary was built without the transport feature; there is no provider to log in to".into())
 }
 
+/// Starts the user's browser on a URL. A running form calls this before the
+/// process restricts itself, because the browser would otherwise inherit
+/// the restriction.
+fn open_browser(url: &str) {
+    let started = std::process::Command::new("/usr/bin/xdg-open")
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    if let Err(e) = started {
+        eprintln!("foe: /usr/bin/xdg-open: {e}; open the URL by hand");
+    }
+}
+
 fn load(config: &Path) -> Result<foe_core::config::Program, String> {
     foe_core::config::load(config).map_err(|e| format!("{}: {e}", config.display()))
 }
