@@ -283,7 +283,13 @@ verifies the terminal value: a `returns` schema it must conform to, a
 terminal node's nearest model ancestor with the findings attached, up to
 `done_when.retries` times; findings that remain go to recovery at the
 terminal node. Firings still running when the workflow completes are
-awaited, so that their events precede `episode/end`. When the graph has no
+awaited, so that their events precede `episode/end`. That wait carries the
+two bounds the episode itself carries: the stop signal and the `seconds`
+budget. Reaching either one stops the firings still running and records a
+`workflow/node-end` for each, whose `error` names the bound that stopped
+it. The outcome the graph reached stands, because the episode reached it
+before the bound. A program that declares no `seconds` and is never stopped
+waits as long as its firings run. When the graph has no
 terminal node and no empty-branch path, the episode runs until its budget
 is spent and ends as `exhausted`, which is a legitimate shape for a
 supervisor loop and is reported as such by `foe plan`. A graph whose
