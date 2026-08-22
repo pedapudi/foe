@@ -353,19 +353,21 @@ export function nodeLaneOrder(firings: NodeFiring[]): string[] {
 }
 
 /**
- * The height each mark of one lane takes, so that marks landing on one x
- * stack instead of overprinting. A mark takes the lowest height whose last
- * mark ended at least `FAN_GAP` pixels before it starts, so a run of calls
- * one after another stays on one height and a batch issued together fans.
+ * The height each mark of the tool lane takes, counted from the lane's own
+ * baseline, so that marks landing on one x stack instead of overprinting. A
+ * mark takes the lowest height whose last mark ended at least `FAN_GAP`
+ * pixels before it starts, so a run of calls one after another stays on one
+ * height and a batch issued together fans. Marks arrive in seq order and
+ * keep it, so the earliest call of a batch is the one nearest the line.
  */
 function stack(placed: { x: number; w: number }[]): number[] {
   const ends: number[] = [];
   return placed.map((mark) => {
     const right = mark.x + Math.max(MARK_MIN_WIDTH, mark.w);
-    for (let lane = 0; lane < ends.length; lane += 1) {
-      if (ends[lane]! + FAN_GAP <= mark.x) {
-        ends[lane] = right;
-        return lane;
+    for (let height = 0; height < ends.length; height += 1) {
+      if (ends[height]! + FAN_GAP <= mark.x) {
+        ends[height] = right;
+        return height;
       }
     }
     ends.push(right);
@@ -406,7 +408,9 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
     tools.forEach((mark, i) => {
       mark.y = y + TOOL_LANE + bandHeight + heights[i]! * TOOL_PITCH;
     });
-    const fan = Math.max(0, (heights.length === 0 ? 1 : Math.max(...heights) + 1) - 1) * TOOL_PITCH;
+    // The deepest stacked call decides how far the row extends past the
+    // plain height; a row whose calls never collide extends by nothing.
+    const fan = heights.reduce((deepest, height) => Math.max(deepest, height), 0) * TOOL_PITCH;
 
     const firings: PlacedFiring[] = episode.firings.map((firing) => {
       const start = scale(value(axis, firing.startTime, firing.startSeq));

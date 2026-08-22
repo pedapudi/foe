@@ -3,10 +3,11 @@
 // selected row carries the one accent, a spawn edge is solid and a fork
 // edge dashed, and outcome colour is earned by direction.
 //
-// A row stacks the channels an episode's work nests into. A workflow
-// episode's node band sits above, one lane per node that fired; the
-// lifetime line carries the model requests; the tool lane below it fans a
-// batch of calls issued together so that the batch is countable.
+// A row stacks the channels an episode's work nests into, in the order of
+// containment: model requests above the lifetime line, the line itself,
+// then the node band of a declared graph with one lane per node that fired,
+// then the tool lane, which fans a batch of calls issued together so that
+// the batch is countable.
 //
 // The pane holds no state of its own beyond the axis choice and the
 // hovercard: it is handed the episodes and redraws when a digest of what
@@ -257,8 +258,9 @@ export class TrajectoryView {
       class: `traj-row${selected ? " selected" : ""}${row.id === this.state.cursor ? " cursor" : ""}`,
       "data-id": row.id,
     });
-    // The figure's one emphasis: a spine down the row's leading edge. A
-    // filled row would compete with the bars drawn inside it.
+    // The figure's one accent: a spine down the row's leading edge. The
+    // ground under a selected row is neutral, because an accented fill
+    // would be louder than every bar drawn over it.
     group.appendChild(svg("line", { class: "traj-spine", x1: 1, y1: row.top + 2, x2: 1, y2: row.top + row.height - 2 }));
 
     // The rail that carries depth: one segment per ancestor, the nearest of
