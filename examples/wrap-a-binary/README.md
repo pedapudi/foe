@@ -7,8 +7,8 @@ Any executable with a command line becomes a tool by declaring it in
 argument vector, without a shell; standard output, standard error, and the
 exit code come back as the result, and a non-zero exit is a result rather
 than an error. The same entry serves as the verifier: `done_when.verify`
-names it, so the episode completes only when the model finishes and the
-checker prints nothing.
+names it. A model finish and a non-error call to that tool each propose a
+candidate. The episode completes when the checker prints nothing.
 
 `style-check` in this directory is the wrapped file. It reports lines wider
 than 88 columns and `import` lines whose name appears nowhere else in the
@@ -105,19 +105,21 @@ file the checker rejects.
 
 ## What the run produces
 
-The transport answers six requests, one turn each. The model runs the
-checker, removes the unused import, and finishes. That finish is a candidate
-rather than an outcome. The runtime runs `style-check` as the verifier, which
-still reports the long line, so the findings arrive as an `inbox/item` with
-source `verify` and the model gets another turn. It splits the long statement, runs
-the checker to see it print nothing, and finishes again. This time the
-verifier prints nothing and the episode completes. `retries: 2` allows the
-feedback twice; a third set of findings would end the episode as `blocked`
-with code `verification-unsatisfiable`.
+The transport answers five requests, one turn each. The model first runs the
+checker. That tool call proposes completion because `style` is also the
+verifier. The runtime runs `style-check` again and returns both findings in
+an `inbox/item` with source `verify`.
 
-A verifier run leaves no `tool/result`, because the runtime invoked it rather
-than the model. Its evidence in the log is the `verify` inbox item, and its
-absence is what a completed outcome means.
+The model removes the unused import and finishes. The verifier returns the
+remaining long-line finding. The model splits the long statement and calls
+the checker again. The successful checker call proposes completion, and the
+separate verifier run accepts it. The episode ends without another model
+request. `retries: 2` allows two sets of findings. A third set would end the
+episode as `blocked` with code `verification-unsatisfiable`.
+
+A verifier run leaves no `tool/result`, because the runtime invokes it
+separately from the model. Its findings appear in a `verify` inbox item. An
+empty result permits a completed outcome without adding an inbox item.
 
 `run.sh` then checks the log and the project:
 
@@ -128,18 +130,19 @@ absence is what a completed outcome means.
 - The first checker call exits zero while reporting the unused import, which
   is the exit discipline a verifier requires.
 - The second checker call comes after the second edit and its standard output
-  is empty, so the model saw the file pass before finishing.
-- Exactly two assistant messages stop with `end`, and exactly one `inbox/item`
-  has source `verify`. The verify item names the long line and sits between
-  the model's first finish and its second edit, so the verifier is what sent
-  the model back.
+  is empty.
+- Exactly one assistant message stops with `end`, and exactly two
+  `inbox/item` events have source `verify`. The first follows the model's
+  checker call. The second follows the model's finish. Both precede the edit
+  that resolves their findings.
+- No model request follows the successful checker call.
 - The last event is `episode/end` and its outcome kind is `completed`.
 - The runner runs `style-check` over the finished project itself and requires
   empty output.
 
 ## In the viewer
 
-The verifier pass appears between the model's first final turn and the
-outcome, and the `verify` inbox item appears as a user message whose source is
-labeled. Each `style` call shows its exit code and both output streams, and
-each `edit` call shows its unified diff.
+The two verifier findings appear as user messages whose source is labeled.
+Each `style` call shows its exit code and both output streams. Each `edit`
+call shows its unified diff. The successful final checker call is followed
+directly by the completed outcome.
