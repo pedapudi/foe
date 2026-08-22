@@ -91,7 +91,8 @@ the configuration. The `assistant/chunk` events are the program's chunks,
 recorded by foe as they arrived; they arrive together when the program
 exits, because the executor captures its output whole. The
 `episode/start.program.model` block names the program and every option
-passed to it. In the viewer, the header line shows the route `exec`.
+passed to it. In the viewer, the conversation tab's system prompt row names
+the route `exec/exec-transport-demo`.
 
 ## What the runner checks
 

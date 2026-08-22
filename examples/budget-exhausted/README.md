@@ -82,5 +82,5 @@ run that completed; the ending is the whole difference. The `usage` in every
 `assistant/message` is zero, because the transport reports no token counts,
 and this configuration declares no `tokens` limit for them to count against.
 
-In the viewer, the budget line counts four model calls against four, and the
-outcome line names the limit.
+In the viewer, the details region counts four model calls against four, and
+its outcome row reads `exhausted · model_calls`.

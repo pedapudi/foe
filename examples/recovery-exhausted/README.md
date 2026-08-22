@@ -112,4 +112,5 @@ the project it was granted. The last event is `episode/end` with the blocked
 outcome.
 
 In the viewer, the step shows its five attempts with the delay between them,
-and the outcome line names the code.
+and the details region's outcome row reads
+`blocked · recovery-exhausted`.

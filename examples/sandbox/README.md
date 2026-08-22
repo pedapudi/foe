@@ -70,5 +70,6 @@ reports it in the next step.
 - The log contains the permission error from `denied.txt`.
 - `episode/start.sandbox.landlock_abi` is greater than zero.
 
-The viewer shows the Landlock ABI in the episode panel and both `cat` calls in
-the conversation. The denied call contains its exit code and standard error.
+The viewer states the Landlock ABI in the details region's sandbox row and
+shows both `cat` calls in the conversation tab. The denied call contains its
+exit code and standard error.

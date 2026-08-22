@@ -95,4 +95,5 @@ outcome tells an operator to change the work, the check, or the instructions
 rather than to rerun.
 
 In the viewer, the verify items appear in the trajectory between the steps,
-and the outcome line names the code.
+and the details region's outcome row reads
+`blocked · verification-unsatisfiable`.

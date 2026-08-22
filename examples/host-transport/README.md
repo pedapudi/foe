@@ -53,8 +53,8 @@ arrived; the `assistant/message` assembled from them has one tool call and
 second `assistant/message` has `stop: "end"` and no tool calls, so the
 episode ends `completed` with that text as the value.
 
-In the viewer, the conversation pane shows the same sequence, and the header
-line shows the route `host`.
+In the viewer, the conversation tab shows the same sequence, and its system
+prompt row names the route `host/host`.
 
 ## What the runner checks
 
