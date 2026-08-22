@@ -108,17 +108,13 @@ pub fn plan_report(wf: &WorkflowConfig) -> String {
         let bounds: Vec<String> = cycle.iter().map(|n| format!("{n} {}", wf.nodes[n].max_fires.unwrap_or(1))).collect();
         writeln!(out, "  {} -> {}  bounded by max_fires {}", cycle.join(" -> "), cycle[0], bounds.join(", ")).ok();
     }
-    if found.is_empty() {
-        out.push_str("  (none)\n");
-    }
+    out.push_str(if found.is_empty() { "  (none)\n" } else { "" });
     out.push_str("workflow write roots shared by model nodes\n");
     let overlaps = write_overlaps(wf);
     for (a, b, x, y) in &overlaps {
         writeln!(out, "  {a} and {b}: {x} and {y}").ok();
     }
-    if overlaps.is_empty() {
-        out.push_str("  (none)\n");
-    }
+    out.push_str(if overlaps.is_empty() { "  (none)\n" } else { "" });
     let terminals: Vec<&str> = wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k.as_str()).collect();
     let empty_branch = wf.nodes.values().any(|n| n.branches.values().any(Vec::is_empty));
     let completion = match (terminals.is_empty(), empty_branch) {
