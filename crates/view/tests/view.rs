@@ -166,6 +166,20 @@ fn project_names_the_unreadable_log() {
 }
 
 #[test]
+fn a_directory_with_no_log_anywhere_names_the_log_it_lacks() {
+    // The third case of the discovery rule: a directory that is neither an
+    // episode directory nor a collection is read as an episode directory,
+    // so the failure names the file it could not open rather than
+    // reporting an empty tree.
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/foe-view-empty-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("notes")).unwrap();
+    let err = foe_view::project(&dir).unwrap_err().to_string();
+    assert!(err.contains(&format!("{}/episode.jsonl", dir.display())), "{err}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn binds_an_ephemeral_port_when_the_requested_one_is_taken() {
     let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = taken.local_addr().unwrap().port();

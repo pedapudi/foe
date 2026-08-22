@@ -39,8 +39,11 @@ pub enum Error {
 pub fn export(dir: &Path) -> Result<String, Error> {
     let mut store = project::Store::new(dir);
     store.poll()?;
-    let quoted = |id: &str| serde_json::to_string(id).expect("string serializes");
-    let logs: Vec<String> = store.logs().map(|(id, lines)| format!("{}:[{}]", quoted(id), lines.join(","))).collect();
+    let mut logs = Vec::new();
+    for (id, lines) in store.logs() {
+        let id = serde_json::to_string(id).expect("string serializes");
+        logs.push(format!("{id}:[{}]", lines.join(",")));
+    }
     let tree = serde_json::to_string(&store.tree()).expect("tree serializes");
     let logs = logs.join(",");
     Ok(page(&format!("{{\"mode\":\"static\",\"episodes\":{{{logs}}},\"tree\":{tree}}}")))
@@ -64,9 +67,12 @@ fn page(boot: &str) -> String {
 fn css() -> &'static str {
     static INLINED: OnceLock<String> = OnceLock::new();
     INLINED.get_or_init(|| {
-        FONTS.iter().filter(|(_, bytes)| !bytes.is_empty()).fold(CSS.to_string(), |css, (name, bytes)| {
-            css.replace(&format!("/fonts/{name}"), &format!("data:font/woff2;base64,{}", base64(bytes)))
-        })
+        let mut css = CSS.to_string();
+        for (name, bytes) in FONTS.iter().filter(|(_, bytes)| !bytes.is_empty()) {
+            let uri = format!("data:font/woff2;base64,{}", base64(bytes));
+            css = css.replace(&format!("/fonts/{name}"), &uri);
+        }
+        css
     })
 }
 

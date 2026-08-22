@@ -246,10 +246,24 @@ test("every run is counted on its own and nothing is summed across roots", () =>
 
 test("the token bar of a run is its share of the largest run", () => {
   const runs = computeRuns([[episode("root.jsonl")], [episode("compact.jsonl")]], 0, 100);
-  const largest = runs.reduce((a, b) => (a.tokens > b.tokens ? a : b));
+  const largest = runs.reduce((a, b) => ((a.tokens ?? 0) > (b.tokens ?? 0) ? a : b));
   assert.equal(largest.w, 100, "the largest run fills the bar");
   for (const run of runs) {
-    assert.ok(Math.abs(run.w - (run.tokens / largest.tokens) * 100) < 1e-9, `${run.id} is drawn in proportion`);
+    const share = ((run.tokens ?? 0) / (largest.tokens ?? 1)) * 100;
+    assert.ok(Math.abs(run.w - share) < 1e-9, `${run.id} is drawn in proportion`);
   }
   assert.deepEqual(computeRuns([], 0, 100), [], "no root is no comparison");
+});
+
+test("a run whose answers reported no usage has no token figure and no bar", () => {
+  // Stripping the usage of every answer leaves a scope that measured no
+  // tokens, which is absent rather than zero: zero would state that the
+  // run spent nothing.
+  const bare = episode("root.jsonl");
+  const events = bare.events.map((e) =>
+    e.type === "assistant/message" ? { ...e, data: { ...(e.data as object) , usage: undefined } } : e,
+  );
+  const runs = computeRuns([[{ ...bare, events }]], 0, 100);
+  assert.equal(runs[0]!.tokens, null);
+  assert.equal(runs[0]!.w, 0);
 });

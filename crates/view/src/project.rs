@@ -112,7 +112,7 @@ impl Store {
                     }
                 }
                 Err(e) => {
-                    first_err.get_or_insert(Error::Log(dir.join("episode.jsonl"), e));
+                    first_err.get_or_insert(Error::Log(dir.join(LOG_FILE), e));
                 }
             }
             // A child directory written before its log exists holds no
@@ -152,24 +152,44 @@ impl Store {
     }
 }
 
+/// The name every episode log has, inside the directory of its episode.
+const LOG_FILE: &str = "episode.jsonl";
+
 /// The immediate subdirectories of `dir` that hold a log of their own,
-/// sorted by path. Empty when `dir` is unreadable or holds none.
+/// sorted by path. A subdirectory without a log is left out, so a
+/// directory of notes or of spilled tool values is never taken for an
+/// episode. Empty when `dir` cannot be read, which is how an absent
+/// directory arrives here.
 fn episode_dirs(dir: &Path) -> Vec<PathBuf> {
     let entries = std::fs::read_dir(dir).into_iter().flatten().flatten();
-    let mut dirs: Vec<PathBuf> = entries.map(|e| e.path()).filter(|p| p.join("episode.jsonl").is_file()).collect();
+    let mut dirs: Vec<PathBuf> = entries.map(|e| e.path()).filter(|p| p.join(LOG_FILE).is_file()).collect();
     dirs.sort();
     dirs
 }
 
-/// The root episode directories of `dir`, which the layout on disk
-/// decides. A directory holding a log of its own is one episode directory
-/// and is its own only root. A directory holding episode directories is a
-/// collection, and each entry with a log is a root of its own. A directory
-/// that is neither is its own root, so that the read which follows names
-/// its missing log in the error.
+/// The directories whose logs are the roots of the projection. What is on
+/// disk decides which of three cases `dir` falls into, and no option
+/// overrides that.
+///
+/// 1. `dir` holds a log of its own. It is one episode directory, it is its
+///    own only root, and its descendants are the logs under `children/`.
+///    Every runner and every example passes a directory of this kind.
+/// 2. `dir` holds no log and at least one immediate subdirectory does.
+///    `dir` is a collection: each of those subdirectories is a root, in
+///    path order, and each keeps its own descendants under its own
+///    `children/`. The roots are independent, so none of them is nested
+///    under any other and no parent is invented to hold them.
+/// 3. `dir` is neither, because it holds nothing, holds no log anywhere,
+///    or does not exist. It is returned as its own root, so the read that
+///    follows fails naming the `episode.jsonl` it could not open. In live
+///    mode that failure is transient and retried, so a server started on
+///    an empty directory shows each run once its log appears.
 fn roots_of(dir: &Path) -> Vec<PathBuf> {
+    if dir.join(LOG_FILE).is_file() {
+        return vec![dir.to_path_buf()];
+    }
     let roots = episode_dirs(dir);
-    if roots.is_empty() || dir.join("episode.jsonl").is_file() {
+    if roots.is_empty() {
         return vec![dir.to_path_buf()];
     }
     roots

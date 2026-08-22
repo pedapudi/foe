@@ -299,9 +299,16 @@ export interface Run {
   episodes: number;
   outcome: Outcome | null;
   statistics: Statistics;
-  /** Input plus output tokens over the root's scope. */
-  tokens: number;
-  /** Width of the token bar, against the largest total among the runs. */
+  /**
+   * Input plus output tokens over the root's scope, absent when no answer
+   * in that scope reported either figure. A run whose provider reported no
+   * usage spent an unknown number of tokens rather than none.
+   */
+  tokens: number | null;
+  /**
+   * Width of the token bar, against the largest total among the runs. Zero
+   * for a run whose tokens were never measured, which draws no bar.
+   */
   w: number;
 }
 
@@ -321,12 +328,13 @@ export function computeRuns(roots: StatisticsEpisode[][], now: number, width: nu
     .map((scope) => {
       const root = scope[0]!;
       const statistics = computeStatistics(scope, now);
-      const tokens = (statistics.tokens.input ?? 0) + (statistics.tokens.output ?? 0);
+      const { input, output } = statistics.tokens;
+      const tokens = input === null && output === null ? null : (input ?? 0) + (output ?? 0);
       const run = { id: root.id, name: root.name, episodes: scope.length, outcome: root.outcome };
       return { ...run, statistics, tokens, w: 0 };
     });
-  const largest = Math.max(1, ...runs.map((run) => run.tokens));
-  return runs.map((run) => ({ ...run, w: (run.tokens / largest) * width }));
+  const largest = Math.max(1, ...runs.map((run) => run.tokens ?? 0));
+  return runs.map((run) => ({ ...run, w: ((run.tokens ?? 0) / largest) * width }));
 }
 
 // ---- the context curve -----------------------------------------------------

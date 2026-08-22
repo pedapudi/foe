@@ -247,7 +247,11 @@ export class StatisticsView {
     const stats = run.statistics;
     const clock = stats.wallClock;
     const bar = barSvg("tool-bar", barWidth, 10, "tokens against the largest run");
-    bar.appendChild(svg("rect", { class: "seg", x: 0, y: 3, width: Math.max(0.5, run.w), height: 4 }));
+    // A run whose answers reported no usage has nothing to draw; a bar of
+    // zero width would read as a run that spent nothing.
+    if (run.tokens !== null) {
+      bar.appendChild(svg("rect", { class: "seg", x: 0, y: 3, width: Math.max(0.5, run.w), height: 4 }));
+    }
     const role = outcomeRole(run.outcome);
     const row = h(
       "tr",
@@ -255,7 +259,7 @@ export class StatisticsView {
       h("td", { class: "step-name" }, run.name, h("span", { class: "sub" }, run.id)),
       h("td", null, h("span", { class: `outcome ${role}` }, outcomeLabel(run.outcome))),
       h("td", { class: "num" }, fmtInt(stats.requests)),
-      h("td", { class: "num" }, fmtInt(run.tokens)),
+      h("td", { class: "num" }, measure(run.tokens, fmtInt)),
       h("td", { class: "num" }, fmtDuration(clock.totalMs)),
       h("td", { class: "num" }, fmtInt(stats.retries)),
       h("td", null, bar),
@@ -267,7 +271,7 @@ export class StatisticsView {
       () => "this root and every episode under it, counted on their own",
       () =>
         `${run.episodes} episode${run.episodes === 1 ? "" : "s"} · ` +
-        `${fmtInt(stats.tokens.input ?? 0)} input plus ${fmtInt(stats.tokens.output ?? 0)} output tokens`,
+        `${run.tokens === null ? ABSENT : `${fmtInt(stats.tokens.input ?? 0)} input plus ${fmtInt(stats.tokens.output ?? 0)} output`} tokens`,
     );
     return row;
   }

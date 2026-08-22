@@ -27,6 +27,14 @@ Below the top bar the page has four regions.
   that order. The workflow tab is present only for an episode whose
   program declares a graph; the other four are always present.
 
+The main region holds one episode, the selected one, however many the
+viewer shows. Reading several episodes against each other is what the
+other figures are for: the trajectory draws every episode as a row, the
+statistics tab gives every root a row of its own, and the diff tab sets
+the suffixes of two forked episodes side by side. A second conversation
+pane would take width from those three and answer a narrower question than
+any of them.
+
 Every divider between two regions is a grip that resizes them, by drag, by
 the arrow keys, or to a limit with Home and End; a double click returns a
 grip to its default. `docs/design-language.md` specifies the grip.
@@ -526,7 +534,9 @@ reserves and hands down to its descendants, so adding two roots together
 would state one pool where there are two, which is the same kind of claim
 as reporting an unmeasured quantity as zero. Comparison is what the table
 offers instead: the bar puts each run's spending against the largest run,
-and the other columns stand side by side. Clicking a row selects that
+and the other columns stand side by side. A run whose answers reported no
+usage at all has no token figure and no bar, for the same reason a run
+with no cache-read figure has no hit rate. Clicking a row selects that
 root.
 
 ## Rendering text
@@ -642,10 +652,18 @@ readable. Roots are independent: nothing is nested under a fabricated
 parent, because a parent means a shared budget pool and a settled child,
 and neither holds between two runs that merely share a directory.
 
-A directory that is neither, such as a path that does not exist, is read
-as an episode directory, so the failure names the `episode.jsonl` that is
-missing. Live mode tolerates that failure and retries, so a server started
-on an empty directory picks up each run as its log appears.
+A directory that is neither, such as a path that does not exist or one
+holding no log anywhere, is read as an episode directory, so the failure
+names the `episode.jsonl` that is missing. Live mode tolerates that
+failure and retries, so a server started on an empty directory picks up
+each run as its log appears.
+
+An episode seeded from another log carries `fork_origin`, which names that
+log's episode. The runtime writes the seeded episode under the origin's
+own `children/` and gives it a `parent_id` as well, so the origin of a
+fork is always a log in the same tree. No index from episode id to
+directory is therefore needed, and none exists: an episode whose named
+origin is not among the logs read is drawn as a root of its own.
 
 ## Live mode
 
