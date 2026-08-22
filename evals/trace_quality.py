@@ -36,6 +36,7 @@ EXHAUSTED_LIMITS = {
     "model_calls",
     "input_tokens",
     "output_tokens",
+    "context_window",
     "seconds",
     "depth",
     "episodes",
@@ -705,6 +706,17 @@ def _subtree_spend(log: EpisodeLog, children_by_parent: dict[str, list[EpisodeLo
     return {"model_calls": calls, "input_tokens": input_tokens, "output_tokens": output_tokens}
 
 
+def _output_allowance_is_enforced(log: EpisodeLog) -> bool:
+    """Whether every recorded route accepts the runtime's output cap."""
+    for event in log.events:
+        if _event_type(event) != "request/header":
+            continue
+        model = _event_data(event).get("model")
+        if isinstance(model, dict) and model.get("provider") == "openai-codex":
+            return False
+    return True
+
+
 def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
     by_id = {log.episode_id: log for log in logs if log.start}
     children_by_parent: dict[str, list[EpisodeLog]] = {}
@@ -845,7 +857,12 @@ def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
                     for name in names:
                         value = spent.get(name)
                         if isinstance(value, int):
-                            if name != "input_tokens":
+                            bounded = name != "input_tokens" and not (
+                                name == "output_tokens"
+                                and child is not None
+                                and not _output_allowance_is_enforced(child)
+                            )
+                            if bounded:
                                 evaluation.check(
                                     dimension,
                                     value <= reserved.get(name, value),

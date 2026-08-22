@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from trace_quality import evaluate
+from trace_quality import EpisodeLog, Evaluation, _check_budgets, evaluate
 
 
 def event(seq: int, kind: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -136,6 +136,74 @@ class TraceQualityTest(unittest.TestCase):
         report = evaluate_events(events)
         self.assert_dimension_fails(events, "declared_authority")
         self.assertEqual(report["observations"]["landlock_abis"], {"invalid": 1})
+
+    def test_codex_output_overrun_is_accounted_without_claiming_a_cap(self) -> None:
+        report = self.evaluate_child_output_overrun("openai-codex")
+        self.assertTrue(report["metrics"]["hierarchical_budgets"]["conformant"], report["violations"])
+
+    def test_provider_output_overrun_fails_when_the_route_accepts_a_cap(self) -> None:
+        report = self.evaluate_child_output_overrun("openai")
+        self.assertFalse(report["metrics"]["hierarchical_budgets"]["conformant"])
+        self.assertTrue(
+            any("output_tokens reservation" in item["message"] for item in report["violations"]),
+            report["violations"],
+        )
+
+    def evaluate_child_output_overrun(self, provider: str) -> dict[str, Any]:
+        outcome = {"kind": "completed", "value": "done"}
+        parent = EpisodeLog(
+            Path("parent"),
+            [
+                event(
+                    0,
+                    "episode/start",
+                    {
+                        "id": "parent",
+                        "parent_id": None,
+                        "program": {
+                            "name": "parent",
+                            "budget": {
+                                "model_calls": 2,
+                                "input_tokens": 100,
+                                "output_tokens": 100,
+                                "max_episodes": 2,
+                            },
+                        },
+                    },
+                ),
+                event(
+                    1,
+                    "budget/reserve",
+                    {
+                        "child_id": "child",
+                        "reserved": {"model_calls": 1, "input_tokens": 10, "output_tokens": 10, "episodes": 1},
+                    },
+                ),
+                event(2, "spawn/start", {"child_id": "child"}),
+                event(3, "spawn/end", {"child_id": "child", "outcome": outcome}),
+                event(
+                    4,
+                    "budget/release",
+                    {
+                        "child_id": "child",
+                        "spent": {"model_calls": 1, "input_tokens": 20, "output_tokens": 20, "episodes": 1},
+                    },
+                ),
+            ],
+        )
+        child = EpisodeLog(
+            Path("child"),
+            [
+                event(0, "episode/start", {"id": "child", "parent_id": "parent", "program": {"name": "child"}}),
+                event(1, "request/header", {"model": {"provider": provider, "model": "test"}}),
+                event(2, "model/request", {}),
+                event(3, "assistant/message", {"usage": {"input": 20, "output": 20}}),
+                event(4, "episode/end", {"outcome": outcome}),
+            ],
+        )
+        evaluation = Evaluation()
+        _check_budgets(evaluation, [parent, child])
+        return evaluation.report()
 
     def assert_dimension_fails(self, events: list[dict[str, Any]], dimension: str) -> None:
         report = evaluate_events(events)

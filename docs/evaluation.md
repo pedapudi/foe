@@ -296,7 +296,9 @@ that an input reservation strictly bounds provider-reported input.
 A provider that accepts a per-request output cap receives the remaining
 output allowance. The ChatGPT Codex backend rejects that field. An
 `openai-codex` response can therefore cross the allowance before foe charges
-its reported usage.
+its reported usage. The trace evaluator verifies the released output against
+the child log and does not claim that the unsupported cap bounded the child.
+It continues to enforce output reservations for routes that accept the cap.
 
 ### Comparable metrics
 
