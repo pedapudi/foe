@@ -226,6 +226,14 @@ exceed it, and the child reports back what its whole subtree used. A child
 program that declares a limit larger than the share it receives runs under
 the share.
 
+The episode share a spawn asks for depends on whether the child can start
+descendants at all. A child that can start none asks for one episode, so a
+leaf does not hold its parent's whole allowance against its siblings. A
+child that can start descendants asks for the `max_episodes` its own
+program declares. An entry in `grants.spawn` and a model node in the
+child's `workflow` each make the child able to start descendants, and the
+model node counts at every level of nested workflows.
+
 `max_concurrent` and `loop_threshold` apply to one episode. `max_concurrent`
 counts the direct children of the episode that declares it, so a child with
 its own children answers to its own value. The number of episodes running at

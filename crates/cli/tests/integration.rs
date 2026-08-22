@@ -291,6 +291,50 @@ fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
     assert!(types(&events).contains(&"budget/release"));
 }
 
+/// docs/config.md `budget` and docs/workflow.md "Relationship to the rest of
+/// foe": a spawned child whose only descendant is a workflow model node
+/// receives episode capacity for that model node, and the release reports
+/// the whole subtree count.
+#[test]
+fn a_spawned_child_can_run_its_workflow_model_node() {
+    let dir = scratch("spawned-workflow");
+    let config = config(&dir, |c| {
+        let mut answer = node_program("answer", &dir);
+        answer["budget"] = json!({ "model_calls": 2, "max_depth": 0, "max_episodes": 1 });
+        c["tools"] = json!(["spawn", "wait"]);
+        c["grants"]["spawn"] = json!(["worker"]);
+        c["budget"] = json!({ "model_calls": 6, "max_depth": 2, "max_episodes": 3 });
+        c["programs"] = json!({ "worker": {
+            "name": "worker", "instructions": { "role": "Run the workflow." }, "tools": ["block"],
+            "grants": { "read": [dir] },
+            "budget": { "model_calls": 2, "max_depth": 1, "max_episodes": 2 },
+            "workflow": { "nodes": {
+                "answer": { "model": answer, "follows": ["task"], "terminal": true }
+            } }
+        } });
+    });
+    let mut delegate = vec![text("delegating")];
+    delegate.extend(call("tc_spawn", "spawn", r#"{"program":"worker","task":"answer"}"#));
+    delegate.extend(call("tc_wait", "wait", "{}"));
+    delegate.push(done("tool"));
+    let child = vec![text("workflow result"), done("end")];
+    let finish = vec![text("finished"), done("end")];
+    let (events, code) = host_run(&dir, &config, vec![delegate, child, finish], |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "completed", "value": "finished" }));
+    let reserved = events.iter().find(|e| e["type"] == "budget/reserve").unwrap();
+    assert_eq!(reserved["data"]["reserved"]["episodes"], 2, "the child's subtree holds its model node");
+    let spawn = events.iter().find(|e| e["type"] == "spawn/start").unwrap();
+    let worker_log = dir.join("log/children").join(spawn["data"]["child_id"].as_str().unwrap()).join("episode.jsonl");
+    let worker: Vec<Value> =
+        std::fs::read_to_string(worker_log).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    let node = worker.iter().find(|e| e["type"] == "workflow/node-start").unwrap();
+    assert_eq!(node["data"]["node"], "answer");
+    assert_eq!(worker.last().unwrap()["data"]["outcome"], json!({ "kind": "completed", "value": "workflow result" }));
+    let released = events.iter().find(|e| e["type"] == "budget/release").unwrap();
+    assert_eq!(released["data"]["spent"]["episodes"], 2, "the reconstructed subtree count includes the model node");
+}
+
 /// docs/workflow.md "Recovery" and "Tool nodes": a configured executable
 /// that exits non-zero fails its node; the host's `retry` re-fires it and
 /// the workflow completes when it succeeds.

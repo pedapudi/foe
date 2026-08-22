@@ -408,6 +408,10 @@ A workflow episode is an episode. It has one log, one budget pool, one
 outcome, and one identity. Its model nodes are child episodes and obey
 every rule of [subagents](design.md#subagents-and-teams). Its tool nodes
 dispatch through the ordinary registry with the ordinary effect checks.
+A parent that spawns a child whose program carries a workflow with a model
+node reserves descendant episode capacity for that child, as it does for a
+child holding a `grants.spawn` entry. The rule applies at every level of
+nested workflows.
 The viewer renders the graph with each firing linked to its child log, so
 a reader moves from the graph to the conversation that produced a value in
 one step.

@@ -87,6 +87,15 @@ pub struct Node {
 }
 
 impl WorkflowConfig {
+    /// Whether this graph or a graph nested inside it holds a model node.
+    /// Each such node runs as a child episode when it fires, so a program
+    /// carrying one starts descendants even with no `grants.spawn` entry.
+    pub fn contains_model_node(&self) -> bool {
+        self.nodes
+            .values()
+            .any(|node| node.model.is_some() || node.workflow.as_ref().is_some_and(Self::contains_model_node))
+    }
+
     /// The data inputs of every node: the `task` source first when the node
     /// follows it, then its other `follows`, then every node whose
     /// `followed_by` names it, in name order, each listed once.

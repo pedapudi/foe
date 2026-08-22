@@ -140,6 +140,46 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     assert_eq!(child.budget.max_episodes, 2, "the granted share caps the child's own allowance");
 }
 
+/// docs/config.md `budget` and docs/workflow.md "Model nodes": a model node
+/// inside a child program's nested workflow is descendant work, so the child
+/// asks for its subtree allowance even with no explicit spawn grant.
+#[test]
+fn a_workflow_bearing_child_asks_for_its_subtree_episodes() {
+    let dir = scratch("spawn", "workflow-share");
+    let mut config = parent_config();
+    let child = config.programs.get_mut("worker").unwrap();
+    child.budget.max_episodes = 5;
+    child.workflow = Some(
+        serde_json::from_value(serde_json::json!({ "nodes": {
+            "outer": { "workflow": { "nodes": {
+                "model": { "model": {
+                    "name": "model", "instructions": { "r": "work" }, "tools": ["notify"],
+                    "grants": { "read": ["/src"] }, "budget": { "model_calls": 1 }
+                }, "terminal": true }
+            } } }
+        } }))
+        .unwrap(),
+    );
+    assert!(child.grants.spawn.is_empty(), "the workflow is the child's only source of descendants");
+    let spawner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir,
+        config,
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        Arc::new(Seen::default()),
+    )
+    .unwrap();
+    let req = SpawnRequest {
+        program: "worker".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        call_id: "tc".into(),
+    };
+    assert_eq!(spawner.reserve_for(&req).episodes, Some(5));
+}
+
 #[tokio::test]
 async fn child_requests_are_forwarded_and_answers_routed() {
     let dir = scratch("spawn", "roundtrip");

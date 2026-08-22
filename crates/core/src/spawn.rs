@@ -241,9 +241,14 @@ impl ProcessSpawner {
         amount
     }
 
-    /// Whether a child running `program` could start children in turn.
+    /// Whether a child running `program` could start children in turn. A
+    /// spawn grant and a workflow model node are the two sources of
+    /// descendants, and the model node may sit at any workflow depth.
     fn spawns_below(&self, program: &ChildProgram) -> bool {
-        self.config.budget.max_depth > 1 && !program.grants.spawn.is_empty()
+        let workflow_spawns = program.workflow.as_ref().is_some_and(|wf| wf.contains_model_node());
+        self.config.budget.max_depth > 1
+            && program.budget.max_depth > 0
+            && (!program.grants.spawn.is_empty() || workflow_spawns)
     }
 
     /// A fresh child id. A caller that reserves budget under the id before
