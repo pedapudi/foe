@@ -1,0 +1,27 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+SELF_EXTENSION_DATA = [
+    "check",
+    "config.json",
+    "//:foe",
+    "//crates/code:self_extension_sources",
+    "//docs:self_extension_sources",
+    "//examples/support:materialize.py",
+    "//examples/support:scripted-transport.py",
+]
+
+sh_binary(
+    name = "self-extension",
+    srcs = ["run.sh"],
+    args = ["$(rootpath //:foe)"],
+    data = SELF_EXTENSION_DATA,
+)
+
+sh_test(
+    name = "self_extension_test",
+    srcs = ["run.sh"],
+    args = ["$(rootpath //:foe)"],
+    data = SELF_EXTENSION_DATA,
+    size = "small",
+)

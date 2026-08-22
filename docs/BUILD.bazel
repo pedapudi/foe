@@ -1,0 +1,5 @@
+filegroup(
+    name = "self_extension_sources",
+    srcs = ["tools.md"],
+    visibility = ["//examples/self-extension:__pkg__"],
+)

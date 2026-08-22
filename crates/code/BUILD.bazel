@@ -1,6 +1,15 @@
 load("@crates//:defs.bzl", "all_crate_deps", "crate_edition")
 load("@rules_rust//rust:defs.bzl", "rust_library")
 
+filegroup(
+    name = "self_extension_sources",
+    srcs = [
+        "src/read.rs",
+        "src/read_test.rs",
+    ],
+    visibility = ["//examples/self-extension:__pkg__"],
+)
+
 rust_library(
     name = "foe_code",
     srcs = glob(["src/**/*.rs"]),

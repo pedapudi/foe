@@ -101,7 +101,7 @@ outcome as one JSON line on standard output when it ends. The exit code is
 0 when the outcome is completed, 2 when blocked, 3 when exhausted, and 1
 when failed. Under `--host`, standard output carries the log instead and a
 host process answers model requests; see [docs/protocol.md](docs/protocol.md).
-`examples/` holds twelve examples, each of which runs. Every one builds a
+`examples/` holds thirteen examples, each of which runs. Every one builds a
 disposable project, answers the model from a script rather than a provider,
 checks its own result, and leaves an episode to read, so none of them needs a
 credential or a network. Three of them end in the outcomes that are not
@@ -151,7 +151,8 @@ tool crates stays under 6,000 lines, excluding tests and generated code, the
 workflow executor stays under 1,000 on the same terms, and the compaction
 policy under 500. The viewer is budgeted apart from the runtime, at 600 lines
 for its crate and 150 KB compressed for its browser bundle, because it
-delivers a record of a run rather than running one. `scripts/loc.sh` counts
+delivers a record of a run rather than running one; its HTML, TypeScript, and
+CSS count toward that compressed size and toward no line budget. `scripts/loc.sh` counts
 the Rust budgets and continuous integration fails a build over any of them.
 The
 stripped release binary measured 5,228,760 bytes on 2026-08-21 with the

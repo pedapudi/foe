@@ -103,10 +103,18 @@ to the mark alone.
 |---|---|
 | `foe-lockup.svg` | adaptive mark and wordmark; inherits `currentColor` and `--foe-accent` |
 | `foe-lockup-light.svg`, `foe-lockup-dark.svg` | the same with fixed colors, for places that cannot supply tokens, such as a README |
+| `foe-wordmark.svg` | adaptive wordmark alone; inherits `currentColor` |
+| `foe-wordmark-light.svg`, `foe-wordmark-dark.svg` | the same with fixed colors |
 | `foe-mark.svg` | adaptive mark alone |
 | `foe-mark-mono.svg` | mark alone with the core in ink, for single-color print |
 | `foe-favicon.svg` | core, six spikes, and a solid ring in a 64-unit square |
 | `foe-tile.svg` | the mark centered on the paper ground, for a square avatar |
+
+The wordmark files carry the lockup's own glyphs at the lockup's own size,
+cropped to the word with one core diameter of clear space on every side, so
+the wordmark alone and the wordmark in the lockup are the same drawing. The
+wordmark sets in a single color, so it needs no mono variant the way the mark
+does.
 
 The assets are generated from the geometry table by a short script rather
 than drawn by hand, so a change to one radius regenerates every file.
