@@ -18,6 +18,19 @@ from trace_quality import DIMENSIONS, evaluate
 
 Mutation = Callable[[list[dict[str, Any]]], None]
 
+CONFORMANT = 0
+VIOLATION = 1
+HARNESS_FAILED = 2
+
+
+class HarnessError(Exception):
+    """The suite could not run, so it states nothing about the runtime.
+
+    Raising this rather than reporting a violation keeps a missing binary, an
+    absent support file, an unusable output directory, and a broken corruption
+    detector out of the conformance result.
+    """
+
 
 def base_config(name: str, root: Path, transport: Path) -> dict[str, Any]:
     return {
@@ -180,7 +193,16 @@ def support_file(name: str) -> Path:
     for candidate in candidates:
         if candidate.is_file():
             return candidate.resolve()
-    raise RuntimeError(f"evaluation support file is absent: {name}")
+    raise HarnessError(f"evaluation support file is absent: {name}")
+
+
+def probe_events(log_dir: Path) -> list[dict[str, Any]]:
+    log_path = log_dir / "episode.jsonl"
+    try:
+        text = log_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise HarnessError(f"the episode log is unreadable: {error}") from error
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
 
 
 def run_case(
@@ -189,38 +211,45 @@ def run_case(
     name: str,
     config: dict[str, Any],
     expected_exit: int = 0,
-) -> Path:
+) -> tuple[Path, list[str]]:
     case_dir = run_root / name
     log_dir = case_dir / "episode"
-    case_dir.mkdir()
-    config_path = case_dir / "config.json"
-    write_config(config_path, config)
-    result = subprocess.run(
-        [
-            str(binary),
-            "--config",
-            str(config_path),
-            "--log-dir",
-            str(log_dir),
-            "--headless",
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != expected_exit:
-        raise RuntimeError(
-            f"{name} exited {result.returncode}; expected {expected_exit}"
-            f"\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    try:
+        case_dir.mkdir()
+        config_path = case_dir / "config.json"
+        write_config(config_path, config)
+        result = subprocess.run(
+            [
+                str(binary),
+                "--config",
+                str(config_path),
+                "--log-dir",
+                str(log_dir),
+                "--headless",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
         )
-    return log_dir
+    except OSError as error:
+        raise HarnessError(f"the {name} case could not be launched: {error}") from error
+    findings = []
+    if result.returncode != expected_exit:
+        findings.append(
+            f"{name} exited {result.returncode}; expected {expected_exit}"
+            f"; stderr: {result.stderr.strip()}"
+        )
+    if not (log_dir / "episode.jsonl").is_file():
+        raise HarnessError(f"the {name} case wrote no episode log under {log_dir}")
+    return log_dir, findings
 
 
-def check_sandbox_probe(log_dir: Path) -> None:
-    events = [json.loads(line) for line in (log_dir / "episode.jsonl").read_text().splitlines()]
+def check_sandbox_probe(log_dir: Path) -> list[str]:
+    events = probe_events(log_dir)
+    findings = []
     start = events[0]["data"]
     if start["sandbox"]["landlock_abi"] < 1:
-        raise RuntimeError("the required sandbox probe recorded no Landlock enforcement")
+        findings.append("the required sandbox probe recorded no Landlock enforcement")
     results = {
         event["data"]["call_id"]: event["data"]
         for event in events
@@ -229,14 +258,16 @@ def check_sandbox_probe(log_dir: Path) -> None:
     allowed = results.get("allowed-read", {}).get("value", {})
     denied = results.get("denied-read", {}).get("value", {})
     if allowed.get("exit_code") != 0 or "allowed evidence" not in allowed.get("stdout", ""):
-        raise RuntimeError("the granted read did not succeed")
+        findings.append("the granted read did not succeed")
     denied_text = str(denied.get("stdout", "")) + str(denied.get("stderr", ""))
     if denied.get("exit_code") == 0 or "denied secret" in denied_text:
-        raise RuntimeError("the read outside the grant was not denied")
+        findings.append("the read outside the grant was not denied")
+    return findings
 
 
-def check_authority_probe(log_dir: Path) -> None:
-    events = [json.loads(line) for line in (log_dir / "episode.jsonl").read_text().splitlines()]
+def check_authority_probe(log_dir: Path) -> list[str]:
+    events = probe_events(log_dir)
+    findings = []
     results = {
         event["data"]["call_id"]: event["data"]
         for event in events
@@ -245,16 +276,18 @@ def check_authority_probe(log_dir: Path) -> None:
     allowed = results.get("allowed-built-in-read", {})
     denied = results.get("denied-built-in-read", {})
     if allowed.get("is_error") is not False or "allowed evidence a" not in allowed.get("rendered", ""):
-        raise RuntimeError("the built-in read rejected a granted file")
+        findings.append("the built-in read rejected a granted file")
     if denied.get("is_error") is not True or "denied secret" in denied.get("rendered", ""):
-        raise RuntimeError("the built-in read exposed a file outside its grant")
+        findings.append("the built-in read exposed a file outside its grant")
+    return findings
 
 
-def check_compaction_probe(log_dir: Path, fixture_root: Path) -> None:
-    events = [json.loads(line) for line in (log_dir / "episode.jsonl").read_text().splitlines()]
+def check_compaction_probe(log_dir: Path, fixture_root: Path) -> list[str]:
+    events = probe_events(log_dir)
+    findings = []
     summaries = [event for event in events if event["type"] == "compaction/summary"]
     if len(summaries) != 1:
-        raise RuntimeError("the compaction case did not record one successful compaction")
+        findings.append("the compaction case did not record one successful compaction")
     successful_reads = {
         call["args"]["path"]
         for event in events
@@ -273,25 +306,29 @@ def check_compaction_probe(log_dir: Path, fixture_root: Path) -> None:
         str(fixture_root / "allowed" / "b.txt"),
     }
     if successful_reads != expected:
-        raise RuntimeError("the compaction case did not read both fixture files")
+        findings.append("the compaction case did not read both fixture files")
+    return findings
 
 
-def check_outcome_cases(logs: dict[str, Path]) -> None:
+def check_outcome_cases(logs: dict[str, Path]) -> list[str]:
     expected = {
         "typed-outcome": ("completed", None),
         "blocked-outcome": ("blocked", "missing-capability"),
         "exhausted-outcome": ("exhausted", "model_calls"),
         "failed-outcome": ("failed", None),
     }
+    findings = []
     for name, (kind, detail) in expected.items():
-        events = [
-            json.loads(line)
-            for line in (logs[name] / "episode.jsonl").read_text(encoding="utf-8").splitlines()
-        ]
-        outcome = next(event for event in events if event["type"] == "episode/end")["data"]["outcome"]
+        events = probe_events(logs[name])
+        ends = [event for event in events if event["type"] == "episode/end"]
+        if not ends:
+            findings.append(f"{name} recorded no outcome")
+            continue
+        outcome = ends[-1]["data"]["outcome"]
         observed_detail = outcome.get("code", outcome.get("limit"))
         if outcome.get("kind") != kind or detail is not None and observed_detail != detail:
-            raise RuntimeError(f"{name} produced an unexpected outcome: {outcome}")
+            findings.append(f"{name} produced an unexpected outcome: {outcome}")
+    return findings
 
 
 def write_events(path: Path, events: list[dict[str, Any]]) -> None:
@@ -353,11 +390,17 @@ def mutation_checks(run_root: Path, logs: dict[str, Path]) -> None:
         report = evaluate([destination])
         detected = any(item["dimension"] == dimension for item in report["violations"])
         if not detected:
-            raise RuntimeError(f"the {dimension} evaluator did not detect its trace mutation")
+            raise HarnessError(f"the {dimension} evaluator did not detect its trace mutation")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=(
+            "Exit status 0 means every guarantee held, 1 means the runtime violated one, "
+            "and 2 means the suite could not run and states nothing about the runtime."
+        ),
+    )
     parser.add_argument("--foe", type=Path, required=True, help="Path to the built foe binary.")
     parser.add_argument(
         "--include-kernel-sandbox",
@@ -365,26 +408,24 @@ def main() -> int:
         help="Require Landlock and run the stronger configured-executable denial probe.",
     )
     parser.add_argument("--keep", type=Path, help="Keep run artifacts in this directory.")
-    args = parser.parse_args()
-    binary = args.foe.resolve()
-    transport = support_file("scripted_transport.py")
-    if not binary.is_file():
-        raise SystemExit(f"foe binary does not exist: {binary}")
+    return parser.parse_args()
 
-    temporary: tempfile.TemporaryDirectory[str] | None = None
-    if args.keep is None:
-        temporary = tempfile.TemporaryDirectory(prefix="foe-runtime-evals-")
-        run_root = Path(temporary.name)
-    else:
-        run_root = args.keep.resolve()
-        run_root.mkdir(parents=True, exist_ok=True)
+
+def run(args: argparse.Namespace, run_root: Path) -> int:
+    binary = args.foe.resolve()
+    if not binary.is_file():
+        raise HarnessError(f"foe binary does not exist: {binary}")
+    transport = support_file("scripted_transport.py")
 
     fixtures = run_root / "fixtures"
-    (fixtures / "allowed").mkdir(parents=True)
-    (fixtures / "denied").mkdir()
-    (fixtures / "allowed" / "a.txt").write_text("allowed evidence a\n", encoding="utf-8")
-    (fixtures / "allowed" / "b.txt").write_text("allowed evidence b\n", encoding="utf-8")
-    (fixtures / "denied" / "secret.txt").write_text("denied secret\n", encoding="utf-8")
+    try:
+        (fixtures / "allowed").mkdir(parents=True)
+        (fixtures / "denied").mkdir()
+        (fixtures / "allowed" / "a.txt").write_text("allowed evidence a\n", encoding="utf-8")
+        (fixtures / "allowed" / "b.txt").write_text("allowed evidence b\n", encoding="utf-8")
+        (fixtures / "denied" / "secret.txt").write_text("denied secret\n", encoding="utf-8")
+    except OSError as error:
+        raise HarnessError(f"the case fixtures could not be created under {fixtures}: {error}") from error
 
     cases = {
         "typed-outcome": (typed_config(fixtures, transport), 0),
@@ -398,41 +439,51 @@ def main() -> int:
     if args.include_kernel_sandbox:
         cases["kernel-sandbox"] = (sandbox_config(fixtures, transport), 0)
 
-    logs = {
-        name: run_case(binary, run_root, name, config, expected_exit)
-        for name, (config, expected_exit) in cases.items()
-    }
-    check_outcome_cases(logs)
-    check_authority_probe(logs["declared-authority"])
-    check_compaction_probe(logs["context-compaction"], fixtures)
-    if args.include_kernel_sandbox:
-        check_sandbox_probe(logs["kernel-sandbox"])
+    logs: dict[str, Path] = {}
+    findings: list[str] = []
+    for name, (config, expected_exit) in cases.items():
+        logs[name], case_findings = run_case(binary, run_root, name, config, expected_exit)
+        findings.extend(case_findings)
+    findings.extend(check_outcome_cases(logs))
+    authority_findings = check_authority_probe(logs["declared-authority"])
+    compaction_findings = check_compaction_probe(logs["context-compaction"], fixtures)
+    sandbox_findings = check_sandbox_probe(logs["kernel-sandbox"]) if args.include_kernel_sandbox else []
+    findings.extend(authority_findings + compaction_findings + sandbox_findings)
+
     report = evaluate(logs.values())
     report["observations"]["kernel_denial_probe"] = (
-        "passed" if args.include_kernel_sandbox else "not_requested"
+        ("passed" if not sandbox_findings else "failed") if args.include_kernel_sandbox else "not_requested"
     )
-    report["observations"]["capability_denial_probe"] = "passed"
-    report["observations"]["compaction_continuation_probe"] = "passed"
+    report["observations"]["capability_denial_probe"] = "passed" if not authority_findings else "failed"
+    report["observations"]["compaction_continuation_probe"] = (
+        "passed" if not compaction_findings else "failed"
+    )
     mutation_checks(run_root, logs)
     report["observations"]["trace_mutation_checks"] = len(DIMENSIONS)
-    print(json.dumps(report, indent=2, sort_keys=True))
-
-    required = set(
-        [
-            "declared_authority",
-            "reconstructable_evidence",
-            "typed_outcomes",
-            "hierarchical_budgets",
-            "workflow_provenance",
-            "compaction_continuity",
-        ]
+    uncovered = sorted(
+        name for name in DIMENSIONS if report["metrics"][name]["covered_episodes"] == 0
     )
-    missing = [name for name in required if report["metrics"][name]["covered_episodes"] == 0]
-    if temporary is not None:
-        temporary.cleanup()
-    if missing:
-        raise SystemExit("evaluation cases did not exercise: " + ", ".join(sorted(missing)))
-    return 0 if report["valid"] else 1
+    if uncovered:
+        raise HarnessError("evaluation cases did not exercise: " + ", ".join(uncovered))
+    report["probe_findings"] = findings
+    print(json.dumps(report, indent=2, sort_keys=True))
+    for finding in findings:
+        print(f"conformance finding: {finding}", file=sys.stderr)
+    return CONFORMANT if report["valid"] and not findings else VIOLATION
+
+
+def main() -> int:
+    args = parse_args()
+    try:
+        if args.keep is None:
+            with tempfile.TemporaryDirectory(prefix="foe-runtime-evals-") as temporary:
+                return run(args, Path(temporary))
+        run_root = args.keep.resolve()
+        run_root.mkdir(parents=True, exist_ok=True)
+        return run(args, run_root)
+    except (HarnessError, OSError) as error:
+        print(f"the runtime conformance suite could not run: {error}", file=sys.stderr)
+        return HARNESS_FAILED
 
 
 if __name__ == "__main__":
