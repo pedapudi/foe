@@ -82,9 +82,9 @@ export function clampPanes(sizes: PaneSizes, extent: PaneExtent): PaneSizes {
  * `chromeHeight` is the height of the pane's heading, which sits above the
  * figure inside the same region.
  */
-export function fitTrajectory(rows: number, columnHeight: number, chromeHeight: number): number {
+export function fitTrajectory(rowsHeight: number, columnHeight: number, chromeHeight: number): number {
   if (!(columnHeight > 0)) return PANE_DEFAULTS.trajectory;
-  const wanted = chromeHeight + trajectoryContentHeight(rows);
+  const wanted = chromeHeight + trajectoryContentHeight(rowsHeight);
   const height = clamp(wanted, PANE_LIMITS.rowMin, columnHeight / 2);
   return height / columnHeight;
 }
@@ -224,12 +224,12 @@ export function resetPane(name: keyof PaneSizes): void {
 }
 
 /**
- * States how many rows the trajectory holds, so that its height follows
- * its content while the reader has not sized it. A spawn during a live run
- * adds a row and grows the region.
+ * States how many pixels the trajectory's rows take, so that its height
+ * follows its content while the reader has not sized it. A spawn during a
+ * live run adds a row and grows the region.
  */
-export function setTrajectoryRows(rows: number, chromeHeight: number): void {
-  const fraction = fitTrajectory(rows, extent().rightHeight, chromeHeight);
+export function setTrajectoryHeight(rowsHeight: number, chromeHeight: number): void {
+  const fraction = fitTrajectory(rowsHeight, extent().rightHeight, chromeHeight);
   if (derived.trajectory === fraction) return;
   derived.trajectory = fraction;
   if (!pinned.has("trajectory")) applyPanes({});

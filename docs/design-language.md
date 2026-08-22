@@ -231,6 +231,12 @@ Figures are line art in the diastil drawing register.
   spawn is a contributing child.
 - A bar is `rx: 3`, filled with a token at reduced opacity, and lifts to
   full opacity while the pointer is on it. A hovercard names every mark.
+- A figure whose marks nest separates them by position rather than by
+  drawing more of them. A lane is a band of one row that holds one channel,
+  and the order of the lanes down a row is the order of containment. Two
+  marks that fall on one position take successive heights of their lane
+  instead of overprinting; the height is a tie-break and carries no
+  quantity, so the marks keep the position they were measured at.
 - One accented element per figure, the one that is the argument. Where the
   argument is a row of a list, the accent is a spine: a line of 2.0 to 2.4
   pixels down the row's leading edge. A filled row would be the loudest
@@ -242,6 +248,26 @@ Figures are line art in the diastil drawing register.
   marks are placed rather than measured carries none. Where gridlines
   appear they are `0.6` pixels in `--v2-rule-soft`, one per axis tick.
 - No chart frames and no three-dimensional effects.
+
+### The hovercard
+
+One card explains every mark of every figure, and `src/render/hovercard.ts`
+is the only place it is built. A figure that appended a tooltip of the
+browser's own would give a reader an unthemed box after a delay in the one
+place the page most needs to answer at once, so no figure does.
+
+The card is three lines: the name of the mark, one line of context, and one
+line of detail. It opens on the pointer entering a mark and closes on the
+pointer leaving it. It stands below the pointer, or above it when it would
+otherwise leave its host at the bottom, and it never crosses the host's
+right edge. It takes no pointer events, so it never stands between the
+pointer and the mark under it.
+
+A quantity a reader could not derive by eye names where it came from. A
+figure that draws one interval and reports another gives both, because a
+reader who sees one number and a bar of a different length has no way to
+tell which is the measurement. A quantity nothing measured is stated as
+absent; it is never drawn as zero.
 
 Every figure is one SVG element built by `src/render/svg.ts`, which fits it
 to its host: `width="100%"`, an explicit `viewBox`, an explicit

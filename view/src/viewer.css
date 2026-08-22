@@ -1579,30 +1579,31 @@ table.events td.type.error {
   font-variant-numeric: tabular-nums;
 }
 
+/* Lineage is structure, so it recedes behind the activity drawn over it:
+ * the separator ink at the thinnest hairline the register allows, against
+ * a lifetime line in full ink at 1.2. */
 .traj-edge {
   fill: none;
-  stroke: var(--v2-ink-faint);
-  stroke-width: 1.1;
-  opacity: 0.5;
+  stroke: var(--v2-rule);
+  stroke-width: 0.9;
+  opacity: 0.8;
 }
 
 .traj-edge.fork {
   stroke-dasharray: 4 4;
 }
 
+/* One ground per row, painted under every connector so that a connector
+ * leaving a row is not covered by the row it leaves. A transparent fill
+ * still takes the pointer, so the ground is what a click on empty space in
+ * a row reaches. */
 .traj-hit {
   fill: transparent;
 }
 
-.traj-row:hover .traj-hit {
-  fill: var(--v2-rule-soft);
-}
-
-.traj-row.cursor .traj-hit {
-  fill: var(--v2-rule-soft);
-}
-
-.traj-row.selected .traj-hit {
+.traj-hit:hover,
+.traj-hit.cursor,
+.traj-hit.selected {
   fill: var(--v2-rule-soft);
 }
 
@@ -1619,10 +1620,20 @@ table.events td.type.error {
   fill: var(--v2-ink);
 }
 
-.traj-id {
+/* The rail that carries depth in the label column. It is the faintest
+ * structure in the figure, because it repeats what the indent already
+ * says and exists only to make a three-level tree read as one. */
+.traj-guide {
+  stroke: var(--v2-rule);
+  stroke-width: 0.9;
+}
+
+/* One lane per node that fired, named in the label column beside its own
+ * lane. The name is data about the graph, so it sets in the data face. */
+.traj-lane-label {
   fill: var(--v2-ink-faint);
   font-family: var(--v2-mono);
-  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  font-size: calc(9px * var(--dt-font-scale, 1));
 }
 
 .traj-life {
@@ -1690,6 +1701,81 @@ table.events td.type.error {
   fill: none;
 }
 
+/* The wait a retry imposes before the next attempt, drawn forward from it.
+ * It is a guide rather than a measurement of work done, so it is dashed. */
+.traj-mark.retry .backoff {
+  stroke: var(--v2-bad);
+  stroke-width: 1.2;
+  stroke-dasharray: 2 3;
+  opacity: 0.65;
+}
+
+/* One firing of one node of a declared graph, on that node's lane. Colour
+ * is earned by how the firing ended and never by which node it was. */
+.traj-firing .bar {
+  fill: var(--v2-ink-soft);
+  fill-opacity: 0.5;
+  stroke: none;
+}
+
+.traj-firing:hover .bar {
+  fill-opacity: 1;
+}
+
+.traj-firing.good .bar {
+  fill: var(--v2-good);
+}
+
+.traj-firing.bad .bar {
+  fill: var(--v2-bad);
+}
+
+/* A firing that ran a child episode is outlined, because the work it
+ * stands for is drawn in full on that child's own row below. */
+.traj-firing.child .bar {
+  fill: none;
+  stroke: var(--v2-ink-soft);
+  stroke-width: 1.1;
+}
+
+.traj-firing.child.good .bar {
+  stroke: var(--v2-good);
+}
+
+.traj-firing.child.bad .bar {
+  stroke: var(--v2-bad);
+}
+
+.traj-firing.child:hover .bar {
+  fill: var(--v2-ink-soft);
+  fill-opacity: 0.35;
+}
+
+.traj-decision .glyph {
+  fill: none;
+  stroke-width: 1.2;
+}
+
+.traj-decision.branch .glyph {
+  stroke: var(--v2-ink-soft);
+}
+
+/* A recovery is an intervention in the graph, in the same ink a compaction
+ * takes for an intervention in the context. */
+.traj-decision.recovery .glyph {
+  stroke: var(--v2-caution);
+}
+
+.traj-decision-label {
+  fill: var(--v2-ink-soft);
+  font-family: var(--v2-mono);
+  font-size: calc(9px * var(--dt-font-scale, 1));
+}
+
+.traj-decision.recovery .traj-decision-label {
+  fill: var(--v2-caution);
+}
+
 .traj-mark.compaction .glyph {
   fill: none;
   stroke: var(--v2-caution);
@@ -1739,38 +1825,7 @@ table.events td.type.error {
   stroke-width: 1.2;
 }
 
-/* ---- the trajectory hovercard ---- */
-
-.traj-card {
-  position: absolute;
-  z-index: 4;
-  max-width: 320px;
-  padding: 6px 9px;
-  background: var(--v2-panel);
-  border: 1px solid var(--v2-rule);
-  border-radius: var(--dt-radius-card);
-  pointer-events: none;
-  font-family: var(--v2-mono);
-  font-size: calc(10.5px * var(--dt-font-scale, 1));
-  font-variant-numeric: tabular-nums;
-  line-height: 1.45;
-}
-
-.traj-card-head {
-  color: var(--v2-ink);
-}
-
-.traj-card-meta {
-  color: var(--v2-ink-faint);
-}
-
-.traj-card-detail {
-  color: var(--v2-ink-soft);
-  overflow-wrap: anywhere;
-  margin-top: 3px;
-}
-
-/* ---- the hovercard shared by the workflow and statistics figures ---- */
+/* ---- the hovercard every figure shares ---- */
 
 /* Every figure that shows a number a reader could not derive by eye opens
  * this card, which names the quantity, defines it, and gives the values it
@@ -1782,7 +1837,7 @@ table.events td.type.error {
   padding: 6px 9px;
   background: var(--v2-panel);
   border: 1px solid var(--v2-rule);
-  border-radius: var(--dt-radius-card);
+  border-radius: var(--dt-radius-hovercard);
   pointer-events: none;
   font-family: var(--v2-mono);
   font-size: calc(10.5px * var(--dt-font-scale, 1));

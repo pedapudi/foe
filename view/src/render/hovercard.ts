@@ -1,7 +1,7 @@
 // A hovercard over a figure: a heading, one line of context, and one line
-// of detail. Both figures that state their own arithmetic use it, so that
-// a number a reader could not derive by eye names the quantity it is and
-// the values it came from.
+// of detail. Every figure uses it, so that a number a reader could not
+// derive by eye names the quantity it is and the values it came from, and
+// so that one card is themed and positioned in one place.
 
 import { clear, h } from "../dom.js";
 
@@ -29,7 +29,13 @@ export class Hovercard {
     const y = event.clientY - box.top + this.host.scrollTop;
     const room = Math.max(4, this.host.clientWidth - width - 6 + this.host.scrollLeft);
     this.el.style.left = `${Math.min(Math.max(4, x + 12), room)}px`;
-    this.el.style.top = `${y + 16}px`;
+    // Below the pointer, unless the card would then leave the host at the
+    // bottom, in which case it stands above it. A card that runs off the
+    // pane is a card the reader cannot read.
+    const height = this.el.offsetHeight;
+    const below = y + 16;
+    const flip = below + height > this.host.clientHeight + this.host.scrollTop && y - height - 10 >= this.host.scrollTop;
+    this.el.style.top = `${flip ? y - height - 10 : below}px`;
   }
 
   hide(): void {

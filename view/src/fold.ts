@@ -6,7 +6,7 @@ import { fmtInt } from "./dom.js";
 import { renderContinuation } from "./messages.js";
 import { headerDifference } from "./prompt.js";
 import type { HeaderParts } from "./prompt.js";
-import type { Mark } from "./trajectory.js";
+import type { Mark, NodeDecision, NodeFiring } from "./trajectory.js";
 import { arr, num, obj, str } from "./types.js";
 import type {
   ContentBlock,
@@ -145,6 +145,13 @@ export interface Summary {
   lastSeq: number;
   /** Marks the trajectory pane draws, in seq order (src/trajectory.ts). */
   marks: Mark[];
+  /**
+   * Firings of the declared graph, in the order they started, and the
+   * branch and recovery decisions between them. Both are empty for an
+   * episode that runs the free loop rather than a graph.
+   */
+  firings: NodeFiring[];
+  decisions: NodeDecision[];
 }
 
 export function emptySummary(id: string): Summary {
@@ -169,6 +176,8 @@ export function emptySummary(id: string): Summary {
     program: {},
     lastSeq: -1,
     marks: [],
+    firings: [],
+    decisions: [],
   };
 }
 
@@ -272,12 +281,14 @@ export class EpisodeFold {
       }
       case "request/retry":
         s.retries += 1;
+        // The duration of a retry is the backoff it imposes, so the mark has
+        // the length of the wait before the next attempt may start.
         this.mark(
           ev,
           "retry",
           str(data.cause, "?"),
-          `step ${num(data.step)} · attempt ${num(data.attempt)} · retry in ${num(data.delay_ms)} ms`,
-          0,
+          `step ${num(data.step)} · attempt ${num(data.attempt)} · backoff before the next attempt`,
+          num(data.delay_ms),
         );
         return this.note(
           ev,
@@ -442,9 +453,15 @@ export class EpisodeFold {
           : `step ${num(data.step)} · failed: ${str(data.error, "?")} · context unchanged`;
         return this.note(ev, "compaction end", detail, data.ok === true ? "info" : "error", data);
       }
+      case "workflow/node-start":
+      case "workflow/node-end":
+      case "workflow/branch":
+      case "workflow/recovery":
+        this.graph(ev, data);
+        return this.note(ev, ev.type, summarize(data), "info", data);
       default:
-        // Reserved types (team/task, workflow/*) and any type this bundle
-        // does not know render as a generic row.
+        // Reserved types (team/task) and any type this bundle does not know
+        // render as a generic row.
         return this.note(ev, ev.type, summarize(data), "info", data);
     }
   }
@@ -620,6 +637,70 @@ export class EpisodeFold {
       if (typeof value === "string") out[key] = value;
     }
     return out;
+  }
+
+  /**
+   * Records one event of a declared graph on the summary the trajectory
+   * draws. A `workflow/node-start` opens a firing, a `workflow/node-end`
+   * closes the open firing of the same node and fire count, and the two
+   * decision events mark where the run departed from the straight path
+   * through the graph. docs/log-format.md specifies all four.
+   */
+  private graph(ev: LogEvent, data: Record<string, unknown>): void {
+    const s = this.summary;
+    const node = str(data.node, "?");
+    const fire = num(data.fire, 1);
+    if (ev.type === "workflow/node-start") {
+      s.firings.push({
+        node,
+        fire,
+        startSeq: ev.seq,
+        startTime: ev.time,
+        endSeq: null,
+        endTime: null,
+        durationMs: null,
+        error: "",
+        childId: typeof data.child_id === "string" ? data.child_id : null,
+      });
+      return;
+    }
+    if (ev.type === "workflow/node-end") {
+      for (let i = s.firings.length - 1; i >= 0; i -= 1) {
+        const firing = s.firings[i]!;
+        if (firing.node !== node || firing.fire !== fire || firing.endSeq !== null) continue;
+        firing.endSeq = ev.seq;
+        firing.endTime = ev.time;
+        firing.durationMs = typeof data.duration_ms === "number" ? data.duration_ms : null;
+        firing.error = str(data.error);
+        return;
+      }
+      return;
+    }
+    if (ev.type === "workflow/branch") {
+      const label = str(data.label, "?");
+      const successors = arr(data.successors).map((x) => str(x)).filter((x) => x !== "");
+      s.decisions.push({
+        kind: "branch",
+        node,
+        fire,
+        seq: ev.seq,
+        time: ev.time,
+        label,
+        detail: successors.length > 0 ? `${label} leads to ${successors.join(", ")}` : `${label} ends the graph`,
+      });
+      return;
+    }
+    const action = str(data.action, "?");
+    const target = typeof data.target === "string" ? data.target : "";
+    s.decisions.push({
+      kind: "recovery",
+      node,
+      fire,
+      seq: ev.seq,
+      time: ev.time,
+      label: action,
+      detail: `${str(data.cause, "?")} on firing ${fire}${target === "" ? "" : ` · re-fires ${target}`}`,
+    });
   }
 
   /** Records one trajectory mark. Marks arrive in seq order and stay so. */

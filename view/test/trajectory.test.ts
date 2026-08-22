@@ -5,7 +5,22 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EpisodeFold } from "../src/fold.js";
 import { buildTree, flatten } from "../src/lineage.js";
-import { MARK_MIN_WIDTH, ROW_HEIGHT, TOOL_LANE, labelWidthFor, layoutTrajectory, niceStep, tickLabel, timeAtSeq } from "../src/trajectory.js";
+import {
+  DEPTH_INDENT,
+  MARK_MIN_WIDTH,
+  NODE_LANE,
+  ROW_HEIGHT,
+  TOOL_LANE,
+  TOOL_PITCH,
+  fitLabel,
+  guidesFor,
+  labelWidthFor,
+  layoutTrajectory,
+  niceStep,
+  nodeLaneOrder,
+  tickLabel,
+  timeAtSeq,
+} from "../src/trajectory.js";
 import type { TrajectoryEpisode, TrajectoryInput } from "../src/trajectory.js";
 import { fixture } from "./helpers.js";
 
@@ -35,6 +50,8 @@ function episodes(...names: string[]): TrajectoryEpisode[] {
       parentId: s.parentId,
       forkOrigin: s.forkOrigin,
       marks: s.marks,
+      firings: s.firings,
+      decisions: s.decisions,
     };
   });
 }
@@ -48,8 +65,13 @@ test("rows follow the tree order and sit one row height apart", () => {
   const out = layoutTrajectory(input(list));
   assert.deepEqual(out.rows.map((r) => r.id), ["ep_over_parent", "ep_over_child"]);
   assert.deepEqual(out.rows.map((r) => r.depth), [0, 1]);
-  assert.equal(out.rows[1]!.y - out.rows[0]!.y, ROW_HEIGHT);
+  assert.equal(out.rows[0]!.top, out.plot.top);
   assert.equal(out.rows[0]!.y, out.plot.top + ROW_HEIGHT / 2);
+  // The parent's three calls overlap in time and take three heights of the
+  // tool lane; the child's one call takes one, so its row is the plain
+  // height and its lifetime line sits below everything the parent drew.
+  assert.deepEqual(out.rows.map((r) => r.height), [ROW_HEIGHT + 2 * TOOL_PITCH, ROW_HEIGHT]);
+  assert.equal(out.rows[1]!.top, out.rows[0]!.top + out.rows[0]!.height);
 });
 
 test("the plot spans the pane to the right of the label column", () => {
@@ -61,9 +83,33 @@ test("the plot spans the pane to the right of the label column", () => {
 });
 
 test("the label column follows the pane width between its limits", () => {
-  assert.equal(labelWidthFor(2000), 230);
-  assert.equal(labelWidthFor(200), 116);
+  assert.equal(labelWidthFor(2000), 230, "a wide pane stops at the widest column");
+  assert.equal(labelWidthFor(200), 90, "a narrow pane keeps the plot most of itself");
   assert.equal(labelWidthFor(700), Math.round(700 * 0.26));
+});
+
+test("the label column widens by one indent per level of the deepest row", () => {
+  // 26 percent of 400 is under the narrowest column, so the floor decides,
+  // and each level of depth raises that floor by one indent.
+  assert.equal(labelWidthFor(400, 0), 116);
+  assert.equal(labelWidthFor(400, 2), 116 + 2 * DEPTH_INDENT);
+  assert.equal(labelWidthFor(2000, 9), 230, "the widest column still bounds it");
+  const deep = layoutTrajectory(input(workflowTree()));
+  assert.equal(deep.labelWidth, labelWidthFor(WIDTH, 1));
+});
+
+test("a label too long for its column is shortened rather than run into the plot", () => {
+  assert.equal(fitLabel("survey", 100, 6.6), "survey", "a name that fits is left whole");
+  assert.equal(fitLabel("survey-propose-apply", 40, 6.6), "surve\u2026");
+  assert.equal(fitLabel("survey", 4, 6.6), "", "a column with room for nothing sets nothing");
+  const narrow = layoutTrajectory(input(workflowTree(), { width: 320 }));
+  for (const row of narrow.rows) {
+    assert.ok(row.labelX + row.label.length * 6.6 <= narrow.plot.left, `${row.label} stays out of the plot`);
+    for (const lane of row.lanes) {
+      assert.ok(lane.labelX + lane.label.length * 5.4 <= narrow.plot.left, `${lane.label} stays out of the plot`);
+    }
+  }
+  assert.ok(narrow.rows.some((r) => r.label.endsWith("\u2026")), "the widest name was shortened");
 });
 
 test("on the time axis a lifetime bar spans the episode's own clock", () => {
@@ -105,6 +151,7 @@ test("a single instant gives a degenerate domain and no division by zero", () =>
     id: "ep_one", name: "one", depth: 0, startTime: 5, endTime: 5, lastSeq: 0,
     outcome: { kind: "completed" }, parentId: null, forkOrigin: null,
     marks: [{ kind: "request", seq: 0, time: 5, durationMs: 0, span: null, label: "", detail: "" }],
+    firings: [], decisions: [],
   };
   const out = layoutTrajectory(input([one]));
   assert.ok(Number.isFinite(out.rows[0]!.x1));
@@ -134,8 +181,11 @@ test("tool marks take a lane below the lifetime line and every other mark stays 
     const out = layoutTrajectory(input(episodes("overlap-parent.jsonl", "overlap-child.jsonl"), { axis }));
     for (const row of out.rows) {
       for (const mark of row.marks) {
-        const expected = mark.kind === "tool" ? row.y + TOOL_LANE : row.y;
-        assert.equal(mark.y, expected, `${axis}: ${mark.kind} at seq ${mark.seq}`);
+        if (mark.kind === "tool") {
+          assert.ok(mark.y >= row.y + TOOL_LANE, `${axis}: tool at seq ${mark.seq} is below the line`);
+          continue;
+        }
+        assert.equal(mark.y, row.y, `${axis}: ${mark.kind} at seq ${mark.seq}`);
       }
     }
   }
@@ -152,6 +202,7 @@ test("the lane keeps a hairline tool call apart from a request tick at the same 
       { kind: "request", seq: 1, time: start + 10_000, durationMs: 0, span: null, label: "step 1", detail: "" },
       { kind: "tool", seq: 2, time: start + 10_000, durationMs: 4, span: null, label: "read", detail: "" },
     ],
+    firings: [], decisions: [],
   };
   const out = layoutTrajectory(input([one]));
   const [request, tool] = out.rows[0]!.marks as [(typeof out.rows)[0]["marks"][0], (typeof out.rows)[0]["marks"][0]];
@@ -354,4 +405,243 @@ test("the domain reaches the end of the last span", () => {
   const out = layoutTrajectory(input(list));
   const ends = list.flatMap((e) => e.marks.map((m) => (m.span ? m.span.endTime : m.time)));
   assert.ok(out.domain[1] >= Math.max(...ends));
+});
+
+// ---- the node band of a workflow episode ----
+
+/** The workflow fixture and the three child logs its model nodes ran. */
+function workflowTree(): TrajectoryEpisode[] {
+  return episodes("workflow.jsonl", "workflow-apply-1.jsonl", "workflow-propose-1.jsonl", "workflow-propose-2.jsonl");
+}
+
+test("a lane stands for each node that fired, ordered by its first firing", () => {
+  const out = layoutTrajectory(input(workflowTree()));
+  assert.deepEqual(
+    out.rows[0]!.lanes.map((l) => l.node),
+    ["manifest", "survey", "propose", "apply", "verify_change"],
+    "the order is the order the run entered the nodes",
+  );
+  assert.equal(nodeLaneOrder([]).length, 0, "an episode with no firing has no lane");
+});
+
+test("a firing's width is the interval between its two events, to scale", () => {
+  const out = layoutTrajectory(input(workflowTree()));
+  const row = out.rows[0]!;
+  const [low, high] = out.domain;
+  const perMs = (out.plot.right - out.plot.left) / (high - low);
+  for (const firing of row.firings) {
+    if (firing.endTime === null) continue;
+    const observed = firing.endTime - firing.startTime;
+    const expected = Math.max(MARK_MIN_WIDTH, observed * perMs);
+    assert.ok(Math.abs(firing.w - expected) < 1e-6, `${firing.node} fire ${firing.fire}: ${firing.w} for ${observed} ms`);
+  }
+  // The eight firings the fixture records, in the order they started.
+  assert.deepEqual(
+    row.firings.map((f) => f.node),
+    ["manifest", "survey", "propose", "survey", "propose", "apply", "verify_change", "verify_change"],
+  );
+});
+
+test("a workflow row is taller by one lane per node that fired", () => {
+  const out = layoutTrajectory(input(workflowTree()));
+  assert.equal(out.rows[0]!.height, ROW_HEIGHT + 5 * NODE_LANE);
+  assert.deepEqual(out.rows.slice(1).map((r) => r.height), [ROW_HEIGHT, ROW_HEIGHT, ROW_HEIGHT]);
+  assert.equal(out.rowsHeight, out.rows.reduce((sum, r) => sum + r.height, 0));
+});
+
+test("the node band sits under the lifetime line and over the tool lane", () => {
+  const row = layoutTrajectory(input(workflowTree())).rows[0]!;
+  for (const lane of row.lanes) assert.ok(lane.y > row.y, `${lane.node} is under the line`);
+  const tools = row.marks.filter((m) => m.kind === "tool");
+  assert.ok(tools.length > 0, "the fixture has a call to place");
+  for (const mark of tools) {
+    for (const lane of row.lanes) assert.ok(mark.y > lane.y, "a tool call is under every lane");
+  }
+});
+
+test("a firing's colour direction comes from how it ended", () => {
+  const row = layoutTrajectory(input(workflowTree())).rows[0]!;
+  const failed = row.firings.filter((f) => f.error !== "");
+  assert.equal(failed.length, 1, "one firing of the fixture failed");
+  assert.equal(failed[0]!.node, "verify_change");
+  assert.equal(failed[0]!.fire, 1);
+});
+
+test("a model node's firing names the child it ran, and no other firing does", () => {
+  const row = layoutTrajectory(input(workflowTree())).rows[0]!;
+  const withChild = row.firings.filter((f) => f.childId !== null);
+  assert.deepEqual(withChild.map((f) => f.node), ["propose", "propose", "apply"]);
+});
+
+test("a child's connector leaves the firing that ran it rather than the spawn ring", () => {
+  const out = layoutTrajectory(input(workflowTree()));
+  const row = out.rows[0]!;
+  assert.equal(out.connectors.length, 3);
+  for (const edge of out.connectors) {
+    const firing = row.firings.find((f) => f.childId === edge.childId);
+    assert.ok(firing, `${edge.childId} was run by a firing`);
+    assert.equal(edge.from.x, firing!.x, "the connector starts where the firing did");
+    assert.equal(edge.from.y, firing!.y, "and on that firing's own lane");
+  }
+});
+
+test("a decision sits on the lane of the node it names", () => {
+  const row = layoutTrajectory(input(workflowTree())).rows[0]!;
+  assert.deepEqual(row.decisions.map((d) => `${d.kind}/${d.node}/${d.label}`), [
+    "branch/propose/widen",
+    "branch/propose/apply",
+    "recovery/verify_change/retry",
+  ]);
+  for (const decision of row.decisions) {
+    const lane = row.lanes.find((l) => l.node === decision.node)!;
+    assert.equal(decision.y, lane.y);
+  }
+});
+
+test("a decision label is dropped where a firing of its node would run into it", () => {
+  const row = layoutTrajectory(input(workflowTree())).rows[0]!;
+  const shown = row.decisions.filter((d) => d.showLabel).map((d) => d.label);
+  // `widen` re-fires survey and then propose, whose second firing starts
+  // inside the label; `retry` re-fires verify_change at the same instant.
+  assert.deepEqual(shown, ["apply"]);
+});
+
+test("an episode with no graph has no lane, no firing, and no decision", () => {
+  const out = layoutTrajectory(input(episodes("root.jsonl")));
+  assert.deepEqual(out.rows[0]!.lanes, []);
+  assert.deepEqual(out.rows[0]!.firings, []);
+  assert.deepEqual(out.rows[0]!.decisions, []);
+});
+
+// ---- co-timed tool calls ----
+
+/** One episode whose tool calls fall `gap` milliseconds apart. */
+function batch(count: number, gap: number): TrajectoryEpisode {
+  const start = 1_700_000_000_000;
+  return {
+    id: "ep_batch", name: "batch", depth: 0, startTime: start, endTime: start + 40_000, lastSeq: count,
+    outcome: { kind: "completed" }, parentId: null, forkOrigin: null,
+    marks: Array.from({ length: count }, (_, i) => ({
+      kind: "tool" as const, seq: i + 1, time: start + 10_000 + i * gap, durationMs: 0, span: null,
+      label: `read ${i}`, detail: "",
+    })),
+    firings: [], decisions: [],
+  };
+}
+
+test("calls issued together take successive heights and keep their own x", () => {
+  const out = layoutTrajectory(input([batch(6, 0)]));
+  const row = out.rows[0]!;
+  const tools = row.marks.filter((m) => m.kind === "tool");
+  assert.equal(tools.length, 6);
+  assert.equal(new Set(tools.map((m) => m.x)).size, 1, "every call is at the one instant it happened");
+  assert.deepEqual(
+    tools.map((m) => m.y - row.y - TOOL_LANE),
+    [0, TOOL_PITCH, 2 * TOOL_PITCH, 3 * TOOL_PITCH, 4 * TOOL_PITCH, 5 * TOOL_PITCH],
+  );
+  assert.equal(row.height, ROW_HEIGHT + 5 * TOOL_PITCH, "the row grows to hold the stack");
+});
+
+test("calls spread far enough apart share one height", () => {
+  // Five seconds between calls is hundreds of pixels at this width.
+  const out = layoutTrajectory(input([batch(6, 5_000)]));
+  const row = out.rows[0]!;
+  const tools = row.marks.filter((m) => m.kind === "tool");
+  assert.equal(new Set(tools.map((m) => m.y)).size, 1);
+  assert.equal(row.height, ROW_HEIGHT);
+});
+
+// ---- the backoff a retry imposes ----
+
+test("a retry's mark runs forward from it by the backoff it imposes", () => {
+  const out = layoutTrajectory(input(episodes("retries-exhausted.jsonl")));
+  const retries = out.rows[0]!.marks.filter((m) => m.kind === "retry");
+  assert.deepEqual(retries.map((r) => r.durationMs), [500, 1000, 2000, 4000, 8000], "the backoff doubles");
+  const [low, high] = out.domain;
+  const perMs = (out.plot.right - out.plot.left) / (high - low);
+  for (const retry of retries) {
+    assert.ok(Math.abs(retry.w - retry.durationMs * perMs) < 1e-6, `${retry.durationMs} ms`);
+  }
+});
+
+test("a delay has no length in log positions, so a retry is a tick on the sequence axis", () => {
+  const out = layoutTrajectory(input(episodes("retries-exhausted.jsonl"), { axis: "sequence" }));
+  for (const retry of out.rows[0]!.marks.filter((m) => m.kind === "retry")) assert.equal(retry.w, 0);
+});
+
+test("the domain holds the last backoff, which reaches past the last event", () => {
+  const list = episodes("retries-exhausted.jsonl");
+  const out = layoutTrajectory(input(list));
+  const last = list[0]!.marks.filter((m) => m.kind === "retry").at(-1)!;
+  assert.ok(out.domain[1] >= last.time + last.durationMs);
+});
+
+// ---- the label column ----
+
+test("the row label names the program, whose id the sidebar states beside it", () => {
+  const out = layoutTrajectory(input(workflowTree()));
+  assert.deepEqual(out.rows.map((r) => r.name), ["survey-propose-apply", "propose", "propose", "apply"]);
+  assert.deepEqual(out.rows.map((r) => r.labelX), [6, 22, 22, 22]);
+  assert.deepEqual(out.rows.map((r) => r.lanes.map((l) => l.labelX)[0] ?? null), [22, null, null, null]);
+});
+
+test("a rail carries depth, and its last segment turns into the row's own label", () => {
+  const out = layoutTrajectory(input(workflowTree()));
+  assert.deepEqual(out.rows[0]!.guides, [], "a root row has no ancestor to rail to");
+  for (const row of out.rows.slice(1)) {
+    assert.equal(row.guides.length, 1, "one ancestor, one segment");
+    assert.equal(row.guides[0]!.elbow, true);
+    assert.equal(row.guides[0]!.y1, row.top);
+  }
+  const middle = out.rows[1]!;
+  const last = out.rows[3]!;
+  assert.equal(middle.guides[0]!.y2, middle.top + middle.height, "a sibling follows, so the rail passes through");
+  assert.equal(last.guides[0]!.y2, last.y, "the last child's rail stops at its own label");
+});
+
+test("a rail passes through a row when a deeper row follows it", () => {
+  assert.deepEqual(guidesFor(0, 100, 24, 112, 0), [], "a root row rails to nothing");
+  const [outer, inner] = guidesFor(2, 100, 24, 112, 2);
+  assert.equal(outer!.elbow, false);
+  assert.equal(outer!.y2, 124, "a row at the same depth follows, so the outer rail passes through");
+  assert.equal(inner!.elbow, true);
+  assert.equal(inner!.y2, 124);
+  assert.equal(inner!.x - outer!.x, DEPTH_INDENT);
+  assert.equal(guidesFor(1, 100, 24, 112, -1)[0]!.y2, 112, "the last row of all stops at its label");
+});
+
+// ---- a run that has not finished ----
+
+/** One workflow episode with no end, whose last firing is still open. */
+function openRun(now: number): TrajectoryEpisode {
+  const start = 1_700_000_000_000;
+  return {
+    id: "ep_open", name: "grapher", depth: 0, startTime: start, endTime: null, lastSeq: 4,
+    outcome: null, parentId: null, forkOrigin: null, marks: [], decisions: [],
+    firings: [
+      { node: "survey", fire: 1, startSeq: 1, startTime: start + 1_000, endSeq: 2, endTime: start + 3_000, durationMs: 1_900, error: "", childId: null },
+      { node: "draft", fire: 1, startSeq: 3, startTime: start + 3_000, endSeq: null, endTime: null, durationMs: null, error: "", childId: "ep_child" },
+    ],
+  };
+}
+
+test("a firing still running is drawn to the clock reading given", () => {
+  const now = 1_700_000_000_000 + 9_000;
+  const out = layoutTrajectory(input([openRun(now)], { now }));
+  const row = out.rows[0]!;
+  assert.equal(row.running, true);
+  const [open] = row.firings.filter((f) => f.endSeq === null);
+  assert.equal(open!.node, "draft");
+  assert.equal(Math.round(open!.x + open!.w), Math.round(row.x2), "it reaches the end of the lifetime bar");
+  assert.equal(open!.durationMs, null, "a length no node reported stays absent rather than zero");
+});
+
+test("an open firing lengthens as the clock moves and its lane stays put", () => {
+  const start = 1_700_000_000_000;
+  const early = layoutTrajectory(input([openRun(start + 5_000)], { now: start + 5_000 }));
+  const later = layoutTrajectory(input([openRun(start + 20_000)], { now: start + 20_000 }));
+  const laneOf = (out: typeof early) => out.rows[0]!.lanes.map((l) => l.node);
+  assert.deepEqual(laneOf(early), ["survey", "draft"]);
+  assert.deepEqual(laneOf(later), laneOf(early));
+  assert.equal(early.rows[0]!.height, later.rows[0]!.height);
 });

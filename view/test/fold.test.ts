@@ -260,3 +260,64 @@ test("a measure never exceeds the whole", () => {
     assert.ok(share > 0 && share <= 1, `${id} measures ${share}`);
   }
 });
+
+// ---- the declared graph a workflow episode ran ----
+
+test("each node-start opens a firing that its node-end closes", () => {
+  const s = fold("workflow.jsonl").summary;
+  assert.deepEqual(
+    s.firings.map((f) => `${f.node}#${f.fire}`),
+    ["manifest#1", "survey#1", "propose#1", "survey#2", "propose#2", "apply#1", "verify_change#1", "verify_change#2"],
+  );
+  assert.deepEqual(s.firings.map((f) => f.durationMs), [0, 0, 47, 0, 48, 70, 10, 10], "the length each node reported");
+  for (const firing of s.firings) {
+    assert.ok(firing.endSeq !== null && firing.endTime !== null, `${firing.node}#${firing.fire} ended`);
+    assert.ok(firing.endSeq! > firing.startSeq, "an end follows its own start");
+  }
+});
+
+test("a firing that failed carries the error, and the others carry none", () => {
+  const s = fold("workflow.jsonl").summary;
+  const failed = s.firings.filter((f) => f.error !== "");
+  assert.equal(failed.length, 1);
+  assert.equal(failed[0]!.node, "verify_change");
+  assert.match(failed[0]!.error, /undefined name/);
+});
+
+test("a model node's firing names the child episode it ran", () => {
+  const s = fold("workflow.jsonl").summary;
+  assert.deepEqual(
+    s.firings.filter((f) => f.childId !== null).map((f) => f.node),
+    ["propose", "propose", "apply"],
+  );
+  assert.deepEqual(
+    s.firings.filter((f) => f.childId === null).map((f) => f.node),
+    ["manifest", "survey", "survey", "verify_change", "verify_change"],
+  );
+});
+
+test("a branch and a recovery become decisions naming what was chosen or done", () => {
+  const s = fold("workflow.jsonl").summary;
+  assert.deepEqual(
+    s.decisions.map((d) => [d.kind, d.node, d.label]),
+    [
+      ["branch", "propose", "widen"],
+      ["branch", "propose", "apply"],
+      ["recovery", "verify_change", "retry"],
+    ],
+  );
+  assert.equal(s.decisions[0]!.detail, "widen leads to survey");
+  assert.match(s.decisions[2]!.detail, /^tool-error on firing 1 · re-fires verify_change$/);
+});
+
+test("an episode that runs the free loop records no firing and no decision", () => {
+  const s = fold("root.jsonl").summary;
+  assert.deepEqual(s.firings, []);
+  assert.deepEqual(s.decisions, []);
+});
+
+test("a retry's mark carries the backoff it imposes as its duration", () => {
+  const s = fold("retries-exhausted.jsonl").summary;
+  const retries = s.marks.filter((m) => m.kind === "retry");
+  assert.deepEqual(retries.map((m) => m.durationMs), [500, 1000, 2000, 4000, 8000]);
+});

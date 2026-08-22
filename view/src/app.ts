@@ -8,7 +8,7 @@ import { clear, h } from "./dom.js";
 import { EpisodeFold } from "./fold.js";
 import type { Patch, Summary } from "./fold.js";
 import { buildTree, flatten, sharedPrefix } from "./lineage.js";
-import { loadPanes, onPanesChange, rowGrip, setTrajectoryRows, sidebarGrip } from "./panes.js";
+import { loadPanes, onPanesChange, rowGrip, setTrajectoryHeight, sidebarGrip } from "./panes.js";
 import { ConversationView } from "./render/conversation.js";
 import { DiffView, renderNoDiff } from "./render/diff.js";
 import { RawView } from "./render/raw.js";
@@ -323,11 +323,12 @@ export class App implements Sink {
     // The program name arrives with `episode/start`, after the first
     // selection is made, so the title is set on every sidebar redraw.
     this.title.textContent = s ? `${s.name} · ${s.id}` : "";
-    const track = this.trajectoryEpisodes(roots);
+    this.trajectory.update(this.trajectoryEpisodes(roots), { selected: this.selected, cursor: this.cursor });
     // The trajectory region opens at the height its rows need, so a run of
-    // one episode does not open a region of mostly empty ground.
-    setTrajectoryRows(track.length, this.trajectory.chromeHeight());
-    this.trajectory.update(track, { selected: this.selected, cursor: this.cursor });
+    // one episode does not open a region of mostly empty ground. A row is
+    // as tall as its own channels, so the height follows the drawing rather
+    // than the row count.
+    setTrajectoryHeight(this.trajectory.rowsHeight(), this.trajectory.chromeHeight());
     this.topbar.setCrumbs(this.lineage());
     this.renderTabs();
   }
@@ -347,6 +348,8 @@ export class App implements Sink {
         parentId: s.parentId,
         forkOrigin: s.forkOrigin,
         marks: s.marks,
+        firings: s.firings,
+        decisions: s.decisions,
       };
     });
   }

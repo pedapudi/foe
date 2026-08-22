@@ -100,12 +100,14 @@ Three screenshots of the static export at 1512 by 792 sit beside the source,
 each in one of the two default themes. `proof-light.png` and
 `proof-dark.png` show the `overlap-parent` fixture and its two children in
 `google-light` and `google-dark`: the tree with its per-row measure and the
-spine on the selected row, both connector kinds, the trajectory's request
-spans, and a turn holding a diff and a fenced block. `proof-one-episode.png`
+spine on the selected row, the rail that carries depth in the trajectory's
+label column, the trajectory's request spans, a retry with the backoff it
+imposed, and a turn holding a diff and a fenced block. `proof-one-episode.png`
 shows a recorded run of this repository in `google-light`, with one root
 episode and no children, which is the ordinary case and the one where the
 trajectory's height is derived from a single row; its four request spans
-differ in length by a factor of seven, and its system prompt is open.
+differ in length by a factor of seven, its thirteen tool calls stand in
+three fans of two, six, and five, and its system prompt is open.
 
 The `messages` list recorded in each `model/request` event is written by
 hand in the generator, so the tests compare it with the list the bundle
@@ -187,8 +189,8 @@ panel in the left column, and the trajectory over the tabs in the right
 column. Every divider is a grip that resizes the regions it separates, by
 drag, by the arrow keys in 16-pixel steps, or to a limit with Home and End;
 a double click returns it to whatever derives it. The trajectory's height
-is derived from its row count until a grip sets it. `foe.panes` stores only
-the sizes a grip has set.
+is derived from the pixels its rows take until a grip sets it. `foe.panes`
+stores only the sizes a grip has set.
 
 The **episodes** region draws the tree as a line-art figure. A spawned
 child hangs under its `parent_id` with a solid edge; a fork hangs under its
@@ -201,16 +203,18 @@ consumed against the budget declared in `episode/start.program.budget`, the
 Landlock ABI, the fork origin, parent, team, timing, and task. Its text
 wraps and the region scrolls as a whole.
 
-The **trajectory** region draws one row per episode in two lanes: a lifetime
-bar with a tick per model request and markers for compactions, retries,
-spawns, and the outcome; and, a few pixels below it, a lane holding a
-segment per tool call sized by `duration_ms`. The lane is what tells a tool
+The **trajectory** region draws one row per episode, stacking the channels
+the episode's work nests into: model requests above the lifetime bar, the
+bar itself with markers for compactions, retries, spawns, and the outcome,
+then the lanes of a declared graph the episode ran, then a lane holding a
+segment per tool call sized by `duration_ms`. Position is what tells a tool
 call from a model request on a run where every call is too short to draw a
-length. A header control
-switches the x axis between wall-clock time and log position. Hovering a
-mark opens a hovercard; clicking one selects that episode and brings the
-conversation to that log position. `src/trajectory.ts` holds the placement
-rules and `src/render/trajectory.ts` draws them.
+length, and calls issued at one instant take successive heights of the tool
+lane so that a batch is countable. A header control switches the x axis
+between wall-clock time and log position. Hovering a mark opens the
+hovercard; clicking one selects that episode and brings the conversation to
+that log position. `src/trajectory.ts` holds the placement rules and
+`src/render/trajectory.ts` draws them.
 
 The main region has five tabs.
 
@@ -356,7 +360,7 @@ src/trajectory.ts             where every mark of the timeline goes
 src/workflow.ts               a declared graph, its run, and its layout
 src/statistics.ts             every quantity the statistics tab shows
 src/source.ts                 static and live event sources
-src/fold.ts                   one episode log to rows, a summary, and marks
+src/fold.ts                   one episode log to rows, a summary, marks, and firings
 src/messages.ts               the derived-messages rule
 src/lineage.ts                the tree, the shared fork prefix, the per-row measure
 src/prompt.ts                 a system prompt read back into its sections
@@ -365,7 +369,7 @@ src/render/trajectory.ts      the timeline figure
 src/render/tree.ts            the episode tree and the details panel
 src/render/workflow.ts        the declared graph with the run over it
 src/render/statistics.ts      the six statistics figures
-src/render/hovercard.ts       the hovercard both figures state numbers in
+src/render/hovercard.ts       the one card every figure explains a mark in
 src/render/raw.ts             the raw events table
 src/render/diff.ts            two forked episodes side by side
 src/render/markdown.ts        the Markdown parser
