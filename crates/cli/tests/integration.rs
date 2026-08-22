@@ -519,11 +519,16 @@ fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
     }
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(root.join("anthropic.key"), "sk-test\n").unwrap();
-    // `plan` resolves every `tool_defs.exec` path, so a file has to exist at
-    // each path the examples name under `project/tools`. Identity hashes the
-    // contents, and both fixtures write the same bytes, so any contents serve.
-    for name in ["ruff-check", "style-check"] {
-        std::fs::write(project.join("tools").join(name), "#!/bin/sh\nexit 0\n").unwrap();
+    // `plan` resolves every executable an example names, so a file has to
+    // exist at each path under `project/tools`. Every file an example ships
+    // other than its configuration, its README, and its runner is such a
+    // program, and each example's README says to install it there.
+    const NOT_PROGRAMS: [&str; 5] = ["config.json", "README.md", "run.sh", "run.py", "BUILD.bazel"];
+    for entry in std::fs::read_dir(Path::new(EXAMPLES).join(name)).unwrap().flatten() {
+        let file = entry.file_name();
+        if !NOT_PROGRAMS.contains(&file.to_string_lossy().as_ref()) {
+            std::fs::copy(entry.path(), project.join("tools").join(&file)).unwrap();
+        }
     }
     let rewritten = text
         .replace("/home/user/.config/foe/anthropic.key", root.join("anthropic.key").to_str().unwrap())
