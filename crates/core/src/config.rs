@@ -82,6 +82,10 @@ fn require(holds: bool, key: impl Into<String>, rule: impl Into<String>) -> Resu
     }
 }
 
+fn under_ceiling(holds: bool, key: String) -> Result<(), ConfigError> {
+    require(holds, key, "does not exceed the workflow ceiling")
+}
+
 /// Parses the document text. Unknown keys and wrong types are `Parse`
 /// errors; the rules of docs/config.md are checked by [`validate`].
 pub fn parse(text: &str) -> Result<Config, ConfigError> {
@@ -245,11 +249,7 @@ fn resolve_section(
         let program = resolve_section(&key(&format!("programs.{name}")), child, inherited, Some(&grants))?;
         programs.insert(name.clone(), program);
     }
-    if let Some(wf) = &s.workflow {
-        let mut subset = |k: &str, p: &ChildProgram| resolve_section(k, p, inherited, Some(&grants)).map(drop);
-        workflow::check(&key("workflow"), wf, &s.tools, &mut subset)?;
-    }
-    Ok(Program {
+    let program = Program {
         name: s.name.clone(),
         instructions: s.instructions.clone(),
         tools: s.tools.clone(),
@@ -263,7 +263,69 @@ fn resolve_section(
         sandbox: inherited.1.clone(),
         programs,
         workflow: s.workflow.clone(),
-    })
+    };
+    if let Some(wf) = &s.workflow {
+        let mut subset = |k: &str, p: &ChildProgram| {
+            let node = resolve_section(k, p, inherited, Some(&program.grants))?;
+            require_ceiling(k, &node, &program)
+        };
+        workflow::check(&key("workflow"), wf, &s.tools, &mut subset)?;
+    }
+    Ok(program)
+}
+
+/// Requires a workflow model node to introduce no authority beyond the
+/// program that contains its workflow.
+fn require_ceiling(prefix: &str, node: &Program, ceiling: &Program) -> Result<(), ConfigError> {
+    let key = |k: &str| key_at(prefix, k);
+    for (i, name) in node.tools.iter().enumerate() {
+        under_ceiling(ceiling.tools.contains(name), key(&format!("tools[{i}]")))?;
+    }
+    for (name, own) in &node.tool_defs {
+        let Some(cap) = ceiling.tool_defs.get(name) else {
+            return Err(invalid(key(&format!("tool_defs.{name}")), "names a configured tool in the workflow ceiling"));
+        };
+        // Descriptions and instructions affect behavior and identity. The
+        // four fields below are the configured process's authority.
+        for (field, holds) in [
+            ("exec", own.exec == cap.exec),
+            ("cwd", own.cwd.as_ref().is_some_and(|p| cap.cwd.as_ref().is_some_and(|root| p.starts_with(root)))),
+            ("network", !own.network || cap.network),
+            ("timeout_seconds", own.timeout_seconds <= cap.timeout_seconds),
+        ] {
+            under_ceiling(holds, key(&format!("tool_defs.{name}.{field}")))?;
+        }
+    }
+    for (name, own) in &node.host_tools {
+        under_ceiling(ceiling.host_tools.get(name) == Some(own), key(&format!("host_tools.{name}")))?;
+    }
+    for (i, name) in node.grants.spawn.iter().enumerate() {
+        under_ceiling(ceiling.grants.spawn.contains(name), key(&format!("grants.spawn[{i}]")))?;
+    }
+    let b = &node.budget;
+    let c = &ceiling.budget;
+    for (field, holds) in [
+        ("model_calls", b.model_calls <= c.model_calls),
+        ("tokens", within_optional(b.tokens, c.tokens)),
+        ("seconds", within_optional(b.seconds, c.seconds)),
+        ("max_depth", b.max_depth <= c.max_depth),
+        ("max_episodes", b.max_episodes <= c.max_episodes),
+        ("max_concurrent", b.max_concurrent <= c.max_concurrent),
+        ("loop_threshold", b.loop_threshold <= c.loop_threshold),
+    ] {
+        under_ceiling(holds, key(&format!("budget.{field}")))?;
+    }
+    for (name, child) in &node.programs {
+        let cap = ceiling.programs.get(name).ok_or_else(|| {
+            invalid(key(&format!("programs.{name}")), "names a descendant program in the workflow ceiling")
+        })?;
+        require_ceiling(&key(&format!("programs.{name}")), child, cap)?;
+    }
+    Ok(())
+}
+
+fn within_optional(value: Option<u64>, ceiling: Option<u64>) -> bool {
+    value.is_none_or(|own| ceiling.is_none_or(|cap| own <= cap))
 }
 
 /// Resolves a workflow model node's program against the resolved program

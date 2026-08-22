@@ -371,7 +371,8 @@ names the child episode of a model node and is absent otherwise.
 
 `workflow/node-end` — implemented. The firing ended. `value` is the node's
 canonical output and `rendered` the text its successors receive. When the
-firing failed, `error` states why and `value` is null.
+firing failed or was cancelled during workflow completion, `error` states
+why and `value` is null.
 
 ```json
 { "node": "survey", "fire": 1, "value": {}, "rendered": "…", "duration_ms": 1200 }

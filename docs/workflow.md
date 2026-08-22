@@ -58,7 +58,7 @@ decides, within those bounds, what to do.
                     "instructions": { "10-role": "Propose one experiment grounded in the survey." },
                     "tools": ["read", "grep"],
                     "grants": { "read": ["/home/user/project"] },
-                    "budget": { "model_calls": 8 },
+                    "budget": { "model_calls": 8, "max_episodes": 1 },
                     "done_when": { "returns": { "type": "object", "properties": {} } }
                   },
                   "follows": ["task", "manifest", "survey"],
@@ -81,9 +81,8 @@ decides, within those bounds, what to do.
 ```
 
 A `workflow` key in a configuration replaces the free loop for that
-episode. The configuration's `tools`, `grants`, `budget`, and `done_when`
-become the workflow's ceiling: every node draws from them and none exceeds
-them.
+episode. The configuration's authority and budget become the workflow's
+ceiling. Every node draws from that ceiling and none exceeds it.
 
 The invocation task, the configuration's `task` string, enters the graph
 through one built-in source named `task`. A node that lists `task` in its
@@ -154,11 +153,29 @@ sees.
 ### Model nodes
 
 A model node is a full episode. Its `model` block is a child program in the
-sense of [config.md](config.md#programs): instructions, tools, grants,
-budget, and termination, each a subset of the workflow's. The node's inputs
-become the child's task, one section per input, labeled with the input's
-name and carrying its rendered output; the `task` section comes first when
-the node follows `task`. The child runs the
+sense of [config.md](config.md#programs). Construction applies these ceiling
+rules recursively.
+
+- Every named tool appears in the workflow program's `tools`.
+- A configured tool uses the same executable. Its working directory,
+  network access, and timeout are no wider than the workflow definition.
+- A host tool's description, instruction, parameter schema, and effect match
+  the workflow definition.
+- Read and write roots lie inside the workflow roots. Every spawn grant and
+  its same-named descendant program appear in the workflow ceiling.
+- Every budget dimension is at most the workflow program's value. An omitted
+  token or time limit draws from the workflow's remaining shared allowance.
+- The model and sandbox are inherited from the workflow program.
+
+Configured-tool descriptions and instructions may differ because they
+change model-visible behavior without changing process authority. A model
+node may declare its own return schema and termination retries. Its verifier
+must be one of its contained tools, and all retries consume its contained
+budget.
+
+The node's inputs become the child's task, one section per input, labeled
+with the input's name and carrying its rendered output. The `task` section
+comes first when the node follows `task`. The child runs the
 ordinary agent loop with the ordinary tools, and its outcome value is the
 node's output.
 
@@ -233,7 +250,10 @@ branch label names, and let that node feed the cycle.
 Firing a node a second time re-fires every node downstream of it, because
 their inputs became fresh. Recovery uses this. Model nodes share the
 episode's whole-tree `budget.max_concurrent` leases with every other child
-episode. A ready model node waits while no slot remains.
+episode. A ready model node waits while no slot remains. Tool nodes whose
+effects are `pure` or `reads` may run concurrently. Tool nodes whose effects
+are `writes`, `execs`, or `spawns` run one at a time in node-start order
+across the workflow and every nested workflow.
 
 ### Completion
 
@@ -243,8 +263,11 @@ verifies the terminal value: a `returns` schema it must conform to, a
 `verify` tool that must report no findings, or both. Findings re-fire the
 terminal node's nearest model ancestor with the findings attached, up to
 `done_when.retries` times; findings that remain go to recovery at the
-terminal node. Firings still running when the workflow completes are
-awaited, so that their events precede `episode/end`. When the graph has no
+terminal node. Firings still running when the workflow completes receive
+ten seconds to finish. The executor then cancels them and records a
+`workflow/node-end` with a null value and a cancellation error before
+`episode/end`. The same bound applies when the workflow ends as blocked,
+exhausted, or failed. When the graph has no
 terminal node and no empty-branch path, the episode runs until its budget
 is spent and ends as `exhausted`, which is a legitimate shape for a
 supervisor loop and is reported as such by `foe plan`. A graph whose
@@ -270,11 +293,11 @@ path of `follows` edges reaches C from A through a node that forwards A's
 content. The first is a construction-time fact; the second is the trace.
 
 The guarantee covers model context. It does not by itself cover the
-filesystem. Two model nodes granted write access to the same directory can
+filesystem. Two nodes with write access to the same directory can
 communicate through it. A workflow that needs isolation between nodes grants
-them disjoint write roots, and `foe plan` lists every pair of model nodes
-whose write roots overlap, so that an author who wants the guarantee to
-extend to the filesystem can see where it does not.
+model nodes disjoint write roots. `foe plan` lists every pair of nodes whose
+write roots overlap. A `writes`, `execs`, or `spawns` tool node uses the
+enclosing workflow program's write roots for this conservative report.
 
 ## Recovery
 
@@ -410,7 +433,8 @@ bindings, every model node's program identity, `verify`, `retries`,
 A workflow episode is an episode. It has one log, one budget pool, one
 outcome, and one identity. Its model nodes are child episodes and obey
 every rule of [subagents](design.md#subagents-and-teams). Its tool nodes
-dispatch through the ordinary registry with the ordinary effect checks.
+dispatch through the ordinary registry with the ordinary effect checks and
+effect-based serialization.
 The viewer renders the graph with each firing linked to its child log, so
 a reader moves from the graph to the conversation that produced a value in
 one step.

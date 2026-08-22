@@ -101,7 +101,7 @@ def authority_config(root: Path, transport: Path) -> dict[str, Any]:
 
 def workflow_config(root: Path, transport: Path) -> dict[str, Any]:
     config = base_config("eval-workflow", root, transport)
-    config["tools"] = ["record"]
+    config["tools"] = ["read", "record"]
     config["tool_defs"] = {
         "record": {
             "exec": "/usr/bin/printf",
@@ -117,7 +117,12 @@ def workflow_config(root: Path, transport: Path) -> dict[str, Any]:
                     "instructions": {"role": "Return the declared workflow branch and plan."},
                     "tools": ["read"],
                     "grants": {"read": [str(root)]},
-                    "budget": {"model_calls": 2, "tokens": 1000},
+                    "budget": {
+                        "model_calls": 2,
+                        "tokens": 1000,
+                        "max_episodes": 1,
+                        "max_concurrent": 1,
+                    },
                     "done_when": {
                         "returns": {
                             "type": "object",

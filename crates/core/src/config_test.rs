@@ -204,3 +204,120 @@ fn children_inherit_model_and_sandbox_and_validate_recursively() {
     assert!(validate(&config(&root)).is_ok());
     assert!(resolve(&config(&root)).is_ok());
 }
+
+fn model(name: &str, root: &std::path::Path) -> Value {
+    json!({ "name": name, "instructions": { "role": "work" }, "tools": ["block"],
+        "grants": { "read": [root] }, "budget": { "model_calls": 1 } })
+}
+
+/// docs/workflow.md "Model nodes": every authority-bearing field in a
+/// model node is contained by the workflow program, including descendants.
+#[test]
+fn workflow_model_authority_must_fit_its_ceiling() {
+    let root = tmp("config-workflow-ceiling");
+    let exec = root.join("tool");
+    let other = root.join("other");
+    let tool_home = root.join("tool-home");
+    std::fs::write(&exec, "").unwrap();
+    std::fs::write(&other, "").unwrap();
+    std::fs::create_dir(&tool_home).unwrap();
+    let base = || {
+        let mut value = config_value(&root);
+        value["tools"] = json!(["block", "bounded", "observe"]);
+        value["tool_defs"] = json!({ "bounded": { "exec": exec, "cwd": tool_home,
+            "description": "bounded", "timeout_seconds": 5 } });
+        value["host_tools"] = json!({ "observe": { "description": "observe", "params": {}, "effect": "reads" } });
+        value["budget"] = json!({ "model_calls": 4, "tokens": 100, "seconds": 30,
+            "max_depth": 2, "max_episodes": 3, "max_concurrent": 2, "loop_threshold": 4 });
+        value["programs"] = json!({ "helper": model("helper", &root) });
+        value["grants"]["spawn"] = json!(["helper"]);
+        value
+    };
+    type Case<'a> = (&'a str, Box<dyn FnOnce(&mut Value) + 'a>);
+    let cases: Vec<Case> = vec![
+        ("workflow.nodes.work.model.tools[1]", Box::new(|p| p["tools"] = json!(["block", "ghost"]))),
+        (
+            "workflow.nodes.work.model.tool_defs.bounded.exec",
+            Box::new({
+                let other = other.clone();
+                move |p| p["tool_defs"] = json!({ "bounded": { "exec": other, "description": "other" } })
+            }),
+        ),
+        (
+            "workflow.nodes.work.model.tool_defs.bounded.cwd",
+            Box::new(|p| {
+                p["tool_defs"]["bounded"].as_object_mut().unwrap().remove("cwd");
+            }),
+        ),
+        (
+            "workflow.nodes.work.model.host_tools.observe",
+            Box::new(|p| {
+                p["host_tools"] = json!({ "observe": { "description": "changed", "params": {}, "effect": "reads" } })
+            }),
+        ),
+        (
+            "workflow.nodes.work.model.grants.spawn[0]",
+            Box::new(|p| {
+                p["programs"] = json!({ "other": model("other", &root) });
+                p["grants"]["spawn"] = json!(["other"]);
+            }),
+        ),
+        (
+            "workflow.nodes.work.model.programs.helper.tools[0]",
+            Box::new(|p| {
+                let mut helper = model("helper", &root);
+                helper["tools"] = json!(["ghost"]);
+                p["programs"] = json!({ "helper": helper });
+                p["grants"]["spawn"] = json!(["helper"]);
+            }),
+        ),
+        ("workflow.nodes.work.model.budget.model_calls", Box::new(|p| p["budget"]["model_calls"] = json!(5))),
+        ("workflow.nodes.work.model.budget.tokens", Box::new(|p| p["budget"]["tokens"] = json!(101))),
+        ("workflow.nodes.work.model.budget.seconds", Box::new(|p| p["budget"]["seconds"] = json!(31))),
+        ("workflow.nodes.work.model.budget.max_depth", Box::new(|p| p["budget"]["max_depth"] = json!(3))),
+        ("workflow.nodes.work.model.budget.max_episodes", Box::new(|p| p["budget"]["max_episodes"] = json!(4))),
+        ("workflow.nodes.work.model.budget.max_concurrent", Box::new(|p| p["budget"]["max_concurrent"] = json!(3))),
+        ("workflow.nodes.work.model.budget.loop_threshold", Box::new(|p| p["budget"]["loop_threshold"] = json!(5))),
+    ];
+    for (expected, edit) in cases {
+        let mut value = base();
+        let mut child = model("work", &root);
+        child["tools"] = json!(["block", "bounded", "observe"]);
+        child["tool_defs"] = value["tool_defs"].clone();
+        child["host_tools"] = value["host_tools"].clone();
+        child["budget"] = value["budget"].clone();
+        edit(&mut child);
+        value["workflow"] = json!({ "nodes": { "work": { "model": child, "terminal": true } } });
+        let config = parse(&value.to_string()).unwrap();
+        let ConfigError::Invalid { key, rule } = resolve(&config).unwrap_err() else { unreachable!() };
+        assert_eq!(key, expected);
+        assert!(rule.contains("workflow ceiling"), "{rule}");
+    }
+
+    let mut value = base();
+    let mut child = model("work", &root);
+    child["tools"] = json!(["block", "bounded"]);
+    child["tool_defs"] = value["tool_defs"].clone();
+    child["tool_defs"]["bounded"]["description"] = json!("A node-specific description");
+    child["tool_defs"]["bounded"]["instruction"] = json!("Use this tool once.");
+    child["budget"] = value["budget"].clone();
+    child["budget"].as_object_mut().unwrap().remove("tokens");
+    child["budget"].as_object_mut().unwrap().remove("seconds");
+    value["workflow"] = json!({ "nodes": { "work": { "model": child, "terminal": true } } });
+    assert!(resolve(&parse(&value.to_string()).unwrap()).is_ok());
+}
+
+/// docs/design.md "Delegation": an ordinary child may specialize its tool
+/// list; `foe plan` reports that descendant authority for inspection.
+#[test]
+fn ordinary_children_may_hold_tools_the_parent_does_not_use() {
+    let root = tmp("config-specialist-tools");
+    let program = program_with(&root, |v| {
+        v["tools"] = json!(["spawn"]);
+        v["grants"]["spawn"] = json!(["kid"]);
+        v["programs"] = json!({ "kid": model("kid", &root) });
+    })
+    .unwrap();
+    assert_eq!(program.tools, vec!["spawn"]);
+    assert_eq!(program.programs["kid"].tools, vec!["block"]);
+}

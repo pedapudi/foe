@@ -16,7 +16,8 @@ Three rules shape the format.
 
 `foe schema` emits a JSON Schema for this format, so an editor can validate a
 document and offer completions. `foe plan --config FILE` prints the resolved
-program and its identity without running anything.
+program, its identity, and every spawn-reachable tool definition without
+running anything.
 
 ## JSON Schema dialect
 
@@ -387,18 +388,22 @@ is a full configuration document without `version`, `task`, `model`, or
 
 A child program's grants must be a subset of its parent's, checked at
 construction. Each child program's identity participates in the parent's
-identity.
+identity. Its tools may differ from its parent's tools. The effective tool
+authority in `foe plan` includes the root and each descendant reachable
+through a `grants.spawn` entry. Unreachable declarations remain in the
+resolved program and are absent from effective authority because no episode
+can invoke them.
 
 ### `workflow`
 
 Object. Optional. A declared graph of nodes that replaces the free loop
 for this episode. [workflow.md](workflow.md) specifies every key under it
-and every construction rule. The document's `tools`, `grants`, `budget`,
-and `done_when` are the ceiling the graph draws from: a tool node names a
-tool in `tools`, and a model node's program is a child program in the sense
-of `programs`, checked to be a subset the same way. A child program may
-carry a `workflow` of its own. The graph participates in identity as
-workflow.md "Identity" lists.
+and every construction rule. The document's authority and budget form the
+ceiling for every model node. The check covers tools, configured executable
+authority, host tool definitions, filesystem grants, spawn grants and their
+descendant programs, and every budget dimension. A child program may carry a
+`workflow` of its own. The graph participates in identity as workflow.md
+"Identity" lists.
 
 ### `task`
 

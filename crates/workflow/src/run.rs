@@ -30,9 +30,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
-use tokio::sync::watch;
+use std::time::{Duration, Instant};
+use tokio::sync::{watch, Notify, OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
+
+const FIRING_GRACE: Duration = Duration::from_secs(10);
 
 /// Everything one workflow episode needs: what the agent loop takes, the
 /// spawner that starts model nodes, and the graph.
@@ -70,6 +72,10 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
         task,
         step: AtomicU32::new(0),
         header: Mutex::new(None),
+        effectful: Arc::new(Semaphore::new(1)),
+        active: Arc::new(AtomicU32::new(0)),
+        finished: Arc::new(Notify::new()),
+        cancelled: Arc::new(Mutex::new(Vec::new())),
     });
     let mut executor = Executor::new(shared, String::new(), &params.workflow);
     let outcome = match executor.drive().await {
@@ -99,6 +105,11 @@ struct Shared {
     /// request's id is drawn from it.
     step: AtomicU32,
     header: Mutex<Option<(u64, RequestHeader)>>,
+    /// Serializes writes, execution, and spawning across nested workflows.
+    effectful: Arc<Semaphore>,
+    active: Arc<AtomicU32>,
+    finished: Arc<Notify>,
+    cancelled: Arc<Mutex<Vec<WorkflowNodeEnd>>>,
 }
 
 /// Why a firing produced no value. `settled` marks a failure a second
@@ -207,6 +218,36 @@ fn section(name: &str, body: &str) -> String {
 
 type Fired = (String, u32, Instant, Output);
 
+/// Records the end of a firing if its task is cancelled before producing
+/// a result. Dropping the join set also drops guards in nested executors.
+struct Cancellation {
+    queue: Arc<Mutex<Vec<WorkflowNodeEnd>>>,
+    active: Arc<AtomicU32>,
+    notify: Arc<Notify>,
+    node: String,
+    fire: u32,
+    started: Instant,
+    completed: bool,
+}
+
+impl Drop for Cancellation {
+    fn drop(&mut self) {
+        if !self.completed {
+            let end = WorkflowNodeEnd {
+                node: self.node.clone(),
+                fire: self.fire,
+                value: Value::Null,
+                rendered: String::new(),
+                error: Some("cancelled after the workflow ended before this firing".into()),
+                duration_ms: self.started.elapsed().as_millis() as u64,
+            };
+            lock(&self.queue).push(end);
+        }
+        self.active.fetch_sub(1, Ordering::SeqCst);
+        self.notify.notify_one();
+    }
+}
+
 enum Action {
     Retry(String),
     Amend(String, String),
@@ -303,17 +344,28 @@ impl Executor {
         self.shared.step.fetch_add(1, Ordering::SeqCst) + 1
     }
 
-    /// Drives the graph to an outcome, then waits for every firing still
-    /// running so that its events precede `episode/end`.
+    /// Drives the graph to an outcome, then gives remaining firings a
+    /// bounded interval to finish before cancelling them.
     fn drive(&mut self) -> Pin<Box<dyn Future<Output = Result<Outcome, RuntimeError>> + Send + '_>> {
         Box::pin(async move {
             let outcome = self.schedule().await;
-            while let Some(joined) = self.tasks.join_next().await {
-                if let Ok(f) = joined {
-                    let (name, fire, started, result) = f;
+            let deadline = tokio::time::Instant::now() + FIRING_GRACE;
+            while !self.tasks.is_empty() {
+                let Ok(Some(joined)) = tokio::time::timeout_at(deadline, self.tasks.join_next()).await else { break };
+                if let Ok((name, fire, started, result)) = joined {
                     self.sched.finish(&name);
                     self.node_end(&name, fire, started, &result, None)?;
                 }
+            }
+            self.tasks.abort_all();
+            while self.tasks.join_next().await.is_some() {}
+            if self.prefix.is_empty() {
+                while self.shared.active.load(Ordering::SeqCst) > 0 {
+                    self.shared.finished.notified().await;
+                }
+            }
+            for end in std::mem::take(&mut *lock(&self.shared.cancelled)) {
+                self.log(EventData::WorkflowNodeEnd(end))?;
             }
             outcome
         })
@@ -343,7 +395,23 @@ impl Executor {
                     deferred = true;
                     continue;
                 }
-                self.launch(&name)?;
+                let serial = node
+                    .tool
+                    .as_ref()
+                    .and_then(|tool| self.shared.registry.effect(tool))
+                    .is_some_and(|effect| !effect.concurrent());
+                let permit = if serial {
+                    match self.shared.effectful.clone().try_acquire_owned() {
+                        Ok(permit) => Some(permit),
+                        Err(_) => {
+                            deferred = true;
+                            continue;
+                        }
+                    }
+                } else {
+                    None
+                };
+                self.launch(&name, permit)?;
             }
             if self.tasks.is_empty() {
                 if deferred {
@@ -369,7 +437,7 @@ impl Executor {
     }
 
     /// Starts one firing of a ready node and records `workflow/node-start`.
-    fn launch(&mut self, name: &str) -> Result<(), RuntimeError> {
+    fn launch(&mut self, name: &str, permit: Option<OwnedSemaphorePermit>) -> Result<(), RuntimeError> {
         let sh = self.shared.clone();
         let node: Node = self.sched.nodes[name].clone();
         let full = self.full(name);
@@ -398,6 +466,7 @@ impl Executor {
                     let (deadline, spill) = (self.deadline(), sh.log.dir().join("spill"));
                     let configured = sh.registry.source(tool) == Some(Source::Configured);
                     Box::pin(async move {
+                        let _permit = permit;
                         let value = sh.registry.dispatch(&sh.handles, &call, step, spill, deadline).await;
                         classify_tool(value, configured)
                     })
@@ -436,7 +505,17 @@ impl Executor {
         };
         self.log(EventData::WorkflowNodeStart(WorkflowNodeStart { node: full, fire, inputs: input_seqs, child_id }))?;
         let name = name.to_string();
-        self.tasks.spawn(async move { (name, fire, started, task.await) });
+        self.shared.active.fetch_add(1, Ordering::SeqCst);
+        let full = self.full(&name);
+        let queue = self.shared.cancelled.clone();
+        let active = self.shared.active.clone();
+        let notify = self.shared.finished.clone();
+        self.tasks.spawn(async move {
+            let mut cancel = Cancellation { queue, active, notify, node: full, fire, started, completed: false };
+            let result = task.await;
+            cancel.completed = true;
+            (name, fire, started, result)
+        });
         Ok(())
     }
 
@@ -461,6 +540,9 @@ impl Executor {
 
     async fn verify_with(&self, verifier: &str, value: &Value) -> Result<Vec<String>, RuntimeError> {
         let sh = &self.shared;
+        let serial = sh.registry.effect(verifier).is_some_and(|effect| !effect.concurrent());
+        let _permit =
+            if serial { Some(sh.effectful.clone().acquire_owned().await.expect("semaphore is open")) } else { None };
         sh.registry
             .verify_with(verifier, &sh.handles, value, self.next_step(), sh.log.dir().join("spill"), self.deadline())
             .await

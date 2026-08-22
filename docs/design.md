@@ -146,7 +146,9 @@ its parent's, so a child may be offered `edit` where its parent has only
 `spawn`. Every such tool is still bounded by the child's grants, which lie
 inside the parent's, and by the ruleset the child inherits. One document
 declares every level, so the tool list of each level is the author's
-choice rather than something the runtime derives.
+choice rather than something the runtime derives. `foe plan` reports each
+distinct tool definition in the root and every spawn-reachable descendant,
+with the program paths that can call it.
 
 The log directory is the whole state. Copying it copies the run. The viewer,
 replay, forking, budget accounting, and team coordination all read it and
@@ -522,7 +524,7 @@ foe "task" --headless                                    run; no viewer; print t
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan --config FILE [--json]                          resolve the program, print it, its identity, and its transport
+foe plan --config FILE [--json]                          print the resolved program, identity, transport, and effective authority
 foe tools [--config FILE]                                list tools, with sources when a config is given
 foe schema                                               print the JSON Schema for the configuration
 ```
@@ -595,7 +597,7 @@ not finished.
                              grants,      │    built-in model clients
                              budget,      │
                              identity,    ├── crates/workflow
-                             spawn,       │    graph scheduling, recovery, plan report
+                             spawn,       │    graph scheduling and recovery
                              teams,       │
                              exec,        ├── crates/context
                              landlock,    │    projection, cut, summarization prompt
@@ -603,7 +605,7 @@ not finished.
                              workflow     └── crates/view ◄── view/ (browser bundle)
                              config,           projection, HTTP, SSE, export
                              context seam
-                                                 crates/cli ◄── all of the above
+                                                 crates/cli ◄── all of the above; plan reports
 
    python/foe    a thin host: builds config, runs the binary, serves the protocol
    examples/     one runnable example per job, each checking its own result

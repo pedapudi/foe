@@ -7,6 +7,7 @@
 
 #[cfg(feature = "transport")]
 mod login;
+mod plan;
 mod run;
 
 use foe_core::registry::{block_spec, resolve_sources, resolve_specs, Source};
@@ -188,24 +189,28 @@ fn load(config: &Path) -> Result<foe_core::config::Program, String> {
 /// object with `identity` and `program`, which the Python package parses,
 /// `context` with the compaction policy in one line when the program
 /// compacts, and `workflow` when the program declares one: its cycles, the
-/// model nodes sharing write roots, and its terminal nodes. Without
-/// `--json`, a workflow is followed by the report docs/workflow.md
-/// "Firing" describes.
+/// nodes sharing write roots, and its terminal nodes. Both forms report the
+/// tool authority reachable from the root. Without `--json`, a workflow is
+/// followed by the report docs/workflow.md "Firing" describes.
 fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
     let program = load(config)?;
     let identity = run::identity(&program)?;
     let value = program.to_value();
     let transport = program.model.as_ref().map(run::describe_transport);
     let context = run::context_policy(&program)?.map(|policy| policy.describe());
+    let authority = plan::authority(&program)?;
     if json {
-        let workflow = program.workflow.as_ref().map(|wf| {
+        let workflow = if let Some(wf) = &program.workflow {
             let terminal: Vec<&String> = wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k).collect();
-            let overlaps = foe_workflow::plan::write_overlaps(wf);
-            serde_json::json!({ "cycles": foe_workflow::plan::cycles(wf), "write_overlaps": overlaps, "terminal": terminal })
-        });
+            Some(
+                serde_json::json!({ "cycles": plan::cycles(wf), "write_overlaps": plan::write_overlaps(&program)?, "terminal": terminal }),
+            )
+        } else {
+            None
+        };
         let report = serde_json::json!({
             "identity": identity.hash, "program": value, "transport": transport, "workflow": workflow,
-            "context": context,
+            "context": context, "authority": authority,
         });
         println!("{report}");
     } else {
@@ -215,9 +220,10 @@ fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
             println!("context   {context}");
         }
         println!("{}", serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?);
-        if let Some(wf) = &program.workflow {
-            print!("{}", foe_workflow::plan_report(wf));
+        if program.workflow.is_some() {
+            print!("{}", plan::workflow_report(&program)?);
         }
+        print!("{}", plan::authority_report(&authority));
     }
     Ok(ExitCode::SUCCESS)
 }

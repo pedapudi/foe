@@ -131,6 +131,17 @@ impl Fixture {
 
     /// Registers a scripted tool under `name` with the given results.
     fn tool(mut self, name: &str, results: Vec<ToolValue>, delay_ms: u64) -> Self {
+        self.add_tool(name, results, delay_ms, Effect::Pure);
+        self
+    }
+
+    fn effectful_tool(mut self, name: &str, delay_ms: u64, effect: Effect) -> Self {
+        self.config["grants"]["write"] = json!([self.dir]);
+        self.add_tool(name, Vec::new(), delay_ms, effect);
+        self
+    }
+
+    fn add_tool(&mut self, name: &str, results: Vec<ToolValue>, delay_ms: u64, effect: Effect) {
         let calls = Arc::new(Mutex::new(Vec::new()));
         self.calls.insert(name.to_string(), calls.clone());
         let spec = ToolSpec {
@@ -138,7 +149,7 @@ impl Fixture {
             description: format!("scripted {name}"),
             instruction: None,
             params: json!({ "type": "object" }),
-            effect: Effect::Pure,
+            effect,
         };
         self.tools.push(Box::new(Scripted {
             spec,
@@ -146,7 +157,6 @@ impl Fixture {
             calls,
             delay: Duration::from_millis(delay_ms),
         }));
-        self
     }
 
     fn respond(mut self, chunks: Vec<Chunk>) -> Self {
@@ -362,6 +372,61 @@ async fn independent_nodes_fire_concurrently() {
     assert_eq!(starts(&events).last().unwrap().0, "c");
 }
 
+/// docs/workflow.md "Firing": writes, execution, and spawning are
+/// serialized across ready tool nodes, including nested workflows.
+#[tokio::test]
+async fn effectful_tool_nodes_run_one_at_a_time() {
+    let mut fx = Fixture::new(
+        "effectful",
+        &["write", "join"],
+        json!({ "nodes": {
+            "outer": { "tool": "write", "args": { "node": "outer" } },
+            "nested": { "workflow": { "nodes": {
+                "inner": { "tool": "write", "args": { "node": "nested/inner" }, "terminal": true }
+            } } },
+            "done": { "tool": "join", "follows": ["outer", "nested"], "terminal": true }
+        } }),
+    )
+    .effectful_tool("write", 40, Effect::Writes)
+    .tool("join", vec![], 0);
+    let (outcome, events) = fx.run().await;
+    assert!(matches!(outcome, Outcome::Completed { .. }));
+    let calls = fx.calls("write");
+    assert_eq!(calls.len(), 2);
+    assert!(calls[0].2 <= calls[1].1 || calls[1].2 <= calls[0].1, "effectful calls overlapped: {calls:?}");
+    let call_order: Vec<&str> = calls.iter().filter_map(|call| call.0["node"].as_str()).collect();
+    let started = starts(&events);
+    let start_order: Vec<&str> = started
+        .iter()
+        .filter_map(|(name, _)| matches!(name.as_str(), "outer" | "nested/inner").then_some(name.as_str()))
+        .collect();
+    assert_eq!(call_order, start_order, "effectful calls follow node-start order");
+}
+
+/// docs/workflow.md "Completion": a terminal result gives other firings
+/// ten seconds to end, then cancellation records their node-end events.
+#[tokio::test]
+async fn completion_cancels_and_records_an_outstanding_firing() {
+    let mut fx = Fixture::new(
+        "cancel",
+        &["fast", "slow"],
+        json!({ "nodes": {
+            "finish": { "tool": "fast", "terminal": true },
+            "pending": { "tool": "slow" }
+        } }),
+    )
+    .tool("fast", vec![ToolValue::ok(json!("done"), "done")], 0)
+    .tool("slow", vec![], 20_000);
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("done") });
+    let cancelled = events.iter().find_map(|event| match &event.data {
+        EventData::WorkflowNodeEnd(end) if end.node == "pending" => Some(end),
+        _ => None,
+    });
+    assert!(cancelled.and_then(|end| end.error.as_deref()).is_some_and(|e| e.contains("cancelled")));
+    assert_eq!(events.last().unwrap().data.type_name(), "episode/end");
+}
+
 /// docs/workflow.md "Recovery": a tool error goes to one recovery decision;
 /// `retry` re-fires the node; the episode completes once it succeeds.
 #[tokio::test]
@@ -498,7 +563,7 @@ async fn a_model_node_with_no_concurrent_slot_ends_as_exhausted() {
     fx.config["budget"]["max_concurrent"] = json!(0);
     fx.config["workflow"] = json!({ "nodes": { "only": { "terminal": true, "model": {
         "name": "child", "instructions": { "role": "finish" }, "tools": ["block"],
-        "grants": { "read": [read] }, "budget": { "model_calls": 1 }
+        "grants": { "read": [read] }, "budget": { "model_calls": 1, "max_concurrent": 0 }
     } } } });
     let (outcome, _) = fx.run().await;
     assert_eq!(outcome, Outcome::Exhausted { limit: foe_log::ExhaustedLimit::Concurrency });
