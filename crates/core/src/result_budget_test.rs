@@ -155,4 +155,3 @@ fn a_result_without_a_rendering_is_rendered_and_counted() {
     bound(&mut values);
     assert!(values[0].rendered.as_deref().unwrap().chars().count() <= TURN_BUDGET_CHARS);
 }
-
