@@ -101,6 +101,37 @@ def _args_contain(call: dict[str, Any], text: str) -> bool:
     return text in json.dumps(call.get("args", {}), sort_keys=True)
 
 
+def workspace_relative(path: str, workspace: Path) -> str:
+    """Name a tool-call path the way the repository names it.
+
+    A model may cite a workspace-relative path or an absolute one. Both forms
+    have to compare equal before a citation can be matched against the files
+    the episode read.
+    """
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = workspace / candidate
+    resolved = os.path.realpath(candidate)
+    root = os.path.realpath(workspace)
+    return os.path.relpath(resolved, root) if resolved.startswith(root + os.sep) else resolved
+
+
+def successful_read_paths(events: list[dict[str, Any]], workspace: Path) -> set[str]:
+    """Workspace-relative paths whose read call returned content without an error."""
+    errored = {
+        event_data(event).get("call_id")
+        for event in events
+        if event.get("type") == "tool/result" and event_data(event).get("is_error") is True
+    }
+    paths: set[str] = set()
+    for call in assistant_calls(events):
+        args = call.get("args")
+        path = args.get("path") if isinstance(args, dict) else None
+        if call.get("name") == "read" and isinstance(path, str) and call.get("id") not in errored:
+            paths.add(workspace_relative(path, workspace))
+    return paths
+
+
 def _workspace_contains(workspace: Path, text: str) -> bool:
     for path in workspace.rglob("*"):
         if not path.is_file():
@@ -138,13 +169,17 @@ def assess_mechanism(
         return passed, details
 
     if task.name == "typed-configuration-evidence":
-        reads = [
-            call
-            for call in calls
-            if call.get("name") in {"read", "grep"} and "services" in json.dumps(call.get("args", {}))
-        ]
-        details = {"service_evidence_calls": len(reads)}
-        return bool(reads), details
+        value = root_outcome(log_dir).get("value")
+        evidence = value.get("evidence") if isinstance(value, dict) else None
+        cited = evidence.get("path") if isinstance(evidence, dict) else None
+        read_paths = successful_read_paths(root, workspace)
+        resolved = workspace_relative(cited, workspace) if isinstance(cited, str) else None
+        details = {
+            "cited_evidence_path": cited,
+            "files_read": sorted(read_paths),
+            "cited_file_was_read": resolved is not None and resolved in read_paths,
+        }
+        return bool(details["cited_file_was_read"]), details
 
     if task.name == "delegated-order-quotation":
         starts = [event_data(event) for event in root if event.get("type") == "spawn/start"]

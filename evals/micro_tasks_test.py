@@ -108,14 +108,42 @@ class MicroTaskTests(unittest.TestCase):
             name = "typed-configuration-evidence"
             case, workspace, metadata = materialize(name)
             log = case / "episode"
-            evidence = [
-                event(
-                    "assistant/message",
-                    {"tool_calls": [{"name": "read", "args": {"path": "services/search.json"}}]},
-                )
-            ]
-            write_log(log / "episode.jsonl", evidence)
+
+            def evidence_log(read_path: str, cited_path: str) -> list[dict[str, object]]:
+                return [
+                    event(
+                        "assistant/message",
+                        {"tool_calls": [{"id": "c1", "name": "read", "args": {"path": read_path}}]},
+                    ),
+                    event("tool/result", {"call_id": "c1", "name": "read", "is_error": False}),
+                    event(
+                        "episode/end",
+                        {
+                            "outcome": {
+                                "kind": "completed",
+                                "value": {
+                                    "service": "search",
+                                    "rule": "public-request-logging",
+                                    "evidence": {
+                                        "path": cited_path,
+                                        "pointer": "/audit/request_logging",
+                                        "value": False,
+                                    },
+                                },
+                            }
+                        },
+                    ),
+                ]
+
+            write_log(log / "episode.jsonl", evidence_log("services/search.json", "services/search.json"))
             self.assertTrue(assess_mechanism(tasks[name], workspace, metadata, log, episode_logs(log))[0])
+            write_log(
+                log / "episode.jsonl",
+                evidence_log(str(workspace / "services/search.json"), "services/search.json"),
+            )
+            self.assertTrue(assess_mechanism(tasks[name], workspace, metadata, log, episode_logs(log))[0])
+            write_log(log / "episode.jsonl", evidence_log("services/catalog.json", "services/search.json"))
+            self.assertFalse(assess_mechanism(tasks[name], workspace, metadata, log, episode_logs(log))[0])
             write_log(log / "episode.jsonl", clean)
             self.assertFalse(assess_mechanism(tasks[name], workspace, metadata, log, episode_logs(log))[0])
 
