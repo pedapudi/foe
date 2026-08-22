@@ -1,4 +1,4 @@
-// The states the conversation draws rather than spells.
+// The states the conversation draws rather than writes out as a word.
 //
 // The trajectory already draws a grammar: a hairline that runs is work in
 // progress, an open ring is something not yet closed, a dashed stroke is
@@ -54,10 +54,10 @@ const LINE_OUTER = MARK_WIDTH - RING_X - RING_R;
 const flip = (x: number): number => MARK_WIDTH - x;
 
 export const MARKS: Readonly<Record<MarkKind, Mark>> = {
-  // A hairline that runs and stops at an open terminal. The line is the
-  // response arriving and the ring is open because the turn never closed,
-  // which is what an interruption is. Nothing follows the ring: the mark
-  // has a past and no future, and `live` below is its mirror.
+  // A hairline that runs and stops at an open ring. The line is the response
+  // that arrived and the ring is open because the turn never closed, which
+  // is what an interruption is. The ring is the last thing in the box, so
+  // the mark carries nothing after the stop; `live` below reverses that.
   interrupted: {
     label: "interrupted",
     meaning: "the response stopped before the turn closed",
@@ -86,9 +86,11 @@ export const MARKS: Readonly<Record<MarkKind, Mark>> = {
     meaning: "the tool reported a failure",
     parts: [{ shape: "path", attrs: { d: "M 4 3 l 6 6 M 10 3 l -6 6" } }],
   },
-  // A result the length of a tool's own, in the dashed stroke the language
-  // uses for something supplied rather than observed. It is a plain span
-  // because a result has extent, and it is dashed because no tool ran.
+  // A hairline the full width of the box, dashed. The width says that a
+  // result of the ordinary extent is present, and the dashes say that the
+  // runtime supplied it rather than a tool producing it. The stylesheet
+  // sets a finer dash rhythm than a text dash, so the mark does not read as
+  // a run of em dashes in the metadata beside it.
   synthetic: {
     label: "synthetic",
     meaning: "the runtime wrote this result; the tool did not run",
