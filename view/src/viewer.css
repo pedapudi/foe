@@ -1944,26 +1944,29 @@ table.events td.type.error {
   cursor: pointer;
 }
 
-/* The tool lane sits below the lifetime line. A call short enough to draw
- * as a hairline still has to read there, so the fill is stronger than the
- * structure above it. */
+/* Hue carries direction alone (docs/design-language.md, "Colour"), so a
+ * mark's kind is told by its lane, its shape, its thickness, and its ink
+ * weight. Weight follows the size of the mark rather than its kind, so that
+ * every mark carries about the same weight of ink on the page: the longest
+ * bar of a row takes the faintest fill, and a tool call, which is usually
+ * drawn at its minimum width, takes full ink. Without that a run bound by
+ * the model would draw its request bars as the darkest thing in the figure
+ * and its tool calls as nothing at all. */
 .traj-mark .seg {
-  fill: var(--v2-ink-soft);
-  fill-opacity: 0.75;
+  fill: var(--v2-ink);
+  fill-opacity: 0.9;
   stroke: none;
-}
-
-.traj-mark:hover .seg {
-  fill-opacity: 1;
 }
 
 /* A request is a bar above the lifetime line: the whole answer at reduced
  * fill, and the wait before its first token over it at full fill. The two
  * are the same encoding the statistics view's per-step bars use, so a
- * reader learns one grammar for both. A bar lifts to full fill on hover. */
+ * reader learns one grammar for both. The wait is the shorter of the two,
+ * which is why it takes the heavier ink. A bar lifts to full fill on
+ * hover. */
 .traj-mark.request .span {
   fill: var(--v2-ink-faint);
-  fill-opacity: 0.7;
+  fill-opacity: 0.6;
   stroke: none;
 }
 
@@ -1974,6 +1977,13 @@ table.events td.type.error {
 }
 
 .traj-mark.request:hover .span {
+  fill-opacity: 1;
+}
+
+/* Every filled mark lifts to full fill under the pointer, which is how the
+ * register says a bar answers a reader who is asking about it. */
+.traj-mark:hover .seg,
+.traj-firing:hover .bar {
   fill-opacity: 1;
 }
 
@@ -1998,16 +2008,14 @@ table.events td.type.error {
   opacity: 0.65;
 }
 
-/* One firing of one node of a declared graph, on that node's lane. Colour
- * is earned by how the firing ended and never by which node it was. */
+/* One firing of one node of a declared graph, on that node's lane. A firing
+ * spans several requests, so it is longer than a tool call and shorter than
+ * the run: the middle weight of the three. Colour is earned by how the
+ * firing ended and never by which node it was. */
 .traj-firing .bar {
   fill: var(--v2-ink-soft);
-  fill-opacity: 0.5;
+  fill-opacity: 0.8;
   stroke: none;
-}
-
-.traj-firing:hover .bar {
-  fill-opacity: 1;
 }
 
 .traj-firing.good .bar {

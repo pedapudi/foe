@@ -31,18 +31,69 @@ changing theme is a re-skin with no re-render.
 | `--v2-caution` | a limit reached |
 | `--v2-flat` | unchanged or recognized |
 
-Three rules govern their use.
+Four rules govern their use.
 
 - `good` and `bad` are earned by direction and never by identity. A child
   episode is not coloured for being a child. An outcome is `good` when it is
   `completed`, `bad` when it is `failed`, `caution` when it is `exhausted`,
   and `flat` when it is `blocked`, because `blocked` is a recognized state
   rather than a failure. A running episode is neutral.
+- Hue carries direction and nothing else. A mark's kind is carried by four
+  channels that hue does not touch: the lane the mark sits in, its shape,
+  its thickness, and its ink weight. The section below states why hue is
+  unavailable for kind and how the four channels are assigned.
 - The accent appears once per figure, on the element that carries the
   meaning. A selected episode, a current step, or a focused control takes
   it. Nothing decorative does.
 - Panels are bounded by `--v2-rule`. No panel carries an accent-coloured
   left rail or border; the accent is reserved for signal.
+
+### What separates one kind of mark from another
+
+A figure of this viewer draws marks of several kinds at once. One row of the
+trajectory carries model requests, tool calls, retries, spawns, compactions,
+node firings, and an outcome. A reader has to tell them apart, and the
+obvious channel for that is hue.
+
+Hue is not available. The role contract holds exactly four hues:
+`--v2-good`, `--v2-bad`, and `--v2-caution` state a direction, and
+`--v2-accent` is spent on the one element per figure that carries the
+argument. There is no fifth. Giving a kind one of the three direction hues
+would put a reader in front of a mark whose colour could mean either the
+kind or the direction: a tool call in `--v2-good` sits in the same row as an
+outcome in `--v2-good`, and neither reading can be ruled out. Giving a kind
+the accent would spend on every mark of that kind the one emphasis the
+figure has left for its argument. Inventing a palette of kind hues would
+mean adding tokens to all sixteen themes, which are copied from
+`console.css` without modification, and the viewer would no longer be
+wearing the same palette as its source.
+
+The consequence is a rule rather than a preference: **the meaning of colour
+in a figure is direction, and only direction.** A neutral mark is a mark
+that earned no direction, whatever kind it is. The property that rule buys
+is the one worth most: a run that failed reads as failed at a glance,
+because the only coloured marks in the figure are the ones saying so.
+
+The four channels that do carry kind are assigned as follows.
+
+- **Lane.** Marks that nest are separated by position, in the order of
+  containment down the row. Two kinds never share a lane.
+- **Shape.** Each kind keeps one shape across every figure that draws it: a
+  bar for an interval, a cross for an attempt that failed, a ring for
+  something not yet closed, a diamond for an intervention in the context, an
+  open square for an intervention in a graph, a tick for a choice.
+- **Thickness.** No two channels of one row draw a mark of the same
+  thickness, and each is under the lane that holds it.
+- **Ink weight.** The three neutral weights follow the size of the mark
+  rather than its kind, so that every mark carries about the same weight of
+  ink: the longest bar of a row takes `--v2-ink-faint`, a mark of middling
+  length takes `--v2-ink-soft`, and a mark usually drawn at its minimum
+  width takes `--v2-ink`. Without this the channel that happens to hold the
+  longest bar would be the darkest thing in the figure and the channel of
+  short marks would disappear. Opacity separates the parts within one
+  channel, which is the register's depth channel. Structure that measures
+  nothing, such as a lineage connector, a depth guide, or a group bracket,
+  takes `--v2-rule` and never an ink.
 
 The sixteen themes are copied from `console.css` without modification:
 `monokai`, `solarized-dark`, `solarized-light`, `google-light`,

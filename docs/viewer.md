@@ -227,15 +227,15 @@ rather than the row count.
 | mark | channel | drawn from | form |
 |---|---|---|---|
 | lifetime | line | `episode/start` to `episode/end` | a hairline bar, continued as a dashed extension to the current time while the episode runs |
-| model request | above the line | `model/request` to its `assistant/message` | a bar in two parts, on a hairline stem down to the line |
+| model request | above the line | `model/request` to its `assistant/message` | a bar in two parts, 4 and 6 units thick, on a hairline stem down to the line |
 | compaction | line | `compaction/start` | a small open diamond in `--v2-caution` |
 | retry | line | `request/retry` | a cross in `--v2-bad`, with the backoff it imposes running forward from it as a dashed segment |
 | spawn | line | `spawn/start` | a small ring, and the origin of the child's connector |
 | outcome | line | `episode/end` | a glyph at the end of the bar |
-| node firing | node band | `workflow/node-start` to its `workflow/node-end` | a bar on the node's own lane |
+| node firing | node band | `workflow/node-start` to its `workflow/node-end` | a bar 5 units thick on the node's own lane |
 | branch | node band | `workflow/branch` | a tick on the choosing node's lane, with the label it chose |
 | recovery | node band | `workflow/recovery` | an open square in `--v2-caution` on the failed node's lane, with the action it applied |
-| tool call | tool lane | `tool/result` | a segment whose width is `duration_ms`, ending at the result |
+| tool call | tool lane | `tool/result` | a segment 3.5 units thick whose width is `duration_ms`, ending at the result |
 
 A model request is a bar rather than a tick, because how long an answer took
 is most of what a run's shape consists of: one request of a four-request
@@ -263,6 +263,38 @@ the minimum width, so no call disappears.
 
 Every bar is `rx: 3` and filled at reduced opacity, and lifts to full
 opacity while the pointer is on it.
+
+### Telling one kind of mark from another
+
+Seven kinds of mark share a row, and colour does not separate them: hue
+carries direction alone, so a mark that earned no direction is neutral
+whatever kind it is. `docs/design-language.md`, "What separates one kind of
+mark from another", states why and gives the rule. Four channels carry kind
+here.
+
+The **lane** comes first: requests above the lifetime line, the marks of the
+episode as a whole on it, node firings in the band below it, tool calls
+below that. No two kinds share a lane. The **shape** comes next, and each
+kind keeps its shape wherever the viewer draws it, so the grammar of the
+timeline is the grammar of the conversation and of the workflow tab.
+**Thickness** is the third: no two channels draw a mark of the same
+thickness, and each mark is thinner than the lane that holds it.
+
+**Ink weight** is the fourth, and it follows the size of the mark rather
+than its kind, so that every mark carries about the same weight of ink. A
+request's span is the longest bar of a row, so it fills `--v2-ink-faint` at
+0.6; the wait over it is shorter and fills `--v2-ink-soft`; a node firing
+covers several requests and fills `--v2-ink-soft` at 0.8; a tool call is
+usually drawn at its minimum width and fills `--v2-ink` at 0.9. On a run
+bound by the model the request bars therefore stay quiet while the tool
+ticks stay visible, which is the reverse of what an even ink would give.
+Structure that measures nothing takes `--v2-rule`: the lineage connectors,
+the depth rail, and the bracket over the runs of one program.
+
+The marks that do carry a direction keep it: a retry and its backoff in
+`--v2-bad`, a compaction and a recovery in `--v2-caution`, a node firing
+that ended in `--v2-good` or `--v2-bad`, and the outcome glyph. A run that
+failed is therefore the only kind of row with red in it.
 
 The outcome glyph is coloured by direction: a filled dot in `--v2-good` for
 `completed`, a cross in `--v2-bad` for `failed`, a triangle in

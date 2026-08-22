@@ -287,6 +287,27 @@ export const TOOL_PITCH = 6;
 /** Height of one lane of the node band, which holds one node's firings. */
 export const NODE_LANE = 9;
 
+/**
+ * How thick each channel's mark is drawn, in layout units.
+ *
+ * Thickness is one of the three channels that separate a mark's kind, so no
+ * two of these are equal, and each is under the lane that holds it, so a
+ * mark never crosses into the channel below it. The request's two parts
+ * differ from each other for the same reason: the wait before the first
+ * token is drawn over the whole answer, and the taller of the two is the
+ * one a reader is meant to read first.
+ */
+export const MARK_THICKNESS = {
+  /** The whole answer, from the call to the message that answers it. */
+  requestSpan: 4,
+  /** The wait before the first token, drawn over the span. */
+  requestWait: 6,
+  /** One firing of one node of a declared graph. */
+  firing: 5,
+  /** One tool call. */
+  tool: 3.5,
+} as const;
+
 /** Indent per level of the episode tree, in the label column. */
 export const DEPTH_INDENT = 16;
 

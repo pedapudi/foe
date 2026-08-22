@@ -26,7 +26,7 @@ import type {
   TrajectoryLayout,
   TrajectoryRow,
 } from "../trajectory.js";
-import { DECISION_GLYPH, MARK_MIN_WIDTH, layoutTrajectory } from "../trajectory.js";
+import { DECISION_GLYPH, MARK_MIN_WIDTH, MARK_THICKNESS, layoutTrajectory } from "../trajectory.js";
 import type { Outcome } from "../types.js";
 import { str } from "../types.js";
 import { Hovercard } from "./hovercard.js";
@@ -369,7 +369,17 @@ export class TrajectoryView {
   private firingElement(firing: PlacedFiring): SVGGElement {
     const child = firing.childId !== null;
     const group = svg("g", { class: `traj-firing ${firingRole(firing)}${child ? " child" : ""}` });
-    group.appendChild(svg("rect", { class: "bar", x: firing.x, y: firing.y - 2.5, width: Math.max(MARK_MIN_WIDTH, firing.w), height: 5, rx: 3 }));
+    const thick = MARK_THICKNESS.firing;
+    group.appendChild(
+      svg("rect", {
+        class: "bar",
+        x: firing.x,
+        y: firing.y - thick / 2,
+        width: Math.max(MARK_MIN_WIDTH, firing.w),
+        height: thick,
+        rx: 3,
+      }),
+    );
     const observed = firing.endTime === null ? null : firing.endTime - firing.startTime;
     const meta = [
       `seq ${firing.startSeq}`,
@@ -437,7 +447,14 @@ export class TrajectoryView {
         // issued together share one x and take successive heights, so a
         // batch of six reads is six marks rather than one.
         group.appendChild(
-          svg("rect", { class: "seg", x: mark.x, y: mark.y - 2, width: Math.max(MARK_MIN_WIDTH, mark.w), height: 4.5, rx: 3 }),
+          svg("rect", {
+            class: "seg",
+            x: mark.x,
+            y: mark.y - MARK_THICKNESS.tool / 2,
+            width: Math.max(MARK_MIN_WIDTH, mark.w),
+            height: MARK_THICKNESS.tool,
+            rx: 3,
+          }),
         );
         break;
       case "request": {
@@ -447,10 +464,19 @@ export class TrajectoryView {
         // per-step bars use: the whole answer is the lower and fainter bar,
         // and the wait before the first token is the taller one over it.
         const width = Math.max(MARK_MIN_WIDTH, mark.w);
-        group.appendChild(svg("rect", { class: "span", x: mark.x, y: mark.y - 6, width, height: 4, rx: 3 }));
+        const span = MARK_THICKNESS.requestSpan;
+        const wait = MARK_THICKNESS.requestWait;
+        group.appendChild(svg("rect", { class: "span", x: mark.x, y: mark.y - 2 - span, width, height: span, rx: 3 }));
         if (mark.head > 0) {
           group.appendChild(
-            svg("rect", { class: "wait", x: mark.x, y: mark.y - 7, width: Math.max(MARK_MIN_WIDTH, mark.head), height: 6, rx: 3 }),
+            svg("rect", {
+              class: "wait",
+              x: mark.x,
+              y: mark.y - 1 - wait,
+              width: Math.max(MARK_MIN_WIDTH, mark.head),
+              height: wait,
+              rx: 3,
+            }),
           );
         }
         // A hairline back to the line ties the bar to the row it belongs

@@ -8,6 +8,7 @@ import { buildTree, flatten } from "../src/lineage.js";
 import {
   DEPTH_INDENT,
   MARK_MIN_WIDTH,
+  MARK_THICKNESS,
   NODE_LANE,
   ROW_HEIGHT,
   TOOL_LANE,
@@ -719,4 +720,23 @@ test("an open firing lengthens as the clock moves and its lane stays put", () =>
   assert.deepEqual(laneOf(early), ["survey", "draft"]);
   assert.deepEqual(laneOf(later), laneOf(early));
   assert.equal(early.rows[0]!.height, later.rows[0]!.height);
+});
+
+// ---- what separates one kind of mark from another ----
+//
+// Hue carries direction alone, so kind is carried by lane, shape,
+// thickness, and ink weight (docs/design-language.md, "What separates one
+// kind of mark from another"). Ink weight lives in the stylesheet; the two
+// rules over thickness are checked here.
+
+test("no two channels of a row draw a mark of the same thickness", () => {
+  const drawn = Object.values(MARK_THICKNESS);
+  assert.equal(new Set(drawn).size, drawn.length, drawn.join(" "));
+});
+
+test("every mark is thinner than the lane that holds it", () => {
+  assert.ok(MARK_THICKNESS.tool < TOOL_PITCH, "two stacked calls keep clear ground between them");
+  assert.ok(MARK_THICKNESS.firing < NODE_LANE, "a firing stays inside its node's lane");
+  assert.ok(MARK_THICKNESS.requestWait < ROW_HEIGHT / 2, "a request stays above the lifetime line");
+  assert.ok(MARK_THICKNESS.requestSpan < MARK_THICKNESS.requestWait, "the wait is the taller of the two parts");
 });
