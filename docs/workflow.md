@@ -435,6 +435,9 @@ outcome, and one identity. Its model nodes are child episodes and obey
 every rule of [subagents](design.md#subagents-and-teams). Its tool nodes
 dispatch through the ordinary registry with the ordinary effect checks and
 effect-based serialization.
+The parent reserves descendant capacity for a workflow-bearing child program
+even when the program has no explicit spawn grant. This rule applies through
+every level of nested workflows.
 The viewer renders the graph with each firing linked to its child log, so
 a reader moves from the graph to the conversation that produced a value in
 one step.
