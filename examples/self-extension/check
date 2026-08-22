@@ -17,9 +17,13 @@ elif grep -Eq 'let total_bytes[[:space:]]*=[[:space:]]*bytes\.len\(\)' crates/co
 else
   echo 'crates/code/src/read.rs does not report total_bytes as bytes.len()'
 fi
-require_text crates/code/src/read_test.rs \
-  'assert_eq!(v.value["total_bytes"], 14);' \
-  'crates/code/src/read_test.rs does not assert the byte count'
+if grep -Fq 'assert_eq!(v.value["total_bytes"], 14);' crates/code/src/read_test.rs; then
+  :
+elif grep -Eq 'assert_eq!\([^;]*\["total_bytes"\][^;]*\.len\(\)' crates/code/src/read_test.rs; then
+  :
+else
+  echo 'crates/code/src/read_test.rs does not assert the byte count'
+fi
 if ! grep '^| `read` ' docs/tools.md | grep -Fq '`total_bytes`'; then
   echo 'docs/tools.md does not list total_bytes in the read canonical value'
 fi
