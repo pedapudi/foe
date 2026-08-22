@@ -638,7 +638,7 @@ TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,500 lines. It is separate because it serves a person at a terminal
+under 1,300 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing, the plan reports, credential acquisition,
 the browser, the outcome line, and the exit codes.

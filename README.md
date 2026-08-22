@@ -151,7 +151,7 @@ Seven numbers bound the source. Five are line budgets over Rust, excluding
 tests and generated code: the runtime, which is the log, core, and tool
 crates together, stays under 6,000 lines, the workflow executor stays under
 1,000, the compaction policy under 500, the viewer crate under 600, and the
-command-line crate under 1,500. The viewer is budgeted apart from the
+command-line crate under 1,300. The viewer is budgeted apart from the
 runtime because it delivers a record of a run rather than running one; its
 HTML, TypeScript, and CSS count toward no line budget at all. The command
 line is budgeted apart from the runtime because it serves a person at a

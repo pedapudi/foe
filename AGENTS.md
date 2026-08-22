@@ -47,7 +47,7 @@ sentence on first reading.
 - Line budget: the runtime, which is `log`, `core`, and `code` together,
   stays under 6,000 lines of Rust excluding tests and generated code;
   `workflow` stays under 1,000 on the same terms, `context` under 500,
-  `view` under 600, and `cli` under 1,500. The viewer is budgeted apart from
+  `view` under 600, and `cli` under 1,300. The viewer is budgeted apart from
   the runtime because it delivers a record of a run rather than running one,
   and the command line apart from it because it serves a person at a
   terminal rather than an episode. `scripts/loc.sh` counts every one of them.
