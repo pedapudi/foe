@@ -9,7 +9,7 @@
 use crate::budget::Pool;
 use crate::loop_::{lock, Log};
 use crate::protocol::{self, Downlink};
-use crate::spawn::{ProcessSpawner, Router, Uplink};
+use crate::spawn::{ChildRun, ProcessSpawner, Router, Uplink};
 use crate::team::LeadLog;
 use crate::{CapError, SpawnHandle, SpawnRequest, Spawner};
 use foe_log::{BudgetAmount, Event, EventData};
@@ -103,10 +103,12 @@ impl Spawner for BudgetedSpawner {
             context: req.context,
             call_id: req.call_id,
         })?;
-        let (log, pool, run) = (self.log.clone(), self.pool.clone(), handle.run.clone());
+        let (settled_tx, settled_run) = ChildRun::pending();
+        let returned = SpawnHandle { child_id: handle.child_id.clone(), dir: handle.dir.clone(), run: settled_run };
+        let (log, pool, run) = (self.log.clone(), self.pool.clone(), handle.run);
         tokio::spawn(async move {
             let settled = run.settle().await;
-            let end = EventData::SpawnEnd { child_id: child_id.clone(), outcome: settled.outcome };
+            let end = EventData::SpawnEnd { child_id: child_id.clone(), outcome: settled.outcome.clone() };
             let release = EventData::BudgetRelease { child_id: child_id.clone(), spent: settled.spent };
             for event in [end, release] {
                 if let Err(e) = log.append(event) {
@@ -118,8 +120,9 @@ impl Spawner for BudgetedSpawner {
             // `spawn/end` and `budget/release` are not yet in the log, and
             // the teardown would then write a second pair of its own.
             lock(&pool).release(&child_id, settled.spent);
+            let _ = settled_tx.send(Some(settled));
         });
-        Ok(handle)
+        Ok(returned)
     }
 }
 

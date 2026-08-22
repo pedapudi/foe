@@ -71,14 +71,13 @@ async fn a_spawn_reserves_records_and_releases_budget() {
     let result = r#"{"type":"tool/result","call_id":"tc_1","value":1}"#;
     wait_for(|| router.route(&child_id, result).ok());
     let settled = handle.run.clone().settle().await;
-    wait_for(|| (log.events().len() == 5).then_some(()));
-    assert_eq!(types(&log)[3..], ["spawn/end", "budget/release"]);
+    assert_eq!(types(&log)[3..], ["spawn/end", "budget/release"], "the handle settles after parent events");
     let EventData::BudgetRelease { spent, .. } = &log.events()[4].data else { panic!() };
     assert_eq!(*spent, settled.spent);
     assert_eq!(spent.model_calls, Some(1));
     assert_eq!(spent.concurrent, None, "settlement returns the reusable concurrent slot");
     assert_eq!(lock(&pool).remaining().model_calls, Some(19), "the reservation is returned and the spend debited");
-    assert_eq!(lock(&pool).active_children(), 0);
+    assert_eq!(lock(&pool).active_children(), 0, "the handle settles after its reservation is released");
 }
 
 /// docs/config.md "budget": a child's budget is reserved from its parent's
