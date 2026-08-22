@@ -545,6 +545,10 @@ pub struct BudgetAmount {
     /// `budget/release` it is how many episodes the subtree held.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub episodes: Option<u64>,
+    /// Episodes that may run at once in the child subtree, including the
+    /// child. Present in `budget/reserve` and absent in `budget/release`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concurrent: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

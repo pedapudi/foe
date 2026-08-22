@@ -752,10 +752,27 @@ def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
                 if valid:
                     normalized = {
                         name: value
-                        for name in ("model_calls", "tokens")
+                        for name in ("model_calls", "tokens", "concurrent")
                         if isinstance((value := reserved.get(name)), int)
                     }
                     active[child_id] = normalized
+                    concurrent = reserved.get("concurrent")
+                    cap = budget.get("max_concurrent", 4)
+                    evaluation.check(
+                        dimension,
+                        isinstance(concurrent, int) and concurrent >= 1,
+                        "budget/reserve lacks a positive concurrent subtree lease",
+                        log,
+                        index,
+                    )
+                    leased = sum(item.get("concurrent", 0) for item in active.values())
+                    evaluation.check(
+                        dimension,
+                        not isinstance(cap, int) or leased <= cap,
+                        "active subtree leases exceed budget.max_concurrent",
+                        log,
+                        index,
+                    )
                     for name, total in totals.items():
                         if not isinstance(total, int):
                             continue
@@ -831,6 +848,13 @@ def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
                 )
                 if valid:
                     reserved = active.pop(child_id)
+                    evaluation.check(
+                        dimension,
+                        "concurrent" not in spent,
+                        "budget/release treats reusable concurrent slots as spend",
+                        log,
+                        index,
+                    )
                     child = by_id.get(child_id)
                     measured = _subtree_spend(child, children_by_parent) if child is not None else None
                     for name in ("model_calls", "tokens"):

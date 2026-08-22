@@ -1,5 +1,6 @@
 use super::*;
 use crate::exec::tests::scratch;
+use foe_log::ExhaustedLimit;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::Duration;
@@ -140,6 +141,46 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     assert_eq!(child.budget.max_episodes, 2, "the granted share caps the child's own allowance");
 }
 
+/// docs/config.md `budget`: `max_concurrent` bounds child episodes running
+/// anywhere below the root. A child's subtree lease includes that child.
+#[test]
+fn a_root_concurrency_lease_caps_grandchildren() {
+    let dir = scratch("spawn", "concurrent-share");
+    let mut config = parent_config();
+    config.budget.max_concurrent = 2;
+    let worker = config.programs["worker"].clone();
+    let nested = config.programs.get_mut("worker").unwrap();
+    nested.grants.spawn = vec!["worker".into()];
+    nested.programs.insert("worker".into(), worker);
+    nested.budget.model_calls = 5;
+    nested.budget.max_concurrent = 4;
+    let spawner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir,
+        config.clone(),
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        Arc::new(Seen::default()),
+    )
+    .unwrap();
+    let req = SpawnRequest {
+        program: "worker".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        call_id: "tc".into(),
+    };
+    let mut root_pool = crate::budget::Pool::new(config.budget.clone());
+    let granted = root_pool.reserve("child", spawner.reserve_for(&req)).unwrap();
+    assert_eq!(granted.concurrent, Some(2), "the root grants only its two remaining slots");
+    let child = child_config(&config, &config.programs["worker"], "t".into(), granted);
+    assert_eq!(child.budget.max_concurrent, 1, "the running child occupies one root slot");
+    let mut child_pool = crate::budget::Pool::new(child.budget);
+    let leaf = || BudgetAmount { model_calls: Some(1), episodes: Some(1), concurrent: Some(1), ..Default::default() };
+    child_pool.reserve("grandchild", leaf()).unwrap();
+    assert_eq!(child_pool.reserve("second", leaf()).unwrap_err(), ExhaustedLimit::Concurrency);
+}
+
 #[tokio::test]
 async fn child_requests_are_forwarded_and_answers_routed() {
     let dir = scratch("spawn", "roundtrip");
@@ -160,7 +201,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
         program: "worker".into(),
         task: "do it".into(),
         context: SpawnContext::Fresh,
-        reserve: BudgetAmount { model_calls: Some(5), tokens: None, seconds: None, episodes: None },
+        reserve: BudgetAmount { model_calls: Some(5), ..Default::default() },
         call_id: "tc_spawn".into(),
     };
     let handle = spawner.spawn(req).unwrap();

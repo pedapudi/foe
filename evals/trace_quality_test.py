@@ -137,6 +137,17 @@ class TraceQualityTest(unittest.TestCase):
         self.assert_dimension_fails(events, "declared_authority")
         self.assertEqual(report["observations"]["landlock_abis"], {"invalid": 1})
 
+    def test_missing_concurrent_lease_is_detected(self) -> None:
+        events = valid_events()
+        events[-1:-1] = [
+            event(5, "budget/reserve", {"child_id": "ep_child", "reserved": {"model_calls": 1}}),
+            event(6, "budget/release", {"child_id": "ep_child", "spent": {"model_calls": 0}}),
+        ]
+        events[-1]["seq"] = 7
+        report = evaluate_events(events)
+        self.assertFalse(report["metrics"]["hierarchical_budgets"]["conformant"])
+        self.assertTrue(any("concurrent subtree lease" in item["message"] for item in report["violations"]))
+
     def assert_dimension_fails(self, events: list[dict[str, Any]], dimension: str) -> None:
         report = evaluate_events(events)
         self.assertFalse(report["metrics"][dimension]["conformant"])
