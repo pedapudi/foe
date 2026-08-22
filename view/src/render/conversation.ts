@@ -109,9 +109,10 @@ function renderHeader(row: HeaderRow): HTMLElement {
 /**
  * One tool: its name, what the model is told it does, and its parameters as
  * a table. The schema's JSON says the same thing, and says it in a shape
- * that has to be parsed by eye before it can be read.
+ * that has to be parsed by eye before it can be read. The raw events tab
+ * sets a `request/header`'s tool schemas the same way.
  */
-function renderToolSchema(tool: ToolSchema): HTMLElement {
+export function renderToolSchema(tool: ToolSchema): HTMLElement {
   const parameters = toolParameters(tool.parameters);
   return h(
     "div",

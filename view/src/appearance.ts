@@ -55,10 +55,17 @@ export const TYPEFACES: { id: string; mode: TypefaceMode; label: string; sans: s
   { id: "display-bricolage", mode: "display", label: "bricolage grotesque", sans: "'Bricolage Grotesque', system-ui, sans-serif", mono: "'Bricolage Grotesque', system-ui, sans-serif", head: "'Bricolage Grotesque', system-ui, sans-serif" },
 ];
 
+/**
+ * The three text sizes, as multipliers of the 13-pixel base, giving 15,
+ * 17.5, and 20.8 pixels. Each step is about 17 percent over the one below
+ * it, so the three are evenly spaced on a ratio scale rather than by equal
+ * pixel differences, which read as a smaller step at the top than at the
+ * bottom. The smallest is the default.
+ */
 export const FONT_SIZES: { id: string; label: string; scale: number }[] = [
-  { id: "small", label: "S", scale: 1 },
-  { id: "medium", label: "M", scale: 1.15 },
-  { id: "large", label: "L", scale: 1.3 },
+  { id: "small", label: "S", scale: 1.15 },
+  { id: "medium", label: "M", scale: 1.35 },
+  { id: "large", label: "L", scale: 1.6 },
 ];
 
 export const SCALE_MIN = 70;
@@ -76,15 +83,6 @@ export const DEFAULT_THEME_LIGHT = "google-light";
 export const DEFAULT_THEME_DARK = "google-dark";
 export const DEFAULT_TYPEFACE = "technical-inconsolata";
 export const DEFAULT_FONTSIZE = "small";
-
-/**
- * The one line each option sets in its own face. A technical face is a face
- * for reading code, so its specimen is a line of code; an editorial or
- * display face sets a sentence.
- */
-export function specimenLine(mode: TypefaceMode): string {
-  return mode === "technical" ? "let outcome = episode.run();" : "One bounded release of work.";
-}
 
 /**
  * The first family of an option's name. The picker's trigger has room for

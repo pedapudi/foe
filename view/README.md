@@ -101,8 +101,9 @@ each in one of the two default themes. `proof-light.png` and
 `proof-dark.png` show the `overlap-parent` fixture and its two children in
 `google-light` and `google-dark`: the tree with its per-row measure and the
 spine on the selected row, the rail that carries depth in the trajectory's
-label column, the trajectory's request spans, a retry with the backoff it
-imposed, and a turn holding a diff and a fenced block. `proof-one-episode.png`
+label column, the trajectory's three ink weights over its request spans,
+node firings, and tool calls, a retry with the backoff it imposed, and a
+turn holding a diff and a fenced block. `proof-one-episode.png`
 shows a recorded run of this repository in `google-light`, with one root
 episode and no children, which is the ordinary case and the one where the
 trajectory's height is derived from a single row; its four request spans
@@ -238,9 +239,20 @@ The main region has five tabs.
   stylesheet alone. Every other event type, including the reserved ones
   and types this bundle does not know, appears as a compact row with the
   event type as its label and the payload behind an expander.
-- **raw events**: a table of every event with seq, time, and type. The
-  filter matches the seq, the type, or any text in the payload. Clicking a
-  row expands its payload.
+- **raw events**: a table of every event with seq, time, and type. Clicking
+  a row opens its payload, drawn field by field in the order the log wrote
+  the keys. A field whose shape this runtime writes often is set the way the
+  rest of the viewer sets it: a request's messages read as messages, a
+  response's text as Markdown, a tool result's text as a diff or as coloured
+  source, a token count as one line of numbers, an outcome in the colour of
+  its direction. Every other field goes to the structured renderer, whose
+  objects and arrays open and close and state how much they hold while
+  closed. Nothing is dropped: a collapsed node opens to the literal value
+  and one control holds the payload's own JSON text. The filter matches the
+  seq, the type, or any text in that JSON, so it reaches values inside nodes
+  the reader has not opened. `src/json.ts` and `src/payload.ts` hold the
+  rules and `src/render/json.ts` and `src/render/payload.ts` build the
+  elements.
 - **diff**: for two episodes that share a fork prefix. The shared events are
   shown once, collapsed, under the label `shared, seq 0-N`; the two
   suffixes follow side by side. Two episodes share a prefix when one is a
@@ -340,10 +352,11 @@ here those families resolve when the machine has them and fall back to the
 listed system faces otherwise, because the viewer runs on loopback and in
 environments without a network.
 
-Each typeface option in the picker names itself in its own face over one
-specimen line: a line of code for a technical face and a sentence for an
-editorial or display face. The three text-size controls are each set at the
-size they select.
+Each typeface option in the picker is a micro-specimen, `Aa` in the
+option's body face beside `01` in its data face, followed by the option's
+name set in its heading face. The trigger carries the same specimen. The
+three text-size controls are each set at the size they select, and they
+multiply the 13-pixel base by 1.15, 1.35, and 1.6.
 
 Theme, typeface, text size, page scale, and region sizes persist in
 `localStorage` under `foe.theme`, `foe.typeface`, `foe.fontsize`,
@@ -379,7 +392,11 @@ src/render/workflow.ts        the declared graph with the run over it
 src/render/statistics.ts      the statistics figures over timing, budget, and tools
 src/render/attribution.ts     the three figures over the input tokens
 src/render/hovercard.ts       the one card every mark is explained in
+src/json.ts                   how a JSON value is read for display
+src/payload.ts                which payload fields have a rendering of their own
 src/render/raw.ts             the raw events table
+src/render/json.ts            a JSON value as a structure a reader walks
+src/render/payload.ts         one event payload, field by field
 src/render/diff.ts            two forked episodes side by side
 src/render/markdown.ts        the Markdown parser
 src/render/markup.ts          elements for Markdown, code, diffs, and math

@@ -13,6 +13,7 @@
 // hovercard: it is handed the episodes and redraws when a digest of what
 // it would draw changes.
 
+import { currentFontScale } from "../chrome.js";
 import { clear, fmtDuration, fmtTime, h } from "../dom.js";
 import { outcomeLabel } from "../fold.js";
 import { shortIdentity } from "../lineage.js";
@@ -25,7 +26,7 @@ import type {
   TrajectoryLayout,
   TrajectoryRow,
 } from "../trajectory.js";
-import { DECISION_GLYPH, MARK_MIN_WIDTH, layoutTrajectory } from "../trajectory.js";
+import { DECISION_GLYPH, MARK_MIN_WIDTH, MARK_THICKNESS, layoutTrajectory } from "../trajectory.js";
 import type { Outcome } from "../types.js";
 import { str } from "../types.js";
 import { Hovercard } from "./hovercard.js";
@@ -168,9 +169,10 @@ export class TrajectoryView {
   }
 
   /**
-   * Pixels the rows of the last drawing took. The pane's derived height is
-   * this plus the axis and the heading, so a row with a node band opens a
-   * region tall enough to hold it.
+   * Layout units the rows of the last drawing took. The pane's derived
+   * height is this plus the axis and the heading, taken at the reader's
+   * text size, so a row with a node band opens a region tall enough to
+   * hold it.
    */
   rowsHeight(): number {
     return this.rows;
@@ -186,12 +188,18 @@ export class TrajectoryView {
   }
 
   private draw(force: boolean): void {
-    const width = this.figure.clientWidth;
-    const height = this.figure.clientHeight;
+    // The figure is laid out in units of the default text size and drawn at
+    // the reader's, so the pane's own pixels are divided by that multiple
+    // before the layout sees them. A lane whose pitch is fixed in layout
+    // units then still clears the lane label, which grows with the type.
+    const scale = currentFontScale();
+    const width = this.figure.clientWidth / scale;
+    const height = this.figure.clientHeight / scale;
     const digest = [
       this.axis,
       width,
       height,
+      scale,
       this.state.selected,
       this.state.cursor,
       this.episodes
@@ -221,11 +229,11 @@ export class TrajectoryView {
       this.figure.appendChild(h("div", { class: "empty sub" }, "no episodes"));
       return;
     }
-    this.figure.appendChild(this.build(layout, width));
+    this.figure.appendChild(this.build(layout, width, scale));
   }
 
-  private build(layout: TrajectoryLayout, width: number): SVGSVGElement {
-    const figure = figureSvg("traj", width, layout.height, "episode trajectory");
+  private build(layout: TrajectoryLayout, width: number, scale: number): SVGSVGElement {
+    const figure = figureSvg("traj", width, layout.height, "episode trajectory", scale);
 
     // The axis: leader ticks with a small mono label, each carrying a
     // gridline down the plot. A span's length is read against the axis, so
@@ -361,7 +369,17 @@ export class TrajectoryView {
   private firingElement(firing: PlacedFiring): SVGGElement {
     const child = firing.childId !== null;
     const group = svg("g", { class: `traj-firing ${firingRole(firing)}${child ? " child" : ""}` });
-    group.appendChild(svg("rect", { class: "bar", x: firing.x, y: firing.y - 2.5, width: Math.max(MARK_MIN_WIDTH, firing.w), height: 5, rx: 3 }));
+    const thick = MARK_THICKNESS.firing;
+    group.appendChild(
+      svg("rect", {
+        class: "bar",
+        x: firing.x,
+        y: firing.y - thick / 2,
+        width: Math.max(MARK_MIN_WIDTH, firing.w),
+        height: thick,
+        rx: 3,
+      }),
+    );
     const observed = firing.endTime === null ? null : firing.endTime - firing.startTime;
     const meta = [
       `seq ${firing.startSeq}`,
@@ -429,7 +447,14 @@ export class TrajectoryView {
         // issued together share one x and take successive heights, so a
         // batch of six reads is six marks rather than one.
         group.appendChild(
-          svg("rect", { class: "seg", x: mark.x, y: mark.y - 2, width: Math.max(MARK_MIN_WIDTH, mark.w), height: 4.5, rx: 3 }),
+          svg("rect", {
+            class: "seg",
+            x: mark.x,
+            y: mark.y - MARK_THICKNESS.tool / 2,
+            width: Math.max(MARK_MIN_WIDTH, mark.w),
+            height: MARK_THICKNESS.tool,
+            rx: 3,
+          }),
         );
         break;
       case "request": {
@@ -439,10 +464,19 @@ export class TrajectoryView {
         // per-step bars use: the whole answer is the lower and fainter bar,
         // and the wait before the first token is the taller one over it.
         const width = Math.max(MARK_MIN_WIDTH, mark.w);
-        group.appendChild(svg("rect", { class: "span", x: mark.x, y: mark.y - 6, width, height: 4, rx: 3 }));
+        const span = MARK_THICKNESS.requestSpan;
+        const wait = MARK_THICKNESS.requestWait;
+        group.appendChild(svg("rect", { class: "span", x: mark.x, y: mark.y - 2 - span, width, height: span, rx: 3 }));
         if (mark.head > 0) {
           group.appendChild(
-            svg("rect", { class: "wait", x: mark.x, y: mark.y - 7, width: Math.max(MARK_MIN_WIDTH, mark.head), height: 6, rx: 3 }),
+            svg("rect", {
+              class: "wait",
+              x: mark.x,
+              y: mark.y - 1 - wait,
+              width: Math.max(MARK_MIN_WIDTH, mark.head),
+              height: wait,
+              rx: 3,
+            }),
           );
         }
         // A hairline back to the line ties the bar to the row it belongs

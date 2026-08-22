@@ -1,13 +1,18 @@
 // The raw events tab: every event of one episode as a filterable table.
 
 import { fmtTime, h, pretty } from "../dom.js";
+import { renderPayload } from "./payload.js";
 import type { LogEvent } from "../types.js";
 
 interface RawRow {
   ev: LogEvent;
   tr: HTMLTableRowElement;
   payload: HTMLTableRowElement | null;
-  /** Serialized payload, built on first filter or expand. */
+  /**
+   * The payload's own JSON text. It is what the filter searches, so a
+   * query reaches every value the payload holds, including the ones inside
+   * a node the reader has not opened. Built on the first filter or expand.
+   */
   json: string | null;
 }
 
@@ -94,7 +99,7 @@ export class RawView {
       row.tr.classList.remove("open");
       return;
     }
-    row.payload = h("tr", { class: "payload" }, h("td", { colspan: 3 }, h("pre", null, this.json(row))));
+    row.payload = h("tr", { class: "payload" }, h("td", { colspan: 3 }, renderPayload(row.ev)));
     row.tr.after(row.payload);
     row.tr.classList.add("open");
   }
