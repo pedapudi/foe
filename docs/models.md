@@ -237,9 +237,11 @@ captures output whole. A program that exits without a final `done` or
 `error` chunk produces an error quoting its standard error; a non-zero exit
 is not retried, an exit of zero without a final chunk is.
 
-[`examples/exec-transport/`](../examples/exec-transport/) holds a complete
-program of thirty-odd lines that answers through `litellm`, with the
-configuration that runs it.
+[`examples/exec-transport/`](../examples/exec-transport/) holds two such
+programs and the configuration that runs them: one of thirty-odd lines that
+answers through `litellm`, and one that answers with fixed chunks so that
+the example runs without a credential. Its README states which lines to
+change to reach a provider.
 
 ## Formats and credential sources
 
