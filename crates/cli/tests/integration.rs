@@ -241,7 +241,7 @@ fn node_starts(events: &[Value]) -> Vec<(String, u64)> {
 fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
     let dir = scratch("workflow-nodes");
     let config = config(&dir, |c| {
-        c["tools"] = json!(["list", "derive"]);
+        c["tools"] = json!(["block", "list", "derive"]);
         c["host_tools"] = json!({
             "list": { "description": "Lists targets.", "params": { "type": "object" }, "effect": "pure" },
             "derive": { "description": "Derives patches.", "params": { "type": "object" }, "effect": "pure" }
@@ -384,7 +384,7 @@ fn a_failed_tool_node_is_retried_through_recovery() {
 fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
     let dir = scratch("workflow-cycle");
     let config = config(&dir, |c| {
-        c["tools"] = json!(["list", "scan", "derive"]);
+        c["tools"] = json!(["block", "list", "scan", "derive"]);
         c["host_tools"] = json!({
             "list": { "description": "Lists targets.", "params": { "type": "object" }, "effect": "pure" },
             "scan": { "description": "Scans a target.", "params": { "type": "object" }, "effect": "pure" },

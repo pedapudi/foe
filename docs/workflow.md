@@ -81,9 +81,9 @@ decides, within those bounds, what to do.
 ```
 
 A `workflow` key in a configuration replaces the free loop for that
-episode. The configuration's `tools`, `grants`, `budget`, and `done_when`
-become the workflow's ceiling: every node draws from them and none exceeds
-them.
+episode. The configuration's authority and budget become the workflow's
+ceiling: every node draws from them and none exceeds them. "Model nodes"
+below states the rule for each field.
 
 The invocation task, the configuration's `task` string, enters the graph
 through one built-in source named `task`. A node that lists `task` in its
@@ -154,11 +154,34 @@ sees.
 ### Model nodes
 
 A model node is a full episode. Its `model` block is a child program in the
-sense of [config.md](config.md#programs): instructions, tools, grants,
-budget, and termination, each a subset of the workflow's. The node's inputs
-become the child's task, one section per input, labeled with the input's
-name and carrying its rendered output; the `task` section comes first when
-the node follows `task`. The child runs the
+sense of [config.md](config.md#programs). Construction applies these
+ceiling rules to it, and to every program below it, against the program
+that contains the workflow.
+
+- Every name in `tools` appears in the containing program's `tools`.
+- A `tool_defs` entry names the same executable as the containing entry of
+  that name. Its working directory lies within that entry's working
+  directory, its `network` is no wider, and its `timeout_seconds` is no
+  larger. Its description and its instruction may differ, because they
+  change what the model reads rather than what the process may do.
+- A `host_tools` entry equals the containing entry of that name.
+- Read and write roots lie within the containing roots.
+- Every `grants.spawn` name appears in the containing program's
+  `grants.spawn`, and the same-named `programs` entry is itself within the
+  containing entry of that name.
+- `model_calls`, `tokens`, `seconds`, `max_depth`, and `loop_threshold` are
+  each at most the containing program's value. An omitted `tokens` or
+  `seconds` draws from the containing budget.
+- The `model` and `sandbox` blocks are inherited and cannot be declared.
+
+`max_episodes` and `max_concurrent` carry no ceiling here. The budget pool
+clamps the episode share a child receives when it reserves, and
+`max_concurrent` counts one episode's own direct children rather than the
+whole tree's, so a node's value is not a claim on the containing program's.
+
+The node's inputs become the child's task, one section per input, labeled
+with the input's name and carrying its rendered output; the `task` section
+comes first when the node follows `task`. The child runs the
 ordinary agent loop with the ordinary tools, and its outcome value is the
 node's output.
 

@@ -368,12 +368,14 @@ identity.
 
 Object. Optional. A declared graph of nodes that replaces the free loop
 for this episode. [workflow.md](workflow.md) specifies every key under it
-and every construction rule. The document's `tools`, `grants`, `budget`,
-and `done_when` are the ceiling the graph draws from: a tool node names a
-tool in `tools`, and a model node's program is a child program in the sense
-of `programs`, checked to be a subset the same way. A child program may
-carry a `workflow` of its own. The graph participates in identity as
-workflow.md "Identity" lists.
+and every construction rule. The document's authority and budget are the
+ceiling the graph draws from: a tool node names a tool in `tools`, and a
+model node's program is a child program in the sense of `programs` whose
+tools, configured executable authority, host tool definitions, filesystem
+grants, spawn grants with their descendant programs, and spend limits all
+lie within the document's own. A child program may carry a `workflow` of
+its own. The graph participates in identity as workflow.md "Identity"
+lists.
 
 ### `task`
 

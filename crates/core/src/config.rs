@@ -238,11 +238,7 @@ fn resolve_section(
         let program = resolve_section(&key(&format!("programs.{name}")), child, inherited, Some(&grants))?;
         programs.insert(name.clone(), program);
     }
-    if let Some(wf) = &s.workflow {
-        let mut subset = |k: &str, p: &ChildProgram| resolve_section(k, p, inherited, Some(&grants)).map(drop);
-        workflow::check(&key("workflow"), wf, &s.tools, &mut subset)?;
-    }
-    Ok(Program {
+    let program = Program {
         name: s.name.clone(),
         instructions: s.instructions.clone(),
         tools: s.tools.clone(),
@@ -256,7 +252,71 @@ fn resolve_section(
         sandbox: inherited.1.clone(),
         programs,
         workflow: s.workflow.clone(),
-    })
+    };
+    if let Some(wf) = &s.workflow {
+        let mut subset = |k: &str, p: &ChildProgram| {
+            let node = resolve_section(k, p, inherited, Some(&program.grants))?;
+            within_ceiling(k, &node, &program)
+        };
+        workflow::check(&key("workflow"), wf, &s.tools, &mut subset)?;
+    }
+    Ok(program)
+}
+
+/// Requires a workflow model node's program to name no authority the
+/// program containing the workflow does not already hold, at every depth.
+/// Grants are checked by `resolve_section`; this covers the rest of
+/// docs/workflow.md "Model nodes".
+fn within_ceiling(prefix: &str, node: &Program, ceiling: &Program) -> Result<(), ConfigError> {
+    let key = |k: &str| key_at(prefix, k);
+    let bounded = |holds: bool, k: String| require(holds, k, "does not exceed the workflow ceiling");
+    for (i, name) in node.tools.iter().enumerate() {
+        bounded(ceiling.tools.contains(name), key(&format!("tools[{i}]")))?;
+    }
+    for (name, own) in &node.tool_defs {
+        let Some(cap) = ceiling.tool_defs.get(name) else {
+            return Err(invalid(key(&format!("tool_defs.{name}")), "names a configured tool in the workflow ceiling"));
+        };
+        // A description and an instruction change what the model reads
+        // rather than what the process may do, so a node may reword them.
+        // The four fields below are the process authority itself.
+        for (field, holds) in [
+            ("exec", own.exec == cap.exec),
+            ("cwd", own.cwd.as_ref().is_some_and(|p| cap.cwd.as_ref().is_some_and(|root| p.starts_with(root)))),
+            ("network", !own.network || cap.network),
+            ("timeout_seconds", own.timeout_seconds <= cap.timeout_seconds),
+        ] {
+            bounded(holds, key(&format!("tool_defs.{name}.{field}")))?;
+        }
+    }
+    for (name, own) in &node.host_tools {
+        bounded(ceiling.host_tools.get(name) == Some(own), key(&format!("host_tools.{name}")))?;
+    }
+    for (i, name) in node.grants.spawn.iter().enumerate() {
+        bounded(ceiling.grants.spawn.contains(name), key(&format!("grants.spawn[{i}]")))?;
+    }
+    // `max_episodes` and `max_concurrent` are absent here. The pool clamps
+    // a child's episode share when it reserves, and `max_concurrent` counts
+    // one episode's own direct children rather than the tree's, so neither
+    // is a ceiling the containing program imposes at construction.
+    let (own, cap) = (&node.budget, &ceiling.budget);
+    let within = |value: Option<u64>, limit: Option<u64>| value.is_none_or(|v| limit.is_none_or(|l| v <= l));
+    for (field, holds) in [
+        ("model_calls", own.model_calls <= cap.model_calls),
+        ("tokens", within(own.tokens, cap.tokens)),
+        ("seconds", within(own.seconds, cap.seconds)),
+        ("max_depth", own.max_depth <= cap.max_depth),
+        ("loop_threshold", own.loop_threshold <= cap.loop_threshold),
+    ] {
+        bounded(holds, key(&format!("budget.{field}")))?;
+    }
+    for (name, child) in &node.programs {
+        let cap = ceiling.programs.get(name).ok_or_else(|| {
+            invalid(key(&format!("programs.{name}")), "names a descendant program in the workflow ceiling")
+        })?;
+        within_ceiling(&key(&format!("programs.{name}")), child, cap)?;
+    }
+    Ok(())
 }
 
 /// Resolves a workflow model node's program against the resolved program
