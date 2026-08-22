@@ -252,12 +252,15 @@ The main region has five tabs.
   direction. Present only for an episode whose program declares a graph.
   `src/workflow.ts` reads the graph and places it and
   `src/render/workflow.ts` draws it.
-- **statistics**: six figures over the selected episode, or over that
+- **statistics**: nine figures over the selected episode, or over that
   episode and its descendants. Every number a reader could not derive by
   eye carries a hovercard with its definition and the values behind it, and
-  a quantity no event measured reads as absent rather than as zero.
-  `src/statistics.ts` derives the quantities and places the figures and
-  `src/render/statistics.ts` draws them.
+  a quantity no event measured reads as absent rather than as zero. Three
+  of the nine say where the input tokens of every request came from, and
+  each of the three states which of its numbers the log measured and which
+  it computed. `src/statistics.ts` derives the timing, budget, and tool
+  quantities and `src/attribution.ts` the token attribution;
+  `src/render/statistics.ts` and `src/render/attribution.ts` draw them.
 
 New events patch only the rows they create or change. Scroll position
 follows the end while the reader is at the end and stays put otherwise.
@@ -360,7 +363,8 @@ src/brand.ts                  the lockup and the research-preview tag
 src/panes.ts                  region sizes, the grips, and their persistence
 src/trajectory.ts             where every mark of the timeline goes
 src/workflow.ts               a declared graph, its run, and its layout
-src/statistics.ts             every quantity the statistics tab shows
+src/statistics.ts             timing, budget, and tool quantities of the statistics tab
+src/attribution.ts            where every request's input tokens came from
 src/source.ts                 static and live event sources
 src/fold.ts                   one episode log to rows, a summary, marks, and firings
 src/messages.ts               the derived-messages rule
@@ -372,7 +376,8 @@ src/render/mark.ts            building one conversation mark
 src/render/trajectory.ts      the timeline figure
 src/render/tree.ts            the episode tree and the details panel
 src/render/workflow.ts        the declared graph with the run over it
-src/render/statistics.ts      the six statistics figures
+src/render/statistics.ts      the statistics figures over timing, budget, and tools
+src/render/attribution.ts     the three figures over the input tokens
 src/render/hovercard.ts       the one card every mark is explained in
 src/render/raw.ts             the raw events table
 src/render/diff.ts            two forked episodes side by side

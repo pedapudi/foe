@@ -433,7 +433,7 @@ own width and the pane scrolls it sideways.
 
 ## The statistics view
 
-The statistics tab draws six figures over the selected episode, or over
+The statistics tab draws nine figures over the selected episode, or over
 that episode together with every episode under it. A control in the tab's
 header switches between the two, because a child spends from the budget
 pool its root holds: the tree is the scope a declared limit actually
@@ -442,7 +442,7 @@ third setting, **every run**, described below; with one root that setting
 is absent, because a collection of one has nothing to compare. Every
 quantity is derived in the browser from events the log already carries.
 
-Two rules govern the presentation.
+Three rules govern the presentation.
 
 - Every figure states the arithmetic behind a number a reader could not
   derive by eye. Hovering it opens a hovercard giving the quantity's
@@ -453,6 +453,10 @@ Two rules govern the presentation.
   as zero percent would assert a measurement that was not made. A share
   short of the whole never rounds to the whole either: a run that spent
   99.76 percent of its wall clock inside model requests reads 99.8 percent.
+- A figure that mixes a measurement with a quantity computed from it says
+  which is which. The token attribution below is the case that needs the
+  rule: the input a provider reported is a measurement, and the division of
+  that input among the parts of the request is not.
 
 ### The quantities
 
@@ -490,6 +494,68 @@ A limit the program does not declare has no row. `max_concurrent` and
 `loop_threshold` have no row either: neither bounds a quantity the log
 accumulates, so neither has a consumption to draw.
 
+### Where the input tokens went
+
+A request's input is one prompt built from several pieces of text, and the
+log records every piece. A **part** is one such piece, and it has one of
+six kinds.
+
+| kind | where the text comes from |
+|---|---|
+| system prompt | `system` of the `request/header` the request's `header_seq` names |
+| tool schemas | every tool's `name`, `description`, and `parameters` in that same header, concatenated |
+| task and inbox items | the `content` of a `user` message of `model/request.messages`, the first of which is the task |
+| assistant turns | the `text` and `tool_calls` of an `assistant` message of that list |
+| tool results | the `rendered` text of a `tool` message of that list |
+| summarization prompts | the one `user` message of a request whose `request_id` starts with `cmp_`, which is a transcript to summarize rather than an item the episode received |
+
+Two requests name one part when they carry the same text. A tool result is
+identified by its call id, which the log gives it; every other part is
+identified by its text, so a rewritten system prompt is a second part and a
+resent one is not. A part belongs to the episode whose log carries it, and
+two episodes that send the same system prompt send it twice.
+
+The size of a part is the length in characters of the text just named. No
+event states how many tokens a part cost, so the tokens attributed to one
+are computed, and the table below says how.
+
+| quantity | definition |
+|---|---|
+| characters of a part | the length of the text the log records for it |
+| characters of a request | the total over the parts the request carried |
+| characters per token | a request's characters divided by the `usage.input` its answer reported. Absent for a request no answer reported an input count. |
+| tokens of a part in one request | the part's characters divided by the request's characters, times the `usage.input` that request's answer reported. Absent for a request no answer reported an input count. |
+| replay cost | the tokens of one part added over every request that carried it and reported an input count |
+| characters sent | the part's characters times the number of requests that carried it, which stands in for replay cost where no answer reported an input count |
+| unique input | input tokens carrying text no earlier request of the episode had sent |
+| replayed input | input tokens carrying text an earlier request of the episode had already sent |
+| cache-read tokens | the total of `usage.cache_read`, reported beside the input and never subtracted from it, because a cached token is an input token in the provider's accounting |
+
+Apportioning a request's input by characters divides a measurement rather
+than estimating one, so the parts of a request always add to the input its
+answer reported. What the division cannot guarantee is the boundary between
+two parts, because a schema and a paragraph of prose do not encode at the
+same characters per token. The figure prints the range of that rate across
+the requests it draws, so that a reader can see how far the parts of one
+request could be from each other.
+
+The unique and replayed shares are measured rather than apportioned
+wherever the log permits it. Where one request carries everything the
+request before it carried, the two differ by the text new to the later one,
+so the difference between the two counts the provider reported is what that
+text cost. The first request of an episode is the same measurement with
+nothing before it. A request that dropped text its predecessor carried,
+which a compaction does, breaks the chain; its own shares are apportioned
+by characters, and the figure names how many requests that happened to.
+
+An unanswered request is text with no cost attached. Its characters are
+counted, its tokens are absent, and any total that spans it is a floor: the
+figure prints such a total with a `≥` and ends its bar with a dashed
+hairline. A request whose answer reported nothing never marks its text as
+sent either, since counting it would move the tokens of the retry that
+follows into the replayed share on the strength of a request whose own cost
+is unknown.
+
 ### The figures
 
 **Where the wall clock went** is one bar divided into model time, tool
@@ -506,6 +572,34 @@ larger of that limit and the highest point. Context growth against a
 declared limit is what decides whether a run completes, and the curve makes
 visible what a total conceals. A compaction's own call is left out, because
 its input is the summarization prompt rather than the context.
+
+**Where the input came from** is one bar per request, divided into the
+parts that request carried and as long as that request is large in
+characters. Characters set the length because every request has them, and a
+request whose answer reported no usage would otherwise draw nothing. The
+six kinds are one neutral ink at six weights, running from the text the
+program fixes to the text the run produced, and the kind that accounts for
+the most of the scope takes the accent. Hovering a division names the part,
+gives the arithmetic that attributed tokens to it, and says whether the
+request was the first to send that text. Clicking a row brings the
+conversation to that request.
+
+**Replay cost** is one row per part, largest cost first, with the part's
+size, the number of requests that carried it, its cost, and a bar of that
+cost against the largest. The ranking is by cost rather than by size,
+because a result of middling size carried by five requests outweighs a
+larger one that arrived on the last turn. Where no answer in the scope
+reported an input count the column becomes characters sent and the ranking
+follows it. Parts beyond the twelfth are counted in the caption rather than
+drawn. Clicking a row brings the conversation to the request that first
+carried the part.
+
+**Unique against replayed input** is one bar in two shares, with the larger
+accented, and the cache-read total beside it rather than inside either
+share. The caption says which of the two derivations produced the split.
+The figure answers one question: whether an operator should attack the size
+of the results a run puts in the transcript or the number of turns that
+resend them.
 
 **Per step** is one row per step with its time to first token, its total
 latency, its output rate, and a bar whose filled head is the wait for the
@@ -524,7 +618,7 @@ share of the limit, and a hairline mark of that share which takes
 duration its results report, its error count, and a bar of that duration
 against the longest.
 
-**Every run** replaces the six figures with one row per root episode: the
+**Every run** replaces the nine figures with one row per root episode: the
 program name and episode id, the outcome, the model requests, the tokens,
 the wall clock, the retries, and a bar of that run's tokens against the
 largest run. Each row is counted over that root and its descendants alone.
