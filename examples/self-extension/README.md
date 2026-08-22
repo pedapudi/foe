@@ -43,7 +43,7 @@ bazel test //examples/self-extension:self_extension_test
 
 The model-backed runner replaces the scripted transport with
 `openai-codex/gpt-5.6-sol`. It keeps the same disposable source, grants,
-task, and verifier. The episode has declared limits of 20,000 input tokens,
+task, and verifier. The episode has declared limits of 24,000 input tokens,
 4,000 output tokens, and eight model calls.
 
 The runner prints the limits and starts no episode until the command includes

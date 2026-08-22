@@ -68,7 +68,7 @@ if [ -z "$provider" ] || [ -z "$model" ]; then
   exit 2
 fi
 
-input_token_limit=20000
+input_token_limit=24000
 output_token_limit=4000
 model_call_limit=8
 if [ "$confirmed" != true ]; then
