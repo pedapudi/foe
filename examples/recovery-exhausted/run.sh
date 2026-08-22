@@ -58,7 +58,7 @@ python3 "$repo_dir/examples/support/materialize.py" \
   "$example_dir/config.json" "$config" \
   /home/user/project "$project_dir"
 
-echo "recovery-exhausted example: five attempts with a growing delay take about 15 seconds"
+echo "recovery-exhausted example: five attempts with a growing delay take about 8 seconds"
 status=0
 "$binary" --config "$config" --log-dir "$log_dir" --headless >"$run_dir/outcome.json" || status=$?
 cat "$run_dir/outcome.json"
@@ -96,15 +96,23 @@ check(len(chunks) == 5, f"one error chunk per attempt; there are {len(chunks)}")
 check(all(c["kind"] == "error" and c["retryable"] for c in chunks), "every chunk is a retryable error")
 
 retries = of("request/retry")
-check(len(retries) == 5, f"one request/retry per failed attempt; there are {len(retries)}")
-check([r["delay_ms"] for r in retries] == [500, 1000, 2000, 4000, 8000], "the delay doubles up to the 8 second cap")
+check(len(retries) == 4, f"one request/retry per attempt that follows one; there are {len(retries)}")
+check([r["delay_ms"] for r in retries] == [500, 1000, 2000, 4000], "the delay doubles, and the fifth is never waited")
+check([r["attempt"] for r in retries] == [1, 2, 3, 4], "each retry names the attempt that failed")
 check(all(r["cause"] == "provider" for r in retries), "the cause recorded is provider, which the program reported")
+
+# Every request/retry is followed by the model/request it announces.
+kinds = [e["type"] for e in events]
+for i, kind in enumerate(kinds):
+    if kind == "request/retry":
+        check(kinds[i + 1] == "model/request", f"the retry at seq {i} is followed by {kinds[i + 1]}")
+check(kinds[-2] != "request/retry", "the last attempt records no retry, because no attempt follows it")
 
 check(of("assistant/message") == [], "no answer was assembled, so no assistant/message was written")
 check(of("tool/result") == [], "no tool ran")
 check(len(of("inbox/item")) == 1, "the task is the only inbox item")
 
-print(f"recovery-exhausted example: blocked after {len(requests)} attempts at step 1")
+print(f"recovery-exhausted example: blocked after {len(requests)} attempts and {len(retries)} retries")
 ASSERTIONS
 
 echo "view it with: $binary view $log_dir"

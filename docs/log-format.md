@@ -36,7 +36,7 @@ echoing the same bytes to standard output. It forces the file to disk after
 `episode/start`, after every `tool/result` whose tool declared an effect
 other than `pure` or `reads`, and before `episode/end`. A crash between
 those points loses at most the events since the last forced write, and the
-seeding rules repair any tool call left without a result.
+seeding rules repair whatever the lost events would have closed.
 
 ## Envelope
 
@@ -140,7 +140,11 @@ model received and a pointer to the header in effect.
 for the first time. `messages` is the full derived message list, in the
 form defined under [Derived messages](#derived-messages).
 
-`request/retry` — implemented. A model request failed and will be retried.
+`request/retry` — implemented. A model request failed and is being retried.
+`attempt` names the attempt that failed and `delay_ms` the delay waited
+before the next one. The event is written immediately before the
+`model/request` of that next attempt, so a retry is never recorded for an
+attempt that is not made; see [Open obligations](#open-obligations).
 
 ```json
 { "step": 3, "attempt": 1, "cause": "transport", "delay_ms": 500 }
@@ -435,6 +439,48 @@ no `compaction/summary` was written, and the projection is unchanged.
 { "step": 14, "ok": true, "usage": { "input": 150200, "output": 610, "cache_read": 0 }, "active_estimate": 21800 }
 ```
 
+## Open obligations
+
+Six pairs of event types stand in a fixed relation: one event opens an
+obligation and a later event closes it, the two matched by a key.
+
+| opened by | closed by | key |
+|---|---|---|
+| a tool call in `assistant/message` | `tool/result` | the call id |
+| `request/retry` | the `model/request` of the attempt it announces | the step and that attempt's number |
+| `compaction/start` | `compaction/end` | the step |
+| `spawn/start` | `spawn/end` | the child id |
+| `budget/reserve` | `budget/release` | the child id |
+| `team/message` | `team/delivered` | the message id |
+
+Three rules hold for every pair.
+
+1. An event that closes an obligation names one that an earlier event
+   opened.
+2. It closes that obligation once. A second closing event for the same key
+   is invalid until an opening event reopens it, which a reissued tool call
+   does.
+3. A log whose `episode/end` leaves an obligation open is invalid.
+
+A queued team message is the one pair the three rules do not bind. A
+`team/message` with no `team/delivered` is a message the target never
+recorded. The lead offers such a message again when the target restarts,
+which records a second delivery for one message, and no event records a
+message given up on. An undelivered message may therefore stand at
+`episode/end`, and a message may be delivered more than once.
+
+A log that stops without `episode/end` is a different record from a log
+that ends with an obligation open. The first was cut short: the process
+died between two appends, the log states nothing about what it left open,
+and the seeding rules below repair it when the log is copied. The second
+asserts a complete episode whose account does not balance, which no writer
+may produce. A writer that would leave an obligation open closes it first,
+with the events under [Seeding](#seeding).
+
+A `request/retry` is the pairing with no repair, because no event records
+an attempt that was never made. A writer therefore appends `request/retry`
+only immediately before the `model/request` it announces.
+
 ## Derived messages
 
 The message list for a request is computed from the log by one rule, applied
@@ -494,12 +540,18 @@ Given a source log and a boundary `seq` N:
    set to the source episode and N, and all other fields copied.
 2. Copy source events with `seq` in `[1, N)`, renumbering `seq` to be
    contiguous.
-3. For every tool call in a copied `assistant/message` that has no
-   `tool/result` among the copied events, append a `tool/result` with
-   `is_error: true`, `synthetic: true`, and a rendered text stating that the
-   result was not recorded.
-4. Append `seed/end`.
-5. Continue with live events.
+3. Drop a copied `request/retry` that the boundary separated from the
+   attempt it announces, since no copied event can close it.
+4. Close every obligation the copied events left open, in the order the
+   opening events appear. A tool call receives a `tool/result` with
+   `is_error: true`, `synthetic: true`, and a rendered text stating that
+   the result was not recorded. A `compaction/start` receives a
+   `compaction/end` with `ok: false`. A `spawn/start` receives a
+   `spawn/end` whose outcome is `failed`, and a `budget/reserve` receives a
+   `budget/release` naming the whole reservation as spent, because the new
+   episode does not host the child and cannot learn what it spent.
+5. Append `seed/end`.
+6. Continue with live events.
 
 Copied `team/*` events belong to the source episode and are excluded from the
 new episode's team fold. A fold reads team events only when the log's own

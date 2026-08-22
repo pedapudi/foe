@@ -137,9 +137,11 @@ to deliver a team message.
 
 ### `cancel`
 
-Stops the episode. foe aborts any outstanding request, records any started
-tool calls as interrupted with synthetic results, writes `episode/end` with
-outcome `failed` and error `cancelled`, and exits.
+Stops the episode. foe aborts any outstanding request, closes every
+obligation its log left open, writes `episode/end` with outcome `failed`
+and error `cancelled`, and exits. Closing the obligations records started
+tool calls as interrupted with synthetic results and sends `cancel` to
+every child, so a cancelled tree stops from the root down.
 
 ```json
 {"type": "cancel"}
@@ -181,6 +183,10 @@ parent can route them down.
 `episode_id` is absent or null for the root episode. A host that does not
 support children rejects configurations with a non-empty `spawn` grant; foe
 treats the `spawn` grant as unavailable and fails any spawn tool call.
+
+An episode sends `cancel` to every child still running when it ends,
+whatever its outcome, and waits for each child's `episode/end` before
+writing its own. No child outlives the episode that started it.
 
 A child's `notify`, `send`, and `team` tools are host tools from the child's
 point of view, and the parent foe process is the host that implements them.

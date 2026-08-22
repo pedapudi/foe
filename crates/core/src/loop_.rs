@@ -13,6 +13,7 @@ use crate::context::{Answer, ContextPolicy, ContextState, Summarized, SummaryCal
 use crate::harness_text as text;
 use crate::inbox::Inbox;
 use crate::registry::{Handles, Registry};
+use crate::spawn::Router;
 use crate::{ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
 use foe_log::{
     fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
@@ -37,6 +38,11 @@ pub const SPILL_HEAD: usize = 16 * 1024;
 pub const MAX_ATTEMPTS: u32 = 5;
 const BACKOFF_BASE_MS: u64 = 500;
 const BACKOFF_CAP_MS: u64 = 8_000;
+/// How long the teardown waits for children it asked to end before it
+/// records their settlement itself.
+const SETTLE_GRACE: Duration = Duration::from_secs(10);
+/// How often a wait on children rereads the pool.
+const SETTLE_POLL: Duration = Duration::from_millis(20);
 
 pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -120,6 +126,10 @@ pub struct Params {
     pub pool: Arc<Mutex<Pool>>,
     /// `Some(reason)` ends the episode as `failed` with that reason.
     pub stop: watch::Receiver<Option<String>>,
+    /// The running children, when this episode may start any. The teardown
+    /// ends the ones still running, so that no child outlives the episode
+    /// that started it and no reservation stands unreturned.
+    pub children: Option<Arc<Router>>,
     pub context: Option<Arc<dyn ContextPolicy>>,
 }
 
@@ -133,11 +143,10 @@ pub fn append_inbox_item(log: &Log, item: InboxItem) -> Result<Option<Event>, Lo
     log.append(EventData::InboxItem(item)).map(Some)
 }
 
-/// Runs the episode to its end and writes `episode/end`. Every tool call
-/// left without a result by the way the episode ended receives a synthetic
-/// result first, so the log is well-formed.
+/// Runs the episode to its end, closes what its log left open through
+/// [`settle`], and writes `episode/end`.
 pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
-    let log = params.log.clone();
+    let (log, pool, children) = (params.log.clone(), params.pool.clone(), params.children.clone());
     let driven = match Episode::new(params) {
         Ok(mut episode) => episode.drive().await,
         Err(e) => Err(e),
@@ -147,13 +156,44 @@ pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
         Err(RuntimeError::Log(e)) => return Err(e.into()),
         Err(e) => Outcome::Failed { error: e.to_string() },
     };
-    for result in log.with_events(seed::orphan_results) {
-        log.append(EventData::ToolResult(ToolResult { rendered: text::INTERRUPTED_RESULT.into(), ..result }))?;
-    }
-    log.sync()?;
+    settle(&log, &pool, children.as_deref()).await?;
     log.append(EventData::EpisodeEnd { outcome: outcome.clone() })?;
     log.sync()?;
     Ok(outcome)
+}
+
+/// Closes every obligation the log opened, so that `episode/end` is valid.
+/// See docs/log-format.md "Open obligations".
+///
+/// A child still running when the episode ends is asked to end, and the
+/// `spawn/end` and `budget/release` its reservation owes are awaited for
+/// [`SETTLE_GRACE`]. Whatever is still open after that, including every
+/// tool call left without a result, is closed by the synthetic events the
+/// log crate produces. The workflow executor ends its episodes through this
+/// too.
+pub async fn settle(log: &Log, pool: &Mutex<Pool>, children: Option<&Router>) -> Result<(), RuntimeError> {
+    if lock(pool).active_children() > 0 {
+        if let Some(children) = children {
+            children.cancel_all();
+        }
+        settled_children(pool, Some(Instant::now() + SETTLE_GRACE)).await;
+    }
+    for data in log.with_events(seed::closing_events) {
+        log.append(data)?;
+    }
+    log.sync()?;
+    Ok(())
+}
+
+/// Waits until every child has settled, which is when the `spawn/end` and
+/// `budget/release` each reservation owes are in the log, or until
+/// `deadline`. Returns the number of children still running. Without a
+/// deadline the wait has no bound other than the children's own budgets.
+pub async fn settled_children(pool: &Mutex<Pool>, deadline: Option<Instant>) -> usize {
+    while lock(pool).active_children() > 0 && deadline.is_none_or(|d| Instant::now() < d) {
+        tokio::time::sleep(SETTLE_POLL).await;
+    }
+    lock(pool).active_children()
 }
 
 /// Which request a step issues.
@@ -297,14 +337,15 @@ impl Episode {
     async fn request(&mut self, kind: Request) -> Result<Answer, RuntimeError> {
         let summary = matches!(kind, Request::Summary(_));
         let mut attempt = 0;
+        // The cause and the delay of the failure that the next attempt
+        // retries. The `request/retry` is written from it immediately
+        // before that attempt, because the event states that a request is
+        // being retried and nothing else may end the step between the two.
+        let mut retried: Option<(RetryCause, u64)> = None;
         loop {
             attempt += 1;
             if let Some(limit) = self.exhausted() {
                 return Ok(Answer::Ended(Outcome::Exhausted { limit }));
-            }
-            if attempt > MAX_ATTEMPTS {
-                let message = format!("{MAX_ATTEMPTS} attempts at step {} failed", self.step);
-                return Ok(Answer::Ended(Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message }));
             }
             self.requests += 1;
             let request_id = format!("{}{:04}", if summary { SUMMARY_REQUEST_PREFIX } else { "rq_" }, self.requests);
@@ -318,6 +359,10 @@ impl Episode {
                 }
             };
             let (header_seq, header) = self.header.clone().expect("header written before the request");
+            if let Some((cause, delay_ms)) = retried.take() {
+                let (step, failed) = (self.step, attempt - 1);
+                self.p.log.append(EventData::RequestRetry { step, attempt: failed, cause, delay_ms })?;
+            }
             let event = self.p.log.append(EventData::ModelRequest(ModelRequest {
                 step: self.step,
                 attempt,
@@ -385,8 +430,15 @@ impl Episode {
             if summary {
                 return Ok(Answer::Failed(error));
             }
+            // The ceiling is tested before the delay is computed, so the
+            // episode never waits out a delay for an attempt it will not
+            // make. The message counts the attempts that were made.
+            if attempt >= MAX_ATTEMPTS {
+                let message = format!("{MAX_ATTEMPTS} attempts at step {} failed", self.step);
+                return Ok(Answer::Ended(Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message }));
+            }
             let delay_ms = (BACKOFF_BASE_MS << (attempt - 1).min(4)).min(BACKOFF_CAP_MS);
-            self.p.log.append(EventData::RequestRetry { step: self.step, attempt, cause, delay_ms })?;
+            retried = Some((cause, delay_ms));
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(delay_ms)) => {}
                 reason = wait_stop(self.p.stop.clone()) => return Ok(Answer::Ended(Outcome::Failed { error: reason })),
@@ -507,7 +559,7 @@ impl Episode {
         let findings = self
             .p
             .registry
-            .verify(&self.p.handles, &candidate, self.step, self.spill_dir.clone(), self.deadline())
+            .verify_with(&verifier, &self.p.handles, &candidate, self.step, self.spill_dir.clone(), self.deadline())
             .await
             .map_err(RuntimeError::Protocol)?;
         if findings.is_empty() {

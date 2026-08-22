@@ -1,4 +1,4 @@
-use super::{parse_tolerant, run, Log, Params, SPILL_LIMIT};
+use super::{parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
 use crate::config::Program;
 use crate::harness_text as text;
@@ -64,6 +64,7 @@ impl Fixture {
             transport: self.transport,
             pool: Arc::new(Mutex::new(Pool::new(self.program.budget.clone()))),
             stop: self.stop_rx,
+            children: None,
             context: None,
         };
         let outcome = run(params).await.unwrap();
@@ -227,6 +228,33 @@ async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_co
     assert_eq!((third.step, third.attempt), (1, 3));
     assert!(third.consumed.is_empty(), "the task was consumed by the first attempt");
     assert_eq!(third.messages.len(), 1, "the discarded text never appears");
+}
+
+/// docs/log-format.md "Open obligations": a `request/retry` is written only
+/// when the attempt it announces follows it. The last attempt the ceiling
+/// allows therefore records no retry, and its failure ends the episode
+/// without waiting a delay for a request that is never made.
+#[tokio::test]
+async fn the_last_permitted_attempt_records_no_retry() {
+    let failure = || vec![Chunk::Error { message: "unreachable".into(), retryable: true }];
+    let responses: Vec<_> = (0..MAX_ATTEMPTS).map(|_| failure()).collect();
+    let fx = Fixture::new("loop-ceiling", |v| v["budget"]["model_calls"] = json!(20), responses);
+    let started = std::time::Instant::now();
+    let (outcome, events) = fx.run().await;
+    let expected = format!("{MAX_ATTEMPTS} attempts at step 1 failed");
+    assert_eq!(outcome, Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message: expected });
+    let kinds = types(&events);
+    let count = |name: &str| kinds.iter().filter(|t| *t == name).count();
+    assert_eq!(count("model/request"), MAX_ATTEMPTS as usize);
+    assert_eq!(count("request/retry"), MAX_ATTEMPTS as usize - 1);
+    for (i, kind) in kinds.iter().enumerate() {
+        if kind == "request/retry" {
+            assert_eq!(kinds[i + 1], "model/request", "the retry at seq {i} announces an attempt that never came");
+        }
+    }
+    let waited: u64 = (0..MAX_ATTEMPTS - 1).map(|n| 500u64 << n).sum();
+    let elapsed = started.elapsed().as_millis() as u64;
+    assert!(elapsed < waited + (500 << (MAX_ATTEMPTS - 1)), "the last delay was waited: {elapsed} ms");
 }
 
 #[tokio::test]
@@ -404,6 +432,7 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
         transport: Arc::new(ScriptedTransport::new(vec![turn("forked end", vec![])])),
         pool: Arc::new(Mutex::new(Pool::new(program.budget.clone()))),
         stop: stop_rx,
+        children: None,
         context: None,
     };
     let outcome = run(params).await.unwrap();

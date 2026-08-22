@@ -135,6 +135,10 @@ for reserve in reserved:
         "the survey program declares",
     )
 require(len(ends) == 2 and len(released) == 2, "a child settled without a spawn/end and a budget/release")
+waited = [e["seq"] for e in parent if e["type"] == "tool/result" and e["data"]["name"] == "wait"]
+settled = [e["seq"] for e in parent if e["type"] in ("spawn/end", "budget/release")]
+require(len(waited) == 1, f"the parent called wait {len(waited)} times rather than once")
+require(max(settled) < waited[0], "wait returned before every child had a spawn/end and a budget/release")
 require(
     all(end["outcome"]["kind"] == "completed" for end in ends),
     "a child ended with an outcome other than completed",

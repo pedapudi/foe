@@ -1,7 +1,7 @@
 use super::*;
 use crate::exec::tests::scratch;
-use crate::spawn::tests::{fake_child, parent_config, wait_for, Lines, Seen};
-use foe_log::{EpisodeStart, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
+use crate::spawn::tests::{fake_child, parent_config, wait_for, waiting_child, Lines, Seen};
+use foe_log::{EpisodeStart, Outcome, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
 
 fn start() -> EpisodeStart {
     EpisodeStart {
@@ -122,4 +122,41 @@ async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
     spawner.spawn(request("worker", BudgetAmount::default())).unwrap();
     assert_eq!(lock(&pool).active_children(), 2, "a second child fits beside the first");
     assert_eq!(lock(&pool).remaining().model_calls, Some(10));
+}
+
+/// docs/log-format.md "Open obligations": an episode that ends while a child
+/// runs closes what the child opened. The teardown asks the child to end and
+/// waits for the `spawn/end` and `budget/release` its settlement writes, so
+/// the `episode/end` that follows is valid and no reservation stands.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ending_an_episode_settles_a_child_that_is_still_running() {
+    let dir = scratch("wiring", "settle");
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
+    log.append(EventData::EpisodeStart(start())).unwrap();
+    let config = parent_config();
+    let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
+    let router = Arc::new(Router::new());
+    let inner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir.clone(),
+        config,
+        Arc::new(Lines::default()),
+        router.clone(),
+        Arc::new(Seen::default()),
+    )
+    .unwrap()
+    .with_launcher(waiting_child(&dir));
+    let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
+
+    let handle = spawner.spawn(request("worker", BudgetAmount { model_calls: Some(5), ..Default::default() })).unwrap();
+    wait_for(|| router.has_child(&handle.child_id).then_some(()));
+    assert_eq!(lock(&pool).active_children(), 1);
+    let open = foe_log::fold::open_obligations(&log.events());
+    assert_eq!(open.len(), 2, "the reservation and the child are open: {open:?}");
+
+    crate::loop_::settle(&log, &pool, Some(&router)).await.unwrap();
+    log.append(EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::Value::Null } }).unwrap();
+    assert_eq!(types(&log)[3..], ["spawn/end", "budget/release", "episode/end"]);
+    assert_eq!(lock(&pool).active_children(), 0, "the reservation returned to the pool");
+    foe_log::fold::fold(&log.events()).expect("the log is well-formed");
 }

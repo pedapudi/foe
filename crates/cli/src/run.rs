@@ -352,7 +352,8 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     }
     let transport = transport.unwrap_or_else(|| protocol.transport());
     let pool = Arc::new(Mutex::new(Pool::new(program.budget.clone())));
-    let team = Arc::new(Team::new(id.clone(), log.clone(), Arc::new(protocol.clone()), router.clone()));
+    let inbox = Arc::new(protocol.clone());
+    let team = Arc::new(Team::new(id.clone(), log.clone(), inbox, router.clone(), pool.clone()));
     let uplink: Arc<dyn Uplink> = if host { Arc::new(StdoutUplink) } else { Arc::new(NoHostUplink) };
     let spawner =
         ProcessSpawner::new(id.clone(), log_dir.clone(), config.clone(), uplink, router.clone(), team.clone())
@@ -388,7 +389,8 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     };
     let workflow = program.workflow.clone();
     let registry = Arc::new(registry);
-    let params = Params { log, start, program, registry, handles, transport, pool, stop, context };
+    let children = Some(router.clone());
+    let params = Params { log, start, program, registry, handles, transport, pool, stop, children, context };
     let outcome = match workflow {
         Some(workflow) => foe_workflow::run(WorkflowParams { episode: params, spawner, workflow }).await,
         None => loop_::run(params).await,

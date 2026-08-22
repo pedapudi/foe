@@ -6,11 +6,12 @@ this program once per model request. The request says which episode is
 asking, because each program is offered a different set of tools: the lead
 holds `spawn`, the tester holds `bash`, and the reviewer holds neither.
 
-Each episode waits for messages it cannot predict the arrival of: the lead
-waits for both members to end, the reviewer waits for the tester's answer,
-and the tester waits for the reviewer's question. Waiting is a rotation of
-read-only calls, so that no call repeats in three consecutive steps and the
-loop detector stays quiet.
+The lead waits for both members with one `wait` call, which returns when
+every child it started has ended. The members wait for each other's
+messages, which no tool covers, so each spends model calls on a rotation of
+read-only calls until the message arrives; the rotation keeps any one call
+from repeating in three consecutive steps, which would end the episode as
+looping.
 """
 
 import sys
@@ -33,8 +34,6 @@ WAITING = [
     ("grep", {"pattern": "dry_run", "path": "src"}),
     ("grep", {"pattern": "def ", "path": "src/cli.py"}),
 ]
-# The lead holds `team`, so its rotation asks the roster who is still active.
-LEAD_WAITING = [("team", {})] + WAITING[:2]
 
 # The flag the lead adds to the command line, as two edits of src/cli.py.
 DRY_RUN_EDITS = [
@@ -79,14 +78,14 @@ def received(request: dict, fragment: str) -> bool:
     return any(fragment in item for item in user_texts(request))
 
 
-def wait(request: dict, waiting_for: str, rotation: list = WAITING) -> None:
-    """One step of waiting: a read-only call and a short pause."""
+def wait_for_message(request: dict, waiting_for: str) -> None:
+    """One step of waiting for a peer message: a read-only call and a pause."""
     n = step(request)
     if n > WAIT_LIMIT:
         error(request, f"{waiting_for} did not arrive within {WAIT_LIMIT} steps")
         return
     time.sleep(WAIT_SECONDS)
-    name, args = rotation[n % len(rotation)]
+    name, args = WAITING[n % len(WAITING)]
     call(request, f"tc_wait_{n}", name, args)
     done(request, "tool")
 
@@ -112,8 +111,12 @@ def lead(request: dict) -> None:
         )
         done(request, "tool")
         return
+    if not called(request, "wait"):
+        call(request, "tc_wait", "wait", {})
+        done(request, "tool")
+        return
     if sum(1 for item in user_texts(request) if " ended: " in item) < 2:
-        wait(request, "both members", LEAD_WAITING)
+        error(request, "wait returned before both members had ended")
         return
     text(request, "The reviewer and the tester both reported. src/cli.py now takes --dry-run.")
     done(request, "end")
@@ -130,7 +133,7 @@ def reviewer(request: dict) -> None:
         done(request, "tool")
         return
     if not received(request, "tests/check.py covers"):
-        wait(request, "the tester's answer")
+        wait_for_message(request, "the tester's answer")
         return
     if not called(request, "notify"):
         finding = "1. --dry-run returns before perform() runs, and the tester confirms a case covers it."
@@ -148,7 +151,7 @@ def tester(request: dict) -> None:
         done(request, "tool")
         return
     if not received(request, QUESTION):
-        wait(request, "the reviewer's question")
+        wait_for_message(request, "the reviewer's question")
         return
     if not called(request, "send"):
         call(request, "tc_send", "send", {"to": "reviewer", "content": ANSWER})

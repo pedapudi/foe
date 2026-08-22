@@ -23,7 +23,7 @@ from ._schema import JsonSchema, schema_for
 from ._tools import HostTool
 
 BUILTIN_TOOLS: frozenset[str] = frozenset(
-    {"read", "grep", "edit", "bash", "block", "spawn", "steer", "notify", "send", "team"}
+    {"read", "grep", "edit", "bash", "block", "spawn", "wait", "steer", "notify", "send", "team"}
 )
 
 # The task does not participate in identity, so the placeholder written for

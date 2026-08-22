@@ -139,6 +139,84 @@ impl EventData {
     }
 }
 
+/// A pairing of events the format defines: one event opens an obligation
+/// and a later event closes it, the two matched by a key. See
+/// docs/log-format.md "Open obligations".
+///
+/// This list and [`obligations`] are the only places that name a pairing.
+/// A new paired event type is added here, and the check in
+/// [`fold::validate_next`] and the repair in [`seed::closing_events`] then
+/// cover it without further change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Obligation {
+    /// A tool call in an `assistant/message`, closed by the `tool/result`
+    /// naming the call id. The key is the call id.
+    ToolCall,
+    /// A `request/retry`, closed by the `model/request` of the attempt it
+    /// announces. The key is the step and that attempt's number.
+    Retry,
+    /// A `compaction/start`, closed by the `compaction/end` of the same
+    /// step. The key is the step.
+    Compaction,
+    /// A `spawn/start`, closed by the `spawn/end` naming the child. The key
+    /// is the child id.
+    Child,
+    /// A `budget/reserve`, closed by the `budget/release` naming the child.
+    /// The key is the child id.
+    Reservation,
+    /// A `team/message`, closed by the `team/delivered` naming it. The key
+    /// is the message id.
+    Delivery,
+}
+
+impl Obligation {
+    /// Whether the format binds the log to this pairing. Three rules follow
+    /// from being bound: a closing event names an obligation an earlier
+    /// event opened, it closes that obligation once, and no obligation
+    /// stands open at `episode/end`.
+    ///
+    /// Every pairing is bound except `Delivery`. A `team/message` that no
+    /// `team/delivered` follows is a message the lead queued and the target
+    /// never recorded. The format has the lead offer such a message again
+    /// when the target restarts, which produces a second delivery record
+    /// for one message, and it defines no event for a message given up on.
+    /// An undelivered message is therefore a state the log records rather
+    /// than a defect a writer may not produce.
+    pub fn is_binding(self) -> bool {
+        self != Obligation::Delivery
+    }
+}
+
+/// The key of the `Retry` an attempt at `step` closes.
+fn attempt_key(step: u32, attempt: u32) -> String {
+    format!("{step}/{attempt}")
+}
+
+/// What one event does to the open obligations: for each, the pairing, the
+/// key matching an opening to its closing, and whether the event opens it.
+/// An event that neither opens nor closes anything yields nothing.
+pub fn obligations(data: &EventData) -> Vec<(Obligation, String, bool)> {
+    let one = |kind, key: String, opens| vec![(kind, key, opens)];
+    match data {
+        EventData::AssistantMessage(m) => {
+            m.tool_calls.iter().map(|c| (Obligation::ToolCall, c.id.clone(), true)).collect()
+        }
+        EventData::ToolResult(r) => one(Obligation::ToolCall, r.call_id.clone(), false),
+        // A retry announces the attempt after the one that failed.
+        EventData::RequestRetry { step, attempt, .. } => one(Obligation::Retry, attempt_key(*step, attempt + 1), true),
+        EventData::ModelRequest(r) if r.attempt > 1 => one(Obligation::Retry, attempt_key(r.step, r.attempt), false),
+        EventData::CompactionStart(s) => one(Obligation::Compaction, s.step.to_string(), true),
+        EventData::CompactionEnd { step, .. } => one(Obligation::Compaction, step.to_string(), false),
+        EventData::SpawnStart { child_id, .. } => one(Obligation::Child, child_id.clone(), true),
+        EventData::SpawnEnd { child_id, .. } => one(Obligation::Child, child_id.clone(), false),
+        EventData::BudgetReserve { child_id, .. } => one(Obligation::Reservation, child_id.clone(), true),
+        EventData::BudgetRelease { child_id, .. } => one(Obligation::Reservation, child_id.clone(), false),
+        EventData::TeamMessage { message_id, .. } => one(Obligation::Delivery, message_id.clone(), true),
+        EventData::TeamDelivered { message_id, .. } => one(Obligation::Delivery, message_id.clone(), false),
+        _ => Vec::new(),
+    }
+}
+
 // ---- lifecycle payloads -----------------------------------------------------
 
 /// Payload of `episode/start`. Always `seq` 0, exactly one per log.
@@ -637,8 +715,8 @@ pub struct State {
     /// Children by id, with their last known outcome.
     pub children: BTreeMap<String, Option<Outcome>>,
     pub seeded_through: Option<u64>,
-    /// Ids of tool calls in an `assistant/message` that have no `tool/result` yet.
-    pub pending_calls: BTreeSet<String>,
-    /// Ids of tool calls whose most recent issue has a `tool/result`.
-    pub settled_calls: BTreeSet<String>,
+    /// Obligations opened and not yet closed, by pairing and key.
+    pub open: BTreeSet<(Obligation, String)>,
+    /// Obligations whose most recent opening has been closed.
+    pub closed: BTreeSet<(Obligation, String)>,
 }

@@ -125,8 +125,6 @@ pub struct CallCtx {
 pub trait Reader: Send + Sync {
     fn read(&self, path: &Path) -> Result<Vec<u8>, CapError>;
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError>;
-    /// Walks `root` honoring ignore files. Yields canonical paths.
-    fn walk(&self, root: &Path) -> Result<Box<dyn Iterator<Item = PathBuf> + Send>, CapError>;
     fn roots(&self) -> &[PathBuf];
 }
 
@@ -134,7 +132,6 @@ pub trait Reader: Send + Sync {
 /// atomically: it stages beside the target and renames.
 pub trait Writer: Send + Sync {
     fn write(&self, path: &Path, bytes: &[u8]) -> Result<(), CapError>;
-    fn create_dir_all(&self, path: &Path) -> Result<(), CapError>;
     fn roots(&self) -> &[PathBuf];
 }
 

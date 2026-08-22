@@ -63,33 +63,5 @@ fn writer_refuses_paths_outside_its_roots() {
     let other = tmp("grants-write-other");
     let writer = RootWriter::new(roots(&dir));
     assert!(matches!(writer.write(&other.join("x"), b"x"), Err(CapError::Denied { .. })));
-    assert!(matches!(writer.create_dir_all(&other.join("deep/er")), Err(CapError::Denied { .. })));
-    assert!(!other.join("deep").exists());
-}
-
-#[test]
-fn writer_creates_nested_directories_inside_a_root() {
-    let dir = tmp("grants-mkdir");
-    let writer = RootWriter::new(roots(&dir));
-    writer.create_dir_all(&dir.join("a/b/c")).unwrap();
-    assert!(dir.join("a/b/c").is_dir());
-    writer.create_dir_all(std::path::Path::new("rel/x")).unwrap();
-    assert!(dir.join("rel/x").is_dir());
-}
-
-#[test]
-fn walk_honors_ignore_files_and_stays_within_roots() {
-    let dir = tmp("grants-walk");
-    let outside = tmp("grants-walk-outside");
-    std::fs::write(dir.join(".gitignore"), "ignored.txt\n").unwrap();
-    std::fs::write(dir.join("kept.txt"), "k").unwrap();
-    std::fs::write(dir.join("ignored.txt"), "i").unwrap();
-    std::fs::write(outside.join("far.txt"), "f").unwrap();
-    std::os::unix::fs::symlink(&outside, dir.join("escape")).unwrap();
-    let reader = RootReader::new(roots(&dir));
-    let names: Vec<String> =
-        reader.walk(&dir).unwrap().filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
-    assert!(names.contains(&"kept.txt".to_string()), "{names:?}");
-    assert!(!names.contains(&"ignored.txt".to_string()), "{names:?}");
-    assert!(!names.contains(&"far.txt".to_string()) && !names.contains(&"escape".to_string()), "{names:?}");
+    assert!(!other.join("x").exists());
 }

@@ -152,4 +152,4 @@ impl Pool {
 
 #[cfg(test)]
 #[path = "budget_test.rs"]
-mod tests;
+pub(crate) mod tests;

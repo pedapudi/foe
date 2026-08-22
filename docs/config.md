@@ -125,7 +125,7 @@ appended to the system prompt. The order therefore participates in identity.
 A name resolves against three sources, checked in this order:
 
 1. Built-in tools: `read`, `grep`, `edit`, `bash`, `block`, `spawn`,
-   `steer`, `notify`, `send`, `team`.
+   `wait`, `steer`, `notify`, `send`, `team`.
 2. Entries in `tool_defs`.
 3. Entries in `host_tools`.
 

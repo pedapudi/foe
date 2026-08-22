@@ -224,16 +224,17 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     let registry = Registry::new(&program, vec![], vec![]).unwrap();
     let executor = Arc::new(FakeExecutor::default());
     let handles = Handles { executor: Some(executor.clone()), ..Default::default() };
-    let findings = registry.verify(&handles, &json!("line one\n\nline two"), 1, root.clone(), None).await.unwrap();
+    let findings =
+        registry.verify_with("v", &handles, &json!("line one\n\nline two"), 1, root.clone(), None).await.unwrap();
     assert_eq!(findings, vec![r#""line one\n\nline two""#], "stdout lines are findings; the executor echoed stdin");
     let req = executor.requests.lock().unwrap().pop().unwrap();
     assert!(req.args.is_empty(), "a verifier receives an empty argument vector");
     assert_eq!(req.stdin.as_deref(), Some(br#""line one\n\nline two""#.as_slice()));
     let crashing = Arc::new(FakeExecutor { exit_code: 1, ..Default::default() });
     let handles = Handles { executor: Some(crashing), ..Default::default() };
-    let error = registry.verify(&handles, &json!(""), 1, root.clone(), None).await.unwrap_err();
+    let error = registry.verify_with("v", &handles, &json!(""), 1, root.clone(), None).await.unwrap_err();
     assert!(error.contains("verifier `v` failed") && error.contains("[exit code 1]"), "{error}");
-    let error = registry.verify(&handles, &json!("out"), 1, root.clone(), None).await.unwrap_err();
+    let error = registry.verify_with("v", &handles, &json!("out"), 1, root.clone(), None).await.unwrap_err();
     assert!(error.contains(r#""out""#), "the diagnostic carries standard output: {error}");
 
     let program = program_with(&root, |v| {
@@ -246,6 +247,6 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
         findings: std::sync::Mutex::new(vec![vec!["f1".into()], vec![]].into()),
     };
     let registry = Registry::new(&program, vec![], vec![Box::new(verifier)]).unwrap();
-    assert_eq!(registry.verify(&handles, &json!("c"), 1, root.clone(), None).await.unwrap(), vec!["f1"]);
-    assert!(registry.verify(&handles, &json!("c"), 1, root, None).await.unwrap().is_empty());
+    assert_eq!(registry.verify_with("check", &handles, &json!("c"), 1, root.clone(), None).await.unwrap(), vec!["f1"]);
+    assert!(registry.verify_with("check", &handles, &json!("c"), 1, root, None).await.unwrap().is_empty());
 }

@@ -89,8 +89,12 @@ they are and says so, so the seven literal ones regenerate on a machine
 with no Rust toolchain.
 
 `retries-exhausted.jsonl` is a recorded log rather than a generated one, so
-the tests read the shapes a real provider failure produces. `pnpm fixtures`
-leaves it alone.
+the tests read the bytes a provider failure wrote. Its last `request/retry`
+has no `model/request` after it, which is a shape the runtime does not
+write: a retry now sits immediately before the attempt it announces, as
+[log-format.md](../docs/log-format.md#open-obligations) requires. The
+viewer renders the file all the same, because a reader accepts every log it
+is handed. `pnpm fixtures` leaves it alone.
 
 Three screenshots of the static export at 1512 by 792 sit beside the source,
 each in one of the two default themes. `proof-light.png` and

@@ -181,6 +181,14 @@ for message in messages:
         f"message {message['message_id']} was queued and never delivered",
     )
 
+# The lead's one `wait` call returned only after both members were settled
+# in its own log, so no reservation stands when the episode ends.
+waited = [e["seq"] for e in lead if e["type"] == "tool/result" and e["data"]["name"] == "wait"]
+settled_seqs = [e["seq"] for e in lead if e["type"] in ("spawn/end", "budget/release")]
+require(len(waited) == 1, f"the lead called wait {len(waited)} times rather than once")
+require(len(settled_seqs) == 4, f"{len(settled_seqs)} settlement events rather than four")
+require(max(settled_seqs) < waited[0], "wait returned before both members were settled in the lead's log")
+
 require(len(reports) == 2 * 2, f"the lead received {len(reports)} messages from members rather than four")
 said = [item["content"][0]["text"] for item in reports]
 require(any(text.startswith("review of ") for text in said), "the reviewer sent no report")

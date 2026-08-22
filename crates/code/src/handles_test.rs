@@ -73,15 +73,6 @@ impl Reader for Bounded {
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError> {
         Ok(std::fs::metadata(self.check(path)?)?)
     }
-    fn walk(&self, root: &Path) -> Result<Box<dyn Iterator<Item = PathBuf> + Send>, CapError> {
-        let root = self.check(root)?;
-        let paths: Vec<PathBuf> = ignore::WalkBuilder::new(root)
-            .require_git(false)
-            .build()
-            .filter_map(|e| e.ok().map(|e| e.into_path()))
-            .collect();
-        Ok(Box::new(paths.into_iter()))
-    }
     fn roots(&self) -> &[PathBuf] {
         &self.roots
     }
@@ -95,9 +86,6 @@ impl Writer for Bounded {
         std::fs::rename(&staged, &target)?;
         self.writes.fetch_add(1, Ordering::SeqCst);
         Ok(())
-    }
-    fn create_dir_all(&self, path: &Path) -> Result<(), CapError> {
-        Ok(std::fs::create_dir_all(self.check(path)?)?)
     }
     fn roots(&self) -> &[PathBuf] {
         &self.roots

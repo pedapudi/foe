@@ -174,6 +174,7 @@ impl Fixture {
             handles: Handles::default(),
             transport: Arc::new(responses),
             stop: stop_rx,
+            children: None,
             program: program.clone(),
             context: None,
         };

@@ -7,11 +7,10 @@
 use crate::fold::{self, LOG_FILE};
 use crate::{Event, EventData, LogError, State};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Owns the open log file and the sequence counter.
 pub struct Writer {
-    path: PathBuf,
     file: std::fs::File,
     mirror: Option<Box<dyn Write + Send>>,
     next_seq: u64,
@@ -23,9 +22,8 @@ impl Writer {
     /// Creates `episode.jsonl` under `dir`, which must exist and be empty of
     /// a prior log. Fails if a log is already present.
     pub fn create(dir: &Path, mirror: Option<Box<dyn Write + Send>>) -> Result<Self, LogError> {
-        let path = dir.join(LOG_FILE);
-        let file = std::fs::OpenOptions::new().create_new(true).append(true).open(&path)?;
-        Ok(Self { path, file, mirror, next_seq: 0, state: State::default() })
+        let file = std::fs::OpenOptions::new().create_new(true).append(true).open(dir.join(LOG_FILE))?;
+        Ok(Self { file, mirror, next_seq: 0, state: State::default() })
     }
 
     /// Opens an existing log for continued appending, for example after
@@ -36,9 +34,8 @@ impl Writer {
             return Err(LogError::Empty);
         }
         let state = fold::fold(&events)?;
-        let path = dir.join(LOG_FILE);
-        let file = std::fs::OpenOptions::new().append(true).open(&path)?;
-        Ok(Self { path, file, mirror, next_seq: events.len() as u64, state })
+        let file = std::fs::OpenOptions::new().append(true).open(dir.join(LOG_FILE))?;
+        Ok(Self { file, mirror, next_seq: events.len() as u64, state })
     }
 
     /// Appends one event, assigning the next `seq` and the current time.
@@ -83,10 +80,6 @@ impl Writer {
 
     pub fn next_seq(&self) -> u64 {
         self.next_seq
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
     }
 }
 

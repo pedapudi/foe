@@ -268,33 +268,28 @@ impl Transport for HostTransport {
             lock(&inner.requests).remove(&req.request_id);
             lock(&inner.settled).insert(req.request_id.clone());
         };
-        for chunk in buffered {
+        // Chunks that arrived before the transport claimed the request come
+        // first; the rest arrive over the channel. A host that closed
+        // standard input answers nothing further, and waiting on the
+        // channel would never end, so the closed flag ends the stream in
+        // place of a terminal chunk.
+        let mut buffered = buffered.into_iter();
+        loop {
+            let chunk = match buffered.next() {
+                Some(chunk) => Some(chunk),
+                None if inner.closed.load(Ordering::SeqCst) => None,
+                None => rx.recv().await,
+            };
+            let Some(chunk) = chunk else {
+                settle();
+                sink.push(closed_error(&format!("request `{}`", req.request_id)));
+                return;
+            };
             let terminal = matches!(chunk, Chunk::Done { .. } | Chunk::Error { .. });
             sink.push(chunk);
             if terminal {
                 settle();
                 return;
-            }
-        }
-        if inner.closed.load(Ordering::SeqCst) {
-            settle();
-            sink.push(closed_error(&format!("request `{}`", req.request_id)));
-            return;
-        }
-        loop {
-            match rx.recv().await {
-                Some(chunk) => {
-                    let terminal = matches!(chunk, Chunk::Done { .. } | Chunk::Error { .. });
-                    sink.push(chunk);
-                    if terminal {
-                        return;
-                    }
-                }
-                None => {
-                    settle();
-                    sink.push(closed_error(&format!("request `{}`", req.request_id)));
-                    return;
-                }
             }
         }
     }

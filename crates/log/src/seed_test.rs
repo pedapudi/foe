@@ -1,4 +1,4 @@
-use super::{orphan_results, seed, SeedHeader, ORPHAN_RENDERED};
+use super::{closing_events, seed, SeedHeader, ORPHAN_RENDERED};
 use crate::append::Writer;
 use crate::fold::{fold, read_all, tests as fx};
 use crate::*;
@@ -94,10 +94,10 @@ fn seed_drops_a_copied_episode_end_and_renumbers_references() {
 }
 
 #[test]
-fn orphan_results_names_every_unsettled_call() {
+fn closing_events_names_every_unsettled_call() {
     let events =
         fx::number(vec![fx::assistant(3, "x", vec![fx::call("a"), fx::call("b")], true), fx::result(3, "b", "ok")]);
-    let orphans = orphan_results(&events);
-    assert_eq!(orphans.len(), 1);
-    assert_eq!((orphans[0].step, orphans[0].call_id.as_str()), (3, "a"));
+    let closing = closing_events(&events);
+    let [EventData::ToolResult(orphan)] = closing.as_slice() else { panic!("one closing event: {closing:?}") };
+    assert_eq!((orphan.step, orphan.call_id.as_str()), (3, "a"));
 }

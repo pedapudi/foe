@@ -47,7 +47,6 @@ struct Entry {
 pub struct Registry {
     /// In `tools` order, then `return` when synthesized.
     entries: Vec<Entry>,
-    verify: Option<String>,
 }
 
 fn invalid(rule: String) -> ConfigError {
@@ -222,8 +221,7 @@ impl Registry {
             };
             entries.push(Entry { spec, tool, source, exec });
         }
-        let verify = program.done_when.as_ref().and_then(|d| d.verify.clone());
-        Ok(Self { entries, verify })
+        Ok(Self { entries })
     }
 
     /// Specifications in the order the model sees them.
@@ -313,25 +311,13 @@ impl Registry {
         entry.tool.call(call.args.clone(), &ctx).await
     }
 
-    /// Runs the `done_when.verify` tool on a candidate, per docs/config.md
-    /// `done_when`. Returns the findings; an empty list means accepted.
-    /// `Err` means the verifier failed rather than judged: it could not
-    /// run, a `tool_defs` executable exited with a status other than zero,
-    /// or a tool returned an error. The episode then ends as `failed`.
-    pub async fn verify(
-        &self,
-        handles: &Handles,
-        candidate: &Value,
-        step: u32,
-        spill_dir: PathBuf,
-        deadline: Option<Instant>,
-    ) -> Result<Vec<String>, String> {
-        let name = self.verify.as_deref().ok_or("no verifier is configured")?;
-        self.verify_with(name, handles, candidate, step, spill_dir, deadline).await
-    }
-
-    /// Runs a named tool as a verifier under the same contract as
-    /// [`Registry::verify`]. A workflow node's `verify` uses this.
+    /// Runs the tool `name` on a candidate as a verifier, per docs/config.md
+    /// `done_when`. A program's `done_when.verify` and a workflow node's
+    /// `verify` both name the tool this way. Returns the findings; an empty
+    /// list means accepted. `Err` means the verifier failed rather than
+    /// judged: it could not run, a `tool_defs` executable exited with a
+    /// status other than zero, or a tool returned an error. The episode then
+    /// ends as `failed`.
     pub async fn verify_with(
         &self,
         name: &str,

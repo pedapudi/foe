@@ -30,33 +30,30 @@ pub fn lines(text: &str) -> Vec<&str> {
     v
 }
 
-/// The longest prefix of `lines` within both limits.
-pub fn head(lines: &[&str], max_lines: usize, max_bytes: usize) -> Cut {
+/// How many of `lines`, taken in the order given, fit within both limits.
+/// A line counts its own length and the newline after it.
+fn fits<'a>(lines: impl Iterator<Item = &'a &'a str>, max_lines: usize, max_bytes: usize) -> usize {
     let mut bytes = 0;
-    let mut end = 0;
-    for line in lines.iter().take(max_lines) {
+    let mut kept = 0;
+    for line in lines.take(max_lines) {
         if bytes + line.len() + 1 > max_bytes {
             break;
         }
         bytes += line.len() + 1;
-        end += 1;
+        kept += 1;
     }
-    Cut { start: 0, end }
+    kept
+}
+
+/// The longest prefix of `lines` within both limits.
+pub fn head(lines: &[&str], max_lines: usize, max_bytes: usize) -> Cut {
+    Cut { start: 0, end: fits(lines.iter(), max_lines, max_bytes) }
 }
 
 /// The longest suffix of `lines` within both limits. Only `bash` keeps a tail.
 #[cfg(any(feature = "exec", test))]
 pub fn tail(lines: &[&str], max_lines: usize, max_bytes: usize) -> Cut {
-    let mut bytes = 0;
-    let mut start = lines.len();
-    for line in lines.iter().rev().take(max_lines) {
-        if bytes + line.len() + 1 > max_bytes {
-            break;
-        }
-        bytes += line.len() + 1;
-        start -= 1;
-    }
-    Cut { start, end: lines.len() }
+    Cut { start: lines.len() - fits(lines.iter().rev(), max_lines, max_bytes), end: lines.len() }
 }
 
 #[cfg(test)]

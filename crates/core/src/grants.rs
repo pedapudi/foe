@@ -6,7 +6,7 @@
 //! inside one.
 
 use crate::{CapError, Reader, Writer};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 /// Resolves symbolic links in `path`. When the final component does not
 /// exist, its parent is resolved and the file name appended, so that a
@@ -71,22 +71,6 @@ impl Reader for RootReader {
         Ok(std::fs::metadata(resolve(&self.roots, path)?)?)
     }
 
-    /// Honors `.gitignore` and `.ignore` files whether or not `root` is
-    /// inside a git checkout. Entries that resolve outside the roots
-    /// through a link are omitted. Unreadable entries are skipped.
-    fn walk(&self, root: &Path) -> Result<Box<dyn Iterator<Item = PathBuf> + Send>, CapError> {
-        let root = resolve(&self.roots, root)?;
-        let roots = self.roots.clone();
-        let paths: Vec<PathBuf> = ignore::WalkBuilder::new(&root)
-            .require_git(false)
-            .build()
-            .filter_map(Result::ok)
-            .filter_map(|entry| std::fs::canonicalize(entry.path()).ok())
-            .filter(|path| contains(&roots, path))
-            .collect();
-        Ok(Box::new(paths.into_iter()))
-    }
-
     fn roots(&self) -> &[PathBuf] {
         &self.roots
     }
@@ -116,31 +100,6 @@ impl Writer for RootWriter {
             let _ = std::fs::remove_file(&stage);
         })?;
         Ok(())
-    }
-
-    /// Checks the deepest existing ancestor, so that no directory is created
-    /// outside the roots through a link on the way down.
-    fn create_dir_all(&self, path: &Path) -> Result<(), CapError> {
-        let absolute = absolute(&self.roots, path)?;
-        let mut existing = absolute.as_path();
-        let mut rest = Vec::new();
-        while !existing.exists() {
-            match (existing.parent(), existing.file_name()) {
-                (Some(parent), Some(name)) => {
-                    rest.push(name.to_owned());
-                    existing = parent;
-                }
-                _ => return Err(CapError::Denied { path: path.to_path_buf() }),
-            }
-        }
-        let mut resolved = canonicalize(existing)?;
-        for name in rest.iter().rev() {
-            resolved.push(name);
-        }
-        if resolved.components().any(|c| c == Component::ParentDir) || !contains(&self.roots, &resolved) {
-            return Err(CapError::Denied { path: path.to_path_buf() });
-        }
-        Ok(std::fs::create_dir_all(&resolved)?)
     }
 
     fn roots(&self) -> &[PathBuf] {

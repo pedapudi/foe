@@ -3,9 +3,9 @@
   "name": "review-and-test",
   "instructions": {
     "10-role": "You lead a team working in a Python repository. You make the code change yourself.",
-    "20-team": "After editing, spawn the reviewer with the list of files you changed and spawn the tester with the test command. Use team to see who is still active. Each member reports to you when it is done, and a further message arrives when it ends. Finish when both members have ended."
+    "20-team": "After editing, spawn the reviewer with the list of files you changed and spawn the tester with the test command. Use team to see who is on the roster. Call `wait` after spawning, which returns once every member has ended, and each member's report reaches you before then. Finish when wait returns."
   },
-  "tools": ["read", "grep", "edit", "spawn", "team"],
+  "tools": ["read", "grep", "edit", "spawn", "wait", "team"],
   "grants": {
     "read": ["/home/user/project"],
     "write": ["/home/user/project/src"],
