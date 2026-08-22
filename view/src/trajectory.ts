@@ -6,9 +6,12 @@
 // axis is wall-clock time or log position, and both map linearly onto the
 // same plot area, so switching axes moves marks and changes nothing else.
 //
-// A row holds three channels stacked by position, because duration does not
-// separate them: the node band of a workflow episode above, the lifetime
-// line with its model requests in the middle, and the tool lane below.
+// A row holds the channels an episode's work nests into, stacked by
+// position because duration does not separate them. Model requests sit
+// above the lifetime line; under it come the node band of a workflow
+// episode, one lane per node that fired, and then the tool lane. The order
+// down the row is the order of containment: the episode, the nodes of its
+// graph, and the calls it made.
 
 import type { Outcome } from "./types.js";
 
@@ -268,6 +271,8 @@ const TICK_TARGET = 5;
 const FAN_GAP = 2;
 /** Pixels one character of a decision label takes, for collision alone. */
 const DECISION_CHAR = 5.4;
+/** Room a decision's own glyph and the gap after it take before its label. */
+export const DECISION_GLYPH = 8;
 
 /**
  * The height the figure needs to show rows totalling `rowsHeight` pixels:
@@ -358,8 +363,8 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
   episodes.forEach((episode, index) => {
     const lanes = nodeLaneOrder(episode.firings);
     const bandHeight = lanes.length * NODE_LANE;
-    const y = cursor + bandHeight + ROW_HEIGHT / 2;
-    const laneY = new Map(lanes.map((node, i) => [node, cursor + i * NODE_LANE + NODE_LANE / 2]));
+    const y = cursor + ROW_HEIGHT / 2;
+    const laneY = new Map(lanes.map((node, i) => [node, y + TOOL_LANE + i * NODE_LANE + NODE_LANE / 2]));
     rowY.set(episode.id, y);
     const running = episode.endTime === null;
     const endValue = running
@@ -370,7 +375,7 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
     const tools = marks.filter((m) => m.kind === "tool");
     const heights = stack(tools);
     tools.forEach((mark, i) => {
-      mark.y = y + TOOL_LANE + heights[i]! * TOOL_PITCH;
+      mark.y = y + TOOL_LANE + bandHeight + heights[i]! * TOOL_PITCH;
     });
     const fan = Math.max(0, (heights.length === 0 ? 1 : Math.max(...heights) + 1) - 1) * TOOL_PITCH;
 
@@ -388,7 +393,7 @@ export function layoutTrajectory(input: TrajectoryInput): TrajectoryLayout {
         y: laneY.get(firing.node) ?? y,
       };
     });
-    const decisions = placeDecisions(episode, axis, scale, laneY, y);
+    const decisions = placeDecisions(episode, firings, axis, scale, laneY, y);
 
     const height = bandHeight + ROW_HEIGHT + fan;
     const next = episodes[index + 1];
@@ -477,12 +482,15 @@ function placeMark(
 }
 
 /**
- * Every branch and recovery on the lane of the node it names. A label is
- * written only where the label before it on the same lane leaves room, so
- * that two decisions close together never set one word over another.
+ * Every branch and recovery on the lane of the node it names. The label
+ * stands beside the mark and is written only where the lane is clear for
+ * its whole width: another label already claimed the room, or a firing of
+ * the same node starts inside it, and either would set one thing over
+ * another. The hovercard names a decision whose label is dropped.
  */
 function placeDecisions(
   episode: TrajectoryEpisode,
+  firings: PlacedFiring[],
   axis: Axis,
   scale: (v: number) => number,
   laneY: Map<string, number>,
@@ -491,15 +499,18 @@ function placeDecisions(
   const taken = new Map<string, number>();
   return episode.decisions.map((decision) => {
     const x = scale(value(axis, decision.time, decision.seq));
-    const used = taken.get(decision.node) ?? -Infinity;
-    const showLabel = x >= used;
-    if (showLabel) taken.set(decision.node, x + decision.label.length * DECISION_CHAR + FAN_GAP);
+    const from = x + DECISION_GLYPH;
+    const right = from + decision.label.length * DECISION_CHAR;
+    const clear =
+      x >= (taken.get(decision.node) ?? -Infinity) &&
+      !firings.some((f) => f.node === decision.node && f.x + f.w > from && f.x < right);
+    if (clear) taken.set(decision.node, right + FAN_GAP);
     return {
       ...decision,
       episodeId: episode.id,
       x,
       y: laneY.get(decision.node) ?? fallbackY,
-      showLabel,
+      showLabel: clear,
     };
   });
 }

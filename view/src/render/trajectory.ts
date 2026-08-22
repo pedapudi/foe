@@ -23,7 +23,7 @@ import type {
   TrajectoryLayout,
   TrajectoryRow,
 } from "../trajectory.js";
-import { MARK_MIN_WIDTH, layoutTrajectory } from "../trajectory.js";
+import { DECISION_GLYPH, MARK_MIN_WIDTH, layoutTrajectory } from "../trajectory.js";
 import type { Outcome } from "../types.js";
 import { str } from "../types.js";
 import { Hovercard } from "./hovercard.js";
@@ -324,12 +324,12 @@ export class TrajectoryView {
   private decisionElement(decision: PlacedDecision): SVGGElement {
     const group = svg("g", { class: `traj-decision ${decision.kind}` });
     if (decision.kind === "branch") {
-      group.appendChild(svg("line", { class: "glyph", x1: decision.x, y1: decision.y - 5, x2: decision.x, y2: decision.y + 5 }));
+      group.appendChild(svg("line", { class: "glyph", x1: decision.x, y1: decision.y - 3.5, x2: decision.x, y2: decision.y + 3.5 }));
     } else {
       group.appendChild(svg("rect", { class: "glyph", x: decision.x - 2.5, y: decision.y - 2.5, width: 5, height: 5 }));
     }
     if (decision.showLabel) {
-      const text = svg("text", { class: "traj-decision-label", x: decision.x + 4, y: decision.y - 4 });
+      const text = svg("text", { class: "traj-decision-label", x: decision.x + DECISION_GLYPH, y: decision.y + 3 });
       text.textContent = decision.label;
       group.appendChild(text);
     }
