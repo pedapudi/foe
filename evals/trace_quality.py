@@ -42,6 +42,20 @@ EXHAUSTED_LIMITS = {
 }
 
 
+def _abi_key(value: Any) -> str:
+    """Name the Landlock ABI observation bucket for one episode.
+
+    A log that records a non-integer ABI already fails its declared_authority
+    check. Its observation bucket still needs a name that orders against the
+    integer buckets, so the whole report survives a malformed log.
+    """
+    return str(value) if isinstance(value, int) and not isinstance(value, bool) else "invalid"
+
+
+def _abi_order(name: str) -> tuple[int, int, str]:
+    return (0, int(name), "") if name.isdigit() else (1, 0, name)
+
+
 @dataclass
 class EpisodeLog:
     path: Path
@@ -115,9 +129,9 @@ class Evaluation:
             }
         observations = dict(self.observations)
         observations["sandbox_modes"] = dict(sorted(observations["sandbox_modes"].items()))
-        observations["landlock_abis"] = {
-            str(key): value for key, value in sorted(observations["landlock_abis"].items())
-        }
+        observations["landlock_abis"] = dict(
+            sorted(observations["landlock_abis"].items(), key=lambda item: _abi_order(item[0]))
+        )
         return {
             "schema_version": 1,
             "valid": not self.violations,
@@ -543,7 +557,8 @@ def _check_authority(evaluation: Evaluation, log: EpisodeLog) -> None:
     modes = evaluation.observations["sandbox_modes"]
     modes[str(mode)] = modes.get(str(mode), 0) + 1
     abis = evaluation.observations["landlock_abis"]
-    abis[abi] = abis.get(abi, 0) + 1
+    abi_key = _abi_key(abi)
+    abis[abi_key] = abis.get(abi_key, 0) + 1
     if isinstance(abi, int) and abi > 0:
         evaluation.observations["kernel_sandbox_episodes"] += 1
 
@@ -1166,7 +1181,11 @@ def evaluate(paths: Iterable[Path]) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Score the structural quality of one or more foe episode log trees."
+        description=(
+            "Report whether one or more foe episode log trees satisfy the runtime's declared "
+            "guarantees. The exit status is 0 when every applicable check passed and 1 when any "
+            "check found a violation."
+        )
     )
     parser.add_argument("paths", nargs="+", type=Path, help="Episode directories or episode.jsonl files.")
     parser.add_argument(

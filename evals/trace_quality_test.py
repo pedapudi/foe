@@ -130,6 +130,13 @@ class TraceQualityTest(unittest.TestCase):
         events[-1]["data"]["outcome"]["value"]["count"] = "two"
         self.assert_dimension_fails(events, "typed_outcomes")
 
+    def test_malformed_landlock_abi_is_reported_rather_than_raised(self) -> None:
+        events = copy.deepcopy(valid_events())
+        events[0]["data"]["sandbox"]["landlock_abi"] = "unknown"
+        report = evaluate_events(events)
+        self.assert_dimension_fails(events, "declared_authority")
+        self.assertEqual(report["observations"]["landlock_abis"], {"invalid": 1})
+
     def assert_dimension_fails(self, events: list[dict[str, Any]], dimension: str) -> None:
         report = evaluate_events(events)
         self.assertFalse(report["metrics"][dimension]["conformant"])
