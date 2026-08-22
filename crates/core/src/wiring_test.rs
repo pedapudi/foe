@@ -124,6 +124,52 @@ async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
     assert_eq!(lock(&pool).remaining().model_calls, Some(10));
 }
 
+/// docs/config.md "budget": `max_episodes` is the lifetime count of
+/// episodes in the tree. A child reports how many episodes its own subtree
+/// held, so grandchildren the root never sees are counted against the
+/// root's allowance and the next spawn is refused.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_grandchild_counts_against_the_root_episode_allowance() {
+    let dir = scratch("wiring", "episodes");
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
+    log.append(EventData::EpisodeStart(start())).unwrap();
+    let mut config = parent_config();
+    config.budget.max_episodes = 4;
+    // The child may spawn in turn, so its reservation is the allowance it
+    // declares rather than a single episode.
+    config.programs.get_mut("worker").unwrap().grants.spawn = vec!["worker".into()];
+    let worker = config.programs["worker"].clone();
+    config.programs.get_mut("worker").unwrap().programs.insert("worker".into(), worker);
+    config.programs.get_mut("worker").unwrap().budget.max_episodes = 3;
+    config.programs.get_mut("worker").unwrap().budget.model_calls = 5;
+    let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
+    let router = Arc::new(Router::new());
+    let inner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir.clone(),
+        config,
+        Arc::new(Lines::default()),
+        router.clone(),
+        Arc::new(Seen::default()),
+    )
+    .unwrap()
+    .with_launcher(crate::spawn::tests::nesting_child(&dir));
+    let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
+
+    let handle = spawner.spawn(request("worker", BudgetAmount::default())).unwrap();
+    let EventData::BudgetReserve { reserved, .. } = &log.events()[1].data else { panic!() };
+    assert_eq!(reserved.episodes, Some(3), "the child receives the allowance it declares");
+    handle.run.clone().settle().await;
+    wait_for(|| (log.events().len() == 5).then_some(()));
+    let EventData::BudgetRelease { spent, .. } = &log.events()[4].data else { panic!() };
+    assert_eq!(spent.episodes, Some(3), "the child, plus the two episodes its own release accounts for");
+    assert_eq!(lock(&pool).remaining().episodes, Some(0), "the root's allowance of four is used up");
+
+    let refused = spawner.spawn(request("worker", BudgetAmount::default()));
+    let message = refused.err().map(|e| e.to_string()).unwrap_or_default();
+    assert!(message.contains("episodes"), "a spawn past the tree's allowance names the limit: {message}");
+}
+
 /// docs/log-format.md "Open obligations": an episode that ends while a child
 /// runs closes what the child opened. The teardown asks the child to end and
 /// waits for the `spawn/end` and `budget/release` its settlement writes, so

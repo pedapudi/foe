@@ -68,6 +68,18 @@ pub(crate) fn fake_child(dir: &Path) -> Vec<OsString> {
     script(dir, "fake-foe.sh", FAKE_CHILD)
 }
 
+/// A stand-in child that settles one child of its own and then ends, so
+/// that what it reports covers a subtree rather than itself alone.
+pub(crate) const NESTING_CHILD: &str = r#"#!/bin/sh
+echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{},"identity":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
+echo '{"seq":1,"time":1,"type":"budget/release","data":{"child_id":"ep_grand","spent":{"model_calls":3,"tokens":50,"episodes":2}}}'
+echo '{"seq":2,"time":1,"type":"episode/end","data":{"outcome":{"kind":"completed","value":"done"}}}'
+"#;
+
+pub(crate) fn nesting_child(dir: &Path) -> Vec<OsString> {
+    script(dir, "nesting-foe.sh", NESTING_CHILD)
+}
+
 fn script(dir: &Path, name: &str, body: &str) -> Vec<OsString> {
     let script = dir.join(name);
     std::fs::write(&script, body).unwrap();
