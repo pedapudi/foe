@@ -133,7 +133,8 @@ async fn a_root_serves_send_and_team_from_its_own_roster() {
     let names: Vec<String> = tools(team.clone(), None).iter().map(|t| t.spec().name.clone()).collect();
     assert_eq!(names, ["spawn", "wait", "steer", "notify", "send", "team"]);
     assert_eq!(builtin_specs().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), names);
-    assert_eq!(builtin_specs()[4].effect, Effect::Pure);
+    let send = builtin_specs().into_iter().find(|s| s.name == "send").expect("`send` is built in");
+    assert_eq!(send.effect, Effect::Pure, "`send` needs no grant");
     let tools = tools(team, None);
     let by_name = |name: &str| tools.iter().find(|t| t.spec().name == name).unwrap();
     assert!(by_name("notify").call(serde_json::json!({ "content": "x" }), &ctx(None)).await.is_error);

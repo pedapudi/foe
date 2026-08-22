@@ -63,12 +63,14 @@ async fn limit_caps_the_rendering_while_the_value_keeps_every_match() {
 #[tokio::test]
 async fn context_lines_are_marked_and_long_lines_are_clamped() {
     let fx = Fixture::new();
-    fx.write("c.txt", &format!("before\nneedle {}\nafter\n", "x".repeat(600)));
+    let long = format!("needle {}", "x".repeat(600));
+    fx.write("c.txt", &format!("before\n{long}\nafter\n"));
     let v = grep(&fx, json!({"pattern": "needle", "context": 1})).await;
     let r = v.rendered.unwrap();
     assert!(r.contains("c.txt:1-before\n"), "{r}");
     assert!(r.contains("c.txt:3-after"), "{r}");
-    assert!(r.contains(" [clamped at 500 chars; 107 more]"), "{r}");
+    let dropped = long.chars().count() - GREP_LINE_MAX_CHARS;
+    assert!(r.contains(&format!(" [clamped at {GREP_LINE_MAX_CHARS} chars; {dropped} more]")), "{r}");
 }
 
 #[tokio::test]

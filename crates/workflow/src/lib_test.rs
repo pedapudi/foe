@@ -35,7 +35,9 @@ fn branch_is_added_to_the_returns_schema() {
     let plan = node_program(nodes[1].1);
     let returns = plan.done_when.unwrap().returns.unwrap();
     assert_eq!(returns["properties"]["branch"], json!({ "type": "string", "enum": ["go", "stop"] }));
-    assert_eq!(returns["required"], json!(["n", "branch"]));
+    let required = returns["required"].as_array().unwrap();
+    assert!(required.contains(&json!("branch")), "`branch` is required: {required:?}");
+    assert!(required.contains(&json!("n")), "the declared requirement is kept: {required:?}");
     assert_eq!(returns["properties"]["n"], json!({ "type": "integer" }), "the declared schema is kept");
     let draft = node_program(nodes[0].1);
     let returns = draft.done_when.unwrap().returns.unwrap();

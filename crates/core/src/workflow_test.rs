@@ -198,7 +198,11 @@ fn a_graph_declares_how_many_firings_it_can_perform() {
         } } }
     } }))
     .unwrap();
-    assert_eq!(nested.possible_firings(), 9, "three firings of `outer`, each running two of `inner`");
+    assert_eq!(
+        nested.possible_firings(),
+        9,
+        "three firings of `outer`, each of which is itself a firing and runs two of `inner`"
+    );
 
     let root = tmp("workflow-firing-bound");
     let over = with_graph(&root, |value| {

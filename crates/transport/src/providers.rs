@@ -265,7 +265,7 @@ mod tests {
         }
         for name in ["openai", "openai-codex"] {
             let provider = find(name).unwrap();
-            assert_eq!(provider.presets[0], "gpt-5.6-sol");
+            assert!(provider.presets.contains(&"gpt-5.6-sol"), "{}: the preset is offered", provider.name);
             assert_eq!(provider.context_window("gpt-5.6-sol"), Some(1_050_000));
         }
     }

@@ -196,8 +196,10 @@ async fn ending_an_episode_settles_a_child_that_is_still_running() {
     let handle = spawner.spawn(request("worker", BudgetAmount { model_calls: Some(5), ..Default::default() })).unwrap();
     wait_for(|| router.has_child(&handle.child_id).then_some(()));
     assert_eq!(lock(&pool).active_children(), 1);
-    let open = foe_log::fold::open_obligations(&log.events());
-    assert_eq!(open.len(), 2, "the reservation and the child are open: {open:?}");
+    let open: std::collections::BTreeSet<foe_log::Obligation> =
+        foe_log::fold::open_obligations(&log.events()).into_iter().map(|(kind, _)| kind).collect();
+    let expected = [foe_log::Obligation::Child, foe_log::Obligation::Reservation].into_iter().collect();
+    assert_eq!(open, expected, "the child and its reservation are open");
 
     crate::loop_::settle(&log, &pool, Some(&router)).await.unwrap();
     log.append(EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::Value::Null } }).unwrap();
