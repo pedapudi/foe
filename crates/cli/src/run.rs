@@ -287,9 +287,9 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }))
 }
 
-/// Everything decided before the process restricted itself. Holding the
-/// [`Confined`] rather than a policy is what makes that true: the policy it
-/// carries can no longer be added to.
+/// What the episode needs from the work done before the process restricted
+/// itself. It carries a [`Confined`] rather than a policy, so nothing
+/// assembled here can widen what the kernel already holds.
 struct Setup {
     config: Config,
     program: Program,
