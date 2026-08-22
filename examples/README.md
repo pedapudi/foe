@@ -5,9 +5,19 @@ answers the model from a script rather than a provider, checks its own
 result, and leaves an episode log to read. None needs a credential, a
 network, or a repository of your own.
 
+Ten examples are started by `run.sh` and two by `run.py`:
+
 ```sh
-sh examples/minimal/run.sh          # or: bazel run //examples/minimal
-bazel test //examples/...           # every example at once
+sh examples/minimal/run.sh
+python3 examples/embed-in-a-program/run.py
+```
+
+The workflow and sandbox examples also have Bazel targets, which are the
+two the build runs as tests:
+
+```sh
+bazel run //examples/workflow
+bazel test //examples/...
 ```
 
 A run prints the command that opens its episode in the viewer. The sandbox
@@ -67,10 +77,16 @@ A configuration carries visible absolute path markers such as
 edit when you point an example at a repository of your own, and nothing you
 have to fix before an example will run.
 
-`foe plan` does not accept a configuration that still holds its markers,
-because it resolves every grant and every executable path against the
-filesystem. Run it against the materialized configuration a runner leaves in
-its run directory.
+`foe plan --config FILE` and `foe tools --config FILE` both resolve every
+grant and every executable path against the filesystem, so neither accepts
+a configuration that still holds its markers. Both report
+`grants.read[0]: names an existing path: /home/user/project` and exit 1.
+Run them against the materialized configuration a runner leaves in its run
+directory.
+
+[`embed-in-a-program`](embed-in-a-program/) carries no configuration file,
+because the Python package builds the document in memory. Its program is
+the `foe.Program` that `triage_program` returns in `run.py`.
 
 Every example that runs without a provider names the `exec` provider and
 points it at a transport script. [`support/README.md`](support/) explains
@@ -90,6 +106,7 @@ deployments that dictate where a credential lives.
 The Rust integration tests validate every `config.json` against the printed
 schema, materialize its markers, and run `foe plan`, which catches a missing
 executable, a grant that cannot hold, and a workflow graph that cannot run.
-`bazel test //examples/...` runs the examples themselves, so each README's
-"What to look for" section describes a log the build produces rather than one
-a reader is asked to imagine.
+`cargo test --workspace` runs them. `bazel test //examples/...` runs the
+workflow and sandbox examples themselves, so each of those two READMEs
+describes a log the build produces. Running the other ten is what checks
+that their "What to look for" sections still hold.
