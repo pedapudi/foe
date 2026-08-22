@@ -160,11 +160,8 @@ fn configure(
             let base_url = match provider.default_base_url {
                 Some(_) => session.endpoints.base_url.clone(),
                 None => {
-                    let hint = provider.hint("base_url");
-                    let url = ask(session, &format!("Server base URL ({hint}):"))?;
-                    if url.is_empty() {
-                        return Err("a base URL is required for this provider".into());
-                    }
+                    let prompt = format!("Server base URL ({}):", provider.hint("base_url"));
+                    let url = ask_required(session, &prompt, "a base URL is required for this provider")?;
                     extra.insert("base_url".to_string(), url.clone());
                     Some(url)
                 }
@@ -195,14 +192,9 @@ fn configure(
             if !file.is_absolute() {
                 return Err(format!("{}: give an absolute path", file.display()));
             }
-            let project = ask(session, "Google Cloud project id:")?;
-            if project.is_empty() {
-                return Err("a project id is required".into());
-            }
-            let location = ask(session, "Location (for example us-east5 or global):")?;
-            if location.is_empty() {
-                return Err("a location is required".into());
-            }
+            let project = ask_required(session, "Google Cloud project id:", "a project id is required")?;
+            let prompt = "Location (for example us-east5 or global):";
+            let location = ask_required(session, prompt, "a location is required")?;
             say(session, "verifying...")?;
             let google = auth::google::Google::open(&file).map_err(|e| {
                 format!("{e}; run `gcloud auth application-default login` or name a service account key file")
@@ -293,41 +285,31 @@ fn wait_for_code(listener: &TcpListener, state: &str) -> Result<String, String> 
     }
 }
 
+/// Decodes one form-encoded query value: `%` and two hexadecimal digits
+/// become that byte, `+` becomes a space. A `%` that no pair of hexadecimal
+/// digits follows stands for itself.
 fn percent_decode(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        match bytes[i] {
-            b'%' if i + 2 < bytes.len() => match u8::from_str_radix(&text[i + 1..i + 3], 16) {
-                Ok(byte) => {
-                    out.push(byte);
-                    i += 3;
-                }
-                Err(_) => {
-                    out.push(b'%');
-                    i += 1;
-                }
-            },
-            b'+' => {
-                out.push(b' ');
-                i += 1;
-            }
-            byte => {
-                out.push(byte);
-                i += 1;
-            }
-        }
+        let escape = (bytes[i] == b'%' && i + 2 < bytes.len())
+            .then(|| u8::from_str_radix(&text[i + 1..i + 3], 16).ok())
+            .flatten();
+        out.push(escape.unwrap_or(if bytes[i] == b'+' { b' ' } else { bytes[i] }));
+        i += if escape.is_some() { 3 } else { 1 };
     }
     String::from_utf8_lossy(&out).into_owned()
 }
 
 // ---- the default model ----------------------------------------------------------
 
+/// Refused when the model name is asked for and the answer is empty.
+const MODEL_REQUIRED: &str = "a model name is required";
+
 fn choose_model(session: &mut Session, provider: &Provider) -> Result<String, String> {
     if provider.presets.is_empty() {
-        let model = ask(session, "Model name:")?;
-        return if model.is_empty() { Err("a model name is required".into()) } else { Ok(model) };
+        return ask_required(session, "Model name:", MODEL_REQUIRED);
     }
     say(session, "Default model:")?;
     for (i, preset) in provider.presets.iter().enumerate() {
@@ -337,14 +319,7 @@ fn choose_model(session: &mut Session, provider: &Provider) -> Result<String, St
     let answer = ask(session, &format!("Choose [1-{}]:", provider.presets.len() + 1))?;
     match answer.parse::<usize>() {
         Ok(n) if n >= 1 && n <= provider.presets.len() => Ok(provider.presets[n - 1].to_string()),
-        Ok(n) if n == provider.presets.len() + 1 => {
-            let model = ask(session, "Model name:")?;
-            if model.is_empty() {
-                Err("a model name is required".into())
-            } else {
-                Ok(model)
-            }
-        }
+        Ok(n) if n == provider.presets.len() + 1 => ask_required(session, "Model name:", MODEL_REQUIRED),
         _ if !answer.is_empty() && answer.parse::<usize>().is_err() => Ok(answer),
         _ => Err(format!("choose a number from 1 to {}", provider.presets.len() + 1)),
     }
@@ -390,6 +365,15 @@ fn ask(session: &mut Session, prompt: &str) -> Result<String, String> {
         return Err("standard input ended before the answer".into());
     }
     Ok(line.trim().to_string())
+}
+
+/// Asks for a value the flow cannot proceed without. An empty answer is
+/// refused with `missing`, which says what the value is for.
+fn ask_required(session: &mut Session, prompt: &str, missing: &str) -> Result<String, String> {
+    match ask(session, prompt)? {
+        answer if answer.is_empty() => Err(missing.to_string()),
+        answer => Ok(answer),
+    }
 }
 
 /// Reads one line with the terminal's echo off, so the secret is not shown
