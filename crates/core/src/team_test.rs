@@ -222,3 +222,13 @@ async fn spawn_tool_runs_a_child_whose_notify_and_end_reach_the_lead() {
     assert_eq!(team.state().member("w1").unwrap().member_id, child_id);
     assert!(uplink.0.lock().unwrap().len() == 2, "notify was never forwarded upward");
 }
+
+/// docs/config.md "JSON Schema subset": dispatch checks a call against the
+/// tool's parameter schema, so a schema the runtime writes stays inside the
+/// subset the runtime evaluates.
+#[test]
+fn every_team_tool_schema_stays_inside_the_implemented_subset() {
+    for spec in super::builtin_specs() {
+        crate::schema::check(format!("tools.{}.params", spec.name), &spec.params).unwrap();
+    }
+}
