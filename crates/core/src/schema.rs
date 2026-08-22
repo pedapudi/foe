@@ -11,11 +11,6 @@ pub const DIALECT: &str = "https://json-schema.org/draft/2020-12/schema";
 /// use references within their own document. The `format` keyword is enforced.
 pub fn compile(schema: &Value) -> Result<Validator, String> {
     known_keywords(schema, "schema")?;
-    if let Some(declared) = schema.get("$schema") {
-        if declared != DIALECT {
-            return Err(format!("declares `$schema` as {declared}; the supported dialect is `{DIALECT}`"));
-        }
-    }
     jsonschema::options()
         .with_draft(Draft::Draft202012)
         .should_validate_formats(true)
@@ -118,6 +113,29 @@ fn known_keywords(schema: &Value, path: &str) -> Result<(), String> {
         "contentSchema",
     ];
     let Some(object) = schema.as_object() else { return Ok(()) };
+    if let Some(declared) = object.get("$schema") {
+        if declared != DIALECT {
+            return Err(format!("{path} declares `$schema` as {declared}; the supported dialect is `{DIALECT}`"));
+        }
+    }
+    if let Some(vocabularies) = object.get("$vocabulary").and_then(Value::as_object) {
+        const SUPPORTED: &[&str] = &[
+            "https://json-schema.org/draft/2020-12/vocab/core",
+            "https://json-schema.org/draft/2020-12/vocab/applicator",
+            "https://json-schema.org/draft/2020-12/vocab/unevaluated",
+            "https://json-schema.org/draft/2020-12/vocab/validation",
+            "https://json-schema.org/draft/2020-12/vocab/meta-data",
+            "https://json-schema.org/draft/2020-12/vocab/format-annotation",
+            "https://json-schema.org/draft/2020-12/vocab/format-assertion",
+            "https://json-schema.org/draft/2020-12/vocab/content",
+        ];
+        if let Some((uri, _)) = vocabularies
+            .iter()
+            .find(|(uri, required)| required == &&Value::Bool(true) && !SUPPORTED.contains(&uri.as_str()))
+        {
+            return Err(format!("{path} requires unsupported `$vocabulary` `{uri}`"));
+        }
+    }
     if let Some(keyword) = object.keys().find(|key| !KNOWN.contains(&key.as_str())) {
         return Err(format!("is not a valid JSON Schema: {path}.{keyword} is an unsupported keyword"));
     }
