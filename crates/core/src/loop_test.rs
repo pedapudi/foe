@@ -332,6 +332,64 @@ async fn a_non_retryable_failure_fails_the_episode() {
     assert!(matches!(outcome, Outcome::Failed { error } if error.contains("bad key")));
 }
 
+/// docs/config.md `budget`: the last available ordinary request receives
+/// one reconstructable system warning and may complete normally.
+#[tokio::test]
+async fn the_last_available_request_carries_a_budget_warning() {
+    let fx = Fixture::new(
+        "loop-final-request-warning",
+        |v| {
+            v["budget"]["model_calls"] = json!(3);
+            v["tools"] = json!(["p"]);
+        },
+        vec![
+            turn("inspect", vec![call("a", "p", "{}")]),
+            turn("change", vec![call("b", "p", "{}")]),
+            turn("evidence supports completion", vec![]),
+        ],
+    );
+    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("evidence supports completion") });
+
+    let warnings: Vec<_> = events
+        .iter()
+        .filter(|event| {
+            matches!(&event.data, EventData::InboxItem(item)
+                if item.source == InboxSource::System
+                    && matches!(&item.content[0], foe_log::ContentBlock::Text { text } if text == text::FINAL_REQUEST))
+        })
+        .collect();
+    assert_eq!(warnings.len(), 1);
+    let requests: Vec<_> = events
+        .iter()
+        .filter_map(|event| match &event.data {
+            EventData::ModelRequest(request) => Some(request),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(requests.len(), 3);
+    assert!(!requests[0].consumed.contains(&warnings[0].seq) && !requests[1].consumed.contains(&warnings[0].seq));
+    assert!(requests[2].consumed.contains(&warnings[0].seq));
+    assert!(serde_json::to_string(&requests[2].messages).unwrap().contains(text::FINAL_REQUEST));
+}
+
+/// docs/config.md `budget`: the warning changes no completion rule. A last
+/// request that leaves work outstanding still exhausts the episode.
+#[tokio::test]
+async fn the_final_request_warning_does_not_complete_unfinished_work() {
+    let fx = Fixture::new(
+        "loop-final-request-unfinished",
+        |v| {
+            v["budget"]["model_calls"] = json!(1);
+            v["tools"] = json!(["p"]);
+        },
+        vec![turn("continue", vec![call("a", "p", "{}")])],
+    );
+    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert_eq!(outcome, Outcome::Exhausted { limit: ExhaustedLimit::ModelCalls });
+    assert_eq!(events.iter().filter(|event| matches!(event.data, EventData::InboxItem(_))).count(), 2);
+}
+
 #[tokio::test]
 async fn the_model_call_budget_ends_the_episode_as_exhausted() {
     let fx = Fixture::new(

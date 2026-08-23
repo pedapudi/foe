@@ -254,6 +254,13 @@ impl Episode {
             if let Some(outcome) = self.compact().await? {
                 return Ok(outcome);
             }
+            let final_request = {
+                let pool = lock(&self.p.pool);
+                pool.exhausted().is_none() && pool.remaining().model_calls == Some(1)
+            };
+            if final_request {
+                self.append_inbox(InboxSource::System, text::FINAL_REQUEST)?;
+            }
             self.write_header(self.p.registry.system_prompt(&self.p.program.instructions), self.p.registry.schemas())?;
             let message = match self.request(Request::Step).await? {
                 Answer::Message { message, .. } => message,

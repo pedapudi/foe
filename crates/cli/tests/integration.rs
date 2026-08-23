@@ -637,7 +637,11 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert!(continuation.contains("\nfiles_read:\n- f.txt\nfiles_written: (none)\n"), "{continuation}");
     assert!(continuation.ends_with(&format!("## Summary\n\n{narrative}")), "{continuation}");
     assert_eq!(messages[2]["tool_calls"][0]["id"], "tc_2", "the kept suffix starts with the second step");
-    assert_eq!(messages.len(), 4);
+    assert_eq!(messages.len(), 5, "the final-request warning follows the compacted context");
+    assert!(
+        messages.iter().any(|message| message.to_string().contains(foe_core::harness_text::FINAL_REQUEST)),
+        "the last ordinary request carries the recorded warning"
+    );
     let prompt = requests[2]["data"]["messages"][0]["content"][0]["text"].as_str().unwrap();
     assert!(prompt.starts_with("# Transcript\n\n[user]\ndo the thing\n\n[assistant]\nreading\n[call read"), "{prompt}");
     assert!(!prompt.contains("tc_2") && prompt.contains("[result read]"), "the span ends at the cut: {prompt}");
@@ -682,7 +686,12 @@ fn a_failed_summarization_leaves_the_context_as_it_was() {
     let last = events.iter().rev().find(|e| e["type"] == "model/request").unwrap();
     assert_eq!(last["data"]["request_id"], "rq_0004");
     assert_eq!(last["data"]["messages"][0]["content"][0]["text"], "do the thing");
-    assert_eq!(last["data"]["messages"].as_array().unwrap().len(), 5, "task, two turns, two results: unchanged");
+    let messages = last["data"]["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 6, "the prior context and final-request warning are present");
+    assert!(
+        messages.iter().any(|message| message.to_string().contains(foe_core::harness_text::FINAL_REQUEST)),
+        "failed compaction preserves the warning"
+    );
 }
 
 fn examples() -> Vec<(String, String)> {
