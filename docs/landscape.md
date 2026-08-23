@@ -173,8 +173,9 @@ fixes its behavior, authority, budget, termination rule, and runtime text.
   Each task supplies a container environment, an instruction, a human-written
   solution, and tests.
   Version 2.1 fixed 28 tasks and added continuous validation
-  ([news](https://www.tbench.ai/news)). The 2.1 leaderboard lists Claude
-  Code at 83.8 percent and Codex at 83.1 percent, with a rule that
+  ([release](https://www.tbench.ai/news/terminal-bench-2-1)).
+  The 2.1 leaderboard lists Claude Code at 83.8 percent and Codex at
+  83.1 percent, with a rule that
   submissions may not modify timeouts or resources
   ([leaderboard](https://www.tbench.ai/leaderboard/terminal-bench/2.1)).
   Tasks run through the Harbor harness.

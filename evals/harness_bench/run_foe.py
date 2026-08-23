@@ -22,6 +22,7 @@ from foe_source_identity import evaluated_foe
 
 
 BENCHMARK_COMMIT = "1025086a446653702b80cfb48babbeec35db6b2c"
+BENCHMARK_PATCH = "sha256:3294614b9fa081fdafc61d96f5661c1e859280ce70cb5eada8c05673c21896dc"
 
 
 @dataclass(frozen=True)
@@ -409,6 +410,7 @@ def run_attempt(
     record = {
         "benchmark": "Harness-Bench",
         "benchmark_commit": BENCHMARK_COMMIT,
+        "benchmark_patch": BENCHMARK_PATCH,
         "task": task.identifier,
         "attempt": attempt,
         "fixture_digest": fixture_hash,
@@ -460,6 +462,7 @@ def preview(
     return {
         "benchmark": "Harness-Bench",
         "benchmark_commit": BENCHMARK_COMMIT,
+        "benchmark_patch": BENCHMARK_PATCH,
         "evaluated_foe": foe_identity,
         "model": route,
         "tasks": rows,

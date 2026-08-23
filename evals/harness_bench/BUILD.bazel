@@ -5,6 +5,7 @@ exports_files(
     [
         "foe_source_identity.py",
         "harness_bench.BUILD.bazel",
+        "knowledge_qa_claim_scoring.patch",
     ],
     visibility = ["//visibility:public"],
 )
@@ -100,8 +101,34 @@ sh_test(
         "collect_evidence_test.py",
         "foe_source_identity.py",
         "foe_source_identity_test.py",
+        "knowledge_qa_claim_scoring.patch",
         "run_self_improvement.py",
         "run_self_improvement_test.py",
+    ],
+    size = "small",
+)
+
+genrule(
+    name = "patched_knowledge_qa_grader",
+    srcs = ["@harness_bench//:task_096_oracle"],
+    outs = ["knowledge_qa_task/oracle_grade.py"],
+    cmd = "cp $< $@",
+)
+
+genrule(
+    name = "patched_knowledge_qa_ground_truth",
+    srcs = ["@harness_bench//:task_096_ground_truth"],
+    outs = ["knowledge_qa_task/ground_truth.json"],
+    cmd = "cp $< $@",
+)
+
+sh_test(
+    name = "knowledge_qa_grader_test",
+    srcs = ["knowledge_qa_grader_test.py"],
+    data = [
+        "knowledge_qa_oracle.json",
+        ":patched_knowledge_qa_grader",
+        ":patched_knowledge_qa_ground_truth",
     ],
     size = "small",
 )

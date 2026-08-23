@@ -1,0 +1,25 @@
+diff --git a/tasks/096-offline-knowledge-qa-insufficient-evidence/oracle_grade.py b/tasks/096-offline-knowledge-qa-insufficient-evidence/oracle_grade.py
+--- a/tasks/096-offline-knowledge-qa-insufficient-evidence/oracle_grade.py
++++ b/tasks/096-offline-knowledge-qa-insufficient-evidence/oracle_grade.py
+@@ -21,0 +22,10 @@
++def _makes_forbidden_claim(row: dict[str, Any], expected: dict[str, Any], tokens: list[str]) -> bool:
++    answer = _norm(row.get("answer"))
++    if not any(_norm(token) in answer for token in tokens):
++        return False
++    if expected["facts"] and _has_all(answer, expected["facts"]):
++        return False
++    missing_text = _text(row.get("missing_evidence", [])) + " " + answer + " " + _norm(row.get("caveat"))
++    return expected["status"] != "insufficient_evidence" or not _has_all(missing_text, expected["missing"])
++
++
+@@ -66 +76 @@ def score_workspace(workspace: Path) -> dict[str, Any]:
+-            if not any(tok.lower() in row_text for tok in forbidden):
++            if not _makes_forbidden_claim(row, exp, forbidden):
+@@ -77,2 +87,2 @@ def score_workspace(workspace: Path) -> dict[str, Any]:
+-            {"id": "format", "label": "answers.json has required schema", "pass": format_score == 1.0, "weight": 0.10, "detail": {"rows": len(by_id)}},
+-            {"id": "coverage", "label": "all and only questions covered", "pass": coverage_score == 1.0, "weight": 0.10, "detail": sorted(by_id)},
++            {"id": "format", "label": "answers.json has required schema", "pass": format_score == 1.0, "weight": 0.08, "detail": {"rows": len(by_id)}},
++            {"id": "coverage", "label": "all and only questions covered", "pass": coverage_score == 1.0, "weight": 0.08, "detail": sorted(by_id)},
+@@ -83 +93 @@ def score_workspace(workspace: Path) -> dict[str, Any]:
+-            {"id": "missing_evidence", "label": "partial/unanswerable items explain missing evidence", "pass": missing_score >= 0.85, "weight": 0.10, "detail": {"hits": missing_hits}},
++            {"id": "missing_evidence", "label": "partial/unanswerable items explain missing evidence", "pass": missing_score >= 0.85, "weight": 0.14, "detail": {"hits": missing_hits}},

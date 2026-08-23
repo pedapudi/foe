@@ -12,6 +12,8 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_archive(
     name = "harness_bench",
     build_file = "//evals/harness_bench:harness_bench.BUILD.bazel",
+    patch_args = ["-p1"],
+    patches = ["//evals/harness_bench:knowledge_qa_claim_scoring.patch"],
     sha256 = "4c461ba3af647bad9eaa5c59b875236893ef16880b812eb524f2efdc1b7c4ce7",
     strip_prefix = "harness-bench-1025086a446653702b80cfb48babbeec35db6b2c",
     urls = ["https://github.com/Qihoo360/harness-bench/archive/1025086a446653702b80cfb48babbeec35db6b2c.tar.gz"],
