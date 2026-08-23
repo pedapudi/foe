@@ -238,10 +238,11 @@ bazel run //evals/terminal_bench:self-improve -- \
   --confirm-spend
 ```
 
-Luna with `high` reasoning produces the bounded diagnosis. Terra with `high`
-reasoning receives that diagnosis and acts with `read`, `grep`, `edit`, and
-`bash`. The diagnosis child cannot read the retained run directories because
-the runner copies only the bounded evidence into its authority.
+Luna with `high` reasoning produces the bounded diagnosis from the supplied
+digest without tools. Terra with `high` reasoning receives that diagnosis and
+acts with `read`, `grep`, `edit`, and `bash`. The diagnosis child cannot read
+the candidate source or retained run directories. The coding child locates
+the affected implementation, test, and specification files.
 
 The lower-cost evaluated configuration is the candidate configuration. The
 diagnosis preserves its model route, reasoning effort, task allowances, token

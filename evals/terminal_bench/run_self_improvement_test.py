@@ -69,7 +69,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
             ["task", "diagnose-runtime"],
         )
         self.assertEqual(implementation["tools"][:4], ["read", "grep", "edit", "bash"])
-        self.assertEqual(diagnosis["tools"], ["read", "grep"])
+        self.assertEqual(diagnosis["tools"], [])
+        self.assertEqual(diagnosis["grants"]["read"], ["/tmp"])
         self.assertNotIn("input_tokens", config["budget"])
         self.assertNotIn("output_tokens", implementation["budget"])
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
@@ -78,6 +79,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         returns = diagnosis["done_when"]["returns"]
         self.assertIn("preserved_evaluation_controls", returns["required"])
         self.assertIn("explicit_program_effect", returns["required"])
+        self.assertNotIn("implementation_files", returns["properties"])
         self.assertNotIn("model", implementation)
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
         self.assertEqual(config["model"]["reasoning_effort"], "high")

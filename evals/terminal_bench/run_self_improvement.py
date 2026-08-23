@@ -21,7 +21,7 @@ from foe_agent_support import estimate_usage_cost
 from run import Pricing, read_cases
 
 
-DIAGNOSIS_CALLS = 8
+DIAGNOSIS_CALLS = 4
 IMPLEMENTATION_CALLS = 24
 SECONDS = 3_600
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
@@ -240,10 +240,10 @@ def build_config(
     development_read_roots: list[Path],
     objective: str,
 ) -> dict[str, Any]:
-    diagnosis_read_roots = [str(candidate), str(evidence.parent)]
+    diagnosis_read_roots = [str(evidence.parent)]
     development_reads = [str(path) for path in [*source_metadata_roots, *development_read_roots]]
     implementation_read_roots = [str(candidate), *development_reads]
-    root_read_roots = [*diagnosis_read_roots, *development_reads]
+    root_read_roots = [str(candidate), *diagnosis_read_roots, *development_reads]
     write_roots = [str(candidate)]
     execute = [str(path) for path in execute_roots]
     check_tool = {
@@ -256,12 +256,12 @@ def build_config(
         "name": "diagnose-foe-from-trajectory-measurements",
         "instructions": {
             "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
-            "scope": "Use read and grep to inspect runtime source, tests, and specifications. Do not edit files or inspect benchmark tasks, graders, fixtures, or completed answers.",
+            "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
             "evidence": "Compare failed and successful model settings from the labeled digest. Tie claims to episode identifiers and log sequence numbers. Separate model limitations from harness limitations.",
             "controls": "Improve the lower-cost evaluated configuration. Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat a higher-cost successful setting as diagnostic evidence rather than the candidate configuration. The intervention must affect the explicit program recorded in the evidence; changing a built-in default that the program overrides has no effect.",
             "result": "Return one typed causal intervention before the final available request. The coding episode receives the diagnosis without the trajectory reports.",
         },
-        "tools": ["read", "grep"],
+        "tools": [],
         "grants": {"read": diagnosis_read_roots},
         "budget": {"model_calls": DIAGNOSIS_CALLS, "seconds": 600},
         "model": diagnosis_model,
@@ -277,9 +277,6 @@ def build_config(
                     "predicted_trace_change": {"type": "string", "minLength": 1},
                     "preserved_evaluation_controls": {"type": "string", "minLength": 1},
                     "explicit_program_effect": {"type": "string", "minLength": 1},
-                    "implementation_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-                    "test_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-                    "specification_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                     "acceptance": {"type": "string", "minLength": 1},
                 },
                 "required": [
@@ -291,9 +288,6 @@ def build_config(
                     "predicted_trace_change",
                     "preserved_evaluation_controls",
                     "explicit_program_effect",
-                    "implementation_files",
-                    "test_files",
-                    "specification_files",
                     "acceptance",
                 ],
                 "additionalProperties": False,
