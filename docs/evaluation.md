@@ -141,8 +141,8 @@ establish reproducible-build provenance between the source tree and binary.
 The Harness-Bench development and confirmation runners, together with the
 evidence-guided self-improvement workflow, are documented in
 [`evals/harness_bench/README.md`](../evals/harness_bench/README.md). The runner
-uses the pinned benchmark's unchanged programmatic graders. Its diagnostic
-sample is separate from an official complete-benchmark score.
+records the pinned source and every local grader patch. Its diagnostic sample
+does not support an official score or a comparison with another harness.
 
 The benchmark's executable evaluator decides task completion. foe's outcome
 and conformance report remain separate fields. This separation distinguishes a
@@ -390,38 +390,44 @@ produce success and failure.
 
 ### Harness-Bench
 
-Status: recommended first integration.
+Status: external diagnostic fixtures only.
 
 [Harness-Bench](https://github.com/Qihoo360/harness-bench) contains 106
 sandboxed offline tasks across eight workflow categories. Its protocol records
 artifacts, traces, usage, and validator outputs under shared budgets and
 timeouts. Executable oracles grade task completion where feasible.
 
-Harness-Bench is a 2026 preprint. Treat cross-harness conclusions as
-provisional until independent reproductions are available.
+Harness-Bench is a 2026 preprint without versioned releases, suite-wide oracle
+controls, or official repeated-trial anchors with error bars and cost. Its
+tasks can guide local diagnosis after their graders pass an oracle and a
+targeted corruption control. They do not support Foe's comparative score
+claim.
 
 Start with its software-engineering, long-running autonomy,
 permission-sensitive, and evidence-grounded categories. These categories
 exercise foe's grants, bounded execution, complete logs, and recovery behavior.
-Run the entire selected category so task choice cannot favor one
-configuration.
+Audit only the tasks used for a local diagnostic. Record the upstream commit,
+every local patch digest, and the resulting evaluator identity.
 
 Some process-quality fields use a model judge. Report those fields as
 diagnostics. Executable completion remains the primary result.
 
 ### Terminal-Bench
 
-Status: recommended terminal-capability integration.
+Status: primary score-authority integration.
 
-The [Terminal-Bench repository](https://github.com/harbor-framework/terminal-bench)
-defines task-specific containers and programmatic final-state tests. A fixed
-smoke set from software engineering, system administration, security, and data
-work exercises autonomous terminal use across varied environments.
+[Terminal-Bench 2.1](https://www.tbench.ai/news/terminal-bench-2-1) is a
+versioned set of 89 tasks. Its release corrected 28 tasks from version 2.0 and
+added continuous validation. Task-specific containers and final-state graders
+run through Harbor. The [official leaderboard](https://www.tbench.ai/leaderboard/terminal-bench/2.1)
+reports repeated-trial accuracy, uncertainty, and cost for accepted
+submissions.
 
-Pin the dataset version and task identifiers in each report. Use three attempts
-per task before a full run. Terminal-Bench completion alone does not establish
-foe's trace or authority guarantees, so every attempt also receives the local
-conformance evaluation.
+Use a thin Harbor adapter for Foe. Audit all 89 tasks before calibration, then
+freeze a 10 to 20 task sample for three trials per task. A complete official
+run follows only when calibration supports its accuracy and cost target.
+Terminal-Bench completion alone does not establish Foe's trace or authority
+guarantees, so every trial also receives the local conformance evaluation.
 
 ### CompactBench
 
