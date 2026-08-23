@@ -39,6 +39,16 @@ async fn matches_are_sorted_by_path_then_line_and_honor_gitignore() {
     assert!(!r.contains("build/out.rs"));
 }
 
+/// docs/tools.md `grep`: file content is streamed through the reader, so a
+/// search does not allocate a complete file before matching it.
+#[tokio::test]
+async fn streams_files_without_requesting_whole_file_buffers() {
+    let fx = tree();
+    let v = grep(&fx, json!({"pattern": "alpha"})).await;
+    assert_eq!(v.value["matches"], 4);
+    assert_eq!(fx.whole_reads(), 0);
+}
+
 /// docs/tools.md `grep`: the search stops after `GREP_COLLECT_MAX` matches.
 /// The result then says so, both in the value and in the rendering, so the
 /// model does not read a partial answer as the whole one.

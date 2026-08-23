@@ -1,10 +1,10 @@
 //! `grep`: regular-expression search over file contents, in process.
 //!
 //! The tree is walked with the `ignore` crate so that `.gitignore` and
-//! `.ignore` files apply, and each file's bytes are obtained through the
-//! `Reader`, which keeps containment in one place. Matches are sorted by
-//! path and line so that the result is deterministic regardless of the
-//! filesystem's directory order.
+//! `.ignore` files apply, and each file is streamed through the `Reader`,
+//! which keeps containment in one place. Matches are sorted by path and line
+//! so that the result is deterministic regardless of the filesystem's
+//! directory order.
 
 use crate::{display, parse_args, resolve, GREP_COLLECT_MAX, GREP_DEFAULT_LIMIT, GREP_LINE_MAX_CHARS};
 use foe_core::{CallCtx, Effect, Tool, ToolSpec, ToolValue};
@@ -187,12 +187,12 @@ impl Tool for Grep {
             if !entry.file_type().is_some_and(|t| t.is_file()) {
                 continue;
             }
-            let Ok(bytes) = reader.read(entry.path()) else {
+            let Ok(file) = reader.open(entry.path()) else {
                 continue;
             };
             searched += 1;
             let sink = Collect { path: entry.path(), into: &mut collected };
-            let _ = searcher.search_slice(&matcher, &bytes, sink);
+            let _ = searcher.search_reader(&matcher, file, sink);
             if !collected.complete {
                 break;
             }

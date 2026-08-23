@@ -169,9 +169,9 @@ Searching runs in process through the `grep-searcher`, `grep-regex`,
 `grep-matcher`, and `ignore` libraries; no process is started. The tree
 below `path` is walked with the rules of `.gitignore` and `.ignore` files
 applied, whether or not the directory is a git checkout, and hidden entries
-are skipped. Each file's bytes are read through the reader, so a symbolic
-link that leaves the read roots is skipped rather than followed. Files that
-contain a NUL byte are skipped.
+are skipped. Each file is streamed through the reader, so search memory does
+not grow with file size. A symbolic link that leaves the read roots is
+skipped rather than followed. Files that contain a NUL byte are skipped.
 
 `pattern` uses Rust regex syntax. With `literal` true, the pattern is
 matched as a fixed string. `glob` restricts the search to files whose path

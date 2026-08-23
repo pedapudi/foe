@@ -163,6 +163,9 @@ pub struct CallCtx {
 /// Filesystem reads bounded to the read roots. Every path is canonicalized
 /// and checked before use; a path outside the roots is an error.
 pub trait Reader: Send + Sync {
+    /// Opens a file through the descriptor-bound root. Streaming consumers
+    /// use this operation so their memory does not grow with the file size.
+    fn open(&self, path: &Path) -> Result<Box<dyn std::io::Read + Send>, CapError>;
     fn read(&self, path: &Path) -> Result<Vec<u8>, CapError>;
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError>;
     fn roots(&self) -> &[PathBuf];
