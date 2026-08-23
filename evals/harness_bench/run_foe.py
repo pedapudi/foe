@@ -260,6 +260,13 @@ def program(task: Task, workspace: Path, prompt: str, route: dict[str, str], too
     }
 
 
+def visible_test_command(task: Task) -> str:
+    python = '"${0%/*}/../../pytest-venv/bin/python3"'
+    if task.identifier == "083-monorepo-interface-repair":
+        return f"PYTHONPATH=packages/catalog:packages/orders:packages/reports exec {python} -m pytest tests"
+    return f"exec {python} -m pytest tests"
+
+
 def visible_test_tool(case: Path, task: Task) -> Path:
     executable = case / "tools" / "test"
     executable.parent.mkdir(parents=True)
@@ -279,12 +286,7 @@ def visible_test_tool(case: Path, task: Task) -> Path:
         capture_output=True,
         text=True,
     )
-    command = (
-        f"PYTHONPATH=packages/catalog:packages/orders:packages/reports exec {python} -m pytest tests"
-        if task.identifier == "083-monorepo-interface-repair"
-        else f"exec {python} -m pytest tests"
-    )
-    executable.write_text(f"#!/bin/sh\n{command}\n", encoding="utf-8")
+    executable.write_text(f"#!/bin/sh\n{visible_test_command(task)}\n", encoding="utf-8")
     executable.chmod(0o755)
     return executable
 

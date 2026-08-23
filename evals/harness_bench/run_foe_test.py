@@ -71,6 +71,12 @@ class HarnessBenchAdapterTest(unittest.TestCase):
         self.assertEqual(config["tool_defs"]["test"]["cwd"], str(root / "in" / "flakyqueue"))
         self.assertIn(str(root / "pytest-venv"), config["grants"]["read"])
 
+    def test_visible_test_wrapper_contains_no_attempt_path(self) -> None:
+        for identifier in ("083-monorepo-interface-repair", "085-flaky-test-root-cause"):
+            command = run_foe.visible_test_command(run_foe.TASKS[identifier])
+            self.assertIn('${0%/*}/../../pytest-venv/bin/python3', command)
+            self.assertNotIn("/tmp/", command)
+
     def test_reasoning_effort_is_recorded_in_the_model_route(self) -> None:
         self.assertEqual(
             run_foe.model_route("openai-codex/gpt-5.6-sol", "medium"),

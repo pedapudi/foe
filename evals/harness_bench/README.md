@@ -16,7 +16,9 @@ and offline answers that must identify insufficient evidence. Run the
 confirmation target only after freezing a candidate and its comparison
 configuration. The adapter creates an isolated Python environment with
 `pytest` for the flaky-test task. Both the model-visible test tool and the
-unchanged grader use that environment.
+unchanged grader use that environment. The test wrapper resolves the Python
+executable relative to its own location, so its content and Foe program
+identity remain stable across retained attempt directories.
 
 ## Review the maximum spend
 
