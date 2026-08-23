@@ -57,12 +57,18 @@ Six Terminal-Bench tasks already have inspected trajectories. They remain develo
 - `sanitize-git-repo`;
 - `large-scale-text-editing`.
 
-Four additional tasks form the capability-search set:
+Eight additional tasks form the capability-search set:
 
 - `password-recovery`;
 - `path-tracing-reverse`;
 - `polyglot-rust-c`;
-- `regex-log`.
+- `regex-log`;
+- `regex-chess`;
+- `write-compressor`;
+- `fix-ocaml-gc`;
+- `dna-assembly`.
+
+The final four tasks were added after Sol `low` solved both failures from the first four tasks. They were selected from task metadata at repository commit `7131e4375048a0e408a8fb404b5f499d726b695b`. Each is marked hard and represents a different implementation or reasoning demand. [The pinned task metadata](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b/tasks) is the selection source.
 
 Opening any capability-search result makes that task development evidence. These tasks can identify the Sol `low` and Sol `xhigh` capability gap. They cannot provide confirmation after inspection.
 

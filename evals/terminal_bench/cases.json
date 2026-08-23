@@ -42,7 +42,11 @@
       "password-recovery",
       "path-tracing-reverse",
       "polyglot-rust-c",
-      "regex-log"
+      "regex-log",
+      "regex-chess",
+      "write-compressor",
+      "fix-ocaml-gc",
+      "dna-assembly"
     ],
     "confirmation": [
       "build-cython-ext",
@@ -143,6 +147,12 @@
       "expected_output_tokens": 50000,
       "seconds": 900
     },
+    "dna-assembly": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 1800
+    },
     "extract-elf": {
       "model_calls": 40,
       "expected_input_tokens": 400000,
@@ -154,6 +164,12 @@
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
       "seconds": 900
+    },
+    "fix-ocaml-gc": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
     },
     "git-multibranch": {
       "model_calls": 28,
@@ -233,6 +249,12 @@
       "expected_output_tokens": 50000,
       "seconds": 900
     },
+    "regex-chess": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
     "regex-log": {
       "model_calls": 40,
       "expected_input_tokens": 400000,
@@ -264,6 +286,12 @@
       "seconds": 3600
     },
     "vulnerable-secret": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 900
+    },
+    "write-compressor": {
       "model_calls": 40,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,

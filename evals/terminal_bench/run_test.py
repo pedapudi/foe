@@ -24,7 +24,7 @@ class CasesTest(unittest.TestCase):
             for right in protected[index + 1 :]:
                 self.assertFalse(set(groups[left]) & set(groups[right]))
         self.assertEqual(len(groups["development"]), 6)
-        self.assertEqual(len(groups["capability_search"]), 4)
+        self.assertEqual(len(groups["capability_search"]), 8)
         self.assertEqual(len(groups["confirmation"]), 4)
         self.assertEqual(len(groups["calibration"]), 12)
         self.assertEqual(len(groups["calibration_holdout"]), 6)

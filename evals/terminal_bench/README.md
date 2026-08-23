@@ -130,7 +130,7 @@ bazel run //evals/terminal_bench:foe-development -- \
   --confirm-spend
 ```
 
-The capability-search target contains four uninspected tasks. Opening a result
+The capability-search target contains eight development tasks. Opening a result
 makes that task development evidence:
 
 ```sh
