@@ -13,11 +13,24 @@ from run_self_improvement import (
     check_candidate,
     measure_episode,
     model_config,
+    rust_toolchain_identity,
     write_candidate_check,
 )
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
+    def test_rust_toolchain_identity_hashes_every_validation_binary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("cargo", "rustc", "rustfmt", "clippy-driver"):
+                (root / name).write_text(name + "\n", encoding="utf-8")
+            identity = rust_toolchain_identity(root / "cargo")
+            (root / "rustc").write_text("changed\n", encoding="utf-8")
+            changed = rust_toolchain_identity(root / "cargo")
+        self.assertEqual(sorted(identity), ["cargo", "clippy-driver", "rustc", "rustfmt"])
+        self.assertNotEqual(identity["rustc"], changed["rustc"])
+        self.assertEqual(identity["cargo"], changed["cargo"])
+
     def test_candidate_artifact_identity_binds_base_and_changed_content(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

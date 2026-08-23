@@ -355,7 +355,8 @@ toolchain and candidate build directory. Read grants cover Cargo and Rustup
 metadata and installed C headers. An execute grant covers Cargo's command
 shims for formatting and clippy. The in-episode verifier runs formatting,
 clippy, line-budget checks, and workspace tests that do not require a
-listening socket or a fresh Landlock domain.
+listening socket or a fresh Landlock domain. The retained result records
+content digests for the Cargo, Rustc, Rustfmt, and Clippy binaries.
 
 The runner repeats validation after the episode ends with every workspace
 test. An exhausted outcome does not discard an artifact that passes every

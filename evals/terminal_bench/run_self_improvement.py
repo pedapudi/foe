@@ -84,6 +84,16 @@ def candidate_artifact_identity(
     return {**value, "digest": "sha256:" + hashlib.sha256(encoded).hexdigest()}
 
 
+def rust_toolchain_identity(cargo: Path) -> dict[str, str]:
+    binaries = {}
+    for name in ("cargo", "rustc", "rustfmt", "clippy-driver"):
+        path = cargo.parent / name
+        if not path.is_file():
+            raise ValueError(f"--cargo toolchain lacks `{name}` at {path}")
+        binaries[name] = sha256_file(path)
+    return binaries
+
+
 def git_metadata_root(candidate: Path) -> Path:
     result = subprocess.run(
         ["/usr/bin/git", "-C", str(candidate), "rev-parse", "--git-common-dir"],
@@ -476,6 +486,7 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--cargo-home must name a directory")
         if cargo_home is not None and not (cargo_home / "bin").is_dir():
             raise ValueError("--cargo-home must contain the Cargo command-shim directory `bin`")
+        validator_identity = rust_toolchain_identity(cargo) if cargo is not None else None
         candidate = args.candidate.resolve(strict=True)
         evidence = args.evidence.resolve(strict=True)
         binary = args.foe.resolve(strict=True)
@@ -493,6 +504,8 @@ def main(argv: list[str] | None = None) -> int:
         "maximum": {"model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS, "seconds": SECONDS},
         "token_limits": "measurement_only",
     }
+    if validator_identity is not None:
+        preview["candidate_validator"] = {"rust_toolchain": validator_identity}
     print(json.dumps(preview, indent=2, sort_keys=True))
     if not args.confirm_spend:
         print("No model requests were made. Add --confirm-spend after reviewing the plan.")
