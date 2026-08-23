@@ -212,3 +212,67 @@ fn compaction_end_does_not_charge_summary_usage_twice() {
     pool.apply(&EventData::CompactionEnd { step: 2, ok: true, usage, active_estimate: 300, error: None });
     assert_eq!(pool.remaining(), once);
 }
+
+// ---- the input floor -------------------------------------------------------
+
+#[test]
+fn a_remainder_below_the_last_reported_input_ends_the_episode_before_the_request() {
+    let mut pool = Pool::new(Budget { input_tokens: Some(1000), ..budget() });
+    pool.note_usage(Usage { input: 600, output: 10, cache_read: 0 });
+    // 400 remain and the next request carries at least the 600 the last one
+    // did, so it provably cannot fit; the episode ends without paying for it.
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
+}
+
+#[test]
+fn a_remainder_equal_to_the_floor_still_fits_because_a_retry_resends_the_same_conversation() {
+    let mut pool = Pool::new(Budget { input_tokens: Some(1000), ..budget() });
+    pool.note_usage(Usage { input: 500, output: 10, cache_read: 0 });
+    assert_eq!(pool.exhausted(), None);
+}
+
+#[test]
+fn the_first_request_is_never_refused_by_the_floor() {
+    let pool = Pool::new(Budget { input_tokens: Some(1), ..budget() });
+    // Nothing has been reported, so there is no floor; only a spent
+    // allowance can refuse the first request.
+    assert_eq!(pool.exhausted(), None);
+}
+
+#[test]
+fn compaction_clears_the_floor_until_the_next_report() {
+    let mut pool = Pool::new(Budget { input_tokens: Some(1000), ..budget() });
+    pool.note_usage(Usage { input: 600, output: 10, cache_read: 0 });
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
+    // The conversation shrank, so the last report no longer bounds the next
+    // request; the spent 600 still count against the allowance.
+    pool.note_compaction();
+    assert_eq!(pool.exhausted(), None);
+    pool.note_usage(Usage { input: 350, output: 10, cache_read: 0 });
+    // 950 spent, 50 remain, floor 350: provably too small again.
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
+}
+
+#[test]
+fn the_folded_pool_learns_the_floor_and_its_compaction_reset_from_the_log() {
+    let mut pool = Pool::new(Budget { input_tokens: Some(1000), ..budget() });
+    pool.apply(&EventData::AssistantMessage(foe_log::AssistantMessage {
+        step: 1,
+        request_id: "rq_1".into(),
+        text: String::new(),
+        tool_calls: vec![],
+        stop: foe_log::StopReason::End,
+        usage: Usage { input: 600, output: 10, cache_read: 0 },
+        interrupted: false,
+        thinking: vec![],
+    }));
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
+    pool.apply(&EventData::CompactionEnd {
+        step: 1,
+        ok: true,
+        usage: Usage { input: 0, output: 0, cache_read: 0 },
+        active_estimate: 0,
+        error: None,
+    });
+    assert_eq!(pool.exhausted(), None);
+}

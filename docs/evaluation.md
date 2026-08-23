@@ -284,10 +284,12 @@ bazel test //evals:micro_tasks_test
 #### Provider-reported input and reserved child budgets
 
 The runtime charges provider-reported input after each completed response.
-It starts another request only while some input allowance remains. Foe does
-not send a per-request input cap, so one response can cross the remaining
-input allowance. The root account records the reported usage, including an
-overrun in a descendant.
+It starts another request only while the remainder could fit one: the last
+response's reported input is a floor under the next request's cost, and a
+remainder below the floor ends the episode before the request is sent. The
+first request has no floor and no per-request input cap, so that one
+response can cross the remaining input allowance. The root account records
+the reported usage, including an overrun in a descendant.
 
 The runner treats such an attempt as outside budget. The trace evaluator
 still checks that the released input equals the child log. It does not claim
