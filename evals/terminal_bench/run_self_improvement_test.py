@@ -14,6 +14,7 @@ from run_self_improvement import (
     measure_episode,
     model_config,
     rust_toolchain_identity,
+    validate_program,
     write_candidate_check,
 )
 
@@ -69,8 +70,9 @@ class SelfImprovementConfigTest(unittest.TestCase):
             ["task", "diagnose-runtime"],
         )
         self.assertEqual(implementation["tools"][:4], ["read", "grep", "edit", "bash"])
-        self.assertEqual(diagnosis["tools"], [])
+        self.assertEqual(diagnosis["tools"], ["block"])
         self.assertEqual(diagnosis["grants"]["read"], ["/tmp"])
+        self.assertIn("block", config["tools"])
         self.assertNotIn("input_tokens", config["budget"])
         self.assertNotIn("output_tokens", implementation["budget"])
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
@@ -90,6 +92,13 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertEqual(implementation["grants"]["execute"], ["/opt/toolchain"])
         self.assertEqual(config["task"], "Raise verified completion.")
+
+    def test_program_validation_reports_construction_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            program = Path(directory) / "program.json"
+            program.write_text("{}\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "generated self-improvement program is invalid"):
+                validate_program(Path("/bin/false"), program)
 
     def test_candidate_check_runs_rust_validation_and_accepts_clean_results(self):
         with tempfile.TemporaryDirectory() as directory:

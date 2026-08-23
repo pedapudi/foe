@@ -94,6 +94,19 @@ def rust_toolchain_identity(cargo: Path) -> dict[str, str]:
     return binaries
 
 
+def validate_program(binary: Path, program: Path) -> None:
+    """Construct the generated program without making a model request."""
+    result = subprocess.run(
+        [str(binary), "plan", "--config", str(program), "--json"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
+        raise ValueError(f"generated self-improvement program is invalid: {detail}")
+
+
 def git_metadata_root(candidate: Path) -> Path:
     result = subprocess.run(
         ["/usr/bin/git", "-C", str(candidate), "rev-parse", "--git-common-dir"],
@@ -261,7 +274,7 @@ def build_config(
             "controls": "Improve the lower-cost evaluated configuration. Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat a higher-cost successful setting as diagnostic evidence rather than the candidate configuration. The intervention must affect the explicit program recorded in the evidence; changing a built-in default that the program overrides has no effect.",
             "result": "Return one typed causal intervention before the final available request. The coding episode receives the diagnosis without the trajectory reports.",
         },
-        "tools": [],
+        "tools": ["block"],
         "grants": {"read": diagnosis_read_roots},
         "budget": {"model_calls": DIAGNOSIS_CALLS, "seconds": 600},
         "model": diagnosis_model,
@@ -312,7 +325,7 @@ def build_config(
         "version": 2,
         "name": "identity-bound-trajectory-self-improvement",
         "instructions": {"role": "Run the declared diagnosis and implementation workflow."},
-        "tools": [*CODING_TOOLS, "evidence", "check"],
+        "tools": [*CODING_TOOLS, "block", "evidence", "check"],
         "tool_defs": {
             "evidence": {
                 "exec": "/usr/bin/cat",
@@ -473,10 +486,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError(f"cases.pricing has no entry for {args.diagnosis_model}")
         if not args.objective.strip():
             raise ValueError("--objective must not be empty")
-        if bool(args.cargo) != bool(args.cargo_home):
-            raise ValueError("--cargo and --cargo-home must be supplied together")
-        if args.confirm_spend and args.cargo is None:
-            raise ValueError("--confirm-spend requires --cargo and --cargo-home for deterministic candidate validation")
+        if args.cargo is None or args.cargo_home is None:
+            raise ValueError("--cargo and --cargo-home are required for program and candidate validation")
         cargo = args.cargo.resolve(strict=True) if args.cargo else None
         cargo_home = args.cargo_home.resolve(strict=True) if args.cargo_home else None
         if cargo is not None and cargo.name != "cargo":
@@ -507,11 +518,6 @@ def main(argv: list[str] | None = None) -> int:
     }
     if validator_identity is not None:
         preview["candidate_validator"] = {"rust_toolchain": validator_identity}
-    print(json.dumps(preview, indent=2, sort_keys=True))
-    if not args.confirm_spend:
-        print("No model requests were made. Add --confirm-spend after reviewing the plan.")
-        return 0
-
     temporary: tempfile.TemporaryDirectory[str] | None = None
     if args.keep:
         workspace = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
@@ -552,6 +558,20 @@ def main(argv: list[str] | None = None) -> int:
             args.objective,
         ),
     )
+    try:
+        validate_program(binary, program)
+    except ValueError as error:
+        print(f"self-improvement: {error}", file=sys.stderr)
+        if temporary:
+            temporary.cleanup()
+        return 2
+    print(json.dumps(preview, indent=2, sort_keys=True))
+    if not args.confirm_spend:
+        print("No model requests were made. Add --confirm-spend after reviewing the plan.")
+        if temporary:
+            temporary.cleanup()
+        return 0
+
     episode = root / "episode"
     started = time.monotonic()
     result = subprocess.run(

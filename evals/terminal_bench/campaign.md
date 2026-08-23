@@ -156,8 +156,8 @@ Planning token estimates provide a spend preview. They do not stop ordinary deve
 
 The self-improvement workflow has two model nodes. A Luna diagnosis node reads
 the bounded trajectory digest and returns a typed causal intervention. It has
-no tools or source-tree access. A separate Terra coding node receives the
-diagnosis and a clean context, then maps the intervention to source. The
+no source-tree inspection tool or access. A separate Terra coding node
+receives the diagnosis and a clean context, then maps the intervention to source. The
 intervention must improve the lower-cost evaluated configuration. It preserves
 the model route, reasoning effort, task allowances, token policy, and task set.
 Higher-cost successful settings supply diagnostic contrasts.

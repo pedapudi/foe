@@ -239,10 +239,10 @@ bazel run //evals/terminal_bench:self-improve -- \
 ```
 
 Luna with `high` reasoning produces the bounded diagnosis from the supplied
-digest without tools. Terra with `high` reasoning receives that diagnosis and
-acts with `read`, `grep`, `edit`, and `bash`. The diagnosis child cannot read
-the candidate source or retained run directories. The coding child locates
-the affected implementation, test, and specification files.
+digest. Its only ordinary tool is `block`, so it cannot inspect the candidate
+source or retained run directories. Terra with `high` reasoning receives that
+diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The coding child
+locates the affected implementation, test, and specification files.
 
 The lower-cost evaluated configuration is the candidate configuration. The
 diagnosis preserves its model route, reasoning effort, task allowances, token
@@ -263,6 +263,10 @@ in-episode check excludes the command-line, transport, and viewer packages
 whose tests bind loopback servers. It also skips nested sandbox tests that
 cannot expand the checker's existing Landlock domain. The runner repeats
 validation after the episode with the complete workspace test suite.
+
+The no-spend form generates the complete workflow document. It runs that
+document through `foe plan`. A schema, authority, or construction error
+therefore fails before the runner reports that the workflow is ready.
 
 The coding child receives read-only access to the candidate worktree's Git
 metadata. This access lets `git status`, `git diff`, and the independent
