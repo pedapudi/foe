@@ -871,18 +871,47 @@ const RECORDED_IDENTITIES: [(&str, &str); 12] = [
 ];
 
 /// The runtime the recorded identities were computed under. The real one
-/// hashes the running binary, which differs on every build; pinning it here
-/// leaves the configuration as the only thing the recorded hashes measure.
+/// hashes the running binary, so it differs on every build; pinning it here
+/// leaves the configuration and the harness text as the only things the
+/// recorded hashes measure. Passing `runtime_info()` instead would make this
+/// test fail on every rebuild, and would measure the build where the point is
+/// to hold the contract still.
 fn recorded_runtime() -> foe_log::RuntimeInfo {
     foe_log::RuntimeInfo { version: "0.1.0".into(), build: "sha256:recorded".into() }
 }
 
 /// The built-in tool specifications the binary composes, which identity
-/// hashes with the rest of the program. `foe::run::extra_builtin_specs`
-/// builds the same list for the process; a test binary cannot reach into
-/// the command line's modules, so it names the two packs itself.
+/// hashes with the rest of the program. Which packs a binary links is the
+/// binary's own decision, taken in `foe::run::extra_builtin_specs`, and a
+/// test binary cannot reach the command line's modules — so this names the
+/// two packs itself, and the test below fails if the two lists ever part.
 fn builtin_specs() -> Vec<foe_config::ToolSpec> {
     foe_code::all().iter().map(|t| t.spec().clone()).chain(foe_core::team::builtin_specs()).collect()
+}
+
+/// `foe tools` with no configuration prints every built-in the binary
+/// carries. The recorded identities are computed over [`builtin_specs`], so a
+/// pack the binary gains or loses has to appear there too; without this check
+/// the recorded hashes would go on describing programs the binary no longer
+/// builds.
+#[test]
+fn the_recorded_builtins_are_the_ones_the_binary_links() {
+    let effect = |spec: &foe_config::ToolSpec| serde_json::to_value(spec.effect).unwrap().as_str().unwrap().to_string();
+    let mine: Vec<(String, String)> = std::iter::once(foe_config::tools::block_spec())
+        .chain(builtin_specs())
+        .map(|spec| (spec.name.clone(), effect(&spec)))
+        .collect();
+    let printed = Command::new(FOE).arg("tools").output().unwrap();
+    let rows: Vec<(String, String)> = String::from_utf8(printed.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let mut fields = line.split_whitespace();
+            let name = fields.next().expect("a row names a tool").to_string();
+            (name, fields.nth(1).expect("a row names an effect").to_string())
+        })
+        .collect();
+    assert_eq!(rows, mine, "the built-in list this test records has parted from the one the binary links");
 }
 
 /// docs/design.md "Programs and identity": every example program hashes to
