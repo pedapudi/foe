@@ -43,6 +43,13 @@ const CALL_MARK = 0.7;
 const OUTCOME_MARK = 0.9;
 
 /**
+ * Clear ground this pane leaves between the drawing and the row names.
+ * The layout claims no room past its marks, so where the text column
+ * stands is this renderer's choice and not the layout's.
+ */
+const LABEL_GAP = 12;
+
+/**
  * The whole figure: the three layers in one positioned box. `scale` is the
  * reader's text size, which the layout was computed without, so every
  * coordinate is multiplied by it here and the drawing grows with the type.
@@ -55,8 +62,8 @@ export function renderCausality(
   scale: number,
 ): HTMLElement {
   const box = h("div", { class: "caus" });
-  box.style.width = `${layout.width * scale}px`;
   box.style.height = `${layout.height * scale}px`;
+  const textLeft = layout.marksWidth + LABEL_GAP;
 
   // 1. the row highlights, which are also the click targets.
   for (const row of layout.rows) box.appendChild(rowGround(row, selected, handlers, scale));
@@ -65,7 +72,7 @@ export function renderCausality(
   box.appendChild(strokes(layout, selected, card, handlers, scale));
 
   // 3. the labels.
-  for (const row of layout.rows) box.appendChild(rowLabel(row, selected, scale));
+  for (const row of layout.rows) box.appendChild(rowLabel(row, textLeft, selected, scale));
 
   return box;
 }
@@ -102,14 +109,14 @@ function rowGround(row: CausalityRow, selected: string | null, handlers: Causali
  * so nesting reads in the text column even though lanes are allocated by
  * column rather than by depth.
  */
-function rowLabel(row: CausalityRow, selected: string | null, scale: number): HTMLElement {
+function rowLabel(row: CausalityRow, textLeft: number, selected: string | null, scale: number): HTMLElement {
   const label = h(
     "div",
     { class: `caus-label${row.id === selected ? " selected" : ""} ${row.kind}` },
     h("span", { class: "name" }, row.label),
     row.aside ? h("span", { class: "aside" }, row.aside) : null,
   );
-  label.style.left = `${row.labelX * scale}px`;
+  label.style.left = `${(textLeft + row.indent) * scale}px`;
   label.style.top = `${row.top * scale}px`;
   label.style.height = `${row.height * scale}px`;
   return label;
@@ -124,9 +131,9 @@ function strokes(
 ): SVGSVGElement {
   const figure = svg("svg", {
     class: "caus-strokes",
-    width: layout.width * scale,
+    width: layout.marksWidth * scale,
     height: layout.height * scale,
-    viewBox: `0 0 ${layout.width} ${layout.height}`,
+    viewBox: `0 0 ${layout.marksWidth} ${layout.height}`,
     preserveAspectRatio: "xMinYMin meet",
     role: "img",
     "aria-label": "what caused what",

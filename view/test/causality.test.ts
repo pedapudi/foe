@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  DEPTH_INDENT,
   ELBOW,
   LANE_PITCH,
   OUTCOME_TAIL,
@@ -24,8 +25,6 @@ import { buildTree, flatten } from "../src/lineage.js";
 import type { Summary } from "../src/fold.js";
 import { fixture } from "./helpers.js";
 import { obj, str } from "../src/types.js";
-
-const WIDTH = 900;
 
 /** Folds one fixture log, keyed by the episode id its own first event names. */
 function fold(file: string): { summary: Summary; rows: EpisodeFold["rows"] } {
@@ -49,7 +48,7 @@ function run(...files: string[]): CausalityEpisode[] {
 }
 
 function layout(...files: string[]): CausalityLayout {
-  return layoutCausality(run(...files), WIDTH);
+  return layoutCausality(run(...files));
 }
 
 function lane(figure: CausalityLayout, id: string) {
@@ -163,7 +162,7 @@ for (const files of [
   ["root.jsonl", "child.jsonl", "fork.jsonl", "compact.jsonl", "retries-exhausted.jsonl"],
 ]) {
   test(`every curve endpoint lands on a drawn line: ${files.join(" ")}`, () => {
-    const figure = layoutCausality(run(...files), WIDTH);
+    const figure = layoutCausality(run(...files));
     assert.ok(figure.edges.length > 0, "the run has at least one curve");
     for (const edge of figure.edges) {
       assert.ok(onALine(figure, edge.from), `the ${edge.kind} of ${edge.laneId} leaves a line at ${edge.from.y}`);
@@ -193,12 +192,18 @@ test("a lane of one row is still a line", () => {
   }
   // `child` holds two steps in this fixture; a one-row lane is the case the
   // stub exists for, so it is checked on a lane built for the purpose.
-  const one = layoutCausality(
-    [
-      { id: "a", name: "a", depth: 0, parentId: null, outcome: null, lastSeq: 1, steps: [{ step: 1, seq: 0, endSeq: 1, answered: true, calls: [] }], firings: [] },
-    ],
-    WIDTH,
-  );
+  const one = layoutCausality([
+    {
+      id: "a",
+      name: "a",
+      depth: 0,
+      parentId: null,
+      outcome: null,
+      lastSeq: 1,
+      steps: [{ step: 1, seq: 0, endSeq: 1, answered: true, calls: [] }],
+      firings: [],
+    },
+  ]);
   assert.equal(one.lanes[0]!.y2 - one.lanes[0]!.y1, STUB);
 });
 
@@ -223,27 +228,45 @@ test("one row per step and one row height between two of them", () => {
 
 // Label composition.
 
+test("the layout claims no room past its own marks", () => {
+  const figure = layout("workflow.jsonl", "workflow-propose-1.jsonl", "workflow-propose-2.jsonl", "workflow-apply-1.jsonl");
+  const drawn = Math.max(
+    ...figure.lanes.map((l) => l.x),
+    ...figure.rows.flatMap((r) => r.calls.map((c) => c.x)),
+  );
+  assert.equal(figure.marksWidth, drawn, "the width it reports is where its drawing ends");
+  // Tree depth is an offset its reader adds to a text column of its own
+  // choosing, so the layout holds no opinion about what stands beside it.
+  const node = row(figure, "ep_c5785a1e/node/propose");
+  assert.equal(node.indent, node.depth * DEPTH_INDENT);
+  const step = row(figure, "ep_c5785a1e/step/8");
+  assert.ok(step.indent < node.indent, "an episode's own step sits outside the graph it ran");
+});
+
 test("a step is named by what it did, with its step number alongside", () => {
   assert.deepEqual(composeLabel({ kind: "step", step: 4, calls: [] }), { label: "answered", aside: "step 4" });
+  // The tool name stands beside the target even though the tick already
+  // draws a mark: a word is faster to scan than a glyph, and the target is
+  // what the reader came for.
   assert.deepEqual(
-    composeLabel({ kind: "step", step: 1, calls: [{ id: "a", name: "read", target: "parser.rs", failed: false, childId: null, childName: "" }] }),
-    { label: "read parser.rs", aside: "step 1" },
+    composeLabel({ kind: "step", step: 1, calls: [{ id: "a", name: "read", target: "src/parser.rs", failed: false, childId: null, childName: "" }] }),
+    { label: "read src/parser.rs", aside: "step 1" },
   );
   assert.deepEqual(
     composeLabel({
       kind: "step",
       step: 2,
       calls: [
-        { id: "a", name: "read", target: "parser.rs", failed: false, childId: null, childName: "" },
-        { id: "b", name: "read", target: "lexer.rs", failed: false, childId: null, childName: "" },
+        { id: "a", name: "read", target: "src/parser.rs", failed: false, childId: null, childName: "" },
+        { id: "b", name: "read", target: "src/lexer.rs", failed: false, childId: null, childName: "" },
         { id: "c", name: "grep", target: "", failed: false, childId: null, childName: "" },
       ],
     }),
-    { label: "read parser.rs +2", aside: "step 2" },
+    { label: "read src/parser.rs +2", aside: "step 2" },
   );
   assert.deepEqual(
-    composeLabel({ kind: "step", step: 3, calls: [{ id: "a", name: "spawn", target: "survey", failed: false, childId: "ep_child", childName: "survey" }] }),
-    { label: "spawn survey", aside: "step 3" },
+    composeLabel({ kind: "step", step: 3, calls: [{ id: "a", name: "spawn", target: "surveyor", failed: false, childId: "ep_child", childName: "surveyor" }] }),
+    { label: "spawn surveyor", aside: "step 3" },
   );
   assert.deepEqual(composeLabel({ kind: "node", node: "propose" }), { label: "propose", aside: "" });
   // A request the provider never answered is still a step: it is where the
@@ -256,8 +279,10 @@ test("a step is named by what it did, with its step number alongside", () => {
 });
 
 test("a target is a short field or nothing, never a slice of free text", () => {
-  assert.equal(callTarget({ path: "tests/parser_test.py" }), "parser_test.py");
-  assert.equal(callTarget({ path: "crates/runtime/src/parser.rs" }, 22), "crates/…/parser.rs");
+  // The whole path where it fits: which directory a file is in is part of
+  // what the reader is looking for.
+  assert.equal(callTarget({ path: "tests/parser_test.py" }), "tests/parser_test.py");
+  assert.equal(callTarget({ path: "crates/runtime/src/episode/parser.rs" }), "crates/…/parser.rs");
   assert.equal(callTarget({ cmd: "pytest tests/parser_test.py" }), "", "a shell command is free text and is not shown");
   assert.equal(callTarget({ program: "survey", task: "List the parser tests." }), "survey");
   assert.equal(callTarget({}), "");
@@ -274,7 +299,7 @@ test("the fixture's own steps read as their role", () => {
   const figure = layout("root.jsonl", "child.jsonl");
   const labels = figure.rows.filter((r) => r.episodeId === "ep_root").map((r) => `${r.label} · ${r.aside}`);
   assert.deepEqual(labels, [
-    "read parser_test.py · step 1",
+    "read tests/parser_test.py · step 1",
     "spawn survey · step 2",
     "bash · step 3",
     "answered · step 4",

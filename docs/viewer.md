@@ -237,8 +237,11 @@ its last, stretched to reach every curve that joins it; a lane of one row
 gets a short stub, so its own elbow and its merge have ground between
 them. A lane takes the lowest free column when it opens and releases it
 when it closes, so column is occupancy and not tree depth — tree depth is
-carried by the label's indent instead. Edges are cubic with their control
-points on the midline, except a loop, which returns to the column it left
+carried by the label's indent instead. The layout claims no room past its
+own marks: it reports the width its strokes take and gives each row an
+indent from wherever its reader sets the text column, so what stands
+beside the drawing is the caller's decision and not the figure's. Edges
+are cubic with their control points on the midline, except a loop, which returns to the column it left
 and bows out of it. There are no arrowheads: time runs down, so direction
 is unambiguous and a head on every edge would be noise.
 
@@ -257,13 +260,21 @@ leaf without reading anything.
 
 A row is named by its semantic role first and its durable identifier
 second, never by a substring of free text: a workflow node by its own
-name, a step of one call by the tool and its target's basename (`read
-parser.rs`), a step of several by the first call and a count (`read
-parser.rs +2`), a delegation by `spawn` and the child's program name, a
-step that called nothing by `answered`, and a step whose request no
-message answered by `no answer`. `step N` rides alongside in faint. A path
-that must shorten elides its middle and keeps the basename
-(`src/…/parser.rs`).
+name, a step of one call by the tool and its target (`read
+src/parser.rs`), a step of several by the first call and a count (`read
+src/parser.rs +2`), a delegation by `spawn` and the child's program name
+(`spawn surveyor`), a step that called nothing by `answered`, and a step
+whose request no message answered by `no answer`. `step N` rides alongside
+in faint.
+
+The tool name stands beside the target even though the tick beside it
+already draws a mark. The redundancy is deliberate: a word is faster to
+scan than a glyph, and the target is the thing a reader is looking for.
+The target is the whole of the one short argument the call carries — a
+path, a program name — because which directory a file sits in is part of
+what identifies it; an argument with whitespace in it is free text and is
+never shown, and a path too long to set has its middle elided and its
+basename kept (`src/…/parser.rs`), never a trailing cut.
 
 Selecting a row scopes the conversation to it — that node's own messages
 and those of every node below it — rather than merely highlighting it. A

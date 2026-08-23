@@ -248,7 +248,10 @@ back up to it, not two rows.
 
 A lane holds the lowest free column while it is open and releases it when
 it closes, so column is occupancy rather than tree depth; tree depth is
-carried by the label's indent instead. Lane colour is cycled over five
+carried by the label's indent instead. The layout claims no room past its
+own marks and holds no opinion about what stands beside them: it reports
+the width its strokes take and gives each row an indent, and the caller
+places the text column. Lane colour is cycled over five
 tones mixed from the theme's own tokens and carries branch identity alone.
 Hue carries the outcome, and carries it only on the marks: a ring in
 `--v2-good`, `--v2-caution` or `--v2-flat` at the foot of a lane that

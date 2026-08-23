@@ -128,7 +128,13 @@ export interface CausalityRow {
   /** The band the row highlight fills. */
   top: number;
   height: number;
-  labelX: number;
+  /**
+   * How far the row's name is indented from wherever its reader sets the
+   * text column, which carries tree depth. Lanes are allocated by
+   * occupancy rather than by depth, so the indent is the only place
+   * nesting reads in the text.
+   */
+  indent: number;
   /** The row's semantic role, in the fewest words that stay true. */
   label: string;
   /** `step 4`, set alongside the label in faint; empty for a workflow node. */
@@ -191,9 +197,14 @@ export interface CausalityLayout {
   lanes: CausalityLane[];
   edges: CausalityEdge[];
   episodes: CausalityEpisode[];
-  /** Left edge of the label column, which every label is indented from. */
-  labelLeft: number;
-  width: number;
+  /**
+   * Width the strokes and marks occupy, measured from the left edge. The
+   * figure claims nothing beyond it and makes no assumption about what its
+   * reader sets there: a caller that writes the row names beside the
+   * drawing puts its text column at this plus whatever gap it wants, and a
+   * caller that puts something else there is free to.
+   */
+  marksWidth: number;
   height: number;
 }
 
@@ -245,11 +256,15 @@ export const LOOP_BOW = 7;
 /** Indent per level of the episode tree, in the label column. */
 export const DEPTH_INDENT = 12;
 
-/** Clear ground between the widest fan of call marks and the label column. */
-const LABEL_GAP = 12;
-
 /** How many lane colours the figure cycles through. */
 export const TONES = 5;
+
+/**
+ * How many characters a call's target may set before its middle is
+ * elided. Wide enough for the ordinary path of a source tree, so that the
+ * directory a file sits in is usually kept whole.
+ */
+export const TARGET_ROOM = 24;
 
 /**
  * One episode folded into what the causality figure draws. The fold in
@@ -362,11 +377,11 @@ function stepOf(row: Row): number | null {
  * and would read as a different thing at every width. What is left is
  * path-shaped or identifier-shaped.
  *
- * `room` is how many characters the caller can set. A label has room for
- * the basename alone, which is the default; a caller with more room gets
- * the path with its middle elided instead.
+ * `room` is how many characters the caller can set. The whole path is
+ * shown where it fits, because which directory a file is in is part of
+ * what a reader is looking for; a longer one is elided in its middle.
  */
-export function callTarget(args: unknown, room = 0): string {
+export function callTarget(args: unknown, room = TARGET_ROOM): string {
   const fields = obj(args);
   for (const value of Object.values(fields)) {
     if (typeof value !== "string" || value === "") continue;
@@ -424,7 +439,7 @@ interface LaneBuild {
   children: LaneBuild[];
 }
 
-export function layoutCausality(episodes: CausalityEpisode[], width: number): CausalityLayout {
+export function layoutCausality(episodes: CausalityEpisode[]): CausalityLayout {
   const byId = new Map(episodes.map((e) => [e.id, e]));
   const rows: CausalityRow[] = [];
   const builds = new Map<string, LaneBuild>();
@@ -487,7 +502,7 @@ export function layoutCausality(episodes: CausalityEpisode[], width: number): Ca
           tone: 0,
           top: 0,
           height: ROW_PITCH,
-          labelX: 0,
+          indent: episode.depth * DEPTH_INDENT,
           label: composed.label,
           aside: composed.aside,
           calls: step.calls.map((call) => ({ ...call, x: 0, y: 0 })),
@@ -520,7 +535,7 @@ export function layoutCausality(episodes: CausalityEpisode[], width: number): Ca
           tone: 0,
           top: 0,
           height: ROW_PITCH,
-          labelX: 0,
+          indent: (episode.depth + 1) * DEPTH_INDENT,
           label: composeLabel({ kind: "node", node: firing.node }).label,
           aside: "",
           calls: [],
@@ -568,8 +583,7 @@ export function layoutCausality(episodes: CausalityEpisode[], width: number): Ca
   const columns = ordered.reduce((most, b) => Math.max(most, b.lane.column), 0) + 1;
   const lanesRight = LANE_LEFT + (columns - 1) * LANE_PITCH;
   const fan = rows.reduce((most, row) => Math.max(most, row.calls.length), 0);
-  const marksRight = lanesRight + (fan === 0 ? 0 : CALL_TICK + (fan - 1) * CALL_PITCH);
-  const labelLeft = marksRight + LABEL_GAP;
+  const marksWidth = lanesRight + (fan === 0 ? 0 : CALL_TICK + (fan - 1) * CALL_PITCH);
 
   rows.forEach((row, index) => {
     const lane = builds.get(row.laneId)?.lane;
@@ -577,7 +591,6 @@ export function layoutCausality(episodes: CausalityEpisode[], width: number): Ca
     row.tone = lane ? lane.tone : 0;
     row.y = TOP + index * ROW_PITCH;
     row.top = row.y - ROW_PITCH / 2;
-    row.labelX = labelLeft + row.depth * DEPTH_INDENT;
     row.calls.forEach((call, i) => {
       call.x = row.x + CALL_TICK + i * CALL_PITCH;
       call.y = row.y;
@@ -644,8 +657,7 @@ export function layoutCausality(episodes: CausalityEpisode[], width: number): Ca
     lanes: ordered.map((b) => b.lane),
     edges,
     episodes,
-    labelLeft,
-    width: Math.max(width, labelLeft + 160),
+    marksWidth,
     height: TOP + Math.max(1, rows.length) * ROW_PITCH + BOTTOM,
   };
 }

@@ -3352,8 +3352,11 @@ kbd {
  * transparent, so no layer shows through another.
  * ---------------------------------------------------------------------- */
 
+/* The figure claims only the width its strokes need; the box spans the
+ * pane so that a row's highlight is the whole row. */
 .caus {
   position: relative;
+  width: 100%;
 }
 
 .caus-row {

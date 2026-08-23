@@ -259,7 +259,7 @@ export class TrajectoryView {
     if (!force && digest === this.digest) return;
     this.digest = digest;
     if (this.reading === "causality") {
-      this.drawCausality(width, scale);
+      this.drawCausality(scale);
       return;
     }
     const layout = layoutTrajectory({
@@ -281,11 +281,12 @@ export class TrajectoryView {
 
   /**
    * The causality figure in place of the timeline. It has no axis and no
-   * horizontal domain, so the pane's width is only the room its labels
-   * have; its height is what its rows need, and the pane scrolls to them.
+   * horizontal domain, so the pane's width is not an input to it: it
+   * claims the room its strokes need and this pane decides the rest. Its
+   * height is what its rows need, and the pane scrolls to them.
    */
-  private drawCausality(width: number, scale: number): void {
-    const layout = layoutCausality(this.causality, width);
+  private drawCausality(scale: number): void {
+    const layout = layoutCausality(this.causality);
     this.causalityLayout = layout;
     this.rows = layout.height;
     clear(this.figure);
