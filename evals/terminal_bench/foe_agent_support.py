@@ -12,7 +12,9 @@ from typing import Any
 CODING_INSTRUCTION = (
     "You are a coding agent working in the current directory, which is the root "
     "of every relative path. Make the requested change, then verify it by running "
-    "the relevant build or tests before you finish."
+    "the relevant build or tests before you finish. For a task that defines a "
+    "program interface, completion requires at least two materially different "
+    "behavioral inputs, including one that stresses parsing, length, or state."
 )
 
 
@@ -118,11 +120,15 @@ def build_program(
     implementation_role = (
         "Implement the task using the typed diagnosis as advice. Confirm its claims against "
         "the repository. Make the requested change, run the strongest available verification "
-        "after the final change, and leave files and services in the state the task requires."
+        "after the final change, and leave files and services in the state the task requires. "
+        "For a program interface, exercise at least two materially different behavioral inputs, "
+        "including one that stresses parsing, length, or state."
         if diagnosis_model_name is not None
         else "Implement the task. Inspect the current workspace, make the requested change, run "
         "the strongest available verification after the final change, and leave files and "
-        "services in the state the task requires."
+        "services in the state the task requires. For a program interface, exercise at least two "
+        "materially different behavioral inputs, including one that stresses parsing, length, "
+        "or state."
     )
     program["workflow"] = {
         "nodes": {

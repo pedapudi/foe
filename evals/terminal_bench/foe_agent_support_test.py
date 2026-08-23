@@ -39,6 +39,10 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(program["model"]["token_file"], "/tmp/private.json")
         self.assertNotIn("api_key_file", program["model"])
         self.assertEqual(program["task"], "repair it")
+        self.assertIn(
+            "two materially different behavioral inputs",
+            program["instructions"]["role"],
+        )
 
     def test_program_omits_soft_token_measurements_from_the_allowance(self):
         program = build_program(
@@ -93,6 +97,10 @@ class ProgramTest(unittest.TestCase):
         self.assertNotIn("sandbox", diagnosis)
         self.assertIn("returns", diagnosis["done_when"])
         self.assertEqual(implementation["model"]["model"], "gpt-5.6-sol")
+        self.assertIn(
+            "two materially different behavioral inputs",
+            implementation["instructions"]["role"],
+        )
         self.assertEqual(implementation["budget"]["model_calls"], 14)
         self.assertEqual(implementation["budget"]["seconds"], 400)
         self.assertEqual(nodes["implement-task"]["follows"], ["task", "diagnose-task"])
