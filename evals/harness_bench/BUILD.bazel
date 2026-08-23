@@ -56,6 +56,9 @@ sh_test(
         "run_foe.py",
         "run_foe_test.py",
         "collect_evidence.py",
+        "collect_evidence_test.py",
+        "run_self_improvement.py",
+        "run_self_improvement_test.py",
     ],
     size = "small",
 )

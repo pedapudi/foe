@@ -1,6 +1,6 @@
-# Foe Harness-Bench development evaluation
+# foe Harness-Bench development evaluation
 
-This package runs Foe against four development tasks from Harness-Bench. Bazel
+This package runs foe against four development tasks from Harness-Bench. Bazel
 downloads the benchmark at commit
 `1025086a446653702b80cfb48babbeec35db6b2c` and verifies its archive digest.
 The runner copies each task fixture into a fresh workspace. It uses the task's
@@ -57,7 +57,10 @@ bazel run //evals/harness_bench:collect-evidence -- \
 
 The evidence contains component failures, grader findings, request-token
 progression, bounded tool-result replay attribution, and the final outcomes.
-It excludes grader source and benchmark fixtures.
+It excludes grader source, benchmark fixtures, and completed return values.
+The collector writes compact JSON and rejects reports larger than 20,000
+bytes. This bound keeps the model input focused on assessed failures and
+resource use.
 
 Create a clean disposable worktree before launching self-improvement:
 
@@ -87,9 +90,17 @@ bazel run //evals/harness_bench:self-improve -- \
 The workflow has one deterministic evidence node and one terminal model node.
 The model node may change runtime source, adjacent Rust tests, and affected
 specifications. It cannot write evaluation code, benchmark adapters, tasks,
-graders, budgets, or model routes. The generated checker also rejects a
-candidate without a Rust regression test and a specification update.
+graders, budgets, or model routes. Its tools provide source reads, search,
+structured edits, and the generated checker. It has no general shell tool.
 
-The workflow's checker validates candidate shape. Repository tests, formatting,
-clippy, line budgets, and matched evaluation reruns remain external acceptance
-gates.
+The generated checker requires a runtime source change, a Rust regression
+test, and an affected specification. It also rejects trailing whitespace,
+benchmark-task identifiers, and violations of repository line budgets. The
+workflow allows at most 12 model calls, 300,000 input tokens, 20,000 output
+tokens, and 1,200 seconds. Its result records measured token use and the typed
+episode outcome.
+
+Compilation, repository tests, formatting, clippy, and matched evaluation
+reruns remain external acceptance gates. The measured development results and
+candidate disposition are recorded in
+[`docs/harness-benchmark-campaign.md`](../../docs/harness-benchmark-campaign.md#foe-only-development-experiment).

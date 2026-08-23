@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+MAX_EVIDENCE_BYTES = 20_000
+
 
 def read_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
@@ -36,7 +38,7 @@ def log_summary(path: Path) -> dict[str, Any]:
     return {
         "log": str(path),
         "program": starts[0].get("program", {}).get("name") if starts else None,
-        "outcome": ends[-1] if ends else None,
+        "outcome": outcome_identity(ends[-1]) if ends else None,
         "model_calls": sum(event.get("type") == "model/request" for event in values),
         "usage": {
             "input_tokens": sum(item.get("input", 0) for item in usages if isinstance(item, dict)),
@@ -47,12 +49,28 @@ def log_summary(path: Path) -> dict[str, Any]:
             {
                 "step": message.get("step"),
                 "stop": message.get("stop"),
-                "text": str(message.get("text", ""))[:240],
+                "text": str(message.get("text", ""))[:160],
                 "tools": [call.get("name") for call in message.get("tool_calls", []) if isinstance(call, dict)],
             }
-            for message in assistant[-4:]
+            for message in assistant[-2:]
         ],
     }
+
+
+def outcome_identity(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {key: value[key] for key in ("kind", "code", "limit", "message") if key in value}
+
+
+def recorded_outcome(result: dict[str, Any]) -> dict[str, Any] | None:
+    value = result.get("outcome")
+    if not isinstance(value, dict):
+        try:
+            value = json.loads(result.get("stdout", ""))
+        except (TypeError, json.JSONDecodeError):
+            value = None
+    return outcome_identity(value)
 
 
 def request_progression(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -80,12 +98,12 @@ def compact_arguments(value: Any) -> Any:
         return {"path": path[marker + len("/workspace/") :] if marker >= 0 else path}
     if isinstance(value.get("command"), str):
         command = value["command"]
-        return {"command": command[:240] + ("..." if len(command) > 240 else "")}
+        return {"command": command[:120] + ("..." if len(command) > 120 else "")}
     if isinstance(value.get("args"), list):
-        return {"args": [str(item)[:160] for item in value["args"]]}
+        return {"args": [str(item)[:80] for item in value["args"][:4]]}
     if isinstance(value.get("edits"), list):
         return {"edit_count": len(value["edits"])}
-    return {key: str(item)[:160] for key, item in value.items()}
+    return {key: str(item)[:80] for key, item in list(value.items())[:4]}
 
 
 def replay_attribution(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -117,12 +135,12 @@ def replay_attribution(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "replayed_characters": rendered_chars * later,
             }
         )
-    return sorted(rows, key=lambda row: row["replayed_characters"], reverse=True)[:8]
+    return sorted(rows, key=lambda row: row["replayed_characters"], reverse=True)[:3]
 
 
 def failed_checks(grade: dict[str, Any]) -> list[dict[str, Any]]:
     return [
-        {"id": check.get("id"), "detail": str(check.get("detail"))[:240]}
+        {"id": check.get("id"), "detail": str(check.get("detail"))[:200]}
         for check in grade.get("checks", [])
         if isinstance(check, dict) and check.get("pass") is not True
     ]
@@ -134,7 +152,7 @@ def optimization_summary(path: Path) -> dict[str, Any]:
     logs = [log_summary(log) for log in sorted(log_root.rglob("episode.jsonl"))]
     changed = result.get("changed_files", [])
     return {
-        "outcome": result.get("stdout"),
+        "outcome": recorded_outcome(result),
         "duration_seconds": result.get("duration_seconds"),
         "changed_files": changed,
         "acceptance_failures": [
@@ -167,14 +185,14 @@ def collect(
             "task": result.get("task"),
             "strict_success": result.get("strict_success"),
             "components": result.get("components"),
-            "outcome": result.get("outcome"),
+            "outcome": outcome_identity(result.get("outcome")),
             "usage": result.get("usage"),
         }
         if result.get("strict_success") is not True:
             row.update(
                 {
-                    "grader_findings": result.get("grader_findings"),
-                    "mechanism": result.get("mechanism"),
+                    "grader_findings": [str(item)[:200] for item in result.get("grader_findings", [])[:4]],
+                    "mechanism": compact_mechanism(result.get("mechanism")),
                     "logs": [log_summary(path) for path in logs],
                 }
             )
@@ -196,7 +214,7 @@ def collect(
                 "usage": result.get("usage"),
                 "trace_conformant": result.get("trace_conformant"),
                 "request_progression": progression_summary(request_progression(values)),
-                "largest_replayed_tool_results": replay_attribution(values)[:3],
+                "largest_replayed_tool_results": replay_attribution(values),
             }
         )
     correct_but_incomplete = sum(
@@ -218,6 +236,23 @@ def collect(
     }
 
 
+def compact_mechanism(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    excluded = {"child_reservations", "child_releases"}
+    result = {}
+    for key, item in value.items():
+        if key in excluded:
+            continue
+        if isinstance(item, str):
+            result[key] = item[:200]
+        elif isinstance(item, list):
+            result[key] = item[:8]
+        elif isinstance(item, (bool, int, float)) or item is None:
+            result[key] = item
+    return result
+
+
 def progression_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     inputs = [row.get("input_tokens") for row in rows if isinstance(row.get("input_tokens"), int)]
     return {
@@ -237,9 +272,15 @@ def main() -> int:
     parser.add_argument("--optimization-result", action="append", type=Path, default=[])
     args = parser.parse_args()
     report = collect(args.micro_report, args.harness_report, args.optimization_result)
+    rendered = json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
+    size = len(rendered.encode("utf-8"))
+    if size > MAX_EVIDENCE_BYTES:
+        raise SystemExit(
+            f"collected evidence is {size} bytes; reduce it below the {MAX_EVIDENCE_BYTES}-byte limit"
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps(report, indent=2, sort_keys=True))
+    args.output.write_text(rendered, encoding="utf-8")
+    print(rendered, end="")
     return 0
 
 

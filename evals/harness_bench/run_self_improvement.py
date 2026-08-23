@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import Any
 
 
-LIMITS = {"model_calls": 24, "input_tokens": 650_000, "output_tokens": 60_000, "seconds": 1_800}
+LIMITS = {"model_calls": 12, "input_tokens": 300_000, "output_tokens": 20_000, "seconds": 1_200}
 ALLOWED_PREFIXES = ("crates/core/src/", "crates/code/src/", "crates/cli/src/", "docs/")
+LINE_BUDGETS = {"runtime": 6_000, "workflow": 1_000, "context": 500, "view": 600, "cli": 1_300}
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -39,6 +40,51 @@ def source_hashes(root: Path) -> dict[str, str]:
     return hashes
 
 
+def read_events(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def episode_measurement(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    logs = [read_events(path) for path in sorted(root.rglob("episode.jsonl"))]
+    messages = [
+        event.get("data", {})
+        for values in logs
+        for event in values
+        if event.get("type") == "assistant/message"
+    ]
+    usages = [message.get("usage") for message in messages if isinstance(message, dict)]
+    reported = (
+        bool(messages)
+        and len(usages) == len(messages)
+        and all(
+            isinstance(item, dict)
+            and isinstance(item.get("input"), int)
+            and isinstance(item.get("output"), int)
+            for item in usages
+        )
+    )
+    input_tokens = sum(item.get("input", 0) for item in usages) if reported else None
+    output_tokens = sum(item.get("output", 0) for item in usages) if reported else None
+    measured = {
+        "model_calls": sum(event.get("type") == "model/request" for values in logs for event in values),
+        "usage_reported": reported,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": sum(item.get("cache_read", 0) for item in usages) if reported else None,
+        "total_tokens": input_tokens + output_tokens if reported else None,
+    }
+    root_events = read_events(root / "episode.jsonl")
+    outcomes = [
+        event.get("data", {}).get("outcome")
+        for event in root_events
+        if event.get("type") == "episode/end"
+    ]
+    outcome = outcomes[-1] if outcomes and isinstance(outcomes[-1], dict) else {}
+    return measured, outcome
+
+
 def checker(path: Path, candidate: Path) -> None:
     baseline = source_hashes(candidate)
     script = f'''#!/usr/bin/python3
@@ -57,6 +103,8 @@ changed = sorted(name for name in set(baseline) | set(current) if baseline.get(n
 findings = []
 if not changed:
     findings.append("the candidate contains no source change")
+if not any(name.startswith("crates/") and name.endswith(".rs") and not name.endswith("_test.rs") for name in changed):
+    findings.append("the candidate does not change implementation Rust source")
 if not any(name.endswith("_test.rs") for name in changed):
     findings.append("the candidate does not change a Rust regression test")
 if not any(name.startswith("docs/") and name.endswith(".md") for name in changed):
@@ -67,6 +115,22 @@ for name in changed:
         text = path.read_text(encoding="utf-8", errors="replace")
         if any(marker in text for marker in ("015-security-injection-defense", "043-db-migration-safety", "078-local-api-cursor-retry-ledger", "083-monorepo-interface-repair")):
             findings.append(f"{{name}} contains a development-task identifier")
+        if any(line.endswith((" ", "\\t")) for line in text.splitlines()):
+            findings.append(f"{{name}} contains trailing whitespace")
+budgets = {LINE_BUDGETS!r}
+counts = {{}}
+for crate in ("log", "core", "code", "workflow", "context", "view", "cli"):
+    lines = 0
+    for source in (root / "crates" / crate / "src").rglob("*.rs"):
+        relative = source.relative_to(root / "crates" / crate / "src")
+        if "tests" in relative.parts or source.name.endswith("_test.rs") or source.name.startswith("generated"):
+            continue
+        lines += sum(bool(line.strip()) and not line.lstrip().startswith("//") for line in source.read_text(encoding="utf-8").splitlines())
+    counts[crate] = lines
+counts["runtime"] = counts["log"] + counts["core"] + counts["code"]
+for crate, budget in budgets.items():
+    if counts[crate] > budget:
+        findings.append(f"{{crate}} contains {{counts[crate]}} counted lines; its limit is {{budget}}")
 print("\\n".join(findings))
 '''
     path.write_text(script, encoding="utf-8")
@@ -78,7 +142,7 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
     write = [str(candidate / prefix) for prefix in ALLOWED_PREFIXES]
     check_def = {
         "exec": str(check),
-        "description": "Checks that the candidate makes one general source change with a Rust regression test and an affected specification. It prints findings and prints nothing when the candidate has the required shape.",
+        "description": "Checks for a general implementation change, a Rust regression test, an affected specification, clean whitespace, and repository line budgets. It prints findings and prints nothing when these deterministic checks pass.",
         "cwd": str(candidate),
         "timeout_seconds": 30,
     }
@@ -88,9 +152,9 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
             "10-role": "Improve one general Foe runtime behavior using the supplied assessed evidence.",
             "20-scope": "Diagnose the mechanism before editing. Change runtime source, a regression test, and every affected specification. Do not change evaluation code, benchmark adapters, tasks, graders, budgets, or model routes. Do not encode benchmark identifiers, fixture values, or grader rules.",
             "30-quality": "Prefer a small behavioral change supported by more than one observation. Preserve trace reconstruction, declared authority, separate token budgets, and explicit completion semantics. A successful tool action alone never proves that an open-ended task is complete.",
-            "40-validation": "Read every file before editing it. Use check after the change. State the expected accuracy, token, latency, and compatibility effects in the final result. Full repository validation runs outside this episode.",
+            "40-validation": "Read every file before editing it. Use check after the change. The check validates candidate shape, whitespace, and line budgets. Full compilation and tests run outside this episode. State the expected accuracy, token, latency, and compatibility effects in the final result.",
         },
-        "tools": ["read", "grep", "edit", "bash", "check"],
+        "tools": ["read", "grep", "edit", "check"],
         "tool_defs": {"check": check_def},
         "grants": {"read": read, "write": write},
         "budget": {
@@ -107,7 +171,7 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
         "version": 2,
         "name": "assessed-evidence-self-improvement",
         "instructions": {"role": "Run the declared evidence collection and self-improvement workflow."},
-        "tools": ["read", "grep", "edit", "bash", "evidence", "check"],
+        "tools": ["read", "grep", "edit", "evidence", "check"],
         "tool_defs": {
             "evidence": {
                 "exec": "/usr/bin/cat",
@@ -186,12 +250,15 @@ def main() -> int:
         timeout=LIMITS["seconds"] + 30,
         check=False,
     )
+    measured, outcome = episode_measurement(log_dir)
     record = {
         **preview,
         "duration_seconds": round(time.monotonic() - started, 3),
         "exit_code": result.returncode,
         "stdout": result.stdout.strip(),
         "stderr": result.stderr.strip(),
+        "outcome": outcome,
+        "usage": measured,
         "candidate": str(candidate),
         "evidence": str(evidence),
         "episode": str(log_dir),
