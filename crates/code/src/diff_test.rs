@@ -41,3 +41,10 @@ fn deleting_every_line_reports_an_empty_new_side() {
     let d = unified("f", "only\n", &[span("only\n", "only\n", "")]);
     assert_eq!(d.text, "--- a/f\n+++ b/f\n@@ -1,1 +0,0 @@\n-only\n");
 }
+
+#[test]
+fn inserting_into_empty_text_reports_a_created_body() {
+    let d = unified("f", "", &[Span { start: 0, end: 0, new_text: "one\ntwo\n" }]);
+    assert_eq!(d.text, "--- a/f\n+++ b/f\n@@ -0,0 +1,2 @@\n+one\n+two\n");
+    assert_eq!((d.added, d.removed), (2, 0));
+}

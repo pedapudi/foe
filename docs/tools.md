@@ -99,7 +99,7 @@ the first `read` root, and paths in results are shown relative to it.
 |---|---|---|---|---|
 | `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |
 | `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
-| `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each `old_text` occurs exactly once; matches do not overlap; the result differs from the original | `path`, `edits`, `added`, `removed`, `diff` |
+| `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original | `path`, `edits`, `added`, `removed`, `diff` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
 
 The limits in the table are constants in the crate, and every tool
@@ -205,6 +205,10 @@ of occurrences found.
 Matching is exact. Whitespace, indentation, and letter case must match the
 file. There is no fuzzy matching, and none is planned, because an edit that
 lands somewhere other than where the model pointed corrupts a file silently.
+
+One edit with an empty `old_text` creates a missing file or populates an
+empty file. Its `new_text` supplies the complete file. The call fails when
+the target contains text or when the request contains another edit.
 
 Two encodings are handled so that the model matches the text it saw through
 `read`. A UTF-8 byte order mark at the start of the file is removed before

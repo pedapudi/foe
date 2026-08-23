@@ -859,15 +859,15 @@ const RECORDED_IDENTITIES: [(&str, &str); 12] = [
     ("budget-exhausted", "sha256:2db57fc3be9b010f32ff1ac38f8a887a1737936dd57c29a0457e12f5c574620e"),
     ("exec-transport", "sha256:801d90de0ea80d61aa4a1a4f939e91aa63f537ceecf8567ad0758849a60bbd4a"),
     ("host-transport", "sha256:01a692e035bdbbdf5f467de93321539218390550088dfc0ef91a7fa1ad84b274"),
-    ("minimal", "sha256:f9570847c450dfd531a7894c6337f5a6f19a279fd16c296a6c53c478739e05af"),
+    ("minimal", "sha256:7a3ed8977a5a12d4842a24bf3d24995fd2203fc0ea594be829408b44983274a6"),
     ("recovery-exhausted", "sha256:ed2dd8ba81f17d46e5e5640bf8ea10cf20d0248a78be6533f6536962c77aba4e"),
     ("sandbox", "sha256:fd4ba25cf14af4e3039207aac8184297ce4c84f8794c50fa975efaafa6f31696"),
-    ("self-extension", "sha256:f7db47b66a8bc0eee3961401c9ee302239d4b78e12806501f8d555502b997280"),
-    ("subagents", "sha256:10d8af9a94d7d2e826fe5cadbbe51a0ee03b026f3138181ad60cc0bd1ec91af7"),
-    ("team", "sha256:71b0cd4dc606a87a443505f765bafc0576f29963c9c52d2d3a97a413156a8d69"),
-    ("verification-unsatisfiable", "sha256:59370eeb273563c40b2b11cdfd79feb327976a6ee80a5e1ccdcd6c8cf99bde0d"),
-    ("workflow", "sha256:06badcd815fbb591881ce0726e11c2c91b68d735315b5d6401611c40e1c11663"),
-    ("wrap-a-binary", "sha256:615d9c957c91886ef48bc6c7cba061f2e7a5ddd15e0013436e07ca85c7842725"),
+    ("self-extension", "sha256:03a32a01773afd735a02a9052a5d2cc6bf233a65bd6f8fe9649c33eefd5da466"),
+    ("subagents", "sha256:702d3a58f19e848d008b984c71aae300c4fe2563c0131ad19d95915c292051c5"),
+    ("team", "sha256:091f47a15eca61ce17ea0e2581a4f0833e39000d69f2844f9dae9c1bd696fac1"),
+    ("verification-unsatisfiable", "sha256:674ab89e89789ba74c60c735b2d04218c612aa84d0858a0931b8fc9326203fa1"),
+    ("workflow", "sha256:d165ecf22dbe1b8536e38935595c1471f36a3c86d733e6b53097ff92b4dce4e1"),
+    ("wrap-a-binary", "sha256:96fe431c64f0c06a24ab416928d59b68f1333c951f01290b16e79a8d1f3cca5f"),
 ];
 
 /// The runtime the recorded identities were computed under. The real one

@@ -35,6 +35,15 @@ struct Change<'a> {
 /// Renders the diff of `spans`, which must be sorted by `start` and must not
 /// overlap. `name` labels both sides of the header.
 pub fn unified(name: &str, original: &str, spans: &[Span]) -> Diff {
+    if original.is_empty() && spans.len() == 1 && spans[0].start == 0 && spans[0].end == 0 {
+        let body = spans[0].new_text.strip_suffix('\n').unwrap_or(spans[0].new_text);
+        let new: Vec<&str> = if spans[0].new_text.is_empty() { Vec::new() } else { body.split('\n').collect() };
+        let mut text = format!("--- a/{name}\n+++ b/{name}\n@@ -0,0 +1,{} @@\n", new.len());
+        for line in &new {
+            let _ = writeln!(text, "+{line}");
+        }
+        return Diff { text, added: new.len(), removed: 0 };
+    }
     let lines: Vec<&str> = {
         let body = original.strip_suffix('\n').unwrap_or(original);
         if original.is_empty() {
