@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import subprocess
 import sys
@@ -16,6 +17,11 @@ _SPEC.loader.exec_module(run_foe)
 
 
 class HarnessBenchAdapterTest(unittest.TestCase):
+    def test_evaluator_patch_identity_matches_the_pinned_patch(self) -> None:
+        patch = Path(__file__).with_name("knowledge_qa_claim_scoring.patch")
+        digest = "sha256:" + hashlib.sha256(patch.read_bytes()).hexdigest()
+        self.assertEqual(run_foe.BENCHMARK_PATCH, digest)
+
     def test_prompt_substitutes_runtime_values(self) -> None:
         prompt = "$WORKSPACE/data at $MOCK_API_BASE and $WORKSPACE again"
         rendered = run_foe.render_prompt(

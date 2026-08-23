@@ -47,3 +47,13 @@ filegroup(
     name = "task_096_yaml",
     srcs = ["tasks/096-offline-knowledge-qa-insufficient-evidence/task.yaml"],
 )
+
+filegroup(
+    name = "task_096_oracle",
+    srcs = ["tasks/096-offline-knowledge-qa-insufficient-evidence/oracle_grade.py"],
+)
+
+filegroup(
+    name = "task_096_ground_truth",
+    srcs = ["tasks/096-offline-knowledge-qa-insufficient-evidence/ground_truth.json"],
+)

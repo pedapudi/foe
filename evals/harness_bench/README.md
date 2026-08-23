@@ -3,14 +3,24 @@
 This package runs foe against four development tasks from Harness-Bench. Bazel
 downloads the benchmark at commit
 `1025086a446653702b80cfb48babbeec35db6b2c` and verifies its archive digest.
+The Bazel repository rule applies `knowledge_qa_claim_scoring.patch`. The
+runner records the patch digest with the benchmark commit. The patch prevents
+the offline question grader from treating quoted rejected evidence as a
+fabricated answer. It also makes the displayed component weights match the
+scoring formula.
+
 The runner copies each task fixture into a fresh workspace. It uses the task's
-unchanged prompt, setup hook, and programmatic grader. It also grades an
+prompt, setup hook, and patched programmatic grader. It also grades an
 untouched workspace as a negative control, which must fail before an agent
-result can be interpreted.
+result can be interpreted. The offline question grader has an additional
+author-written oracle control. The control quotes rejected evidence and must
+receive a perfect score. A corrupted answer must still activate the score cap.
 
 The four tasks cover untrusted instructions, SQLite migration safety, a local
 paginated API, and cross-package Python repair. They form a diagnostic sample.
 Their results do not constitute an official Harness-Bench score.
+Harness-Bench is an external diagnostic fixture source. Its results do not
+support comparisons with other harnesses.
 
 A separate target runs two confirmation tasks that remain outside the
 self-improvement workflow's authority. The tasks cover flaky-test diagnosis
@@ -20,7 +30,7 @@ confirmation target only after freezing both. The adapter creates an isolated
 Python environment with `pytest` for the flaky-test task. Both the model-visible
 test tool and the unchanged grader use that environment. The test wrapper
 resolves the Python executable relative to its own location, so its Foe program
-identity remain stable across retained attempt directories.
+identity remains stable across retained attempt directories.
 
 ## Review the maximum spend
 
