@@ -3,6 +3,8 @@
 This package runs Foe through Harbor against a small, pinned subset of
 Terminal-Bench 2.1. The subset supports development and confirmation before a
 full benchmark run. It does not constitute an official Terminal-Bench score.
+The [development evaluation record](evaluation-record.md) reports retained
+aggregate results and promotion decisions.
 
 The dataset reference is `terminal-bench/terminal-bench-2-1@6`. The
 [Harbor Hub dataset record](https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1/6)
