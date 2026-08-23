@@ -7,7 +7,7 @@
 
 use crate::diff::{self, Span};
 use crate::{display, parse_args, resolve};
-use foe_core::{CallCtx, Effect, Tool, ToolSpec, ToolValue};
+use foe_core::{CallCtx, CapError, Effect, Tool, ToolSpec, ToolValue};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -36,14 +36,16 @@ impl Edit {
         Self {
             spec: ToolSpec {
                 name: "edit".into(),
-                description: "Replace exact text in one file. Each old_text must occur exactly once \
-                              in the current file; matches must not overlap; all edits are applied \
-                              together in one atomic write. There is no fuzzy matching: copy old_text \
-                              exactly, including indentation. Returns a unified diff."
+                description: "Replace exact text in one file, or create a file with one edit whose \
+                              old_text is empty. Each nonempty old_text must occur exactly once in the \
+                              current file; matches must not overlap; all edits are applied together \
+                              in one atomic write. There is no fuzzy matching: copy old_text exactly, \
+                              including indentation. Returns a unified diff."
                     .into(),
                 instruction: Some(
-                    "Use edit for every change to an existing file. Read the file first and include \
-                     enough surrounding lines in old_text to make each match unique."
+                    "Use edit for every file change. Read an existing file first and include enough \
+                     surrounding lines in old_text to make each match unique. To create a file, send \
+                     one edit with empty old_text and the complete file in new_text."
                         .into(),
                 ),
                 params: json!({
@@ -56,7 +58,7 @@ impl Edit {
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "old_text": {"type": "string", "description": "Text to find; must occur exactly once."},
+                                    "old_text": {"type": "string", "description": "Text to find; must occur exactly once. Use an empty string only to create a missing or empty file with one edit."},
                                     "new_text": {"type": "string", "description": "Replacement text."}
                                 },
                                 "required": ["old_text", "new_text"],
@@ -98,11 +100,13 @@ impl Tool for Edit {
         }
         let path = resolve(reader.roots(), &a.path);
         let shown = display(reader.roots(), &path);
+        let creates_file = a.edits.len() == 1 && a.edits[0].old_text.is_empty();
         let raw = match reader.read(&path).map(String::from_utf8) {
             Ok(Ok(s)) => s,
             Ok(Err(_)) => {
                 return ToolValue::error(format!("edit: {shown} is not valid UTF-8; edit changes text files only"))
             }
+            Err(CapError::Io(e)) if creates_file && e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return ToolValue::error(format!("edit: {shown}: {e}")),
         };
         let (bom, body) = match raw.strip_prefix(BOM) {
@@ -123,7 +127,18 @@ impl Tool for Edit {
         for (i, r) in a.edits.iter().enumerate() {
             let old = normalize(&r.old_text);
             if old.is_empty() {
-                return ToolValue::error(format!("edits[{i}]: old_text is empty"));
+                if a.edits.len() != 1 {
+                    return ToolValue::error(format!(
+                        "edits[{i}]: empty old_text requires exactly one edit because it creates the complete file"
+                    ));
+                }
+                if !text.is_empty() {
+                    return ToolValue::error(format!(
+                        "edits[{i}]: empty old_text requires a missing or empty file; {shown} contains text"
+                    ));
+                }
+                located.push((i, 0, 0, normalize(&r.new_text)));
+                continue;
             }
             let count = text.matches(old.as_str()).count();
             if count != 1 {

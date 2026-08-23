@@ -26,6 +26,39 @@ async fn applies_multiple_edits_against_the_original_in_one_write() {
 }
 
 #[tokio::test]
+async fn creates_a_missing_or_empty_file_with_one_empty_match() {
+    let fx = Fixture::new();
+    let v = edit(&fx, json!({"path": "new.txt", "edits": [replace("", "one\ntwo\n")]})).await;
+    assert!(!v.is_error, "{v:?}");
+    assert_eq!(fx.read("new.txt"), "one\ntwo\n");
+    assert_eq!(v.value["added"], 2);
+    assert!(v.rendered.as_deref().unwrap().contains("@@ -0,0 +1,2 @@\n+one\n+two\n"));
+
+    fx.write("empty.txt", "");
+    let v = edit(&fx, json!({"path": "empty.txt", "edits": [replace("", "content\n")]})).await;
+    assert!(!v.is_error, "{v:?}");
+    assert_eq!(fx.read("empty.txt"), "content\n");
+    assert_eq!(fx.writes(), 2);
+}
+
+#[tokio::test]
+async fn empty_matches_cannot_overwrite_text_or_join_other_edits() {
+    let fx = Fixture::new();
+    fx.write("f.txt", "existing\n");
+    let v = edit(&fx, json!({"path": "f.txt", "edits": [replace("", "replacement\n")]})).await;
+    assert!(v.is_error);
+    assert!(v.rendered.as_deref().unwrap().contains("requires a missing or empty file"));
+
+    fx.write("empty.txt", "");
+    let v = edit(&fx, json!({"path": "empty.txt", "edits": [replace("", "one\n"), replace("missing", "two\n")]})).await;
+    assert!(v.is_error);
+    assert!(v.rendered.as_deref().unwrap().contains("requires exactly one edit"));
+    assert_eq!(fx.read("f.txt"), "existing\n");
+    assert_eq!(fx.read("empty.txt"), "");
+    assert_eq!(fx.writes(), 0);
+}
+
+#[tokio::test]
 async fn duplicate_and_missing_matches_are_rejected_by_index_and_count() {
     let fx = Fixture::new();
     fx.write("f.txt", "x = 1\nx = 1\n");
