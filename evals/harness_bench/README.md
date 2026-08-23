@@ -14,7 +14,9 @@ A separate target runs two confirmation tasks that remain outside the
 self-improvement workflow's authority. The tasks cover flaky-test diagnosis
 and offline answers that must identify insufficient evidence. Run the
 confirmation target only after freezing a candidate and its comparison
-configuration.
+configuration. The adapter creates an isolated Python environment with
+`pytest` for the flaky-test task. Both the model-visible test tool and the
+unchanged grader use that environment.
 
 ## Review the maximum spend
 

@@ -56,6 +56,21 @@ class HarnessBenchAdapterTest(unittest.TestCase):
             ("out",),
         )
 
+    def test_flaky_task_receives_the_isolated_pytest_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tool = root / "tools" / "test"
+            config = run_foe.program(
+                run_foe.TASKS["085-flaky-test-root-cause"],
+                root,
+                "task",
+                {"provider": "p", "model": "m"},
+                {"test": tool},
+            )
+        self.assertIn("test", config["tools"])
+        self.assertEqual(config["tool_defs"]["test"]["cwd"], str(root / "in" / "flakyqueue"))
+        self.assertIn(str(root / "pytest-venv"), config["grants"]["read"])
+
     def test_reasoning_effort_is_recorded_in_the_model_route(self) -> None:
         self.assertEqual(
             run_foe.model_route("openai-codex/gpt-5.6-sol", "medium"),

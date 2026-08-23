@@ -222,15 +222,17 @@ def program(task: Task, workspace: Path, prompt: str, route: dict[str, str], too
             "network": True,
             "timeout_seconds": 30,
         }
-    if task.identifier == "083-monorepo-interface-repair":
+    if task.identifier in ("083-monorepo-interface-repair", "085-flaky-test-root-cause"):
         names.append("test")
         read_paths.append(str(tools["test"].parent.parent / "pytest-venv"))
         tool_defs["test"] = {
             "exec": str(tools["test"]),
-            "description": "Run the visible monorepo test suite. It receives no arguments and reports pytest output.",
+            "description": "Run the task's visible test suite. It receives no arguments and reports pytest output.",
             "instruction": "Use test to reproduce the regression and again after the repair.",
             "timeout_seconds": 60,
-            "cwd": str(workspace / "in" / "shopmono"),
+            "cwd": str(
+                workspace / "in" / ("shopmono" if task.identifier == "083-monorepo-interface-repair" else "flakyqueue")
+            ),
         }
     writes = [str(workspace / relative) for relative in task.write_paths]
     return {
@@ -258,13 +260,13 @@ def program(task: Task, workspace: Path, prompt: str, route: dict[str, str], too
     }
 
 
-def visible_test_tool(case: Path) -> Path:
+def visible_test_tool(case: Path, task: Task) -> Path:
     executable = case / "tools" / "test"
     executable.parent.mkdir(parents=True)
     python = case / "pytest-venv" / "bin" / "python3"
     uv = Path(pwd.getpwuid(os.getuid()).pw_dir) / ".local" / "bin" / "uv"
     if not uv.is_file():
-        raise RuntimeError(f"task 083 requires uv at {uv}")
+        raise RuntimeError(f"task {task.identifier} requires uv at {uv}")
     subprocess.run(
         [str(uv), "venv", "--python", "/usr/bin/python3", str(case / "pytest-venv")],
         check=True,
@@ -277,11 +279,12 @@ def visible_test_tool(case: Path) -> Path:
         capture_output=True,
         text=True,
     )
-    executable.write_text(
-        "#!/bin/sh\n"
-        f"PYTHONPATH=packages/catalog:packages/orders:packages/reports exec {python} -m pytest tests\n",
-        encoding="utf-8",
+    command = (
+        f"PYTHONPATH=packages/catalog:packages/orders:packages/reports exec {python} -m pytest tests"
+        if task.identifier == "083-monorepo-interface-repair"
+        else f"exec {python} -m pytest tests"
     )
+    executable.write_text(f"#!/bin/sh\n{command}\n", encoding="utf-8")
     executable.chmod(0o755)
     return executable
 
@@ -328,9 +331,13 @@ def run_attempt(
     for relative in task.write_paths:
         (workspace / relative).mkdir(parents=True, exist_ok=True)
     tools: dict[str, Path] = {}
-    if task.identifier == "083-monorepo-interface-repair":
-        tools["test"] = visible_test_tool(case)
-    python_bin = case / "pytest-venv" / "bin" if task.identifier == "083-monorepo-interface-repair" else None
+    if task.identifier in ("083-monorepo-interface-repair", "085-flaky-test-root-cause"):
+        tools["test"] = visible_test_tool(case, task)
+    python_bin = (
+        case / "pytest-venv" / "bin"
+        if task.identifier in ("083-monorepo-interface-repair", "085-flaky-test-root-cause")
+        else None
+    )
     negative_workspace = case / "negative-control" / "workspace"
     shutil.copytree(workspace, negative_workspace)
     try:
