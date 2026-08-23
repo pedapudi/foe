@@ -252,6 +252,7 @@ def assess_mechanism(
             "typed_child_reports": typed_reports,
             "child_reservations": reservations,
             "child_releases": releases,
+            "wait_calls": sum(call.get("name") == "wait" for call in calls),
         }
         expected = ["inventory-survey", "pricing-survey"]
         passed = (
@@ -261,6 +262,7 @@ def assess_mechanism(
             and ended == 2
             and read_only
             and typed_reports == 2
+            and details["wait_calls"] == 1
         )
         return passed, details
 
@@ -334,6 +336,10 @@ def unstarted_result(task: Task, attempt: int, case: Path, fault: str) -> dict[s
         "components": {name: None for name in COMPONENTS},
         "outcome": {},
         "usage": usage([]),
+        "budget_observation": {
+            "input_overrun_tokens": None,
+            "output_overrun_tokens": None,
+        },
         "limits": {
             "model_calls": task.model_calls,
             "input_tokens": task.input_tokens,
@@ -433,6 +439,14 @@ def run_task(
     trace = evaluate([log_dir]) if logs else {"valid": False, "violations": [{"message": "episode log is absent"}]}
     mechanism, mechanism_details = assess_mechanism(task, workspace, metadata, log_dir, logs) if logs else (False, {})
     measured = usage(logs)
+    budget_observation = {
+        "input_overrun_tokens": (
+            max(measured["input_tokens"] - task.input_tokens, 0) if measured["input_tokens"] is not None else None
+        ),
+        "output_overrun_tokens": (
+            max(measured["output_tokens"] - task.output_tokens, 0) if measured["output_tokens"] is not None else None
+        ),
+    }
     within_budget = (
         measured["usage_reported"]
         and measured["model_calls"] <= task.model_calls
@@ -460,6 +474,7 @@ def run_task(
         "components": components,
         "outcome": outcome,
         "usage": measured,
+        "budget_observation": budget_observation,
         "limits": {
             "model_calls": task.model_calls,
             "input_tokens": task.input_tokens,

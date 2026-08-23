@@ -1,0 +1,87 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+exports_files(["harness_bench.BUILD.bazel"])
+
+sh_binary(
+    name = "foe-development",
+    srcs = ["run_foe.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe)",
+        "--trace-evaluator",
+        "$(rootpath //evals:score-trace)",
+        "--task-dir",
+        "$(rootpath @harness_bench//:task_015_yaml)",
+        "--task-dir",
+        "$(rootpath @harness_bench//:task_043_yaml)",
+        "--task-dir",
+        "$(rootpath @harness_bench//:task_078_yaml)",
+        "--task-dir",
+        "$(rootpath @harness_bench//:task_083_yaml)",
+    ],
+    data = [
+        "//:foe",
+        "//evals:score-trace",
+        "@harness_bench//:development_tasks",
+        "@harness_bench//:task_015_yaml",
+        "@harness_bench//:task_043_yaml",
+        "@harness_bench//:task_078_yaml",
+        "@harness_bench//:task_083_yaml",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-confirmation",
+    srcs = ["run_foe.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe)",
+        "--trace-evaluator",
+        "$(rootpath //evals:score-trace)",
+        "--task-dir",
+        "$(rootpath @harness_bench//:task_085_yaml)",
+        "--task-dir",
+        "$(rootpath @harness_bench//:task_096_yaml)",
+    ],
+    data = [
+        "//:foe",
+        "//evals:score-trace",
+        "@harness_bench//:confirmation_tasks",
+        "@harness_bench//:task_085_yaml",
+        "@harness_bench//:task_096_yaml",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "collect-evidence",
+    srcs = ["collect_evidence.py"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "self-improve",
+    srcs = ["run_self_improvement.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe)",
+    ],
+    data = ["//:foe"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "foe_development_test",
+    srcs = ["run_unit_tests.sh"],
+    data = [
+        "run_foe.py",
+        "run_foe_test.py",
+        "collect_evidence.py",
+        "collect_evidence_test.py",
+        "run_self_improvement.py",
+        "run_self_improvement_test.py",
+    ],
+    size = "small",
+)
