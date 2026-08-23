@@ -128,3 +128,28 @@ grants into such a profile. macOS sandboxing is not implemented; on macOS
 `sandbox.mode: "best-effort"` applies no restriction and records
 `landlock_abi: 0`, and `sandbox.mode: "required"` refuses to start. No event
 type or configuration key is reserved.
+
+## Unicode normalization in the scrubber
+
+The scrubber removes invisible characters (zero-width spaces and joiners,
+the byte-order mark, the soft hyphen, the directional marks) before any
+other layer runs, so a value split by them is matched whole. It does not
+apply compatibility normalization (NFKC), which would additionally fold
+full-width and other confusable code points onto their ASCII forms. The
+two scrubbed fields are written by tools rather than by a model and are
+ASCII in every recorded trajectory, so the folding has no input to act on
+today, and a correct implementation means taking on a Unicode data table
+dependency. NFKC folding is deferred until either field can carry
+model-authored text. No event type or configuration key is reserved.
+
+## Checksum validation for provider tokens
+
+Payment-card-shaped digit runs are masked only when they pass the Luhn
+checksum, which keeps version strings and issue numbers out of the mask.
+GitHub tokens carry a comparable embedded checksum (a CRC32 over the token
+body, base62-encoded in the last six characters), which would let the
+detector drop its length heuristic. Validating it requires reference
+vectors verified against real token structure, which cannot be taken from
+documentation alone; until then GitHub tokens are matched by prefix and
+length like every other provider prefix. No event type or configuration
+key is reserved.

@@ -144,9 +144,21 @@ A completed episode's value is the report the model wrote, and it is a
 result body, so it is never emitted. Neither is the task text, the system
 prompt, any model output, any tool result body, or any file content.
 
-Four layers run over those two fields, in order.
+Six layers run over those two fields, in order.
 
-1. **Known-value substitution.** The known set is built from the log
+1. **Invisible-character removal.** Zero-width spaces, joiners and
+   non-joiners, the word joiner, the byte-order mark, the soft hyphen, and
+   the directional marks are removed before anything else runs. They render
+   as nothing, so removing them changes no reader's view of the field, and
+   a value interrupted by them is one value again for every later layer.
+2. **Encoded-run scanning.** Percent-encoded runs and base64-shaped runs
+   of 16 characters or more are decoded, and the decoded text is checked
+   against the known values and the format detectors. A run whose decoding
+   hides either is replaced whole: the encoded form is the leak, so the
+   encoded form is what the pseudonym stands in for. This layer runs before
+   substitution so that a known value matched literally inside an encoded
+   run cannot split the run before it is judged.
+3. **Known-value substitution.** The known set is built from the log
    itself: every absolute path in the resolved configuration, which covers
    the granted roots and the workspace, the directory the log was read
    from, and the user name component of any `/home/<user>` or
@@ -155,15 +167,19 @@ Four layers run over those two fields, in order.
    tilde-abbreviated against the home directory. All four forms of one
    value carry the same pseudonym, so a join over the workspace does not
    split four ways.
-2. **Format detectors,** all in one pass. Key material: PEM headers, `ssh-`
+4. **Format detectors,** all in one pass. Key material: PEM headers, `ssh-`
    keys, JWT shape, and the token prefixes issued by cloud, source-forge,
-   model, and chat providers. Identifiers and addresses: email addresses,
-   URLs carrying a host or user information, UUIDs, MAC addresses, and IPv4
-   and IPv6 addresses. Runs that carry no shape but too much information:
-   bare hexadecimal of 32 characters or more, and base64-shaped runs of 20
-   characters or more that mix digits with upper case and whose Shannon
-   entropy reaches 3.5 bits per character.
-3. **Path componentization** for whatever slash-separated path remains.
+   model, chat, package-registry, and payment providers. Identifiers and
+   addresses: email addresses, URLs carrying a host or user information,
+   UUIDs, MAC addresses, and IPv4 and IPv6 addresses. Payment cards: digit
+   runs of 13 to 19 digits, with spaces or hyphens allowed, that pass the
+   Luhn checksum — a run that fails the checksum is left alone, because a
+   version string or an issue number shaped like a card is not one. Runs
+   that carry no shape but too much information: bare hexadecimal of 32
+   characters or more, and base64-shaped runs of 20 characters or more that
+   mix digits with upper case and whose Shannon entropy reaches 3.5 bits
+   per character.
+5. **Path componentization** for whatever slash-separated path remains.
    Components in a dictionary of universal names are kept, as is the
    alphabetic extension of the last component. The dictionary holds three
    groups. The standard filesystem hierarchy: `usr`, `bin`, `sbin`, `etc`,
@@ -182,7 +198,7 @@ Four layers run over those two fields, in order.
    component that could name a person, a project, or a task is not in the
    dictionary; when in doubt, it is masked, so `/etc/nginx/staging.conf`
    keeps `etc` and `nginx` and replaces the rest.
-4. **Pseudonyms.** Every replacement is `⟨t:xxxxxxxx⟩`. The digest is
+6. **Pseudonyms.** Every replacement is `⟨t:xxxxxxxx⟩`. The digest is
    HMAC-SHA256 of the value under the local key, truncated to eight
    hexadecimal characters. The tag `t` is one letter naming what was
    replaced: `p` path component, `u` user, `e` email, `h` host, `s`

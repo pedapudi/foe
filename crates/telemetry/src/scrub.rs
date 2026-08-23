@@ -34,8 +34,13 @@ const DETECTORS: &[(&str, char, &str)] = &[
     ("cloud-key", 's', r"AKIA[0-9A-Z]{12,}"),
     ("forge-token", 's', r"gh[pousr]_[A-Za-z0-9]{16,}"),
     ("model-key", 's', r"sk-[A-Za-z0-9_-]{16,}"),
-    ("chat-token", 's', r"xox[abposr]-[A-Za-z0-9-]{10,}"),
+    ("chat-token", 's', r"xox[a-z][a-z.-]*-[A-Za-z0-9-]{10,}"),
     ("jwt", 's', r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
+    ("gitlab-token", 's', r"glpat-[A-Za-z0-9_-]{16,}"),
+    ("google-api-key", 's', r"AIza[0-9A-Za-z_-]{30,}"),
+    ("google-oauth", 's', r"ya29\.[0-9A-Za-z_-]{16,}"),
+    ("npm-token", 's', r"npm_[A-Za-z0-9]{30,}"),
+    ("stripe-key", 's', r"[srp]k_live_[A-Za-z0-9]{16,}"),
     ("email", 'e', r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
     ("url", 'h', r#"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>"'\\]+"#),
     ("uuid", 's', r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"),
@@ -43,11 +48,16 @@ const DETECTORS: &[(&str, char, &str)] = &[
     ("ipv6", 'h', r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b"),
     ("ipv4", 'h', r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"),
     ("long-hex", 's', r"\b[0-9a-fA-F]{32,}\b"),
+    ("card-number", 's', r"\b(?:\d[ -]?){12,18}\d\b"),
     ("high-entropy", 's', r"\b[A-Za-z0-9+/]{20,}={0,2}"),
 ];
 
 /// Index of the entropy-gated detector in [`DETECTORS`]: the last one.
 const HIGH_ENTROPY: usize = DETECTORS.len() - 1;
+/// Index of the Luhn-gated card detector: second to last. A digit run is a
+/// card number only when its check digit validates; order numbers and
+/// timestamps share the shape and must pass through untouched.
+const CARD: usize = DETECTORS.len() - 2;
 
 /// Shannon entropy, in bits per character, at or above which a base64-shaped
 /// run is treated as key material. Random base64 of this length lands near
@@ -116,7 +126,24 @@ pub struct Scrubber {
     variants: Vec<(char, String, String)>,
     detectors: regex::Regex,
     paths: regex::Regex,
+    /// Runs that may hide a value behind an encoding: percent-encoding and
+    /// base64. Their decoded forms are scanned; see [`Scrubber::scrub`].
+    encoded: regex::Regex,
 }
+
+/// Characters that render as nothing and appear inside these fields only
+/// when something wants to split a value across a detector: zero-width
+/// space, non-joiner, joiner, word joiner, BOM, soft hyphen, and the
+/// directional marks. They are removed before any layer runs, so a value
+/// interrupted by them is still one value.
+const INVISIBLES: &[char] =
+    &['\u{200B}', '\u{200C}', '\u{200D}', '\u{2060}', '\u{FEFF}', '\u{00AD}', '\u{200E}', '\u{200F}'];
+
+/// A percent-encoded run and a base64-shaped run, in one pattern. The
+/// base64 arm's floor of 16 keeps every pseudonym (eight hex characters in
+/// brackets) out of its reach.
+const ENCODED_PATTERN: &str =
+    r"(?:[A-Za-z0-9._~/+-]*(?:%[0-9A-Fa-f]{2})+[A-Za-z0-9._~/%+-]*)|(?:[A-Za-z0-9+/]{16,}={0,2})";
 
 impl Scrubber {
     pub fn new(key: Vec<u8>, known: &[KnownValue]) -> Scrubber {
@@ -134,6 +161,7 @@ impl Scrubber {
             variants,
             detectors: regex::Regex::new(&alternation).expect("detector patterns are constants"),
             paths: regex::Regex::new(PATH_PATTERN).expect("path pattern is a constant"),
+            encoded: regex::Regex::new(ENCODED_PATTERN).expect("encoded pattern is a constant"),
         }
     }
 
@@ -152,7 +180,18 @@ impl Scrubber {
 
     /// Runs all four layers over `text`, counting replacements in `report`.
     pub fn scrub(&self, text: &str, report: &mut Report) -> String {
-        let mut out = text.to_string();
+        let out: String = text.chars().filter(|c| !INVISIBLES.contains(c)).collect();
+        // Encoded runs are judged whole, before substitution can split one.
+        let mut out = self
+            .encoded
+            .replace_all(&out, |caps: &regex::Captures| {
+                let run = &caps[0];
+                match decoded(run).filter(|plain| self.hides(plain)) {
+                    Some(_) => self.pseudonym(report.record('s'), run),
+                    None => run.to_string(),
+                }
+            })
+            .into_owned();
         for (tag, form, replacement) in &self.variants {
             if out.contains(form.as_str()) {
                 out = out.replace(form.as_str(), replacement);
@@ -219,7 +258,75 @@ impl Scrubber {
 fn fired<'t>(caps: &regex::Captures<'t>) -> Option<(usize, &'t str)> {
     let index = (0..DETECTORS.len()).find(|i| caps.get(i + 1).is_some())?;
     let matched = caps.get(index + 1)?.as_str();
-    (index != HIGH_ENTROPY || high_entropy(matched)).then_some((index, matched))
+    let gate = match index {
+        i if i == HIGH_ENTROPY => high_entropy(matched),
+        i if i == CARD => luhn(matched),
+        _ => true,
+    };
+    gate.then_some((index, matched))
+}
+
+/// Whether decoded content holds anything the visible text may not: a
+/// known value in any recorded form, or a match any detector claims. The
+/// encoded run is the leak when it does, so the caller masks the run.
+impl Scrubber {
+    fn hides(&self, plain: &str) -> bool {
+        self.variants.iter().any(|(_, form, _)| plain.contains(form.as_str()))
+            || self.detectors.captures_iter(plain).any(|caps| fired(&caps).is_some())
+    }
+}
+
+/// The decoded form of an encoded run: percent-decoding when it carries a
+/// percent escape, base64 otherwise. Anything that does not decode to text
+/// is nothing to scan.
+fn decoded(run: &str) -> Option<String> {
+    if run.contains('%') {
+        let mut bytes = Vec::new();
+        let mut rest = run.bytes();
+        while let Some(b) = rest.next() {
+            match b {
+                b'%' => {
+                    let pair = [rest.next()?, rest.next()?];
+                    let hex = std::str::from_utf8(&pair).ok()?;
+                    bytes.push(u8::from_str_radix(hex, 16).ok()?);
+                }
+                other => bytes.push(other),
+            }
+        }
+        return String::from_utf8(bytes).ok();
+    }
+    let value = |c: u8| match c {
+        b'A'..=b'Z' => Some(c - b'A'),
+        b'a'..=b'z' => Some(c - b'a' + 26),
+        b'0'..=b'9' => Some(c - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    };
+    let mut bytes = Vec::new();
+    let mut buffer = 0u32;
+    let mut held = 0u32;
+    for c in run.trim_end_matches('=').bytes() {
+        buffer = (buffer << 6) | u32::from(value(c)?);
+        held += 6;
+        if held >= 8 {
+            held -= 8;
+            bytes.push((buffer >> held) as u8);
+        }
+    }
+    String::from_utf8(bytes).ok()
+}
+
+/// The Luhn check over the digits of `run`, most significant first.
+fn luhn(run: &str) -> bool {
+    let digits: Vec<u32> = run.chars().filter_map(|c| c.to_digit(10)).collect();
+    let sum: u32 = digits
+        .iter()
+        .rev()
+        .enumerate()
+        .map(|(i, &d)| if i % 2 == 1 { d * 2 - if d > 4 { 9 } else { 0 } } else { d })
+        .sum();
+    sum.is_multiple_of(10)
 }
 
 fn high_entropy(run: &str) -> bool {
