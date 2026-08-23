@@ -181,6 +181,8 @@ The `read` tool still allocates a complete file before selecting its bounded
 line window. Streaming `grep` removes the failure observed in the holdout
 trial. A separate windowed-reader design is required to give `read` the same
 memory bound without changing its line-offset contract.
+[Issue #83](https://github.com/pedapudi/foe/issues/83) tracks that work and its
+stream-boundary tests.
 
 ## Local evidence index
 
