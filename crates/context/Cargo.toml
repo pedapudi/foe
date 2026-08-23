@@ -8,6 +8,7 @@ description = "Context compaction: projects the next request, cuts at a step bou
 
 [dependencies]
 foe-log = { path = "../log" }
+foe-config = { path = "../config" }
 foe-core = { path = "../core" }
 serde_json.workspace = true
 async-trait.workspace = true

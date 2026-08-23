@@ -6,8 +6,8 @@
 //! docs/design.md "Subagents and teams".
 
 use crate::run;
-use foe_core::config::Program;
-use foe_core::workflow::{MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
+use foe_config::config::Program;
+use foe_config::workflow::{MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
 use std::fmt::Write;
 
 pub use foe_workflow::inspect::{cycles, tool_sources, Authority};

@@ -9,9 +9,10 @@
 
 #![forbid(unsafe_code)]
 
+use foe_config::harness_text as text;
+use foe_config::{ContextConfig, DoneWhen};
 use foe_core::context::{Answer, ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
-use foe_core::harness_text as text;
-use foe_core::{ContextConfig, DoneWhen, RuntimeError};
+use foe_core::RuntimeError;
 use foe_log::fold::{derive_span, render_continuation};
 use foe_log::{
     ChildSummary, CompactedFiles, CompactionSummary, ContentBlock, ContinuationState, Covered, Event, EventData,

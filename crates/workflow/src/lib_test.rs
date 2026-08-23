@@ -1,5 +1,5 @@
 use super::{model_nodes, node_program, spawner_config};
-use foe_core::Config;
+use foe_config::Config;
 use serde_json::json;
 
 fn config() -> Config {

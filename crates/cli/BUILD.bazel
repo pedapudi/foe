@@ -12,6 +12,7 @@ rust_binary(
     version = "0.1.0",
     visibility = ["//visibility:public"],
     deps = [
+        "//crates/config:foe_config",
         "//crates/code:foe_code",
         "//crates/context:foe_context",
         "//crates/core:foe_core",

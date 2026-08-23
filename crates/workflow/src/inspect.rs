@@ -6,10 +6,10 @@
 //! for the same reason: a workflow model node is reachable because firing
 //! it starts that node's episode.
 
-use crate::WorkflowConfig;
-use foe_core::config::{resolve_node_program, Program};
-use foe_core::registry::{resolve_sources, resolve_specs, Source};
-use foe_core::{Effect, ToolSpec};
+use foe_config::config::{resolve_node_program, Program};
+use foe_config::tools::{resolve_sources, resolve_specs, Source};
+use foe_config::workflow::WorkflowConfig;
+use foe_config::{Effect, ToolSpec};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -42,7 +42,7 @@ pub fn authority(root: &Program, extra: &[ToolSpec]) -> Result<Vec<Authority>, S
 /// Where each name in `program.tools` resolved, in `tools` order. The
 /// built-in names are the blocking tool and the packs the binary links.
 pub fn tool_sources(program: &Program, extra: &[ToolSpec]) -> Result<Vec<Source>, String> {
-    let mut builtins: Vec<&str> = vec![foe_core::harness_text::BLOCK_NAME];
+    let mut builtins: Vec<&str> = vec![foe_config::harness_text::BLOCK_NAME];
     builtins.extend(extra.iter().map(|s| s.name.as_str()));
     let configured: Vec<&str> = program.tool_defs.keys().map(String::as_str).collect();
     let host: Vec<&str> = program.host_tools.keys().map(String::as_str).collect();

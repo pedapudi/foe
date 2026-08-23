@@ -13,8 +13,8 @@ mod run;
 
 pub use run::{render, run, WorkflowParams};
 
-use foe_core::workflow::{Node, WorkflowConfig};
-use foe_core::{ChildProgram, Config, DoneWhen};
+use foe_config::workflow::{Node, WorkflowConfig};
+use foe_config::{ChildProgram, Config, DoneWhen};
 use serde_json::{json, Value};
 
 /// Every model node at any depth with its path: the node name at the top,

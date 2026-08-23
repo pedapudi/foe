@@ -191,7 +191,7 @@ async fn spawn_tool_runs_a_child_whose_notify_and_end_reach_the_lead() {
     assert!(!value.is_error, "{:?}", value.rendered);
     let child_id = value.value["child_id"].as_str().unwrap().to_string();
     assert!(spawn.call(args, &ctx(Some(spawner.clone()))).await.is_error, "roster names are unique");
-    let config: crate::Config =
+    let config: foe_config::Config =
         serde_json::from_slice(&std::fs::read(dir.join("children").join(&child_id).join("config.json")).unwrap())
             .unwrap();
     assert_eq!(config.tools, ["notify"], "the child's tools are the program's; notify is built in");
@@ -230,6 +230,6 @@ async fn spawn_tool_runs_a_child_whose_notify_and_end_reach_the_lead() {
 #[test]
 fn every_team_tool_schema_stays_inside_the_implemented_subset() {
     for spec in super::builtin_specs() {
-        crate::schema::check(format!("tools.{}.params", spec.name), &spec.params).unwrap();
+        foe_config::schema::check(format!("tools.{}.params", spec.name), &spec.params).unwrap();
     }
 }

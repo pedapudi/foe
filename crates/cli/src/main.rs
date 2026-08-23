@@ -11,16 +11,13 @@ mod plan;
 mod run;
 mod telemetry;
 
-use foe_core::registry::{block_spec, resolve_specs, Source};
-use foe_core::ToolSpec;
+use foe_config::tools::{block_spec, resolve_specs, Source};
+use foe_config::ToolSpec;
+use foe_config::SCHEMA;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
-
-/// The JSON Schema of the configuration document, maintained by hand to
-/// mirror docs/config.md.
-const SCHEMA: &str = include_str!("schema.json");
 
 /// Every word of the table is fixed at compile time.
 type Text = &'static str;
@@ -318,8 +315,8 @@ fn open_browser(url: &str) {
     }
 }
 
-fn load(config: &Path) -> Result<foe_core::config::Program, String> {
-    foe_core::config::load(config).map_err(|e| format!("{}: {e}", config.display()))
+fn load(config: &Path) -> Result<foe_config::config::Program, String> {
+    foe_config::config::load(config).map_err(|e| format!("{}: {e}", config.display()))
 }
 
 /// Resolves the program and prints it with its identity. `--json` prints one
@@ -344,7 +341,7 @@ fn plan(config: &Path, json: bool) -> Result<ExitCode, String> {
                 "cycles": plan::cycles(wf), "write_overlaps": overlaps,
                 "terminal": wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k).collect::<Vec<_>>(),
                 "possible_firings": wf.possible_firings(),
-                "max_possible_firings": foe_core::workflow::MAX_POSSIBLE_FIRINGS,
+                "max_possible_firings": foe_config::workflow::MAX_POSSIBLE_FIRINGS,
             })
         });
         let report = serde_json::json!({

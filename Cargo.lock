@@ -237,6 +237,7 @@ name = "foe"
 version = "0.1.0"
 dependencies = [
  "foe-code",
+ "foe-config",
  "foe-context",
  "foe-core",
  "foe-log",
@@ -257,6 +258,7 @@ name = "foe-code"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "foe-config",
  "foe-core",
  "grep-matcher",
  "grep-regex",
@@ -269,10 +271,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "foe-config"
+version = "0.1.0"
+dependencies = [
+ "foe-log",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "foe-context"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "foe-config",
  "foe-core",
  "foe-log",
  "serde_json",
@@ -285,6 +300,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cap-std",
+ "foe-config",
  "foe-log",
  "hex",
  "ignore",
@@ -324,6 +340,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64",
+ "foe-config",
  "foe-core",
  "foe-log",
  "nix",
@@ -353,6 +370,7 @@ name = "foe-workflow"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "foe-config",
  "foe-core",
  "foe-log",
  "serde",

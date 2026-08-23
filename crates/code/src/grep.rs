@@ -7,7 +7,8 @@
 //! filesystem's directory order.
 
 use crate::{display, parse_args, resolve, GREP_COLLECT_MAX, GREP_DEFAULT_LIMIT, GREP_LINE_MAX_CHARS};
-use foe_core::{CallCtx, Effect, Tool, ToolSpec, ToolValue};
+use foe_config::{Effect, ToolSpec};
+use foe_core::{CallCtx, Tool, ToolValue};
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use ignore::overrides::OverrideBuilder;

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const FOE: &str = env!("CARGO_BIN_EXE_foe");
-const SCHEMA: &str = include_str!("../src/schema.json");
+use foe_config::SCHEMA;
 const EXAMPLES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples");
 
 fn scratch(name: &str) -> PathBuf {
@@ -627,7 +627,7 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert!(end["data"].get("error").is_none());
     let header_of = |request: &Value| events.iter().find(|e| e["seq"] == request["data"]["header_seq"]).unwrap();
     let summary_header = header_of(requests[2]);
-    assert_eq!(summary_header["data"]["system"], foe_core::harness_text::COMPACTION_INSTRUCTION);
+    assert_eq!(summary_header["data"]["system"], foe_config::harness_text::COMPACTION_INSTRUCTION);
     assert_eq!(summary_header["data"]["tools"], json!([]));
     assert_eq!(header_of(requests[3])["data"]["tools"][0]["name"], "read", "the ordinary header returns");
     let messages = requests[3]["data"]["messages"].as_array().unwrap();
@@ -881,7 +881,7 @@ fn recorded_runtime() -> foe_log::RuntimeInfo {
 /// hashes with the rest of the program. `foe::run::extra_builtin_specs`
 /// builds the same list for the process; a test binary cannot reach into
 /// the command line's modules, so it names the two packs itself.
-fn builtin_specs() -> Vec<foe_core::ToolSpec> {
+fn builtin_specs() -> Vec<foe_config::ToolSpec> {
     foe_code::all().iter().map(|t| t.spec().clone()).chain(foe_core::team::builtin_specs()).collect()
 }
 
@@ -896,8 +896,8 @@ fn every_example_program_hashes_to_its_recorded_identity() {
     assert_eq!(found.len(), recorded.len(), "every example has a recorded identity");
     for (name, text) in found {
         let path = materialize(&dir, &name, &text, "the task the recording ignores");
-        let program = foe_core::config::load(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
-        let identity = foe_core::identity::compute(&program, &specs, &recorded_runtime())
+        let program = foe_config::config::load(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let identity = foe_config::identity::compute(&program, &specs, &recorded_runtime())
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(identity.hash, recorded[name.as_str()], "{name}: the program hashes to another identity");
     }
@@ -933,12 +933,12 @@ fn every_example_conforms_to_the_schema_and_parses() {
     let inlined = inline(&schema, &schema["$defs"], 4);
     for (name, text) in examples() {
         let document: Value = serde_json::from_str(&text).unwrap();
-        foe_core::schema::conforms(&inlined, &document).unwrap_or_else(|e| panic!("{name}: {e}"));
-        foe_core::config::parse(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
+        foe_config::schema::conforms(&inlined, &document).unwrap_or_else(|e| panic!("{name}: {e}"));
+        foe_config::config::parse(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
     }
     let mut broken: Value = serde_json::from_str(&examples()[0].1).unwrap();
     broken["budget"]["model_calls"] = json!("many");
-    assert!(foe_core::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
+    assert!(foe_config::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
 }
 
 /// The issue's acceptance, checked against the process a person runs:

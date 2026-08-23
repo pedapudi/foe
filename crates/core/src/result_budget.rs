@@ -28,8 +28,8 @@
 //! the same text. No earlier turn is ever rewritten, which is what lets a
 //! provider reuse the key-value cache of the prefix.
 
-use crate::harness_text as text;
 use crate::{fitting, ToolValue};
+use foe_config::harness_text as text;
 
 /// Characters of tool-result text one model turn may show, divided between
 /// the calls of that turn. One call is already bounded below this by the
