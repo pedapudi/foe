@@ -308,8 +308,14 @@ impl Decoder for StreamDecoder {
             "response.failed" | "error" => {
                 let error = if kind == "error" { &data } else { &data["response"]["error"] };
                 let code = error["code"].as_str().unwrap_or("unknown");
-                let detail = error["message"].as_str().unwrap_or("");
-                let retryable = matches!(code, "server_error" | "rate_limit_exceeded");
+                let detail =
+                    error["message"].as_str().filter(|value| !value.is_empty()).map(str::to_string).unwrap_or_else(
+                        || {
+                            let value = if error.is_null() { &data["response"] } else { error };
+                            crate::describe_error_body(&serde_json::to_string(value).unwrap_or_default())
+                        },
+                    );
+                let retryable = matches!(code, "unknown" | "server_error" | "rate_limit_exceeded");
                 out(Chunk::Error { message: format!("{provider}: response failed {code}: {detail}"), retryable });
             }
             _ => {}
@@ -522,6 +528,15 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
         assert_eq!(
             chunks,
             vec![Chunk::Error { message: "openai: response failed server_error: overloaded".into(), retryable: true }]
+        );
+        let transcript = "event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":null}}\n\n";
+        let (chunks, _server) = run(Reply::sse(transcript)).await;
+        assert_eq!(
+            chunks,
+            vec![Chunk::Error {
+                message: "openai: response failed unknown: {\"error\":null,\"status\":\"failed\"}".into(),
+                retryable: true,
+            }]
         );
         let transcript = "event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"content_filter\"}}}\n\n";
         let (chunks, _server) = run(Reply::sse(transcript)).await;
