@@ -79,9 +79,27 @@ class MicroTaskTests(unittest.TestCase):
                 self.assertNotIn(str(external_grader), json.dumps(config))
                 self.assertEqual(config["model"], route)
 
+    def test_delegated_task_exposes_wait_and_bounds_child_reports(self) -> None:
+        task = task_by_name("delegated-order-quotation")
+        route = {"provider": "openai", "model": "gpt-5.6-sol"}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / "workspace"
+            grader = root / "grader"
+            workspace.mkdir()
+            grader.mkdir()
+            metadata = task.materialize(workspace, grader)
+            config = task.config(workspace.resolve(), Path(metadata["check"]).resolve(), route)
+
+        self.assertIn("wait", config["tools"])
+        for child in config["programs"].values():
+            returned = child["done_when"]["returns"]
+            self.assertEqual(returned["properties"]["symbols"]["maxItems"], 4)
+            self.assertEqual(returned["properties"]["rule"]["maxLength"], 800)
+
     def test_one_attempt_has_the_documented_cost_ceiling(self) -> None:
         self.assertEqual(sum(task.model_calls for task in TASKS), 40)
-        self.assertEqual(sum(task.input_tokens for task in TASKS), 44800)
+        self.assertEqual(sum(task.input_tokens for task in TASKS), 46400)
         self.assertEqual(sum(task.output_tokens for task in TASKS), 11200)
 
     def test_an_attempt_that_never_reached_the_model_is_a_deployment_fault(self) -> None:
@@ -105,6 +123,7 @@ class MicroTaskTests(unittest.TestCase):
             unstarted = unstarted_result(task, 1, Path(directory), "the task fixture did not materialize")
             self.assertFalse(unstarted["strict_success"])
             self.assertIsNone(unstarted["usage"]["total_tokens"])
+            self.assertIsNone(unstarted["budget_observation"]["input_overrun_tokens"])
             summary = aggregate([unstarted], 1, (task,))
             self.assertEqual(summary["infrastructure_failures"], 1)
             self.assertEqual(summary["attempts_with_evaluated_components"], 0)
@@ -186,7 +205,7 @@ class MicroTaskTests(unittest.TestCase):
             case, workspace, metadata = materialize(name)
             log = case / "episode"
             completed = {"kind": "completed", "value": {"module": "module.py"}}
-            root_events = []
+            root_events = [event("assistant/message", {"tool_calls": [{"name": "wait", "args": {}}]})]
             for program, child in [("pricing-survey", "pricing"), ("inventory-survey", "inventory")]:
                 root_events.append(event("spawn/start", {"program": program, "context": "fresh"}))
                 root_events.append(event("spawn/end", {"program": program, "outcome": completed}))
@@ -199,7 +218,7 @@ class MicroTaskTests(unittest.TestCase):
                 )
             write_log(log / "episode.jsonl", root_events)
             self.assertTrue(assess_mechanism(tasks[name], workspace, metadata, log, episode_logs(log))[0])
-            write_log(log / "episode.jsonl", root_events[:2])
+            write_log(log / "episode.jsonl", root_events[:3])
             self.assertFalse(assess_mechanism(tasks[name], workspace, metadata, log, episode_logs(log))[0])
 
             name = "declared-migration-workflow"
