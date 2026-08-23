@@ -32,6 +32,8 @@ class ProgramTest(unittest.TestCase):
         )
         self.assertEqual(program["sandbox"], {"mode": "off"})
         self.assertEqual(program["model"]["reasoning_effort"], "low")
+        self.assertEqual(program["model"]["token_file"], "/tmp/private.json")
+        self.assertNotIn("api_key_file", program["model"])
         self.assertEqual(program["task"], "repair it")
 
     def test_program_rejects_unqualified_model(self):
@@ -49,6 +51,11 @@ class ProgramTest(unittest.TestCase):
 
 
 class EpisodeSummaryTest(unittest.TestCase):
+    def test_summary_requires_a_root_episode_log(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(FileNotFoundError, "episode log does not exist"):
+                read_episode_summary(Path(directory))
+
     def test_summary_includes_child_usage_and_root_outcome(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
