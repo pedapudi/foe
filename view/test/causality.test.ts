@@ -14,7 +14,6 @@ import {
   visibleRows,
   ROW_PITCH,
   STUB,
-  callTarget,
   composeLabel,
   layoutCausality,
   readCausality,
@@ -295,7 +294,7 @@ test("a step is named by what it did, with its step number alongside", () => {
   // draws a mark: a word is faster to scan than a glyph, and the target is
   // what the reader came for.
   assert.deepEqual(
-    composeLabel({ kind: "step", step: 1, calls: [{ id: "a", name: "read", target: "src/parser.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 }] }),
+    composeLabel({ kind: "step", step: 1, calls: [{ id: "a", name: "read", subject: "src/parser.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 }] }),
     { label: "read src/parser.rs", aside: "step 1" },
   );
   assert.deepEqual(
@@ -303,15 +302,15 @@ test("a step is named by what it did, with its step number alongside", () => {
       kind: "step",
       step: 2,
       calls: [
-        { id: "a", name: "read", target: "src/parser.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
-        { id: "b", name: "read", target: "src/lexer.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
-        { id: "c", name: "grep", target: "", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
+        { id: "a", name: "read", subject: "src/parser.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
+        { id: "b", name: "read", subject: "src/lexer.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
+        { id: "c", name: "grep", subject: "", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
       ],
     }),
     { label: "read src/parser.rs +2", aside: "step 2" },
   );
   assert.deepEqual(
-    composeLabel({ kind: "step", step: 3, calls: [{ id: "a", name: "spawn", target: "surveyor", failed: false, childId: "ep_child", childName: "surveyor", result: "", resultSeq: 0 }] }),
+    composeLabel({ kind: "step", step: 3, calls: [{ id: "a", name: "spawn", subject: "surveyor", failed: false, childId: "ep_child", childName: "surveyor", result: "", resultSeq: 0 }] }),
     { label: "spawn surveyor", aside: "step 3" },
   );
   assert.deepEqual(composeLabel({ kind: "node", node: "propose" }), { label: "propose", aside: "" });
@@ -324,15 +323,30 @@ test("a step is named by what it did, with its step number alongside", () => {
   });
 });
 
-test("a target is a short field or nothing, never a slice of free text", () => {
-  // The whole path where it fits: which directory a file is in is part of
-  // what the reader is looking for.
-  assert.equal(callTarget({ path: "tests/parser_test.py" }), "tests/parser_test.py");
-  assert.equal(callTarget({ path: "crates/runtime/src/episode/parser.rs" }), "crates/…/parser.rs");
-  assert.equal(callTarget({ cmd: "pytest tests/parser_test.py" }), "", "a shell command is free text and is not shown");
-  assert.equal(callTarget({ program: "survey", task: "List the parser tests." }), "survey");
-  assert.equal(callTarget({}), "");
-  assert.equal(callTarget("a bare string"), "");
+test("a call with no subject names its tool alone rather than guessing", () => {
+  // A log written before tools stated what they acted on, or a tool that
+  // states nothing, leaves the field empty. A missing target is honest
+  // where a target guessed from the arguments is not.
+  const bare = { id: "a", name: "grep", subject: "", failed: false, childId: null, childName: "", result: "", resultSeq: 0 };
+  assert.deepEqual(composeLabel({ kind: "call", calls: [bare] }), { label: "grep", aside: "" });
+  assert.deepEqual(composeLabel({ kind: "step", step: 1, calls: [bare] }), { label: "grep", aside: "step 1" });
+});
+
+test("a failed call reads as the line its tool wrote, without stuttering", () => {
+  const failed = {
+    id: "a",
+    name: "read",
+    subject: "read: src/parser.rs: No such file or directory (os error 2)",
+    failed: true,
+    childId: null,
+    childName: "",
+    result: "",
+    resultSeq: 0,
+  };
+  assert.deepEqual(composeLabel({ kind: "call", calls: [failed] }), {
+    label: "read: src/parser.rs: No such file or directory (os error 2)",
+    aside: "",
+  });
 });
 
 test("a path that must shorten elides its middle and keeps the basename", () => {
@@ -344,11 +358,14 @@ test("a path that must shorten elides its middle and keeps the basename", () => 
 test("the fixture's own steps read as their role", () => {
   const figure = layout("root.jsonl", "child.jsonl");
   const labels = figure.rows.filter((r) => r.episodeId === "ep_root").map((r) => `${r.label} · ${r.aside}`);
+  // Each call reads as the line its own tool wrote. The interrupted `bash`
+  // names what failed, and because that line already opens with the tool's
+  // name the label does not repeat it.
   assert.deepEqual(labels, [
     "fix-test · ep_root",
-    "read tests/parser_test.py · step 1",
+    "read tests/parser_test.py lines 1\u20135 of 5 · step 1",
     "spawn survey · step 2",
-    "bash · step 3",
+    "bash: the request was interrupted before the tool ran · step 3",
     "answered · step 4",
   ]);
 });
@@ -405,7 +422,7 @@ test("the conversation costs almost nothing and the outputs cost everything", ()
 test("a step's label defers to its calls once they are on the page", () => {
   const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
   const summarised = visibleRows(outline, "steps").find((r) => r.id === "ep_root/step/1")!;
-  assert.equal(summarised.label, "read tests/parser_test.py");
+  assert.equal(summarised.label, "read tests/parser_test.py lines 1\u20135 of 5");
   assert.equal(summarised.calls.length, 1, "it draws the call it stands in for");
   const deferred = visibleRows(outline, "calls").find((r) => r.id === "ep_root/step/1")!;
   assert.equal(deferred.label, "step 1", "it does not echo the line beneath it");

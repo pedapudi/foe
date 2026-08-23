@@ -279,6 +279,10 @@ function renderTool(row: ToolRow): HTMLElement {
         "div",
         null,
         h("span", { class: "tool-name" }, row.name),
+        // What the tool itself says it acted on, which the pane would
+        // otherwise have to invent from the arguments. Absent for a log
+        // written before tools stated it.
+        row.subject ? h("span", { class: "tool-subject" }, row.subject) : null,
         row.isError ? markSvg("error") : null,
         row.synthetic ? markSvg("synthetic") : null,
         // Where the canonical value is stored is a locator a reader reads

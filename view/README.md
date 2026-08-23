@@ -124,15 +124,19 @@ outline over the `root` fixture, its spawned child, its fork and a run
 that exhausted its retries. The light one is the reading the viewer opens
 in, `conversation`: the whole causal structure of the run and what the
 model said at each step, with none of the tool output. Every label starts
-in one column, the tool calls step in one level under the steps that
-issued them, each step's own label has fallen back to `step 1` now that
-its calls are on the page, the failed `bash` carries the outcome hue, and
-the gutter holds the log position of every row — where it falls from 29 to
-0 is the child episode's rows sitting under the call that spawned them.
-The dark one adds the last rung, `outputs`, so each tool's result body
-stands under the call that returned it, running the full width while the
-labels above it hold their column; the gutter is blank beside each body
-because the row above already named that event.
+in one column and the tool calls step in one level under the steps that
+issued them, each naming what its own tool says it acted on — the span
+`read` showed, the command `bash` ran and how it ended, and, for the
+interrupted call, the failure itself in the outcome hue. The `block` call
+carries no such line, because only the coding tools state one, so it shows
+its tool name alone. Each step's own label has fallen back to `step 1` now
+that its calls are on the page, and the gutter holds the log position of
+every row: where it falls from 29 to 0 is the child episode's rows sitting
+under the call that spawned them. The dark one adds the last rung,
+`outputs`, so each tool's result body stands under the call that returned
+it, running the full width while the labels above it hold their column;
+the gutter is blank beside each body because the row above already named
+that event.
 
 The `messages` list recorded in each `model/request` event is written by
 hand in the generator, so the tests compare it with the list the bundle

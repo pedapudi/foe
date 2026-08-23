@@ -3807,3 +3807,10 @@ kbd {
 .layout-toggle {
   margin-right: var(--dt-gap-item);
 }
+
+/* The line the tool wrote about what it acted on, beside the tool's name
+ * in the conversation. The pane no longer guesses it from the arguments. */
+.tool-subject {
+  margin-left: 6px;
+  color: var(--v2-ink-soft);
+}

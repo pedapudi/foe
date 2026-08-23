@@ -220,7 +220,7 @@ function callElement(row: PlacedRow, call: PlacedCall, card: Hovercard, handlers
   const group = svg("g", { class: `caus-call${call.failed ? " failed" : ""}` });
   group.appendChild(svg("line", { class: "tick", x1: row.x, y1: call.y, x2: call.x, y2: call.y }));
   group.appendChild(markGroup(call.failed ? "error" : "call", call.x, call.y, CALL_MARK));
-  const target = call.childId === null ? call.target : call.childName;
+  const target = call.childId === null ? call.subject : call.childName;
   card.attach(
     group,
     () => (call.childId === null ? call.name : `spawn ${call.childName}`),

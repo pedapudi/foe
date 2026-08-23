@@ -38,12 +38,12 @@ export interface CausalityCall {
   id: string;
   name: string;
   /**
-   * The call's target reduced to one short field: a path's basename, a
-   * program name, an identifier. Empty when the arguments carry no field
-   * that is short by construction, because a free-text substring truncates
-   * unpredictably and would say a different thing at every width.
+   * The one line the tool wrote naming what it acted on and what came of
+   * it. The tool is the only thing that knows: the arguments say what was
+   * attempted, and a reader wants the outcome. Empty when the log carries
+   * none, and a label then names the tool alone rather than guessing.
    */
-  target: string;
+  subject: string;
   /** True when the result reported a failure, which earns the cross. */
   failed: boolean;
   /** The episode this call opened, absent for a call that opened none. */
@@ -353,23 +353,16 @@ export const DEPTH_INDENT = 12;
 export const TONES = 5;
 
 /**
- * How many characters a call's target may set before its middle is
- * elided. Wide enough for the ordinary path of a source tree, so that the
- * directory a file sits in is usually kept whole.
- */
-export const TARGET_ROOM = 24;
-
-/**
  * One episode folded into what the causality figure draws. The fold in
  * fold.ts has already read the log; this reads its rows and summary, so no
  * event is parsed twice and no obligation pair is re-derived.
  */
 export function readCausality(summary: Summary, rows: Row[], depth: number): CausalityEpisode {
   const spawns = spawnsByCall(rows);
-  const results = new Map<string, { text: string; seq: number; failed: boolean }>();
+  const results = new Map<string, { text: string; body: string; seq: number; failed: boolean }>();
   for (const row of rows) {
     if (row.kind !== "tool") continue;
-    results.set(row.callId, { text: row.rendered, seq: row.seq, failed: row.isError });
+    results.set(row.callId, { text: row.subject, body: row.rendered, seq: row.seq, failed: row.isError });
   }
   const retries = new Map<number, number>();
   for (const row of rows) {
@@ -401,11 +394,11 @@ export function readCausality(summary: Summary, rows: Row[], depth: number): Cau
         return {
           id: call.id,
           name: call.name,
-          target: callTarget(call.args),
+          subject: result?.text ?? "",
           failed: result?.failed === true,
           childId: spawn ? spawn.childId : null,
           childName: spawn ? spawn.program : "",
-          result: result?.text ?? "",
+          result: result?.body ?? "",
           resultSeq: result?.seq ?? range.to,
         };
       }),
@@ -476,27 +469,6 @@ function stepOf(row: Row): number | null {
 }
 
 /**
- * The one short field a call's arguments carry, or empty when they carry
- * none. A value with whitespace in it is free text — a shell command, a
- * task, a prompt — and is never shown: it has no meaningful end to keep
- * and would read as a different thing at every width. What is left is
- * path-shaped or identifier-shaped.
- *
- * `room` is how many characters the caller can set. The whole path is
- * shown where it fits, because which directory a file is in is part of
- * what a reader is looking for; a longer one is elided in its middle.
- */
-export function callTarget(args: unknown, room = TARGET_ROOM): string {
-  const fields = obj(args);
-  for (const value of Object.values(fields)) {
-    if (typeof value !== "string" || value === "") continue;
-    if (/\s/.test(value)) continue;
-    return shortenPath(value, room);
-  }
-  return "";
-}
-
-/**
  * A path shortened to `room` characters with its middle elided, so the
  * basename — the part that says which file — always survives. A basename
  * longer than the room is left whole rather than cut, because a cut
@@ -537,8 +509,13 @@ export function composeLabel(row: {
   if (row.kind === "node") return { label: row.node ?? "", aside: "" };
   const calls = row.calls ?? [];
   const first = calls[0];
-  const one = (call: CausalityCall): string =>
-    call.childId !== null ? `spawn ${call.childName}` : `${call.name} ${call.target}`.trim();
+  const one = (call: CausalityCall): string => {
+    if (call.childId !== null) return `spawn ${call.childName}`;
+    // A failed call's subject is the error the tool wrote, which already
+    // opens with the tool's own name; prefixing it again would stutter.
+    if (call.subject.startsWith(`${call.name}:`)) return call.subject;
+    return `${call.name} ${call.subject}`.trim();
+  };
   if (row.kind === "call") return { label: first ? one(first) : "", aside: "" };
   const step = row.step === undefined ? "" : `step ${row.step}`;
   const attempts = row.attempts !== undefined && row.attempts > 1 ? ` · attempt ${row.attempts} of ${row.attempts}` : "";
