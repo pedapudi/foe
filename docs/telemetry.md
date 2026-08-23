@@ -1,0 +1,312 @@
+# Telemetry
+
+`foe-telemetry` reads a finished episode log and writes one OTLP trace per
+episode: what kind of work the episode did, what it cost, how it ended, and
+which tools it called. It is an add-on. The runtime carries no telemetry
+code, `crates/telemetry` depends on `crates/log` alone, and an installation
+that never runs the binary produces no telemetry and behaves no differently.
+
+## What it is a function of
+
+The output is a function of three inputs: the episode log, the rules
+compiled into the crate, and a local key stored beside the capture file.
+Nothing else reaches it. The crate opens no network connection, calls no
+model, reads no environment variable, and starts no process.
+
+Four properties follow.
+
+- **The loop pays nothing.** Telemetry runs after the episode ended, over
+  `episode.jsonl` as it was written. There is no hook in the kernel and no
+  cost inside a running episode.
+- **The same log produces the same bytes.** Nothing draws on a random
+  source or on the wall clock. Span and trace identifiers are derived by
+  hashing (below), and every timestamp is a time the log itself recorded.
+- **Preview is emission.** `foe-telemetry preview` runs the emission and
+  prints the result, so what a person reviews is what a run would write,
+  down to the pseudonyms.
+- **Running the binary is the opt-in.** There is no configuration key that
+  turns telemetry on, and running it changes no program identity.
+
+## Commands
+
+```
+foe-telemetry emit LOG... [--out FILE]
+foe-telemetry preview LOG... [--out FILE] [--json]
+```
+
+`LOG` is an episode directory holding `episode.jsonl`, or a log file named
+directly. `emit` appends one JSON object per episode to the capture file,
+by default `LOG/telemetry/otel.jsonl`. `preview` prints the same
+computation for a person: the top category with the evidence behind it, the
+totals, the scrub counts, and one line per span. `preview --json` prints the
+exact bytes `emit` would append.
+
+The capture file's directory also holds the local key, which is why
+`preview` accepts `--out`: naming the file emission would write also names
+the key the pseudonyms come from.
+
+A log that stops without `episode/end` was cut short, and everything before
+the cut is still emitted. Structural validation is not applied.
+
+A line whose event shape this build cannot read is a different matter, and
+`emit` refuses the whole log over even one. The scrubber learns the values
+it must remove from the log itself, so the unreadable line may be the one
+carrying the granted roots, and the known-value layer then quietly removes
+nothing. Version skew between this binary and the runtime that wrote the
+log is the realistic cause, which makes it a case to expect rather than an
+edge.
+
+`preview` still runs, because seeing what the log holds is how a person
+finds out why it cannot be read. It says up front that emission refuses the
+log, so nothing in the output is mistaken for what would be written.
+
+## Categories
+
+The classifier reads typed log fields and nothing else: file extensions
+from `read` and `edit` path arguments and `grep` globs, the head of each
+segment of every `bash` command line, the tool names called, and whether
+the episode spawned children or ran a workflow. It never reads the task
+text, the model's output, or a tool result body. It therefore cannot be
+steered by anything the model wrote, and it cannot leak what the episode
+read. The cost is that it sees only the shape of the work.
+
+A shell command line is split on `&&`, `||`, `;`, `|`, and newlines before
+the head is taken. A segment beginning with `cd` yields to the segment after
+it, and leading `VAR=value` assignments are skipped. For a small set of
+dispatchers whose subcommand carries the meaning, the head and its
+subcommand vote together, so `cargo test` and `cargo build` are separate
+evidence.
+
+Two levels. The top level is seeded from the task categories OpenRouter
+ranks model usage by: programming, data analysis, technology, science,
+translation, legal, finance, health, academia, marketing, trivia, roleplay.
+The structural rules reach only the first three; the rest of the list is
+present so that a later topical layer has somewhere to land. Seven
+subcategories sit under the top level: debugging, testing, build,
+refactoring, documentation, data-analysis, and infrastructure. Work over
+tabular data rolls up into data analysis whatever language it is written
+in, and provisioning or operating machines rolls up into technology.
+
+Each piece of evidence votes for one bucket. Two views of the votes come
+out, and both are emitted. The counts are multi-label and include roll-ups, so `programming`
+carries its own votes plus every subcategory's. The single top bucket is
+chosen on direct votes alone, because once roll-ups are added a top-level
+category holds the sum of its children and no subcategory could ever win.
+On direct votes the two levels are peers: `programming` means source work
+with no more specific signal, and it wins only when the generic evidence
+outweighs every specific kind. Equal counts go to the more specific label.
+An episode no rule matched is `unclassified`.
+
+Every matched rule is emitted with its bucket and count. That list is the
+whole explanation of the choice, and it is safe to emit because the tokens
+come from the shipped rules and the tool vocabulary rather than from the
+episode's content.
+
+There are no confidence scores. A rule vote is a count of matches, and a
+number formatted like a probability would be read as one.
+
+**Accuracy is unmeasured.** No labelled sample exists, so the crate makes
+no accuracy claim. The measurement path is part of the design: once real
+capture accumulates, hand-label a sample of episodes, publish the confusion
+matrix against these rules, and let that decide whether a trained layer is
+worth adding.
+
+## What is scrubbed, and what is never emitted
+
+Most protection comes from what the schema omits. It carries counts,
+durations, token usage, outcome terms, tool names, hashes, and category
+labels. Free text is limited to two fields, both short and written by a
+tool rather than by a model:
+
+- `tool/result.subject`, the one line a tool writes naming what it acted on
+  and what came of it, which on a failure is the error line.
+- The outcome's detail, which exists only for a blocked episode's message
+  and a failed episode's error.
+
+A completed episode's value is the report the model wrote, and it is a
+result body, so it is never emitted. Neither is the task text, the system
+prompt, any model output, any tool result body, or any file content.
+
+Four layers run over those two fields, in order.
+
+1. **Known-value substitution.** The known set is built from the log
+   itself: every absolute path in the resolved configuration, which covers
+   the granted roots and the workspace, the directory the log was read
+   from, and the user name component of any `/home/<user>` or
+   `/Users/<user>` path among them. Each value is matched in its variant
+   forms — as recorded, with a trailing slash, JSON-escaped, and
+   tilde-abbreviated against the home directory. All four forms of one
+   value carry the same pseudonym, so a join over the workspace does not
+   split four ways.
+2. **Format detectors,** all in one pass. Key material: PEM headers, `ssh-`
+   keys, JWT shape, and the token prefixes issued by cloud, source-forge,
+   model, and chat providers. Identifiers and addresses: email addresses,
+   URLs carrying a host or user information, UUIDs, MAC addresses, and IPv4
+   and IPv6 addresses. Runs that carry no shape but too much information:
+   bare hexadecimal of 32 characters or more, and base64-shaped runs of 20
+   characters or more that mix digits with upper case and whose Shannon
+   entropy reaches 3.5 bits per character.
+3. **Path componentization** for whatever slash-separated path remains.
+   Components in a dictionary of universal names are kept, as is the
+   alphabetic extension of the last component. The dictionary holds three
+   groups. The standard filesystem hierarchy: `usr`, `bin`, `sbin`, `etc`,
+   `var`, `tmp`, `opt`, `home`, `root`, `dev`, `proc`, `sys`, `run`, `mnt`,
+   `srv`, `boot`, `log`, `share`, `local`, `include`. The directory names
+   common to source trees: `src`, `lib`, `test`, `tests`, `docs`, `target`,
+   `build`, `dist`, `node_modules`, `git`. The system files and programs
+   that are the same on every machine, among them `null`, `bash`,
+   `useradd`, `systemctl`, `nginx`, `sshd_config`, `passwd`, `hosts`, and
+   `resolv.conf`. Everything else is replaced. Relative paths are included,
+   because tool subjects report paths relative to the workspace.
+
+   Keeping these names costs no privacy and buys the evidence back.
+   Masking `null` protects nobody, and `/dev/null` reduced to two
+   pseudonyms hides the fact that the episode discarded the output. A
+   component that could name a person, a project, or a task is not in the
+   dictionary; when in doubt, it is masked, so `/etc/nginx/staging.conf`
+   keeps `etc` and `nginx` and replaces the rest.
+4. **Pseudonyms.** Every replacement is `⟨t:xxxxxxxx⟩`. The digest is
+   HMAC-SHA256 of the value under the local key, truncated to eight
+   hexadecimal characters. The tag `t` is one letter naming what was
+   replaced: `p` path component, `u` user, `e` email, `h` host, `s`
+   secret-shaped.
+
+Eight hexadecimal characters sit below every detector's length threshold,
+and the `⟨` and `⟩` delimiters fall outside every detector's character
+class. A pseudonym therefore trips no detector, which is what makes
+scrubbing idempotent: scrubbing an already scrubbed string returns it
+unchanged. A test asserts this for every type tag in the shapes a second
+pass would see.
+
+### The local key
+
+The key is 32 bytes read from the system random source on first use and
+stored at `<out-dir>/key` with mode 0600. It is never emitted, never
+logged, and not part of any identity.
+
+Keyed hashing is what makes a pseudonym irrecoverable: an unkeyed hash of a
+user name falls to a word list in milliseconds. The pseudonym for one value
+is stable across every episode written under one output directory, so
+cross-episode joins hold. It is meaningless outside that directory, so
+cross-installation joins are impossible. That is a property of the design.
+
+### Digest collisions
+
+The runtime's own identifiers — program identity, build hash, episode
+identifiers — travel in dedicated schema fields that the scrubber never
+scans. Inside the two free-text fields, a long hexadecimal run is masked
+even when it is probably a commit hash. Losing a commit hash from an error
+line is an acceptable loss. Shipping a key that looked like one is not.
+
+### The self-check
+
+After scrubbing, the detectors and a known-value scan run over the output.
+Any hit fails the whole emission with a named finding, and no capture file
+is written or appended to.
+
+The known-value scan is looser than the substitution above.
+Substitution must match exactly, because folding case would corrupt paths
+that differ only by case; detection may match however loosely it likes. A
+known value that reaches the output in a form the substitution did not
+cover is therefore caught here. A fixture whose error line names a user in
+upper case exercises that path and fails emission:
+
+```
+scrub self-check failed, nothing emitted: known user survived scrubbing in
+tool/result.subject seq 5
+```
+
+## The schema
+
+Traces only. There is no metrics signal; numbers ride as span attributes,
+and a collector derives metrics from them. The encoding is OTLP's JSON
+form, written directly rather than through an OpenTelemetry SDK, which
+would bring a transport stack this add-on must not have. A golden file
+pins the encoding byte for byte, and it has been accepted by a stock
+collector over the OTLP/HTTP receiver.
+
+Each episode becomes one trace: a root span for the episode, a child span
+per model call, and a child span per tool call. Identifiers are derived
+rather than drawn from a random source, because the output must be a
+function of the log:
+
+- trace identifier: the first 16 bytes of SHA-256 over the episode
+  identifier.
+- span identifier: the first 8 bytes of SHA-256 over the episode
+  identifier, the span kind, and the sequence number of the event the span
+  was built from.
+
+Timestamps are the log's own event times in milliseconds, converted to
+nanoseconds.
+
+### Every field answers a question
+
+A field that answers no question is not emitted. This table is the gate.
+
+| field | the question it answers |
+|---|---|
+| `service.name` | which system produced this trace |
+| `foe.program.identity` | which program configuration ran |
+| `foe.runtime.version`, `foe.runtime.build` | which build produced the log |
+| `foe.schema.version`, `foe.taxonomy.version`, `foe.ruleset.version` | may these two payloads be compared, or did the fields, the buckets, or the rules change between them |
+| `foe.scrub.*` | how much of the free text was replaced, by type |
+| `foe.episode.id` | which episode, and which children belong to which parent |
+| `foe.outcome.kind` | what fraction of episodes complete, block, exhaust, or fail |
+| `foe.outcome.exit_class` | which limit was reached, or which blocking condition was hit |
+| `foe.outcome.detail` | what a blocked or failed episode said about why |
+| `foe.model.provider`, `foe.model.model` | does outcome or cost differ by route |
+| `foe.category`, `foe.category.top_level` | failure rate and cost distribution by kind of work |
+| `foe.category.counts` | which categories an episode belongs to at once, and how strongly, since one episode can be both testing and infrastructure |
+| `foe.evidence` | why the classifier chose that category |
+| `foe.tokens.input`, `foe.tokens.output`, `foe.tokens.cache_read` | what an episode costs, and how much of the input the cache served |
+| `foe.model_calls` | how many turns a kind of work takes |
+| `foe.tool_calls`, `foe.tool_errors` | how often tool calls fail, per episode |
+| `foe.duration_ms` | how long a kind of work takes end to end |
+| `foe.step` | which turn a span belongs to |
+| `foe.stop_reason` | how often responses end on length rather than on completion or a tool call |
+| `foe.tool.name` | the tool-mix profile of a kind of work |
+| `foe.tool.seq` | where in the log a span's tool call is |
+| `foe.tool.duration_ms` | which tools dominate wall-clock time |
+| `foe.tool.is_error` | which tools fail most |
+| `foe.tool.subject` | what a failing tool acted on |
+
+Input, output, and cache-read tokens are separate throughout, following the
+repository's standing convention that a single token total hides the three
+different costs it sums.
+
+Span status is `OK` for a completed episode and a tool call that did not
+error, and `ERROR` otherwise.
+
+## Reading the capture
+
+`otel.jsonl` holds one OTLP JSON object per line. A collector reading that
+file is the destination path; the crate sends nothing anywhere. Posting a
+line to a collector's OTLP/HTTP receiver at `/v1/traces` with
+`Content-Type: application/json` is enough to ingest it.
+
+## Limits
+
+- Classifier accuracy is unmeasured, as stated above.
+- Scrubbing over-masks. A version number shaped like an address, a
+  timestamp shaped like an IPv6 address, and a commit hash are all
+  replaced. Over-masking costs readability, and under-masking costs a
+  secret.
+- Pseudonyms are stable within one output directory. Emitting the same
+  episode to two directories yields two different sets of pseudonyms.
+- Scrubbing catches values the log names and values with a recognizable
+  format. A personal name typed into a command line is neither, so
+  `git config user.name 'Ada Lovelace'` reaches the capture with the name
+  intact while the email address beside it is replaced. Closing that gap
+  needs a name lexicon, which this version does not carry.
+- A tool subject is already truncated by the tool that wrote it, so a long
+  error line reaches telemetry cut short.
+- A single line this build's event types cannot read costs the whole log:
+  `emit` refuses it rather than emit under scrubbing it cannot vouch for.
+  Reading such a log needs a build whose event types match the runtime that
+  wrote it.
+
+## Not in this version
+
+Metrics signal, an on-disk database, network destinations, scrubbed
+trajectory export, a topical lexicon layer, task-text emission, and
+confidence scores.

@@ -147,22 +147,25 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 
-Eight numbers bound the source. Six are line budgets over Rust, excluding
+Nine numbers bound the source. Seven are line budgets over Rust, excluding
 tests and generated code: the kernel, which is the log and core crates
 together, stays under 5,400 lines, the tool crate under 1,600, the workflow
-executor under 1,000, the compaction policy under 500, the viewer crate
-under 600, and the command-line crate under 1,300. The kernel and the tools
-are budgeted apart because a new tool adds capability without touching the
-loop, so room for tools must not become room for the kernel. The viewer is budgeted apart from the
-runtime because it delivers a record of a run rather than running one; its
-HTML, TypeScript, and CSS count toward no line budget at all. The command
-line is budgeted apart from the runtime because it serves a person at a
-terminal rather than an episode. `scripts/loc.sh` counts the six, and
-continuous integration fails a build over any of them. The seventh number
-bounds the browser bundle at 150 KB compressed. The eighth is the stripped
-release binary with that bundle embedded, which measured 5,404,568 bytes on
-2026-08-22; continuous integration builds the bundle before measuring and
-fails a build over 8 MiB.
+executor under 1,000, the compaction policy under 500, the viewer crate under
+600, the command-line crate under 1,300, and the telemetry crate under 800.
+The kernel and the tools are budgeted apart because a new tool adds
+capability without touching the loop, so room for tools must not become room
+for the kernel. The viewer is budgeted apart from the runtime because it
+delivers a record of a run rather than running one; its HTML, TypeScript, and
+CSS count toward no line budget at all. The command line is budgeted apart
+from the runtime because it serves a person at a terminal rather than an
+episode. Telemetry is budgeted apart because it reads a finished log rather
+than producing one, and no part of the runtime depends on it.
+`scripts/loc.sh` counts the seven, and continuous integration fails a build
+over any of them. The eighth number bounds the browser bundle at 150 KB
+compressed. The ninth is the stripped release binary with that bundle
+embedded, which measured 5,404,568 bytes on 2026-08-22; continuous
+integration builds the bundle before measuring and fails a build over
+8 MiB.
 
 ## Documents
 
@@ -175,6 +178,7 @@ fails a build over 8 MiB.
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |
+| [docs/telemetry.md](docs/telemetry.md) | what `foe-telemetry` derives from an episode log, the schema it emits, and what it never emits |
 | [docs/protocol.md](docs/protocol.md) | the line protocol between foe and the process that launched it |
 | [docs/sdk.md](docs/sdk.md) | the Python package |
 | [docs/tools.md](docs/tools.md) | built-in tools, configured executables, and host tools |
