@@ -256,3 +256,73 @@ fn a_universal_system_path_survives_whole_while_a_home_path_does_not() {
     let mixed = scrub("/etc/nginx/vashti-staging.conf");
     assert!(mixed.starts_with("/etc/nginx/⟨p:") && !mixed.contains("vashti"), "{mixed}");
 }
+
+// ---- encodings must not smuggle -------------------------------------------
+
+fn hardened() -> Scrubber {
+    let known = vec![
+        KnownValue { tag: 'p', value: "/home/sunil/git/secret-project".into() },
+        KnownValue { tag: 'u', value: "sunil".into() },
+    ];
+    Scrubber::new((0u8..32).collect(), &known)
+}
+
+#[test]
+fn a_percent_encoded_known_value_is_masked() {
+    // No scheme, so the URL detector cannot be the one that catches it.
+    let mut report = Report::default();
+    let out = hardened().scrub("listing /home%2Fsunil%2Fgit%2Fsecret-project failed", &mut report);
+    assert!(!out.to_ascii_lowercase().contains("sunil"), "{out}");
+    assert!(!out.contains("secret-project"), "{out}");
+}
+
+#[test]
+fn a_base64_encoded_known_value_is_masked_even_below_the_entropy_gate() {
+    // base64 of "sunil-sunil-sunil-sunil": repetitive enough that the
+    // entropy gate passes the run; only decoding can catch it.
+    let encoded = "c3VuaWwtc3VuaWwtc3VuaWwtc3VuaWw=";
+    let mut report = Report::default();
+    let out = hardened().scrub(&format!("payload {encoded} sent"), &mut report);
+    assert!(!out.contains(encoded), "the encoded run survived: {out}");
+}
+
+#[test]
+fn zero_width_characters_cannot_split_a_known_value() {
+    let mut report = Report::default();
+    let out = hardened().scrub("ran as su\u{200B}nil in /home/su\u{200D}nil/git", &mut report);
+    assert!(!out.replace(['\u{200B}', '\u{200D}'], "").contains("sunil"), "{out}");
+}
+
+#[test]
+fn a_luhn_valid_card_number_is_masked_and_a_luhn_invalid_one_is_not() {
+    let mut report = Report::default();
+    let masked = hardened().scrub("charged 4539 1488 0343 6467 twice", &mut report);
+    assert!(!masked.contains("6467"), "{masked}");
+    let kept = hardened().scrub("order 4539 1488 0343 6468 shipped", &mut report);
+    assert!(kept.contains("4539 1488 0343 6468"), "a non-card digit run was masked: {kept}");
+}
+
+#[test]
+fn the_ported_provider_prefixes_are_masked() {
+    let mut report = Report::default();
+    for token in [
+        "glpat-aBcDeFgHiJkLmNoPqRsT",
+        "AIzaSyA1bC2dE3fG4hI5jK6lM7nO8pQ9rS0tU",
+        "ya29.a0AbCdEfGhIjKlMnOpQrStUvWxYz1234",
+        "npm_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345",
+        "sk_live_aBcDeFgHiJkLmNoPqRsTuVwX",
+        "xoxe.xoxp-1-aBcDeFgHiJkLmNoPqRsTuVwXyZ",
+    ] {
+        let out = hardened().scrub(&format!("auth with {token} ok"), &mut report);
+        assert!(!out.contains(token), "{token} survived: {out}");
+    }
+}
+
+#[test]
+fn hardening_keeps_scrubbing_idempotent() {
+    let mut report = Report::default();
+    let s = hardened();
+    let once = s.scrub("su\u{200B}nil L2hvbWUvc3VuaWwvZ2l0L3NlY3JldC1wcm9qZWN0 4539148803436467", &mut report);
+    let twice = s.scrub(&once, &mut Report::default());
+    assert_eq!(once, twice);
+}
