@@ -23,7 +23,7 @@ const SHELL: &str = "/bin/bash";
 /// writable location.
 fn environment(cwd: &std::path::Path) -> BTreeMap<String, String> {
     BTreeMap::from([
-        ("PATH".to_owned(), "/usr/local/bin:/usr/bin:/bin".to_owned()),
+        ("PATH".to_owned(), "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_owned()),
         ("HOME".to_owned(), cwd.display().to_string()),
         ("LANG".to_owned(), "C.UTF-8".to_owned()),
     ])
