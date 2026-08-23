@@ -90,8 +90,9 @@ bazel run //evals/harness_bench:self-improve -- \
 The workflow has one deterministic evidence node and one terminal model node.
 The model node may change runtime source, adjacent Rust tests, and affected
 specifications. It cannot write evaluation code, benchmark adapters, tasks,
-graders, budgets, or model routes. Its tools provide source reads, search,
-structured edits, and the generated checker. It has no general shell tool.
+graders, budgets, or model routes. It receives the four coding tools available
+to a default Foe coding episode: source reads, search, structured edits, and a
+contained shell. The generated checker adds a deterministic acceptance tool.
 
 The generated checker requires a runtime source change, a Rust regression
 test, and an affected specification. It also rejects trailing whitespace,

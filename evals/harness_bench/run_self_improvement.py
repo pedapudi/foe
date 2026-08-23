@@ -18,6 +18,7 @@ from typing import Any
 LIMITS = {"model_calls": 12, "input_tokens": 300_000, "output_tokens": 20_000, "seconds": 1_200}
 ALLOWED_PREFIXES = ("crates/core/src/", "crates/code/src/", "crates/cli/src/", "docs/")
 LINE_BUDGETS = {"runtime": 6_000, "workflow": 1_000, "context": 500, "view": 600, "cli": 1_300}
+CODING_TOOLS = ["read", "grep", "edit", "bash"]
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -152,9 +153,9 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
             "10-role": "Improve one general Foe runtime behavior using the supplied assessed evidence.",
             "20-scope": "Diagnose the mechanism before editing. Change runtime source, a regression test, and every affected specification. Do not change evaluation code, benchmark adapters, tasks, graders, budgets, or model routes. Do not encode benchmark identifiers, fixture values, or grader rules.",
             "30-quality": "Prefer a small behavioral change supported by more than one observation. Preserve trace reconstruction, declared authority, separate token budgets, and explicit completion semantics. A successful tool action alone never proves that an open-ended task is complete.",
-            "40-validation": "Read every file before editing it. Use check after the change. The check validates candidate shape, whitespace, and line budgets. Full compilation and tests run outside this episode. State the expected accuracy, token, latency, and compatibility effects in the final result.",
+            "40-validation": "Read every file before editing it. Use bash for focused diagnostics and tests that the contained environment supports. Use check after the change. The check validates candidate shape, whitespace, and line budgets. Full repository validation runs outside this episode. State the expected accuracy, token, latency, and compatibility effects in the final result.",
         },
-        "tools": ["read", "grep", "edit", "check"],
+        "tools": [*CODING_TOOLS, "check"],
         "tool_defs": {"check": check_def},
         "grants": {"read": read, "write": write},
         "budget": {
@@ -171,7 +172,7 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
         "version": 2,
         "name": "assessed-evidence-self-improvement",
         "instructions": {"role": "Run the declared evidence collection and self-improvement workflow."},
-        "tools": ["read", "grep", "edit", "evidence", "check"],
+        "tools": [*CODING_TOOLS, "evidence", "check"],
         "tool_defs": {
             "evidence": {
                 "exec": "/usr/bin/cat",

@@ -18,7 +18,7 @@ _SPEC.loader.exec_module(run_self_improvement)
 
 
 class SelfImprovementTest(unittest.TestCase):
-    def test_workflow_has_a_finite_allowance_and_no_shell_tool(self) -> None:
+    def test_workflow_has_a_finite_allowance_and_default_coding_tools(self) -> None:
         self.assertEqual(
             run_self_improvement.LIMITS,
             {"model_calls": 12, "input_tokens": 300_000, "output_tokens": 20_000, "seconds": 1_200},
@@ -27,8 +27,8 @@ class SelfImprovementTest(unittest.TestCase):
             Path("/candidate"), Path("/evidence/report.json"), Path("/check"), {"provider": "p", "model": "m"}
         )
         child = config["workflow"]["nodes"]["improve-runtime"]["model"]
-        self.assertNotIn("bash", config["tools"])
-        self.assertNotIn("bash", child["tools"])
+        self.assertTrue(set(run_self_improvement.CODING_TOOLS).issubset(config["tools"]))
+        self.assertTrue(set(run_self_improvement.CODING_TOOLS).issubset(child["tools"]))
 
     def test_checker_accepts_a_general_change_and_enforces_runtime_size(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
