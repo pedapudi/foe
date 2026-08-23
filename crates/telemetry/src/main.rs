@@ -54,7 +54,16 @@ fn run(args: &[String]) -> Result<(), String> {
     for log in &logs {
         let (events, dir, unparsed) = read_log(Path::new(log)).map_err(|error| format!("{log}: {error}"))?;
         if unparsed > 0 {
-            eprintln!("{log}: {unparsed} line(s) this build cannot read were skipped");
+            let doubt = format!(
+                "{log}: {unparsed} line(s) this build cannot read. The known-value layer learns what to \
+                 remove from the log, so a value it needed may be on one of them and scrubbing coverage \
+                 cannot be guaranteed."
+            );
+            if command == "emit" {
+                return Err(format!("{doubt} Nothing emitted."));
+            }
+            eprintln!("!! {doubt}");
+            eprintln!("!! `foe-telemetry emit` refuses this log. What follows is not what emit would write.");
         }
         let capture = out.clone().unwrap_or_else(|| dir.join("telemetry").join("otel.jsonl"));
         let key_dir = capture.parent().unwrap_or(Path::new(".")).to_path_buf();
@@ -83,18 +92,16 @@ fn append(capture: &Path, line: &str) -> std::io::Result<()> {
 /// the events, the directory the log lives in, and how many lines did not
 /// parse.
 ///
-/// Two tolerances, both deliberate. Structural validation is not applied: a
-/// log cut short by a crash still describes everything that happened before
-/// the cut, and that is worth emitting. A line this build's event types
-/// cannot read is counted and skipped rather than failing the episode,
-/// because a log written by another version of the runtime is still mostly
-/// readable and refusing all of it would report nothing at all. Both losses
-/// are visible: the skipped count is printed, never buried.
+/// Structural validation is not applied: a log cut short by a crash still
+/// describes everything that happened before the cut, and that is worth
+/// emitting. A line whose event shape this build cannot read is a different
+/// matter, because the scrubber learns the values it must remove from the
+/// log itself. Losing the line that carries the granted roots loses the
+/// known-value layer, and nothing downstream can tell that it happened.
+/// Skipped lines are therefore counted for the caller to refuse on.
 fn read_log(path: &Path) -> Result<(Vec<Event>, PathBuf, usize), LogError> {
-    let (file, dir) = match path.is_dir() {
-        true => (path.join(foe_log::fold::LOG_FILE), path.to_path_buf()),
-        false => (path.to_path_buf(), path.parent().unwrap_or(Path::new(".")).to_path_buf()),
-    };
+    let file = if path.is_dir() { path.join(foe_log::fold::LOG_FILE) } else { path.to_path_buf() };
+    let dir = if path.is_dir() { path.to_path_buf() } else { path.parent().unwrap_or(Path::new(".")).to_path_buf() };
     let text = std::fs::read_to_string(&file)?;
     let lines: Vec<&str> = text.lines().filter(|line| !line.trim().is_empty()).collect();
     let events: Vec<Event> = lines.iter().filter_map(|line| serde_json::from_str(line).ok()).collect();

@@ -101,6 +101,47 @@ fn the_binary_refuses_the_seeded_log_and_writes_nothing() {
     assert!(!out.exists(), "a refused emission still wrote a capture file");
 }
 
+/// A line this build cannot read is not a tolerable loss. The scrubber
+/// learns what to remove from the log, so the unreadable line may be the
+/// one carrying the granted roots, and the known-value layer then silently
+/// does nothing. This fixture is exactly that shape: an `episode/start`
+/// written without a field this build requires, carrying grants naming a
+/// user whose name appears in a later tool subject.
+#[test]
+fn emit_refuses_a_log_it_cannot_fully_read_and_writes_nothing() {
+    let out = temp("skewed").join("otel.jsonl");
+    let run = Command::new(BINARY)
+        .args(["emit", fixtures().join("skewed").to_str().unwrap(), "--out", out.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(!run.status.success());
+    let complaint = String::from_utf8_lossy(&run.stderr);
+    assert!(complaint.contains("1 line(s) this build cannot read"), "{complaint}");
+    assert!(complaint.contains("scrubbing coverage cannot be guaranteed"), "{complaint}");
+    assert!(complaint.contains("Nothing emitted."), "{complaint}");
+    assert!(!out.exists(), "a refused emission still wrote a capture file");
+}
+
+/// Preview still runs, because seeing what the log holds is how a person
+/// finds out why it cannot be read. It says up front that emission refuses
+/// it, so nothing here is mistaken for what would be written.
+#[test]
+fn preview_of_a_log_it_cannot_fully_read_leads_with_a_warning() {
+    let out = temp("skewed-preview").join("otel.jsonl");
+    let run = Command::new(BINARY)
+        .args(["preview", fixtures().join("skewed").to_str().unwrap(), "--out", out.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(run.status.success());
+    let warning = String::from_utf8_lossy(&run.stderr);
+    assert!(warning.starts_with("!! "), "{warning}");
+    assert!(warning.contains("scrubbing coverage cannot be guaranteed"), "{warning}");
+    assert!(warning.contains("refuses this log"), "{warning}");
+    // The leak the refusal exists to prevent is visible in the preview: the
+    // user name reaches the subject because the grants never parsed.
+    assert!(String::from_utf8_lossy(&run.stdout).contains("marlow"));
+}
+
 #[test]
 fn two_runs_of_emit_produce_byte_identical_output() {
     let dir = temp("determinism");
@@ -172,6 +213,11 @@ fn preview_reports_the_bucket_its_evidence_the_totals_and_the_scrub_counts() {
 /// The logs under `view/fixtures` are real episode logs kept for the
 /// viewer. Running against them is the check that the crate reads what the
 /// runtime actually writes, rather than what its own fixtures assume.
+///
+/// One of them holds a `workflow/node-end` of a shape the current event
+/// types cannot read, so emission refuses it. That refusal is the correct
+/// answer and the test accepts it, while requiring that every other
+/// fixture emits and that no fixture fails for any other reason.
 #[test]
 fn the_binary_runs_against_every_real_viewer_fixture() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../view/fixtures");
@@ -183,13 +229,23 @@ fn the_binary_runs_against_every_real_viewer_fixture() {
         .collect();
     logs.sort();
     assert!(logs.len() >= 10, "the viewer fixtures moved");
+    let mut emitted = 0;
     for log in &logs {
         let run = Command::new(BINARY)
             .args(["emit", log.to_str().unwrap(), "--out", out.to_str().unwrap()])
             .output()
             .unwrap();
-        assert!(run.status.success(), "{}: {}", log.display(), String::from_utf8_lossy(&run.stderr));
+        let complaint = String::from_utf8_lossy(&run.stderr);
+        match run.status.success() {
+            true => emitted += 1,
+            false => assert!(
+                complaint.contains("this build cannot read"),
+                "{} failed for a reason other than an unreadable line: {complaint}",
+                log.display()
+            ),
+        }
     }
+    assert!(emitted >= logs.len() - 1, "more than one viewer fixture holds a line this build cannot read");
     let written = std::fs::read_to_string(&out).unwrap();
-    assert_eq!(written.lines().count(), logs.len());
+    assert_eq!(written.lines().count(), emitted);
 }

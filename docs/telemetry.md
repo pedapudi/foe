@@ -45,11 +45,20 @@ The capture file's directory also holds the local key, which is why
 `preview` accepts `--out`: naming the file emission would write also names
 the key the pseudonyms come from.
 
-Two tolerances apply to reading. A log that stops without `episode/end` was
-cut short, and everything before the cut is still emitted. A line whose
-event shape this build cannot read is skipped and counted, and the count is
-printed, because a log written by another version of the runtime is still
-mostly readable.
+A log that stops without `episode/end` was cut short, and everything before
+the cut is still emitted. Structural validation is not applied.
+
+A line whose event shape this build cannot read is a different matter, and
+`emit` refuses the whole log over even one. The scrubber learns the values
+it must remove from the log itself, so the unreadable line may be the one
+carrying the granted roots, and the known-value layer then quietly removes
+nothing. Version skew between this binary and the runtime that wrote the
+log is the realistic cause, which makes it a case to expect rather than an
+edge.
+
+`preview` still runs, because seeing what the log holds is how a person
+finds out why it cannot be read. It says up front that emission refuses the
+log, so nothing in the output is mistaken for what would be written.
 
 ## Categories
 
@@ -278,9 +287,10 @@ line to a collector's OTLP/HTTP receiver at `/v1/traces` with
   needs a name lexicon, which this version does not carry.
 - A tool subject is already truncated by the tool that wrote it, so a long
   error line reaches telemetry cut short.
-- Lines this build's event types cannot read are skipped, which lowers the
-  counts derived from them. The skipped count is printed on every run that
-  has one.
+- A single line this build's event types cannot read costs the whole log:
+  `emit` refuses it rather than emit under scrubbing it cannot vouch for.
+  Reading such a log needs a build whose event types match the runtime that
+  wrote it.
 
 ## Not in this version
 
