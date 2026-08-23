@@ -594,7 +594,9 @@ given without `--config` uses a built-in coding configuration: the tools
 directory, and a budget of 40 model calls. Its model is the one named by
 `--model`, or the default model when `--model` is absent. The default
 model is the `model` block in `~/.config/foe/default-model.json`, which
-`foe login` writes. `--key-file` names the key file explicitly; without it the
+`foe login` writes. This configuration supplies low reasoning effort for
+`gpt-5.6-sol` through `openai` or `openai-codex` when the model block omits
+the option. `--key-file` names the key file explicitly. Without it, the
 provider's credential file under `~/.config/foe/credentials/` is read. The
 home directory comes from the passwd database, never from the environment.
 

@@ -233,7 +233,9 @@ fn codex_login_up_to_the_loopback_callback() {
     let text = output.text();
     assert!(text.contains("(account ...5678)"), "{text}");
     assert!(!text.contains("acct_12345678") && !text.contains("rt\""), "{text}");
-    assert_eq!(default_model_in(&home).unwrap().unwrap().model, "gpt-5.6-sol");
+    let model = default_model_in(&home).unwrap().unwrap();
+    assert_eq!(model.model, "gpt-5.6-sol");
+    assert_eq!(model.option("reasoning_effort"), Some("low"));
 }
 
 #[test]
