@@ -329,7 +329,6 @@ impl Episode {
             Summarized::Failed { error, usage } => (false, usage, cut.projected_tokens, Some(error)),
         };
         self.p.log.append(EventData::CompactionEnd { step, ok, usage, active_estimate, error })?;
-        lock(&self.p.pool).note_compaction();
         Ok((!ok && cut.exceeds_window).then_some(Outcome::Exhausted { limit: ExhaustedLimit::ContextWindow }))
     }
 

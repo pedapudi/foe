@@ -18,12 +18,6 @@ pub struct Pool {
     requests: u64,
     /// Provider-reported input tokens this episode consumed.
     input_tokens: u64,
-    /// Input the last completed response reported. The next request carries
-    /// the same conversation and more, so this is a floor under its input
-    /// cost, and a remainder below the floor cannot fit another request. A
-    /// retry resends the same conversation, so a remainder equal to the
-    /// floor still fits. Compaction shrinks the conversation and clears it.
-    last_input: u64,
     /// Provider-reported output tokens this episode consumed.
     output_tokens: u64,
     /// Reservations of children that have not settled, by child id.
@@ -40,7 +34,6 @@ impl Pool {
             started: Instant::now(),
             requests: 0,
             input_tokens: 0,
-            last_input: 0,
             output_tokens: 0,
             active: BTreeMap::new(),
             children_spent: BudgetAmount::default(),
@@ -58,7 +51,6 @@ impl Pool {
                 self.active.insert(child_id.clone(), *reserved);
             }
             EventData::BudgetRelease { child_id, spent } => self.release(child_id, *spent),
-            EventData::CompactionEnd { .. } => self.note_compaction(),
             _ => {}
         }
     }
@@ -70,13 +62,6 @@ impl Pool {
     pub fn note_usage(&mut self, usage: Usage) {
         self.input_tokens = self.input_tokens.saturating_add(usage.input);
         self.output_tokens = self.output_tokens.saturating_add(usage.output);
-        self.last_input = usage.input;
-    }
-
-    /// Clears the input floor: the conversation just shrank, so the last
-    /// report no longer bounds the next request.
-    pub fn note_compaction(&mut self) {
-        self.last_input = 0;
     }
 
     /// The instant the `seconds` limit elapses, when there is one.
@@ -112,7 +97,7 @@ impl Pool {
         let remaining = self.remaining();
         if remaining.model_calls == Some(0) {
             Some(ExhaustedLimit::ModelCalls)
-        } else if remaining.input_tokens.is_some_and(|left| left == 0 || left < self.last_input) {
+        } else if remaining.input_tokens == Some(0) {
             Some(ExhaustedLimit::InputTokens)
         } else if remaining.output_tokens == Some(0) {
             Some(ExhaustedLimit::OutputTokens)
