@@ -712,11 +712,12 @@ the same terms. It is separate because it grows a tool at a time: a new
 tool adds capability without touching the kernel, so room for tools must
 not become room for the loop. The workflow executor in `crates/workflow`
 stays under 1,100 lines — it carries, beside the executor, the inspection
-of a configured program tree that `foe plan` reports: the inspection walks
-spawn grants and workflow nodes interleaved, the walk `spawner_config`
-already owns, and its workflow-node arm — a node's tools are reachable
-because firing the node starts that node's episode — is the executor's own
-semantics — and the compaction policy in `crates/context`
+of a configured program tree that `foe plan` reports. The inspection's
+workflow-node enumeration is the crate's own `model_nodes`, shared with
+`spawner_config`, and both encode one rule of the executor: firing a model
+node starts that node's episode, which `spawner_config` realizes as an
+ordinary spawn and the inspection reads as reachability — and the
+compaction policy in `crates/context`
 under 500.
 
 The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
