@@ -23,6 +23,7 @@ declared.
 |---|---|
 | each `grants.read` directory | read files, list directories |
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
+| each `grants.execute` file or directory | read and execute the file or every file below the directory, including from a tool subprocess |
 | each `tool_defs` entry's `exec` file, in this program and in every program below it | execute and read that file |
 | the running `foe` binary, when `grants.spawn` is not empty | execute and read that file, so the episode can start children |
 | the credential file the `model` block resolves to, when present | read that file, so a child episode can read the credential after inheriting this domain |
@@ -36,9 +37,9 @@ declared.
 The loader directories let a process start: the kernel executes the dynamic
 loader from `/lib64`, the loader maps shared libraries from `/usr/lib`, and a
 script names its interpreter in `/usr/bin`.
-A file under a read root is readable and is never executable by that grant
-alone. A file outside every listed path, such as a script inside the
-project, runs only when a `tool_defs` entry names it.
+A file under a read root is readable and is never executable through that
+grant alone. A project script runs when a `tool_defs` entry names the file or
+when an explicit execute grant covers it.
 
 The resolver configuration may be a symbolic link into `/run`, which the
 system read directories do not cover. Before applying a policy, foe resolves
@@ -85,13 +86,11 @@ less than the episode and never more. The kernel allows sixteen nested
 rulesets; an episode tree of depth sixteen is the practical limit.
 
 Because a ruleset only narrows, an episode reserves what the programs below
-it need before it restricts itself. A child's read and write roots lie inside
-its parent's, which the configuration requires. A `tool_defs` executable has
-no such rule, because declaring the entry is what permits the execution, so
-an episode's ruleset holds execute on the `tool_defs` executables of every
-program below it as well as its own. Each episode's own ruleset still names
-its own executables alone, so reserving widens no episode's reach except an
-ancestor's, which must hold the union in order to pass it down.
+it need before it restricts itself. A child's read, write, and execute roots
+lie inside its parent's corresponding roots. Configuration resolution checks
+that containment. An episode also reserves the `tool_defs` executables of
+every program below it. Each descendant still narrows itself to its own
+configured executables and explicit execute grants.
 
 ## The episode process
 
@@ -124,8 +123,9 @@ and no type expresses.
 The episode keeps:
 
 - read on its read roots, write on its write roots;
-- execute on every `tool_defs` executable of its own program and of every
-  program below it, and on its own binary when it may spawn children;
+- execute on every explicit execute grant and every `tool_defs` executable
+  of its own program and of every program below it;
+- execute on its own binary when it may spawn children;
 - read on the key file named by its `model` block, which its children need;
 - read and write on its own log directory, which holds its children's
   directories and its spill files;
@@ -139,10 +139,11 @@ The episode keeps:
 ## Executables
 
 A configured executable runs under the episode's ruleset narrowed once
-more. The narrowed policy keeps the read roots, the write roots, the
-loader, system, and device paths, and execute on the one file named by the
-tool definition. It drops the log directory, the key file, execute on every
-other executable, and TCP unless the tool definition sets `network: true`.
+more. The narrowed policy keeps the read roots, write roots, explicit execute
+grants, loader paths, system paths, and device paths. It also keeps execute on
+the file named by the tool definition. It drops the log directory, key file,
+and execute access to other configured tools. It keeps TCP only when the tool
+definition sets `network: true`.
 
 This crate forbids unsafe code, so the narrowing is applied by a short-lived
 thread rather than by a hook between fork and exec. The thread applies the
@@ -164,10 +165,10 @@ narrowing, because the child applies its own policy to itself at startup.
 Two independent rules keep that policy inside the parent's policy.
 
 Resolving the configuration checks containment before any process starts:
-each child program's read roots must lie within its parent program's read
-roots and its write roots within its parent's write roots, applied at every
-level of `programs`. A document that fails the check is refused with the
-dotted key of the offending root, and no episode begins.
+each child program's read, write, and execute roots must lie within its
+parent program's corresponding roots. The rule applies at every level of
+`programs`. A document that fails the check is refused with the dotted key of
+the offending root, and no episode begins.
 
 The kernel enforces the same containment whatever the document says. The
 parent restricts its main thread before it starts any other thread, and a

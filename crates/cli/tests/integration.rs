@@ -856,18 +856,18 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
 /// model sees, never a side effect of moving code between crates.
 #[rustfmt::skip]
 const RECORDED_IDENTITIES: [(&str, &str); 12] = [
-    ("budget-exhausted", "sha256:2db57fc3be9b010f32ff1ac38f8a887a1737936dd57c29a0457e12f5c574620e"),
-    ("exec-transport", "sha256:801d90de0ea80d61aa4a1a4f939e91aa63f537ceecf8567ad0758849a60bbd4a"),
-    ("host-transport", "sha256:01a692e035bdbbdf5f467de93321539218390550088dfc0ef91a7fa1ad84b274"),
-    ("minimal", "sha256:f9570847c450dfd531a7894c6337f5a6f19a279fd16c296a6c53c478739e05af"),
-    ("recovery-exhausted", "sha256:ed2dd8ba81f17d46e5e5640bf8ea10cf20d0248a78be6533f6536962c77aba4e"),
-    ("sandbox", "sha256:fd4ba25cf14af4e3039207aac8184297ce4c84f8794c50fa975efaafa6f31696"),
-    ("self-extension", "sha256:f7db47b66a8bc0eee3961401c9ee302239d4b78e12806501f8d555502b997280"),
-    ("subagents", "sha256:10d8af9a94d7d2e826fe5cadbbe51a0ee03b026f3138181ad60cc0bd1ec91af7"),
-    ("team", "sha256:71b0cd4dc606a87a443505f765bafc0576f29963c9c52d2d3a97a413156a8d69"),
-    ("verification-unsatisfiable", "sha256:59370eeb273563c40b2b11cdfd79feb327976a6ee80a5e1ccdcd6c8cf99bde0d"),
-    ("workflow", "sha256:06badcd815fbb591881ce0726e11c2c91b68d735315b5d6401611c40e1c11663"),
-    ("wrap-a-binary", "sha256:615d9c957c91886ef48bc6c7cba061f2e7a5ddd15e0013436e07ca85c7842725"),
+    ("budget-exhausted", "sha256:69bb75a67b585da385681c087fc0f55ab6842f0d0fb04f64db50b7ee24029e93"),
+    ("exec-transport", "sha256:90a8605ab624d4e097160f9bfcfb39560435f9fe4f1fe06c06deccd24c56a66c"),
+    ("host-transport", "sha256:76aeb4ffd62c9510981f7f7e0832d56bf80356279ab8d57f012433153dc6ede5"),
+    ("minimal", "sha256:cf42b194c2774fdb89d321ed57187d54cb2a2e3df09db2c0b2c0145ba82bd145"),
+    ("recovery-exhausted", "sha256:ff5e6b2a968a0d1609cd412042706ba678898c500f29dd26327b1d1f27ec2fbd"),
+    ("sandbox", "sha256:7a1a7d6fd773716a01fecde1c82140b3e88dc090d191caebf30dfc466a1f758b"),
+    ("self-extension", "sha256:875203b88a133907a2eadc967cfdb5bd6c0f27ca3d67baf4b7c88961cc6e23e0"),
+    ("subagents", "sha256:dfc0a1b91f47610ec2557da49d0a486bfa0aebaed63a96a293ef14c8d8b15b5c"),
+    ("team", "sha256:46f4febf7c7792b9cf1b2dc1a69174e98a406147201877c7ee1a436b44f82822"),
+    ("verification-unsatisfiable", "sha256:02266b16e62c246af0a0257ac9ed991bf2644db2dc7fcae3fe1a3850ce740c64"),
+    ("workflow", "sha256:59771ad1cbe9bf5d1e13cf52bc4880bacd27404373d6f8613c9b370760c8c363"),
+    ("wrap-a-binary", "sha256:9e8fc4c516e033f76022f0eea08398e83beaff9c0db11f6baf3d18a9245b2656"),
 ];
 
 /// The runtime the recorded identities were computed under. The real one

@@ -222,8 +222,9 @@ code other than zero is a result rather than an error.
 The executable is hashed into identity by content. A replaced binary at the
 same path changes identity.
 
-Declaring an entry in `tool_defs` is what permits the episode to execute that
-file. There is no separate execute grant.
+Declaring an entry in `tool_defs` permits the episode to execute that file.
+The file does not need a `grants.execute` entry. An explicit execute grant
+permits subprocesses of a tool, such as a compiler started by `bash`.
 
 ### `host_tools`
 
@@ -251,6 +252,7 @@ Object. Required. Names what the episode may reach.
 |---|---|---|---|
 | `read` | list of strings | yes, at least one | absolute directories the episode may read |
 | `write` | list of strings | no | absolute directories the episode may write; default empty |
+| `execute` | list of strings | no | absolute files or directories that a tool subprocess may read and execute; default empty |
 | `spawn` | list of strings | no | names from `programs` the episode may start; default empty |
 
 Paths are prefixes. A grant on `/home/user/project` covers every path below
@@ -269,6 +271,11 @@ A read follows a symbolic link that stays inside a granted root and is denied
 by one that leaves it. A write names an entry in a granted directory and
 replaces that entry, so writing to a name that is a symbolic link replaces
 the link rather than the file it points at.
+
+An execute grant covers its named file or every file below its named
+directory. It also grants read access because a process must read an
+executable and its runtime files to start it. The grant remains available
+inside a configured executable, so `bash` can start a compiler or build tool.
 
 The kernel sandbox enforces the same grants on the episode process and on
 every process it starts, which [sandbox.md](sandbox.md) specifies. The open
@@ -496,7 +503,8 @@ their order, each entry of `tool_defs` including the executable's content
 hash, the kinds and counts in `grants`, `budget`, `done_when`, `context`,
 every entry of `programs`, `workflow`, and the runtime's version and build.
 
-The following do not: the paths in `grants`, `model`, `sandbox`, and `task`.
+The following do not participate: the paths in `grants`, `model`, `sandbox`,
+and `task`.
 
 ## Errors
 
