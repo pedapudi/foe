@@ -184,14 +184,9 @@ fn builtin_config(task: String, mut model: ModelConfig, key_file: Option<&Path>)
         model.options.insert("api_key_file".to_string(), key_file.to_string_lossy().into_owned());
     }
     let document = serde_json::json!({
-        "version": foe_core::config::CONFIG_VERSION,
-        "name": "coding",
-        "instructions": { "role": BUILTIN_INSTRUCTION },
-        "tools": ["read", "grep", "edit", "bash"],
-        "grants": { "read": [cwd], "write": [cwd] },
-        "budget": { "model_calls": 40 },
-        "model": model,
-        "task": task,
+        "version": foe_core::config::CONFIG_VERSION, "name": "coding", "task": task, "model": model,
+        "instructions": { "role": BUILTIN_INSTRUCTION }, "tools": ["read", "grep", "edit", "bash"],
+        "grants": { "read": [cwd], "write": [cwd] }, "budget": { "model_calls": 40 },
     });
     serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"))
 }
@@ -261,13 +256,10 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     // be writable after the sandbox closes, so it is created now and
     // granted like any other write root. A broken enablement file warns
     // and disables rather than failing a run that would otherwise start.
-    let telemetry = match crate::telemetry::settings() {
-        Ok(settings) => settings,
-        Err(warning) => {
-            eprintln!("telemetry: {warning}; telemetry is disabled for this run");
-            None
-        }
-    };
+    let telemetry = crate::telemetry::settings().unwrap_or_else(|warning| {
+        eprintln!("telemetry: {warning}; telemetry is disabled for this run");
+        None
+    });
     if let Some(settings) = &telemetry {
         let dir = settings.capture.parent().unwrap_or(Path::new(".")).to_path_buf();
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
