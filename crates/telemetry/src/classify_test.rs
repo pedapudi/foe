@@ -95,9 +95,7 @@ fn evidence_is_the_whole_explanation_of_the_choice() {
 
 #[test]
 fn delegation_and_workflow_structure_vote_for_infrastructure() {
-    let mut structural = Evidence::default();
-    structural.spawns = 3;
-    structural.workflow_nodes = 2;
+    let structural = Evidence { spawns: 3, workflow_nodes: 2, ..Evidence::default() };
     let result = classify(&structural);
     assert_eq!(result.bucket, "infrastructure");
     assert_eq!(result.top_level, "technology");

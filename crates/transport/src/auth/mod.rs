@@ -14,6 +14,7 @@ use std::path::PathBuf;
 pub mod api_key;
 #[cfg(feature = "google")]
 pub mod google;
+pub mod login;
 #[cfg(feature = "token-file")]
 pub mod token_file;
 

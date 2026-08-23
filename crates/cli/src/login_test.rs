@@ -1,7 +1,17 @@
 use super::*;
-use std::io::{Cursor, Read};
+use foe_transport::auth::{api_key, token_file};
+use std::io::{BufReader, Cursor, Read};
+use std::net::TcpListener;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
+
+/// Reads the rest of a stream for the test that drives a callback by hand.
+fn drain(mut stream: impl Read) -> String {
+    let mut text = String::new();
+    let _ = stream.read_to_string(&mut text);
+    text
+}
 
 fn home(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/foe-cli-tests").join(format!("login-{name}"));
@@ -79,7 +89,7 @@ fn make_session<'a>(
     output: &'a mut dyn Write,
     endpoints: Endpoints,
 ) -> Session<'a> {
-    Session { home: home.to_path_buf(), input, output, terminal: false, endpoints }
+    Session { home: home.to_path_buf(), input, output, terminal: false, endpoints, open_browser: false }
 }
 
 /// docs/models.md "foe login": the api-key flow verifies the key, writes
@@ -100,7 +110,7 @@ fn api_key_login_end_to_end() {
     let creds = home.join(".config/foe/credentials/anthropic.json");
     assert!(text.contains(&format!("wrote {}", creds.display())), "{text}");
     assert_eq!(std::fs::metadata(&creds).unwrap().permissions().mode() & 0o777, 0o600);
-    assert_eq!(auth::api_key::read_api_key(&creds).unwrap(), "sk-ant-test-key");
+    assert_eq!(api_key::read_api_key(&creds).unwrap(), "sk-ant-test-key");
     let seen = server.seen.lock().unwrap();
     assert!(seen[0].starts_with("GET /v1/models HTTP/1.1"), "{}", seen[0]);
     assert!(seen[0].contains("x-api-key: sk-ant-test-key"), "{}", seen[0]);
@@ -191,7 +201,7 @@ fn codex_login_up_to_the_loopback_callback() {
     let mut out = output.clone();
     let worker = std::thread::spawn(move || {
         let mut input = Cursor::new(b"1\n".to_vec());
-        let endpoints = Endpoints { base_url: None, authorize_url, token_url, callback_port: 0, open_browser: false };
+        let endpoints = Endpoints { base_url: None, authorize_url, token_url, callback_port: 0 };
         let mut session = make_session(&home_for_thread, &mut input, &mut out, endpoints);
         run(&mut session, Options { provider: Some("openai-codex".into()), ..Default::default() })
     });
@@ -204,9 +214,9 @@ fn codex_login_up_to_the_loopback_callback() {
     };
     let query: Vec<(&str, &str)> =
         url.split('?').nth(1).unwrap().split('&').filter_map(|p| p.split_once('=')).collect();
-    let get = |k: &str| query.iter().find(|(key, _)| *key == k).map(|(_, v)| percent_decode(v)).unwrap();
+    let get = |k: &str| query.iter().find(|(key, _)| *key == k).map(|(_, v)| login::percent_decode(v)).unwrap();
     assert_eq!(get("code_challenge_method"), "S256");
-    assert_eq!(get("client_id"), auth::token_file::codex::CLIENT_ID);
+    assert_eq!(get("client_id"), token_file::codex::CLIENT_ID);
     assert_eq!(get("originator"), "foe");
     let redirect = get("redirect_uri");
     let port: u16 = redirect.trim_start_matches("http://localhost:").split('/').next().unwrap().parse().unwrap();
@@ -227,7 +237,7 @@ fn codex_login_up_to_the_loopback_callback() {
         seen[0]
     );
     let path = home.join(".config/foe/credentials/openai-codex.json");
-    let token = auth::token_file::read_token(&path).unwrap();
+    let token = token_file::read_token(&path).unwrap();
     assert_eq!(token.account_id.as_deref(), Some("acct_12345678"));
     assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
     let text = output.text();

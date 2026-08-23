@@ -8,6 +8,7 @@
 
 pub mod bind;
 mod graph;
+pub mod inspect;
 mod run;
 
 pub use run::{render, run, WorkflowParams};

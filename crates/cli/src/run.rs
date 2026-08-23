@@ -166,7 +166,7 @@ const NO_DEFAULT_MODEL: &str =
 
 #[cfg(feature = "transport")]
 fn default_model() -> Result<Option<ModelConfig>, String> {
-    crate::login::default_model()
+    foe_transport::auth::login::default_model()
 }
 
 #[cfg(not(feature = "transport"))]
