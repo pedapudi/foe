@@ -31,6 +31,10 @@ pub const GREP_LINE_MAX_CHARS: usize = 500;
 pub const GREP_DEFAULT_LIMIT: usize = 100;
 /// Matches `grep` collects into the canonical value before it stops searching.
 pub const GREP_COLLECT_MAX: usize = 10_000;
+/// Match and context lines `grep` retains before it stops searching.
+pub const GREP_HIT_COLLECT_MAX: usize = 20_000;
+/// Heap bytes one `grep` line buffer may use for a line and its context.
+pub const GREP_SEARCH_BUFFER_MAX_BYTES: usize = 8 * 1024 * 1024;
 /// Seconds `bash` waits when the call names no `timeout_seconds`.
 pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
 
