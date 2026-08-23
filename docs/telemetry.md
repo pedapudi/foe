@@ -1,10 +1,12 @@
 # Telemetry
 
-`foe-telemetry` reads a finished episode log and writes one OTLP trace per
+Telemetry reads a finished episode log and writes one OTLP trace per
 episode: what kind of work the episode did, what it cost, how it ended, and
-which tools it called. It is an add-on. The runtime carries no telemetry
-code, `crates/telemetry` depends on `crates/log` alone, and an installation
-that never runs the binary produces no telemetry and behaves no differently.
+which tools it called. It is native to `foe` and off by default: one
+machine-level file turns it on, and every run then emits after its episode
+ends. The kernel carries no telemetry code, `crates/telemetry` depends on
+`crates/log` alone, and an installation that never enables telemetry
+produces none and behaves no differently.
 
 ## What it is a function of
 
@@ -21,42 +23,57 @@ Four properties follow.
 - **The same log produces the same bytes.** Nothing draws on a random
   source or on the wall clock. Span and trace identifiers are derived by
   hashing (below), and every timestamp is a time the log itself recorded.
-- **Preview is emission.** `foe-telemetry preview` runs the emission and
-  prints the result, so what a person reviews is what a run would write,
-  down to the pseudonyms.
-- **Running the binary is the opt-in.** There is no configuration key that
-  turns telemetry on, and running it changes no program identity.
+- **Preview is emission.** `foe telemetry` runs the emission and prints
+  the result, so what a person reviews is what a run wrote, down to the
+  pseudonyms.
+- **Enablement is outside the program.** The switch is a machine-level
+  file, never a key in a program configuration, so turning telemetry on or
+  off changes no program identity: the same program observed and unobserved
+  is one program.
 
-## Commands
+## Enabling, emitting, inspecting
+
+`~/.config/foe/telemetry.json` turns telemetry on:
+
+```json
+{ "capture": "~/.local/state/foe/telemetry/otel.jsonl" }
+```
+
+`capture` names the file every emission appends to; a leading `~/` resolves
+against the home directory of the passwd database, like every other path
+under `~/.config/foe/`. The capture's directory also holds the local key.
+With the file present, `foe` emits one JSON object per episode — the root
+and every descendant under `children/` — after each run ends, and prints
+one line saying how many episodes went where. A file that exists but cannot
+be read is an error on runs and warns rather than silently disabling.
+Telemetry failures never change a run's outcome or exit code.
 
 ```
-foe-telemetry emit LOG... [--out FILE]
-foe-telemetry preview LOG... [--out FILE] [--json]
+foe telemetry LOG... [--json]
 ```
 
-`LOG` is an episode directory holding `episode.jsonl`, or a log file named
-directly. `emit` appends one JSON object per episode to the capture file,
-by default `LOG/telemetry/otel.jsonl`. `preview` prints the same
-computation for a person: the top category with the evidence behind it, the
-totals, the scrub counts, and one line per span. `preview --json` prints the
-exact bytes `emit` would append.
+prints the emission for a person: the top category with the evidence behind
+it, the totals, the scrub counts, and one line per span. `--json` prints
+the exact payload bytes. With telemetry enabled the pseudonyms are the
+emitted ones, because the key is the capture's own; disabled, a stand-in
+key is used and the output says so.
 
-The capture file's directory also holds the local key, which is why
-`preview` accepts `--out`: naming the file emission would write also names
-the key the pseudonyms come from.
+The run emits from the log it just wrote, so the writer and the reader are
+one binary and no line can be unreadable through version skew. The rule
+below therefore matters to `foe telemetry` over foreign or older logs, and
+to any future reader of archived captures.
 
 A log that stops without `episode/end` was cut short, and everything before
 the cut is still emitted. Structural validation is not applied.
 
 A line whose event shape this build cannot read is a different matter, and
-`emit` refuses the whole log over even one. The scrubber learns the values
+emission refuses the whole log over even one. The scrubber learns the values
 it must remove from the log itself, so the unreadable line may be the one
 carrying the granted roots, and the known-value layer then quietly removes
 nothing. Version skew between this binary and the runtime that wrote the
-log is the realistic cause, which makes it a case to expect rather than an
-edge.
+log is the realistic cause.
 
-`preview` still runs, because seeing what the log holds is how a person
+`foe telemetry` still renders it, because seeing what the log holds is how a person
 finds out why it cannot be read. It says up front that emission refuses the
 log, so nothing in the output is mistaken for what would be written.
 

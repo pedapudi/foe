@@ -240,6 +240,7 @@ dependencies = [
  "foe-context",
  "foe-core",
  "foe-log",
+ "foe-telemetry",
  "foe-transport",
  "foe-view",
  "foe-workflow",

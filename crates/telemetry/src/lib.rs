@@ -27,9 +27,10 @@ pub mod scrub;
 
 use classify::Classification;
 use extract::Facts;
-use foe_log::Event;
+use foe_log::{Event, LogError};
 use otlp::{list, number, span, text, AnyValue, Attribute};
 use scrub::{Report, Scrubber};
+use std::path::{Path, PathBuf};
 
 /// Changes whenever an emitted field is added, removed, renamed, or given a
 /// different meaning. Every payload carries it as a resource attribute.
@@ -158,4 +159,81 @@ fn resource_attributes(facts: &Facts, report: &Report) -> Vec<Attribute> {
     ];
     attributes.extend(report.0.iter().map(|(name, count)| number(&format!("foe.scrub.{name}"), *count as u64)));
     attributes
+}
+
+/// Emits one log into `capture`, fail-closed: a line this build cannot
+/// read, or a self-check finding, refuses the whole episode, because the
+/// scrubber learns the values it must remove from the log itself.
+/// Returns the episode id on success.
+pub fn emit_into(log: &Path, capture: &Path, key: Vec<u8>) -> Result<String, String> {
+    let (events, dir, unparsed) = read_log(log).map_err(|error| format!("{}: {error}", log.display()))?;
+    if unparsed > 0 {
+        return Err(format!(
+            "{}: {unparsed} line(s) this build cannot read; scrubbing coverage cannot be guaranteed. \
+             Nothing emitted.",
+            log.display()
+        ));
+    }
+    let derived = emission(&events, &dir.to_string_lossy(), key).map_err(|f| format!("{}: {f}", log.display()))?;
+    append(capture, &derived.line()).map_err(|error| format!("{}: {error}", capture.display()))?;
+    Ok(derived.facts.id.clone())
+}
+
+/// Appends one line to `capture`, creating its directory.
+pub fn append(capture: &Path, line: &str) -> std::io::Result<()> {
+    capture.parent().map(std::fs::create_dir_all).transpose()?;
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(capture)?;
+    std::io::Write::write_all(&mut file, line.as_bytes())
+}
+
+/// Reads a log given either its directory or the file itself, and returns
+/// the events, the directory the log lives in, and how many lines did not
+/// parse.
+///
+/// Structural validation is not applied: a log cut short by a crash still
+/// describes everything that happened before the cut, and that is worth
+/// emitting. A line whose event shape this build cannot read is a different
+/// matter, because the scrubber learns the values it must remove from the
+/// log itself. Losing the line that carries the granted roots loses the
+/// known-value layer, and nothing downstream can tell that it happened.
+/// Skipped lines are therefore counted for the caller to refuse on.
+pub fn read_log(path: &Path) -> Result<(Vec<Event>, PathBuf, usize), LogError> {
+    let file = if path.is_dir() { path.join(foe_log::fold::LOG_FILE) } else { path.to_path_buf() };
+    let dir = if path.is_dir() { path.to_path_buf() } else { path.parent().unwrap_or(Path::new(".")).to_path_buf() };
+    let text = std::fs::read_to_string(&file)?;
+    let lines: Vec<&str> = text.lines().filter(|line| !line.trim().is_empty()).collect();
+    let events: Vec<Event> = lines.iter().filter_map(|line| serde_json::from_str(line).ok()).collect();
+    let unparsed = lines.len() - events.len();
+    Ok((events, dir, unparsed))
+}
+
+/// What one episode's emission carries, for a person. Every number and
+/// label here is in the payload; nothing is computed only for display.
+pub fn preview(derived: &Emission) -> String {
+    let list = |items: &[String], sep: &str| if items.is_empty() { "none".to_string() } else { items.join(sep) };
+    let (facts, class) = (&derived.facts, &derived.classification);
+    let (kind, exit_class, _) = crate::extract::outcome_terms(facts.outcome.as_ref());
+    let (used, failed) = (facts.usage, facts.calls.iter().filter(|c| c.is_error).count());
+    let spend = format!("{} in · {} out · {} cache-read", used.input, used.output, used.cache_read);
+    let votes: Vec<String> = class.votes.iter().map(|v| format!("{}={} ×{}", v.token, v.bucket, v.count)).collect();
+    let counts: Vec<String> = derived.report.0.iter().map(|(name, count)| format!("{name} {count}")).collect();
+    let mut out = format!("{} · {}/{} · {kind}/{exit_class}\n", facts.id, facts.provider, facts.model);
+    out += &format!("  category  {} → {}\n", class.bucket, class.top_level);
+    out += &format!("  evidence  {}\n", list(&votes, ", "));
+    out += &format!("  totals    {} model calls · {spend}", facts.model_calls);
+    out += &format!(" · {} tool calls, {failed} failed\n", facts.calls.len());
+    out += &format!("  scrubbed  {}\n  spans\n", list(&counts, " · "));
+    for span in &derived.spans {
+        let nanos = |text: &str| text.parse::<u64>().unwrap_or_default();
+        let millis = (nanos(&span.end_time_unix_nano) - nanos(&span.start_time_unix_nano)) / 1_000_000;
+        // The one attribute worth a line of its own: what a tool acted on,
+        // or why a step stopped.
+        let of = |key: &str| match span.attributes.iter().find(|a| a.key == key).map(|a| &a.value) {
+            Some(AnyValue::StringValue(text)) if !text.is_empty() => Some(text.as_str()),
+            _ => None,
+        };
+        let detail = of("foe.tool.subject").or_else(|| of("foe.stop_reason")).unwrap_or_default();
+        out += &format!("    {:<28} {millis:>9} ms  {detail}\n", span.name);
+    }
+    out
 }

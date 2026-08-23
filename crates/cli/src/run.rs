@@ -257,6 +257,22 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     // the policy and the spawner see the same configuration.
     let config = foe_workflow::spawner_config(&config);
     let mut unconfined = Unconfined::new(sandbox, Policy::for_episode(&config, &log_dir));
+    // Telemetry is resolved before confinement: the capture directory must
+    // be writable after the sandbox closes, so it is created now and
+    // granted like any other write root. A broken enablement file warns
+    // and disables rather than failing a run that would otherwise start.
+    let telemetry = match crate::telemetry::settings() {
+        Ok(settings) => settings,
+        Err(warning) => {
+            eprintln!("telemetry: {warning}; telemetry is disabled for this run");
+            None
+        }
+    };
+    if let Some(settings) = &telemetry {
+        let dir = settings.capture.parent().unwrap_or(Path::new(".")).to_path_buf();
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        unconfined.policy_mut().write.push(dir);
+    }
     let viewer = match options.host || options.headless {
         true => None,
         false => Some(foe_view::Bound::bind(0).map_err(|e| e.to_string())?),
@@ -287,8 +303,12 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         runtime: runtime_info,
         sandbox: confined.parts().0.info(),
     };
+    let telemetry_log_dir = log_dir.clone();
     let setup = Setup { config, program, log_dir, confined, viewer, transport, context, start, host: options.host };
     let outcome = runtime()?.block_on(episode(setup))?;
+    if let Some(settings) = &telemetry {
+        crate::telemetry::after_run(settings, &telemetry_log_dir);
+    }
     if !options.host {
         println!("{}", serde_json::to_string(&outcome).map_err(|e| e.to_string())?);
     }

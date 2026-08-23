@@ -10,10 +10,6 @@ description = "Categorized, scrubbed, OTLP-encoded telemetry derived from episod
 name = "foe_telemetry"
 path = "src/lib.rs"
 
-[[bin]]
-name = "foe-telemetry"
-path = "src/main.rs"
-
 [dependencies]
 foe-log = { path = "../log" }
 hex.workspace = true

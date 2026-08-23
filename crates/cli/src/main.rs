@@ -9,6 +9,7 @@
 mod login;
 mod plan;
 mod run;
+mod telemetry;
 
 use foe_core::registry::{block_spec, resolve_specs, Source};
 use foe_core::ToolSpec;
@@ -27,7 +28,8 @@ const USAGE: &str = "usage:
   foe view DIR [--serve [--port N]]
   foe plan --config FILE [--json]
   foe tools [--config FILE]
-  foe schema";
+  foe schema
+  foe telemetry LOG... [--json]";
 
 /// Options that take a value.
 const VALUED: &[&str] = &["--config", "--model", "--key-file", "--log-dir", "--port"];
@@ -84,6 +86,7 @@ enum Command {
     Plan { config: PathBuf, json: bool },
     Tools { config: Option<PathBuf> },
     Schema,
+    Telemetry { logs: Vec<String>, json: bool },
 }
 
 fn command(args: &[String]) -> Result<Command, String> {
@@ -91,6 +94,10 @@ fn command(args: &[String]) -> Result<Command, String> {
     let form = args.positional.first().cloned().unwrap_or_default();
     let command = match form.as_str() {
         "schema" => Command::Schema,
+        "telemetry" => match args.positional.len() {
+            1 => return Err(format!("`foe telemetry` takes at least one log\n{USAGE}")),
+            _ => Command::Telemetry { logs: args.positional.split_off(1), json: args.switch("--json") },
+        },
         "view" => {
             let dir =
                 args.positional.get(1).cloned().ok_or_else(|| format!("`foe view` takes a directory\n{USAGE}"))?;
@@ -138,6 +145,7 @@ fn command(args: &[String]) -> Result<Command, String> {
         Command::Schema | Command::Tools { .. } | Command::Plan { .. } => args.positional.len() == 1,
         Command::Login { .. } => args.positional.len() <= 2,
         Command::View { .. } => args.positional.len() == 2,
+        Command::Telemetry { .. } => args.positional.len() == 1,
     };
     if !leftover {
         return Err(format!("unexpected argument\n{USAGE}"));
@@ -167,6 +175,10 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
         Command::Tools { config } => tools(config.as_deref()),
         Command::View { dir, serve, port } => view(&dir, serve, port),
         Command::Login { provider, model, status } => login(provider, model, status),
+        Command::Telemetry { logs, json } => {
+            telemetry::preview(&logs, json)?;
+            Ok(ExitCode::SUCCESS)
+        }
         Command::Run(options) => run::run(options),
     }
 }
