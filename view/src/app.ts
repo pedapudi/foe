@@ -4,7 +4,7 @@
 
 import { causalityOutline, readCausality } from "./causality.js";
 import type { CausalityEpisode, CausalityOutline, ConversationScope, Depth } from "./causality.js";
-import { Topbar, currentFontScale, currentLayout, onSettingsChange } from "./chrome.js";
+import { Topbar, applyDepth, currentDepth, currentFontScale, currentLayout, onSettingsChange } from "./chrome.js";
 import type { ConnectionState, Crumb } from "./chrome.js";
 import { clear, h } from "./dom.js";
 import { EpisodeFold } from "./fold.js";
@@ -51,8 +51,7 @@ export class App implements Sink {
   private diffKey = "";
   /** The node of the causality figure the conversation is scoped to. */
   private scope: ConversationScope | null = null;
-  /** How deep the unified outline reads, and which branches a caret opened. */
-  private depth: Depth = "steps";
+  /** Which branches a caret opened past the depth the reader chose. */
   private opened = new Set<string>();
   private outlineRow: string | null = null;
   private outline: CausalityOutline | null = null;
@@ -117,7 +116,7 @@ export class App implements Sink {
       { class: "pane-head" },
       h("h2", null, "run"),
       h("span", { class: "spacer" }),
-      depthControl(this.depth, (depth) => this.setDepth(depth)),
+      depthControl(currentDepth(), (depth) => this.setDepth(depth)),
     );
     this.outlinePane = h("section", { class: "pane-outline", "aria-label": "run" }, this.outlineHead, this.outlineHost);
     this.outlineCard = new Hovercard(this.outlineHost);
@@ -208,15 +207,19 @@ export class App implements Sink {
     this.renderMain();
   }
 
-  /** How deep the outline reads. Coarser than a caret, which opens one branch. */
+  /**
+   * How deep the outline reads. Coarser than a caret, which opens one
+   * branch; the choice is stored the way the theme and the arrangement
+   * are, so a reader who prefers one rung keeps it across a reload.
+   */
   private setDepth(depth: Depth): void {
-    if (this.depth === depth) return;
-    this.depth = depth;
+    if (currentDepth() === depth) return;
+    applyDepth(depth);
     clear(this.outlineHead);
     this.outlineHead.append(
       h("h2", null, "run"),
       h("span", { class: "spacer" }),
-      depthControl(this.depth, (next) => this.setDepth(next)),
+      depthControl(currentDepth(), (next) => this.setDepth(next)),
     );
     this.renderOutline();
   }
@@ -254,7 +257,7 @@ export class App implements Sink {
     drawOutline(
       board,
       outline,
-      { depth: this.depth, opened: this.opened, selected: this.outlineRow },
+      { depth: currentDepth(), opened: this.opened, selected: this.outlineRow },
       this.outlineCard,
       {
         toggle: (id) => this.toggleRow(id),

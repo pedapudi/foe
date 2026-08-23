@@ -121,13 +121,21 @@ export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result";
 
 /**
  * How deep a reading goes. The rail, the tree, the causal figure and the
- * transcript are not four things but one hierarchy read at four depths, so
- * they are four settings of one control rather than four views.
+ * transcript are one hierarchy read at different depths, so they are
+ * settings of one control rather than separate views. Each rung is named
+ * for the class of row it adds to the one before it.
+ *
+ * What the model said and what its tools returned sit on separate rungs,
+ * because they differ in size by more than a factor of twenty: over one
+ * recorded run of 1,255 events the model's own words came to 5,719
+ * characters and the tool results to 139,281. A reader who wants the
+ * conversation would otherwise have to take the tool output with it, and
+ * the tool output is the whole of the weight.
  */
-export type Depth = "episodes" | "steps" | "calls" | "everything";
+export type Depth = "episodes" | "steps" | "calls" | "conversation" | "outputs";
 
 /** The depths in order, coarsest first. */
-export const DEPTHS: readonly Depth[] = ["episodes", "steps", "calls", "everything"];
+export const DEPTHS: readonly Depth[] = ["episodes", "steps", "calls", "conversation", "outputs"];
 
 /** The coarsest reading each kind of row appears in. */
 const APPEARS_AT: Readonly<Record<RowKind, Depth>> = {
@@ -135,8 +143,8 @@ const APPEARS_AT: Readonly<Record<RowKind, Depth>> = {
   node: "steps",
   step: "steps",
   call: "calls",
-  prose: "everything",
-  result: "everything",
+  prose: "conversation",
+  result: "outputs",
 };
 
 /**

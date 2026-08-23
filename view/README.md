@@ -121,16 +121,18 @@ its two passes.
 
 `proof-outline-light.png` and `proof-outline-dark.png` show the unified
 outline over the `root` fixture, its spawned child, its fork and a run
-that exhausted its retries. The light one reads at `calls`: every label in
-one column with the tool calls stepped in one level under the steps that
-issued them, each step's own label fallen back to `step 1` now that its
-calls are on the page, the failed `bash` in the outcome hue, and the log
-position of every row in the gutter — where it falls from 29 to 0 is the
-child episode's rows sitting under the call that spawned them. The dark
-one reads at `everything`, so the model's own words and each tool's result
-body stand under the rows that produced them, running the full width while
-the labels above them hold their column, and the gutter is blank beside
-each of those bodies because the row above already named that event.
+that exhausted its retries. The light one is the reading the viewer opens
+in, `conversation`: the whole causal structure of the run and what the
+model said at each step, with none of the tool output. Every label starts
+in one column, the tool calls step in one level under the steps that
+issued them, each step's own label has fallen back to `step 1` now that
+its calls are on the page, the failed `bash` carries the outcome hue, and
+the gutter holds the log position of every row — where it falls from 29 to
+0 is the child episode's rows sitting under the call that spawned them.
+The dark one adds the last rung, `outputs`, so each tool's result body
+stands under the call that returned it, running the full width while the
+labels above it hold their column; the gutter is blank beside each body
+because the row above already named that event.
 
 The `messages` list recorded in each `model/request` event is written by
 hand in the generator, so the tests compare it with the list the bundle
@@ -284,10 +286,13 @@ the scoped dialogue.
 
 The viewer opens in the **outline** arrangement instead, in which that
 same causal model is read as one collapsible hierarchy: a depth control
-moves between episodes, steps, calls and everything, and a caret on any
-row opens one branch one level past the reading. Collapsed to episodes it
-is the episode rail; opened to calls it is the figure; opened fully it is
-the transcript. `src/render/outline.ts` draws it, over the same
+moves between episodes, steps, calls, conversation and outputs, each rung
+named for the class of row it adds, and a caret on any row opens one
+branch one level past the reading. Collapsed to episodes it is the episode
+rail; opened to calls it is the figure; opened to outputs it is the
+transcript. It opens at conversation, which is the whole structure of a
+run plus what the model said, without the tool output that is 96 percent
+of a run's text. `src/render/outline.ts` draws it, over the same
 `layoutLanes` the figure uses, and a control in the top bar chooses
 between the two arrangements and stores the choice under `foe.layout`.
 `docs/viewer.md` specifies both.

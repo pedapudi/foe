@@ -170,7 +170,8 @@ export function depthControl(current: Depth, choose: (depth: Depth) => void): HT
     episodes: "episodes alone, which is the rail",
     steps: "the graph nodes and steps each episode ran",
     calls: "the tool calls each step made, with their targets",
-    everything: "what the model said and what each tool returned",
+    conversation: "what the model said at each step, without the tool output",
+    outputs: "what each tool returned, which is most of a run's text",
   };
   return h(
     "span",

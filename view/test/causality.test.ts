@@ -376,9 +376,30 @@ test("each reading adds the kinds of row it names", () => {
   assert.deepEqual(kinds("episodes"), ["episode"]);
   assert.deepEqual(kinds("steps"), ["episode", "step"]);
   assert.deepEqual(kinds("calls"), ["call", "episode", "step"]);
-  assert.deepEqual(kinds("everything"), ["call", "episode", "prose", "result", "step"]);
+  // What the model said and what its tools returned are separate rungs,
+  // because a reader who wants the conversation must not have to take the
+  // tool output with it.
+  assert.deepEqual(kinds("conversation"), ["call", "episode", "prose", "step"]);
+  assert.deepEqual(kinds("outputs"), ["call", "episode", "prose", "result", "step"]);
   const graph = causalityOutline(run("workflow.jsonl"));
   assert.ok(visibleRows(graph, "steps").some((r) => r.kind === "node"));
+});
+
+test("the conversation costs almost nothing and the outputs cost everything", () => {
+  // The finding the depth ladder exists for: over a recorded run of 1,255
+  // events the model's own words came to 5,719 characters and its tools
+  // returned 139,281. The two therefore sit on separate rungs, and the
+  // fixtures show the same shape at their own scale.
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  const mass = (depth: Parameters<typeof visibleRows>[1]) =>
+    visibleRows(outline, depth).reduce((n, r) => n + r.body.length, 0);
+  const prose = mass("conversation");
+  const all = mass("outputs");
+  assert.ok(prose > 0, "the conversation rung sets what the model said");
+  assert.ok(all > prose * 2, `result bodies dominate: ${all - prose} against ${prose}`);
+  for (const row of visibleRows(outline, "conversation")) {
+    assert.notEqual(row.kind, "result", "no tool output on the conversation rung");
+  }
 });
 
 test("a step's label defers to its calls once they are on the page", () => {
@@ -415,18 +436,18 @@ test("a caret opens one branch one level past the reading", () => {
 
 test("every row carries its log position, because the outline reorders time", () => {
   const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
-  for (const r of visibleRows(outline, "everything")) {
+  for (const r of visibleRows(outline, "outputs")) {
     assert.equal(typeof r.seq, "number", `${r.id} knows where it sits in the log`);
   }
   // A child's rows sit under the call that spawned it rather than in log
   // order, so reading order jumps. The sequence number is the only sign.
-  const ids = visibleRows(outline, "everything").map((r) => r.id);
+  const ids = visibleRows(outline, "outputs").map((r) => r.id);
   assert.ok(ids.indexOf("ep_child") < ids.indexOf("ep_root/step/3"), "the child is read before later steps");
 });
 
 test("a log position is printed once per event, not once per row", () => {
   const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
-  const deep = visibleRows(outline, "everything");
+  const deep = visibleRows(outline, "outputs");
   // A step's prose and a call's result body stand for the event their own
   // row already named, so they leave the column blank; the column is there
   // to show where reading order jumps, and a repeat hides that.
@@ -467,7 +488,7 @@ test("two episodes that both begin at zero each print their own zero", () => {
 test("lanes hold at every reading, and every curve still lands on a line", () => {
   for (const files of [["root.jsonl", "child.jsonl"], WORKFLOW]) {
     const outline = causalityOutline(run(...files));
-    for (const depth of ["episodes", "steps", "calls", "everything"] as const) {
+    for (const depth of ["episodes", "steps", "calls", "conversation", "outputs"] as const) {
       const visible = visibleRows(outline, depth);
       // Heights that vary the way prose and a result body vary.
       const heights = visible.map((r) => (r.body === "" ? 22 : 60));

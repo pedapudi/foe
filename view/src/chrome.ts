@@ -20,6 +20,8 @@ import {
 } from "./appearance.js";
 import type { TypefaceMode } from "./appearance.js";
 import { brandLockup, researchPreview } from "./brand.js";
+import { DEPTHS } from "./causality.js";
+import type { Depth } from "./causality.js";
 import { clear, h } from "./dom.js";
 
 export { SCALE_DEFAULT, SCALE_MAX, SCALE_MIN, SCALE_STEP, THEMES, TYPEFACES, normaliseScale };
@@ -29,6 +31,7 @@ const KEY_TYPEFACE = "foe.typeface";
 const KEY_FONTSIZE = "foe.fontsize";
 const KEY_SCALE = "foe.scale";
 const KEY_LAYOUT = "foe.layout";
+const KEY_DEPTH = "foe.depth";
 
 function read(key: string): string | null {
   try {
@@ -82,6 +85,24 @@ export function applyLayout(id: unknown): void {
   currentLayoutValue = id === "figure" ? "figure" : "outline";
   document.documentElement.dataset.layout = currentLayoutValue;
   write(KEY_LAYOUT, currentLayoutValue);
+  notify();
+}
+
+/**
+ * How deep the outline reads. `conversation` is where it opens: the whole
+ * causal structure of a run plus what the model said at each step,
+ * stopping short of the tool output, which is where nearly all of a run's
+ * text is. `docs/viewer-study.md` carries the measurement.
+ */
+let currentDepthValue: Depth = "conversation";
+
+export function currentDepth(): Depth {
+  return currentDepthValue;
+}
+
+export function applyDepth(id: unknown): void {
+  currentDepthValue = DEPTHS.find((d) => d === id) ?? "conversation";
+  write(KEY_DEPTH, currentDepthValue);
   notify();
 }
 
@@ -167,6 +188,7 @@ export function loadSettings(root: HTMLElement): void {
   applyFontSize(read(KEY_FONTSIZE) ?? DEFAULT_FONTSIZE);
   applyScale(read(KEY_SCALE) ?? SCALE_DEFAULT);
   applyLayout(read(KEY_LAYOUT) ?? "outline");
+  applyDepth(read(KEY_DEPTH) ?? "conversation");
 }
 
 // ---- pickers ----

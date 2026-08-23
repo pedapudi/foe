@@ -292,12 +292,28 @@ different depths, so one collapsible outline replaces all three and a
 **depth control** moves between the readings. It is the arrangement the
 viewer opens in.
 
-| depth | what it shows |
+Each rung is named for the class of row it adds to the one before it.
+
+| depth | what it adds |
 | --- | --- |
 | `episodes` | episodes alone, which is the rail |
 | `steps` | workflow nodes and steps, which is the tree |
 | `calls` | tool calls with their targets, which is the causal figure |
-| `everything` | what the model said and what each tool returned |
+| `conversation` | what the model said at each step |
+| `outputs` | what each tool returned |
+
+What the model said and what its tools returned are separate rungs because
+they differ in size by more than a factor of twenty. Over one recorded run
+of 1,255 events the model's own words came to 5,719 characters and the
+tool results to 139,281, so a reader who wanted the conversation would
+otherwise have had to take 96 percent of the run's text with it. The
+outline opens at `conversation`: the whole causal structure of a run plus
+the model's account of it, one rung short of the output.
+`docs/viewer-study.md` carries the measurement over every fixture.
+
+The reading is stored in `localStorage` under `foe.depth` beside the
+theme, the typeface, the text size and the arrangement, so a reader who
+prefers one rung keeps it across a reload.
 
 A caret on any row opens that one branch one level past the current
 reading, so a reader can sit at `steps`, open one step to see its calls,

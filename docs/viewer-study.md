@@ -37,18 +37,73 @@ tool output with the model's reasoning scattered through it. Any layout
 that leaves results expanded by default inherits that ratio, and no
 arrangement of the remaining 4 percent compensates.
 
-The same run measured at the four depths the shipped outline offers shows
-what the ratio does to a reader:
+That ratio is why the shipped outline puts what the model said and what
+its tools returned on separate rungs. Measured over the same run, one rung
+apart:
 
-| depth | rows | characters |
+| reading | rows | characters |
+|---|---|---|
+| the structure and what the model said | 19 | 5,974 |
+| the same, plus what the tools returned | 32 | 145,255 |
+
+Thirteen more rows carry 139,281 more characters. A result row averages
+10,714 characters where every other kind of row averages 314, so a result
+row is worth about thirty-four of anything else. Counting rows would have
+put those thirteen at 41 percent of the page and hidden the fact that they
+are 96 percent of it.
+
+The full ladder over the same run, each rung named for the class of row it
+adds:
+
+| rung | rows | characters |
 |---|---|---|
 | episodes | 1 | 17 |
 | steps | 5 | 81 |
 | calls | 18 | 255 |
-| everything | 32 | 145,255 |
+| conversation | 19 | 5,974 |
+| outputs | 32 | 145,255 |
 
-Five rows and 81 characters describe what a 1,255-event run did. The
-deepest reading sets 1,793 times that many characters.
+Five rows and 81 characters describe what a 1,255-event run did. Adding
+the model's own words costs 14 rows and 5,893 characters. Adding the tool
+output costs 13 rows and 139,281.
+
+The same shape holds over every fixture in the repository, at their own
+scale. Each cell gives rows and then characters.
+
+| fixture | episodes | steps | calls | conversation | outputs |
+|---|---|---|---|---|---|
+| `child` | 1 / 14 | 3 / 38 | 4 / 38 | 5 / 59 | 6 / 99 |
+| `compact` | 1 / 23 | 5 / 93 | 8 / 93 | 12 / 142 | 15 / 216 |
+| `fork` | 1 / 15 | 3 / 76 | 5 / 76 | 7 / 134 | 9 / 259 |
+| `overlap-child` | 1 / 21 | 3 / 45 | 4 / 45 | 5 / 58 | 6 / 75 |
+| `overlap-parent` | 1 / 18 | 4 / 76 | 7 / 85 | 10 / 149 | 13 / 224 |
+| `retries-exhausted` | 1 / 17 | 2 / 32 | 2 / 32 | 2 / 32 | 2 / 32 |
+| `rich` | 1 / 13 | 3 / 54 | 5 / 69 | 7 / 1,029 | 9 / 1,501 |
+| `root` | 1 / 15 | 5 / 88 | 8 / 105 | 12 / 207 | 15 / 370 |
+| `workflow` | 1 / 31 | 7 / 89 | 8 / 89 | 8 / 89 | 9 / 97 |
+| `workflow-apply-1` | 1 / 16 | 3 / 55 | 4 / 55 | 5 / 144 | 6 / 594 |
+| `workflow-propose-1` | 1 / 18 | 2 / 30 | 3 / 30 | 4 / 86 | 5 / 95 |
+| `workflow-propose-2` | 1 / 18 | 2 / 30 | 3 / 30 | 4 / 86 | 5 / 95 |
+
+Folded into the runs a reader actually opens:
+
+| run | episodes | steps | calls | conversation | outputs |
+|---|---|---|---|---|---|
+| root and its child and fork | 3 / 44 | 11 / 202 | 17 / 219 | 24 / 400 | 30 / 728 |
+| a workflow and its three children | 4 / 83 | 14 / 204 | 18 / 204 | 21 / 405 | 25 / 881 |
+| a lead and its two children | 3 / 52 | 10 / 175 | 16 / 199 | 22 / 1,236 | 28 / 1,800 |
+| every fixture at once | 12 / 219 | 42 / 706 | 61 / 747 | 81 / 2,215 | 100 / 3,657 |
+
+The fixtures are small enough that the last rung roughly doubles them,
+where the recorded run multiplies by twenty-four. Two of them show why the
+ladder is worth having even at that scale: `rich` carries a diff and a
+fenced block, so its conversation rung is already 1,029 characters against
+54 at the rung below, and `retries-exhausted` never received a message at
+all, so all five rungs are identical.
+
+The outline opens at the conversation rung. It is the whole causal
+structure of a run and the model's own account of it, stopping one rung
+short of the text that is 96 percent of the mass.
 
 ## Five ways to show structure in a transcript
 
