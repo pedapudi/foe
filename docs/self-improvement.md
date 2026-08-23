@@ -317,8 +317,9 @@ Every self-improvement evaluation should retain the following evidence:
 - budget reservations, releases, and final spend;
 - the complete trace-conformance report;
 - external compilation, test, and policy-check results;
-- the model route, program identity, runtime build, sandbox observation, and
-  attempt count.
+- the model route and reasoning setting for every trajectory;
+- the program identity, runtime build, sandbox observation, and attempt
+  count.
 
 Per-response accounting reveals context amplification that aggregate totals
 hide. Tool-result sizes identify outputs that every later request carries

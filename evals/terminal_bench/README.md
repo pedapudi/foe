@@ -204,10 +204,9 @@ and success criterion.
 
 ## Use the trajectories for improvement
 
-Every completed trial contains `agent/foe-diagnostics.json`. This bounded
-digest reports request growth, replayed tool results, repeated calls, failures,
-verifier outcomes, and log sequence numbers across the root and every child
-episode. Each sequence number is paired with its episode identifier.
+Every completed trial contains `agent/foe-diagnostics.json`. The report names
+request growth, replayed tool results, repeated calls, failures, verifier
+outcomes, and log sequence numbers across the episode tree.
 
 Collect diagnoses from one or more retained development runs. The command
 requires a clean source tree and the exact evaluated binary:
@@ -217,6 +216,12 @@ bazel run //evals/terminal_bench:collect-diagnostics -- \
   --run-dir "$PWD/target/terminal-bench-jobs/development-20260823T120000Z" \
   --output "$PWD/target/foe-trajectory-evidence.json"
 ```
+
+The collector labels every diagnosis with its dataset, run label, model, and
+reasoning setting. It groups verified results by task and model setting so a
+diagnosis node can compare failed and successful configurations. The file
+keeps four input-growth landmarks and three entries from each ranked result
+list. It accepts at most 24 diagnoses and 64 KiB of encoded evidence.
 
 Create a clean candidate worktree at the evaluated commit. Run the
 self-improvement workflow from that worktree:

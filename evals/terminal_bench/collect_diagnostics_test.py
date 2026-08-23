@@ -67,6 +67,17 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     "schema_version": 1,
                     "evidence_identity": {"runtime_build": identity["runtime_binary"]},
                     "task": "terminal-bench/example",
+                    "verifier_reward": 1.0,
+                    "artifact_outcome_mismatch": False,
+                    "usage": {
+                        "model_calls": 3,
+                        "estimated_cost_usd": 0.01,
+                        "per_request": [
+                            {"seq": 1, "input_tokens": 100},
+                            {"seq": 5, "input_tokens": 900},
+                            {"seq": 9, "input_tokens": 500},
+                        ],
+                    },
                 }
             ),
             encoding="utf-8",
@@ -78,7 +89,28 @@ class CollectDiagnosticsTest(unittest.TestCase):
             source, binary, run, identity = self.fixture(Path(directory))
             report = collect(source, binary, [run])
         self.assertEqual(report["evaluated_foe"], identity)
-        self.assertEqual(report["trajectory_diagnostics"][0]["task"], "terminal-bench/example")
+        self.assertEqual(report["schema_version"], 2)
+        diagnosis = report["trajectory_diagnostics"][0]
+        self.assertEqual(diagnosis["task"], "terminal-bench/example")
+        self.assertEqual(diagnosis["evaluation"]["label"], "development")
+        self.assertEqual(diagnosis["evaluation"]["reasoning_effort"], "low")
+        self.assertNotIn("per_request", diagnosis["usage"])
+        self.assertEqual([row["seq"] for row in diagnosis["input_growth_landmarks"]], [1, 5, 9])
+        self.assertEqual(
+            report["evaluation_summary"],
+            [
+                {
+                    "task": "terminal-bench/example",
+                    "model": "openai-codex/gpt-5.6-luna",
+                    "reasoning_effort": "low",
+                    "attempts": 1,
+                    "verified_successes": 1,
+                    "artifact_outcome_mismatches": 0,
+                    "model_calls": 3,
+                    "estimated_cost_usd": 0.01,
+                }
+            ],
+        )
 
     def test_collector_rejects_a_different_runtime(self):
         with tempfile.TemporaryDirectory() as directory:

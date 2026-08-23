@@ -142,7 +142,7 @@ Planning token estimates provide a spend preview. They do not stop ordinary deve
 3. Run one Luna `low` attempt on capability-search tasks when a cheap trajectory can reveal obvious tool or adapter failures.
 4. Run one Sol `low` attempt on the remaining capability-search tasks. Run Sol `xhigh` only on Sol `low` failures.
 5. Repeat the most promising Sol gap three times at each reasoning setting. Freeze the selected task and gap criterion.
-6. Produce typed trajectory diagnoses. The digest includes request growth, replayed tool results, repeated calls, failures, verifier outcomes, and log sequence numbers.
+6. Produce typed trajectory diagnoses. Each diagnosis names its model setting and retained run. The digest groups verified results by task and model setting, then retains bounded request growth, replayed results, failures, and log sequence numbers.
 7. Run identity-bound self-improvement with Terra `high`. The coding node receives only the typed diagnosis and acts as a full coding agent.
 8. Validate the generated candidate outside the self-improvement episode. Implement the diagnosed change directly when the generated candidate is absent, invalid, or unsupported by the evidence.
 9. Re-run the selected capability task with Sol `low`. Reject candidates that fail the capability-conversion criteria.
@@ -158,7 +158,7 @@ The self-improvement workflow has two model nodes. A diagnosis node reads the bo
 
 The coding node has Foe's standard coding tools: `read`, `grep`, `edit`, and `bash`. It may change runtime crates, specifications, examples, and repository build files. It cannot change evaluation code or benchmark material.
 
-The evidence file names the evaluated Git tree and Foe binary digest. The workflow refuses a source or binary mismatch before making a model request. The candidate checker requires a Rust implementation change, a Rust regression test, and an affected specification.
+The evidence file names the evaluated Git tree and Foe binary digest. It labels every trajectory with the run and model setting that produced it. The workflow refuses a source or binary mismatch before making a model request. The candidate checker requires a Rust implementation change, a Rust regression test, and an affected specification.
 
 The workflow is one candidate generator. Candidate promotion remains an external evaluation decision. A failed workflow sets `direct_implementation_required` in its result so the campaign proceeds with a direct implementation.
 
