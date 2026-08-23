@@ -26,9 +26,16 @@ class SelfImprovementTest(unittest.TestCase):
         config = run_self_improvement.config(
             Path("/candidate"), Path("/evidence/report.json"), Path("/check"), {"provider": "p", "model": "m"}
         )
+        diagnosis = config["workflow"]["nodes"]["diagnose-runtime"]["model"]
         child = config["workflow"]["nodes"]["improve-runtime"]["model"]
         self.assertTrue(set(run_self_improvement.CODING_TOOLS).issubset(config["tools"]))
         self.assertTrue(set(run_self_improvement.CODING_TOOLS).issubset(child["tools"]))
+        self.assertNotIn("edit", diagnosis["tools"])
+        self.assertEqual(diagnosis["budget"]["model_calls"] + child["budget"]["model_calls"], 12)
+        self.assertEqual(
+            diagnosis["budget"]["input_tokens"] + child["budget"]["input_tokens"], 300_000
+        )
+        self.assertEqual(config["workflow"]["nodes"]["improve-runtime"]["follows"], ["task", "diagnose-runtime"])
 
     def test_checker_accepts_a_general_change_and_enforces_runtime_size(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

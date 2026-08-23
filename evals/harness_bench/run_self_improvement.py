@@ -16,6 +16,8 @@ from typing import Any
 
 
 LIMITS = {"model_calls": 12, "input_tokens": 300_000, "output_tokens": 20_000, "seconds": 1_200}
+DIAGNOSIS_LIMITS = {"model_calls": 3, "input_tokens": 70_000, "output_tokens": 4_000, "seconds": 300}
+IMPLEMENTATION_LIMITS = {"model_calls": 9, "input_tokens": 230_000, "output_tokens": 16_000, "seconds": 900}
 ALLOWED_PREFIXES = ("crates/core/src/", "crates/code/src/", "crates/cli/src/", "docs/")
 LINE_BUDGETS = {"runtime": 6_000, "workflow": 1_000, "context": 500, "view": 600, "cli": 1_300}
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
@@ -147,25 +149,62 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
         "cwd": str(candidate),
         "timeout_seconds": 30,
     }
-    child = {
+    diagnosis = {
+        "name": "diagnose-runtime-from-assessed-evidence",
+        "instructions": {
+            "10-role": "Diagnose one general Foe runtime behavior using the supplied assessed evidence.",
+            "20-scope": "Inspect relevant runtime source, tests, and specifications. Do not edit files. Do not inspect evaluation code, benchmark adapters, tasks, fixtures, graders, or completed benchmark answers.",
+            "30-evidence": "Name the mechanism supported by more than one observation. Return the implementation, regression-test, and specification paths that a coding agent should change. Exclude benchmark identifiers, fixture values, and grader rules.",
+            "40-budget": "This diagnosis has three model requests. Use targeted parallel searches and reads, then return the typed diagnosis by the third request.",
+        },
+        "tools": ["read", "grep", "bash"],
+        "grants": {"read": read},
+        "budget": {
+            **DIAGNOSIS_LIMITS,
+            "max_depth": 0,
+            "max_episodes": 1,
+            "max_concurrent": 1,
+            "loop_threshold": 3,
+        },
+        "done_when": {
+            "returns": {
+                "type": "object",
+                "properties": {
+                    "mechanism": {"type": "string", "minLength": 1},
+                    "implementation_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                    "test_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                    "specification_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                    "acceptance": {"type": "string", "minLength": 1},
+                },
+                "required": [
+                    "mechanism",
+                    "implementation_files",
+                    "test_files",
+                    "specification_files",
+                    "acceptance",
+                ],
+                "additionalProperties": False,
+            }
+        },
+    }
+    implementation = {
         "name": "improve-foe-from-assessed-evidence",
         "instructions": {
-            "10-role": "Improve one general Foe runtime behavior using the supplied assessed evidence.",
-            "20-scope": "Diagnose the mechanism before editing. Change runtime source, a regression test, and every affected specification. Do not change evaluation code, benchmark adapters, tasks, graders, budgets, or model routes. Do not encode benchmark identifiers, fixture values, or grader rules.",
+            "10-role": "Implement the supplied typed diagnosis as one general Foe runtime improvement.",
+            "20-scope": "Confirm the relevant source excerpts, then change runtime source, a regression test, and every affected specification. Do not repeat broad diagnosis. Do not change evaluation code, benchmark adapters, tasks, graders, budgets, or model routes. Do not encode benchmark identifiers, fixture values, or grader rules.",
             "30-quality": "Prefer a small behavioral change supported by more than one observation. Preserve trace reconstruction, declared authority, separate token budgets, and explicit completion semantics. A successful tool action alone never proves that an open-ended task is complete.",
-            "40-validation": "Read every file before editing it. Use bash for focused diagnostics and tests that the contained environment supports. Use check after the change. The check validates candidate shape, whitespace, and line budgets. Full repository validation runs outside this episode. State the expected accuracy, token, latency, and compatibility effects in the final result.",
+            "40-validation": "This implementation has nine model requests. Read each changed file before editing it. Reserve the final two requests for tests, specifications, and check. Use bash for focused diagnostics and tests that the contained environment supports. The check validates candidate shape, whitespace, and line budgets. Full repository validation runs outside this episode. State the expected accuracy, token, latency, and compatibility effects in the final result.",
         },
         "tools": [*CODING_TOOLS, "check"],
         "tool_defs": {"check": check_def},
         "grants": {"read": read, "write": write},
         "budget": {
-            **LIMITS,
+            **IMPLEMENTATION_LIMITS,
             "max_depth": 0,
             "max_episodes": 1,
             "max_concurrent": 1,
             "loop_threshold": 5,
         },
-        "context": {"compact": True},
         "done_when": {"verify": "check", "retries": 2},
     }
     return {
@@ -181,13 +220,17 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
             "check": check_def,
         },
         "grants": {"read": read, "write": write},
-        "budget": {**LIMITS, "max_depth": 1, "max_episodes": 2, "loop_threshold": 5},
+        "budget": {**LIMITS, "max_depth": 1, "max_episodes": 3, "max_concurrent": 1, "loop_threshold": 5},
         "workflow": {
             "nodes": {
                 "collect-assessed-evidence": {"tool": "evidence", "args": {"args": [str(evidence)]}},
-                "improve-runtime": {
-                    "model": child,
+                "diagnose-runtime": {
+                    "model": diagnosis,
                     "follows": ["task", "collect-assessed-evidence"],
+                },
+                "improve-runtime": {
+                    "model": implementation,
+                    "follows": ["task", "diagnose-runtime"],
                     "terminal": True,
                 },
             },

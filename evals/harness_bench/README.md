@@ -87,8 +87,13 @@ bazel run //evals/harness_bench:self-improve -- \
   --confirm-spend
 ```
 
-The workflow has one deterministic evidence node and one terminal model node.
-The model node may change runtime source, adjacent Rust tests, and affected
+The workflow has one deterministic evidence node and two model nodes. A
+three-request diagnosis node reads the assessed evidence and returns a typed,
+file-specific proposal. A fresh nine-request coding node receives the proposal
+without the raw benchmark evidence. This separation prevents broad diagnostic
+tool output from entering every implementation request.
+
+The coding node may change runtime source, adjacent Rust tests, and affected
 specifications. It cannot write evaluation code, benchmark adapters, tasks,
 graders, budgets, or model routes. It receives the four coding tools available
 to a default Foe coding episode: source reads, search, structured edits, and a
