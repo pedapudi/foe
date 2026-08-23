@@ -96,10 +96,10 @@ Folded into the runs a reader actually opens:
 
 The fixtures are small enough that the last rung roughly doubles them,
 where the recorded run multiplies by twenty-four. Two of them show why the
-ladder is worth having even at that scale: `rich` carries a diff and a
+ladder is worth having even at that scale. `rich` carries a diff and a
 fenced block, so its conversation rung is already 1,029 characters against
-54 at the rung below, and `retries-exhausted` never received a message at
-all, so all five rungs are identical.
+54 at the rung below. `retries-exhausted` never received a message at all,
+so all five of its rungs are identical.
 
 The outline opens at the conversation rung. It is the whole causal
 structure of a run and the model's own account of it, stopping one rung
