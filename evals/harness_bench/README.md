@@ -66,6 +66,11 @@ negative-control grade, final programmatic grade, usage, trace result, and
 process outcome. Grading runs after Foe exits. The grader source remains
 outside Foe's read and write authority.
 
+The development and confirmation reports identify the evaluated Foe source
+with the Git tree object of a clean checkout. They identify the executable
+with its SHA-256 digest. A runner refuses a checkout with tracked or untracked
+changes before it launches a model request.
+
 The retained directory is local evaluation evidence. Keep raw trajectories,
 copied task workspaces, negative controls, Python environments, build output,
 and provider signatures under an ignored directory such as `target/`. Store
@@ -109,6 +114,11 @@ The collector writes compact JSON and rejects reports larger than 20,000
 bytes. This bound keeps the model input focused on assessed failures and
 resource use.
 
+The micro and Harness-Bench reports must name the same source tree and runtime
+binary. The collector rejects a missing identity or a disagreement and carries
+the common identity into the evidence file. A prior self-improvement result
+supplied with `--optimization-result` must carry the same identity.
+
 Create a clean sibling worktree before launching self-improvement:
 
 ```sh
@@ -139,6 +149,12 @@ three-request diagnosis node reads the assessed evidence and returns a typed,
 file-specific proposal. A fresh nine-request coding node receives the proposal
 without the raw benchmark evidence. This separation prevents broad diagnostic
 tool output from entering every implementation request.
+
+Before creating an episode directory, the runner validates the candidate and
+runtime against the evidence. The candidate checkout must be clean. Its Git
+tree must match the evidence source tree. The Foe binary that runs the workflow
+must match the evidence runtime digest. A mismatch consumes no model budget and
+reports both values.
 
 The coding node may change runtime source, adjacent Rust tests, and affected
 specifications. It cannot write evaluation code, benchmark adapters, tasks,

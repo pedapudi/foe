@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from foe_source_identity import evaluated_foe
+
 
 BENCHMARK_COMMIT = "1025086a446653702b80cfb48babbeec35db6b2c"
 
@@ -441,7 +443,9 @@ def run_attempt(
     return record
 
 
-def preview(selected: list[Task], attempts: int, route: dict[str, str]) -> dict[str, Any]:
+def preview(
+    selected: list[Task], attempts: int, route: dict[str, str], foe_identity: dict[str, str]
+) -> dict[str, Any]:
     rows = [
         {
             "task": task.identifier,
@@ -456,6 +460,7 @@ def preview(selected: list[Task], attempts: int, route: dict[str, str]) -> dict[
     return {
         "benchmark": "Harness-Bench",
         "benchmark_commit": BENCHMARK_COMMIT,
+        "evaluated_foe": foe_identity,
         "model": route,
         "tasks": rows,
         "maximum": {
@@ -469,6 +474,7 @@ def preview(selected: list[Task], attempts: int, route: dict[str, str]) -> dict[
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--foe", type=Path, required=True)
+    parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--trace-evaluator", type=Path, required=True)
     parser.add_argument("--task-dir", action="append", type=Path, required=True)
     parser.add_argument("--task", action="append", choices=sorted(TASKS))
@@ -484,6 +490,10 @@ def main() -> int:
     args = parse_args()
     if args.attempts < 1:
         raise SystemExit("--attempts must be positive")
+    try:
+        foe_identity = evaluated_foe(args.source_root, args.foe)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     route = model_route(args.model, args.reasoning_effort)
     task_dirs = {path.parent.name: path.parent.resolve() for path in args.task_dir}
     identifiers = args.task or list(task_dirs)
@@ -491,7 +501,7 @@ def main() -> int:
     missing = [task.identifier for task in selected if task.identifier not in task_dirs]
     if missing:
         raise SystemExit("benchmark source does not contain: " + ", ".join(missing))
-    maximum = preview(selected, args.attempts, route)
+    maximum = preview(selected, args.attempts, route, foe_identity)
     print(json.dumps(maximum, indent=2, sort_keys=True))
     if not args.confirm_spend:
         print("No model calls were launched. Pass --confirm-spend after reviewing the maximum.", file=sys.stderr)

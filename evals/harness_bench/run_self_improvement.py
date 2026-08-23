@@ -14,6 +14,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256_file
+
 
 LIMITS = {"model_calls": 12, "input_tokens": 300_000, "output_tokens": 20_000, "seconds": 1_200}
 DIAGNOSIS_LIMITS = {"model_calls": 3, "input_tokens": 70_000, "output_tokens": 4_000, "seconds": 300}
@@ -32,6 +34,29 @@ def route(value: str) -> dict[str, str]:
     if not slash or not provider or not model:
         raise ValueError("--model takes PROVIDER/MODEL")
     return {"provider": provider, "model": model}
+
+
+def verify_evidence_identity(candidate: Path, binary: Path, evidence: Path) -> dict[str, str]:
+    try:
+        report = json.loads(evidence.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"cannot read self-improvement evidence {evidence}: {error}") from error
+    if not isinstance(report, dict):
+        raise ValueError(f"self-improvement evidence {evidence} does not contain a JSON object")
+    identity = require_evaluated_foe(report.get("evaluated_foe"), f"self-improvement evidence {evidence}")
+    candidate_tree = clean_source_tree(candidate)
+    if candidate_tree != identity["source_tree"]:
+        raise ValueError(
+            "candidate source tree differs from evaluated evidence: "
+            f"{candidate_tree} and {identity['source_tree']}"
+        )
+    runtime_binary = sha256_file(binary)
+    if runtime_binary != identity["runtime_binary"]:
+        raise ValueError(
+            "self-improvement runtime binary differs from evaluated evidence: "
+            f"{runtime_binary} and {identity['runtime_binary']}"
+        )
+    return identity
 
 
 def source_hashes(root: Path) -> dict[str, str]:
@@ -265,11 +290,10 @@ def main() -> int:
     evidence = args.evidence.resolve()
     if not (candidate / "Cargo.toml").is_file() or not evidence.is_file():
         raise SystemExit("--candidate must be a Foe checkout and --evidence must be a file")
-    status = subprocess.run(
-        ["/usr/bin/git", "status", "--short"], cwd=candidate, text=True, capture_output=True, check=True
-    ).stdout.strip()
-    if status:
-        raise SystemExit(f"candidate checkout is not clean before self-improvement:\n{status}")
+    try:
+        foe_identity = verify_evidence_identity(candidate, args.foe.resolve(), evidence)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     temporary: tempfile.TemporaryDirectory[str] | None = None
     if args.keep:
         workspace_directory = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
@@ -297,6 +321,7 @@ def main() -> int:
     measured, outcome = episode_measurement(log_dir)
     record = {
         **preview,
+        "evaluated_foe": foe_identity,
         "duration_seconds": round(time.monotonic() - started, 3),
         "exit_code": result.returncode,
         "stdout": result.stdout.strip(),
