@@ -308,6 +308,11 @@ outcome and conformance status as Harbor agent metadata. Cost estimation uses
 the provider-reported uncached-input, cached-input, and output usage for each
 request.
 
+A runtime `failed` outcome or a nonconformant trace makes the trial invalid as
+model-accuracy evidence. A model request without provider usage makes the
+resource measurement incomplete. The runner records both classes and exits
+unsuccessfully, so a repeated result cannot silently include either class.
+
 Keep raw jobs under ignored `target/` directories. Keep the private credential
 state under `~/.cache/foe/terminal-bench/`. Git tracks the adapter, case
 selection, allowances, documentation, and reviewed aggregate results. Git does

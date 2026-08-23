@@ -288,18 +288,21 @@ def read_episode_summary(
     totals = {"input": 0, "output": 0, "cache_read": 0}
     usages: list[dict[str, int]] = []
     measured = 0
+    accounted_calls = 0
     priced_usages: list[tuple[str | None, dict[str, int]]] = []
     for route, message in messages:
         item = message.get("usage")
         if not isinstance(item, dict) or not all(isinstance(item.get(key), int) for key in totals):
             continue
         measured += 1
+        if not message.get("interrupted"):
+            accounted_calls += 1
         usage = {key: item[key] for key in totals}
         usages.append(usage)
         priced_usages.append((route, usage))
         for key in totals:
             totals[key] += item[key]
-    complete = bool(messages) and measured == len(messages)
+    complete = bool(messages) and measured == len(messages) and accounted_calls == calls
     estimated_cost = None
     if complete and pricing is not None:
         if "input_per_million" in pricing:
@@ -315,6 +318,7 @@ def read_episode_summary(
         "tool_calls": tool_calls,
         "model_responses": len(messages),
         "responses_with_usage": measured,
+        "unreported_model_calls": max(0, calls - accounted_calls),
         "usage_reported": complete,
         "input_tokens": totals["input"] if complete else None,
         "output_tokens": totals["output"] if complete else None,

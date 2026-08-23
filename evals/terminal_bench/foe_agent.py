@@ -251,6 +251,7 @@ class FoeAgent(BaseInstalledAgent):
                 "foe_model_calls": summary["model_calls"],
                 "foe_tool_calls": summary["tool_calls"],
                 "foe_usage_reported": summary["usage_reported"],
+                "foe_unreported_model_calls": summary["unreported_model_calls"],
                 "foe_estimated_cost_usd": summary["estimated_cost_usd"],
                 "foe_outcome": summary["outcome"],
                 "foe_episode_path": "agent/foe-episode",

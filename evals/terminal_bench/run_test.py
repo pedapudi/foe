@@ -6,7 +6,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from run import harbor_command, lock_credential_state, read_cases, read_job_result, source_tree
+from run import (
+    harbor_command,
+    lock_credential_state,
+    read_cases,
+    read_job_integrity,
+    read_job_result,
+    source_tree,
+)
 
 
 class CasesTest(unittest.TestCase):
@@ -146,6 +153,41 @@ class CasesTest(unittest.TestCase):
             )
             result = read_job_result(path)
         self.assertEqual(result["n_errored_trials"], 1)
+
+    def test_job_integrity_separates_runtime_failure_from_missing_usage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            job = Path(directory)
+            trial = job / "task__attempt"
+            trial.mkdir()
+            (trial / "result.json").write_text(
+                json.dumps(
+                    {
+                        "trial_name": "task__attempt",
+                        "exception_info": None,
+                        "agent_result": {
+                            "metadata": {
+                                "foe_outcome": {
+                                    "kind": "failed",
+                                    "error": "provider response ended",
+                                },
+                                "foe_trace_conformant": True,
+                                "foe_usage_reported": False,
+                                "foe_unreported_model_calls": 1,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            integrity = read_job_integrity(job)
+        self.assertEqual(
+            integrity["infrastructure_failures"],
+            ["task__attempt: Foe runtime failed: provider response ended"],
+        )
+        self.assertEqual(
+            integrity["incomplete_resource_measurements"],
+            ["task__attempt: 1 model call(s) lack provider usage"],
+        )
 
     def test_source_tree_requires_a_clean_checkout(self):
         with tempfile.TemporaryDirectory() as directory:

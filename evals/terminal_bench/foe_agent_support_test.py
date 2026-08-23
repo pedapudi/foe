@@ -208,7 +208,32 @@ class EpisodeSummaryTest(unittest.TestCase):
         self.assertEqual(summary["input_tokens"], 17)
         self.assertEqual(summary["output_tokens"], 5)
         self.assertEqual(summary["cache_read_tokens"], 5)
+        self.assertEqual(summary["unreported_model_calls"], 0)
         self.assertEqual(summary["outcome"], {"kind": "accepted"})
+
+    def test_summary_rejects_exact_usage_when_a_request_has_no_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            events = [
+                {"type": "model/request", "data": {}},
+                {
+                    "type": "assistant/message",
+                    "data": {"usage": {"input": 10, "output": 2, "cache_read": 4}},
+                },
+                {"type": "model/request", "data": {}},
+                {
+                    "type": "episode/end",
+                    "data": {"outcome": {"kind": "failed", "error": "provider failed"}},
+                },
+            ]
+            (root / "episode.jsonl").write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n",
+                encoding="utf-8",
+            )
+            summary = read_episode_summary(root)
+        self.assertFalse(summary["usage_reported"])
+        self.assertEqual(summary["unreported_model_calls"], 1)
+        self.assertIsNone(summary["input_tokens"])
 
     def test_cost_uses_cached_rate_and_request_level_long_context_multiplier(self):
         cost = estimate_usage_cost(
@@ -239,6 +264,7 @@ class EpisodeSummaryTest(unittest.TestCase):
                         "type": "episode/start",
                         "data": {"program": {"model": {"provider": "openai-codex", "model": model}}},
                     },
+                    {"type": "model/request", "data": {}},
                     {"type": "assistant/message", "data": {"usage": usage}},
                 ]
                 if path == root / "episode.jsonl":

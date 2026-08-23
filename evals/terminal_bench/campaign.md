@@ -162,6 +162,11 @@ intervention must improve the lower-cost evaluated configuration. It preserves
 the model route, reasoning effort, task allowances, token policy, and task set.
 Higher-cost successful settings supply diagnostic contrasts.
 
+A Foe runtime failure or nonconformant trace invalidates the trial as accuracy
+evidence. A request without provider usage invalidates exact cost and token
+claims. The retained campaign record names each invalid trial. The required
+attempt count is completed with a replacement trial.
+
 The coding node has Foe's standard coding tools: `read`, `grep`, `edit`, and
 `bash`. Its write authority covers runtime crates, specifications, and
 examples. It cannot change evaluation code, benchmark material, model

@@ -324,6 +324,46 @@ def read_job_result(path: Path) -> dict[str, Any]:
     return result
 
 
+def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
+    """Classify failures that cannot be used as model-accuracy evidence."""
+    infrastructure_failures = []
+    incomplete_resource_measurements = []
+    trial_results = sorted(job_dir.glob("*/result.json"))
+    if not trial_results:
+        raise ValueError(f"Harbor job has no trial results: {job_dir}")
+    for path in trial_results:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        trial = value.get("trial_name")
+        if not isinstance(trial, str):
+            trial = path.parent.name
+        exception = value.get("exception_info")
+        if exception is not None:
+            infrastructure_failures.append(f"{trial}: Harbor recorded a trial exception")
+            continue
+        agent_result = value.get("agent_result")
+        metadata = agent_result.get("metadata") if isinstance(agent_result, dict) else None
+        if not isinstance(metadata, dict):
+            infrastructure_failures.append(f"{trial}: Harbor recorded no Foe metadata")
+            continue
+        outcome = metadata.get("foe_outcome")
+        outcome_kind = outcome.get("kind") if isinstance(outcome, dict) else None
+        if outcome_kind is None:
+            infrastructure_failures.append(f"{trial}: Foe recorded no terminal outcome")
+        elif outcome_kind == "failed":
+            detail = outcome.get("error") if isinstance(outcome.get("error"), str) else "no error detail"
+            infrastructure_failures.append(f"{trial}: Foe runtime failed: {detail}")
+        if metadata.get("foe_trace_conformant") is not True:
+            infrastructure_failures.append(f"{trial}: Foe trace conformance was not established")
+        if metadata.get("foe_usage_reported") is not True:
+            missing = metadata.get("foe_unreported_model_calls")
+            count = missing if isinstance(missing, int) else "unknown"
+            incomplete_resource_measurements.append(f"{trial}: {count} model call(s) lack provider usage")
+    return {
+        "infrastructure_failures": infrastructure_failures,
+        "incomplete_resource_measurements": incomplete_resource_measurements,
+    }
+
+
 def write_job_diagnostics(job_dir: Path) -> list[str]:
     """Write one verifier-aware Foe diagnosis beside each retained episode."""
     written = []
@@ -586,10 +626,20 @@ def main(argv: list[str] | None = None) -> int:
         try:
             record.update(read_job_result(job_result_path))
             record["diagnostics"] = write_job_diagnostics(run_dir / task.name)
+            if not args.install_only:
+                record.update(read_job_integrity(run_dir / task.name))
         except (OSError, ValueError, json.JSONDecodeError) as error:
             record["result_error"] = str(error)
         records.append(record)
-        if result.returncode != 0 or record.get("n_errored_trials", 1) > 0:
+        for failure in record.get("infrastructure_failures", []):
+            print(f"terminal-bench eval: invalid infrastructure trial: {failure}", file=sys.stderr)
+        for failure in record.get("incomplete_resource_measurements", []):
+            print(f"terminal-bench eval: incomplete resource measurement: {failure}", file=sys.stderr)
+        if (
+            result.returncode != 0
+            or record.get("n_errored_trials", 1) > 0
+            or bool(record.get("infrastructure_failures"))
+        ):
             break
     report = {
         "schema_version": 1,
@@ -626,6 +676,7 @@ def main(argv: list[str] | None = None) -> int:
     completed = len(records) == len(selected) and all(
         row["harbor_exit_code"] == 0
         and row.get("n_errored_trials") == 0
+        and not row.get("infrastructure_failures")
         and "result_error" not in row
         for row in records
     )
