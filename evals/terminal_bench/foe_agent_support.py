@@ -70,26 +70,29 @@ def build_program(
         "sandbox": {"mode": "off"},
         "task": instruction,
     }
-    if diagnosis_model_name is None:
+    if diagnosis_model_name is None and escalation_reasoning_effort is None:
         return program
-    if "/" not in diagnosis_model_name:
-        raise ValueError("diagnosis model must have the form provider/model")
-    diagnosis_provider, diagnosis_model = diagnosis_model_name.split("/", 1)
-    if not diagnosis_provider or not diagnosis_model:
-        raise ValueError("diagnosis model must have the form provider/model")
-    if not 2 <= diagnosis_model_calls < model_calls:
-        raise ValueError("diagnosis model calls must be at least two and below the total model-call allowance")
+    diagnosis_provider = diagnosis_model = None
+    if diagnosis_model_name is not None:
+        if "/" not in diagnosis_model_name:
+            raise ValueError("diagnosis model must have the form provider/model")
+        diagnosis_provider, diagnosis_model = diagnosis_model_name.split("/", 1)
+        if not diagnosis_provider or not diagnosis_model:
+            raise ValueError("diagnosis model must have the form provider/model")
+        if not 2 <= diagnosis_model_calls < model_calls:
+            raise ValueError("diagnosis model calls must be at least two and below the total model-call allowance")
     if escalation_reasoning_effort is None and escalation_model_calls != 0:
         raise ValueError("escalation model calls require an escalation reasoning effort")
     if escalation_reasoning_effort is not None and escalation_model_calls < 2:
         raise ValueError("escalation model calls must be at least two")
-    if diagnosis_model_calls + escalation_model_calls >= model_calls:
+    reserved_diagnosis_calls = diagnosis_model_calls if diagnosis_model_name is not None else 0
+    if reserved_diagnosis_calls + escalation_model_calls >= model_calls:
         raise ValueError("diagnosis and escalation calls must leave at least one implementation call")
-    diagnosis_seconds = min(180, max(60, seconds // 4))
+    diagnosis_seconds = min(180, max(60, seconds // 4)) if diagnosis_model_name is not None else 0
     working_seconds = seconds - diagnosis_seconds
     escalation_seconds = working_seconds // 2 if escalation_reasoning_effort is not None else 0
     implementation_seconds = working_seconds - escalation_seconds
-    implementation_calls = model_calls - diagnosis_model_calls - escalation_model_calls
+    implementation_calls = model_calls - reserved_diagnosis_calls - escalation_model_calls
     investigation_calls = diagnosis_model_calls - 1
     shared_grants = {"read": [working_directory, "/"], "write": ["/"]}
     diagnosis_schema = {
@@ -104,41 +107,33 @@ def build_program(
         "required": ["constraints", "observations", "implementation_steps", "verification_steps", "risks"],
         "additionalProperties": False,
     }
-    program["budget"].update({"max_episodes": 3, "max_concurrent": 1})
+    program["budget"].update(
+        {
+            "max_episodes": 2
+            + int(diagnosis_model_name is not None)
+            + int(escalation_reasoning_effort is not None),
+            "max_concurrent": 1,
+        }
+    )
+    implementation_role = (
+        "Implement the task using the typed diagnosis as advice. Confirm its claims against "
+        "the repository. Make the requested change, run the strongest available verification "
+        "after the final change, and leave files and services in the state the task requires."
+        if diagnosis_model_name is not None
+        else "Implement the task. Inspect the current workspace, make the requested change, run "
+        "the strongest available verification after the final change, and leave files and "
+        "services in the state the task requires."
+    )
     program["workflow"] = {
         "nodes": {
-            "diagnose-task": {
-                "model": {
-                    "name": "diagnose-coding-task",
-                    "instructions": {
-                        "role": (
-                            "Analyze the task and repository without implementing the task. "
-                            "Use read and grep for focused evidence collection. Identify constraints, "
-                            "implementation steps, verification steps, and failure risks. "
-                            f"Use no more than {investigation_calls} request(s) for inspection. "
-                            "On the final request, call return with the best supported diagnosis, "
-                            "including uncertainty under risks. Keep the return concise."
-                        )
-                    },
-                    "tools": ["read", "grep"],
-                    "grants": {"read": [working_directory, "/"]},
-                    "budget": {"model_calls": diagnosis_model_calls, "seconds": diagnosis_seconds},
-                    "done_when": {"returns": diagnosis_schema},
-                    "model": {
-                        "provider": diagnosis_provider,
-                        "model": diagnosis_model,
-                        "reasoning_effort": diagnosis_reasoning_effort,
-                        "token_file": credential_path,
-                    },
-                },
-                "follows": ["task"],
-            },
             "implement-task": {
                 "model": {
-                    "name": "implement-diagnosed-task",
-                    "instructions": {
-                        "role": "Implement the task using the typed diagnosis as advice. Confirm its claims against the repository. Make the requested change, run the strongest available verification after the final change, and leave files and services in the state the task requires."
-                    },
+                    "name": (
+                        "implement-diagnosed-task"
+                        if diagnosis_model_name is not None
+                        else "implement-task"
+                    ),
+                    "instructions": {"role": implementation_role},
                     "tools": ["read", "grep", "edit", "bash"],
                     "grants": shared_grants,
                     "budget": {
@@ -152,14 +147,41 @@ def build_program(
                         "token_file": credential_path,
                     },
                 },
-                "follows": ["task", "diagnose-task"],
+                "follows": ["task"]
+                + (["diagnose-task"] if diagnosis_model_name is not None else []),
                 "terminal": escalation_reasoning_effort is None,
             },
         },
         "recovery": {"enabled": False},
     }
+    if diagnosis_model_name is not None:
+        program["workflow"]["nodes"]["diagnose-task"] = {
+            "model": {
+                "name": "diagnose-coding-task",
+                "instructions": {
+                    "role": (
+                        "Analyze the task and repository without implementing the task. "
+                        "Use read and grep for focused evidence collection. Identify constraints, "
+                        "implementation steps, verification steps, and failure risks. "
+                        f"Use no more than {investigation_calls} request(s) for inspection. "
+                        "On the final request, call return with the best supported diagnosis, "
+                        "including uncertainty under risks. Keep the return concise."
+                    )
+                },
+                "tools": ["read", "grep"],
+                "grants": {"read": [working_directory, "/"]},
+                "budget": {"model_calls": diagnosis_model_calls, "seconds": diagnosis_seconds},
+                "done_when": {"returns": diagnosis_schema},
+                "model": {
+                    "provider": diagnosis_provider,
+                    "model": diagnosis_model,
+                    "reasoning_effort": diagnosis_reasoning_effort,
+                    "token_file": credential_path,
+                },
+            },
+            "follows": ["task"],
+        }
     if escalation_reasoning_effort is not None:
-        program["budget"]["max_episodes"] = 4
         program["workflow"]["nodes"]["audit-and-repair-task"] = {
             "model": {
                 "name": "audit-and-repair-task",

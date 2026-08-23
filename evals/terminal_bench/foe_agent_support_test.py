@@ -123,6 +123,28 @@ class ProgramTest(unittest.TestCase):
         self.assertTrue(repair["terminal"])
         self.assertEqual(program["budget"]["max_episodes"], 4)
 
+    def test_program_can_escalate_without_a_diagnosis_episode(self):
+        program = build_program(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            "/workspace",
+            model_calls=60,
+            input_tokens=None,
+            output_tokens=None,
+            seconds=900,
+            reasoning_effort="low",
+            escalation_reasoning_effort="xhigh",
+            escalation_model_calls=25,
+        )
+        nodes = program["workflow"]["nodes"]
+        self.assertNotIn("diagnose-task", nodes)
+        self.assertEqual(nodes["implement-task"]["model"]["name"], "implement-task")
+        self.assertEqual(nodes["implement-task"]["follows"], ["task"])
+        self.assertEqual(nodes["implement-task"]["model"]["budget"], {"model_calls": 35, "seconds": 450})
+        self.assertEqual(nodes["audit-and-repair-task"]["model"]["budget"], {"model_calls": 25, "seconds": 450})
+        self.assertEqual(program["budget"]["max_episodes"], 3)
+
 
 class EpisodeSummaryTest(unittest.TestCase):
     def test_summary_requires_a_root_episode_log(self):

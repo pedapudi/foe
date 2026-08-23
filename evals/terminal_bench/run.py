@@ -424,8 +424,6 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--escalation-model-calls requires --escalation-reasoning-effort")
         if args.escalation_reasoning_effort is not None and args.escalation_model_calls < 2:
             raise ValueError("--escalation-model-calls must be at least two")
-        if args.escalation_reasoning_effort is not None and args.diagnosis_model is None:
-            raise ValueError("reasoning escalation requires --diagnosis-model")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
         agent_module = args.agent_module.resolve(strict=True)
@@ -450,8 +448,10 @@ def main(argv: list[str] | None = None) -> int:
         selected = [tasks[name] for name in selected_names]
         if args.diagnosis_model is not None and any(args.diagnosis_model_calls >= task.model_calls for task in selected):
             raise ValueError("--diagnosis-model-calls must be below every selected task model-call allowance")
-        reserved_calls = args.diagnosis_model_calls + args.escalation_model_calls
-        if args.diagnosis_model is not None and any(reserved_calls >= task.model_calls for task in selected):
+        reserved_calls = (
+            args.diagnosis_model_calls if args.diagnosis_model is not None else 0
+        ) + args.escalation_model_calls
+        if reserved_calls and any(reserved_calls >= task.model_calls for task in selected):
             raise ValueError("diagnosis and escalation calls must leave implementation capacity for every task")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)

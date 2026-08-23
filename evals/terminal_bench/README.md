@@ -125,23 +125,22 @@ runner prices each child from the model route recorded in its episode log.
 Omitting `--diagnosis-model` preserves the single-episode coding program.
 
 The implementation can receive a fresh higher-reasoning repair episode while
-the primary implementation remains at low reasoning:
+the primary implementation remains at low reasoning. The repair episode does
+not require a separate diagnosis episode:
 
 ```sh
 bazel run //evals/terminal_bench:foe-capability-search -- \
   --task gpt2-codegolf \
-  --diagnosis-model openai-codex/gpt-5.6-luna \
-  --diagnosis-reasoning-effort low \
-  --diagnosis-model-calls 3 \
   --escalation-reasoning-effort xhigh \
-  --escalation-model-calls 18 \
+  --escalation-model-calls 25 \
   --confirm-spend
 ```
 
 The repair episode receives the task and the earlier episode's completion
 claim in a fresh context. It audits the shared workspace before completing.
-All three child allowances remain within the task's original model-call and
-wall-time budgets.
+The two child allowances divide the task's original model-call and wall-time
+budgets. A diagnosis episode can still precede both children when the task
+benefits from a cheaper model's typed analysis.
 
 ## Run the staged task sets
 
