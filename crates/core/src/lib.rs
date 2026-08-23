@@ -106,6 +106,9 @@ impl ToolSpec {
     }
 }
 
+/// Longest a `subject` may be. Anything past it is cut where it is written.
+pub const SUBJECT_MAX: usize = 120;
+
 /// What a tool returns. The log stores `value`; the model sees `rendered`
 /// when present and a compact rendering of `value` otherwise.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -113,15 +116,29 @@ pub struct ToolValue {
     pub value: serde_json::Value,
     pub rendered: Option<String>,
     pub is_error: bool,
+    /// One line naming what this call acted on and what came of it, which
+    /// the tool writes from what it did. `rendered` is what the model
+    /// received; this is what a person reads in a list, and it never
+    /// reaches the model. See docs/tools.md.
+    pub subject: Option<String>,
 }
 
 impl ToolValue {
     pub fn ok(value: serde_json::Value, rendered: impl Into<String>) -> Self {
-        Self { value, rendered: Some(rendered.into()), is_error: false }
+        Self { value, rendered: Some(rendered.into()), is_error: false, subject: None }
     }
+    /// The message is the subject too: it already names what failed, which
+    /// is the one line a reader scanning for the failure wants.
     pub fn error(message: impl Into<String>) -> Self {
         let message = message.into();
-        Self { value: serde_json::json!({ "error": message }), rendered: Some(message), is_error: true }
+        let value = serde_json::json!({ "error": &message });
+        Self { value, rendered: Some(message.clone()), is_error: true, subject: None }.subject(message)
+    }
+    /// Records what the call acted on, held to one line of [`SUBJECT_MAX`].
+    pub fn subject(mut self, subject: impl Into<String>) -> Self {
+        let line = subject.into().replace(['\n', '\t'], " ");
+        self.subject = Some(line.chars().take(SUBJECT_MAX).collect());
+        self
     }
 }
 

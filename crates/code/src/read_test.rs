@@ -102,3 +102,17 @@ async fn paths_outside_the_roots_are_denied() {
     assert!(v.is_error);
     assert!(v.rendered.unwrap().contains("outside every granted root"));
 }
+
+/// What a person reads in a list: the file and the span actually shown,
+/// which the arguments alone do not give, because a limit and the end of
+/// the file both cut it.
+#[tokio::test]
+async fn states_the_file_and_the_span_it_showed() {
+    let fx = Fixture::new();
+    fx.write("a.txt", "one\ntwo\nthree\nfour\n");
+    let v = read(&fx, json!({"path": "a.txt", "offset": 2, "limit": 2})).await;
+    assert_eq!(v.subject.as_deref(), Some("a.txt lines 2\u{2013}3 of 4"));
+
+    let v = read(&fx, json!({"path": "empty.txt"})).await;
+    assert_eq!(v.subject.as_deref(), Some("read: empty.txt: No such file or directory (os error 2)"));
+}

@@ -219,6 +219,7 @@ when the provider reports reasoning inside its output count.
   "rendered": "1\timport pytest\n…",
   "is_error": false,
   "spill": null,
+  "subject": "src/parser.rs lines 1–6 of 42",
   "duration_ms": 4,
   "synthetic": false
 }
@@ -233,6 +234,17 @@ the notice. The cut is applied before the event is appended, so the
 rendering in the log is the rendering every request carries, and no earlier
 event is ever rewritten. A reader that wants the whole result reads
 `value`.
+`subject` is one line the tool writes after it has run, naming what the
+call acted on and what came of it. It differs from `rendered` in who reads
+it: `rendered` is what the model received, and `subject` is what a person
+reads in a list of calls. The tool is the only thing that can state it,
+because the arguments say what was attempted and only the tool knows the
+outcome, so on failure the subject names what failed. It is one line of at
+most 120 characters, held to that where the field is written, and it never
+reaches the model: it appears in no tool schema and nowhere in the system
+prompt. The field is optional and absent when a tool states none, which is
+the case for host tools and for every log written before tools stated it.
+
 `spill` names a file under `spill/` when the canonical value was too large to
 inline; the inlined `value` is then a locator object, and `rendered` states
 the file and carries the rendering. `synthetic` is true

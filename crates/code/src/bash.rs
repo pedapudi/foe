@@ -130,6 +130,9 @@ impl Tool for Bash {
             (false, Some(code)) => format!("[exit {code} in {secs:.2}s]\n"),
             (false, None) => format!("[killed by a signal after {secs:.2}s]\n"),
         };
+        // The status the rendering leads with is also what a reader wants
+        // beside the command, so it is taken from there rather than rebuilt.
+        let status = out.trim().trim_matches(['[', ']']).to_string();
         if truncated {
             let file = ctx.spill_dir.join(format!("{}-bash.txt", ctx.call_id));
             let saved =
@@ -169,6 +172,7 @@ impl Tool for Bash {
             }),
             out,
         )
+        .subject(format!("{} \u{b7} {status}", a.command))
     }
 }
 

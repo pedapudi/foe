@@ -236,6 +236,7 @@ impl Tool for Grep {
             }),
             out.trim_end_matches('\n'),
         )
+        .subject(format!("{} matches in {files} files under {root_shown}", collected.matches))
     }
 }
 

@@ -163,6 +163,7 @@ impl Host {
                         .ok_or_else(|| format!("tool/result for `{call_id}` lacks `value`"))?,
                     rendered: value.get("rendered").and_then(Value::as_str).map(str::to_string),
                     is_error: value.get("is_error").and_then(Value::as_bool).unwrap_or(false),
+                    subject: None,
                 };
                 let sender = lock(&self.inner.calls).remove(call_id);
                 sender

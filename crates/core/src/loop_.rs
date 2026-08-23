@@ -502,6 +502,7 @@ impl Episode {
         duration_ms: u64,
         synthetic: bool,
     ) -> Result<ToolResult, RuntimeError> {
+        let subject = value.subject.clone();
         let (value, rendered, spill) = spill(&self.spill_dir, &call.id, value)?;
         let is_error = value.get("error").is_some() && value.as_object().is_some_and(|o| o.len() == 1);
         let result = ToolResult {
@@ -512,6 +513,7 @@ impl Episode {
             rendered,
             is_error,
             spill,
+            subject,
             duration_ms,
             synthetic,
         };

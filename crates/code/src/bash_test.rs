@@ -113,3 +113,26 @@ async fn a_timed_out_run_is_reported_as_a_result_with_the_output_it_produced() {
     assert!(rendered.contains("[timed out after"), "{rendered}");
     assert!(rendered.contains("partial"), "the output before the kill reaches the model: {rendered}");
 }
+
+/// The command with what came of it. The arguments say what was asked for;
+/// only the tool knows how it ended, which is the half a reader scanning a
+/// list is looking for.
+#[tokio::test]
+async fn states_the_command_and_how_it_ended() {
+    let fx = Fixture::new();
+    let exec = Arc::new(FakeExecutor::new(result(0, "ok\n", "")));
+    let c = ctx_with_executor(&fx, exec.clone());
+    let v = Bash::new().call(json!({"command": "cargo test -p parser"}), &c).await;
+    assert_eq!(v.subject.as_deref(), Some("cargo test -p parser \u{b7} exit 0 in 1.50s"));
+
+    let exec = Arc::new(FakeExecutor::new(ExecResult {
+        exit_code: None,
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        timed_out: true,
+        duration: Duration::from_secs(30),
+    }));
+    let c = ctx_with_executor(&fx, exec);
+    let v = Bash::new().call(json!({"command": "sleep 99"}), &c).await;
+    assert_eq!(v.subject.as_deref(), Some("sleep 99 \u{b7} timed out after 30.0s; the process group was killed"));
+}

@@ -74,6 +74,7 @@ pub fn result(step: u32, call_id: &str, rendered: &str) -> EventData {
         rendered: rendered.into(),
         is_error: false,
         spill: None,
+        subject: None,
         duration_ms: 1,
         synthetic: false,
     })

@@ -97,7 +97,8 @@ impl Tool for Read {
             return ToolValue::error("read: offset must be at least 1");
         }
         if total == 0 {
-            return ToolValue::ok(value(0, false, ""), format!("[{shown} is empty: 0 lines.]"));
+            return ToolValue::ok(value(0, false, ""), format!("[{shown} is empty: 0 lines.]"))
+                .subject(format!("{shown} is empty"));
         }
         if offset > total {
             return ToolValue::error(format!(
@@ -113,7 +114,8 @@ impl Tool for Read {
                  for one read. Use bash: sed -n '{offset}p' '{shown}' | head -c 4000]",
                 rest[0].chars().count()
             );
-            return ToolValue::ok(value(0, true, ""), notice);
+            return ToolValue::ok(value(0, true, ""), notice)
+                .subject(format!("{shown} line {offset} is too long to show"));
         }
         let last = offset - 1 + kept;
         let mut out = String::new();
@@ -125,6 +127,7 @@ impl Tool for Read {
             let _ = write!(out, "[Showing lines {offset}-{last} of {total}. Use offset={} to continue.]", last + 1);
         }
         ToolValue::ok(value(kept, truncated, &rest[..kept].join("\n")), out)
+            .subject(format!("{shown} lines {offset}\u{2013}{last} of {total}"))
     }
 }
 
