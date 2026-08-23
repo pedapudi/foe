@@ -673,16 +673,30 @@ not finished.
 ```
 
 foe has two contracts, and each is a crate the rest of the repository reads.
-`crates/log` is what happened: it defines every event type, including the
-reserved ones, and depends on serde, serde_json, and thiserror, and on no
-crate of this repository. `crates/config` is what was to run: the
+`crates/log` is the lower one, and states what happened. It defines every
+event type, including the reserved ones. It depends on serde, serde_json, and
+thiserror, and on no crate of this repository.
+
+`crates/config` is the second contract, and states what was to run: the
 configuration document, the validation and resolution that turn it into the
 program `episode/start.program` records, the specification of every tool the
-model will see, and the identity that hashes them. It runs nothing — no
-process starts there, no grant is exercised, and no log is written — and it
-depends on `crates/log` for the sandbox mode a document declares and for the
-compaction state whose shape identity hashes, and on no other crate of this
-repository.
+model will see, and the identity that hashes them. It runs nothing: no
+process starts there, no grant is exercised, and no log is written. It sits
+above `crates/log` rather than beside it, and states part of itself in the
+log's vocabulary, because the two contracts meet at two places by design.
+
+- The sandbox mode. `sandbox.mode` in the document and the mode in the
+  `episode/start` sandbox record are one word over one closed set. A
+  configured confinement and an observed confinement are the same fact, read
+  before the run and after it.
+- The continuation a compaction writes. Identity hashes its shape: the
+  fields of the carried state, the labels its rendered lines take, and the
+  templates that render them. A program is defined in part by how its
+  conversation survives a compaction, because two programs that differ only
+  there put different text in front of the model.
+
+`crates/config` therefore depends on `crates/log`, and on no other crate of
+this repository.
 
 `crates/core` is the machine between the two contracts, and depends on both.
 The line between it and `crates/config` is resolution against execution: what
