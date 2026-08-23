@@ -56,11 +56,17 @@ const HIGH_ENTROPY: usize = DETECTORS.len() - 1;
 /// token from a long lower-case path that the pattern would otherwise reach.
 const ENTROPY_BITS: f64 = 3.5;
 
-/// Path components kept in the clear. They name no one and carry no
-/// project: a path stripped to these plus its extension still says what
-/// kind of file the tool touched, which is what the classifier and a person
-/// reading an error line both need.
-const COMMON_DIRS: &str = "usr|bin|etc|var|tmp|opt|home|src|lib|test|tests|docs|target|build|dist|node_modules|git";
+/// Path components kept in the clear: the standard filesystem hierarchy,
+/// and the names of system files and programs that are the same on every
+/// machine. Masking `null` or `useradd` protects nobody, and it destroys
+/// the one thing the subject was worth reading for — that the episode wrote
+/// to the null device, or added a user. A component that could name a
+/// person, a project, or a task is not on this list; when in doubt, mask.
+const COMMON_DIRS: &str = concat!(
+    "usr|bin|sbin|etc|var|tmp|opt|home|root|dev|proc|sys|run|mnt|srv|boot|log|share|local|include|",
+    "src|lib|test|tests|docs|target|build|dist|node_modules|git|",
+    "null|zero|bash|sh|useradd|adduser|systemctl|nginx|sshd|sshd_config|passwd|hosts|resolv.conf|crontab"
+);
 
 /// Whether a path component is one of those kept in the clear.
 fn common(part: &str) -> bool {
@@ -113,10 +119,9 @@ impl Scrubber {
     pub fn new(key: Vec<u8>, known: &[KnownValue]) -> Scrubber {
         let mut variants: Vec<(char, String, String)> = Vec::new();
         for entry in known {
-            let pseudonym = format!("⟨{}:{}⟩", entry.tag, digest(&key, &entry.value));
-            for (form, suffix) in variant_forms(&entry.value) {
-                variants.push((entry.tag, form, format!("{pseudonym}{suffix}")));
-            }
+            let name = format!("⟨{}:{}⟩", entry.tag, digest(&key, &entry.value));
+            let forms = variant_forms(&entry.value).into_iter();
+            variants.extend(forms.map(|(form, suffix)| (entry.tag, form, format!("{name}{suffix}"))));
         }
         variants.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.1.cmp(&b.1)));
         variants.dedup_by(|a, b| a.1 == b.1);
@@ -241,14 +246,10 @@ fn high_entropy(run: &str) -> bool {
 /// slash, JSON-escaped both ways, and abbreviated against the home
 /// directory — each with the text that must follow its pseudonym.
 fn variant_forms(value: &str) -> Vec<(String, String)> {
-    let mut forms = vec![
-        (format!("{value}/"), "/".to_string()),
-        (value.to_string(), String::new()),
-        (value.replace('/', r"\/"), String::new()),
-        (value.replace('\\', r"\\"), String::new()),
-    ];
     let home = ["/home/", "/Users/"].iter().find_map(|p| value.strip_prefix(p)).and_then(|r| r.split_once('/'));
-    forms.extend(home.map(|(_, tail)| (format!("~/{tail}"), String::new())));
+    let bare = [value.to_string(), value.replace('/', r"\/"), value.replace('\\', r"\\")];
+    let mut forms: Vec<(String, String)> = vec![(format!("{value}/"), "/".to_string())];
+    forms.extend(bare.into_iter().chain(home.map(|(_, tail)| format!("~/{tail}"))).map(|f| (f, String::new())));
     forms.retain(|(form, _)| form.len() >= 3);
     forms
 }

@@ -147,12 +147,24 @@ Four layers run over those two fields, in order.
    characters or more that mix digits with upper case and whose Shannon
    entropy reaches 3.5 bits per character.
 3. **Path componentization** for whatever slash-separated path remains.
-   Components in a small dictionary of common directories are kept — `usr`,
-   `bin`, `etc`, `var`, `tmp`, `opt`, `home`, `src`, `lib`, `test`,
-   `tests`, `docs`, `target`, `build`, `dist`, `node_modules`, `git` — as
-   is the alphabetic extension of the last component. Everything else is
-   replaced. Relative paths are included, because tool subjects report
-   paths relative to the workspace.
+   Components in a dictionary of universal names are kept, as is the
+   alphabetic extension of the last component. The dictionary holds three
+   groups. The standard filesystem hierarchy: `usr`, `bin`, `sbin`, `etc`,
+   `var`, `tmp`, `opt`, `home`, `root`, `dev`, `proc`, `sys`, `run`, `mnt`,
+   `srv`, `boot`, `log`, `share`, `local`, `include`. The directory names
+   common to source trees: `src`, `lib`, `test`, `tests`, `docs`, `target`,
+   `build`, `dist`, `node_modules`, `git`. The system files and programs
+   that are the same on every machine, among them `null`, `bash`,
+   `useradd`, `systemctl`, `nginx`, `sshd_config`, `passwd`, `hosts`, and
+   `resolv.conf`. Everything else is replaced. Relative paths are included,
+   because tool subjects report paths relative to the workspace.
+
+   Keeping these names costs no privacy and buys the evidence back.
+   Masking `null` protects nobody, and `/dev/null` reduced to two
+   pseudonyms hides the fact that the episode discarded the output. A
+   component that could name a person, a project, or a task is not in the
+   dictionary; when in doubt, it is masked, so `/etc/nginx/staging.conf`
+   keeps `etc` and `nginx` and replaces the rest.
 4. **Pseudonyms.** Every replacement is `⟨t:xxxxxxxx⟩`. The digest is
    HMAC-SHA256 of the value under the local key, truncated to eight
    hexadecimal characters. The tag `t` is one letter naming what was

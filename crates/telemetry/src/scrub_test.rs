@@ -239,3 +239,20 @@ fn one_known_value_carries_one_pseudonym_however_it_was_written() {
     // A trailing slash survives as a trailing slash rather than being eaten.
     assert_eq!(scrubber.scrub("/home/rowan/work/repo/", &mut Report::default()), format!("{token}/"));
 }
+
+#[test]
+fn a_universal_system_path_survives_whole_while_a_home_path_does_not() {
+    // Masking `null` or `useradd` protects nobody and costs the one fact
+    // the subject was worth reading for.
+    for path in ["/dev/null", "/usr/sbin/useradd", "/bin/bash", "/etc/nginx", "/etc/resolv.conf", "/proc/sys"] {
+        assert_eq!(scrub(path), path, "a universal system path was masked");
+    }
+    // A path under a home directory still loses everything but its shape,
+    // whether or not the log named that home directory.
+    let masked = scrub("/home/vashti/notes/salary.txt");
+    assert!(masked.starts_with("/home/⟨p:"), "{masked}");
+    assert!(masked.ends_with(".txt") && !masked.contains("vashti") && !masked.contains("salary"), "{masked}");
+    // And a system directory holding a project still masks the project.
+    let mixed = scrub("/etc/nginx/vashti-staging.conf");
+    assert!(mixed.starts_with("/etc/nginx/⟨p:") && !mixed.contains("vashti"), "{mixed}");
+}
