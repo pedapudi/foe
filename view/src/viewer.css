@@ -3340,3 +3340,252 @@ kbd {
 .episode-info .part {
   white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------------- *
+ * The causality figure, which reads the run downward as what caused what.
+ *
+ * Three layers, painted in this order: the row highlight, the strokes, the
+ * labels. A selected row must never hide a line and a line must never cross
+ * out a name. The strokes take `z-index: 2` and the labels `3`; the rows
+ * take none at all, because a `z-index` on a row would form a stacking
+ * context and trap its own label under the strokes. Nothing in the stack is
+ * transparent, so no layer shows through another.
+ * ---------------------------------------------------------------------- */
+
+.caus {
+  position: relative;
+}
+
+.caus-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  cursor: pointer;
+}
+
+.caus-row:hover,
+.caus-row.selected {
+  background: var(--v2-panel);
+}
+
+.caus-row:focus-visible {
+  outline: 1px solid var(--v2-accent);
+  outline-offset: -1px;
+}
+
+.caus-strokes {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  /* The strokes are a drawing, not a surface: a click passes through them
+   * to the row under them, except on the two marks that answer one. */
+  pointer-events: none;
+  overflow: visible;
+}
+
+.caus-strokes .caus-call,
+.caus-strokes .caus-outcome {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.caus-label {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.caus-label .name {
+  color: var(--v2-ink-soft);
+}
+
+.caus-label.node .name {
+  font-family: var(--v2-mono);
+}
+
+.caus-label .aside {
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+}
+
+/* The selected state: the row lifts to full ink and its name takes the
+ * accent. No rail, no wash, and no change of weight, so selecting a row
+ * moves nothing. */
+.caus-label.selected .name {
+  color: var(--v2-accent);
+}
+
+.caus-label.selected .aside {
+  color: var(--v2-ink);
+}
+
+/* Lane colour carries branch identity, cycled over five tones mixed from
+ * the theme's own tokens so that it follows all sixteen themes. None of
+ * the five is an outcome hue: a lane must never read as a verdict. */
+.caus .tone-0 {
+  --caus-tone: var(--v2-ink-soft);
+}
+
+.caus .tone-1 {
+  --caus-tone: color-mix(in srgb, var(--v2-accent) 65%, var(--v2-ink-faint));
+}
+
+.caus .tone-2 {
+  --caus-tone: color-mix(in srgb, var(--v2-flat) 55%, var(--v2-ink));
+}
+
+.caus .tone-3 {
+  --caus-tone: color-mix(in srgb, var(--v2-accent) 30%, var(--v2-flat));
+}
+
+.caus .tone-4 {
+  --caus-tone: var(--v2-ink-faint);
+}
+
+.caus-lane .line {
+  fill: none;
+  stroke: var(--caus-tone);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.caus-lane.workflow .line {
+  stroke-width: 1;
+}
+
+.caus-edge {
+  fill: none;
+  stroke: var(--caus-tone);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.caus-node .vertex {
+  fill: var(--caus-tone);
+  stroke: none;
+}
+
+.caus-node.selected .vertex {
+  fill: var(--v2-accent);
+}
+
+.caus-node.selected .tick,
+.caus-node.selected .mark {
+  stroke: var(--v2-accent);
+}
+
+.caus-node.selected .mark.call circle {
+  fill: var(--v2-accent);
+}
+
+.caus-call .tick {
+  stroke: var(--caus-tone);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.caus-call .mark {
+  fill: none;
+  stroke: var(--caus-tone);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.caus-call .mark.call circle {
+  fill: var(--caus-tone);
+  stroke: none;
+}
+
+/* Hue carries the outcome, and carries it only on the marks. A failed call
+ * takes the same cross the conversation gives a failed result, so a failure
+ * is visible at the leaf without reading anything. */
+.caus-call.failed .mark {
+  stroke: var(--v2-bad);
+}
+
+.caus-call:hover .tick,
+.caus-call:hover .mark {
+  stroke: var(--v2-ink);
+}
+
+.caus-outcome .mark {
+  fill: none;
+  stroke: var(--v2-flat);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.caus-outcome.good .mark {
+  stroke: var(--v2-good);
+}
+
+.caus-outcome.bad .mark {
+  stroke: var(--v2-bad);
+}
+
+.caus-outcome.caution .mark {
+  stroke: var(--v2-caution);
+}
+
+.caus-outcome.flat .mark {
+  stroke: var(--v2-flat);
+}
+
+.caus-passes {
+  font-family: var(--v2-mono);
+  font-size: 7px;
+  fill: var(--v2-ink-faint);
+}
+
+/* The conversation scoped to one node of the figure. */
+
+.scope-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: var(--dt-gap-edge);
+  padding: var(--dt-gap-item) var(--dt-gap-edge);
+  background: var(--v2-paper);
+  border-bottom: 1px solid var(--v2-rule);
+}
+
+.scope-title {
+  color: var(--v2-accent);
+  font-weight: 600;
+}
+
+.scope-escape {
+  margin-left: auto;
+  padding: 2px 9px;
+  border: 1px solid var(--v2-rule);
+  border-radius: var(--dt-radius-card);
+  font-family: var(--v2-mono);
+  font-size: calc(10px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+}
+
+.scope-escape:hover {
+  color: var(--v2-ink);
+  border-color: var(--v2-ink-faint);
+}
+
+/* One section per pass over the node. Its role column is the node's own
+ * name, so four passes read `propose`, `check`, `revise`, `accept` rather
+ * than four rows all reading the same word. */
+.row.scope-section {
+  border-top: 1px solid var(--v2-rule);
+  background: var(--v2-panel);
+}
+
+.row.scope-section > .role {
+  color: var(--v2-accent);
+}

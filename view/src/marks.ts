@@ -11,8 +11,13 @@
 // two marks set side by side sit on one baseline. No part names a colour:
 // a mark strokes `currentColor` and the stylesheet sets the role token.
 
-/** A state a conversation row carries, drawn beside the row's first line. */
-export type MarkKind = "interrupted" | "live" | "error" | "synthetic";
+/**
+ * A state a row or a figure's node carries, drawn where a word would
+ * otherwise stand. The first four are the conversation's; the last two are
+ * the causality figure's leaves, which reuse this geometry so that a
+ * reader meets one set of shapes in both places.
+ */
+export type MarkKind = "interrupted" | "live" | "error" | "synthetic" | "call" | "settled";
 
 /** One stroked shape. Its attributes carry geometry and nothing else. */
 export interface MarkPart {
@@ -95,5 +100,22 @@ export const MARKS: Readonly<Record<MarkKind, Mark>> = {
     label: "synthetic",
     meaning: "the runtime wrote this result; the tool did not run",
     parts: [{ shape: "path", attrs: { d: `M 1 ${MID} L 13 ${MID}` } }],
+  },
+  // The end of a tool call's tick in the causality figure: a dot, which is
+  // the least a leaf can be drawn as. It carries no direction, because the
+  // call returned; a call that failed takes `error` instead, which is the
+  // same cross the conversation gives a failed result.
+  call: {
+    label: "call",
+    meaning: "one tool call, which returned",
+    parts: [{ shape: "circle", attrs: { cx: MARK_WIDTH / 2, cy: MID, r: 2 } }],
+  },
+  // The foot of a lane that closed: the same open ring `interrupted` and
+  // the trajectory's running episode use, standing alone. Its colour is
+  // the outcome's direction, which is the one place hue is a verdict.
+  settled: {
+    label: "settled",
+    meaning: "the episode reached a typed outcome",
+    parts: [{ shape: "circle", attrs: { cx: MARK_WIDTH / 2, cy: MID, r: 3.2 } }],
   },
 };

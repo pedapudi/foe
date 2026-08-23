@@ -2,6 +2,8 @@
 // per episode; one tree; one optional diff. Views are patched, never rebuilt,
 // when events arrive, and the tree pane redraws only when its digest changes.
 
+import { readCausality } from "./causality.js";
+import type { CausalityEpisode, ConversationScope } from "./causality.js";
 import { Topbar, currentFontScale, onSettingsChange } from "./chrome.js";
 import type { ConnectionState, Crumb } from "./chrome.js";
 import { clear, h } from "./dom.js";
@@ -13,6 +15,7 @@ import { loadPanes, onPanesChange, rowGrip, setTrajectoryHeight, sidebarGrip } f
 import { ConversationView } from "./render/conversation.js";
 import { DiffView, renderNoDiff } from "./render/diff.js";
 import { RawView } from "./render/raw.js";
+import { renderScope } from "./render/scoped.js";
 import { StatisticsView } from "./render/statistics.js";
 import { TrajectoryView } from "./render/trajectory.js";
 import { renderInfo, renderTree } from "./render/tree.js";
@@ -44,6 +47,8 @@ export class App implements Sink {
   private tab: Tab = "conversation";
   private diff: DiffView | null = null;
   private diffKey = "";
+  /** The node of the causality figure the conversation is scoped to. */
+  private scope: ConversationScope | null = null;
   private sidebarScheduled = false;
   private treeDigest = "";
   private infoDigest = "";
@@ -65,6 +70,7 @@ export class App implements Sink {
     this.trajectory = new TrajectoryView({
       select: (id) => this.select(id),
       reveal: (id, seq) => this.reveal(id, seq),
+      scope: (scope) => this.setScope(scope),
     });
     this.workflow = new WorkflowView({ select: (id) => this.select(id) });
     this.statistics = new StatisticsView({ reveal: (id, seq) => this.reveal(id, seq) });
@@ -332,7 +338,10 @@ export class App implements Sink {
     // The program name arrives with `episode/start`, after the first
     // selection is made, so the title is set on every sidebar redraw.
     this.title.textContent = s ? `${s.name} · ${s.id}` : "";
-    this.trajectory.update(this.trajectoryEpisodes(roots), { selected: this.selected, cursor: this.cursor });
+    this.trajectory.update(this.trajectoryEpisodes(roots), this.causalityEpisodes(roots), {
+      selected: this.selected,
+      cursor: this.cursor,
+    });
     // The trajectory region opens at the height its rows need, so a run of
     // one episode does not open a region of mostly empty ground. A row is
     // as tall as its own channels, so the height follows the drawing rather
@@ -362,6 +371,29 @@ export class App implements Sink {
         decisions: s.decisions,
       };
     });
+  }
+
+  /**
+   * The episodes the causality figure draws. It reads the folded rows and
+   * summary rather than the log, so no event is parsed twice and every
+   * edge it draws comes from an obligation pair the fold already matched.
+   */
+  private causalityEpisodes(roots: ReturnType<typeof buildTree>): CausalityEpisode[] {
+    return flatten(roots).map(({ node, depth }) => {
+      const state = this.episodes.get(node.id);
+      return readCausality(node.summary, state ? state.fold.rows : [], depth);
+    });
+  }
+
+  /**
+   * Scopes the conversation to one node of the causality figure. The pane
+   * shows the node's own messages and those of every node below it, with a
+   * header naming the scope and an escape back to the whole run.
+   */
+  private setScope(scope: ConversationScope | null): void {
+    this.scope = scope;
+    if (scope !== null && this.tab !== "conversation") this.tab = "conversation";
+    this.renderMain();
   }
 
   private tabButton(tab: Tab, label: string): HTMLElement {
@@ -443,6 +475,19 @@ export class App implements Sink {
       next = this.workflow.el;
     } else if (this.tab === "statistics") {
       next = this.statistics.el;
+    } else if (this.tab === "conversation" && this.scope !== null) {
+      next = renderScope(
+        this.scope,
+        {
+          rows: (id) => this.episodes.get(id)?.fold.rows ?? [],
+          name: (id) => {
+            const s = this.episodes.get(id)?.fold.summary;
+            return s ? (s.name === s.id ? s.id : `${s.name} ${s.id}`) : id;
+          },
+        },
+        { select: (id: string) => this.select(id) },
+        () => this.trajectory.setScope(null),
+      );
     } else {
       next = this.tab === "raw" ? selected.raw.el : selected.conv.el;
     }
@@ -460,7 +505,10 @@ export class App implements Sink {
     const remembered = this.scrollMemory.get(next);
     // A dialogue opens at its end, because the last row is the newest; a
     // figure opens at its top, because the first figure is the first to read.
-    const foot = next !== this.workflow.el && next !== this.statistics.el;
+    // A dialogue opens at its end and a figure at its top; a scoped
+    // dialogue opens at its top too, because its first section is the node
+    // that was selected and the reason the scope exists.
+    const foot = next !== this.workflow.el && next !== this.statistics.el && !next.classList.contains("scoped");
     next.scrollTop = remembered === undefined ? (foot ? next.scrollHeight : 0) : remembered;
   }
 

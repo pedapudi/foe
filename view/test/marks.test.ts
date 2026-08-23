@@ -1,4 +1,4 @@
-// The drawn marks: the invariants that keep four small drawings legible,
+// The drawn marks: the invariants that keep six small drawings legible,
 // alignable, and rethemable.
 
 import assert from "node:assert/strict";
@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { MARKS, MARK_HEIGHT, MARK_WIDTH } from "../src/marks.js";
 import type { Mark, MarkKind } from "../src/marks.js";
 
-const KINDS: MarkKind[] = ["interrupted", "live", "error", "synthetic"];
+const KINDS: MarkKind[] = ["interrupted", "live", "error", "synthetic", "call", "settled"];
 
 /** Every coordinate a part places, as absolute positions in the mark's box. */
 function points(mark: Mark): { x: number; y: number }[] {
@@ -75,7 +75,7 @@ function reflected(mark: Mark): Figure[] {
     .reverse();
 }
 
-test("the catalogue holds one mark for each state the conversation draws", () => {
+test("the catalogue holds one mark for each state a row or a figure draws", () => {
   assert.deepEqual(Object.keys(MARKS).sort(), [...KINDS].sort());
 });
 
@@ -88,7 +88,7 @@ test("every mark names the word it replaces and what that word means", () => {
   }
 });
 
-test("every part stays inside the one box all four marks share", () => {
+test("every part stays inside the one box every mark shares", () => {
   for (const kind of KINDS) {
     for (const p of points(MARKS[kind])) {
       assert.ok(p.x >= 0 && p.x <= MARK_WIDTH, `${kind} places x ${p.x} outside 0..${MARK_WIDTH}`);

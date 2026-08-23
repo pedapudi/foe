@@ -54,7 +54,8 @@ pnpm fixtures       # regenerates fixtures/*.jsonl from fixtures/generate.mjs
 into the matching element.
 
 The tests cover the derived-messages rule, the episode fold, the lineage
-helpers and the per-row measure, the trajectory layout, the workflow graph
+helpers and the per-row measure, the trajectory layout, the causal model
+and its layout, the workflow graph
 and its layout, the statistics, the pane sizes, the appearance catalogue,
 the system prompt reader, the Markdown parser, the syntax tokenizer, and the
 unified diff reader. Each of those modules is pure and reads no document, so
@@ -109,6 +110,14 @@ episode and no children, which is the ordinary case and the one where the
 trajectory's height is derived from a single row; its four request spans
 differ in length by a factor of seven, its thirteen tool calls stand in
 three fans of two, six, and five, and its system prompt is open.
+
+`proof-causality-light.png` and `proof-causality-dark.png` show the
+`workflow` fixture and its three children read as causality in the same
+two themes: the episode's own lane beside the lane its declared graph
+earned, the loop edges back to `survey` and `verify_change`, a lane column
+reused by each proposal in turn, a completed ring at the foot of every
+lane, and the `survey` node selected so that the conversation below holds
+its two passes.
 
 The `messages` list recorded in each `model/request` event is written by
 hand in the generator, so the tests compare it with the list the bundle
@@ -212,10 +221,50 @@ segment per tool call sized by `duration_ms`. Position is what tells a tool
 call from a model request on a run where every call is too short to draw a
 length, and calls issued at one instant take successive heights of the tool
 lane so that a batch is countable. A header control switches the x axis
-between wall-clock time and log position. Hovering a mark opens the
-hovercard; clicking one selects that episode and brings the conversation to
-that log position. `src/trajectory.ts` holds the placement rules and
+between wall-clock time, time elapsed since each root's own start, and log
+position. Hovering a mark opens the hovercard; clicking one selects that
+episode and brings the conversation to that log position.
+`src/trajectory.ts` holds the placement rules and
 `src/render/trajectory.ts` draws them.
+
+The fourth control in that header, **causality**, replaces the timeline
+with a different reading of the same run rather than a fourth axis. The
+three axes measure *when* and run left to right; causality shows *what
+caused what* and runs top to bottom, because left to right runs out of
+width at about eleven columns and downward scrolls the way a long run
+already wants to.
+
+The figure is built from the log's obligation pairs, so it draws no edge
+the log does not carry. A lane is earned, and two things earn one: an
+episode, which has its own agent, budget and typed outcome and can outlive
+the call that made it, and a workflow, which branches and loops.
+Everything else is a mark on the lane it belongs to. A step — one model
+request and the tool calls it produced — is a row on its episode's lane. A
+tool call is a short tick off that row with its mark at the end, and no
+return edge is drawn: the lane continuing past the tick is the return.
+`spawn` is not special-cased; it is simply the call whose tick opens a
+lane. A workflow node the run entered twice is one row and a loop edge
+back up to it, not two rows.
+
+A lane holds the lowest free column while it is open and releases it when
+it closes, so column is occupancy rather than tree depth; tree depth is
+carried by the label's indent instead. Lane colour is cycled over five
+tones mixed from the theme's own tokens and carries branch identity alone.
+Hue carries the outcome, and carries it only on the marks: a ring in
+`--v2-good`, `--v2-caution` or `--v2-flat` at the foot of a lane that
+completed, exhausted its budget or was blocked, a cross in `--v2-bad` for
+one that failed, and the same cross on the tick of a tool call whose
+result reported a failure.
+
+Selecting a row scopes the conversation to it: that node's own messages
+and those of every node below it, under a header that names the scope and
+an escape back to the whole run. A workflow node entered twice yields one
+section per pass, labelled `pass 1` and `pass 2`, and every section is
+named by the node itself, so a graph of four nodes reads `propose`,
+`check`, `revise`, `accept` rather than four sections all reading
+"workflow". `src/causality.ts` holds the model and the placement rules,
+`src/render/causality.ts` draws them, and `src/render/scoped.ts` renders
+the scoped dialogue.
 
 The main region has five tabs.
 
@@ -375,6 +424,7 @@ src/appearance.ts             themes, typefaces, sizes, and their names
 src/brand.ts                  the lockup and the research-preview tag
 src/panes.ts                  region sizes, the grips, and their persistence
 src/trajectory.ts             where every mark of the timeline goes
+src/causality.ts              the causal model of a run and where it is drawn
 src/workflow.ts               a declared graph, its run, and its layout
 src/statistics.ts             timing, budget, and tool quantities of the statistics tab
 src/attribution.ts            where every request's input tokens came from
@@ -383,10 +433,12 @@ src/fold.ts                   one episode log to rows, a summary, marks, and fir
 src/messages.ts               the derived-messages rule
 src/lineage.ts                the tree, the shared fork prefix, the per-row measure
 src/prompt.ts                 a system prompt read back into its sections
-src/marks.ts                  the four states a conversation row draws
+src/marks.ts                  the six states a row or a figure's leaf draws
 src/render/conversation.ts    the dialogue rows
 src/render/mark.ts            building one conversation mark
-src/render/trajectory.ts      the timeline figure
+src/render/trajectory.ts      the timeline figure and the reading control
+src/render/causality.ts       the causality figure
+src/render/scoped.ts          the conversation scoped to one causal node
 src/render/tree.ts            the episode tree and the details panel
 src/render/workflow.ts        the declared graph with the run over it
 src/render/statistics.ts      the statistics figures over timing, budget, and tools

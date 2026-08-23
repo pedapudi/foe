@@ -9,10 +9,18 @@
 // then the tool lane, which fans a batch of calls issued together so that
 // the batch is countable.
 //
-// The pane holds no state of its own beyond the axis choice and the
+// Beside the three horizontal axes the pane offers a fourth reading, which
+// is a different orientation rather than a fourth axis: the causality
+// figure runs top to bottom and shows what caused what. It is laid out and
+// drawn by its own two modules, and shares this pane's heading, hovercard
+// and redraw gate.
+//
+// The pane holds no state of its own beyond the reading it shows and the
 // hovercard: it is handed the episodes and redraws when a digest of what
 // it would draw changes.
 
+import { layoutCausality, scopeFor } from "../causality.js";
+import type { CausalityEpisode, CausalityLayout, ConversationScope } from "../causality.js";
 import { currentFontScale } from "../chrome.js";
 import { clear, fmtDuration, fmtTime, h } from "../dom.js";
 import { outcomeLabel } from "../fold.js";
@@ -29,6 +37,7 @@ import type {
 import { DECISION_GLYPH, MARK_MIN_WIDTH, MARK_THICKNESS, layoutTrajectory } from "../trajectory.js";
 import type { Outcome } from "../types.js";
 import { str } from "../types.js";
+import { renderCausality } from "./causality.js";
 import { Hovercard } from "./hovercard.js";
 import { outcomeRole } from "./tree.js";
 import { figureSvg, svg } from "./svg.js";
@@ -42,7 +51,19 @@ export interface TrajectoryHandlers {
   select(id: string): void;
   /** Selects an episode and brings the conversation to one log position. */
   reveal(id: string, seq: number): void;
+  /**
+   * Scopes the conversation to one node of the causality figure, or back
+   * to the whole run for null.
+   */
+  scope(scope: ConversationScope | null): void;
 }
+
+/**
+ * What the pane reads a run as. The three axes measure *when* and run left
+ * to right; `causality` shows *what caused what* and runs top to bottom,
+ * so it is an orientation rather than a fourth value of `Axis`.
+ */
+export type Reading = Axis | "causality";
 
 /** The word a mark reads as in the hovercard. */
 function markLabel(mark: PlacedMark): string {
@@ -76,7 +97,7 @@ export class TrajectoryView {
   private readonly body: HTMLElement;
   private readonly card: Hovercard;
   private readonly axisButtons: HTMLElement;
-  private axis: Axis = "time";
+  private reading: Reading = "time";
   /**
    * True once the reader has picked an axis. Until then the axis follows
    * what the figure holds: wall clock inside one tree, where simultaneity
@@ -85,16 +106,20 @@ export class TrajectoryView {
   private chosen = false;
   private digest = "";
   private episodes: TrajectoryEpisode[] = [];
+  private causality: CausalityEpisode[] = [];
+  private scoped: string | null = null;
+  private causalityLayout: CausalityLayout | null = null;
   private rows = 0;
   private state: TrajectoryState = { selected: null, cursor: null };
 
   constructor(private readonly handlers: TrajectoryHandlers) {
     this.axisButtons = h(
       "span",
-      { class: "traj-axis", role: "radiogroup", "aria-label": "trajectory x axis" },
+      { class: "traj-axis", role: "radiogroup", "aria-label": "how the trajectory is read" },
       this.axisButton("time", "wall clock"),
       this.axisButton("elapsed", "elapsed"),
       this.axisButton("sequence", "sequence"),
+      this.axisButton("causality", "causality"),
     );
     this.body = h("div", { class: "traj-body" }, this.figure);
     this.card = new Hovercard(this.body);
@@ -109,11 +134,12 @@ export class TrajectoryView {
     this.syncAxis();
   }
 
-  private axisButton(axis: Axis, label: string): HTMLElement {
+  private axisButton(axis: Reading, label: string): HTMLElement {
     const title = {
       time: "place marks by wall-clock time, so rows that ran at one moment line up",
       elapsed: "place marks by the time since each root episode's own start, so runs begin together",
       sequence: "place marks by log position",
+      causality: "read the run downward, as what caused what rather than as when",
     };
     return h(
       "button",
@@ -123,30 +149,46 @@ export class TrajectoryView {
         role: "radio",
         "data-axis": axis,
         title: title[axis],
-        onclick: () => this.setAxis(axis),
+        onclick: () => this.setReading(axis),
       },
       label,
     );
   }
 
-  setAxis(axis: Axis): void {
+  setReading(reading: Reading): void {
     this.chosen = true;
-    if (this.axis === axis) return;
-    this.axis = axis;
+    if (this.reading === reading) return;
+    // Leaving the causality figure gives the conversation the whole run
+    // back, because the scope it set has no meaning in the other readings.
+    if (this.reading === "causality" && this.scoped !== null) {
+      this.scoped = null;
+      this.handlers.scope(null);
+    }
+    this.reading = reading;
     this.syncAxis();
+    this.draw(true);
+  }
+
+  /** The node the conversation is scoped to, which the figure marks selected. */
+  setScope(rowId: string | null): void {
+    if (this.scoped === rowId) return;
+    this.scoped = rowId;
+    const layout = this.causalityLayout;
+    this.handlers.scope(rowId === null || layout === null ? null : scopeFor(layout, rowId));
     this.draw(true);
   }
 
   private syncAxis(): void {
     for (const b of this.axisButtons.querySelectorAll<HTMLElement>("[role=radio]")) {
-      const on = b.dataset.axis === this.axis;
+      const on = b.dataset.axis === this.reading;
       b.setAttribute("aria-checked", on ? "true" : "false");
       b.classList.toggle("active", on);
     }
   }
 
-  update(episodes: TrajectoryEpisode[], state: TrajectoryState): void {
+  update(episodes: TrajectoryEpisode[], causality: CausalityEpisode[], state: TrajectoryState): void {
     this.episodes = episodes;
+    this.causality = causality;
     this.state = state;
     // A figure of independent roots opens on the elapsed axis: their wall
     // clocks may be days apart, which would draw each run as a sliver of
@@ -155,8 +197,8 @@ export class TrajectoryView {
     if (!this.chosen) {
       const roots = episodes.filter((e) => e.depth === 0).length;
       const axis: Axis = roots > 1 ? "elapsed" : "time";
-      if (axis !== this.axis) {
-        this.axis = axis;
+      if (axis !== this.reading) {
+        this.reading = axis;
         this.syncAxis();
       }
     }
@@ -196,12 +238,13 @@ export class TrajectoryView {
     const width = this.figure.clientWidth / scale;
     const height = this.figure.clientHeight / scale;
     const digest = [
-      this.axis,
+      this.reading,
       width,
       height,
       scale,
       this.state.selected,
       this.state.cursor,
+      this.scoped,
       this.episodes
         .map(
           (e) =>
@@ -215,9 +258,13 @@ export class TrajectoryView {
     if (width === 0) return;
     if (!force && digest === this.digest) return;
     this.digest = digest;
+    if (this.reading === "causality") {
+      this.drawCausality(width, scale);
+      return;
+    }
     const layout = layoutTrajectory({
       episodes: this.episodes,
-      axis: this.axis,
+      axis: this.reading,
       width,
       height,
       now: Date.now(),
@@ -230,6 +277,30 @@ export class TrajectoryView {
       return;
     }
     this.figure.appendChild(this.build(layout, width, scale));
+  }
+
+  /**
+   * The causality figure in place of the timeline. It has no axis and no
+   * horizontal domain, so the pane's width is only the room its labels
+   * have; its height is what its rows need, and the pane scrolls to them.
+   */
+  private drawCausality(width: number, scale: number): void {
+    const layout = layoutCausality(this.causality, width);
+    this.causalityLayout = layout;
+    this.rows = layout.height;
+    clear(this.figure);
+    this.card.hide();
+    if (this.causality.length === 0) {
+      this.figure.appendChild(h("div", { class: "empty sub" }, "no episodes"));
+      return;
+    }
+    this.figure.appendChild(
+      renderCausality(layout, this.scoped, this.card, {
+        scope: (rowId) => this.setScope(rowId),
+        select: (id) => this.handlers.select(id),
+        reveal: (id, seq) => this.handlers.reveal(id, seq),
+      }, scale),
+    );
   }
 
   private build(layout: TrajectoryLayout, width: number, scale: number): SVGSVGElement {

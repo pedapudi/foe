@@ -177,9 +177,11 @@ stands beside it in the sidebar and in the breadcrumbs, so the row does not
 repeat it. The selected row carries the figure's one accent as a spine down
 its leading edge.
 
-A control in the region's header sets what x measures, and the three
-settings map linearly onto the same plot area, so switching moves the
-marks and changes nothing else.
+A control in the region's header sets how the run is read. Its first three
+settings are axes: they set what x measures and map linearly onto the same
+plot area, so switching moves the marks and changes nothing else. Its
+fourth, **causality**, replaces the timeline with a figure of a different
+orientation, specified under "Causality" below.
 
 - **wall clock** places a mark at its event's `time`. Two marks at one x
   happened at one moment, which is what a reader of a single tree wants.
@@ -200,6 +202,76 @@ carries a gridline down the plot in `--v2-rule-soft` at 0.6 pixels, because
 a bar's length is read against the axis. The figure fits the region's width
 and reflows when the region is resized; it neither pans nor zooms, and it
 redraws only when a digest of what it would draw changes.
+
+### Causality
+
+The three axes measure *when* and run left to right. Causality shows *what
+caused what* and runs top to bottom: left to right runs out of width at
+about eleven columns and a real run has more, while downward scrolls the
+way a long run already wants to and never needs horizontal room. Time runs
+down and structure runs across.
+
+The figure is built from the log's obligation pairs and never from an
+inferred parent, so it draws no edge the log does not carry. `spawn/start`
+names the tool call that opened a child, and `workflow/node-start` names
+the child a model node ran; those two are the whole of what opens a lane.
+
+A lane is earned. Two things earn one: an **episode**, which has its own
+agent, budget and typed outcome and can outlive the call that made it, and
+a **workflow**, which branches and loops. Everything else is a mark on the
+lane it belongs to. A **step** — one model request and the tool calls it
+produced, `step` on the log's own events — is a row on its episode's lane,
+and every step the log names is a row whether or not a message answered
+it. A **tool call** is a short tick off its step's row with its mark at the
+end; no return edge is drawn, because the lane continuing past the tick is
+the return, a call can neither diverge nor outlive its caller, and calls
+are the largest count in the model. `spawn` is not special-cased: it is
+the call whose tick opens a lane, because what it created can outlive it.
+
+A workflow node the run entered more than once is one row and a loop edge
+back up to it, not one row per firing. That is what lets the scoped
+conversation show every pass over the node.
+
+Each lane is one continuous line at its own column, from its first row to
+its last, stretched to reach every curve that joins it; a lane of one row
+gets a short stub, so its own elbow and its merge have ground between
+them. A lane takes the lowest free column when it opens and releases it
+when it closes, so column is occupancy and not tree depth — tree depth is
+carried by the label's indent instead. Edges are cubic with their control
+points on the midline, except a loop, which returns to the column it left
+and bows out of it. There are no arrowheads: time runs down, so direction
+is unambiguous and a head on every edge would be noise.
+
+The figure paints in three layers — the row highlight, the strokes, then
+the labels — so a selected row never hides a line and a line never crosses
+out a name.
+
+Lane colour carries branch identity, cycled over five tones mixed from the
+theme's own tokens so that it follows every theme, and none of the five is
+an outcome hue. Hue carries the outcome and carries it only on the marks:
+at the foot of a lane, a ring in `--v2-good` for `Completed`, in
+`--v2-caution` for `Exhausted` and in `--v2-flat` for `Blocked`, and a
+cross in `--v2-bad` for `Failed`. A tool call whose result reported a
+failure takes that same cross on its tick, so a failure is visible at the
+leaf without reading anything.
+
+A row is named by its semantic role first and its durable identifier
+second, never by a substring of free text: a workflow node by its own
+name, a step of one call by the tool and its target's basename (`read
+parser.rs`), a step of several by the first call and a count (`read
+parser.rs +2`), a delegation by `spawn` and the child's program name, a
+step that called nothing by `answered`, and a step whose request no
+message answered by `no answer`. `step N` rides alongside in faint. A path
+that must shorten elides its middle and keeps the basename
+(`src/…/parser.rs`).
+
+Selecting a row scopes the conversation to it — that node's own messages
+and those of every node below it — rather than merely highlighting it. A
+header names the scope and carries an escape back to the whole run. A
+workflow node entered twice yields one section per pass, labelled `pass 1`
+and `pass 2`, and each section is named by the node itself, so a graph of
+four nodes reads `propose`, `check`, `revise`, `accept` and never four
+sections all reading "workflow".
 
 ### The channels of a row
 
