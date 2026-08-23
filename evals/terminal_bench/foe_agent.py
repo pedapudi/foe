@@ -43,6 +43,15 @@ class FoeAgent(BaseInstalledAgent):
         long_context_input_multiplier: float | str,
         long_context_output_multiplier: float | str,
         reasoning_effort: str = "low",
+        diagnosis_model: str | None = None,
+        diagnosis_reasoning_effort: str = "high",
+        diagnosis_model_calls: int | str = 6,
+        diagnosis_input_per_million: float | str | None = None,
+        diagnosis_cached_input_per_million: float | str | None = None,
+        diagnosis_output_per_million: float | str | None = None,
+        diagnosis_long_context_threshold: int | str | None = None,
+        diagnosis_long_context_input_multiplier: float | str | None = None,
+        diagnosis_long_context_output_multiplier: float | str | None = None,
         **kwargs: Any,
     ) -> None:
         self._foe_binary = Path(foe_binary)
@@ -61,6 +70,29 @@ class FoeAgent(BaseInstalledAgent):
             "long_context_output_multiplier": float(long_context_output_multiplier),
         }
         self._reasoning_effort = reasoning_effort
+        self._diagnosis_model = diagnosis_model
+        self._diagnosis_reasoning_effort = diagnosis_reasoning_effort
+        self._diagnosis_model_calls = int(diagnosis_model_calls)
+        diagnosis_prices = (
+            diagnosis_input_per_million,
+            diagnosis_cached_input_per_million,
+            diagnosis_output_per_million,
+            diagnosis_long_context_threshold,
+            diagnosis_long_context_input_multiplier,
+            diagnosis_long_context_output_multiplier,
+        )
+        if diagnosis_model is not None and any(value is None for value in diagnosis_prices):
+            raise ValueError("diagnosis model pricing must name every rate and long-context rule")
+        self._diagnosis_pricing = None
+        if diagnosis_model is not None:
+            self._diagnosis_pricing = {
+                "input_per_million": float(diagnosis_input_per_million),
+                "cached_input_per_million": float(diagnosis_cached_input_per_million),
+                "output_per_million": float(diagnosis_output_per_million),
+                "long_context_threshold": int(diagnosis_long_context_threshold),
+                "long_context_input_multiplier": float(diagnosis_long_context_input_multiplier),
+                "long_context_output_multiplier": float(diagnosis_long_context_output_multiplier),
+            }
         self._exit_code: int | None = None
         if not self._foe_binary.is_file():
             raise FileNotFoundError(f"Foe binary does not exist: {self._foe_binary}")
@@ -133,6 +165,9 @@ class FoeAgent(BaseInstalledAgent):
             output_tokens=self._output_tokens,
             seconds=self._seconds,
             reasoning_effort=self._reasoning_effort,
+            diagnosis_model_name=self._diagnosis_model,
+            diagnosis_reasoning_effort=self._diagnosis_reasoning_effort,
+            diagnosis_model_calls=self._diagnosis_model_calls,
         )
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         local_program = self.logs_dir / "foe-program.json"
@@ -170,7 +205,10 @@ class FoeAgent(BaseInstalledAgent):
     @override
     def populate_context_post_run(self, context: AgentContext) -> None:
         episode_dir = self.logs_dir / "foe-episode"
-        summary = read_episode_summary(episode_dir, self._pricing)
+        prices = {self.model_name: self._pricing}
+        if self._diagnosis_model is not None and self._diagnosis_pricing is not None:
+            prices[self._diagnosis_model] = self._diagnosis_pricing
+        summary = read_episode_summary(episode_dir, prices)
         trace_process = subprocess.run(
             [sys.executable, str(self._trace_evaluator), str(episode_dir)],
             text=True,

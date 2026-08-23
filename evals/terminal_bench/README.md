@@ -105,6 +105,24 @@ bazel run //evals/terminal_bench:foe-smoke -- \
 
 The supported reasoning settings end at `xhigh` for this campaign.
 
+A task can run as two model episodes with a typed handoff. The first episode
+inspects the task and returns constraints, observations, implementation steps,
+verification steps, and risks. The second episode receives only the task and
+that return value in a fresh context:
+
+```sh
+bazel run //evals/terminal_bench:foe-capability-search -- \
+  --task gpt2-codegolf \
+  --diagnosis-model openai-codex/gpt-5.6-luna \
+  --diagnosis-reasoning-effort high \
+  --diagnosis-model-calls 6 \
+  --confirm-spend
+```
+
+The diagnosis calls come from the task's existing model-call allowance. The
+runner prices each child from the model route recorded in its episode log.
+Omitting `--diagnosis-model` preserves the single-episode coding program.
+
 ## Run the staged task sets
 
 The development target contains six tasks with inspected trajectories:

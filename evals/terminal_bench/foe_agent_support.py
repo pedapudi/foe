@@ -27,6 +27,9 @@ def build_program(
     output_tokens: int | None,
     seconds: int,
     reasoning_effort: str,
+    diagnosis_model_name: str | None = None,
+    diagnosis_reasoning_effort: str = "high",
+    diagnosis_model_calls: int = 6,
 ) -> dict[str, Any]:
     """Build the recorded Foe program used for one Terminal-Bench trial."""
     if "/" not in model_name:
@@ -49,7 +52,7 @@ def build_program(
     if not working_directory.startswith("/"):
         raise ValueError("working directory must be an absolute path")
     limits.update({key: value for key, value in optional_limits.items() if value is not None})
-    return {
+    program = {
         "version": 2,
         "name": "terminal-bench-coding",
         "instructions": {"role": CODING_INSTRUCTION},
@@ -65,6 +68,78 @@ def build_program(
         "sandbox": {"mode": "off"},
         "task": instruction,
     }
+    if diagnosis_model_name is None:
+        return program
+    if "/" not in diagnosis_model_name:
+        raise ValueError("diagnosis model must have the form provider/model")
+    diagnosis_provider, diagnosis_model = diagnosis_model_name.split("/", 1)
+    if not diagnosis_provider or not diagnosis_model:
+        raise ValueError("diagnosis model must have the form provider/model")
+    if not 2 <= diagnosis_model_calls < model_calls:
+        raise ValueError("diagnosis model calls must be at least two and below the total model-call allowance")
+    diagnosis_seconds = min(180, max(60, seconds // 4))
+    implementation_seconds = seconds - diagnosis_seconds
+    shared_grants = {"read": [working_directory, "/"], "write": ["/"]}
+    diagnosis_schema = {
+        "type": "object",
+        "properties": {
+            "constraints": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "observations": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "implementation_steps": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "verification_steps": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "risks": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        },
+        "required": ["constraints", "observations", "implementation_steps", "verification_steps", "risks"],
+        "additionalProperties": False,
+    }
+    program["budget"].update({"max_episodes": 3, "max_concurrent": 1})
+    program["workflow"] = {
+        "nodes": {
+            "diagnose-task": {
+                "model": {
+                    "name": "diagnose-coding-task",
+                    "instructions": {
+                        "role": "Analyze the task and repository before implementation. Inspect relevant files and commands without changing task state. Identify constraints, implementation steps, verification steps, and failure risks. Use at most four investigative turns and reserve a later turn for the typed return. Keep the return concise and evidence-based."
+                    },
+                    "tools": ["read", "grep", "bash"],
+                    "grants": {"read": [working_directory, "/"]},
+                    "budget": {"model_calls": diagnosis_model_calls, "seconds": diagnosis_seconds},
+                    "done_when": {"returns": diagnosis_schema},
+                    "model": {
+                        "provider": diagnosis_provider,
+                        "model": diagnosis_model,
+                        "reasoning_effort": diagnosis_reasoning_effort,
+                        "token_file": credential_path,
+                    },
+                },
+                "follows": ["task"],
+            },
+            "implement-task": {
+                "model": {
+                    "name": "implement-diagnosed-task",
+                    "instructions": {
+                        "role": "Implement the task using the typed diagnosis as advice. Confirm its claims against the repository. Make the requested change, run the strongest available verification after the final change, and leave files and services in the state the task requires."
+                    },
+                    "tools": ["read", "grep", "edit", "bash"],
+                    "grants": shared_grants,
+                    "budget": {
+                        "model_calls": model_calls - diagnosis_model_calls,
+                        "seconds": implementation_seconds,
+                    },
+                    "model": {
+                        "provider": provider,
+                        "model": model,
+                        "reasoning_effort": reasoning_effort,
+                        "token_file": credential_path,
+                    },
+                },
+                "follows": ["task", "diagnose-task"],
+                "terminal": True,
+            },
+        },
+        "recovery": {"enabled": False},
+    }
+    return program
 
 
 def estimate_usage_cost(
@@ -98,7 +173,7 @@ def estimate_usage_cost(
 
 def read_episode_summary(
     log_dir: Path,
-    pricing: dict[str, float | int] | None = None,
+    pricing: dict[str, float | int] | dict[str, dict[str, float | int]] | None = None,
 ) -> dict[str, Any]:
     """Measure usage and read the root outcome from a retained episode tree."""
     root_path = log_dir / "episode.jsonl"
@@ -107,13 +182,19 @@ def read_episode_summary(
     paths = sorted(log_dir.rglob("episode.jsonl"))
     calls = 0
     tool_calls = 0
-    messages: list[dict[str, Any]] = []
+    messages: list[tuple[str | None, dict[str, Any]]] = []
     outcome: dict[str, Any] | None = None
     for path in paths:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            event = json.loads(line)
+        events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        starts = [event for event in events if event.get("type") == "episode/start"]
+        route = None
+        if starts:
+            start_data = starts[0].get("data") if isinstance(starts[0].get("data"), dict) else {}
+            program = start_data.get("program") if isinstance(start_data.get("program"), dict) else {}
+            model = program.get("model") if isinstance(program.get("model"), dict) else {}
+            if isinstance(model.get("provider"), str) and isinstance(model.get("model"), str):
+                route = f"{model['provider']}/{model['model']}"
+        for event in events:
             data = event.get("data") if isinstance(event.get("data"), dict) else {}
             event_type = event.get("type")
             if event_type == "model/request":
@@ -121,7 +202,7 @@ def read_episode_summary(
             elif event_type == "tool/result":
                 tool_calls += 1
             elif event_type == "assistant/message":
-                messages.append(data)
+                messages.append((route, data))
             elif path == root_path and event_type == "episode/end":
                 value = data.get("outcome")
                 if isinstance(value, dict):
@@ -130,18 +211,28 @@ def read_episode_summary(
     totals = {"input": 0, "output": 0, "cache_read": 0}
     usages: list[dict[str, int]] = []
     measured = 0
-    for message in messages:
+    priced_usages: list[tuple[str | None, dict[str, int]]] = []
+    for route, message in messages:
         item = message.get("usage")
         if not isinstance(item, dict) or not all(isinstance(item.get(key), int) for key in totals):
             continue
         measured += 1
-        usages.append({key: item[key] for key in totals})
+        usage = {key: item[key] for key in totals}
+        usages.append(usage)
+        priced_usages.append((route, usage))
         for key in totals:
             totals[key] += item[key]
     complete = bool(messages) and measured == len(messages)
     estimated_cost = None
     if complete and pricing is not None:
-        estimated_cost = estimate_usage_cost(usages, **pricing)
+        if "input_per_million" in pricing:
+            estimated_cost = estimate_usage_cost(usages, **pricing)
+        elif all(route in pricing for route, _ in priced_usages):
+            estimated_cost = sum(
+                estimate_usage_cost([usage], **pricing[route])
+                for route, usage in priced_usages
+                if route is not None
+            )
     return {
         "model_calls": calls,
         "tool_calls": tool_calls,

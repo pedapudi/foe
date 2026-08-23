@@ -51,6 +51,10 @@ class CasesTest(unittest.TestCase):
                 credential_state=root / "private.json",
                 model="openai-codex/gpt-5.6-sol",
                 reasoning_effort="low",
+                diagnosis_model=None,
+                diagnosis_reasoning_effort="high",
+                diagnosis_model_calls=6,
+                diagnosis_pricing=None,
                 runtime_digest="abc123",
                 pricing=pricing["openai-codex/gpt-5.6-sol"],
                 install_only=True,
@@ -81,12 +85,41 @@ class CasesTest(unittest.TestCase):
             credential_state=Path("/tmp/private.json"),
             model="openai-codex/gpt-5.6-sol",
             reasoning_effort="low",
+            diagnosis_model=None,
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            diagnosis_pricing=None,
             runtime_digest="abc123",
             pricing=pricing["openai-codex/gpt-5.6-sol"],
             hard_token_limits=True,
         )
         self.assertIn("input_tokens=120000", command)
         self.assertIn("output_tokens=20000", command)
+
+    def test_harbor_command_records_the_diagnosis_model_and_its_pricing(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        command = harbor_command(
+            harbor=Path("/tools/harbor"),
+            dataset="terminal-bench/terminal-bench-2-1@6",
+            task=tasks["fix-git"],
+            attempts=1,
+            jobs_dir=Path("/tmp/jobs"),
+            agent_module=Path("/tmp/foe_agent.py"),
+            trace_evaluator=Path("/tmp/score-trace"),
+            foe=Path("/tmp/foe"),
+            credential_state=Path("/tmp/private.json"),
+            model="openai-codex/gpt-5.6-sol",
+            reasoning_effort="low",
+            diagnosis_model="openai-codex/gpt-5.6-luna",
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            diagnosis_pricing=pricing["openai-codex/gpt-5.6-luna"],
+            runtime_digest="abc123",
+            pricing=pricing["openai-codex/gpt-5.6-sol"],
+        )
+        self.assertIn("diagnosis_model=openai-codex/gpt-5.6-luna", command)
+        self.assertIn("diagnosis_model_calls=6", command)
+        self.assertIn("diagnosis_input_per_million=0.2", command)
 
     def test_job_result_reports_trial_exceptions(self):
         with tempfile.TemporaryDirectory() as directory:

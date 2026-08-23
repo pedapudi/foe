@@ -239,6 +239,10 @@ def harbor_command(
     credential_state: Path,
     model: str,
     reasoning_effort: str,
+    diagnosis_model: str | None,
+    diagnosis_reasoning_effort: str,
+    diagnosis_model_calls: int,
+    diagnosis_pricing: Pricing | None,
     runtime_digest: str,
     pricing: Pricing,
     hard_token_limits: bool = False,
@@ -257,6 +261,13 @@ def harbor_command(
     if hard_token_limits:
         kwargs["input_tokens"] = task.expected_input_tokens
         kwargs["output_tokens"] = task.expected_output_tokens
+    if diagnosis_model is not None:
+        kwargs["diagnosis_model"] = diagnosis_model
+        kwargs["diagnosis_reasoning_effort"] = diagnosis_reasoning_effort
+        kwargs["diagnosis_model_calls"] = diagnosis_model_calls
+        if diagnosis_pricing is None:
+            raise ValueError("diagnosis model pricing is required")
+        kwargs.update({f"diagnosis_{key}": value for key, value in diagnosis_pricing.agent_kwargs().items()})
     command = [
         "/usr/bin/env",
         f"PYTHONPATH={agent_module.parent}",
@@ -343,6 +354,13 @@ def parser() -> argparse.ArgumentParser:
         choices=("low", "medium", "high", "xhigh"),
         default="low",
     )
+    answer.add_argument("--diagnosis-model")
+    answer.add_argument(
+        "--diagnosis-reasoning-effort",
+        choices=("low", "medium", "high", "xhigh"),
+        default="high",
+    )
+    answer.add_argument("--diagnosis-model-calls", type=int, default=6)
     answer.add_argument("--label", default="baseline")
     answer.add_argument("--jobs-dir", type=Path, default=Path("target/terminal-bench-jobs"))
     answer.add_argument("--harbor", type=Path, default=default_harbor())
@@ -385,6 +403,13 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--model must name an openai-codex model")
         if args.model not in pricing:
             raise ValueError(f"cases.pricing has no entry for {args.model}")
+        if args.diagnosis_model is not None:
+            if not args.diagnosis_model.startswith("openai-codex/") or args.diagnosis_model == "openai-codex/":
+                raise ValueError("--diagnosis-model must name an openai-codex model")
+            if args.diagnosis_model not in pricing:
+                raise ValueError(f"cases.pricing has no entry for {args.diagnosis_model}")
+            if args.diagnosis_model_calls < 2:
+                raise ValueError("--diagnosis-model-calls must be at least two")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
         agent_module = args.agent_module.resolve(strict=True)
@@ -407,6 +432,8 @@ def main(argv: list[str] | None = None) -> int:
         if credential_state.is_relative_to(jobs_dir):
             raise ValueError("--credential-state must remain outside --jobs-dir")
         selected = [tasks[name] for name in selected_names]
+        if args.diagnosis_model is not None and any(args.diagnosis_model_calls >= task.model_calls for task in selected):
+            raise ValueError("--diagnosis-model-calls must be below every selected task model-call allowance")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
         return 2
@@ -419,6 +446,12 @@ def main(argv: list[str] | None = None) -> int:
     total_expected_cost = selected_pricing.expected_cost(total_input, total_output)
     print(f"dataset       {dataset}")
     print(f"model         {args.model} reasoning_effort={args.reasoning_effort}")
+    if args.diagnosis_model is not None:
+        print(
+            f"diagnosis     {args.diagnosis_model} "
+            f"reasoning_effort={args.diagnosis_reasoning_effort} "
+            f"calls={args.diagnosis_model_calls}"
+        )
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; concurrency 1")
     print("planning      calls      input     output  est. cost  seconds  task")
@@ -507,6 +540,10 @@ def main(argv: list[str] | None = None) -> int:
             credential_state=credential_state,
             model=args.model,
             reasoning_effort=args.reasoning_effort,
+            diagnosis_model=args.diagnosis_model,
+            diagnosis_reasoning_effort=args.diagnosis_reasoning_effort,
+            diagnosis_model_calls=args.diagnosis_model_calls,
+            diagnosis_pricing=pricing.get(args.diagnosis_model) if args.diagnosis_model else None,
             runtime_digest=runtime_digest,
             pricing=selected_pricing,
             hard_token_limits=args.hard_token_limits,
@@ -533,9 +570,13 @@ def main(argv: list[str] | None = None) -> int:
         "label": args.label,
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "diagnosis_model": args.diagnosis_model,
+        "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort if args.diagnosis_model else None,
+        "diagnosis_model_calls": args.diagnosis_model_calls if args.diagnosis_model else None,
         "attempts": args.attempts,
         "concurrency": 1,
         "pricing": selected_pricing.__dict__,
+        "diagnosis_pricing": pricing[args.diagnosis_model].__dict__ if args.diagnosis_model else None,
         "planning_estimated_cost_usd": total_expected_cost,
         "token_limits": "hard" if args.hard_token_limits else "measurement_only",
         "install_only": args.install_only,
