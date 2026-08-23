@@ -1,0 +1,76 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+COMMON_ARGS = [
+    "--foe",
+    "$(rootpath //:foe-portable)",
+    "--source-root",
+    "$(rootpath //:Cargo.toml)",
+    "--agent-module",
+    "$(rootpath :foe_agent.py)",
+    "--trace-evaluator",
+    "$(rootpath //evals:score-trace)",
+    "--cases",
+    "$(rootpath :cases.json)",
+]
+
+COMMON_DATA = [
+    "//:foe-portable",
+    "//:Cargo.toml",
+    "//evals:score-trace",
+    "cases.json",
+    "foe_agent.py",
+    "foe_agent_support.py",
+]
+
+sh_binary(
+    name = "foe-smoke",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + ["--group", "smoke"],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-install-check",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + [
+        "--group",
+        "smoke",
+        "--label",
+        "install-check",
+        "--install-only",
+    ],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-development",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + ["--group", "development"],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-holdout",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + ["--group", "holdout"],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "unit_tests",
+    srcs = ["run_unit_tests.sh"],
+    data = [
+        "cases.json",
+        "foe_agent.py",
+        "foe_agent_support.py",
+        "foe_agent_support_test.py",
+        "run.py",
+        "run_test.py",
+    ],
+    size = "small",
+)
