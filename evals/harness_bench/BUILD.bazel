@@ -1,7 +1,13 @@
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-exports_files(["harness_bench.BUILD.bazel"])
+exports_files(
+    [
+        "foe_source_identity.py",
+        "harness_bench.BUILD.bazel",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 sh_binary(
     name = "foe-development",
@@ -9,6 +15,8 @@ sh_binary(
     args = [
         "--foe",
         "$(rootpath //:foe)",
+        "--source-root",
+        "$(rootpath //:Cargo.toml)",
         "--trace-evaluator",
         "$(rootpath //evals:score-trace)",
         "--task-dir",
@@ -22,7 +30,9 @@ sh_binary(
     ],
     data = [
         "//:foe",
+        "//:Cargo.toml",
         "//evals:score-trace",
+        "foe_source_identity.py",
         "@harness_bench//:development_tasks",
         "@harness_bench//:task_015_yaml",
         "@harness_bench//:task_043_yaml",
@@ -38,6 +48,8 @@ sh_binary(
     args = [
         "--foe",
         "$(rootpath //:foe)",
+        "--source-root",
+        "$(rootpath //:Cargo.toml)",
         "--trace-evaluator",
         "$(rootpath //evals:score-trace)",
         "--task-dir",
@@ -47,7 +59,9 @@ sh_binary(
     ],
     data = [
         "//:foe",
+        "//:Cargo.toml",
         "//evals:score-trace",
+        "foe_source_identity.py",
         "@harness_bench//:confirmation_tasks",
         "@harness_bench//:task_085_yaml",
         "@harness_bench//:task_096_yaml",
@@ -58,6 +72,7 @@ sh_binary(
 sh_binary(
     name = "collect-evidence",
     srcs = ["collect_evidence.py"],
+    data = ["foe_source_identity.py"],
     visibility = ["//visibility:public"],
 )
 
@@ -68,7 +83,10 @@ sh_binary(
         "--foe",
         "$(rootpath //:foe)",
     ],
-    data = ["//:foe"],
+    data = [
+        "//:foe",
+        "foe_source_identity.py",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -80,6 +98,8 @@ sh_test(
         "run_foe_test.py",
         "collect_evidence.py",
         "collect_evidence_test.py",
+        "foe_source_identity.py",
+        "foe_source_identity_test.py",
         "run_self_improvement.py",
         "run_self_improvement_test.py",
     ],

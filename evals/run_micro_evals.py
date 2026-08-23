@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
+from harness_bench.foe_source_identity import evaluated_foe
 from micro_tasks import TASKS, Task, task_by_name
 from trace_quality import evaluate
 
@@ -585,6 +586,12 @@ def main() -> int:
         ),
     )
     parser.add_argument("--foe", type=Path, required=True, help="Path to the built foe binary.")
+    parser.add_argument(
+        "--source-root",
+        type=Path,
+        required=True,
+        help="Path inside the clean Foe checkout associated with the evaluated binary.",
+    )
     parser.add_argument("--model", required=True, help="Provider and model as PROVIDER/MODEL.")
     parser.add_argument(
         "--confirm-spend",
@@ -612,6 +619,10 @@ def main() -> int:
     binary = args.foe.resolve()
     if not binary.is_file():
         return refuse(f"foe binary does not exist: {binary}")
+    try:
+        foe_identity = evaluated_foe(args.source_root, binary)
+    except ValueError as error:
+        return refuse(str(error))
     try:
         selected = tuple(task_by_name(name) for name in args.task) if args.task else TASKS
     except KeyError as error:
@@ -661,6 +672,7 @@ def main() -> int:
     report = {
         "schema_version": 1,
         "evaluation": "foe-model-backed-micro",
+        "evaluated_foe": foe_identity,
         "model": model_route,
         "attempts_per_task": args.attempts,
         "task_count": len(selected),

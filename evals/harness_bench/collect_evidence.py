@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from foe_source_identity import require_evaluated_foe
+
 MAX_EVIDENCE_BYTES = 20_000
 
 
@@ -168,6 +170,17 @@ def optimization_summary(path: Path) -> dict[str, Any]:
     }
 
 
+def require_matching_identity(
+    expected: dict[str, str], actual: dict[str, str], actual_context: str
+) -> None:
+    for field in ("source_tree", "runtime_binary"):
+        if expected[field] != actual[field]:
+            raise ValueError(
+                f"{actual_context} identifies a different {field}: "
+                f"{actual[field]} rather than {expected[field]}"
+            )
+
+
 def collect(
     micro_report: Path,
     harness_report: Path,
@@ -175,6 +188,19 @@ def collect(
 ) -> dict[str, Any]:
     micro = read_json(micro_report)
     harness = read_json(harness_report)
+    micro_identity = require_evaluated_foe(
+        micro.get("evaluated_foe"), f"micro evaluation report {micro_report}"
+    )
+    harness_identity = require_evaluated_foe(
+        harness.get("evaluated_foe"), f"Harness-Bench report {harness_report}"
+    )
+    require_matching_identity(micro_identity, harness_identity, f"Harness-Bench report {harness_report}")
+    for path in optimization_results or []:
+        result = read_json(path)
+        identity = require_evaluated_foe(
+            result.get("evaluated_foe"), f"self-improvement result {path}"
+        )
+        require_matching_identity(micro_identity, identity, f"self-improvement result {path}")
     micro_rows = []
     for result in micro.get("results", []):
         if not isinstance(result, dict):
@@ -225,6 +251,7 @@ def collect(
     return {
         "schema_version": 1,
         "purpose": "Evidence for one general Foe runtime improvement. Benchmark-specific rules are excluded from candidate source.",
+        "evaluated_foe": micro_identity,
         "micro": {"aggregate": micro.get("aggregate"), "attempts": micro_rows},
         "harness_bench": {"summary": harness.get("summary"), "attempts": harness_rows},
         "prior_self_improvement_attempts": [optimization_summary(path) for path in optimization_results or []],
@@ -271,7 +298,10 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--optimization-result", action="append", type=Path, default=[])
     args = parser.parse_args()
-    report = collect(args.micro_report, args.harness_report, args.optimization_result)
+    try:
+        report = collect(args.micro_report, args.harness_report, args.optimization_result)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     rendered = json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
     size = len(rendered.encode("utf-8"))
     if size > MAX_EVIDENCE_BYTES:

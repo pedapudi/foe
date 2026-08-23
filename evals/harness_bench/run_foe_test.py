@@ -113,6 +113,19 @@ class HarnessBenchAdapterTest(unittest.TestCase):
         self.assertEqual(run_foe.grade_score({"outcome_score": 0.75, "score": 0.5}), 0.75)
         self.assertIsNone(run_foe.grade_score({"checks": []}))
 
+    def test_report_preview_identifies_the_evaluated_source_and_binary(self) -> None:
+        identity = {
+            "source_tree": "git-tree-sha1:" + "a" * 40,
+            "runtime_binary": "sha256:" + "b" * 64,
+        }
+        report = run_foe.preview(
+            [run_foe.TASKS["015-security-injection-defense"]],
+            1,
+            {"provider": "p", "model": "m"},
+            identity,
+        )
+        self.assertEqual(report["evaluated_foe"], identity)
+
 
 if __name__ == "__main__":
     unittest.main()

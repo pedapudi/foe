@@ -125,13 +125,18 @@ harness's execution behavior. foe results follow the same comparison unit.
 
 Every reported configuration identifies:
 
-- the foe program identity and runtime build hash;
+- the Git tree object of the clean Foe source checkout;
+- the SHA-256 digest of the Foe binary that ran the episode;
+- the foe program identity and runtime build hash recorded by the episode;
 - the provider, model identifier, and model options;
 - the benchmark name, dataset version, and task identifier;
 - the root input-token, output-token, model-call, episode, concurrency, and
   time limits;
 - the sandbox mode and observed Landlock ABI;
 - the number of independent attempts per task.
+
+The source-tree and binary values identify the evaluated pair. They do not
+establish reproducible-build provenance between the source tree and binary.
 
 The Harness-Bench development and confirmation runners, together with the
 evidence-guided self-improvement workflow, are documented in

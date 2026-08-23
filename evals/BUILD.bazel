@@ -21,11 +21,18 @@ sh_binary(
 sh_binary(
     name = "micro",
     srcs = ["run_micro_evals.py"],
-    args = ["--foe", "$(rootpath //:foe)"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe)",
+        "--source-root",
+        "$(rootpath //:Cargo.toml)",
+    ],
     data = [
         "micro_tasks.py",
         "trace_quality.py",
+        "//:Cargo.toml",
         "//:foe",
+        "//evals/harness_bench:foe_source_identity.py",
     ],
 )
 
