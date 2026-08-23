@@ -88,11 +88,13 @@ class ProgramTest(unittest.TestCase):
         implementation = nodes["implement-task"]["model"]
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
         self.assertEqual(diagnosis["budget"]["model_calls"], 6)
+        self.assertEqual(diagnosis["budget"]["seconds"], 200)
         self.assertEqual(diagnosis["tools"], ["read", "grep", "bash"])
         self.assertNotIn("sandbox", diagnosis)
         self.assertIn("returns", diagnosis["done_when"])
         self.assertEqual(implementation["model"]["model"], "gpt-5.6-sol")
         self.assertEqual(implementation["budget"]["model_calls"], 14)
+        self.assertEqual(implementation["budget"]["seconds"], 400)
         self.assertEqual(nodes["implement-task"]["follows"], ["task", "diagnose-task"])
         self.assertTrue(nodes["implement-task"]["terminal"])
 
@@ -116,9 +118,12 @@ class ProgramTest(unittest.TestCase):
         nodes = program["workflow"]["nodes"]
         self.assertFalse(nodes["implement-task"]["terminal"])
         self.assertEqual(nodes["implement-task"]["model"]["budget"]["model_calls"], 39)
+        self.assertEqual(nodes["diagnose-task"]["model"]["budget"]["seconds"], 300)
+        self.assertEqual(nodes["implement-task"]["model"]["budget"]["seconds"], 300)
         repair = nodes["audit-and-repair-task"]
         self.assertEqual(repair["model"]["model"]["reasoning_effort"], "xhigh")
         self.assertEqual(repair["model"]["budget"]["model_calls"], 18)
+        self.assertEqual(repair["model"]["budget"]["seconds"], 300)
         self.assertEqual(repair["follows"], ["task", "implement-task"])
         self.assertTrue(repair["terminal"])
         self.assertEqual(program["budget"]["max_episodes"], 4)

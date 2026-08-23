@@ -88,7 +88,7 @@ def build_program(
     reserved_diagnosis_calls = diagnosis_model_calls if diagnosis_model_name is not None else 0
     if reserved_diagnosis_calls + escalation_model_calls >= model_calls:
         raise ValueError("diagnosis and escalation calls must leave at least one implementation call")
-    diagnosis_seconds = min(180, max(60, seconds // 4)) if diagnosis_model_name is not None else 0
+    diagnosis_seconds = min(300, max(60, seconds // 3)) if diagnosis_model_name is not None else 0
     working_seconds = seconds - diagnosis_seconds
     escalation_seconds = working_seconds // 2 if escalation_reasoning_effort is not None else 0
     implementation_seconds = working_seconds - escalation_seconds

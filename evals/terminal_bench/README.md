@@ -120,9 +120,11 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
   --confirm-spend
 ```
 
-The diagnosis calls come from the task's existing model-call allowance. The
-runner prices each child from the model route recorded in its episode log.
-Omitting `--diagnosis-model` preserves the single-episode coding program.
+The diagnosis calls come from the task's existing model-call allowance. A
+diagnosis can use up to one-third of the task time, capped at 300 seconds. An
+early typed return releases the remaining work immediately. The runner prices
+each child from the model route recorded in its episode log. Omitting
+`--diagnosis-model` preserves the single-episode coding program.
 
 The implementation can receive a fresh higher-reasoning repair episode while
 the primary implementation remains at low reasoning. The repair episode does
