@@ -142,7 +142,7 @@ Planning token estimates provide a spend preview. They do not stop ordinary deve
 3. Run one Luna `low` attempt on capability-search tasks when a cheap trajectory can reveal obvious tool or adapter failures.
 4. Run one Sol `low` attempt on the remaining capability-search tasks. Run Sol `xhigh` only on Sol `low` failures.
 5. Repeat the most promising Sol gap three times at each reasoning setting. Freeze the selected task and gap criterion.
-6. Produce typed trajectory diagnoses. Each diagnosis names its model setting and retained run. The digest groups verified results by task and model setting, then retains bounded request growth, replayed results, failures, and log sequence numbers.
+6. Produce typed trajectory diagnoses. Each diagnosis names its model setting and retained run. The digest groups verified results by task and model setting. It retains request growth calculated within each episode, replayed results, failures, and log sequence numbers under fixed tree-wide bounds.
 7. Run identity-bound self-improvement with Luna `high` for bounded diagnosis and Terra `high` for implementation. The coding node receives only the typed diagnosis and acts as a full coding agent.
 8. Validate the generated candidate outside the self-improvement episode. Implement the diagnosed change directly when the generated candidate is absent, invalid, or unsupported by the evidence.
 9. Re-run the selected capability task with Sol `low`. Reject candidates that fail the capability-conversion criteria.

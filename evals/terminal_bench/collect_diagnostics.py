@@ -14,20 +14,65 @@ from foe_source_identity import evaluated_foe, require_evaluated_foe
 
 MAX_DIAGNOSES = 24
 MAX_EVIDENCE_BYTES = 64 * 1024
+MAX_INPUT_GROWTH_LANDMARKS = 4
+EVALUATION_FIELDS = ("dataset", "label", "model", "reasoning_effort", "token_limits")
 
 
 def input_growth_landmarks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep the request rows that locate the start, largest growth, peak, and end."""
+    """Keep tree endpoints, peak input, and largest within-episode growth."""
     if not rows:
         return []
-    deltas = [row.get("input_tokens", 0) - rows[index - 1].get("input_tokens", 0) for index, row in enumerate(rows)]
+    previous_by_episode: dict[str, int] = {}
+    deltas = []
+    for index, row in enumerate(rows):
+        episode_id = row.get("episode_id")
+        input_tokens = row.get("input_tokens")
+        if not isinstance(episode_id, str) or not episode_id:
+            raise ValueError(f"trajectory request {index} has no string episode_id")
+        if not isinstance(input_tokens, int):
+            raise ValueError(f"trajectory request {index} has no integer input_tokens")
+        previous = previous_by_episode.get(episode_id)
+        deltas.append(0 if previous is None else input_tokens - previous)
+        previous_by_episode[episode_id] = input_tokens
     indexes = {
         0,
         len(rows) - 1,
         max(range(len(rows)), key=lambda index: rows[index].get("input_tokens", 0)),
         max(range(len(rows)), key=lambda index: deltas[index]),
     }
-    return [{**rows[index], "input_growth": deltas[index]} for index in sorted(indexes)]
+    selected = sorted(indexes)[:MAX_INPUT_GROWTH_LANDMARKS]
+    return [{**rows[index], "input_growth": deltas[index]} for index in selected]
+
+
+def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[str, str]:
+    """Return the run labels required to compare trajectory outcomes."""
+    answer = {}
+    for field in EVALUATION_FIELDS:
+        value = manifest.get(field)
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"Terminal-Bench manifest {manifest_path} has no string `{field}`")
+        answer[field] = value
+    return answer
+
+
+def request_rows(report: dict[str, Any], usage: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return request rows with an episode identity for every schema version."""
+    rows = usage.get("per_request", [])
+    if not isinstance(rows, list):
+        raise ValueError("trajectory usage.per_request is not a list")
+    root_identity = report.get("evidence_identity")
+    root_episode = root_identity.get("episode_id") if isinstance(root_identity, dict) else None
+    answer = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"trajectory request {index} is not an object")
+        if isinstance(row.get("episode_id"), str):
+            answer.append(row)
+        elif report.get("schema_version") == 1 and isinstance(root_episode, str):
+            answer.append({**row, "episode_id": root_episode})
+        else:
+            raise ValueError(f"trajectory request {index} has no string episode_id")
+    return answer
 
 
 def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dict[str, Any]:
@@ -52,7 +97,7 @@ def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dic
         {
             "evaluation": evaluation,
             "usage": compact_usage,
-            "input_growth_landmarks": input_growth_landmarks(usage.get("per_request", [])),
+            "input_growth_landmarks": input_growth_landmarks(request_rows(report, usage)),
             "largest_replayed_results": report.get("largest_replayed_results", [])[:3],
             "tool_failures": report.get("tool_failures", [])[:3],
             "repeated_calls": report.get("repeated_calls", [])[:3],
@@ -66,7 +111,12 @@ def evaluation_summary(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     groups: dict[tuple[str, str, str], dict[str, Any]] = {}
     for report in reports:
         evaluation = report["evaluation"]
-        key = (report.get("task", "unknown"), evaluation["model"], evaluation["reasoning_effort"])
+        task = report.get("task")
+        key = (
+            task if isinstance(task, str) and task else "unknown",
+            evaluation["model"],
+            evaluation["reasoning_effort"],
+        )
         group = groups.setdefault(
             key,
             {
@@ -113,13 +163,7 @@ def collect(
         diagnostic_paths = sorted(run_dir.glob("*/*/agent/foe-diagnostics.json"))
         if not diagnostic_paths:
             raise ValueError(f"Terminal-Bench run has no Foe diagnostics: {run_dir}")
-        evaluation = {
-            "dataset": manifest.get("dataset"),
-            "label": manifest.get("label"),
-            "model": manifest.get("model"),
-            "reasoning_effort": manifest.get("reasoning_effort"),
-            "token_limits": manifest.get("token_limits"),
-        }
+        evaluation = evaluation_metadata(manifest, manifest_path)
         for path in diagnostic_paths:
             report = json.loads(path.read_text(encoding="utf-8"))
             evidence = report.get("evidence_identity")
@@ -128,16 +172,7 @@ def collect(
             reports.append(compact_diagnosis(report, evaluation))
             if len(reports) > MAX_DIAGNOSES:
                 raise ValueError(f"self-improvement evidence exceeds {MAX_DIAGNOSES} trajectory diagnoses")
-        runs.append(
-            {
-                "dataset": manifest.get("dataset"),
-                "label": manifest.get("label"),
-                "model": manifest.get("model"),
-                "reasoning_effort": manifest.get("reasoning_effort"),
-                "token_limits": manifest.get("token_limits"),
-                "diagnoses": len(diagnostic_paths),
-            }
-        )
+        runs.append({**evaluation, "diagnoses": len(diagnostic_paths)})
     answer = {
         "schema_version": 2,
         "evaluated_foe": identity,
