@@ -64,6 +64,13 @@ negative-control grade, final programmatic grade, usage, trace result, and
 process outcome. Grading runs after Foe exits. The grader source remains
 outside Foe's read and write authority.
 
+The retained directory is local evaluation evidence. Keep raw trajectories,
+copied task workspaces, negative controls, Python environments, build output,
+and provider signatures under an ignored directory such as `target/`. Store
+long-lived local evidence in a compressed archive with a checksum manifest.
+Git tracks the runner, tests, configuration, documentation, and reviewed
+aggregate results.
+
 ## Run the frozen confirmation comparison
 
 Preview each three-attempt configuration before launching model calls:
@@ -100,18 +107,18 @@ The collector writes compact JSON and rejects reports larger than 20,000
 bytes. This bound keeps the model input focused on assessed failures and
 resource use.
 
-Create a clean disposable worktree before launching self-improvement:
+Create a clean sibling worktree before launching self-improvement:
 
 ```sh
 git worktree add -b experiment/evidence-guided-runtime-improvement \
-  /tmp/foe-evidence-guided-runtime-improvement HEAD
+  ../foe-evidence-guided-runtime-improvement HEAD
 ```
 
 Preview the optimization allowance:
 
 ```sh
 bazel run //evals/harness_bench:self-improve -- \
-  --candidate /tmp/foe-evidence-guided-runtime-improvement \
+  --candidate ../foe-evidence-guided-runtime-improvement \
   --evidence "$PWD/target/foe-self-improvement-evidence.json"
 ```
 
@@ -119,7 +126,7 @@ Launch one bounded workflow after reviewing the preview:
 
 ```sh
 bazel run //evals/harness_bench:self-improve -- \
-  --candidate /tmp/foe-evidence-guided-runtime-improvement \
+  --candidate ../foe-evidence-guided-runtime-improvement \
   --evidence "$PWD/target/foe-self-improvement-evidence.json" \
   --keep target/foe-evidence-guided-runtime-improvement \
   --confirm-spend
@@ -145,6 +152,6 @@ tokens, and 1,200 seconds. Its result records measured token use and the typed
 episode outcome.
 
 Compilation, repository tests, formatting, clippy, and matched evaluation
-reruns remain external acceptance gates. The measured development results and
-candidate disposition are recorded in
-[`docs/harness-benchmark-campaign.md`](../../docs/harness-benchmark-campaign.md#foe-only-development-experiment).
+reruns remain external acceptance gates. Record reviewed aggregate results and
+the candidate disposition on the campaign branch. Keep the underlying raw
+evidence in its checksummed local archive.

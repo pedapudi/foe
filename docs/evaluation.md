@@ -302,9 +302,9 @@ The runner treats such an attempt as outside budget. Each attempt reports
 `input_overrun_tokens` and `output_overrun_tokens` under
 `budget_observation`. A zero value means the measured usage stayed within
 that token allowance. A null value means the provider usage was incomplete.
-The trace evaluator
-still checks that the released input equals the child log. It does not claim
-that an input reservation strictly bounds provider-reported input.
+The trace evaluator still checks that the released input equals the child log.
+It does not claim that an input reservation strictly bounds provider-reported
+input.
 
 A provider that accepts a per-request output cap receives the remaining
 output allowance. The ChatGPT Codex backend rejects that field. An
