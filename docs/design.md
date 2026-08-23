@@ -699,6 +699,12 @@ rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing, the plan reports, credential acquisition,
 the browser, the outcome line, and the exit codes.
 
+Telemetry is budgeted apart too: `crates/telemetry` under 800 lines. It is
+separate because it reads a finished log rather than producing one. Nothing
+in the runtime depends on it, the crate depends on `log` alone, and an
+installation that never runs `foe-telemetry` carries none of its behavior.
+See [docs/telemetry.md](telemetry.md).
+
 Rust outside every line budget, in the built-in transport, is bounded by the
 size of the binary it compiles into. Continuous integration enforces every
 budget as a test.

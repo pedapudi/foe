@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Six budgets: 5400 over the kernel, which is log and core together — the log
-# format, the loop, budgets, sandbox, and spawn, whose smallness is the
+# Seven budgets: 5400 over the kernel, which is log and core together — the
+# log format, the loop, budgets, sandbox, and spawn, whose smallness is the
 # product claim; 1600 over tools, which is code — the tool surface, which
 # grows a tool at a time without touching the kernel; 1000 over workflow; 500
-# over context; 600 over view; 1300 over cli. The viewer is budgeted apart
-# because it delivers a record of a run rather than running one, and its
-# browser bundle is bounded by size instead, in view/. The command line is
-# budgeted apart because it serves a person at a terminal rather than an
-# episode. See docs/design.md "Size".
+# over context; 600 over view; 1300 over cli; 800 over telemetry. The viewer
+# is budgeted apart because it delivers a record of a run rather than running
+# one, and its browser bundle is bounded by size instead, in view/. The
+# command line is budgeted apart because it serves a person at a terminal
+# rather than an episode. Telemetry is budgeted apart because it reads a
+# finished log rather than producing one, and nothing in the runtime may
+# depend on it. See docs/design.md "Size".
 set -euo pipefail
 cd "$(dirname "$0")/.."
 count() {
@@ -31,5 +33,7 @@ view=$(count view)
 printf '%-8s %6d  (budget 600)\n' view "$view"
 cli=$(count cli)
 printf '%-8s %6d  (budget 1300)\n' cli "$cli"
+telemetry=$(count telemetry)
+printf '%-8s %6d  (budget 800)\n' telemetry "$telemetry"
 [ "$kernel" -le 5400 ] && [ "$tools" -le 1600 ] && [ "$workflow" -le 1000 ] && [ "$context" -le 500 ] \
-  && [ "$view" -le 600 ] && [ "$cli" -le 1300 ]
+  && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 800 ]
