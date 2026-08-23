@@ -6,10 +6,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  DEPTH_INDENT,
   ELBOW,
   LANE_PITCH,
   OUTCOME_TAIL,
+  causalityOutline,
+  layoutLanes,
   ROW_PITCH,
   STUB,
   callTarget,
@@ -171,6 +172,56 @@ for (const files of [
   });
 }
 
+// The geometry over a chosen subset of rows at the heights they measured,
+// which is what a view that collapses part of a run needs and what a view
+// that shows all of it at one height is a special case of.
+
+const WORKFLOW = ["workflow.jsonl", "workflow-propose-1.jsonl", "workflow-propose-2.jsonl", "workflow-apply-1.jsonl"];
+
+test("rows stack by the heights they were given, not by a pitch", () => {
+  const outline = causalityOutline(run(...WORKFLOW));
+  // Alternating heights stand in for a run where a line of prose and a
+  // result body are taller than a node.
+  const heights = outline.rows.map((_, i) => (i % 2 === 0 ? 18 : 44));
+  const figure = layoutLanes(outline, outline.rows, heights);
+  figure.rows.forEach((placed, i) => {
+    assert.equal(placed.height, heights[i]);
+    if (i > 0) {
+      const before = figure.rows[i - 1]!;
+      assert.equal(placed.top, before.top + before.height, "each row starts where the one above it ended");
+    }
+    assert.equal(placed.y, placed.top + placed.height / 2);
+  });
+  for (const edge of figure.edges) {
+    assert.ok(onALine(figure, edge.from), `the ${edge.kind} of ${edge.laneId} leaves a line`);
+    assert.ok(onALine(figure, edge.to), `the ${edge.kind} of ${edge.laneId} lands on a line`);
+  }
+});
+
+test("a lane with nothing visible on it is not drawn, and its column is freed", () => {
+  const outline = causalityOutline(run(...WORKFLOW));
+  const whole = layoutLanes(outline, outline.rows, outline.rows.map(() => 22));
+  const hidden = "ep_8936e375";
+  const visible = outline.rows.filter((r) => r.episodeId !== hidden);
+  const part = layoutLanes(outline, visible, visible.map(() => 22));
+  assert.ok(whole.lanes.some((l) => l.id === hidden), "the first proposal has a lane when its rows are shown");
+  assert.ok(!part.lanes.some((l) => l.id === hidden), "and none when they are not");
+  assert.ok(part.height < whole.height, "the figure is shorter for the rows it dropped");
+  for (const edge of part.edges) {
+    assert.ok(onALine(part, edge.from), `the ${edge.kind} of ${edge.laneId} leaves a line`);
+    assert.ok(onALine(part, edge.to), `the ${edge.kind} of ${edge.laneId} lands on a line`);
+  }
+});
+
+test("a loop is drawn only when a reader can see both of its ends", () => {
+  const outline = causalityOutline(run("workflow.jsonl"));
+  const whole = layoutLanes(outline, outline.rows, outline.rows.map(() => 22));
+  assert.equal(whole.edges.filter((e) => e.kind === "loop").length, 1);
+  const visible = outline.rows.filter((r) => r.id !== "ep_c5785a1e/node/survey");
+  const part = layoutLanes(outline, visible, visible.map(() => 22));
+  assert.equal(part.edges.filter((e) => e.kind === "loop").length, 0, "the row the loop returned to is hidden");
+});
+
 test("a parent's line is stretched to meet the curves that join it", () => {
   const figure = layout("root.jsonl", "child.jsonl");
   const parent = lane(figure, "ep_root");
@@ -235,12 +286,12 @@ test("the layout claims no room past its own marks", () => {
     ...figure.rows.flatMap((r) => r.calls.map((c) => c.x)),
   );
   assert.equal(figure.marksWidth, drawn, "the width it reports is where its drawing ends");
-  // Tree depth is an offset its reader adds to a text column of its own
-  // choosing, so the layout holds no opinion about what stands beside it.
+  // A row carries its tree depth and no text geometry at all, so what
+  // stands beside the drawing is entirely the view's to decide.
   const node = row(figure, "ep_c5785a1e/node/propose");
-  assert.equal(node.indent, node.depth * DEPTH_INDENT);
   const step = row(figure, "ep_c5785a1e/step/8");
-  assert.ok(step.indent < node.indent, "an episode's own step sits outside the graph it ran");
+  assert.ok(node.depth > step.depth, "the graph a step ran is one level inside the episode");
+  assert.ok(!("indent" in node), "the layout sets no text column");
 });
 
 test("a step is named by what it did, with its step number alongside", () => {

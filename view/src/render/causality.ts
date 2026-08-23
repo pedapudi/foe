@@ -16,12 +16,13 @@
 import { h } from "../dom.js";
 import { outcomeLabel } from "../fold.js";
 import { edgePath } from "../causality.js";
+import { DEPTH_INDENT } from "../causality.js";
 import type {
   CausalityEdge,
   CausalityLane,
   CausalityLayout,
-  CausalityRow,
   PlacedCall,
+  PlacedRow,
 } from "../causality.js";
 import { str } from "../types.js";
 import { Hovercard } from "./hovercard.js";
@@ -82,7 +83,7 @@ export function renderCausality(
  * nothing in particular lands on. It carries no `z-index`, so the strokes
  * above it are not trapped under it.
  */
-function rowGround(row: CausalityRow, selected: string | null, handlers: CausalityHandlers, scale: number): HTMLElement {
+function rowGround(row: PlacedRow, selected: string | null, handlers: CausalityHandlers, scale: number): HTMLElement {
   const ground = h("div", {
     class: `caus-row${row.id === selected ? " selected" : ""}`,
     "data-row": row.id,
@@ -109,14 +110,17 @@ function rowGround(row: CausalityRow, selected: string | null, handlers: Causali
  * so nesting reads in the text column even though lanes are allocated by
  * column rather than by depth.
  */
-function rowLabel(row: CausalityRow, textLeft: number, selected: string | null, scale: number): HTMLElement {
+function rowLabel(row: PlacedRow, textLeft: number, selected: string | null, scale: number): HTMLElement {
   const label = h(
     "div",
     { class: `caus-label${row.id === selected ? " selected" : ""} ${row.kind}` },
     h("span", { class: "name" }, row.label),
     row.aside ? h("span", { class: "aside" }, row.aside) : null,
   );
-  label.style.left = `${(textLeft + row.indent) * scale}px`;
+  // This view nests the text as well as the gutter, because it is read
+  // beside a conversation rather than as one, and the tree it shows is
+  // shallow enough that a ragged edge costs nothing.
+  label.style.left = `${(textLeft + row.depth * DEPTH_INDENT) * scale}px`;
   label.style.top = `${row.top * scale}px`;
   label.style.height = `${row.height * scale}px`;
   return label;
@@ -189,7 +193,7 @@ function edgeElement(edge: CausalityEdge): SVGPathElement {
  * tool call with its mark at the end. No return edge is drawn for a call —
  * the lane continuing past the tick is the return.
  */
-function rowStrokes(row: CausalityRow, selected: string | null, card: Hovercard, handlers: CausalityHandlers): SVGGElement {
+function rowStrokes(row: PlacedRow, selected: string | null, card: Hovercard, handlers: CausalityHandlers): SVGGElement {
   const group = svg("g", {
     class: `caus-node ${row.kind} tone-${row.tone}${row.id === selected ? " selected" : ""}`,
     "data-row": row.id,
@@ -206,7 +210,7 @@ function rowStrokes(row: CausalityRow, selected: string | null, card: Hovercard,
   return group;
 }
 
-function callElement(row: CausalityRow, call: PlacedCall, card: Hovercard, handlers: CausalityHandlers): SVGGElement {
+function callElement(row: PlacedRow, call: PlacedCall, card: Hovercard, handlers: CausalityHandlers): SVGGElement {
   const group = svg("g", { class: `caus-call${call.failed ? " failed" : ""}` });
   group.appendChild(svg("line", { class: "tick", x1: row.x, y1: call.y, x2: call.x, y2: call.y }));
   group.appendChild(markGroup(call.failed ? "error" : "call", call.x, call.y, CALL_MARK));

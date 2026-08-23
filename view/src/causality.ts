@@ -111,6 +111,11 @@ export interface PlacedCall extends CausalityCall {
 
 export type RowKind = "step" | "node";
 
+/**
+ * One row of the model, before anything has decided whether it is visible
+ * or how tall it is. `causalityOutline` builds these once from the log;
+ * `layoutLanes` places whichever of them a reader can currently see.
+ */
 export interface CausalityRow {
   /** Stable across redraws: the episode and what the row stands for. */
   id: string;
@@ -118,28 +123,18 @@ export interface CausalityRow {
   episodeId: string;
   /** The lane the row is a mark on. */
   laneId: string;
-  /** Depth in the episode tree, which indents the label and nothing else. */
-  depth: number;
-  /** Centre of the row, on its lane's column. */
-  x: number;
-  y: number;
-  /** The lane colour this row's own marks take, which is its lane's. */
-  tone: number;
-  /** The band the row highlight fills. */
-  top: number;
-  height: number;
   /**
-   * How far the row's name is indented from wherever its reader sets the
-   * text column, which carries tree depth. Lanes are allocated by
-   * occupancy rather than by depth, so the indent is the only place
-   * nesting reads in the text.
+   * Depth in the episode tree. What a view does with it is the view's: one
+   * that is read beside a conversation nests its text by it, and one that
+   * is read as a conversation keeps every label in one column and lets the
+   * gutter carry the nesting instead.
    */
-  indent: number;
+  depth: number;
   /** The row's semantic role, in the fewest words that stay true. */
   label: string;
   /** `step 4`, set alongside the label in faint; empty for a workflow node. */
   aside: string;
-  calls: PlacedCall[];
+  calls: CausalityCall[];
   /** Every firing of this node, in order; empty for a step row. */
   firings: CausalityFiring[];
   /** Log positions a step row covers; a node row scopes by its firings. */
@@ -149,14 +144,37 @@ export interface CausalityRow {
   opens: string[];
 }
 
+/** One row of the model, placed. */
+export interface PlacedRow extends CausalityRow {
+  /** Centre of the row, on its lane's column. */
+  x: number;
+  y: number;
+  /** The lane colour this row's own marks take, which is its lane's. */
+  tone: number;
+  /** The band the row highlight fills, which is the height it was given. */
+  top: number;
+  height: number;
+  calls: PlacedCall[];
+}
+
 export type LaneKind = "episode" | "workflow";
 
-export interface CausalityLane {
+/** What earns a lane and what it is, before it has a column or a length. */
+export interface LaneSpec {
   id: string;
   kind: LaneKind;
   episodeId: string;
   /** The lane this one branched from, absent for a root episode's lane. */
   parentId: string | null;
+  /** Which of the cycled lane colours carries this branch's identity. */
+  tone: number;
+  /** The typed outcome drawn at the foot; only an episode lane has one. */
+  outcome: Outcome | null;
+  /** What the lane is, for the hovercard. */
+  label: string;
+}
+
+export interface CausalityLane extends LaneSpec {
   /** Column the lane holds while it is open, allocated lowest-free. */
   column: number;
   x: number;
@@ -166,12 +184,6 @@ export interface CausalityLane {
    */
   y1: number;
   y2: number;
-  /** Which of the cycled lane colours carries this branch's identity. */
-  tone: number;
-  /** The typed outcome drawn at the foot; only an episode lane has one. */
-  outcome: Outcome | null;
-  /** What the lane is, for the hovercard. */
-  label: string;
 }
 
 export type EdgeKind = "branch" | "merge" | "loop";
@@ -192,8 +204,22 @@ export interface CausalityEdge {
   laneId: string;
 }
 
-export interface CausalityLayout {
+/**
+ * The rows and lanes a run has, in reading order, with nothing yet decided
+ * about which of them a reader can see or how tall they are. Every view of
+ * a run reads this same model; a view then chooses a visible subset and
+ * hands it to `layoutLanes`, which is the only place the geometry lives.
+ */
+export interface CausalityOutline {
   rows: CausalityRow[];
+  lanes: LaneSpec[];
+  /** A node re-entered from further down, by the two rows it joins. */
+  loops: { laneId: string; from: string; to: string }[];
+  episodes: CausalityEpisode[];
+}
+
+export interface CausalityLayout {
+  rows: PlacedRow[];
   lanes: CausalityLane[];
   edges: CausalityEdge[];
   episodes: CausalityEpisode[];
@@ -439,33 +465,20 @@ interface LaneBuild {
   children: LaneBuild[];
 }
 
-export function layoutCausality(episodes: CausalityEpisode[]): CausalityLayout {
+/**
+ * Every row and lane a run has, in reading order. This reads the log's
+ * obligation pairs and decides nothing about geometry, so a view that
+ * shows all of it and a view that shows a collapsed part of it are two
+ * readers of one model rather than two copies of it.
+ */
+export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline {
   const byId = new Map(episodes.map((e) => [e.id, e]));
   const rows: CausalityRow[] = [];
-  const builds = new Map<string, LaneBuild>();
-  const loops: { laneId: string; from: number; to: number }[] = [];
-  let tone = 0;
+  const lanes: LaneSpec[] = [];
+  const loops: { laneId: string; from: string; to: string }[] = [];
 
-  const openLane = (id: string, kind: LaneKind, episodeId: string, parentId: string | null, label: string, outcome: Outcome | null): LaneBuild => {
-    const lane: CausalityLane = {
-      id,
-      kind,
-      episodeId,
-      parentId,
-      column: 0,
-      x: 0,
-      y1: 0,
-      y2: 0,
-      tone: tone % TONES,
-      outcome,
-      label,
-    };
-    tone += 1;
-    const build: LaneBuild = { lane, first: Infinity, last: -Infinity, children: [] };
-    builds.set(id, build);
-    const parent = parentId === null ? undefined : builds.get(parentId);
-    if (parent) parent.children.push(build);
-    return build;
+  const openLane = (id: string, kind: LaneKind, episodeId: string, parentId: string | null, label: string, outcome: Outcome | null): void => {
+    lanes.push({ id, kind, episodeId, parentId, tone: lanes.length % TONES, outcome, label });
   };
 
   const emit = (episode: CausalityEpisode, parentLaneId: string | null): void => {
@@ -483,59 +496,45 @@ export function layoutCausality(episodes: CausalityEpisode[]): CausalityLayout {
 
     // A node entered twice is one row and a loop edge, not two rows. That
     // is what lets the scoped conversation show both passes.
-    const nodeRow = new Map<string, number>();
-    let previous: number | null = null;
+    const nodeRow = new Map<string, CausalityRow>();
+    let previous: CausalityRow | null = null;
 
     for (const item of items) {
       if (item.step) {
         const step = item.step;
         const composed = composeLabel({ kind: "step", step: step.step, answered: step.answered, calls: step.calls });
-        const index = rows.length;
-        rows.push({
+        const row: CausalityRow = {
           id: `${episode.id}/step/${step.step}`,
           kind: "step",
           episodeId: episode.id,
           laneId,
           depth: episode.depth,
-          x: 0,
-          y: 0,
-          tone: 0,
-          top: 0,
-          height: ROW_PITCH,
-          indent: episode.depth * DEPTH_INDENT,
           label: composed.label,
           aside: composed.aside,
-          calls: step.calls.map((call) => ({ ...call, x: 0, y: 0 })),
+          calls: step.calls,
           firings: [],
           fromSeq: step.seq,
           toSeq: step.endSeq,
           opens: [],
-        });
+        };
+        rows.push(row);
         for (const call of step.calls) {
           const child = call.childId === null ? undefined : byId.get(call.childId);
           if (!child) continue;
-          rows[index]!.opens.push(child.id);
+          row.opens.push(child.id);
           emit(child, laneId);
         }
         continue;
       }
       const firing = item.firing!;
-      let index = nodeRow.get(firing.node);
-      if (index === undefined) {
-        index = rows.length;
-        nodeRow.set(firing.node, index);
-        rows.push({
+      let row = nodeRow.get(firing.node);
+      if (row === undefined) {
+        row = {
           id: `${episode.id}/node/${firing.node}`,
           kind: "node",
           episodeId: episode.id,
           laneId: workflowLaneId ?? laneId,
           depth: episode.depth + 1,
-          x: 0,
-          y: 0,
-          tone: 0,
-          top: 0,
-          height: ROW_PITCH,
-          indent: (episode.depth + 1) * DEPTH_INDENT,
           label: composeLabel({ kind: "node", node: firing.node }).label,
           aside: "",
           calls: [],
@@ -543,18 +542,19 @@ export function layoutCausality(episodes: CausalityEpisode[]): CausalityLayout {
           fromSeq: firing.startSeq,
           toSeq: firing.endSeq ?? firing.startSeq,
           opens: [],
-        });
+        };
+        nodeRow.set(firing.node, row);
+        rows.push(row);
       }
-      const row = rows[index]!;
       row.firings.push(firing);
       row.fromSeq = Math.min(row.fromSeq, firing.startSeq);
       row.toSeq = Math.max(row.toSeq, firing.endSeq ?? firing.startSeq);
       // A step back up the graph is the loop. Drawn as an edge to the row
       // the node already has rather than as a second row of the same name.
-      if (previous !== null && index < previous && workflowLaneId !== null) {
-        loops.push({ laneId: workflowLaneId, from: previous, to: index });
+      if (previous !== null && previous !== row && rows.indexOf(row) < rows.indexOf(previous) && workflowLaneId !== null) {
+        loops.push({ laneId: workflowLaneId, from: previous.id, to: row.id });
       }
-      previous = index;
+      previous = row;
       const child = firing.childId === null ? undefined : byId.get(firing.childId);
       if (child) {
         row.opens.push(child.id);
@@ -567,37 +567,83 @@ export function layoutCausality(episodes: CausalityEpisode[]): CausalityLayout {
     if (episode.parentId !== null && byId.has(episode.parentId)) continue;
     emit(episode, null);
   }
+  return { rows, lanes, loops, episodes };
+}
 
-  rows.forEach((row, index) => {
+/**
+ * Where the visible rows and the lanes they are marks on go.
+ *
+ * `visible` is the rows a reader can currently see, in reading order, and
+ * `heights` is what each of them measured. Heights are given rather than
+ * assumed because rows are not one size: a line of prose or a tool
+ * result's body is taller than a node, and a lane whose ends were computed
+ * from a fixed pitch would then miss the rows it must reach. A view that
+ * shows every row at one height passes that height for each of them.
+ *
+ * Lanes are computed over the visible rows alone, so a view that collapses
+ * part of a run gets the lanes that part earns, and every view recomputes
+ * on the change that moved a row.
+ */
+export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], heights: number[]): CausalityLayout {
+  const at = new Map(visible.map((row, index) => [row.id, index]));
+  const builds = new Map<string, LaneBuild>();
+  for (const spec of outline.lanes) {
+    builds.set(spec.id, {
+      lane: { ...spec, column: 0, x: 0, y1: 0, y2: 0 },
+      first: Infinity,
+      last: -Infinity,
+      children: [],
+    });
+  }
+  for (const build of builds.values()) {
+    const parent = build.lane.parentId === null ? undefined : builds.get(build.lane.parentId);
+    if (parent) parent.children.push(build);
+  }
+
+  visible.forEach((row, index) => {
     const build = builds.get(row.laneId);
     if (!build) return;
     build.first = Math.min(build.first, index);
     build.last = Math.max(build.last, index);
   });
-  const roots = [...builds.values()].filter((b) => b.lane.parentId === null || !builds.has(b.lane.parentId));
-  for (const root of roots) extend(root);
+  for (const build of builds.values()) {
+    if (build.lane.parentId === null || !builds.has(build.lane.parentId)) extend(build);
+  }
 
+  // A lane with no visible row of its own and nothing visible under it is
+  // not drawn: there is nothing for its line to run between.
   const ordered = [...builds.values()].filter((b) => Number.isFinite(b.first));
   allocateColumns(ordered);
 
   const columns = ordered.reduce((most, b) => Math.max(most, b.lane.column), 0) + 1;
   const lanesRight = LANE_LEFT + (columns - 1) * LANE_PITCH;
-  const fan = rows.reduce((most, row) => Math.max(most, row.calls.length), 0);
+  const fan = visible.reduce((most, row) => Math.max(most, row.calls.length), 0);
   const marksWidth = lanesRight + (fan === 0 ? 0 : CALL_TICK + (fan - 1) * CALL_PITCH);
 
-  rows.forEach((row, index) => {
+  // The top of each visible row, from the heights they measured.
+  const tops: number[] = [];
+  let cursor = TOP;
+  visible.forEach((_, index) => {
+    tops.push(cursor);
+    cursor += heights[index] ?? ROW_PITCH;
+  });
+  const yOf = (index: number): number => (tops[index] ?? TOP) + (heights[index] ?? ROW_PITCH) / 2;
+
+  const rows: PlacedRow[] = visible.map((row, index) => {
     const lane = builds.get(row.laneId)?.lane;
-    row.x = lane ? lane.x : LANE_LEFT;
-    row.tone = lane ? lane.tone : 0;
-    row.y = TOP + index * ROW_PITCH;
-    row.top = row.y - ROW_PITCH / 2;
-    row.calls.forEach((call, i) => {
-      call.x = row.x + CALL_TICK + i * CALL_PITCH;
-      call.y = row.y;
-    });
+    const x = lane ? lane.x : LANE_LEFT;
+    const y = yOf(index);
+    return {
+      ...row,
+      x,
+      y,
+      tone: lane ? lane.tone : 0,
+      top: tops[index] ?? TOP,
+      height: heights[index] ?? ROW_PITCH,
+      calls: row.calls.map((call, i) => ({ ...call, x: x + CALL_TICK + i * CALL_PITCH, y })),
+    };
   });
 
-  const yOf = (index: number): number => TOP + index * ROW_PITCH;
   for (const build of ordered) {
     const lane = build.lane;
     lane.y1 = yOf(build.first);
@@ -639,13 +685,17 @@ export function layoutCausality(episodes: CausalityEpisode[]): CausalityLayout {
       laneId: build.lane.id,
     });
   }
-  for (const loop of loops) {
+  // A loop whose other end a reader cannot see is not drawn: a curve to a
+  // row that is not there would end in empty space.
+  for (const loop of outline.loops) {
     const lane = builds.get(loop.laneId)?.lane;
-    if (!lane) continue;
+    const from = at.get(loop.from);
+    const to = at.get(loop.to);
+    if (!lane || from === undefined || to === undefined || !Number.isFinite(builds.get(loop.laneId)!.first)) continue;
     edges.push({
       kind: "loop",
-      from: { x: lane.x, y: yOf(loop.from) },
-      to: { x: lane.x, y: yOf(loop.to) },
+      from: { x: lane.x, y: yOf(from) },
+      to: { x: lane.x, y: yOf(to) },
       bow: -LOOP_BOW,
       tone: lane.tone,
       laneId: lane.id,
@@ -656,10 +706,20 @@ export function layoutCausality(episodes: CausalityEpisode[]): CausalityLayout {
     rows,
     lanes: ordered.map((b) => b.lane),
     edges,
-    episodes,
+    episodes: outline.episodes,
     marksWidth,
-    height: TOP + Math.max(1, rows.length) * ROW_PITCH + BOTTOM,
+    height: cursor + BOTTOM,
   };
+}
+
+/**
+ * Every row of a run at one height, which is the two-pane figure's whole
+ * reading: it shows the shape of the run and leaves the messages to the
+ * conversation beside it.
+ */
+export function layoutCausality(episodes: CausalityEpisode[]): CausalityLayout {
+  const outline = causalityOutline(episodes);
+  return layoutLanes(outline, outline.rows, outline.rows.map(() => ROW_PITCH));
 }
 
 /** A lane spans its own rows and everything opened under it. */
