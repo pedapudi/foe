@@ -152,6 +152,14 @@ fn load_config(options: &Options) -> Result<Config, String> {
     Ok(config)
 }
 
+/// Applies model settings measured for the built-in coding configuration.
+/// A value in the default model file remains authoritative.
+pub(crate) fn apply_builtin_model_defaults(model: &mut ModelConfig) {
+    if matches!(model.provider.as_str(), "openai" | "openai-codex") && model.model == "gpt-5.6-sol" {
+        model.options.entry("reasoning_effort".into()).or_insert_with(|| "low".into());
+    }
+}
+
 const USAGE_BARE: &str = "a task or --config FILE is required";
 const NO_DEFAULT_MODEL: &str =
     "no model: run `foe login <provider>` once to set a default, or give --model PROVIDER/MODEL";
@@ -170,6 +178,7 @@ fn default_model() -> Result<Option<ModelConfig>, String> {
 /// explicitly; without it the provider's convention path is read.
 fn builtin_config(task: String, mut model: ModelConfig, key_file: Option<&Path>) -> Result<Config, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
+    apply_builtin_model_defaults(&mut model);
     if let Some(key_file) = key_file {
         let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
         model.options.insert("api_key_file".to_string(), key_file.to_string_lossy().into_owned());
@@ -186,6 +195,10 @@ fn builtin_config(task: String, mut model: ModelConfig, key_file: Option<&Path>)
     });
     serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"))
 }
+
+#[cfg(test)]
+#[path = "run_test.rs"]
+mod tests;
 
 /// One line naming the transport a `model` block resolves to, for `foe plan`.
 #[cfg(feature = "transport")]

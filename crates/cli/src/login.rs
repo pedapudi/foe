@@ -105,6 +105,7 @@ pub fn run(session: &mut Session, options: Options) -> Result<ExitCode, String> 
         };
         let mut block = ModelConfig::new(provider.name, model);
         block.options = extra;
+        crate::run::apply_builtin_model_defaults(&mut block);
         write_default_model(&session.home, &block)?;
         say(session, &format!("default model: {}/{} ({})", block.provider, block.model, path.display()))?;
     }
@@ -134,7 +135,11 @@ fn list(session: &mut Session) -> Result<(), String> {
 
 fn status(session: &mut Session) -> Result<(), String> {
     match default_model_in(&session.home)? {
-        Some(model) => say(session, &format!("default model  {}/{}", model.provider, model.model))?,
+        Some(mut model) => {
+            crate::run::apply_builtin_model_defaults(&mut model);
+            let effort = model.option("reasoning_effort").map_or(String::new(), |v| format!(" reasoning_effort={v}"));
+            say(session, &format!("default model  {}/{}{}", model.provider, model.model, effort))?;
+        }
         None => say(session, "default model  none; run `foe login <provider>`")?,
     }
     for provider in PROVIDERS {

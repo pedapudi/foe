@@ -24,6 +24,11 @@ because both were settled by the login.
 configured. `foe login --status` shows the default model and every
 credential path.
 
+The built-in coding configuration uses low reasoning effort with
+`gpt-5.6-sol` through `openai` or `openai-codex`. An explicit
+`reasoning_effort` in the default model file takes precedence. Programs
+given through `--config` use their model block without this coding default.
+
 ## Providers
 
 A provider is a name in the `model` block of a configuration. The name
@@ -205,6 +210,12 @@ next: foe "describe what this repository does"
 A bare `foe "task"` reads the default model file when `--model` is absent.
 `--model PROVIDER/MODEL` on the command line replaces it for one run, and
 `--key-file PATH` names the key file explicitly.
+
+When the selected model is `gpt-5.6-sol` through `openai` or
+`openai-codex`, login writes `"reasoning_effort": "low"` into the default
+model file. A pre-existing default model file receives the same effective
+setting in memory when it omits the option. `foe login --status` reports
+the effective reasoning effort.
 
 ## The `exec` transport
 
