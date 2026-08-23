@@ -119,9 +119,9 @@ detect. The trace evaluator alone reports 0 or 1.
 ## Model-backed task quality
 
 Agent capability belongs to a specific model and harness configuration.
-[Harness-Bench](https://arxiv.org/abs/2605.27922) evaluates configurations
-under shared tasks, budgets, timeouts, and evaluators while preserving each
-harness's execution behavior. foe results follow the same comparison unit.
+Model-backed comparisons use shared tasks, budgets, timeouts, and evaluators
+while preserving each harness's execution behavior. Foe results use that
+configuration as the comparison unit.
 
 Every reported configuration identifies:
 
@@ -138,11 +138,11 @@ Every reported configuration identifies:
 The source-tree and binary values identify the evaluated pair. They do not
 establish reproducible-build provenance between the source tree and binary.
 
-The Harness-Bench development and confirmation runners, together with the
-evidence-guided self-improvement workflow, are documented in
-[`evals/harness_bench/README.md`](../evals/harness_bench/README.md). The runner
-records the pinned source and every local grader patch. Its diagnostic sample
-does not support an official score or a comparison with another harness.
+The primary external integration uses Terminal-Bench 2.1 through Harbor. Its
+small development and holdout sets are documented in
+[`evals/terminal_bench/README.md`](../evals/terminal_bench/README.md).
+Harness-Bench fixtures remain available for local diagnostics in
+[`evals/harness_bench/README.md`](../evals/harness_bench/README.md).
 
 The benchmark's executable evaluator decides task completion. foe's outcome
 and conformance report remain separate fields. This separation distinguishes a
