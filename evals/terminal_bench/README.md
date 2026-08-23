@@ -259,8 +259,9 @@ candidate checker operate when the candidate is a linked Git worktree.
 
 The runner validates the artifact after Foe exits. A valid artifact remains
 accepted when the episode exhausted its reporting budget after producing the
-files. `direct_implementation_required` is true when deterministic validation
-finds an error or the workflow changes no files.
+files. The result binds the base Git tree and every changed file digest into
+one candidate artifact digest. `direct_implementation_required` is true when
+deterministic validation finds an error or the workflow changes no files.
 
 Capability conversion still requires a separate benchmark rerun. Candidate
 promotion remains outside the workflow. The workflow mechanism and evidence

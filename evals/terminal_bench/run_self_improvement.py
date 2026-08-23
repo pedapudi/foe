@@ -72,6 +72,18 @@ def source_hashes(root: Path) -> dict[str, str]:
     return answer
 
 
+def candidate_artifact_identity(
+    candidate: Path, base_source_tree: str, changed: list[str]
+) -> dict[str, Any]:
+    files = {}
+    for name in sorted(changed):
+        path = candidate / name
+        files[name] = sha256_file(path) if path.is_file() else "absent"
+    value = {"base_source_tree": base_source_tree, "files": files}
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return {**value, "digest": "sha256:" + hashlib.sha256(encoded).hexdigest()}
+
+
 def git_metadata_root(candidate: Path) -> Path:
     result = subprocess.run(
         ["/usr/bin/git", "-C", str(candidate), "rev-parse", "--git-common-dir"],
@@ -543,6 +555,7 @@ def main(argv: list[str] | None = None) -> int:
         check=True,
     ).stdout.splitlines()
     changed = [line[3:] for line in changed_status if len(line) > 3]
+    artifact_identity = candidate_artifact_identity(candidate, identity["source_tree"], changed)
     acceptance = check_candidate(check, candidate) if changed else {
         "accepted": False,
         "findings": ["candidate contains no changed files"],
@@ -560,6 +573,7 @@ def main(argv: list[str] | None = None) -> int:
         "evidence": str(evidence),
         "episode": str(episode),
         "changed_files": changed,
+        "candidate_artifact": artifact_identity,
         "candidate_acceptance": acceptance,
         "artifact_outcome_mismatch": acceptance["accepted"] and result.returncode != 0,
         "direct_implementation_required": not acceptance["accepted"],

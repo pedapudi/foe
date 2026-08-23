@@ -9,6 +9,7 @@ from pathlib import Path
 from run import Pricing
 from run_self_improvement import (
     build_config,
+    candidate_artifact_identity,
     check_candidate,
     measure_episode,
     model_config,
@@ -17,6 +18,23 @@ from run_self_improvement import (
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
+    def test_candidate_artifact_identity_binds_base_and_changed_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            changed = root / "crates/core/src/lib.rs"
+            changed.parent.mkdir(parents=True)
+            changed.write_text("one\n", encoding="utf-8")
+            first = candidate_artifact_identity(
+                root, "git-tree-sha1:" + "1" * 40, ["docs/deleted.md", "crates/core/src/lib.rs"]
+            )
+            changed.write_text("two\n", encoding="utf-8")
+            second = candidate_artifact_identity(
+                root, "git-tree-sha1:" + "1" * 40, ["docs/deleted.md", "crates/core/src/lib.rs"]
+            )
+        self.assertEqual(first["files"]["docs/deleted.md"], "absent")
+        self.assertNotEqual(first["files"]["crates/core/src/lib.rs"], second["files"]["crates/core/src/lib.rs"])
+        self.assertNotEqual(first["digest"], second["digest"])
+
     def test_workflow_uses_typed_handoff_and_a_full_coding_surface(self):
         root = Path("/tmp/candidate")
         config = build_config(

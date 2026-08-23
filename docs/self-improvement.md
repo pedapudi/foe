@@ -359,8 +359,10 @@ listening socket or a fresh Landlock domain.
 
 The runner repeats validation after the episode ends with every workspace
 test. An exhausted outcome does not discard an artifact that passes every
-deterministic check. Benchmark promotion still requires a separate run
-against the frozen capability task and untouched confirmation tasks.
+deterministic check. The retained result binds the base source tree and every
+changed file digest into one candidate artifact digest. Benchmark promotion
+still requires a separate run against the frozen capability task and
+untouched confirmation tasks.
 
 ## Reproduction
 
