@@ -290,7 +290,7 @@ Object. Required.
 
 | field | type | required | default | meaning |
 |---|---|---|---|---|
-| `model_calls` | integer | yes | | maximum model requests, including retries |
+| `model_calls` | integer | yes | | maximum model requests, including retries; the last available ordinary request receives a system warning |
 | `input_tokens` | integer | no | unlimited | provider-reported input allowance across all requests, including cache-read input |
 | `output_tokens` | integer | no | unlimited | provider-reported output allowance across all requests, including reasoning when the provider includes it |
 | `seconds` | integer | no | unlimited | wall-clock limit for the episode |
@@ -313,6 +313,11 @@ within an episode — so the final request may cross the remaining allowance,
 and the crossing ends the episode afterwards. Completion is checked before
 exhaustion, so a response that finishes the task on the crossing request
 completes the episode. Cached input remains part of `input_tokens`.
+
+When the pool leaves one model call for an ordinary episode request, the
+runtime includes a system inbox warning in that request. The warning directs
+the model toward the highest-priority unfinished work and the configured
+completion signal. It changes no allowance or completion rule.
 
 For a provider that accepts a per-request output cap, the runtime clamps the
 cap to the remaining `output_tokens`. This applies to ordinary requests,

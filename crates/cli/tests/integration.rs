@@ -637,7 +637,11 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert!(continuation.contains("\nfiles_read:\n- f.txt\nfiles_written: (none)\n"), "{continuation}");
     assert!(continuation.ends_with(&format!("## Summary\n\n{narrative}")), "{continuation}");
     assert_eq!(messages[2]["tool_calls"][0]["id"], "tc_2", "the kept suffix starts with the second step");
-    assert_eq!(messages.len(), 4);
+    assert_eq!(messages.len(), 5, "the final-request warning follows the compacted context");
+    assert!(
+        messages.iter().any(|message| message.to_string().contains(foe_config::harness_text::FINAL_REQUEST)),
+        "the last ordinary request carries the recorded warning"
+    );
     let prompt = requests[2]["data"]["messages"][0]["content"][0]["text"].as_str().unwrap();
     assert!(prompt.starts_with("# Transcript\n\n[user]\ndo the thing\n\n[assistant]\nreading\n[call read"), "{prompt}");
     assert!(!prompt.contains("tc_2") && prompt.contains("[result read]"), "the span ends at the cut: {prompt}");
@@ -682,7 +686,12 @@ fn a_failed_summarization_leaves_the_context_as_it_was() {
     let last = events.iter().rev().find(|e| e["type"] == "model/request").unwrap();
     assert_eq!(last["data"]["request_id"], "rq_0004");
     assert_eq!(last["data"]["messages"][0]["content"][0]["text"], "do the thing");
-    assert_eq!(last["data"]["messages"].as_array().unwrap().len(), 5, "task, two turns, two results: unchanged");
+    let messages = last["data"]["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 6, "the prior context and final-request warning are present");
+    assert!(
+        messages.iter().any(|message| message.to_string().contains(foe_config::harness_text::FINAL_REQUEST)),
+        "failed compaction preserves the warning"
+    );
 }
 
 fn examples() -> Vec<(String, String)> {
@@ -856,18 +865,18 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
 /// model sees, never a side effect of moving code between crates.
 #[rustfmt::skip]
 const RECORDED_IDENTITIES: [(&str, &str); 12] = [
-    ("budget-exhausted", "sha256:2db57fc3be9b010f32ff1ac38f8a887a1737936dd57c29a0457e12f5c574620e"),
-    ("exec-transport", "sha256:801d90de0ea80d61aa4a1a4f939e91aa63f537ceecf8567ad0758849a60bbd4a"),
-    ("host-transport", "sha256:01a692e035bdbbdf5f467de93321539218390550088dfc0ef91a7fa1ad84b274"),
-    ("minimal", "sha256:f9570847c450dfd531a7894c6337f5a6f19a279fd16c296a6c53c478739e05af"),
-    ("recovery-exhausted", "sha256:ed2dd8ba81f17d46e5e5640bf8ea10cf20d0248a78be6533f6536962c77aba4e"),
-    ("sandbox", "sha256:fd4ba25cf14af4e3039207aac8184297ce4c84f8794c50fa975efaafa6f31696"),
-    ("self-extension", "sha256:f7db47b66a8bc0eee3961401c9ee302239d4b78e12806501f8d555502b997280"),
-    ("subagents", "sha256:10d8af9a94d7d2e826fe5cadbbe51a0ee03b026f3138181ad60cc0bd1ec91af7"),
-    ("team", "sha256:71b0cd4dc606a87a443505f765bafc0576f29963c9c52d2d3a97a413156a8d69"),
-    ("verification-unsatisfiable", "sha256:59370eeb273563c40b2b11cdfd79feb327976a6ee80a5e1ccdcd6c8cf99bde0d"),
-    ("workflow", "sha256:06badcd815fbb591881ce0726e11c2c91b68d735315b5d6401611c40e1c11663"),
-    ("wrap-a-binary", "sha256:615d9c957c91886ef48bc6c7cba061f2e7a5ddd15e0013436e07ca85c7842725"),
+    ("budget-exhausted", "sha256:af0078c894de927d1f01586f545fba8ba2fbec60ddc2c7c6cfc0032589b1a588"),
+    ("exec-transport", "sha256:30bb9640e11454c364774d00b49d855a16e23e6cbcdc9d3f87fb17fbe7782a09"),
+    ("host-transport", "sha256:9c9eb52dee8f1b3894be57e14e533574190e055cffacc0c73f5330724cf8e9d6"),
+    ("minimal", "sha256:b7df6749a94871b7605a1f86f87d49388fffba0d0f6cbd2438790ea310230553"),
+    ("recovery-exhausted", "sha256:cf99c643160498696921acde68915e2febeaf4001e6c1844451333b6548f3943"),
+    ("sandbox", "sha256:26d4d2ea3c61d04f1753067178c6c6442b3c3378b7694aeab67b5fdc9d424d9c"),
+    ("self-extension", "sha256:80b174d57c5ab581e37204196224af8523b4b03b276237e1a980a5bff308fccf"),
+    ("subagents", "sha256:3545dd72f0d601fc8ebc35d3947526a5cea4811f2d6d324c645b173e9860400e"),
+    ("team", "sha256:052ea32afb50b4f043341a88ba02510caae96355962d7e0b8a89ab7c255b9356"),
+    ("verification-unsatisfiable", "sha256:0fd18afbd179fd756c4c4e8c1500e158ca0268564a90c2835989a40e32c0c832"),
+    ("workflow", "sha256:ef8b0786020697d9e20f01a22605df347de28a052a30768bbd7aac7965122aca"),
+    ("wrap-a-binary", "sha256:f3231514efb28cb97f728a472776028bcdeb5bde44fe328aab31e1a96a2f217f"),
 ];
 
 /// The runtime the recorded identities were computed under. The real one
