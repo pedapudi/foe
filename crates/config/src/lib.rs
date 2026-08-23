@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 pub mod config;
 pub mod harness_text;
 pub mod identity;
+pub mod inspect;
 pub mod schema;
 #[cfg(test)]
 #[path = "fixtures_test.rs"]

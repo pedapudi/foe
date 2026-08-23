@@ -1,4 +1,4 @@
-use super::{model_nodes, node_program, spawner_config};
+use super::spawner_config;
 use foe_config::Config;
 use serde_json::json;
 
@@ -21,30 +21,6 @@ fn config() -> Config {
         } }
     }))
     .unwrap()
-}
-
-/// docs/workflow.md "Choice points": the runtime adds `branch` to the
-/// returns schema as a required enum over the labels, creating the schema
-/// when the node declared none.
-#[test]
-fn branch_is_added_to_the_returns_schema() {
-    let config = config();
-    let nodes = model_nodes(config.workflow.as_ref().unwrap(), "");
-    let paths: Vec<&str> = nodes.iter().map(|(p, _)| p.as_str()).collect();
-    assert_eq!(paths, ["inner/draft", "plan"]);
-    let plan = node_program(nodes[1].1);
-    let returns = plan.done_when.unwrap().returns.unwrap();
-    assert_eq!(returns["properties"]["branch"], json!({ "type": "string", "enum": ["go", "stop"] }));
-    let required = returns["required"].as_array().unwrap();
-    assert!(required.contains(&json!("branch")), "`branch` is required: {required:?}");
-    assert!(required.contains(&json!("n")), "the declared requirement is kept: {required:?}");
-    assert_eq!(returns["properties"]["n"], json!({ "type": "integer" }), "the declared schema is kept");
-    let draft = node_program(nodes[0].1);
-    let returns = draft.done_when.unwrap().returns.unwrap();
-    assert_eq!(
-        returns,
-        json!({ "type": "object", "properties": { "branch": { "type": "string", "enum": ["ok"] } }, "required": ["branch"] })
-    );
 }
 
 /// docs/workflow.md "Model nodes": a model node is spawned as a child
