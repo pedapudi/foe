@@ -319,18 +319,21 @@ def main(argv: list[str] | None = None) -> int:
     total_calls = sum(task.model_calls for task in selected) * args.attempts
     total_input = sum(task.input_tokens for task in selected) * args.attempts
     total_output = sum(task.output_tokens for task in selected) * args.attempts
+    total_cost_proxy = total_input + total_output
     print(f"dataset       {dataset}")
     print(f"model         {args.model} reasoning_effort={args.reasoning_effort}")
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; concurrency 1")
-    print("maximum       calls      input     output  seconds  task")
+    print("maximum       calls      input     output  cost proxy  seconds  task")
     for task in selected:
+        task_input = task.input_tokens * args.attempts
+        task_output = task.output_tokens * args.attempts
         print(
             f"              {task.model_calls * args.attempts:>5}  "
-            f"{task.input_tokens * args.attempts:>9,}  {task.output_tokens * args.attempts:>9,}  "
+            f"{task_input:>9,}  {task_output:>9,}  {task_input + task_output:>10,}  "
             f"{task.seconds:>7}  {task.name}"
         )
-    print(f"total         {total_calls:>5}  {total_input:>9,}  {total_output:>9,}")
+    print(f"total         {total_calls:>5}  {total_input:>9,}  {total_output:>9,}  {total_cost_proxy:>10,}")
     if args.install_only:
         print("Installation compatibility check selected; no model requests will be made.")
     elif not args.confirm_spend:
@@ -426,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
         "reasoning_effort": args.reasoning_effort,
         "attempts": args.attempts,
         "concurrency": 1,
+        "cost_proxy": {"unit": "tokens", "formula": "input_tokens + output_tokens"},
         "install_only": args.install_only,
         "foe_sha256": runtime_digest,
         "evaluated_foe": (

@@ -61,7 +61,8 @@ bazel run //evals/terminal_bench:foe-install-check
 ## Preview and run one assessed task
 
 Every model-backed target prints its maximum model calls, input tokens, output
-tokens, and wall time. The preview makes no model request:
+tokens, total-token cost proxy, and wall time. The preview makes no model
+request:
 
 ```sh
 bazel run //evals/terminal_bench:foe-smoke
@@ -145,15 +146,16 @@ The following sequence preserves the comparison boundary:
 4. Run the development target from the candidate worktree.
 5. Freeze the candidate source, model settings, task list, and allowances.
 6. Run the holdout target from both worktrees.
-7. Retain or reject the candidate from paired task completion, tokens, and
-   wall time.
+7. Retain or reject the candidate from paired task completion, estimated cost,
+   and wall time. Until model pricing is integrated, input plus output tokens
+   provide the cost proxy for trials with the same model route and settings.
 
 ## Retained evidence
 
 Each confirmed command writes under `target/terminal-bench-jobs/`. One
 timestamped run contains a `campaign.json` manifest and one Harbor job per
 task. Harbor retains the task configuration, verifier result, exception data,
-and aggregate token fields.
+and aggregate token fields. The manifest records the provisional cost formula.
 
 The Harbor trial's `agent/foe-episode/` directory is the complete native Foe
 episode tree. It contains `episode.jsonl`, child episodes, spill values, and
@@ -161,7 +163,8 @@ renderings. The neighboring files include the generated Foe program, Foe
 standard output, Foe standard error, the typed process exit status, and the
 runtime conformance report. The adapter sums provider-reported input, output,
 and cache-read tokens into the Harbor agent context. It also records Foe's
-outcome and conformance status as Harbor agent metadata.
+outcome and conformance status as Harbor agent metadata. Reports retain the
+three token counts when input plus output tokens provide the cost proxy.
 
 Keep raw jobs under ignored `target/` directories. Keep the private credential
 state under `~/.cache/foe/terminal-bench/`. Git tracks the adapter, case
