@@ -55,6 +55,9 @@ pub struct Policy {
     pub write: Vec<PathBuf>,
     /// Files that may be executed.
     pub exec: Vec<PathBuf>,
+    /// Explicit program grants that remain available to subprocesses after
+    /// the executable that starts them receives its narrower policy.
+    pub delegated_exec: Vec<PathBuf>,
     /// Single files readable in full. Two files reach this list. The
     /// resolver configuration, which a process reads to turn a provider
     /// host name into an address, is granted only to a process that may
@@ -88,11 +91,13 @@ impl Policy {
         if !config.grants.spawn.is_empty() {
             exec.extend(std::env::current_exe().ok());
         }
+        exec.extend(config.grants.execute.iter().cloned());
         let network = config.model.is_some();
         Policy {
             read: config.grants.read.clone(),
             write: config.grants.write.clone(),
             exec,
+            delegated_exec: config.grants.execute.clone(),
             read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
             log_dir: Some(log_dir.to_path_buf()),
             bind_tcp: Vec::new(),
@@ -104,10 +109,13 @@ impl Policy {
     /// and write roots, execute access on that file alone, no log directory,
     /// and TCP only when the tool definition asks for it.
     pub fn for_executable(&self, exec: &Path, network: bool) -> Policy {
+        let mut allowed = vec![exec.to_path_buf()];
+        allowed.extend(self.delegated_exec.iter().cloned());
         Policy {
             read: self.read.clone(),
             write: self.write.clone(),
-            exec: vec![exec.to_path_buf()],
+            exec: allowed,
+            delegated_exec: self.delegated_exec.clone(),
             read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
             log_dir: None,
             bind_tcp: Vec::new(),

@@ -363,6 +363,11 @@ pub struct Grants {
     pub read: Vec<PathBuf>,
     #[serde(default)]
     pub write: Vec<PathBuf>,
+    /// Files or directories that an executable may read and execute when it
+    /// starts a subprocess. System loader directories remain available to
+    /// every executable as described in docs/sandbox.md.
+    #[serde(default)]
+    pub execute: Vec<PathBuf>,
     #[serde(default)]
     pub spawn: Vec<String>,
 }

@@ -145,8 +145,8 @@ The runtime repeats every check when it reads the document and performs
 the checks the package cannot, such as whether an executable exists.
 
 `Budget` fields left None are omitted from the document and take the
-runtime's defaults, which config.md states. `Grants.write` and
-`Grants.spawn` are omitted when empty.
+runtime's defaults, which config.md states. `Grants.write`, `Grants.execute`,
+and `Grants.spawn` are omitted when empty.
 
 ### `to_json` and `to_dict`
 

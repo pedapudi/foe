@@ -153,6 +153,9 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
     for (i, path) in s.grants.write.iter().enumerate() {
         require_absolute(&key(&format!("grants.write[{i}]")), path)?;
     }
+    for (i, path) in s.grants.execute.iter().enumerate() {
+        require_absolute(&key(&format!("grants.execute[{i}]")), path)?;
+    }
     for (i, name) in s.grants.spawn.iter().enumerate() {
         let rule = format!("names an entry in programs; `{name}` is absent");
         require(s.programs.contains_key(name), key(&format!("grants.spawn[{i}]")), rule)?;
@@ -218,10 +221,15 @@ fn resolve_section(
     let grants = Grants {
         read: roots("grants.read", &s.grants.read)?,
         write: roots("grants.write", &s.grants.write)?,
+        execute: roots("grants.execute", &s.grants.execute)?,
         spawn: s.grants.spawn.clone(),
     };
     if let Some(parent) = parent {
-        for (field, own, theirs) in [("read", &grants.read, &parent.read), ("write", &grants.write, &parent.write)] {
+        for (field, own, theirs) in [
+            ("read", &grants.read, &parent.read),
+            ("write", &grants.write, &parent.write),
+            ("execute", &grants.execute, &parent.execute),
+        ] {
             if let Some(i) = own.iter().position(|p| !grants::contains(theirs, p)) {
                 return Err(invalid(
                     key(&format!("grants.{field}[{i}]")),
