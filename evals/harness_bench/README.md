@@ -4,7 +4,9 @@ This package runs foe against four development tasks from Harness-Bench. Bazel
 downloads the benchmark at commit
 `1025086a446653702b80cfb48babbeec35db6b2c` and verifies its archive digest.
 The runner copies each task fixture into a fresh workspace. It uses the task's
-unchanged prompt, setup hook, and programmatic grader.
+unchanged prompt, setup hook, and programmatic grader. It also grades an
+untouched workspace as a negative control, which must fail before an agent
+result can be interpreted.
 
 The four tasks cover untrusted instructions, SQLite migration safety, a local
 paginated API, and cross-package Python repair. They form a diagnostic sample.
@@ -12,12 +14,12 @@ Their results do not constitute an official Harness-Bench score.
 
 A separate target runs two confirmation tasks that remain outside the
 self-improvement workflow's authority. The tasks cover flaky-test diagnosis
-and offline answers that must identify insufficient evidence. Run the
-confirmation target only after freezing a candidate and its comparison
-configuration. The adapter creates an isolated Python environment with
-`pytest` for the flaky-test task. Both the model-visible test tool and the
-unchanged grader use that environment. The test wrapper resolves the Python
-executable relative to its own location, so its content and Foe program
+and offline answers that must identify insufficient evidence. A candidate is
+one source commit paired with one comparison configuration. Run the
+confirmation target only after freezing both. The adapter creates an isolated
+Python environment with `pytest` for the flaky-test task. Both the model-visible
+test tool and the unchanged grader use that environment. The test wrapper
+resolves the Python executable relative to its own location, so its Foe program
 identity remain stable across retained attempt directories.
 
 ## Review the maximum spend
