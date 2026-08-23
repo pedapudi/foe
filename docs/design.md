@@ -655,7 +655,7 @@ not finished.
    crates/log ◄─────────── crates/core ◄──┬── crates/code
     serde, serde_json,       loop,        │    read grep edit bash
                              registry,    ├── crates/transport (feature)
-                             grants,      │    built-in model clients
+                             grants,      │    model clients, credentials
                              budget,      │
                              identity,    ├── crates/workflow
                              spawn,       │    graph scheduling and recovery
@@ -684,6 +684,22 @@ depends on `crates/core` for the context policy trait and implements it:
 the loop consults the policy before each request and lends it one recorded
 model call. Nothing depends on `crates/view` except the binary.
 
+`crates/transport` owns each provider's authentication protocol whole: the
+provider registry, the credential sources that turn a stored credential into
+request headers, and — in `auth::login` — the acquisition that produces those
+files in the first place. Verifying a key, the authorization-code flow with
+PKCE and the loopback listener its browser half returns to, the
+credential-file formats, and the default model file are all there, beside the
+code that reads them back. What `foe login` adds is the conversation: which
+questions each source needs, in what order, and how the answers are read from
+a terminal.
+
+`crates/telemetry` likewise owns what the enablement file means, the walk over
+an episode tree that emission covers, and the preview of what emission would
+write. The binary supplies only the path that file is found at, which is a
+convention `crates/transport` owns, so the telemetry crate still depends on
+`crates/log` alone.
+
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
@@ -708,13 +724,16 @@ budget at all.
 The command line is budgeted apart from the runtime as well: `crates/cli`
 under 1,300 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
-than to a run: argument parsing, the plan reports, credential acquisition,
-the browser, the outcome line, and the exit codes.
+than to a run: argument parsing and the help derived from the command table,
+the plan reports, the login conversation, the browser, the outcome line, and
+the exit codes.
 
 Telemetry is budgeted apart too: `crates/telemetry` under 800 lines. It is
-separate because it reads a finished log rather than producing one. Nothing
-in the runtime depends on it, the crate depends on `log` alone, and an
-installation that never enables telemetry carries none of its behavior.
+separate because it reads a finished log rather than producing one. It holds
+the enablement file's meaning, emission over a finished run's episode tree,
+and the preview `foe telemetry` prints. Nothing in the runtime depends on it,
+the crate depends on `log` alone, and an installation that never enables
+telemetry carries none of its behavior.
 See [docs/telemetry.md](telemetry.md).
 
 Rust outside every line budget, in the built-in transport, is bounded by the

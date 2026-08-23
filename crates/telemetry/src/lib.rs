@@ -20,6 +20,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod capture;
 pub mod classify;
 pub mod extract;
 pub mod otlp;
