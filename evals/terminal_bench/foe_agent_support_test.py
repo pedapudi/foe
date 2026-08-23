@@ -88,7 +88,7 @@ class ProgramTest(unittest.TestCase):
         implementation = nodes["implement-task"]["model"]
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
         self.assertEqual(diagnosis["budget"]["model_calls"], 6)
-        self.assertEqual(diagnosis["tools"], ["read", "grep"])
+        self.assertEqual(diagnosis["tools"], ["read", "grep", "bash"])
         self.assertNotIn("sandbox", diagnosis)
         self.assertIn("returns", diagnosis["done_when"])
         self.assertEqual(implementation["model"]["model"], "gpt-5.6-sol")

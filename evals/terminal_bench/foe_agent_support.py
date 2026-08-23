@@ -161,14 +161,15 @@ def build_program(
                 "instructions": {
                     "role": (
                         "Analyze the task and repository without implementing the task. "
-                        "Use read and grep for focused evidence collection. Identify constraints, "
+                        "Use read, grep, and bash for focused static and runtime evidence. "
+                        "Identify constraints, "
                         "implementation steps, verification steps, and failure risks. "
                         f"Use no more than {investigation_calls} request(s) for inspection. "
                         "On the final request, call return with the best supported diagnosis, "
                         "including uncertainty under risks. Keep the return concise."
                     )
                 },
-                "tools": ["read", "grep"],
+                "tools": ["read", "grep", "bash"],
                 "grants": {"read": [working_directory, "/"]},
                 "budget": {"model_calls": diagnosis_model_calls, "seconds": diagnosis_seconds},
                 "done_when": {"returns": diagnosis_schema},
