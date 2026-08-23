@@ -30,6 +30,8 @@ def build_program(
     diagnosis_model_name: str | None = None,
     diagnosis_reasoning_effort: str = "high",
     diagnosis_model_calls: int = 6,
+    escalation_reasoning_effort: str | None = None,
+    escalation_model_calls: int = 0,
 ) -> dict[str, Any]:
     """Build the recorded Foe program used for one Terminal-Bench trial."""
     if "/" not in model_name:
@@ -77,8 +79,17 @@ def build_program(
         raise ValueError("diagnosis model must have the form provider/model")
     if not 2 <= diagnosis_model_calls < model_calls:
         raise ValueError("diagnosis model calls must be at least two and below the total model-call allowance")
+    if escalation_reasoning_effort is None and escalation_model_calls != 0:
+        raise ValueError("escalation model calls require an escalation reasoning effort")
+    if escalation_reasoning_effort is not None and escalation_model_calls < 2:
+        raise ValueError("escalation model calls must be at least two")
+    if diagnosis_model_calls + escalation_model_calls >= model_calls:
+        raise ValueError("diagnosis and escalation calls must leave at least one implementation call")
     diagnosis_seconds = min(180, max(60, seconds // 4))
-    implementation_seconds = seconds - diagnosis_seconds
+    working_seconds = seconds - diagnosis_seconds
+    escalation_seconds = working_seconds // 2 if escalation_reasoning_effort is not None else 0
+    implementation_seconds = working_seconds - escalation_seconds
+    implementation_calls = model_calls - diagnosis_model_calls - escalation_model_calls
     investigation_calls = diagnosis_model_calls - 1
     shared_grants = {"read": [working_directory, "/"], "write": ["/"]}
     diagnosis_schema = {
@@ -131,7 +142,7 @@ def build_program(
                     "tools": ["read", "grep", "edit", "bash"],
                     "grants": shared_grants,
                     "budget": {
-                        "model_calls": model_calls - diagnosis_model_calls,
+                        "model_calls": implementation_calls,
                         "seconds": implementation_seconds,
                     },
                     "model": {
@@ -142,11 +153,40 @@ def build_program(
                     },
                 },
                 "follows": ["task", "diagnose-task"],
-                "terminal": True,
+                "terminal": escalation_reasoning_effort is None,
             },
         },
         "recovery": {"enabled": False},
     }
+    if escalation_reasoning_effort is not None:
+        program["budget"]["max_episodes"] = 4
+        program["workflow"]["nodes"]["audit-and-repair-task"] = {
+            "model": {
+                "name": "audit-and-repair-task",
+                "instructions": {
+                    "role": (
+                        "Audit the existing implementation produced by another coding episode. "
+                        "Treat its completion claim as unverified. Inspect the current workspace, "
+                        "run representative behavioral tests, and repair every defect you find. "
+                        "Finish with the task-required files and services in their required state."
+                    )
+                },
+                "tools": ["read", "grep", "edit", "bash"],
+                "grants": shared_grants,
+                "budget": {
+                    "model_calls": escalation_model_calls,
+                    "seconds": escalation_seconds,
+                },
+                "model": {
+                    "provider": provider,
+                    "model": model,
+                    "reasoning_effort": escalation_reasoning_effort,
+                    "token_file": credential_path,
+                },
+            },
+            "follows": ["task", "implement-task"],
+            "terminal": True,
+        }
     return program
 
 

@@ -55,6 +55,8 @@ class CasesTest(unittest.TestCase):
                 diagnosis_reasoning_effort="high",
                 diagnosis_model_calls=6,
                 diagnosis_pricing=None,
+                escalation_reasoning_effort=None,
+                escalation_model_calls=0,
                 runtime_digest="abc123",
                 pricing=pricing["openai-codex/gpt-5.6-sol"],
                 install_only=True,
@@ -89,6 +91,8 @@ class CasesTest(unittest.TestCase):
             diagnosis_reasoning_effort="high",
             diagnosis_model_calls=6,
             diagnosis_pricing=None,
+            escalation_reasoning_effort=None,
+            escalation_model_calls=0,
             runtime_digest="abc123",
             pricing=pricing["openai-codex/gpt-5.6-sol"],
             hard_token_limits=True,
@@ -114,12 +118,16 @@ class CasesTest(unittest.TestCase):
             diagnosis_reasoning_effort="high",
             diagnosis_model_calls=6,
             diagnosis_pricing=pricing["openai-codex/gpt-5.6-luna"],
+            escalation_reasoning_effort="xhigh",
+            escalation_model_calls=18,
             runtime_digest="abc123",
             pricing=pricing["openai-codex/gpt-5.6-sol"],
         )
         self.assertIn("diagnosis_model=openai-codex/gpt-5.6-luna", command)
         self.assertIn("diagnosis_model_calls=6", command)
         self.assertIn("diagnosis_input_per_million=0.2", command)
+        self.assertIn("escalation_reasoning_effort=xhigh", command)
+        self.assertIn("escalation_model_calls=18", command)
 
     def test_job_result_reports_trial_exceptions(self):
         with tempfile.TemporaryDirectory() as directory:

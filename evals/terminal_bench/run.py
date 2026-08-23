@@ -243,6 +243,8 @@ def harbor_command(
     diagnosis_reasoning_effort: str,
     diagnosis_model_calls: int,
     diagnosis_pricing: Pricing | None,
+    escalation_reasoning_effort: str | None,
+    escalation_model_calls: int,
     runtime_digest: str,
     pricing: Pricing,
     hard_token_limits: bool = False,
@@ -268,6 +270,9 @@ def harbor_command(
         if diagnosis_pricing is None:
             raise ValueError("diagnosis model pricing is required")
         kwargs.update({f"diagnosis_{key}": value for key, value in diagnosis_pricing.agent_kwargs().items()})
+    if escalation_reasoning_effort is not None:
+        kwargs["escalation_reasoning_effort"] = escalation_reasoning_effort
+        kwargs["escalation_model_calls"] = escalation_model_calls
     command = [
         "/usr/bin/env",
         f"PYTHONPATH={agent_module.parent}",
@@ -361,6 +366,11 @@ def parser() -> argparse.ArgumentParser:
         default="high",
     )
     answer.add_argument("--diagnosis-model-calls", type=int, default=6)
+    answer.add_argument(
+        "--escalation-reasoning-effort",
+        choices=("low", "medium", "high", "xhigh"),
+    )
+    answer.add_argument("--escalation-model-calls", type=int, default=0)
     answer.add_argument("--label", default="baseline")
     answer.add_argument("--jobs-dir", type=Path, default=Path("target/terminal-bench-jobs"))
     answer.add_argument("--harbor", type=Path, default=default_harbor())
@@ -410,6 +420,12 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(f"cases.pricing has no entry for {args.diagnosis_model}")
             if args.diagnosis_model_calls < 2:
                 raise ValueError("--diagnosis-model-calls must be at least two")
+        if args.escalation_reasoning_effort is None and args.escalation_model_calls != 0:
+            raise ValueError("--escalation-model-calls requires --escalation-reasoning-effort")
+        if args.escalation_reasoning_effort is not None and args.escalation_model_calls < 2:
+            raise ValueError("--escalation-model-calls must be at least two")
+        if args.escalation_reasoning_effort is not None and args.diagnosis_model is None:
+            raise ValueError("reasoning escalation requires --diagnosis-model")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
         agent_module = args.agent_module.resolve(strict=True)
@@ -434,6 +450,9 @@ def main(argv: list[str] | None = None) -> int:
         selected = [tasks[name] for name in selected_names]
         if args.diagnosis_model is not None and any(args.diagnosis_model_calls >= task.model_calls for task in selected):
             raise ValueError("--diagnosis-model-calls must be below every selected task model-call allowance")
+        reserved_calls = args.diagnosis_model_calls + args.escalation_model_calls
+        if args.diagnosis_model is not None and any(reserved_calls >= task.model_calls for task in selected):
+            raise ValueError("diagnosis and escalation calls must leave implementation capacity for every task")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
         return 2
@@ -451,6 +470,12 @@ def main(argv: list[str] | None = None) -> int:
             f"diagnosis     {args.diagnosis_model} "
             f"reasoning_effort={args.diagnosis_reasoning_effort} "
             f"calls={args.diagnosis_model_calls}"
+        )
+    if args.escalation_reasoning_effort is not None:
+        print(
+            f"escalation    {args.model} "
+            f"reasoning_effort={args.escalation_reasoning_effort} "
+            f"calls={args.escalation_model_calls}"
         )
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; concurrency 1")
@@ -544,6 +569,8 @@ def main(argv: list[str] | None = None) -> int:
             diagnosis_reasoning_effort=args.diagnosis_reasoning_effort,
             diagnosis_model_calls=args.diagnosis_model_calls,
             diagnosis_pricing=pricing.get(args.diagnosis_model) if args.diagnosis_model else None,
+            escalation_reasoning_effort=args.escalation_reasoning_effort,
+            escalation_model_calls=args.escalation_model_calls,
             runtime_digest=runtime_digest,
             pricing=selected_pricing,
             hard_token_limits=args.hard_token_limits,
@@ -573,6 +600,8 @@ def main(argv: list[str] | None = None) -> int:
         "diagnosis_model": args.diagnosis_model,
         "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort if args.diagnosis_model else None,
         "diagnosis_model_calls": args.diagnosis_model_calls if args.diagnosis_model else None,
+        "escalation_reasoning_effort": args.escalation_reasoning_effort,
+        "escalation_model_calls": args.escalation_model_calls if args.escalation_reasoning_effort else None,
         "attempts": args.attempts,
         "concurrency": 1,
         "pricing": selected_pricing.__dict__,
