@@ -154,9 +154,19 @@ Planning token estimates provide a spend preview. They do not stop ordinary deve
 
 ## Self-improvement contract
 
-The self-improvement workflow has two model nodes. A Luna diagnosis node reads the bounded trajectory digest and returns a typed causal intervention. A separate Terra coding node receives the diagnosis and a clean context.
+The self-improvement workflow has two model nodes. A Luna diagnosis node reads
+the bounded trajectory digest and returns a typed causal intervention. A
+separate Terra coding node receives the diagnosis and a clean context. The
+intervention must improve the lower-cost evaluated configuration. It preserves
+the model route, reasoning effort, task allowances, token policy, and task set.
+Higher-cost successful settings supply diagnostic contrasts.
 
-The coding node has Foe's standard coding tools: `read`, `grep`, `edit`, and `bash`. It may change runtime crates, specifications, examples, and repository build files. It cannot change evaluation code or benchmark material. Its verifier uses a pinned Cargo binary. The verifier runs formatting, workspace tests, clippy, and line-budget checks.
+The coding node has Foe's standard coding tools: `read`, `grep`, `edit`, and
+`bash`. It may change runtime crates, specifications, examples, and repository
+build files. It cannot change evaluation code, benchmark material, model
+routes, reasoning settings, task allowances, token policy, or task selection.
+Its verifier uses a pinned Cargo binary. The verifier runs formatting,
+workspace tests, clippy, and line-budget checks.
 
 The evidence file names the evaluated Git tree and Foe binary digest. It labels every trajectory with the run and model setting that produced it. The workflow refuses a source or binary mismatch before making a model request. The candidate checker requires a Rust implementation change, a Rust regression test, and an affected specification.
 

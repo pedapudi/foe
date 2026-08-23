@@ -258,6 +258,7 @@ def build_config(
             "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
             "scope": "Use read and grep to inspect runtime source, tests, and specifications. Do not edit files or inspect benchmark tasks, graders, fixtures, or completed answers.",
             "evidence": "Compare failed and successful model settings from the labeled digest. Tie claims to episode identifiers and log sequence numbers. Separate model limitations from harness limitations.",
+            "controls": "Improve the lower-cost evaluated configuration. Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat a higher-cost successful setting as diagnostic evidence rather than the candidate configuration. The intervention must affect the explicit program recorded in the evidence; changing a built-in default that the program overrides has no effect.",
             "result": "Return one typed causal intervention before the final available request. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["read", "grep"],
@@ -274,6 +275,8 @@ def build_config(
                     "successful_contrast_evidence": {"type": "array", "items": {"type": "string"}, "minItems": 2},
                     "intervention": {"type": "string", "minLength": 1},
                     "predicted_trace_change": {"type": "string", "minLength": 1},
+                    "preserved_evaluation_controls": {"type": "string", "minLength": 1},
+                    "explicit_program_effect": {"type": "string", "minLength": 1},
                     "implementation_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                     "test_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                     "specification_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
@@ -286,6 +289,8 @@ def build_config(
                     "successful_contrast_evidence",
                     "intervention",
                     "predicted_trace_change",
+                    "preserved_evaluation_controls",
+                    "explicit_program_effect",
                     "implementation_files",
                     "test_files",
                     "specification_files",
@@ -300,7 +305,7 @@ def build_config(
         "instructions": {
             "role": "Act as a fully capable Foe coding agent and implement the supplied typed diagnosis.",
             "scope": "Inspect source before editing. Change runtime source, a regression test, and each affected specification. Preserve reconstructable logs, declared authority, typed outcomes, and explicit completion semantics.",
-            "independence": "Do not change evaluation code, tasks, graders, model routes, or task allowances. Do not encode benchmark identifiers, fixture values, or grader rules.",
+            "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Do not encode benchmark identifiers, fixture values, or grader rules. Refuse an intervention that changes only a built-in default overridden by the explicit evaluated program.",
             "validation": "The candidate check runs formatting, the Rust workspace tests, clippy, and line budgets under the declared toolchain. Run it after implementation and use its findings to correct the candidate. State expected accuracy, cost, latency, and compatibility effects in the final result.",
         },
         "tools": [*CODING_TOOLS, "check"],
@@ -446,7 +451,9 @@ def parser() -> argparse.ArgumentParser:
         "--objective",
         default=(
             "Use the identity-bound failed and successful trajectory contrast to implement one general Foe "
-            "improvement that raises verified task completion. Preserve correctness and benchmark independence."
+            "improvement that raises verified task completion in the lower-cost evaluated configuration. "
+            "Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat "
+            "higher-cost successful settings as diagnostic contrasts. Preserve correctness and benchmark independence."
         ),
     )
     answer.add_argument(

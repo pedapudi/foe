@@ -73,7 +73,13 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn("input_tokens", config["budget"])
         self.assertNotIn("output_tokens", implementation["budget"])
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
+        self.assertIn("higher-cost successful setting", diagnosis["instructions"]["controls"])
+        self.assertIn("explicit program", diagnosis["instructions"]["controls"])
+        returns = diagnosis["done_when"]["returns"]
+        self.assertIn("preserved_evaluation_controls", returns["required"])
+        self.assertIn("explicit_program_effect", returns["required"])
         self.assertNotIn("model", implementation)
+        self.assertIn("reasoning settings", implementation["instructions"]["independence"])
         self.assertEqual(config["model"]["reasoning_effort"], "high")
         self.assertEqual(implementation["grants"]["write"], [str(root)])
         self.assertEqual(

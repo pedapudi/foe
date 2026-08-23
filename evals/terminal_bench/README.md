@@ -243,6 +243,13 @@ reasoning receives that diagnosis and acts with `read`, `grep`, `edit`, and
 `bash`. The diagnosis child cannot read the retained run directories because
 the runner copies only the bounded evidence into its authority.
 
+The lower-cost evaluated configuration is the candidate configuration. The
+diagnosis preserves its model route, reasoning effort, task allowances, token
+policy, and task set. A higher-cost successful configuration supplies causal
+evidence. It is not a permitted replacement. The proposed change must affect
+the explicit program recorded in the evidence. A change to a built-in default
+has no effect when that program supplies the setting itself.
+
 `--cargo` must name the pinned toolchain binary. A Rustup proxy is refused
 because its result depends on process environment and may download a
 toolchain. The checker runs formatting, workspace tests, clippy, and the line
