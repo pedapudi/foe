@@ -711,7 +711,10 @@ The tool surface in `crates/code` is budgeted apart, under 1,600 lines on
 the same terms. It is separate because it grows a tool at a time: a new
 tool adds capability without touching the kernel, so room for tools must
 not become room for the loop. The workflow executor in `crates/workflow`
-stays under 1,000 lines, and the compaction policy in `crates/context`
+stays under 1,100 lines — it carries, beside the executor, the inspection
+of a configured program tree that `foe plan` reports, because those
+properties describe the executor's guarantees and reuse its tree walk —
+and the compaction policy in `crates/context`
 under 500.
 
 The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
@@ -722,13 +725,13 @@ TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,300 lines. It is separate because it serves a person at a terminal
+under 1,000 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and
 the exit codes.
 
-Telemetry is budgeted apart too: `crates/telemetry` under 800 lines. It is
+Telemetry is budgeted apart too: `crates/telemetry` under 900 lines. It is
 separate because it reads a finished log rather than producing one. It holds
 the enablement file's meaning, emission over a finished run's episode tree,
 and the preview `foe telemetry` prints. Nothing in the runtime depends on it,

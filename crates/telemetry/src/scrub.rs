@@ -208,7 +208,7 @@ impl Scrubber {
         let survived = self.variants.iter().filter(|(_, form, _)| lowered.contains(&form.to_ascii_lowercase()));
         survived.for_each(|(tag, ..)| name(&format!("known {}", tag_name(*tag))));
         let detected = self.detectors.captures_iter(text).filter_map(|caps| fired(&caps).map(|(i, _)| DETECTORS[i].0));
-        detected.for_each(|detector| name(detector));
+        detected.for_each(&mut name);
         found
     }
 }

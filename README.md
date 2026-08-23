@@ -154,8 +154,8 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 Nine numbers bound the source. Seven are line budgets over Rust, excluding
 tests and generated code: the kernel, which is the log and core crates
 together, stays under 5,400 lines, the tool crate under 1,600, the workflow
-executor under 1,000, the compaction policy under 500, the viewer crate under
-600, the command-line crate under 1,300, and the telemetry crate under 800.
+executor under 1,100, the compaction policy under 500, the viewer crate under
+600, the command-line crate under 1,000, and the telemetry crate under 900.
 The kernel and the tools are budgeted apart because a new tool adds
 capability without touching the loop, so room for tools must not become room
 for the kernel. The viewer is budgeted apart from the runtime because it

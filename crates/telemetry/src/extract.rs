@@ -166,7 +166,9 @@ fn program_known(program: &serde_json::Value, out: &mut Vec<KnownValue>) {
         match value {
             serde_json::Value::String(text) if text.starts_with('/') => {
                 push_known(out, 'p', text);
-                home_user(text).map(|user| push_known(out, 'u', user));
+                if let Some(user) = home_user(text) {
+                    push_known(out, 'u', user);
+                }
             }
             serde_json::Value::Array(items) => stack.extend(items.iter()),
             serde_json::Value::Object(fields) => stack.extend(fields.values()),
