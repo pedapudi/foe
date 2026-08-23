@@ -79,6 +79,7 @@ def build_program(
         raise ValueError("diagnosis model calls must be at least two and below the total model-call allowance")
     diagnosis_seconds = min(180, max(60, seconds // 4))
     implementation_seconds = seconds - diagnosis_seconds
+    investigation_calls = diagnosis_model_calls - 1
     shared_grants = {"read": [working_directory, "/"], "write": ["/"]}
     diagnosis_schema = {
         "type": "object",
@@ -99,9 +100,16 @@ def build_program(
                 "model": {
                     "name": "diagnose-coding-task",
                     "instructions": {
-                        "role": "Analyze the task and repository before implementation. Inspect relevant files and commands without changing task state. Identify constraints, implementation steps, verification steps, and failure risks. Use at most four investigative turns and reserve a later turn for the typed return. Keep the return concise and evidence-based."
+                        "role": (
+                            "Analyze the task and repository without implementing the task. "
+                            "Use read and grep for focused evidence collection. Identify constraints, "
+                            "implementation steps, verification steps, and failure risks. "
+                            f"Use no more than {investigation_calls} request(s) for inspection. "
+                            "On the final request, call return with the best supported diagnosis, "
+                            "including uncertainty under risks. Keep the return concise."
+                        )
                     },
-                    "tools": ["read", "grep", "bash"],
+                    "tools": ["read", "grep"],
                     "grants": {"read": [working_directory, "/"]},
                     "budget": {"model_calls": diagnosis_model_calls, "seconds": diagnosis_seconds},
                     "done_when": {"returns": diagnosis_schema},

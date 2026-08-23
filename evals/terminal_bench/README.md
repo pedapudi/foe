@@ -106,9 +106,10 @@ bazel run //evals/terminal_bench:foe-smoke -- \
 The supported reasoning settings end at `xhigh` for this campaign.
 
 A task can run as two model episodes with a typed handoff. The first episode
-inspects the task and returns constraints, observations, implementation steps,
-verification steps, and risks. The second episode receives only the task and
-that return value in a fresh context:
+uses `read` and `grep` to return constraints, observations, implementation
+steps, verification steps, and risks. The second episode receives only the
+task and that return value in a fresh context. It holds the full coding tool
+set:
 
 ```sh
 bazel run //evals/terminal_bench:foe-capability-search -- \
