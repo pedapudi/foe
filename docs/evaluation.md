@@ -130,8 +130,8 @@ Every reported configuration identifies:
 - the foe program identity and runtime build hash recorded by the episode;
 - the provider, model identifier, and model options;
 - the benchmark name, dataset version, and task identifier;
-- the root input-token, output-token, model-call, episode, concurrency, and
-  time limits;
+- the root token policy, model-call, episode, concurrency, and time limits;
+- provider-reported input, cached-input, and output measurements;
 - the sandbox mode and observed Landlock ABI;
 - the number of independent attempts per task.
 
@@ -139,7 +139,7 @@ The source-tree and binary values identify the evaluated pair. They do not
 establish reproducible-build provenance between the source tree and binary.
 
 The primary external integration uses Terminal-Bench 2.1 through Harbor. Its
-small development and holdout sets are documented in
+development, confirmation, calibration, and calibration-holdout sets are documented in
 [`evals/terminal_bench/README.md`](../evals/terminal_bench/README.md).
 Harness-Bench fixtures remain available for local diagnostics in
 [`evals/harness_bench/README.md`](../evals/harness_bench/README.md).
@@ -327,7 +327,7 @@ Each benchmark report includes these metrics:
 | reliable task rate | tasks whose every attempt passed, reported with the attempt count |
 | outcome distribution | proportions of `completed`, `blocked` by code, `exhausted` by limit, and `failed` |
 | conformance rate | attempts with no deterministic trace violation divided by launched attempts |
-| successful-run estimated cost | median and 90th percentile cost among accepted attempts; until price integration, input plus output tokens are the proxy for one fixed model route and settings |
+| successful-run estimated cost | median and 90th percentile cost among accepted attempts, calculated request by request from provider-reported uncached-input, cached-input, output, and long-context rates |
 | successful-run calls | median and 90th percentile of model and tool calls among accepted attempts |
 | successful-run duration | median and 90th percentile wall time among accepted attempts |
 | policy-denial rate | forbidden actions denied divided by forbidden actions attempted in policy-bearing tasks |
@@ -337,10 +337,9 @@ infrastructure-failed attempts in the denominator and in the outcome
 distribution. A separate infrastructure-failure field keeps deployment faults
 visible.
 
-Use the token cost proxy only within comparisons that hold the model route and
-model settings fixed. The proxy weights one input token and one output token
-equally. Provider pricing can replace that weighting later without changing
-the retained input, output, and cache-read measurements.
+Keep the pricing source and rates in the evaluation manifest. Token counts
+remain available as mechanism measurements and as a cost proxy when a route
+does not have a recorded price.
 
 Use at least three attempts per task for a comparison. Pair configurations by
 task and model route. Keep task containers, evaluators, aggregate budgets, and
@@ -427,9 +426,12 @@ run through Harbor. The [official leaderboard](https://www.tbench.ai/leaderboard
 reports repeated-trial accuracy, uncertainty, and cost for accepted
 submissions.
 
-Use a thin Harbor adapter for Foe. Audit all 89 tasks before calibration, then
-freeze a 10 to 20 task sample for three trials per task. A complete official
-run follows only when calibration supports its accuracy and cost target.
+Use the thin Harbor adapter for Foe. Deterministic container probes identify
+harness capability limits without provider spend. The staged task sets and
+their exposure rules are frozen in
+[`evals/terminal_bench/campaign.md`](../evals/terminal_bench/campaign.md). A
+complete official run follows only when calibration supports its accuracy and
+cost target.
 Terminal-Bench completion alone does not establish Foe's trace or authority
 guarantees, so every trial also receives the local conformance evaluation.
 

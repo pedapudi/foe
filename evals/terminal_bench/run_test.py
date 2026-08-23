@@ -10,15 +10,33 @@ from run import harbor_command, lock_credential_state, read_cases, read_job_resu
 
 
 class CasesTest(unittest.TestCase):
-    def test_cases_pin_revision_and_separate_holdout(self):
-        dataset, groups, tasks = read_cases(Path(__file__).with_name("cases.json"))
+    def test_cases_pin_revision_and_separate_task_sets(self):
+        dataset, groups, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
         self.assertEqual(dataset, "terminal-bench/terminal-bench-2-1@6")
-        self.assertFalse(set(groups["development"]) & set(groups["holdout"]))
+        protected = (
+            "development",
+            "capability_search",
+            "confirmation",
+            "calibration",
+            "calibration_holdout",
+        )
+        for index, left in enumerate(protected):
+            for right in protected[index + 1 :]:
+                self.assertFalse(set(groups[left]) & set(groups[right]))
+        self.assertEqual(len(groups["development"]), 6)
+        self.assertEqual(len(groups["capability_search"]), 4)
+        self.assertEqual(len(groups["confirmation"]), 4)
+        self.assertEqual(len(groups["calibration"]), 12)
+        self.assertEqual(len(groups["calibration_holdout"]), 6)
         self.assertEqual(groups["smoke"], ("fix-git",))
-        self.assertGreater(tasks["fix-git"].input_tokens, tasks["fix-git"].output_tokens)
+        self.assertGreater(
+            tasks["fix-git"].expected_input_tokens,
+            tasks["fix-git"].expected_output_tokens,
+        )
+        self.assertEqual(pricing["openai-codex/gpt-5.6-sol"].output_per_million, 20.0)
 
     def test_harbor_command_runs_one_task_at_a_time(self):
-        _, _, tasks = read_cases(Path(__file__).with_name("cases.json"))
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             command = harbor_command(
@@ -34,6 +52,7 @@ class CasesTest(unittest.TestCase):
                 model="openai-codex/gpt-5.6-sol",
                 reasoning_effort="low",
                 runtime_digest="abc123",
+                pricing=pricing["openai-codex/gpt-5.6-sol"],
                 install_only=True,
             )
         self.assertEqual(command[command.index("--n-concurrent") + 1], "1")
@@ -43,9 +62,31 @@ class CasesTest(unittest.TestCase):
         self.assertIn("foe_agent:FoeAgent", command)
         self.assertIn(f"trace_evaluator={root / 'trace_quality.py'}", command)
         self.assertIn(f"PYTHONPATH={root}", command)
+        self.assertNotIn("input_tokens=120000", command)
+        self.assertNotIn("output_tokens=20000", command)
+        self.assertIn("input_per_million=4.0", command)
+        self.assertIn("--install-only", command)
+
+    def test_hard_token_limits_are_an_explicit_runner_option(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        command = harbor_command(
+            harbor=Path("/tools/harbor"),
+            dataset="terminal-bench/terminal-bench-2-1@6",
+            task=tasks["fix-git"],
+            attempts=1,
+            jobs_dir=Path("/tmp/jobs"),
+            agent_module=Path("/tmp/foe_agent.py"),
+            trace_evaluator=Path("/tmp/score-trace"),
+            foe=Path("/tmp/foe"),
+            credential_state=Path("/tmp/private.json"),
+            model="openai-codex/gpt-5.6-sol",
+            reasoning_effort="low",
+            runtime_digest="abc123",
+            pricing=pricing["openai-codex/gpt-5.6-sol"],
+            hard_token_limits=True,
+        )
         self.assertIn("input_tokens=120000", command)
         self.assertIn("output_tokens=20000", command)
-        self.assertIn("--install-only", command)
 
     def test_job_result_reports_trial_exceptions(self):
         with tempfile.TemporaryDirectory() as directory:

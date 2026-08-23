@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from trajectory_diagnostics import diagnose_episode
+
 
 HARBOR_VERSION = "0.22.0"
 DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
@@ -28,20 +30,63 @@ SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 class Task:
     name: str
     model_calls: int
-    input_tokens: int
-    output_tokens: int
+    expected_input_tokens: int
+    expected_output_tokens: int
     seconds: int
 
 
-def read_cases(path: Path) -> tuple[str, dict[str, tuple[str, ...]], dict[str, Task]]:
+@dataclass(frozen=True)
+class Pricing:
+    source: str
+    input_per_million: float
+    cached_input_per_million: float
+    output_per_million: float
+    long_context_threshold: int
+    long_context_input_multiplier: float
+    long_context_output_multiplier: float
+
+    def agent_kwargs(self) -> dict[str, float | int]:
+        return {
+            key: value
+            for key, value in self.__dict__.items()
+            if key != "source"
+        }
+
+    def expected_cost(self, input_tokens: int, output_tokens: int) -> float:
+        return (
+            input_tokens * self.input_per_million
+            + output_tokens * self.output_per_million
+        ) / 1_000_000
+
+
+def read_cases(
+    path: Path,
+) -> tuple[str, dict[str, tuple[str, ...]], dict[str, Task], dict[str, Pricing]]:
     value = json.loads(path.read_text(encoding="utf-8"))
     dataset = value.get("dataset")
     raw_groups = value.get("groups")
     raw_tasks = value.get("tasks")
+    raw_pricing = value.get("pricing")
     if not isinstance(dataset, str) or "@" not in dataset:
         raise ValueError("cases.dataset must pin a dataset revision")
-    if not isinstance(raw_groups, dict) or not isinstance(raw_tasks, dict):
-        raise ValueError("cases.groups and cases.tasks must be objects")
+    if not all(isinstance(item, dict) for item in (raw_groups, raw_tasks, raw_pricing)):
+        raise ValueError("cases.groups, cases.tasks, and cases.pricing must be objects")
+    pricing: dict[str, Pricing] = {}
+    for model, raw in raw_pricing.items():
+        if not isinstance(model, str) or not isinstance(raw, dict):
+            raise ValueError("every cases.pricing entry must be an object")
+        try:
+            price = Pricing(**raw)
+        except TypeError as error:
+            raise ValueError(f"cases.pricing.{model} has invalid fields") from error
+        numeric = tuple(
+            value for key, value in price.__dict__.items() if key != "source"
+        )
+        if not isinstance(price.source, str) or not price.source.startswith("https://"):
+            raise ValueError(f"cases.pricing.{model}.source must be an HTTPS URL")
+        if any(not isinstance(item, (int, float)) or item <= 0 for item in numeric):
+            raise ValueError(f"cases.pricing.{model} rates must be positive numbers")
+        pricing[model] = price
     tasks: dict[str, Task] = {}
     for name, limits in raw_tasks.items():
         if not isinstance(name, str) or not isinstance(limits, dict):
@@ -49,11 +94,16 @@ def read_cases(path: Path) -> tuple[str, dict[str, tuple[str, ...]], dict[str, T
         task = Task(
             name=name,
             model_calls=limits.get("model_calls"),
-            input_tokens=limits.get("input_tokens"),
-            output_tokens=limits.get("output_tokens"),
+            expected_input_tokens=limits.get("expected_input_tokens"),
+            expected_output_tokens=limits.get("expected_output_tokens"),
             seconds=limits.get("seconds"),
         )
-        limits = (task.model_calls, task.input_tokens, task.output_tokens, task.seconds)
+        limits = (
+            task.model_calls,
+            task.expected_input_tokens,
+            task.expected_output_tokens,
+            task.seconds,
+        )
         if any(not isinstance(value, int) or value <= 0 for value in limits):
             raise ValueError(f"cases.tasks.{name} limits must be positive integers")
         tasks[name] = task
@@ -64,10 +114,20 @@ def read_cases(path: Path) -> tuple[str, dict[str, tuple[str, ...]], dict[str, T
         ):
             raise ValueError(f"cases.groups.{group} must name configured tasks")
         groups[group] = tuple(names)
-    overlap = set(groups.get("development", ())) & set(groups.get("holdout", ()))
-    if overlap:
-        raise ValueError(f"development and holdout tasks overlap: {', '.join(sorted(overlap))}")
-    return dataset, groups, tasks
+    protected = (
+        "development",
+        "capability_search",
+        "confirmation",
+        "calibration",
+        "calibration_holdout",
+    )
+    for index, left in enumerate(protected):
+        for right in protected[index + 1 :]:
+            overlap = set(groups.get(left, ())) & set(groups.get(right, ()))
+            if overlap:
+                names = ", ".join(sorted(overlap))
+                raise ValueError(f"{left} and {right} tasks overlap: {names}")
+    return dataset, groups, tasks, pricing
 
 
 def default_harbor() -> Path:
@@ -180,6 +240,8 @@ def harbor_command(
     model: str,
     reasoning_effort: str,
     runtime_digest: str,
+    pricing: Pricing,
+    hard_token_limits: bool = False,
     install_only: bool = False,
 ) -> list[str]:
     kwargs = {
@@ -187,12 +249,14 @@ def harbor_command(
         "credential_file": credential_state,
         "trace_evaluator": trace_evaluator,
         "model_calls": task.model_calls,
-        "input_tokens": task.input_tokens,
-        "output_tokens": task.output_tokens,
         "seconds": task.seconds,
         "reasoning_effort": reasoning_effort,
         "version": f"sha256:{runtime_digest}",
+        **pricing.agent_kwargs(),
     }
+    if hard_token_limits:
+        kwargs["input_tokens"] = task.expected_input_tokens
+        kwargs["output_tokens"] = task.expected_output_tokens
     command = [
         "/usr/bin/env",
         f"PYTHONPATH={agent_module.parent}",
@@ -223,7 +287,7 @@ def harbor_command(
     return command
 
 
-def read_job_result(path: Path) -> dict[str, int]:
+def read_job_result(path: Path) -> dict[str, Any]:
     """Read the Harbor counts that its process exit status does not represent."""
     value = json.loads(path.read_text(encoding="utf-8"))
     stats = value.get("stats") if isinstance(value, dict) else None
@@ -235,7 +299,32 @@ def read_job_result(path: Path) -> dict[str, int]:
     total = value.get("n_total_trials")
     if not isinstance(total, int):
         raise ValueError(f"Harbor result has no total trial count: {path}")
-    return {**{key: stats[key] for key in keys}, "n_total_trials": total}
+    result: dict[str, Any] = {**{key: stats[key] for key in keys}, "n_total_trials": total}
+    for key in ("n_input_tokens", "n_cache_tokens", "n_output_tokens"):
+        if stats.get(key) is None or isinstance(stats.get(key), int):
+            result[key] = stats.get(key)
+    if stats.get("cost_usd") is None or isinstance(stats.get("cost_usd"), (int, float)):
+        result["estimated_cost_usd"] = stats.get("cost_usd")
+    return result
+
+
+def write_job_diagnostics(job_dir: Path) -> list[str]:
+    """Write one verifier-aware Foe diagnosis beside each retained episode."""
+    written = []
+    for episode_dir in sorted(job_dir.glob("*/agent/foe-episode")):
+        trial_dir = episode_dir.parent.parent
+        trial_result = trial_dir / "result.json"
+        report = diagnose_episode(
+            episode_dir,
+            trial_result=trial_result if trial_result.is_file() else None,
+        )
+        output = episode_dir.parent / "foe-diagnostics.json"
+        output.write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        written.append(str(output.relative_to(job_dir)))
+    return written
 
 
 def parser() -> argparse.ArgumentParser:
@@ -264,6 +353,11 @@ def parser() -> argparse.ArgumentParser:
         default=default_credential_state(),
     )
     answer.add_argument("--install-only", action="store_true")
+    answer.add_argument(
+        "--hard-token-limits",
+        action="store_true",
+        help="enforce the planning token estimates as Foe allowances",
+    )
     answer.add_argument("--confirm-spend", action="store_true")
     return answer
 
@@ -271,7 +365,7 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        dataset, groups, tasks = read_cases(args.cases.resolve())
+        dataset, groups, tasks, pricing = read_cases(args.cases.resolve())
         if args.group not in groups:
             raise ValueError(f"unknown task group: {args.group}")
         selected_names = args.task or list(groups[args.group])
@@ -289,6 +383,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         if not args.model.startswith("openai-codex/") or args.model == "openai-codex/":
             raise ValueError("--model must name an openai-codex model")
+        if args.model not in pricing:
+            raise ValueError(f"cases.pricing has no entry for {args.model}")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
         agent_module = args.agent_module.resolve(strict=True)
@@ -317,23 +413,30 @@ def main(argv: list[str] | None = None) -> int:
 
     runtime_digest = digest(foe)
     total_calls = sum(task.model_calls for task in selected) * args.attempts
-    total_input = sum(task.input_tokens for task in selected) * args.attempts
-    total_output = sum(task.output_tokens for task in selected) * args.attempts
-    total_cost_proxy = total_input + total_output
+    selected_pricing = pricing[args.model]
+    total_input = sum(task.expected_input_tokens for task in selected) * args.attempts
+    total_output = sum(task.expected_output_tokens for task in selected) * args.attempts
+    total_expected_cost = selected_pricing.expected_cost(total_input, total_output)
     print(f"dataset       {dataset}")
     print(f"model         {args.model} reasoning_effort={args.reasoning_effort}")
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; concurrency 1")
-    print("maximum       calls      input     output  cost proxy  seconds  task")
+    print("planning      calls      input     output  est. cost  seconds  task")
     for task in selected:
-        task_input = task.input_tokens * args.attempts
-        task_output = task.output_tokens * args.attempts
+        task_input = task.expected_input_tokens * args.attempts
+        task_output = task.expected_output_tokens * args.attempts
+        task_cost = selected_pricing.expected_cost(task_input, task_output)
         print(
             f"              {task.model_calls * args.attempts:>5}  "
-            f"{task_input:>9,}  {task_output:>9,}  {task_input + task_output:>10,}  "
+            f"{task_input:>9,}  {task_output:>9,}  ${task_cost:>8.2f}  "
             f"{task.seconds:>7}  {task.name}"
         )
-    print(f"total         {total_calls:>5}  {total_input:>9,}  {total_output:>9,}  {total_cost_proxy:>10,}")
+    print(
+        f"total         {total_calls:>5}  {total_input:>9,}  "
+        f"{total_output:>9,}  ${total_expected_cost:>8.2f}"
+    )
+    token_policy = "hard allowances" if args.hard_token_limits else "measurement only"
+    print(f"token limits  {token_policy}")
     if args.install_only:
         print("Installation compatibility check selected; no model requests will be made.")
     elif not args.confirm_spend:
@@ -405,6 +508,8 @@ def main(argv: list[str] | None = None) -> int:
             model=args.model,
             reasoning_effort=args.reasoning_effort,
             runtime_digest=runtime_digest,
+            pricing=selected_pricing,
+            hard_token_limits=args.hard_token_limits,
             install_only=args.install_only,
         )
         result = subprocess.run(command, cwd=agent_module.parent, check=False)
@@ -416,6 +521,7 @@ def main(argv: list[str] | None = None) -> int:
         }
         try:
             record.update(read_job_result(job_result_path))
+            record["diagnostics"] = write_job_diagnostics(run_dir / task.name)
         except (OSError, ValueError, json.JSONDecodeError) as error:
             record["result_error"] = str(error)
         records.append(record)
@@ -429,7 +535,9 @@ def main(argv: list[str] | None = None) -> int:
         "reasoning_effort": args.reasoning_effort,
         "attempts": args.attempts,
         "concurrency": 1,
-        "cost_proxy": {"unit": "tokens", "formula": "input_tokens + output_tokens"},
+        "pricing": selected_pricing.__dict__,
+        "planning_estimated_cost_usd": total_expected_cost,
+        "token_limits": "hard" if args.hard_token_limits else "measurement_only",
         "install_only": args.install_only,
         "foe_sha256": runtime_digest,
         "evaluated_foe": (
@@ -446,7 +554,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"Terminal-Bench evidence: {run_dir}")
     completed = len(records) == len(selected) and all(
-        row["harbor_exit_code"] == 0 and row.get("n_errored_trials") == 0 for row in records
+        row["harbor_exit_code"] == 0
+        and row.get("n_errored_trials") == 0
+        and "result_error" not in row
+        for row in records
     )
     return 0 if completed else 1
 

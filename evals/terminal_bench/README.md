@@ -4,7 +4,8 @@ This package runs Foe through Harbor against a small, pinned subset of
 Terminal-Bench 2.1. The subset supports development and confirmation before a
 full benchmark run. It does not constitute an official Terminal-Bench score.
 The [development evaluation record](evaluation-record.md) reports retained
-aggregate results and promotion decisions.
+aggregate results and promotion decisions. The [capability campaign
+record](campaign.md) defines the staged evaluation and its success criteria.
 
 The dataset reference is `terminal-bench/terminal-bench-2-1@6`. The
 [Harbor Hub dataset record](https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1/6)
@@ -60,11 +61,23 @@ model request:
 bazel run //evals/terminal_bench:foe-install-check
 ```
 
+## Probe the container without model spend
+
+The deterministic capability target runs Foe in the pinned `fix-git` task
+container. It checks the executable path, working directory, process lifetime,
+large-file tools, timeouts, package tooling, and terminal availability:
+
+```sh
+bazel run //evals/terminal_bench:foe-capability-probes
+```
+
+The target makes no provider request. It writes a typed report under
+`target/terminal-bench-capability-probes/`.
+
 ## Preview and run one assessed task
 
-Every model-backed target prints its maximum model calls, input tokens, output
-tokens, total-token cost proxy, and wall time. The preview makes no model
-request:
+Every model-backed target prints planning token estimates and an estimated
+cost. The preview makes no model request:
 
 ```sh
 bazel run //evals/terminal_bench:foe-smoke
@@ -76,25 +89,34 @@ Run the `fix-git` smoke case after reviewing that maximum:
 bazel run //evals/terminal_bench:foe-smoke -- --confirm-spend
 ```
 
-The runner uses `openai-codex/gpt-5.6-sol` with low reasoning effort. Override
-the reasoning setting only when that setting is the subject of the comparison:
+The runner records token usage and estimated cost without enforcing token
+ceilings. Model calls and wall time remain loop backstops. Use
+`--hard-token-limits` only when a token boundary is the subject of the test.
+
+The default route is `openai-codex/gpt-5.6-sol` with low reasoning effort.
+Luna and Terra are available for inexpensive development diagnosis:
 
 ```sh
 bazel run //evals/terminal_bench:foe-smoke -- \
-  --reasoning-effort medium \
+  --model openai-codex/gpt-5.6-luna \
+  --reasoning-effort low \
   --confirm-spend
 ```
 
-## Run development and holdout cases
+The supported reasoning settings end at `xhigh` for this campaign.
 
-The development set contains four tasks:
+## Run the staged task sets
+
+The development target contains six tasks with inspected trajectories:
 
 - `cancel-async-tasks`
 - `git-multibranch`
 - `fix-git`
 - `sqlite-db-truncate`
+- `sanitize-git-repo`
+- `large-scale-text-editing`
 
-Preview their aggregate allowance:
+Preview or run one attempt per development task:
 
 ```sh
 bazel run //evals/terminal_bench:foe-development
@@ -108,56 +130,80 @@ bazel run //evals/terminal_bench:foe-development -- \
   --confirm-spend
 ```
 
-The holdout set contains `sanitize-git-repo` and
-`large-scale-text-editing`. Keep their trajectories outside the evidence given
-to an improvement episode. Freeze the candidate source and comparison settings
-before running them:
+The capability-search target contains four uninspected tasks. Opening a result
+makes that task development evidence:
 
 ```sh
-bazel run //evals/terminal_bench:foe-holdout
-bazel run //evals/terminal_bench:foe-holdout -- \
-  --label candidate-confirmation \
-  --attempts 3 \
+bazel run //evals/terminal_bench:foe-capability-search
+bazel run //evals/terminal_bench:foe-capability-search -- \
+  --task regex-log \
+  --label sol-low-search \
   --confirm-spend
 ```
 
-One attempt per task gives a directional result. A candidate that improves the
-development cases receives three attempts on each holdout task. The broader
-Terminal-Bench calibration uses 10 to 20 frozen tasks with three attempts per
-task, as specified in [`docs/evaluation.md`](../../docs/evaluation.md).
+The confirmation target contains four tasks that stay closed until a candidate
+and acceptance rule are frozen. Run two attempts per task:
+
+```sh
+bazel run //evals/terminal_bench:foe-confirmation
+bazel run //evals/terminal_bench:foe-confirmation -- \
+  --label candidate-confirmation \
+  --attempts 2 \
+  --confirm-spend
+```
+
+The calibration targets remain closed until the development and confirmation
+criteria pass:
+
+```sh
+bazel run //evals/terminal_bench:foe-calibration
+bazel run //evals/terminal_bench:foe-calibration-holdout
+```
+
+[`campaign.md`](campaign.md) defines every task set, exposure rule, cost gate,
+and success criterion.
 
 ## Use the trajectories for improvement
 
-Run a baseline from one clean worktree. Review only its four development
-trajectories and task grades. Produce a compact diagnosis that identifies the
-failed task, the relevant Foe events, the proposed source files, and the
-expected measurable effect.
+Every completed trial contains `agent/foe-diagnostics.json`. This bounded
+digest reports request growth, replayed tool results, repeated calls, failures,
+verifier outcomes, and log sequence numbers.
 
-Apply one candidate change in a separate clean worktree. The change may be
-implemented directly or by a bounded self-improvement workflow. The workflow
-mechanism and its evidence requirements are specified in
-[`docs/self-improvement.md`](../../docs/self-improvement.md). Run the same four
-development tasks from the candidate worktree. Freeze the candidate before
-opening the two holdout results.
+Collect diagnoses from one or more retained development runs. The command
+requires a clean source tree and the exact evaluated binary:
 
-The following sequence preserves the comparison boundary:
+```sh
+bazel run //evals/terminal_bench:collect-diagnostics -- \
+  --run-dir "$PWD/target/terminal-bench-jobs/development-20260823T120000Z" \
+  --output "$PWD/target/foe-trajectory-evidence.json"
+```
 
-1. Run the development target from the baseline worktree.
-2. Diagnose only the retained development evidence.
-3. Implement and verify one candidate change.
-4. Run the development target from the candidate worktree.
-5. Freeze the candidate source, model settings, task list, and allowances.
-6. Run the holdout target from both worktrees.
-7. Retain or reject the candidate from paired task completion, estimated cost,
-   and wall time. Until model pricing is integrated, input plus output tokens
-   provide the cost proxy for trials with the same model route and settings.
+Create a clean candidate worktree at the evaluated commit. Run the
+self-improvement workflow from that worktree:
+
+```sh
+bazel run //evals/terminal_bench:self-improve -- \
+  --candidate /path/to/clean/foe-candidate \
+  --evidence "$PWD/target/foe-trajectory-evidence.json" \
+  --keep "$PWD/target/foe-self-improvement" \
+  --confirm-spend
+```
+
+Terra with `high` reasoning runs both nodes. The coding node receives only the
+diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The workflow writes
+`direct_implementation_required: true` when it produces no valid candidate.
+
+Candidate validation and promotion occur outside the workflow. The workflow
+mechanism and evidence requirements are specified in
+[`docs/self-improvement.md`](../../docs/self-improvement.md).
 
 ## Retained evidence
 
 Each confirmed command writes under `target/terminal-bench-jobs/`. One
 timestamped run contains a `campaign.json` manifest and one Harbor job per
 task. Harbor retains the task configuration, verifier result, exception data,
-and aggregate token fields. The manifest records the provisional cost formula.
+aggregate token fields, and estimated cost. The manifest records the pricing
+source and whether token estimates were measurements or hard limits.
 
 The Harbor trial's `agent/foe-episode/` directory is the complete native Foe
 episode tree. It contains `episode.jsonl`, child episodes, spill values, and
@@ -165,8 +211,9 @@ renderings. The neighboring files include the generated Foe program, Foe
 standard output, Foe standard error, the typed process exit status, and the
 runtime conformance report. The adapter sums provider-reported input, output,
 and cache-read tokens into the Harbor agent context. It also records Foe's
-outcome and conformance status as Harbor agent metadata. Reports retain the
-three token counts when input plus output tokens provide the cost proxy.
+outcome and conformance status as Harbor agent metadata. Cost estimation uses
+the provider-reported uncached-input, cached-input, and output usage for each
+request.
 
 Keep raw jobs under ignored `target/` directories. Keep the private credential
 state under `~/.cache/foe/terminal-bench/`. Git tracks the adapter, case

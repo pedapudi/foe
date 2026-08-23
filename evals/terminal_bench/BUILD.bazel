@@ -21,7 +21,42 @@ COMMON_DATA = [
     "cases.json",
     "foe_agent.py",
     "foe_agent_support.py",
+    "trajectory_diagnostics.py",
 ]
+
+sh_binary(
+    name = "foe-trajectory-diagnostics",
+    srcs = ["trajectory_diagnostics.py"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-capability-probes",
+    srcs = ["run_capability_probes.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe-portable)",
+        "--source-root",
+        "$(rootpath //:Cargo.toml)",
+        "--agent-module",
+        "$(rootpath :capability_probe_agent.py)",
+        "--transport",
+        "$(rootpath :capability_transport.sh)",
+        "--cases",
+        "$(rootpath :cases.json)",
+    ],
+    data = [
+        "//:foe-portable",
+        "//:Cargo.toml",
+        "capability_probe_agent.py",
+        "capability_probe_support.py",
+        "capability_transport.sh",
+        "cases.json",
+        "run.py",
+        "trajectory_diagnostics.py",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 sh_binary(
     name = "foe-smoke",
@@ -54,10 +89,71 @@ sh_binary(
 )
 
 sh_binary(
-    name = "foe-holdout",
+    name = "foe-capability-search",
     srcs = ["run.py"],
-    args = COMMON_ARGS + ["--group", "holdout"],
+    args = COMMON_ARGS + ["--group", "capability_search"],
     data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-confirmation",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + ["--group", "confirmation"],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-calibration",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + ["--group", "calibration"],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-calibration-holdout",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + ["--group", "calibration_holdout"],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "collect-diagnostics",
+    srcs = ["collect_diagnostics.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe-portable)",
+        "--source-root",
+        "$(rootpath //:Cargo.toml)",
+    ],
+    data = [
+        "//:Cargo.toml",
+        "//:foe-portable",
+        "//evals/harness_bench:foe_source_identity.py",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "self-improve",
+    srcs = ["run_self_improvement.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe-portable)",
+        "--cases",
+        "$(rootpath :cases.json)",
+    ],
+    data = [
+        "//:foe-portable",
+        "//evals/harness_bench:foe_source_identity.py",
+        "cases.json",
+        "foe_agent_support.py",
+        "run.py",
+        "trajectory_diagnostics.py",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -66,11 +162,22 @@ sh_test(
     srcs = ["run_unit_tests.sh"],
     data = [
         "cases.json",
+        "capability_probe_agent.py",
+        "capability_probe_support.py",
+        "capability_probe_support_test.py",
+        "collect_diagnostics.py",
+        "collect_diagnostics_test.py",
+        "//evals/harness_bench:foe_source_identity.py",
         "foe_agent.py",
         "foe_agent_support.py",
         "foe_agent_support_test.py",
         "run.py",
+        "run_capability_probes.py",
         "run_test.py",
+        "run_self_improvement.py",
+        "run_self_improvement_test.py",
+        "trajectory_diagnostics.py",
+        "trajectory_diagnostics_test.py",
     ],
     size = "small",
 )

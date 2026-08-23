@@ -33,9 +33,15 @@ class FoeAgent(BaseInstalledAgent):
         credential_file: str,
         trace_evaluator: str,
         model_calls: int | str,
-        input_tokens: int | str,
-        output_tokens: int | str,
         seconds: int | str,
+        input_tokens: int | str | None = None,
+        output_tokens: int | str | None = None,
+        input_per_million: float | str,
+        cached_input_per_million: float | str,
+        output_per_million: float | str,
+        long_context_threshold: int | str,
+        long_context_input_multiplier: float | str,
+        long_context_output_multiplier: float | str,
         reasoning_effort: str = "low",
         **kwargs: Any,
     ) -> None:
@@ -43,9 +49,17 @@ class FoeAgent(BaseInstalledAgent):
         self._credential_file = Path(credential_file)
         self._trace_evaluator = Path(trace_evaluator)
         self._model_calls = int(model_calls)
-        self._input_tokens = int(input_tokens)
-        self._output_tokens = int(output_tokens)
+        self._input_tokens = int(input_tokens) if input_tokens is not None else None
+        self._output_tokens = int(output_tokens) if output_tokens is not None else None
         self._seconds = int(seconds)
+        self._pricing = {
+            "input_per_million": float(input_per_million),
+            "cached_input_per_million": float(cached_input_per_million),
+            "output_per_million": float(output_per_million),
+            "long_context_threshold": int(long_context_threshold),
+            "long_context_input_multiplier": float(long_context_input_multiplier),
+            "long_context_output_multiplier": float(long_context_output_multiplier),
+        }
         self._reasoning_effort = reasoning_effort
         self._exit_code: int | None = None
         if not self._foe_binary.is_file():
@@ -107,10 +121,13 @@ class FoeAgent(BaseInstalledAgent):
         if not self.model_name.startswith("openai-codex/"):
             raise ValueError("the retained login credential supports only openai-codex models")
 
+        pwd = await self.exec_as_agent(environment, command="/bin/pwd")
+        working_directory = (pwd.stdout or "").strip()
         program = build_program(
             instruction,
             self.model_name,
             REMOTE_CREDENTIAL,
+            working_directory,
             model_calls=self._model_calls,
             input_tokens=self._input_tokens,
             output_tokens=self._output_tokens,
@@ -153,7 +170,7 @@ class FoeAgent(BaseInstalledAgent):
     @override
     def populate_context_post_run(self, context: AgentContext) -> None:
         episode_dir = self.logs_dir / "foe-episode"
-        summary = read_episode_summary(episode_dir)
+        summary = read_episode_summary(episode_dir, self._pricing)
         trace_process = subprocess.run(
             [sys.executable, str(self._trace_evaluator), str(episode_dir)],
             text=True,
@@ -174,6 +191,7 @@ class FoeAgent(BaseInstalledAgent):
             context.n_input_tokens = summary["input_tokens"]
             context.n_output_tokens = summary["output_tokens"]
             context.n_cache_tokens = summary["cache_read_tokens"]
+            context.cost_usd = summary["estimated_cost_usd"]
         metadata = dict(context.metadata or {})
         metadata.update(
             {
@@ -181,6 +199,7 @@ class FoeAgent(BaseInstalledAgent):
                 "foe_model_calls": summary["model_calls"],
                 "foe_tool_calls": summary["tool_calls"],
                 "foe_usage_reported": summary["usage_reported"],
+                "foe_estimated_cost_usd": summary["estimated_cost_usd"],
                 "foe_outcome": summary["outcome"],
                 "foe_episode_path": "agent/foe-episode",
                 "foe_trace_exit_code": trace_process.returncode,

@@ -1,56 +1,273 @@
 {
   "dataset": "terminal-bench/terminal-bench-2-1@6",
+  "pricing": {
+    "openai-codex/gpt-5.6-luna": {
+      "source": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+      "input_per_million": 0.2,
+      "cached_input_per_million": 0.02,
+      "output_per_million": 1.2,
+      "long_context_threshold": 272000,
+      "long_context_input_multiplier": 2.0,
+      "long_context_output_multiplier": 1.5
+    },
+    "openai-codex/gpt-5.6-sol": {
+      "source": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+      "input_per_million": 4.0,
+      "cached_input_per_million": 0.4,
+      "output_per_million": 20.0,
+      "long_context_threshold": 272000,
+      "long_context_input_multiplier": 2.0,
+      "long_context_output_multiplier": 1.5
+    },
+    "openai-codex/gpt-5.6-terra": {
+      "source": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+      "input_per_million": 2.0,
+      "cached_input_per_million": 0.2,
+      "output_per_million": 12.0,
+      "long_context_threshold": 272000,
+      "long_context_input_multiplier": 2.0,
+      "long_context_output_multiplier": 1.5
+    }
+  },
   "groups": {
     "development": [
       "cancel-async-tasks",
       "git-multibranch",
       "fix-git",
-      "sqlite-db-truncate"
-    ],
-    "holdout": [
+      "sqlite-db-truncate",
       "sanitize-git-repo",
       "large-scale-text-editing"
+    ],
+    "capability_search": [
+      "password-recovery",
+      "path-tracing-reverse",
+      "polyglot-rust-c",
+      "regex-log"
+    ],
+    "confirmation": [
+      "build-cython-ext",
+      "constraints-scheduling",
+      "custom-memory-heap-crash",
+      "vulnerable-secret"
+    ],
+    "calibration": [
+      "adaptive-rejection-sampler",
+      "break-filter-js-from-html",
+      "compile-compcert",
+      "db-wal-recovery",
+      "distribution-search",
+      "financial-document-processor",
+      "git-leak-recovery",
+      "make-mips-interpreter",
+      "query-optimize",
+      "reshard-c4-data",
+      "schemelike-metacircular-eval",
+      "train-fasttext"
+    ],
+    "calibration_holdout": [
+      "circuit-fibsqrt",
+      "cobol-modernization",
+      "extract-elf",
+      "hf-model-inference",
+      "mcmc-sampling-stan",
+      "sparql-university"
     ],
     "smoke": [
       "fix-git"
     ]
   },
   "tasks": {
+    "adaptive-rejection-sampler": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 900
+    },
+    "break-filter-js-from-html": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1200
+    },
+    "build-cython-ext": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 900
+    },
     "cancel-async-tasks": {
       "model_calls": 20,
-      "input_tokens": 240000,
-      "output_tokens": 32000,
+      "expected_input_tokens": 240000,
+      "expected_output_tokens": 32000,
+      "seconds": 900
+    },
+    "circuit-fibsqrt": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "cobol-modernization": {
+      "model_calls": 32,
+      "expected_input_tokens": 300000,
+      "expected_output_tokens": 40000,
+      "seconds": 900
+    },
+    "compile-compcert": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 2400
+    },
+    "constraints-scheduling": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1200
+    },
+    "custom-memory-heap-crash": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "db-wal-recovery": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 900
+    },
+    "distribution-search": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 900
+    },
+    "extract-elf": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 900
+    },
+    "financial-document-processor": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
       "seconds": 900
     },
     "git-multibranch": {
       "model_calls": 28,
-      "input_tokens": 360000,
-      "output_tokens": 48000,
+      "expected_input_tokens": 360000,
+      "expected_output_tokens": 48000,
+      "seconds": 900
+    },
+    "git-leak-recovery": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 900
+    },
+    "hf-model-inference": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
       "seconds": 900
     },
     "fix-git": {
       "model_calls": 12,
-      "input_tokens": 120000,
-      "output_tokens": 20000,
+      "expected_input_tokens": 120000,
+      "expected_output_tokens": 20000,
       "seconds": 600
     },
     "sqlite-db-truncate": {
       "model_calls": 24,
-      "input_tokens": 300000,
-      "output_tokens": 40000,
+      "expected_input_tokens": 300000,
+      "expected_output_tokens": 40000,
       "seconds": 900
     },
     "sanitize-git-repo": {
       "model_calls": 24,
-      "input_tokens": 300000,
-      "output_tokens": 40000,
+      "expected_input_tokens": 300000,
+      "expected_output_tokens": 40000,
       "seconds": 900
     },
     "large-scale-text-editing": {
       "model_calls": 24,
-      "input_tokens": 300000,
-      "output_tokens": 40000,
+      "expected_input_tokens": 300000,
+      "expected_output_tokens": 40000,
       "seconds": 1200
+    },
+    "make-mips-interpreter": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "mcmc-sampling-stan": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "password-recovery": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "path-tracing-reverse": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "polyglot-rust-c": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 1800
+    },
+    "query-optimize": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 900
+    },
+    "regex-log": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 900
+    },
+    "reshard-c4-data": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "schemelike-metacircular-eval": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 2400
+    },
+    "sparql-university": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 900
+    },
+    "train-fasttext": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "vulnerable-secret": {
+      "model_calls": 40,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 900
     }
   }
 }
