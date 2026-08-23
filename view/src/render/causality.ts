@@ -70,7 +70,7 @@ export function renderCausality(
   for (const row of layout.rows) box.appendChild(rowGround(row, selected, handlers, scale));
 
   // 2. the strokes.
-  box.appendChild(strokes(layout, selected, card, handlers, scale));
+  box.appendChild(laneStrokes(layout, selected, card, handlers, scale));
 
   // 3. the labels.
   for (const row of layout.rows) box.appendChild(rowLabel(row, textLeft, selected, scale));
@@ -126,7 +126,13 @@ function rowLabel(row: PlacedRow, textLeft: number, selected: string | null, sca
   return label;
 }
 
-function strokes(
+/**
+ * The drawing alone: the lanes, the curves that join them, and what each
+ * row puts on its own lane. Both views of a run draw it — the figure beside
+ * a conversation and the unified outline — so it is written once and takes
+ * a layout rather than reading any state of its own.
+ */
+export function laneStrokes(
   layout: CausalityLayout,
   selected: string | null,
   card: Hovercard,

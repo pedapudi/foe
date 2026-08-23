@@ -54,8 +54,8 @@ pnpm fixtures       # regenerates fixtures/*.jsonl from fixtures/generate.mjs
 into the matching element.
 
 The tests cover the derived-messages rule, the episode fold, the lineage
-helpers and the per-row measure, the trajectory layout, the causal model
-and its layout, the workflow graph
+helpers and the per-row measure, the trajectory layout, the causal model,
+the four depths it is read at and its layout, the workflow graph
 and its layout, the statistics, the pane sizes, the appearance catalogue,
 the system prompt reader, the Markdown parser, the syntax tokenizer, and the
 unified diff reader. Each of those modules is pure and reads no document, so
@@ -118,6 +118,18 @@ earned, the loop edges back to `survey` and `verify_change`, a lane column
 reused by each proposal in turn, a completed ring at the foot of every
 lane, and the `survey` node selected so that the conversation below holds
 its two passes.
+
+`proof-outline-light.png` and `proof-outline-dark.png` show the unified
+outline over the `root` fixture, its spawned child, its fork and a run
+that exhausted its retries. The light one reads at `calls`: every label in
+one column with the tool calls stepped in one level under the steps that
+issued them, each step's own label fallen back to `step 1` now that its
+calls are on the page, the failed `bash` in the outcome hue, and the log
+position of every row in the gutter — where it jumps from 29 to 0 is the
+child episode's rows sitting under the call that spawned them. The dark
+one reads at `everything`, so the model's own words and each tool's result
+body stand under the rows that produced them, running the full width while
+the labels above them hold their column.
 
 The `messages` list recorded in each `model/request` event is written by
 hand in the generator, so the tests compare it with the list the bundle
@@ -268,6 +280,16 @@ named by the node itself, so a graph of four nodes reads `propose`,
 "workflow". `src/causality.ts` holds the model and the placement rules,
 `src/render/causality.ts` draws them, and `src/render/scoped.ts` renders
 the scoped dialogue.
+
+The viewer opens in the **outline** arrangement instead, in which that
+same causal model is read as one collapsible hierarchy: a depth control
+moves between episodes, steps, calls and everything, and a caret on any
+row opens one branch one level past the reading. Collapsed to episodes it
+is the episode rail; opened to calls it is the figure; opened fully it is
+the transcript. `src/render/outline.ts` draws it, over the same
+`layoutLanes` the figure uses, and a control in the top bar chooses
+between the two arrangements and stores the choice under `foe.layout`.
+`docs/viewer.md` specifies both.
 
 The main region has five tabs.
 
@@ -441,6 +463,7 @@ src/render/conversation.ts    the dialogue rows
 src/render/mark.ts            building one conversation mark
 src/render/trajectory.ts      the timeline figure and the reading control
 src/render/causality.ts       the causality figure
+src/render/outline.ts         the unified outline and its depth control
 src/render/scoped.ts          the conversation scoped to one causal node
 src/render/tree.ts            the episode tree and the details panel
 src/render/workflow.ts        the declared graph with the run over it

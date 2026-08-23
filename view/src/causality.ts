@@ -25,7 +25,7 @@
 // because what it created can outlive it.
 
 import type { Row, StreamedCall, Summary } from "./fold.js";
-import { obj, str } from "./types.js";
+import { num, obj, str } from "./types.js";
 import type { Outcome } from "./types.js";
 
 // What the figure is handed, folded out of one episode's log.
@@ -50,6 +50,10 @@ export interface CausalityCall {
   childId: string | null;
   /** The opened episode's configured program name, which names a delegation. */
   childName: string;
+  /** The result as the conversation renders it, empty when none was read. */
+  result: string;
+  /** Log position of the result, which the deepest reading shows. */
+  resultSeq: number;
 }
 
 /**
@@ -70,6 +74,10 @@ export interface CausalityStep {
    * is where the episode spent what it spent.
    */
   answered: boolean;
+  /** What the model said in its own words, empty when it said nothing. */
+  text: string;
+  /** How many attempts the request took, which is one unless it retried. */
+  attempts: number;
   calls: CausalityCall[];
 }
 
@@ -109,7 +117,27 @@ export interface PlacedCall extends CausalityCall {
   y: number;
 }
 
-export type RowKind = "step" | "node";
+export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result";
+
+/**
+ * How deep a reading goes. The rail, the tree, the causal figure and the
+ * transcript are not four things but one hierarchy read at four depths, so
+ * they are four settings of one control rather than four views.
+ */
+export type Depth = "episodes" | "steps" | "calls" | "everything";
+
+/** The depths in order, coarsest first. */
+export const DEPTHS: readonly Depth[] = ["episodes", "steps", "calls", "everything"];
+
+/** The coarsest reading each kind of row appears in. */
+const APPEARS_AT: Readonly<Record<RowKind, Depth>> = {
+  episode: "episodes",
+  node: "steps",
+  step: "steps",
+  call: "calls",
+  prose: "everything",
+  result: "everything",
+};
 
 /**
  * One row of the model, before anything has decided whether it is visible
@@ -123,6 +151,10 @@ export interface CausalityRow {
   episodeId: string;
   /** The lane the row is a mark on. */
   laneId: string;
+  /** The row this one is part of, absent for a root episode. */
+  parent: string | null;
+  /** The coarsest reading this row appears in. */
+  appearsAt: Depth;
   /**
    * Depth in the episode tree. What a view does with it is the view's: one
    * that is read beside a conversation nests its text by it, and one that
@@ -142,6 +174,23 @@ export interface CausalityRow {
   toSeq: number;
   /** Episodes this row opened, which the scoped conversation includes. */
   opens: string[];
+  /**
+   * Prose the row sets rather than names: what the model said, or what a
+   * tool returned. Empty for every row whose whole content is its label.
+   * A body runs the full width rather than taking the indent, because a
+   * diff nested five levels in has lost the room it needs.
+   */
+  body: string;
+  /** True for a result the tool reported as a failure, which earns the cross. */
+  failed: boolean;
+  /** Where the row sits in the log, which is the only sign that order jumped. */
+  seq: number;
+  /** How many visible rows this one sits inside; set by `visibleRows`. */
+  level?: number;
+  /** A step row's own number and attempt count, for the label it earns. */
+  stepNumber?: number;
+  attempts?: number;
+  answered?: boolean;
 }
 
 /** One row of the model, placed. */
@@ -299,17 +348,24 @@ export const TARGET_ROOM = 24;
  */
 export function readCausality(summary: Summary, rows: Row[], depth: number): CausalityEpisode {
   const spawns = spawnsByCall(rows);
-  const failed = new Set<string>();
+  const results = new Map<string, { text: string; seq: number; failed: boolean }>();
   for (const row of rows) {
-    if (row.kind === "tool" && row.isError) failed.add(row.callId);
+    if (row.kind !== "tool") continue;
+    results.set(row.callId, { text: row.rendered, seq: row.seq, failed: row.isError });
+  }
+  const retries = new Map<number, number>();
+  for (const row of rows) {
+    if (row.kind !== "note" || row.type !== "request/retry") continue;
+    const step = num(obj(row.data).step);
+    retries.set(step, (retries.get(step) ?? 0) + 1);
   }
   // Every step the log names is a row, whether or not a message answered
   // it: a request that was retried until the budget ran out is where the
   // episode spent itself, and a figure that dropped it would show an
   // episode that did nothing.
-  const answers = new Map<number, StreamedCall[]>();
+  const answers = new Map<number, { calls: StreamedCall[]; text: string }>();
   for (const row of rows) {
-    if (row.kind === "assistant") answers.set(row.step, row.toolCalls);
+    if (row.kind === "assistant") answers.set(row.step, { calls: row.toolCalls, text: row.text });
   }
   const ranges = stepRanges(rows);
   const steps: CausalityStep[] = [...ranges.entries()]
@@ -319,15 +375,20 @@ export function readCausality(summary: Summary, rows: Row[], depth: number): Cau
       seq: range.from,
       endSeq: range.to,
       answered: answers.has(step),
-      calls: (answers.get(step) ?? []).map((call) => {
+      text: answers.get(step)?.text ?? "",
+      attempts: (retries.get(step) ?? 0) + 1,
+      calls: (answers.get(step)?.calls ?? []).map((call) => {
         const spawn = spawns.get(call.id);
+        const result = results.get(call.id);
         return {
           id: call.id,
           name: call.name,
           target: callTarget(call.args),
-          failed: failed.has(call.id),
+          failed: result?.failed === true,
           childId: spawn ? spawn.childId : null,
           childName: spawn ? spawn.program : "",
+          result: result?.text ?? "",
+          resultSeq: result?.seq ?? range.to,
         };
       }),
     }));
@@ -439,22 +500,35 @@ export function shortenPath(path: string, room: number): string {
  * What a row reads as. Semantic role first, durable identifier second, and
  * never a free-text substring. Kept in one function because how a step
  * with several calls names itself is still being settled.
+ *
+ * A label stands in for children that are not on the page, so a step's
+ * label defers to its calls when those calls are rows of their own: with
+ * them hidden it reads `read src/parser.rs +1`, and with them shown it
+ * falls back to `step 1` rather than echoing the line directly beneath it.
  */
 export function composeLabel(row: {
   kind: RowKind;
   node?: string;
   step?: number;
+  attempts?: number;
   answered?: boolean;
   calls?: CausalityCall[];
+  /** True when the step's calls are rows of their own on the same page. */
+  callsVisible?: boolean;
 }): { label: string; aside: string } {
   if (row.kind === "node") return { label: row.node ?? "", aside: "" };
-  const aside = row.step === undefined ? "" : `step ${row.step}`;
   const calls = row.calls ?? [];
   const first = calls[0];
+  const one = (call: CausalityCall): string =>
+    call.childId !== null ? `spawn ${call.childName}` : `${call.name} ${call.target}`.trim();
+  if (row.kind === "call") return { label: first ? one(first) : "", aside: "" };
+  const step = row.step === undefined ? "" : `step ${row.step}`;
+  const attempts = row.attempts !== undefined && row.attempts > 1 ? ` · attempt ${row.attempts} of ${row.attempts}` : "";
+  if (row.callsVisible) return { label: `${step}${attempts}`, aside: "" };
+  const aside = step;
   if (row.answered === false) return { label: "no answer", aside };
   if (!first) return { label: "answered", aside };
-  const one = first.childId !== null ? `spawn ${first.childName}` : `${first.name} ${first.target}`.trim();
-  return { label: calls.length > 1 ? `${one} +${calls.length - 1}` : one, aside };
+  return { label: calls.length > 1 ? `${one(first)} +${calls.length - 1}` : one(first), aside };
 }
 
 interface LaneBuild {
@@ -481,11 +555,41 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
     lanes.push({ id, kind, episodeId, parentId, tone: lanes.length % TONES, outcome, label });
   };
 
-  const emit = (episode: CausalityEpisode, parentLaneId: string | null): void => {
+  const push = (row: Omit<CausalityRow, "appearsAt" | "body" | "failed" | "calls" | "firings" | "opens"> & Partial<CausalityRow>): CausalityRow => {
+    const full: CausalityRow = {
+      appearsAt: APPEARS_AT[row.kind],
+      body: "",
+      failed: false,
+      calls: [],
+      firings: [],
+      opens: [],
+      ...row,
+    };
+    rows.push(full);
+    return full;
+  };
+
+  const emit = (episode: CausalityEpisode, parentLaneId: string | null, parentRow: string | null): void => {
     const laneId = episode.id;
     openLane(laneId, "episode", episode.id, parentLaneId, episode.name, episode.outcome);
     const workflowLaneId = episode.firings.length > 0 ? `${episode.id}/workflow` : null;
     if (workflowLaneId !== null) openLane(workflowLaneId, "workflow", episode.id, laneId, `${episode.name} graph`, null);
+
+    // The episode itself is a row, not only a lane: read at its coarsest,
+    // the outline is the episode rail, and a rail needs a row per episode.
+    const head = push({
+      id: episode.id,
+      kind: "episode",
+      episodeId: episode.id,
+      laneId,
+      parent: parentRow,
+      depth: episode.depth,
+      label: episode.name,
+      aside: episode.id,
+      fromSeq: 0,
+      toSeq: Math.max(0, episode.lastSeq),
+      seq: 0,
+    });
 
     // Steps and firings are one sequence down the row: both are marks on
     // this episode's work, and the log's order is the order they happened.
@@ -495,56 +599,108 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
     ].sort((a, b) => a.seq - b.seq);
 
     // A node entered twice is one row and a loop edge, not two rows. That
-    // is what lets the scoped conversation show both passes.
+    // is what lets the deepest reading show both passes.
     const nodeRow = new Map<string, CausalityRow>();
     let previous: CausalityRow | null = null;
 
     for (const item of items) {
       if (item.step) {
         const step = item.step;
-        const composed = composeLabel({ kind: "step", step: step.step, answered: step.answered, calls: step.calls });
-        const row: CausalityRow = {
+        const row = push({
           id: `${episode.id}/step/${step.step}`,
           kind: "step",
           episodeId: episode.id,
           laneId,
-          depth: episode.depth,
-          label: composed.label,
-          aside: composed.aside,
+          parent: head.id,
+          depth: episode.depth + 1,
+          label: "",
+          aside: "",
           calls: step.calls,
-          firings: [],
           fromSeq: step.seq,
           toSeq: step.endSeq,
-          opens: [],
-        };
-        rows.push(row);
+          seq: step.seq,
+        });
+        // What a step is called depends on whether its calls are shown, so
+        // the label is set when the visible set is known, not here.
+        row.attempts = step.attempts;
+        row.answered = step.answered;
+        row.stepNumber = step.step;
+        if (step.text !== "") {
+          push({
+            id: `${row.id}/prose`,
+            kind: "prose",
+            episodeId: episode.id,
+            laneId,
+            parent: row.id,
+            depth: episode.depth + 1,
+            label: "",
+            aside: "",
+            body: step.text,
+            fromSeq: step.seq,
+            toSeq: step.endSeq,
+            seq: step.seq,
+          });
+        }
         for (const call of step.calls) {
+          const callRow = push({
+            id: `${row.id}/call/${call.id}`,
+            kind: "call",
+            episodeId: episode.id,
+            laneId,
+            parent: row.id,
+            depth: episode.depth + 1,
+            label: composeLabel({ kind: "call", calls: [call] }).label,
+            aside: "",
+            calls: [call],
+            failed: call.failed,
+            fromSeq: step.seq,
+            toSeq: call.resultSeq,
+            seq: call.resultSeq,
+          });
+          if (call.result !== "") {
+            push({
+              id: `${callRow.id}/result`,
+              kind: "result",
+              episodeId: episode.id,
+              laneId,
+              parent: callRow.id,
+              depth: episode.depth + 1,
+              label: "",
+              aside: "",
+              body: call.result,
+              failed: call.failed,
+              fromSeq: call.resultSeq,
+              toSeq: call.resultSeq,
+              seq: call.resultSeq,
+            });
+          }
           const child = call.childId === null ? undefined : byId.get(call.childId);
           if (!child) continue;
           row.opens.push(child.id);
-          emit(child, laneId);
+          // A child hangs under the call that opened it, which is what
+          // makes the outline a hierarchy; it costs global chronology,
+          // which is why every row keeps its sequence number.
+          emit(child, laneId, callRow.id);
         }
         continue;
       }
       const firing = item.firing!;
       let row = nodeRow.get(firing.node);
       if (row === undefined) {
-        row = {
+        row = push({
           id: `${episode.id}/node/${firing.node}`,
           kind: "node",
           episodeId: episode.id,
           laneId: workflowLaneId ?? laneId,
+          parent: head.id,
           depth: episode.depth + 1,
           label: composeLabel({ kind: "node", node: firing.node }).label,
           aside: "",
-          calls: [],
-          firings: [],
           fromSeq: firing.startSeq,
           toSeq: firing.endSeq ?? firing.startSeq,
-          opens: [],
-        };
+          seq: firing.startSeq,
+        });
         nodeRow.set(firing.node, row);
-        rows.push(row);
       }
       row.firings.push(firing);
       row.fromSeq = Math.min(row.fromSeq, firing.startSeq);
@@ -558,16 +714,77 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
       const child = firing.childId === null ? undefined : byId.get(firing.childId);
       if (child) {
         row.opens.push(child.id);
-        emit(child, workflowLaneId ?? laneId);
+        emit(child, workflowLaneId ?? laneId, row.id);
       }
     }
   };
 
   for (const episode of episodes) {
     if (episode.parentId !== null && byId.has(episode.parentId)) continue;
-    emit(episode, null);
+    emit(episode, null, null);
   }
   return { rows, lanes, loops, episodes };
+}
+
+/**
+ * The rows a reading shows, in order, each with how many visible rows it
+ * sits inside. A row appears when the reading is at least as deep as its
+ * kind, or when the row it is part of is itself visible and opened, which
+ * is what a caret does: it opens one branch one level past the reading
+ * without expanding the run.
+ *
+ * Depth is counted against the visible set and never against the raw
+ * hierarchy. Read at its coarsest a child episode is still an episode one
+ * level in, even though the call that spawned it is hidden; counting
+ * against the hierarchy instead leaves gaps in the nesting.
+ *
+ * A step whose calls are shown gives up its ticks and its summary, because
+ * both exist to stand in for children that are not on the page.
+ */
+export function visibleRows(outline: CausalityOutline, depth: Depth, opened: ReadonlySet<string> = new Set()): CausalityRow[] {
+  const wanted = DEPTHS.indexOf(depth);
+  const byId = new Map(outline.rows.map((row) => [row.id, row]));
+  const level = new Map<string, number>();
+  const shown = new Set<string>();
+  const out: CausalityRow[] = [];
+
+  /** The nearest row above this one that the reading shows, if any. */
+  const nearestShown = (row: CausalityRow): CausalityRow | undefined => {
+    let at = row.parent === null ? undefined : byId.get(row.parent);
+    while (at !== undefined && !shown.has(at.id)) at = at.parent === null ? undefined : byId.get(at.parent);
+    return at;
+  };
+
+  for (const row of outline.rows) {
+    const parent = row.parent === null ? undefined : byId.get(row.parent);
+    const withinDepth = DEPTHS.indexOf(row.appearsAt) <= wanted;
+    // A caret opens the row it sits on, so what it reveals is that row's
+    // own children and not a descendant further down.
+    if (!withinDepth && !(parent !== undefined && shown.has(parent.id) && opened.has(parent.id))) continue;
+    shown.add(row.id);
+    // Nesting is counted from the nearest ancestor the reading shows, not
+    // from the immediate one: read at its coarsest a child episode is one
+    // level inside its caller even though the call that opened it is not
+    // on the page, and counting the hidden rows would leave gaps.
+    const above = nearestShown(row);
+    level.set(row.id, above === undefined ? 0 : (level.get(above.id) ?? 0) + 1);
+    out.push(row);
+  }
+
+  return out.map((row) => {
+    const nested = level.get(row.id) ?? 0;
+    if (row.kind !== "step") return { ...row, level: nested };
+    const callsShown = row.calls.some((call) => shown.has(`${row.id}/call/${call.id}`));
+    const composed = composeLabel({
+      kind: "step",
+      step: row.stepNumber,
+      attempts: row.attempts,
+      answered: row.answered,
+      calls: row.calls,
+      callsVisible: callsShown,
+    });
+    return { ...row, level: nested, label: composed.label, aside: composed.aside, calls: callsShown ? [] : row.calls };
+  });
 }
 
 /**
@@ -627,7 +844,12 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
     tops.push(cursor);
     cursor += heights[index] ?? ROW_PITCH;
   });
-  const yOf = (index: number): number => (tops[index] ?? TOP) + (heights[index] ?? ROW_PITCH) / 2;
+  // A row's mark sits on its first line rather than at its vertical
+  // middle: a row holding a diff is many lines tall, and a vertex halfway
+  // down it would sit beside the diff rather than beside the name it
+  // belongs to.
+  const yOf = (index: number): number =>
+    (tops[index] ?? TOP) + Math.min(heights[index] ?? ROW_PITCH, ROW_PITCH) / 2;
 
   const rows: PlacedRow[] = visible.map((row, index) => {
     const lane = builds.get(row.laneId)?.lane;
@@ -719,7 +941,8 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
  */
 export function layoutCausality(episodes: CausalityEpisode[]): CausalityLayout {
   const outline = causalityOutline(episodes);
-  return layoutLanes(outline, outline.rows, outline.rows.map(() => ROW_PITCH));
+  const visible = visibleRows(outline, "steps");
+  return layoutLanes(outline, visible, visible.map(() => ROW_PITCH));
 }
 
 /** A lane spans its own rows and everything opened under it. */

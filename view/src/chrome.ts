@@ -28,6 +28,7 @@ const KEY_THEME = "foe.theme";
 const KEY_TYPEFACE = "foe.typeface";
 const KEY_FONTSIZE = "foe.fontsize";
 const KEY_SCALE = "foe.scale";
+const KEY_LAYOUT = "foe.layout";
 
 function read(key: string): string | null {
   try {
@@ -55,6 +56,33 @@ export function onSettingsChange(fn: Listener): void {
 
 function notify(): void {
   for (const fn of listeners) fn();
+}
+
+/**
+ * How the run is arranged on the page. `outline` reads the episode rail,
+ * the causal figure and the conversation as one collapsible hierarchy at a
+ * chosen depth, which is the default. `figure` sets the causal figure
+ * beside a conversation scoped to whatever is selected in it, which is the
+ * only way to study one step's output while the whole shape stays in view.
+ */
+export type LayoutMode = "outline" | "figure";
+
+export const LAYOUTS: readonly { id: LayoutMode; label: string; title: string }[] = [
+  { id: "outline", label: "outline", title: "one collapsible hierarchy: the rail, the causal figure and the conversation read at a chosen depth" },
+  { id: "figure", label: "figure and conversation", title: "the causal figure beside a conversation scoped to what is selected in it" },
+];
+
+let currentLayoutValue: LayoutMode = "outline";
+
+export function currentLayout(): LayoutMode {
+  return currentLayoutValue;
+}
+
+export function applyLayout(id: unknown): void {
+  currentLayoutValue = id === "figure" ? "figure" : "outline";
+  document.documentElement.dataset.layout = currentLayoutValue;
+  write(KEY_LAYOUT, currentLayoutValue);
+  notify();
 }
 
 export function currentTheme(): string {
@@ -138,6 +166,7 @@ export function loadSettings(root: HTMLElement): void {
   applyTypeface(read(KEY_TYPEFACE) ?? DEFAULT_TYPEFACE);
   applyFontSize(read(KEY_FONTSIZE) ?? DEFAULT_FONTSIZE);
   applyScale(read(KEY_SCALE) ?? SCALE_DEFAULT);
+  applyLayout(read(KEY_LAYOUT) ?? "outline");
 }
 
 // ---- pickers ----
@@ -398,6 +427,41 @@ export interface Crumb {
   label: string;
 }
 
+/**
+ * The two arrangements, as a pair of buttons in the same register as the
+ * appearance pickers beside them: which one a reader wants is a standing
+ * preference, not a property of the run being read.
+ */
+function buildLayoutToggle(): HTMLElement {
+  const group = h("span", { class: "traj-axis layout-toggle", role: "radiogroup", "aria-label": "how the run is arranged" });
+  const sync = () => {
+    for (const b of group.querySelectorAll<HTMLElement>("[role=radio]")) {
+      const on = b.dataset.layout === currentLayout();
+      b.setAttribute("aria-checked", on ? "true" : "false");
+      b.classList.toggle("active", on);
+    }
+  };
+  for (const layout of LAYOUTS) {
+    group.appendChild(
+      h(
+        "button",
+        {
+          class: "traj-axis-btn",
+          type: "button",
+          role: "radio",
+          "data-layout": layout.id,
+          title: layout.title,
+          onclick: () => applyLayout(layout.id),
+        },
+        layout.label,
+      ),
+    );
+  }
+  sync();
+  onSettingsChange(sync);
+  return group;
+}
+
 export class Topbar {
   readonly el: HTMLElement;
   readonly status = new StatusPill();
@@ -415,6 +479,7 @@ export class Topbar {
       h("span", { class: "brand" }, brandLockup(), h("span", { class: "variant" }, "viewer"), researchPreview()),
       this.crumbs,
       h("span", { class: "spacer" }),
+      buildLayoutToggle(),
       buildSwatchDropdown(),
       buildTypefacePopover(),
       buildScalePill(),

@@ -11,6 +11,7 @@ import {
   OUTCOME_TAIL,
   causalityOutline,
   layoutLanes,
+  visibleRows,
   ROW_PITCH,
   STUB,
   callTarget,
@@ -73,10 +74,11 @@ test("an episode opens a lane and a step does not", () => {
     ["ep_rich"],
   );
   assert.equal(figure.lanes[0]!.kind, "episode");
-  // Two steps, each a mark on the one lane rather than a lane of its own.
+  // The episode's own row and its two steps, all marks on the one lane
+  // rather than lanes of their own.
   assert.deepEqual(
     figure.rows.map((r) => r.id),
-    ["ep_rich/step/1", "ep_rich/step/2"],
+    ["ep_rich", "ep_rich/step/1", "ep_rich/step/2"],
   );
   for (const r of figure.rows) assert.equal(r.laneId, "ep_rich");
 });
@@ -190,7 +192,8 @@ test("rows stack by the heights they were given, not by a pitch", () => {
       const before = figure.rows[i - 1]!;
       assert.equal(placed.top, before.top + before.height, "each row starts where the one above it ended");
     }
-    assert.equal(placed.y, placed.top + placed.height / 2);
+    // A tall row's mark sits on its first line rather than halfway down it.
+    assert.equal(placed.y, placed.top + Math.min(placed.height, 22) / 2);
   });
   for (const edge of figure.edges) {
     assert.ok(onALine(figure, edge.from), `the ${edge.kind} of ${edge.laneId} leaves a line`);
@@ -241,21 +244,13 @@ test("a lane of one row is still a line", () => {
   for (const l of figure.lanes) {
     assert.ok(l.y2 > l.y1, `${l.id} is drawn as a line rather than a point`);
   }
-  // `child` holds two steps in this fixture; a one-row lane is the case the
-  // stub exists for, so it is checked on a lane built for the purpose.
-  const one = layoutCausality([
-    {
-      id: "a",
-      name: "a",
-      depth: 0,
-      parentId: null,
-      outcome: null,
-      lastSeq: 1,
-      steps: [{ step: 1, seq: 0, endSeq: 1, answered: true, calls: [] }],
-      firings: [],
-    },
-  ]);
-  assert.equal(one.lanes[0]!.y2 - one.lanes[0]!.y1, STUB);
+  // Read at its coarsest an episode with no children is one row, which is
+  // the case the stub exists for.
+  const outline = causalityOutline(run("rich.jsonl"));
+  const rail = visibleRows(outline, "episodes");
+  assert.equal(rail.length, 1);
+  const one = layoutLanes(outline, rail, [22]);
+  assert.equal(one.lanes[0]!.y2 - one.lanes[0]!.y1 - OUTCOME_TAIL, STUB);
 });
 
 test("a lane's outcome mark stands clear of the last row's own vertex", () => {
@@ -288,9 +283,9 @@ test("the layout claims no room past its own marks", () => {
   assert.equal(figure.marksWidth, drawn, "the width it reports is where its drawing ends");
   // A row carries its tree depth and no text geometry at all, so what
   // stands beside the drawing is entirely the view's to decide.
+  const head = row(figure, "ep_c5785a1e");
   const node = row(figure, "ep_c5785a1e/node/propose");
-  const step = row(figure, "ep_c5785a1e/step/8");
-  assert.ok(node.depth > step.depth, "the graph a step ran is one level inside the episode");
+  assert.ok(node.depth > head.depth, "a node of the graph sits inside the episode that ran it");
   assert.ok(!("indent" in node), "the layout sets no text column");
 });
 
@@ -300,7 +295,7 @@ test("a step is named by what it did, with its step number alongside", () => {
   // draws a mark: a word is faster to scan than a glyph, and the target is
   // what the reader came for.
   assert.deepEqual(
-    composeLabel({ kind: "step", step: 1, calls: [{ id: "a", name: "read", target: "src/parser.rs", failed: false, childId: null, childName: "" }] }),
+    composeLabel({ kind: "step", step: 1, calls: [{ id: "a", name: "read", target: "src/parser.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 }] }),
     { label: "read src/parser.rs", aside: "step 1" },
   );
   assert.deepEqual(
@@ -308,15 +303,15 @@ test("a step is named by what it did, with its step number alongside", () => {
       kind: "step",
       step: 2,
       calls: [
-        { id: "a", name: "read", target: "src/parser.rs", failed: false, childId: null, childName: "" },
-        { id: "b", name: "read", target: "src/lexer.rs", failed: false, childId: null, childName: "" },
-        { id: "c", name: "grep", target: "", failed: false, childId: null, childName: "" },
+        { id: "a", name: "read", target: "src/parser.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
+        { id: "b", name: "read", target: "src/lexer.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
+        { id: "c", name: "grep", target: "", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
       ],
     }),
     { label: "read src/parser.rs +2", aside: "step 2" },
   );
   assert.deepEqual(
-    composeLabel({ kind: "step", step: 3, calls: [{ id: "a", name: "spawn", target: "surveyor", failed: false, childId: "ep_child", childName: "surveyor" }] }),
+    composeLabel({ kind: "step", step: 3, calls: [{ id: "a", name: "spawn", target: "surveyor", failed: false, childId: "ep_child", childName: "surveyor", result: "", resultSeq: 0 }] }),
     { label: "spawn surveyor", aside: "step 3" },
   );
   assert.deepEqual(composeLabel({ kind: "node", node: "propose" }), { label: "propose", aside: "" });
@@ -350,11 +345,100 @@ test("the fixture's own steps read as their role", () => {
   const figure = layout("root.jsonl", "child.jsonl");
   const labels = figure.rows.filter((r) => r.episodeId === "ep_root").map((r) => `${r.label} · ${r.aside}`);
   assert.deepEqual(labels, [
+    "fix-test · ep_root",
     "read tests/parser_test.py · step 1",
     "spawn survey · step 2",
     "bash · step 3",
     "answered · step 4",
   ]);
+});
+
+// The four readings of one hierarchy.
+
+test("read at its coarsest the outline is the episode rail", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  const rail = visibleRows(outline, "episodes");
+  assert.deepEqual(
+    rail.map((r) => `${r.kind} ${r.id}`),
+    ["episode ep_root", "episode ep_child"],
+  );
+  // The spawned child is one level in even though the call that opened it
+  // is not on the page. Counted against the hierarchy it would be three,
+  // and the rail would lose its nesting.
+  assert.equal(rail[0]!.level, 0);
+  assert.equal(rail[1]!.level, 1);
+});
+
+test("each reading adds the kinds of row it names", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  const kinds = (depth: Parameters<typeof visibleRows>[1]) =>
+    [...new Set(visibleRows(outline, depth).map((r) => r.kind))].sort();
+  assert.deepEqual(kinds("episodes"), ["episode"]);
+  assert.deepEqual(kinds("steps"), ["episode", "step"]);
+  assert.deepEqual(kinds("calls"), ["call", "episode", "step"]);
+  assert.deepEqual(kinds("everything"), ["call", "episode", "prose", "result", "step"]);
+  const graph = causalityOutline(run("workflow.jsonl"));
+  assert.ok(visibleRows(graph, "steps").some((r) => r.kind === "node"));
+});
+
+test("a step's label defers to its calls once they are on the page", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  const summarised = visibleRows(outline, "steps").find((r) => r.id === "ep_root/step/1")!;
+  assert.equal(summarised.label, "read tests/parser_test.py");
+  assert.equal(summarised.calls.length, 1, "it draws the call it stands in for");
+  const deferred = visibleRows(outline, "calls").find((r) => r.id === "ep_root/step/1")!;
+  assert.equal(deferred.label, "step 1", "it does not echo the line beneath it");
+  assert.equal(deferred.aside, "");
+  assert.equal(deferred.calls.length, 0, "and gives up the tick the call now draws itself");
+});
+
+test("a step that retried says so once its calls are shown", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  const retried = visibleRows(outline, "calls").find((r) => r.id === "ep_root/step/2")!;
+  assert.equal(retried.label, "step 2 · attempt 2 of 2");
+});
+
+test("a caret opens one branch one level past the reading", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  const shut = visibleRows(outline, "steps").map((r) => r.id);
+  assert.ok(!shut.includes("ep_root/step/1/call/tc_01"));
+  const open = visibleRows(outline, "steps", new Set(["ep_root/step/1"])).map((r) => r.id);
+  assert.ok(open.includes("ep_root/step/1/call/tc_01"), "the branch that was opened");
+  assert.ok(!open.includes("ep_root/step/3/call/tc_03"), "and no other");
+  assert.ok(
+    !open.includes("ep_root/step/1/call/tc_01/result"),
+    "one level, so the call's own result waits for its own caret",
+  );
+  const deeper = visibleRows(outline, "steps", new Set(["ep_root/step/1", "ep_root/step/1/call/tc_01"]));
+  assert.ok(deeper.some((r) => r.id === "ep_root/step/1/call/tc_01/result"));
+});
+
+test("every row carries its log position, because the outline reorders time", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  for (const r of visibleRows(outline, "everything")) {
+    assert.equal(typeof r.seq, "number", `${r.id} knows where it sits in the log`);
+  }
+  // A child's rows sit under the call that spawned it rather than in log
+  // order, so reading order jumps. The sequence number is the only sign.
+  const ids = visibleRows(outline, "everything").map((r) => r.id);
+  assert.ok(ids.indexOf("ep_child") < ids.indexOf("ep_root/step/3"), "the child is read before later steps");
+});
+
+test("lanes hold at every reading, and every curve still lands on a line", () => {
+  for (const files of [["root.jsonl", "child.jsonl"], WORKFLOW]) {
+    const outline = causalityOutline(run(...files));
+    for (const depth of ["episodes", "steps", "calls", "everything"] as const) {
+      const visible = visibleRows(outline, depth);
+      // Heights that vary the way prose and a result body vary.
+      const heights = visible.map((r) => (r.body === "" ? 22 : 60));
+      const figure = layoutLanes(outline, visible, heights);
+      for (const edge of figure.edges) {
+        assert.ok(onALine(figure, edge.from), `${depth}: the ${edge.kind} of ${edge.laneId} leaves a line`);
+        assert.ok(onALine(figure, edge.to), `${depth}: the ${edge.kind} of ${edge.laneId} lands on a line`);
+      }
+      for (const lane of figure.lanes) assert.ok(lane.y2 > lane.y1, `${depth}: ${lane.id} is a line`);
+    }
+  }
 });
 
 // The conversation one row scopes to.

@@ -284,6 +284,75 @@ and `pass 2`, and each section is named by the node itself, so a graph of
 four nodes reads `propose`, `check`, `revise`, `accept` and never four
 sections all reading "workflow".
 
+### The unified outline
+
+The episode rail, the causal figure and the conversation are not three
+things. They are one hierarchy — episode, step, call, message — read at
+different depths, so one collapsible outline replaces all three and a
+**depth control** moves between the readings. It is the arrangement the
+viewer opens in.
+
+| depth | what it shows |
+| --- | --- |
+| `episodes` | episodes alone, which is the rail |
+| `steps` | workflow nodes and steps, which is the tree |
+| `calls` | tool calls with their targets, which is the causal figure |
+| `everything` | what the model said and what each tool returned |
+
+A caret on any row opens that one branch one level past the current
+reading, so a reader can sit at `steps`, open one step to see its calls,
+and open one call to see its result without expanding the run. The depth
+presets are the coarse control and the carets are the fine one.
+
+The gutter nests and the text does not. Every label starts in one column,
+because the lanes already draw the structure and a ragged left edge makes
+a run tedious to skim: the eye reads the indent instead of the sequence.
+The single exception is a tool call and its result, which step in one
+level under the step that issued them, because a call is part of that step
+rather than the next thing that happened. Exactly two label columns,
+therefore. Prose and result bodies break even that and run the full width
+from the text column, because a diff at depth five would otherwise lose
+the room it needs; the inconsistency is deliberate, and code needs the
+width.
+
+Depth is counted against the visible set and never against the raw
+hierarchy. Read at its coarsest a child episode is still an episode one
+level in, even though the call that spawned it is not on the page.
+
+A label stands in for children that are not on the page, so a step's label
+defers to its calls once those are rows of their own: with them hidden it
+reads `read src/parser.rs +1`, and with them shown it falls back to `step
+1`, plus `attempt N of N` when the request retried, so that it does not
+echo the line directly beneath it.
+
+The lane geometry is the same geometry, computed over the visible rows, so
+it is recomputed on every change of depth or caret. Rows are not one
+height — a line of prose and a result body are taller than a node — so the
+rows are laid out and measured first and the lanes are placed from the
+heights they actually took, never from an assumed pitch. A row's mark sits
+on its first line rather than at its vertical middle, so a row holding a
+diff still has its mark beside the name it belongs to.
+
+Two costs come with it and are not hidden. A child episode's rows sit
+under the call that spawned it rather than interleaved by time, so reading
+order is not global order; every row keeps its log position in the gutter,
+which is the only way to see where order jumped. And one view reads at one
+place in the hierarchy, so a reader cannot study one step's output while
+the whole shape stays in view. That is why the other arrangement remains.
+
+### Figure and conversation
+
+The causal figure beside a conversation scoped to whatever is selected in
+it: the arrangement the outline cannot be, because it holds two places in
+the hierarchy at once. A control in the top bar chooses between the two,
+and the choice is stored in `localStorage` under `foe.layout` beside the
+theme, the typeface and the text size.
+
+With the outline showing the run it stands in for the episode rail, the
+trajectory region and the conversation tab together, and those are not
+drawn; the raw events, diff, workflow and statistics tabs are readings of
+something else and stay reachable below it.
+
 ### The channels of a row
 
 An episode's work nests: a workflow node holds model requests, a request

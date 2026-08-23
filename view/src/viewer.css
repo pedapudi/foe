@@ -3431,24 +3431,26 @@ kbd {
 
 /* Lane colour carries branch identity, cycled over five tones mixed from
  * the theme's own tokens so that it follows all sixteen themes. None of
- * the five is an outcome hue: a lane must never read as a verdict. */
-.caus .tone-0 {
+ * the five is an outcome hue: a lane must never read as a verdict. The
+ * tones are scoped to the drawing itself rather than to either view of
+ * it, because both views draw the same strokes. */
+.caus-strokes .tone-0 {
   --caus-tone: var(--v2-ink-soft);
 }
 
-.caus .tone-1 {
+.caus-strokes .tone-1 {
   --caus-tone: color-mix(in srgb, var(--v2-accent) 65%, var(--v2-ink-faint));
 }
 
-.caus .tone-2 {
+.caus-strokes .tone-2 {
   --caus-tone: color-mix(in srgb, var(--v2-flat) 55%, var(--v2-ink));
 }
 
-.caus .tone-3 {
+.caus-strokes .tone-3 {
   --caus-tone: color-mix(in srgb, var(--v2-accent) 30%, var(--v2-flat));
 }
 
-.caus .tone-4 {
+.caus-strokes .tone-4 {
   --caus-tone: var(--v2-ink-faint);
 }
 
@@ -3591,4 +3593,217 @@ kbd {
 
 .row.scope-section > .role {
   color: var(--v2-accent);
+}
+
+/* ---------------------------------------------------------------------- *
+ * The unified outline: the episode rail, the causal figure and the
+ * conversation as one hierarchy read at a chosen depth.
+ *
+ * The gutter nests and the text does not. Every label starts in the one
+ * column `--outline-text` names, because the lanes already draw the
+ * structure and a ragged left edge makes a run tedious to skim. The single
+ * exception is a tool call and its result, which step in by
+ * `--outline-step` under the step that issued them. A body — the model's
+ * own words, a tool's output — breaks even that and runs the full width,
+ * because a diff nested five levels in has lost the room it needs.
+ * ---------------------------------------------------------------------- */
+
+/* With the outline showing the run there is one column, not two, and the
+ * outline takes the height rather than the share the trajectory had. */
+.one-column .foe {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.one-column .column-right {
+  display: flex;
+  flex-direction: column;
+}
+
+.one-column .pane-outline {
+  flex: 1 1 auto;
+}
+
+.one-column .pane-main {
+  flex: 0 1 auto;
+  max-height: 50%;
+  min-height: 0;
+}
+
+.pane-outline {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid var(--v2-rule);
+}
+
+.outline-host {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.outline {
+  position: relative;
+  min-height: 100%;
+}
+
+/* The strokes sit behind the rows and take no clicks except on the two
+ * marks that answer one; the rows are the surface a reader points at. */
+/* The strokes are absolutely positioned inside this box, so it must have
+ * one: a zero-width containing block would collapse the drawing under the
+ * `max-width` every figure in the viewer carries. */
+.outline-strokes {
+  position: absolute;
+  left: calc(52px + var(--dt-gap-edge));
+  top: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.outline-strokes .caus-call,
+.outline-strokes .caus-outcome {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.outline-rows {
+  position: relative;
+  padding-top: 22px;
+}
+
+/* Three columns: the log position, the gutter the lanes are drawn in, and
+ * the one column every label starts in. */
+.outline-row {
+  display: grid;
+  grid-template-columns: 52px var(--outline-text, 80px) minmax(0, 1fr);
+  gap: 0 var(--dt-gap-edge);
+  padding-right: var(--dt-gap-edge);
+  cursor: pointer;
+}
+
+.outline-row:hover,
+.outline-row.selected {
+  background: var(--v2-panel);
+}
+
+/* The one thing that survives the outline's reordering: a child episode's
+ * rows sit under the call that spawned it rather than in log order, so the
+ * sequence number is the only sign of where order jumped. */
+.outline-seq {
+  grid-column: 1;
+  font-family: var(--v2-mono);
+  font-size: calc(10px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+  text-align: right;
+  padding-top: 3px;
+}
+
+.outline-name {
+  grid-column: 3;
+  margin-left: var(--outline-step, 0px);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 0;
+  font-size: calc(12px * var(--dt-font-scale, 1));
+}
+
+.outline-name .label {
+  color: var(--v2-ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outline-row.kind-episode .outline-name .label {
+  color: var(--v2-ink);
+  font-weight: 600;
+}
+
+.outline-row.kind-call .outline-name .label,
+.outline-row.kind-node .outline-name .label {
+  font-family: var(--v2-mono);
+}
+
+.outline-name .aside {
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+  white-space: nowrap;
+}
+
+/* The selected row lifts to full ink and its name takes the accent. No
+ * rail, no wash, and no change of weight, so selecting reflows nothing. */
+.outline-row.selected .outline-name .label {
+  color: var(--v2-accent);
+}
+
+.outline-row.selected .outline-seq,
+.outline-row.selected .outline-name .aside {
+  color: var(--v2-ink);
+}
+
+.outline-row.failed .outline-name .label {
+  color: var(--v2-bad);
+}
+
+/* The caret is drawn rather than written: a triangle that turns. */
+.outline-caret {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  border: none;
+  background: none;
+  position: relative;
+  align-self: center;
+}
+
+.outline-caret:not(.empty)::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2.5px;
+  border-left: 4px solid var(--v2-ink-faint);
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+}
+
+.outline-caret.open::before {
+  left: 1px;
+  top: 4px;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 4px solid var(--v2-ink-faint);
+  border-bottom: none;
+}
+
+.outline-caret:hover::before {
+  border-left-color: var(--v2-ink);
+  border-top-color: var(--v2-ink);
+}
+
+.outline-caret.open:hover::before {
+  border-left-color: transparent;
+  border-right-color: transparent;
+}
+
+/* A body runs the full width: it starts under the gutter rather than under
+ * the text column, because code and diffs need the room. A deliberate
+ * inconsistency with the one-column rule above it. */
+.outline-body {
+  grid-column: 3;
+  padding: 0 0 var(--dt-gap-item);
+  min-width: 0;
+}
+
+.outline-row.kind-result .outline-body {
+  font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+.layout-toggle {
+  margin-right: var(--dt-gap-item);
 }
