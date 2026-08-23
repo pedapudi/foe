@@ -293,6 +293,11 @@ task. Harbor retains the task configuration, verifier result, exception data,
 aggregate token fields, and estimated cost. The manifest records the pricing
 source and whether token estimates were measurements or hard limits.
 
+The adapter runs `foe plan` against the task-specific program inside the task
+container before its first provider request. An invalid program is a setup
+error with zero model spend. It is excluded from task accuracy and must be
+replaced before a repeated result is complete.
+
 The Harbor trial's `agent/foe-episode/` directory is the complete native Foe
 episode tree. It contains `episode.jsonl`, child episodes, spill values, and
 renderings. The neighboring files include the generated Foe program, Foe

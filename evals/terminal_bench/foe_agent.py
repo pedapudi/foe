@@ -198,6 +198,14 @@ class FoeAgent(BaseInstalledAgent):
             "printf '%s\\n' \"$foe_status\""
         )
         try:
+            await self.exec_as_agent(
+                environment,
+                command=(
+                    f"{shlex.quote(REMOTE_BINARY)} plan "
+                    f"--config {shlex.quote(REMOTE_PROGRAM)} >/dev/null"
+                ),
+                cwd=environment.task_env_config.workdir,
+            )
             result = await self.exec_as_agent(
                 environment,
                 command=command,
