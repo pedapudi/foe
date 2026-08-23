@@ -28,7 +28,7 @@ pub mod scrub;
 use classify::Classification;
 use extract::Facts;
 use foe_log::Event;
-use otlp::{flag, list, number, span, text, Attribute};
+use otlp::{list, number, span, text, AnyValue, Attribute};
 use scrub::{Report, Scrubber};
 
 /// Changes whenever an emitted field is added, removed, renamed, or given a
@@ -104,7 +104,7 @@ pub fn emission(events: &[Event], log_dir: &str, key: Vec<u8>) -> Result<Emissio
                 text("foe.tool.name", call.name.clone()),
                 number("foe.tool.seq", call.seq),
                 number("foe.tool.duration_ms", call.duration_ms),
-                flag("foe.tool.is_error", call.is_error),
+                Attribute { key: "foe.tool.is_error".into(), value: AnyValue::BoolValue(call.is_error) },
                 text("foe.tool.subject", clean(format!("tool/result.subject seq {}", call.seq), &call.subject)),
             ],
             !call.is_error,
@@ -123,6 +123,7 @@ pub fn emission(events: &[Event], log_dir: &str, key: Vec<u8>) -> Result<Emissio
             text("foe.category", classification.bucket.clone()),
             text("foe.category.top_level", classification.top_level.clone()),
             list("foe.evidence", classification.votes.iter().map(|v| format!("{}={}", v.token, v.bucket))),
+            list("foe.category.counts", classification.counts.iter().map(|(name, n)| format!("{name}={n}"))),
             number("foe.tokens.input", facts.usage.input),
             number("foe.tokens.output", facts.usage.output),
             number("foe.tokens.cache_read", facts.usage.cache_read),

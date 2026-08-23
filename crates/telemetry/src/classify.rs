@@ -123,10 +123,8 @@ pub fn subcategories() -> Vec<&'static str> {
 /// first, then top-level categories in theirs.
 fn rank(bucket: &str) -> usize {
     let subs = subcategories();
-    match subs.iter().position(|sub| *sub == bucket) {
-        Some(index) => index,
-        None => subs.len() + TOP_LEVEL.split('|').position(|top| top == bucket).unwrap_or(usize::MAX / 2),
-    }
+    let top = TOP_LEVEL.split('|').position(|name| name == bucket).map(|index| subs.len() + index);
+    subs.iter().position(|sub| *sub == bucket).or(top).unwrap_or(usize::MAX / 2)
 }
 
 pub fn classify(evidence: &Evidence) -> Classification {
@@ -136,20 +134,15 @@ pub fn classify(evidence: &Evidence) -> Classification {
             votes.push(Vote { token: token.to_string(), bucket, count });
         }
     };
-    for (extension, count) in &evidence.extensions {
-        vote(EXTENSION_RULES, extension, *count);
+    let histograms =
+        [(EXTENSION_RULES, &evidence.extensions), (COMMAND_RULES, &evidence.heads), (TOOL_RULES, &evidence.tools)];
+    for (table, counted) in histograms {
+        counted.iter().for_each(|(token, count)| vote(table, token, *count));
     }
-    for (head, count) in &evidence.heads {
-        vote(COMMAND_RULES, head, *count);
-    }
-    for (tool, count) in &evidence.tools {
-        vote(TOOL_RULES, tool, *count);
-    }
-    if evidence.spawns > 0 {
-        votes.push(Vote { token: "spawn".into(), bucket: STRUCTURE_BUCKET, count: evidence.spawns });
-    }
-    if evidence.workflow_nodes > 0 {
-        votes.push(Vote { token: "workflow".into(), bucket: STRUCTURE_BUCKET, count: evidence.workflow_nodes });
+    for (token, count) in [("spawn", evidence.spawns), ("workflow", evidence.workflow_nodes)] {
+        if count > 0 {
+            votes.push(Vote { token: token.into(), bucket: STRUCTURE_BUCKET, count });
+        }
     }
 
     // Two views of the same votes. `direct` counts each bucket's own votes

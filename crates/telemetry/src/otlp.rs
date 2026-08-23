@@ -29,9 +29,8 @@ pub const SCOPE: &str = "foe.telemetry";
 pub fn payload(version: &str, resource: &[Attribute], spans: &[Span]) -> String {
     let attributes = serde_json::to_string(resource).expect("an attribute holds no unserializable value");
     let spans = serde_json::to_string(spans).expect("a span holds no unserializable value");
-    let scope = format!(r#"{{"name":"{SCOPE}","version":"{version}"}}"#);
-    let scope_spans = format!(r#"[{{"scope":{scope},"spans":{spans}}}]"#);
-    format!(r#"{{"resourceSpans":[{{"resource":{{"attributes":{attributes}}},"scopeSpans":{scope_spans}}}]}}"#)
+    let scope = format!(r#"{{"scope":{{"name":"{SCOPE}","version":"{version}"}},"spans":{spans}}}"#);
+    format!(r#"{{"resourceSpans":[{{"resource":{{"attributes":{attributes}}},"scopeSpans":[{scope}]}}]}}"#)
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -88,10 +87,6 @@ pub fn text(key: &str, value: impl Into<String>) -> Attribute {
 
 pub fn number(key: &str, value: u64) -> Attribute {
     Attribute { key: key.into(), value: AnyValue::IntValue(value.to_string()) }
-}
-
-pub fn flag(key: &str, value: bool) -> Attribute {
-    Attribute { key: key.into(), value: AnyValue::BoolValue(value) }
 }
 
 pub fn list(key: &str, values: impl IntoIterator<Item = String>) -> Attribute {

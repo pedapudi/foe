@@ -186,15 +186,17 @@ fn push_known(out: &mut Vec<KnownValue>, tag: char, value: &str) {
     out.extend((value.len() >= MIN_KNOWN_LEN).then(|| KnownValue { tag, value: value.into() }));
 }
 
-/// Evidence carried by one tool call's arguments.
+/// Evidence carried by one tool call's arguments: command heads from a
+/// shell command line, file extensions from every other tool's paths.
 fn call_evidence(name: &str, args: &serde_json::Value, evidence: &mut Evidence) {
-    if name == "bash" {
-        let heads = command_heads(args["command"].as_str().unwrap_or_default());
-        heads.into_iter().for_each(|head| *evidence.heads.entry(head).or_default() += 1);
-        return;
-    }
-    let found: Vec<String> = PATH_ARGS.iter().filter_map(|key| args[key].as_str().and_then(extension)).collect();
-    found.into_iter().for_each(|found| *evidence.extensions.entry(found).or_default() += 1);
+    let (histogram, tokens) = match name == "bash" {
+        true => (&mut evidence.heads, command_heads(args["command"].as_str().unwrap_or_default())),
+        false => (
+            &mut evidence.extensions,
+            PATH_ARGS.iter().filter_map(|key| args[key].as_str().and_then(extension)).collect(),
+        ),
+    };
+    tokens.into_iter().for_each(|token| *histogram.entry(token).or_default() += 1);
 }
 
 /// The lower-cased extension of the last component of `path`, when it has
@@ -220,8 +222,7 @@ const DISPATCHERS: &[&str] = &["cargo", "go", "npm", "yarn", "pnpm", "bazel", "g
 /// assignments are not the command.
 pub fn command_heads(command: &str) -> Vec<String> {
     let mut heads = Vec::new();
-    let breaks = regex::Regex::new(SEGMENT_BREAK).expect("the separator pattern is a constant");
-    for segment in breaks.split(command) {
+    for segment in command.split(SEGMENT_BREAKS) {
         let mut tokens = segment
             .split_whitespace()
             .skip_while(|t| is_assignment(t))
@@ -231,13 +232,11 @@ pub fn command_heads(command: &str) -> Vec<String> {
         if head == "cd" || head.starts_with('-') {
             continue;
         }
-        if DISPATCHERS.contains(&head.as_str()) {
-            if let Some(sub) = tokens.find(|t| !t.is_empty() && !t.starts_with('-')) {
-                heads.push(format!("{head} {}", sub.to_ascii_lowercase()));
-                continue;
-            }
-        }
-        heads.push(head);
+        let sub = match DISPATCHERS.contains(&head.as_str()) {
+            true => tokens.find(|t| !t.is_empty() && !t.starts_with('-')),
+            false => None,
+        };
+        heads.push(sub.map_or(head.clone(), |sub| format!("{head} {}", sub.to_ascii_lowercase())));
     }
     heads
 }
@@ -249,10 +248,11 @@ fn is_assignment(token: &str) -> bool {
     !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// The shell operators that end one command and begin another. `&&` and
-/// `||` are listed first so that neither is split twice as a single `&`
-/// or `|`, which would leave an empty segment between the halves.
-const SEGMENT_BREAK: &str = r"&&|\|\||[&|;\n]";
+/// The characters that end one command and begin another. Splitting on
+/// single characters handles `&&` and `||` too: each is split twice and
+/// leaves an empty segment between the halves, and an empty segment has no
+/// head, so it contributes nothing.
+const SEGMENT_BREAKS: [char; 4] = ['&', '|', ';', '\n'];
 
 #[cfg(test)]
 #[path = "extract_test.rs"]

@@ -87,8 +87,11 @@ pub const KEY_FILE: &str = "key";
 pub struct Report(pub BTreeMap<String, u32>);
 
 impl Report {
-    fn record(&mut self, tag: char) {
+    /// Counts one replacement of `tag` and gives the tag back, so that
+    /// recording a replacement and building it stay one expression.
+    fn record(&mut self, tag: char) -> char {
         *self.0.entry(tag_name(tag).to_string()).or_default() += 1;
+        tag
     }
 }
 
@@ -152,17 +155,14 @@ impl Scrubber {
         let mut out = text.to_string();
         for (tag, form, replacement) in &self.variants {
             if out.contains(form.as_str()) {
-                report.record(*tag);
                 out = out.replace(form.as_str(), replacement);
+                report.record(*tag);
             }
         }
         let out = self
             .detectors
             .replace_all(&out, |caps: &regex::Captures| match fired(caps) {
-                Some((index, matched)) => {
-                    report.record(DETECTORS[index].1);
-                    self.pseudonym(DETECTORS[index].1, matched)
-                }
+                Some((index, matched)) => self.pseudonym(report.record(DETECTORS[index].1), matched),
                 None => caps[0].to_string(),
             })
             .into_owned();
@@ -180,13 +180,9 @@ impl Scrubber {
                 rendered.push(part.to_string());
                 continue;
             }
-            report.record('p');
             let keep = (index == last).then(|| crate::extract::extension(part)).flatten();
-            rendered.push(format!(
-                "{}{}",
-                self.pseudonym('p', part),
-                keep.map(|e| format!(".{e}")).unwrap_or_default()
-            ));
+            let suffix = keep.map(|extension| format!(".{extension}")).unwrap_or_default();
+            rendered.push(format!("{}{suffix}", self.pseudonym(report.record('p'), part)));
         }
         rendered.join("/")
     }
@@ -209,16 +205,10 @@ impl Scrubber {
             }
         };
         let lowered = text.to_ascii_lowercase();
-        for (tag, form, _) in &self.variants {
-            if lowered.contains(&form.to_ascii_lowercase()) {
-                name(&format!("known {}", tag_name(*tag)));
-            }
-        }
-        for caps in self.detectors.captures_iter(text) {
-            if let Some((index, _)) = fired(&caps) {
-                name(DETECTORS[index].0);
-            }
-        }
+        let survived = self.variants.iter().filter(|(_, form, _)| lowered.contains(&form.to_ascii_lowercase()));
+        survived.for_each(|(tag, ..)| name(&format!("known {}", tag_name(*tag))));
+        let detected = self.detectors.captures_iter(text).filter_map(|caps| fired(&caps).map(|(i, _)| DETECTORS[i].0));
+        detected.for_each(|detector| name(detector));
         found
     }
 }

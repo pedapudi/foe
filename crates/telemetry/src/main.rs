@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 use foe_log::{Event, LogError};
+use foe_telemetry::otlp::AnyValue;
 use foe_telemetry::{emission, scrub, Emission};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -55,15 +56,14 @@ fn run(args: &[String]) -> Result<(), String> {
         let (events, dir, unparsed) = read_log(Path::new(log)).map_err(|error| format!("{log}: {error}"))?;
         if unparsed > 0 {
             let doubt = format!(
-                "{log}: {unparsed} line(s) this build cannot read. The known-value layer learns what to \
-                 remove from the log, so a value it needed may be on one of them and scrubbing coverage \
-                 cannot be guaranteed."
+                "{log}: {unparsed} line(s) this build cannot read. The known-value layer learns what to remove \
+                 from the log, so a value it needed may be on one of them and scrubbing coverage cannot be \
+                 guaranteed."
             );
             if command == "emit" {
                 return Err(format!("{doubt} Nothing emitted."));
             }
-            eprintln!("!! {doubt}");
-            eprintln!("!! `foe-telemetry emit` refuses this log. What follows is not what emit would write.");
+            eprintln!("!! {doubt}\n!! `foe-telemetry emit` refuses this log. This is not what emit would write.");
         }
         let capture = out.clone().unwrap_or_else(|| dir.join("telemetry").join("otel.jsonl"));
         let key_dir = capture.parent().unwrap_or(Path::new(".")).to_path_buf();
@@ -106,10 +106,7 @@ fn read_log(path: &Path) -> Result<(Vec<Event>, PathBuf, usize), LogError> {
     let lines: Vec<&str> = text.lines().filter(|line| !line.trim().is_empty()).collect();
     let events: Vec<Event> = lines.iter().filter_map(|line| serde_json::from_str(line).ok()).collect();
     let unparsed = lines.len() - events.len();
-    match events.is_empty() && !lines.is_empty() {
-        true => Err(LogError::Invalid { seq: 0, rule: "at least one line of the log is an event this build can read" }),
-        false => Ok((events, dir, unparsed)),
-    }
+    Ok((events, dir, unparsed))
 }
 
 /// What one episode's emission carries, for a person. Every number and
@@ -131,17 +128,14 @@ fn preview(derived: &Emission) -> String {
     for span in &derived.spans {
         let nanos = |text: &str| text.parse::<u64>().unwrap_or_default();
         let millis = (nanos(&span.end_time_unix_nano) - nanos(&span.start_time_unix_nano)) / 1_000_000;
-        out += &format!("    {:<28} {millis:>9} ms  {}\n", span.name, detail(span));
+        // The one attribute worth a line of its own: what a tool acted on,
+        // or why a step stopped.
+        let of = |key: &str| match span.attributes.iter().find(|a| a.key == key).map(|a| &a.value) {
+            Some(AnyValue::StringValue(text)) if !text.is_empty() => Some(text.as_str()),
+            _ => None,
+        };
+        let detail = of("foe.tool.subject").or_else(|| of("foe.stop_reason")).unwrap_or_default();
+        out += &format!("    {:<28} {millis:>9} ms  {detail}\n", span.name);
     }
     out
-}
-
-/// The one attribute of a span worth a line of its own: what a tool acted
-/// on, or why a step stopped.
-fn detail(span: &foe_telemetry::otlp::Span) -> &str {
-    let of = |key: &str| match span.attributes.iter().find(|a| a.key == key).map(|a| &a.value) {
-        Some(foe_telemetry::otlp::AnyValue::StringValue(text)) if !text.is_empty() => Some(text.as_str()),
-        _ => None,
-    };
-    of("foe.tool.subject").or_else(|| of("foe.stop_reason")).unwrap_or_default()
 }

@@ -88,7 +88,7 @@ tabular data rolls up into data analysis whatever language it is written
 in, and provisioning or operating machines rolls up into technology.
 
 Each piece of evidence votes for one bucket. Two views of the votes come
-out. The counts are multi-label and include roll-ups, so `programming`
+out, and both are emitted. The counts are multi-label and include roll-ups, so `programming`
 carries its own votes plus every subcategory's. The single top bucket is
 chosen on direct votes alone, because once roll-ups are added a top-level
 category holds the sum of its children and no subcategory could ever win.
@@ -256,6 +256,7 @@ A field that answers no question is not emitted. This table is the gate.
 | `foe.outcome.detail` | what a blocked or failed episode said about why |
 | `foe.model.provider`, `foe.model.model` | does outcome or cost differ by route |
 | `foe.category`, `foe.category.top_level` | failure rate and cost distribution by kind of work |
+| `foe.category.counts` | which categories an episode belongs to at once, and how strongly, since one episode can be both testing and infrastructure |
 | `foe.evidence` | why the classifier chose that category |
 | `foe.tokens.input`, `foe.tokens.output`, `foe.tokens.cache_read` | what an episode costs, and how much of the input the cache served |
 | `foe.model_calls` | how many turns a kind of work takes |
