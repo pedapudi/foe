@@ -349,6 +349,19 @@ that harms task quality. A bound, retry rule, or completion condition is a
 valid improvement target when measured evidence shows that it rejects correct
 artifacts or consumes resources without increasing acceptance quality.
 
+The Terminal-Bench self-improvement runner performs Rust validation through a
+pinned Cargo binary. It grants the coding child explicit execute access to the
+toolchain and candidate build directory. Read grants cover Cargo and Rustup
+metadata and installed C headers. An execute grant covers Cargo's command
+shims for formatting and clippy. The in-episode verifier runs formatting,
+clippy, line-budget checks, and workspace tests that do not require a
+listening socket or a fresh Landlock domain.
+
+The runner repeats validation after the episode ends with every workspace
+test. An exhausted outcome does not discard an artifact that passes every
+deterministic check. Benchmark promotion still requires a separate run
+against the frozen capability task and untouched confirmation tasks.
+
 ## Reproduction
 
 Run the deterministic workflow and its forced-correction test:

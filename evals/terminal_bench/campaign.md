@@ -143,7 +143,7 @@ Planning token estimates provide a spend preview. They do not stop ordinary deve
 4. Run one Sol `low` attempt on the remaining capability-search tasks. Run Sol `xhigh` only on Sol `low` failures.
 5. Repeat the most promising Sol gap three times at each reasoning setting. Freeze the selected task and gap criterion.
 6. Produce typed trajectory diagnoses. Each diagnosis names its model setting and retained run. The digest groups verified results by task and model setting, then retains bounded request growth, replayed results, failures, and log sequence numbers.
-7. Run identity-bound self-improvement with Terra `high`. The coding node receives only the typed diagnosis and acts as a full coding agent.
+7. Run identity-bound self-improvement with Luna `high` for bounded diagnosis and Terra `high` for implementation. The coding node receives only the typed diagnosis and acts as a full coding agent.
 8. Validate the generated candidate outside the self-improvement episode. Implement the diagnosed change directly when the generated candidate is absent, invalid, or unsupported by the evidence.
 9. Re-run the selected capability task with Sol `low`. Reject candidates that fail the capability-conversion criteria.
 10. Re-run the six development tasks. Compare successful completion, estimated cost, wall time, and trace integrity.
@@ -154,13 +154,41 @@ Planning token estimates provide a spend preview. They do not stop ordinary deve
 
 ## Self-improvement contract
 
-The self-improvement workflow has two model nodes. A diagnosis node reads the bounded trajectory digest and returns a typed mechanism. A separate coding node receives the typed diagnosis and a clean context.
+The self-improvement workflow has two model nodes. A Luna diagnosis node reads the bounded trajectory digest and returns a typed causal intervention. A separate Terra coding node receives the diagnosis and a clean context.
 
-The coding node has Foe's standard coding tools: `read`, `grep`, `edit`, and `bash`. It may change runtime crates, specifications, examples, and repository build files. It cannot change evaluation code or benchmark material.
+The coding node has Foe's standard coding tools: `read`, `grep`, `edit`, and `bash`. It may change runtime crates, specifications, examples, and repository build files. It cannot change evaluation code or benchmark material. Its verifier uses a pinned Cargo binary. The verifier runs formatting, workspace tests, clippy, and line-budget checks.
 
 The evidence file names the evaluated Git tree and Foe binary digest. It labels every trajectory with the run and model setting that produced it. The workflow refuses a source or binary mismatch before making a model request. The candidate checker requires a Rust implementation change, a Rust regression test, and an affected specification.
 
-The workflow is one candidate generator. Candidate promotion remains an external evaluation decision. A failed workflow sets `direct_implementation_required` in its result so the campaign proceeds with a direct implementation.
+The workflow is one candidate generator. The runner validates changed files again after the episode. A validated artifact survives an exhausted reporting outcome. Candidate promotion remains an external evaluation decision. A failed artifact sets `direct_implementation_required`. The campaign then proceeds with a direct implementation.
+
+## Recorded self-improvement failure analysis
+
+On 2026-08-23, two retained `gpt2-codegolf` self-improvement attempts failed
+to produce a valid candidate. The first attempt used four diagnosis calls,
+155,911 input tokens, and an estimated $0.167263. Its diagnosis child returned
+20 tool results and exhausted before returning the required typed value. It
+changed no files.
+
+The second attempt used 24 calls, 1,192,041 input tokens, and an estimated
+$0.642229. Its diagnosis child completed after eight calls. Its implementation
+child used all 16 remaining calls, changed five implementation files, changed
+no test or specification, and never called the candidate checker. The child
+reported that Cargo was unavailable in its sandbox. The generated files did
+not form a valid candidate.
+
+The retained evidence file placed model and reasoning labels in a separate
+run summary. Each diagnosis entry lacked those labels. The diagnosis model
+therefore could not associate three Sol `low` failures with three Sol `xhigh`
+successes. Reconstructing the association from the retained run summaries
+showed zero verified successes in three Sol `low` attempts and three verified
+successes in three Sol `xhigh` attempts.
+
+These observations establish three runner defects. The evidence handoff lost
+the causal contrast between model settings. The coding child lacked a usable
+Rust validation environment. The structural checker could accept files
+without compiling or testing them. The self-improvement contract above
+addresses each defect before another provider-backed attempt.
 
 ## Recorded deterministic finding
 

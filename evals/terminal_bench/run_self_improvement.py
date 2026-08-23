@@ -21,12 +21,13 @@ from foe_agent_support import estimate_usage_cost
 from run import Pricing, read_cases
 
 
-DIAGNOSIS_CALLS = 4
-IMPLEMENTATION_CALLS = 16
-SECONDS = 2_400
+DIAGNOSIS_CALLS = 8
+IMPLEMENTATION_CALLS = 24
+SECONDS = 3_600
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
 ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel.lock")
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
+SYSTEM_DEVELOPMENT_READ_DIRS = (Path("/usr/include"), Path("/usr/local/include"))
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -71,17 +72,38 @@ def source_hashes(root: Path) -> dict[str, str]:
     return answer
 
 
-def write_candidate_check(path: Path, candidate: Path) -> None:
+def git_metadata_root(candidate: Path) -> Path:
+    result = subprocess.run(
+        ["/usr/bin/git", "-C", str(candidate), "rev-parse", "--git-common-dir"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    path = Path(result.stdout.strip())
+    return (candidate / path).resolve(strict=True) if not path.is_absolute() else path.resolve(strict=True)
+
+
+def write_candidate_check(path: Path, candidate: Path, cargo: Path, cargo_home: Path, cargo_target: Path) -> None:
     baseline = source_hashes(candidate)
+    toolchain = cargo.parent.parent
+    rustup_home = toolchain.parent.parent if toolchain.parent.name == "toolchains" else None
+    rustup_toolchain = toolchain.name if rustup_home else None
     script = f'''#!/usr/bin/python3
 import hashlib
 import pathlib
 import subprocess
+import sys
 
 root = pathlib.Path({str(candidate)!r})
 baseline = {baseline!r}
 allowed_directories = {ALLOWED_DIRECTORIES!r}
 allowed_root_files = {ALLOWED_ROOT_FILES!r}
+cargo = {str(cargo)!r}
+cargo_home = {str(cargo_home)!r}
+cargo_target = {str(cargo_target)!r}
+rustup_home = {str(rustup_home) if rustup_home else None!r}
+rustup_toolchain = {rustup_toolchain!r}
+full_validation = sys.argv[1:] == ["--full"]
 current = {{}}
 for directory in allowed_directories:
     for item in sorted((root / directory).rglob("*")):
@@ -119,6 +141,66 @@ for name in changed:
         findings.append(f"{{name}} contains a benchmark task identifier")
     if any(line.endswith((" ", "\\t")) for line in text.splitlines()):
         findings.append(f"{{name}} contains trailing whitespace")
+if not findings:
+    temporary = pathlib.Path(cargo_target) / "tmp"
+    temporary.mkdir(parents=True, exist_ok=True)
+    env = {{
+        "CARGO_HOME": cargo_home,
+        "CARGO_TARGET_DIR": cargo_target,
+        "HOME": str(root),
+        "LANG": "C.UTF-8",
+        "PATH": str(pathlib.Path(cargo).parent) + ":/usr/local/bin:/usr/bin:/bin",
+        "TMPDIR": str(temporary),
+    }}
+    if rustup_home:
+        env["RUSTUP_HOME"] = rustup_home
+        env["RUSTUP_TOOLCHAIN"] = rustup_toolchain
+    test_command = [cargo, "test", "--workspace"]
+    if not full_validation:
+        # Executable tools cannot bind TCP listeners. The CLI unit tests use
+        # loopback servers, as do the transport and viewer tests. Nested
+        # sandbox tests cannot expand an existing Landlock domain. The
+        # post-episode check runs the omitted packages and skipped group.
+        test_command.extend(
+            [
+                "--exclude", "foe",
+                "--exclude", "foe-transport",
+                "--exclude", "foe-view",
+                "--", "--skip", "sandbox::tests::",
+            ]
+        )
+    commands = [
+        [cargo, "fmt", "--all", "--", "--check"],
+        test_command,
+        [cargo, "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
+        ["/bin/bash", "scripts/loc.sh"],
+    ]
+    for command in commands:
+        try:
+            result = subprocess.run(
+                command,
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=900,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            findings.append("candidate validation timed out: " + " ".join(command))
+            break
+        if result.returncode != 0:
+            output = []
+            for label, content in (("stdout", result.stdout), ("stderr", result.stderr)):
+                lines = content.splitlines()
+                if lines:
+                    output.append(label + ": " + " | ".join(lines[-20:]))
+            detail = " || ".join(output)
+            findings.append(
+                "candidate validation failed: " + " ".join(command)
+                + (f": {{detail}}" if detail else "")
+            )
+            break
 print("\\n".join(findings))
 '''
     path.write_text(script, encoding="utf-8")
@@ -129,42 +211,59 @@ def build_config(
     candidate: Path,
     evidence: Path,
     check: Path,
-    model: dict[str, str],
+    implementation_model: dict[str, str],
+    diagnosis_model: dict[str, str],
+    execute_roots: list[Path],
+    source_metadata_roots: list[Path],
+    development_read_roots: list[Path],
+    objective: str,
 ) -> dict[str, Any]:
     diagnosis_read_roots = [str(candidate), str(evidence.parent)]
-    implementation_read_roots = [str(candidate)]
+    development_reads = [str(path) for path in [*source_metadata_roots, *development_read_roots]]
+    implementation_read_roots = [str(candidate), *development_reads]
+    root_read_roots = [*diagnosis_read_roots, *development_reads]
     write_roots = [str(candidate)]
+    execute = [str(path) for path in execute_roots]
     check_tool = {
         "exec": str(check),
-        "description": "Verify a general Rust implementation change, a regression test, an affected specification, allowed paths, benchmark independence, and clean whitespace. The tool prints findings and prints nothing when these checks pass.",
+        "description": "Verify candidate scope, benchmark independence, formatting, Rust workspace tests, clippy, and line budgets. The tool prints findings and prints nothing when every check passes.",
         "cwd": str(candidate),
-        "timeout_seconds": 30,
+        "timeout_seconds": 900,
     }
     diagnosis = {
         "name": "diagnose-foe-from-trajectory-measurements",
         "instructions": {
-            "role": "Diagnose one general Foe limitation from the supplied typed trajectory measurements.",
-            "scope": "Use read, grep, and bash to inspect runtime source, tests, and specifications. Do not edit files or inspect benchmark tasks, graders, fixtures, or completed answers.",
-            "evidence": "Tie every claim to task names and log sequence numbers in the digest. Prefer a mechanism that explains multiple observations. Separate model limitations from harness limitations.",
-            "result": "Return one typed diagnosis with implementation, regression-test, specification, and acceptance details. The next coding episode receives this diagnosis without the raw trajectories.",
+            "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
+            "scope": "Use read and grep to inspect runtime source, tests, and specifications. Do not edit files or inspect benchmark tasks, graders, fixtures, or completed answers.",
+            "evidence": "Compare failed and successful model settings from the labeled digest. Tie claims to episode identifiers and log sequence numbers. Separate model limitations from harness limitations.",
+            "result": "Return one typed causal intervention before the final available request. The coding episode receives the diagnosis without the trajectory reports.",
         },
-        "tools": ["read", "grep", "bash"],
+        "tools": ["read", "grep"],
         "grants": {"read": diagnosis_read_roots},
         "budget": {"model_calls": DIAGNOSIS_CALLS, "seconds": 600},
+        "model": diagnosis_model,
         "done_when": {
             "returns": {
                 "type": "object",
                 "properties": {
-                    "mechanism": {"type": "string", "minLength": 1},
-                    "evidence": {"type": "array", "items": {"type": "string"}, "minItems": 2},
+                    "harness_limitation": {"type": "string", "minLength": 1},
+                    "model_limitation": {"type": "string", "minLength": 1},
+                    "failed_attempt_evidence": {"type": "array", "items": {"type": "string"}, "minItems": 2},
+                    "successful_contrast_evidence": {"type": "array", "items": {"type": "string"}, "minItems": 2},
+                    "intervention": {"type": "string", "minLength": 1},
+                    "predicted_trace_change": {"type": "string", "minLength": 1},
                     "implementation_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                     "test_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                     "specification_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                     "acceptance": {"type": "string", "minLength": 1},
                 },
                 "required": [
-                    "mechanism",
-                    "evidence",
+                    "harness_limitation",
+                    "model_limitation",
+                    "failed_attempt_evidence",
+                    "successful_contrast_evidence",
+                    "intervention",
+                    "predicted_trace_change",
                     "implementation_files",
                     "test_files",
                     "specification_files",
@@ -180,12 +279,12 @@ def build_config(
             "role": "Act as a fully capable Foe coding agent and implement the supplied typed diagnosis.",
             "scope": "Inspect source before editing. Change runtime source, a regression test, and each affected specification. Preserve reconstructable logs, declared authority, typed outcomes, and explicit completion semantics.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, or task allowances. Do not encode benchmark identifiers, fixture values, or grader rules.",
-            "validation": "Use bash for focused tests, formatting, and clippy. Run the candidate check after the implementation. State expected accuracy, cost, latency, and compatibility effects in the final result.",
+            "validation": "The candidate check runs formatting, the Rust workspace tests, clippy, and line budgets under the declared toolchain. Run it after implementation and use its findings to correct the candidate. State expected accuracy, cost, latency, and compatibility effects in the final result.",
         },
         "tools": [*CODING_TOOLS, "check"],
         "tool_defs": {"check": check_tool},
-        "grants": {"read": implementation_read_roots, "write": write_roots},
-        "budget": {"model_calls": IMPLEMENTATION_CALLS, "seconds": 1_800},
+        "grants": {"read": implementation_read_roots, "write": write_roots, "execute": execute},
+        "budget": {"model_calls": IMPLEMENTATION_CALLS, "seconds": 3_000},
         "done_when": {"verify": "check", "retries": 2},
     }
     return {
@@ -200,7 +299,7 @@ def build_config(
             },
             "check": check_tool,
         },
-        "grants": {"read": diagnosis_read_roots, "write": write_roots},
+        "grants": {"read": root_read_roots, "write": write_roots, "execute": execute},
         "budget": {
             "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS,
             "seconds": SECONDS,
@@ -227,10 +326,30 @@ def build_config(
             },
             "recovery": {"enabled": False},
         },
-        "model": model,
+        "model": implementation_model,
         "sandbox": {"mode": "best-effort"},
-        "task": "Use the identity-bound trajectory diagnoses to implement one general Foe improvement. Improve successful task completion or measured model cost while preserving correctness and benchmark independence.",
+        "task": objective,
     }
+
+
+def check_candidate(check: Path, candidate: Path) -> dict[str, Any]:
+    try:
+        result = subprocess.run(
+            [str(check), "--full"],
+            cwd=candidate,
+            input="{}\n",
+            text=True,
+            capture_output=True,
+            timeout=1_800,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"accepted": False, "findings": ["candidate checker timed out"], "exit_code": None}
+    findings = [line for line in result.stdout.splitlines() if line]
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"exit status {result.returncode}"
+        findings.append(f"candidate checker failed: {detail}")
+    return {"accepted": not findings, "findings": findings, "exit_code": result.returncode}
 
 
 def measure_episode(root: Path, pricing: dict[str, Pricing]) -> dict[str, Any]:
@@ -295,6 +414,25 @@ def parser() -> argparse.ArgumentParser:
         choices=("low", "medium", "high", "xhigh"),
         default="high",
     )
+    answer.add_argument("--diagnosis-model", default="openai-codex/gpt-5.6-luna")
+    answer.add_argument(
+        "--diagnosis-reasoning-effort",
+        choices=("low", "medium", "high", "xhigh"),
+        default="high",
+    )
+    answer.add_argument(
+        "--objective",
+        default=(
+            "Use the identity-bound failed and successful trajectory contrast to implement one general Foe "
+            "improvement that raises verified task completion. Preserve correctness and benchmark independence."
+        ),
+    )
+    answer.add_argument(
+        "--cargo",
+        type=Path,
+        help="absolute path to the pinned toolchain's cargo binary, rather than a rustup proxy",
+    )
+    answer.add_argument("--cargo-home", type=Path, help="absolute Cargo cache used by candidate validation")
     answer.add_argument("--keep", type=Path)
     answer.add_argument("--confirm-spend", action="store_true")
     return answer
@@ -305,8 +443,27 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _, _, _, pricing = read_cases(args.cases.resolve(strict=True))
         model = model_config(args.model, args.reasoning_effort)
+        diagnosis_model = model_config(args.diagnosis_model, args.diagnosis_reasoning_effort)
         if args.model not in pricing:
             raise ValueError(f"cases.pricing has no entry for {args.model}")
+        if args.diagnosis_model not in pricing:
+            raise ValueError(f"cases.pricing has no entry for {args.diagnosis_model}")
+        if not args.objective.strip():
+            raise ValueError("--objective must not be empty")
+        if bool(args.cargo) != bool(args.cargo_home):
+            raise ValueError("--cargo and --cargo-home must be supplied together")
+        if args.confirm_spend and args.cargo is None:
+            raise ValueError("--confirm-spend requires --cargo and --cargo-home for deterministic candidate validation")
+        cargo = args.cargo.resolve(strict=True) if args.cargo else None
+        cargo_home = args.cargo_home.resolve(strict=True) if args.cargo_home else None
+        if cargo is not None and cargo.name != "cargo":
+            raise ValueError("--cargo must resolve to a pinned toolchain cargo binary rather than a rustup proxy")
+        if cargo is not None and not cargo.is_file():
+            raise ValueError("--cargo must name a file")
+        if cargo_home is not None and not cargo_home.is_dir():
+            raise ValueError("--cargo-home must name a directory")
+        if cargo_home is not None and not (cargo_home / "bin").is_dir():
+            raise ValueError("--cargo-home must contain the Cargo command-shim directory `bin`")
         candidate = args.candidate.resolve(strict=True)
         evidence = args.evidence.resolve(strict=True)
         binary = args.foe.resolve(strict=True)
@@ -319,6 +476,8 @@ def main(argv: list[str] | None = None) -> int:
         "evaluation": "identity-bound-trajectory-self-improvement",
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "diagnosis_model": args.diagnosis_model,
+        "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort,
         "maximum": {"model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS, "seconds": SECONDS},
         "token_limits": "measurement_only",
     }
@@ -337,11 +496,35 @@ def main(argv: list[str] | None = None) -> int:
         temporary = tempfile.TemporaryDirectory(prefix="foe-trajectory-self-improvement-")
         root = Path(temporary.name)
     check = root / "candidate-check"
-    write_candidate_check(check, candidate)
+    assert cargo is not None and cargo_home is not None
+    cargo_target = candidate / "target" / "foe-self-improvement-check"
+    cargo_target.mkdir(parents=True, exist_ok=True)
+    source_metadata = git_metadata_root(candidate)
+    write_candidate_check(check, candidate, cargo, cargo_home, cargo_target)
+    episode_evidence = root / "trajectory-evidence.json"
+    episode_evidence.write_bytes(evidence.read_bytes())
+    toolchain = cargo.parent.parent
+    rustup_home = toolchain.parent.parent if toolchain.parent.name == "toolchains" else None
+    execute_roots = [toolchain, cargo_home / "bin", cargo_target]
+    development_read_roots = [
+        cargo_home,
+        *(path for path in [rustup_home] if path is not None),
+        *(path.resolve() for path in SYSTEM_DEVELOPMENT_READ_DIRS if path.is_dir()),
+    ]
     program = root / "program.json"
     write_json(
         program,
-        build_config(candidate, evidence, check, model),
+        build_config(
+            candidate,
+            episode_evidence,
+            check,
+            model,
+            diagnosis_model,
+            execute_roots,
+            [source_metadata],
+            development_read_roots,
+            args.objective,
+        ),
     )
     episode = root / "episode"
     started = time.monotonic()
@@ -360,6 +543,11 @@ def main(argv: list[str] | None = None) -> int:
         check=True,
     ).stdout.splitlines()
     changed = [line[3:] for line in changed_status if len(line) > 3]
+    acceptance = check_candidate(check, candidate) if changed else {
+        "accepted": False,
+        "findings": ["candidate contains no changed files"],
+        "exit_code": None,
+    }
     record = {
         **preview,
         "evaluated_foe": identity,
@@ -372,13 +560,15 @@ def main(argv: list[str] | None = None) -> int:
         "evidence": str(evidence),
         "episode": str(episode),
         "changed_files": changed,
-        "direct_implementation_required": result.returncode != 0 or not changed,
+        "candidate_acceptance": acceptance,
+        "artifact_outcome_mismatch": acceptance["accepted"] and result.returncode != 0,
+        "direct_implementation_required": not acceptance["accepted"],
     }
     write_json(root / "result.json", record)
     print(json.dumps(record, indent=2, sort_keys=True))
     if temporary:
         temporary.cleanup()
-    return result.returncode
+    return 0 if acceptance["accepted"] else result.returncode or 3
 
 
 if __name__ == "__main__":

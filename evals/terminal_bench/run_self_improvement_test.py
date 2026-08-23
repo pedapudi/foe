@@ -1,12 +1,19 @@
 #!/usr/bin/python3
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 from run import Pricing
-from run_self_improvement import build_config, measure_episode, model_config
+from run_self_improvement import (
+    build_config,
+    check_candidate,
+    measure_episode,
+    model_config,
+    write_candidate_check,
+)
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
@@ -17,6 +24,11 @@ class SelfImprovementConfigTest(unittest.TestCase):
             Path("/tmp/evidence.json"),
             Path("/tmp/check"),
             model_config("openai-codex/gpt-5.6-terra", "high"),
+            model_config("openai-codex/gpt-5.6-luna", "high"),
+            [Path("/opt/toolchain")],
+            [Path("/repo/.git")],
+            [Path("/opt/cargo-cache")],
+            "Raise verified completion.",
         )
         nodes = config["workflow"]["nodes"]
         diagnosis = nodes["diagnose-runtime"]["model"]
@@ -26,13 +38,80 @@ class SelfImprovementConfigTest(unittest.TestCase):
             ["task", "diagnose-runtime"],
         )
         self.assertEqual(implementation["tools"][:4], ["read", "grep", "edit", "bash"])
-        self.assertIn("bash", diagnosis["tools"])
+        self.assertEqual(diagnosis["tools"], ["read", "grep"])
         self.assertNotIn("input_tokens", config["budget"])
         self.assertNotIn("output_tokens", implementation["budget"])
-        self.assertNotIn("model", diagnosis)
+        self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
         self.assertNotIn("model", implementation)
         self.assertEqual(config["model"]["reasoning_effort"], "high")
         self.assertEqual(implementation["grants"]["write"], [str(root)])
+        self.assertEqual(
+            implementation["grants"]["read"],
+            [str(root), "/repo/.git", "/opt/cargo-cache"],
+        )
+        self.assertEqual(implementation["grants"]["execute"], ["/opt/toolchain"])
+        self.assertEqual(config["task"], "Raise verified completion.")
+
+    def test_candidate_check_runs_rust_validation_and_accepts_clean_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "candidate"
+            for directory_name in ("crates/core/src", "docs", "scripts"):
+                (candidate / directory_name).mkdir(parents=True, exist_ok=True)
+            implementation = candidate / "crates/core/src/lib.rs"
+            regression = candidate / "crates/core/src/lib_test.rs"
+            specification = candidate / "docs/design.md"
+            implementation.write_text("pub fn value() -> u8 { 1 }\n", encoding="utf-8")
+            regression.write_text("#[test]\nfn value_is_one() {}\n", encoding="utf-8")
+            specification.write_text("The value is one.\n", encoding="utf-8")
+            loc = candidate / "scripts/loc.sh"
+            loc.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            subprocess.run(["git", "init", "--quiet", str(candidate)], check=True)
+            subprocess.run(["git", "-C", str(candidate), "add", "."], check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(candidate),
+                    "-c",
+                    "user.name=Foe Test",
+                    "-c",
+                    "user.email=foe@example.invalid",
+                    "commit",
+                    "--quiet",
+                    "-m",
+                    "Create candidate",
+                ],
+                check=True,
+            )
+            toolchain = root / "toolchain/bin"
+            toolchain.mkdir(parents=True)
+            cargo = toolchain / "cargo"
+            calls = root / "cargo-calls"
+            cargo.write_text(f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {calls}\nexit 0\n", encoding="utf-8")
+            cargo.chmod(0o755)
+            cargo_home = root / "cargo-home"
+            cargo_home.mkdir()
+            cargo_target = candidate / "target/check"
+            cargo_target.mkdir(parents=True)
+            check = root / "candidate-check"
+            write_candidate_check(check, candidate, cargo, cargo_home, cargo_target)
+            implementation.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
+            regression.write_text("#[test]\nfn value_is_two() {}\n", encoding="utf-8")
+            specification.write_text("The value is two.\n", encoding="utf-8")
+            accepted = check_candidate(check, candidate)
+            sandboxed = subprocess.run(
+                [str(check)], text=True, capture_output=True, check=True
+            )
+            cargo_calls = calls.read_text(encoding="utf-8").splitlines()
+        self.assertTrue(accepted["accepted"], accepted)
+        self.assertEqual(sandboxed.stdout, "\n")
+        self.assertEqual(len(cargo_calls), 6)
+        self.assertEqual(cargo_calls[1], "test --workspace")
+        self.assertEqual(
+            cargo_calls[4],
+            "test --workspace --exclude foe --exclude foe-transport --exclude foe-view -- --skip sandbox::tests::",
+        )
 
     def test_episode_measurement_prices_each_model_route(self):
         with tempfile.TemporaryDirectory() as directory:

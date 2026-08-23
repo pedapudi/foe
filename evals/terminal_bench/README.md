@@ -230,16 +230,41 @@ self-improvement workflow from that worktree:
 bazel run //evals/terminal_bench:self-improve -- \
   --candidate /path/to/clean/foe-candidate \
   --evidence "$PWD/target/foe-trajectory-evidence.json" \
+  --cargo /absolute/path/to/toolchain/bin/cargo \
+  --cargo-home /absolute/path/to/cargo-home \
   --keep "$PWD/target/foe-self-improvement" \
   --confirm-spend
 ```
 
-Terra with `high` reasoning runs both nodes. The coding node receives only the
-diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The workflow writes
-`direct_implementation_required: true` when it produces no valid candidate.
+Luna with `high` reasoning produces the bounded diagnosis. Terra with `high`
+reasoning receives that diagnosis and acts with `read`, `grep`, `edit`, and
+`bash`. The diagnosis child cannot read the retained run directories because
+the runner copies only the bounded evidence into its authority.
 
-Candidate validation and promotion occur outside the workflow. The workflow
-mechanism and evidence requirements are specified in
+`--cargo` must name the pinned toolchain binary. A Rustup proxy is refused
+because its result depends on process environment and may download a
+toolchain. The checker runs formatting, workspace tests, clippy, and the line
+budget under the supplied Cargo cache. Read grants cover Cargo and Rustup
+metadata and installed C headers. Execute grants cover the pinned toolchain
+and candidate build directory. They also cover Cargo's command shims for
+`fmt` and `clippy`. Executable tools cannot bind loopback listeners, so the
+in-episode check excludes the command-line, transport, and viewer packages
+whose tests bind loopback servers. It also skips nested sandbox tests that
+cannot expand the checker's existing Landlock domain. The runner repeats
+validation after the episode with the complete workspace test suite.
+
+The coding child receives read-only access to the candidate worktree's Git
+metadata. This access lets `git status`, `git diff`, and the independent
+candidate checker operate when the candidate is a linked Git worktree.
+
+The runner validates the artifact after Foe exits. A valid artifact remains
+accepted when the episode exhausted its reporting budget after producing the
+files. `direct_implementation_required` is true when deterministic validation
+finds an error or the workflow changes no files.
+
+Capability conversion still requires a separate benchmark rerun. Candidate
+promotion remains outside the workflow. The workflow mechanism and evidence
+requirements are specified in
 [`docs/self-improvement.md`](../../docs/self-improvement.md).
 
 ## Retained evidence
