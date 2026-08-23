@@ -98,7 +98,7 @@ the first `read` root, and paths in results are shown relative to it.
 | tool | effect | arguments | limits | canonical value |
 |---|---|---|---|---|
 | `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |
-| `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 500 characters per line; the search stops after 10,000 matches; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
+| `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
 | `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each `old_text` occurs exactly once; matches do not overlap; the result differs from the original | `path`, `edits`, `added`, `removed`, `diff` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
 
@@ -115,7 +115,7 @@ model received.
 | tool | subject on success | subject on failure |
 |---|---|---|
 | `read` | `src/parser.rs lines 1–6 of 42`, the span actually shown | the error, which names the file and what went wrong |
-| `grep` | `3 match(es) in 2 file(s) under src`, what the search found | the error, which names the pattern or the root |
+| `grep` | `3 match(es) in 2 file(s) under src`, with `; incomplete` when a collection bound or failed file stopped it | the error, which names the pattern or the root |
 | `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
 | `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
 
@@ -169,9 +169,11 @@ Searching runs in process through the `grep-searcher`, `grep-regex`,
 `grep-matcher`, and `ignore` libraries; no process is started. The tree
 below `path` is walked with the rules of `.gitignore` and `.ignore` files
 applied, whether or not the directory is a git checkout, and hidden entries
-are skipped. Each file is streamed through the reader, so search memory does
-not grow with file size. A symbolic link that leaves the read roots is
-skipped rather than followed. Files that contain a NUL byte are skipped.
+are skipped. Each file is streamed through the reader. The line-search buffer
+has an 8 MiB ceiling. A line or context window beyond that ceiling makes the
+result incomplete and increments `failed_files`. A symbolic link that leaves
+the read roots is skipped rather than followed. Files that contain a NUL byte
+are skipped.
 
 `pattern` uses Rust regex syntax. With `literal` true, the pattern is
 matched as a fixed string. `glob` restricts the search to files whose path
@@ -182,11 +184,13 @@ same files yields the same result regardless of directory order. A line
 longer than 500 characters is cut at 500 and followed by a marker that
 states how many characters were removed.
 
-The canonical value holds every hit collected. The rendered form states the
-match count and the file count, then lists hits up to `limit`. A matching
-line renders as `path:line:text`; a context line renders as
-`path:line-text`. When more matches exist than `limit`, the first line says
-so and suggests refining the pattern.
+The canonical value holds every hit collected, up to 20,000 matching and
+context lines. The rendered form states the match count and the file count,
+then lists hits up to `limit`. A matching line renders as `path:line:text`; a
+context line renders as `path:line-text`. When more matches exist than
+`limit`, the first line says so and suggests refining the pattern. A
+collection bound or failed file makes `complete` false and appears in the
+rendering.
 
 ### `edit`
 
