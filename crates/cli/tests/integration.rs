@@ -847,6 +847,62 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
     }
 }
 
+/// The recorded identity of every example program, under the fixed runtime
+/// [`RECORDED_RUNTIME`] rather than the running binary. A recorded identity
+/// is what tells a reader of a retained trajectory which program produced
+/// it, so the hash a document resolves to is a compatibility surface: a
+/// hash that moves silently makes every stored identity name a program
+/// nobody can reproduce. A change here is a deliberate change to what the
+/// model sees, never a side effect of moving code between crates.
+#[rustfmt::skip]
+const RECORDED_IDENTITIES: [(&str, &str); 12] = [
+    ("budget-exhausted", "sha256:eecc7a82d1c0eda4b6a6c631ace9640e025ef77cb0d003f1beeef1515d69839f"),
+    ("exec-transport", "sha256:e30d9c044f6640fefa844c3d1c12db00e02a12cf09926852dd056e5131c6c59d"),
+    ("host-transport", "sha256:f4cc1785221fe2121461927a7222138ba72cede0c380700f50186905b8968905"),
+    ("minimal", "sha256:88b057fbba006d4583d74d21e6f5a61df6f303eb2cb342acf842d1941612f582"),
+    ("recovery-exhausted", "sha256:cd9b947deeb0023f36f08d4f35c852a890212997c754be80cf1f1d4c667bc73e"),
+    ("sandbox", "sha256:028a568b96ed503fd9e013d4b2322a1ac11ad8e496d8044e4173923fdc990d43"),
+    ("self-extension", "sha256:f7db47b66a8bc0eee3961401c9ee302239d4b78e12806501f8d555502b997280"),
+    ("subagents", "sha256:c3dc2f3d274b33692849de5836bb72862e38c80fa801f1da0680f88afaf8fa14"),
+    ("team", "sha256:1b634774007f0345e56995081ad7044da20224aa7b24b0ac663da73fdaa7bcf2"),
+    ("verification-unsatisfiable", "sha256:113cd4ca62ebbe76813180881a5b4a3e06c3c7d3c8ccaf5f47770328e61e2e5b"),
+    ("workflow", "sha256:145df5fc1d777a5ee77a1003a27c3919a15d684bacf2d515dc0817e4cbad21c5"),
+    ("wrap-a-binary", "sha256:f53d2ed58cd00cd37026796c0cba09733d017f2a169fd57e6916c451912fea46"),
+];
+
+/// The runtime the recorded identities were computed under. The real one
+/// hashes the running binary, which differs on every build; pinning it here
+/// leaves the configuration as the only thing the recorded hashes measure.
+fn recorded_runtime() -> foe_log::RuntimeInfo {
+    foe_log::RuntimeInfo { version: "0.1.0".into(), build: "sha256:recorded".into() }
+}
+
+/// The built-in tool specifications the binary composes, which identity
+/// hashes with the rest of the program. `foe::run::extra_builtin_specs`
+/// builds the same list for the process; a test binary cannot reach into
+/// the command line's modules, so it names the two packs itself.
+fn builtin_specs() -> Vec<foe_core::ToolSpec> {
+    foe_code::all().iter().map(|t| t.spec().clone()).chain(foe_core::team::builtin_specs()).collect()
+}
+
+/// docs/design.md "Programs and identity": every example program hashes to
+/// the identity recorded for it.
+#[test]
+fn every_example_program_hashes_to_its_recorded_identity() {
+    let dir = scratch("identity-recorded");
+    let specs = builtin_specs();
+    let recorded: std::collections::BTreeMap<&str, &str> = RECORDED_IDENTITIES.into_iter().collect();
+    let found = examples();
+    assert_eq!(found.len(), recorded.len(), "every example has a recorded identity");
+    for (name, text) in found {
+        let path = materialize(&dir, &name, &text, "the task the recording ignores");
+        let program = foe_core::config::load(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let identity = foe_core::identity::compute(&program, &specs, &recorded_runtime())
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(identity.hash, recorded[name.as_str()], "{name}: the program hashes to another identity");
+    }
+}
+
 /// Replaces every `$ref` into `$defs` by the definition it names, to the
 /// given depth, so that the runtime's subset validator can check a document
 /// against the whole schema.
