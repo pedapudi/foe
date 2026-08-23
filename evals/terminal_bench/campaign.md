@@ -163,8 +163,8 @@ the model route, reasoning effort, task allowances, token policy, and task set.
 Higher-cost successful settings supply diagnostic contrasts.
 
 The coding node has Foe's standard coding tools: `read`, `grep`, `edit`, and
-`bash`. It may change runtime crates, specifications, examples, and repository
-build files. It cannot change evaluation code, benchmark material, model
+`bash`. Its write authority covers runtime crates, specifications, and
+examples. It cannot change evaluation code, benchmark material, model
 routes, reasoning settings, task allowances, token policy, or task selection.
 Its verifier uses a pinned Cargo binary. The verifier runs formatting,
 workspace tests, clippy, and line-budget checks.

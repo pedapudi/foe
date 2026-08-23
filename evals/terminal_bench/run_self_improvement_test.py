@@ -85,7 +85,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn("model", implementation)
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
         self.assertEqual(config["model"]["reasoning_effort"], "high")
-        self.assertEqual(implementation["grants"]["write"], [str(root)])
+        self.assertEqual(
+            implementation["grants"]["write"],
+            [str(root / directory) for directory in ("crates", "docs", "examples")],
+        )
         self.assertEqual(
             implementation["grants"]["read"],
             [str(root), "/repo/.git", "/opt/cargo-cache"],

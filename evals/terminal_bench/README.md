@@ -243,6 +243,8 @@ digest. Its only ordinary tool is `block`, so it cannot inspect the candidate
 source or retained run directories. Terra with `high` reasoning receives that
 diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The coding child
 locates the affected implementation, test, and specification files.
+Its write authority covers runtime crates, specifications, and examples. It
+cannot write evaluation code or benchmark material.
 
 The lower-cost evaluated configuration is the candidate configuration. The
 diagnosis preserves its model route, reasoning effort, task allowances, token

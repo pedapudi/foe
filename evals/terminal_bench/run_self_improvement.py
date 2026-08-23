@@ -22,7 +22,7 @@ from run import Pricing, read_cases
 
 
 DIAGNOSIS_CALLS = 4
-IMPLEMENTATION_CALLS = 24
+IMPLEMENTATION_CALLS = 28
 SECONDS = 3_600
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
 ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel.lock")
@@ -257,7 +257,7 @@ def build_config(
     development_reads = [str(path) for path in [*source_metadata_roots, *development_read_roots]]
     implementation_read_roots = [str(candidate), *development_reads]
     root_read_roots = [str(candidate), *diagnosis_read_roots, *development_reads]
-    write_roots = [str(candidate)]
+    write_roots = [str(candidate / directory) for directory in ALLOWED_DIRECTORIES]
     execute = [str(path) for path in execute_roots]
     check_tool = {
         "exec": str(check),
