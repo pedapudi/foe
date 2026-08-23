@@ -75,3 +75,16 @@ fn the_assembled_system_prompt_never_mentions_the_subject() {
         assert!(!whole.contains("subject"), "{} schema mentions the subject", schema.name);
     }
 }
+
+/// A subject past the cap ends in an ellipsis where it was cut, so a
+/// shortened line never passes for a complete one.
+#[test]
+fn a_cut_subject_is_marked_where_it_was_cut() {
+    let long = "x".repeat(foe_core::SUBJECT_MAX + 40);
+    let v = foe_core::ToolValue::ok(serde_json::json!({}), "").subject(&long);
+    let subject = v.subject.unwrap();
+    assert_eq!(subject.chars().count(), foe_core::SUBJECT_MAX);
+    assert!(subject.ends_with('\u{2026}'), "{subject}");
+    let short = foe_core::ToolValue::ok(serde_json::json!({}), "").subject("read a.txt");
+    assert_eq!(short.subject.as_deref(), Some("read a.txt"));
+}

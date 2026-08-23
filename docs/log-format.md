@@ -240,7 +240,8 @@ it: `rendered` is what the model received, and `subject` is what a person
 reads in a list of calls. The tool is the only thing that can state it,
 because the arguments say what was attempted and only the tool knows the
 outcome, so on failure the subject names what failed. It is one line of at
-most 120 characters, held to that where the field is written, and it never
+most 120 characters, held to that where the field is written — a line past
+the limit ends in an ellipsis, so a cut is never silent — and it never
 reaches the model: it appears in no tool schema and nowhere in the system
 prompt. The field is optional and absent when a tool states none, which is
 the case for host tools and for every log written before tools stated it.

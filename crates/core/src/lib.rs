@@ -135,9 +135,11 @@ impl ToolValue {
         Self { value, rendered: Some(message.clone()), is_error: true, subject: None }.subject(message)
     }
     /// Records what the call acted on, held to one line of [`SUBJECT_MAX`].
+    /// A line past the limit ends in an ellipsis, so a cut is never silent.
     pub fn subject(mut self, subject: impl Into<String>) -> Self {
         let line = subject.into().replace(['\n', '\t'], " ");
-        self.subject = Some(line.chars().take(SUBJECT_MAX).collect());
+        let cut: String = line.chars().take(SUBJECT_MAX - 1).collect();
+        self.subject = Some(if line.chars().count() > SUBJECT_MAX { cut + "…" } else { line });
         self
     }
 }

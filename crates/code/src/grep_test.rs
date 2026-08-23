@@ -107,5 +107,5 @@ async fn states_how_many_matches_it_found() {
     fx.write("a.txt", "alpha\nbeta\n");
     fx.write("b.txt", "alpha\n");
     let v = grep(&fx, json!({"pattern": "alpha"})).await;
-    assert_eq!(v.subject.as_deref(), Some("2 matches in 2 files under ."));
+    assert_eq!(v.subject.as_deref(), Some("2 match(es) in 2 file(s) under ."));
 }

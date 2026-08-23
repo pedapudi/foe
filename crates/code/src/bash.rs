@@ -7,7 +7,7 @@
 //! rather than as a tool error.
 
 use crate::{parse_args, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES};
-use foe_core::{fitting, CallCtx, Effect, ExecRequest, Tool, ToolSpec, ToolValue};
+use foe_core::{fitting, CallCtx, Effect, ExecRequest, Tool, ToolSpec, ToolValue, SUBJECT_MAX};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -172,7 +172,14 @@ impl Tool for Bash {
             }),
             out,
         )
-        .subject(format!("{} \u{b7} {status}", a.command))
+        // The status must survive the subject's length cap: a long command is
+        // cut to leave it room, since the outcome is what a reader scans for.
+        .subject({
+            let room = SUBJECT_MAX.saturating_sub(status.chars().count() + 4);
+            let cut: String = a.command.chars().take(room - 1).collect();
+            let cmd = if a.command.chars().count() > room { cut + "…" } else { a.command.clone() };
+            format!("{cmd} \u{b7} {status}")
+        })
     }
 }
 

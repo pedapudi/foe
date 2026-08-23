@@ -115,7 +115,7 @@ model received.
 | tool | subject on success | subject on failure |
 |---|---|---|
 | `read` | `src/parser.rs lines 1–6 of 42`, the span actually shown | the error, which names the file and what went wrong |
-| `grep` | `3 matches in 2 files under src`, what the search found | the error, which names the pattern or the root |
+| `grep` | `3 match(es) in 2 file(s) under src`, what the search found | the error, which names the pattern or the root |
 | `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
 | `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
 

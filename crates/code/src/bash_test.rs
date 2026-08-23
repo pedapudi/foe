@@ -136,3 +136,17 @@ async fn states_the_command_and_how_it_ended() {
     let v = Bash::new().call(json!({"command": "sleep 99"}), &c).await;
     assert_eq!(v.subject.as_deref(), Some("sleep 99 \u{b7} timed out after 30.0s; the process group was killed"));
 }
+
+/// A command longer than the subject's cap loses its middle, never its
+/// status: the outcome is the half a reader scans for, so the cut falls on
+/// the command and is marked where it happens.
+#[tokio::test]
+async fn a_long_command_is_cut_before_its_status_is() {
+    let fx = Fixture::new();
+    let c = ctx_with_executor(&fx, Arc::new(FakeExecutor::new(result(0, "ok\n", ""))));
+    let long = format!("printf '%s' {}", "x".repeat(200));
+    let v = Bash::new().call(json!({"command": long}), &c).await;
+    let subject = v.subject.unwrap();
+    assert!(subject.ends_with("\u{2026} \u{b7} exit 0 in 1.50s"), "{subject}");
+    assert!(subject.chars().count() <= foe_core::SUBJECT_MAX, "{subject}");
+}
