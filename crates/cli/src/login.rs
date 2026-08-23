@@ -22,7 +22,7 @@
 //! the input, capture the output, and point the endpoints at a local
 //! server.
 
-use foe_core::ModelConfig;
+use foe_config::ModelConfig;
 use foe_transport::auth::login::{self, default_model_in, write_default_model, BrowserLogin, Endpoints};
 use foe_transport::auth::AuthKind;
 use foe_transport::paths;

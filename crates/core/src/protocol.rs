@@ -6,10 +6,11 @@
 //! `inbox/item` to the log, `cancel` to the stop signal. A line tagged with
 //! a descendant's `episode_id` is handed to the [`Downlink`] unchanged.
 
-use crate::config::Program;
 use crate::loop_::{append_inbox_item, lock, until, wait_stop, Log};
-use crate::registry::host_spec;
-use crate::{CallCtx, ChunkSink, ModelRequestBody, Tool, ToolSpec, ToolValue, Transport};
+use crate::{CallCtx, ChunkSink, ModelRequestBody, Tool, ToolValue, Transport};
+use foe_config::config::Program;
+use foe_config::tools::host_spec;
+use foe_config::ToolSpec;
 use foe_log::{Chunk, EventData, InboxItem, InboxSource, ModelRoute};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};

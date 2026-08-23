@@ -2,11 +2,9 @@
 //! minimal resolved program, a scripted transport, probe tools that report
 //! which handles they received, and a fake executor.
 
-use crate::config::{resolve, Program};
-use crate::{
-    CallCtx, ChunkSink, Config, Effect, ExecRequest, ExecResult, Executor, ModelRequestBody, Tool, ToolSpec, ToolValue,
-    Transport,
-};
+use crate::{CallCtx, ChunkSink, ExecRequest, ExecResult, Executor, ModelRequestBody, Tool, ToolValue, Transport};
+use foe_config::config::{resolve, Program};
+use foe_config::{Config, Effect, ToolSpec};
 use foe_log::{Chunk, ModelRoute, StopReason, Usage};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -35,15 +33,7 @@ pub fn config_value(root: &Path) -> Value {
     })
 }
 
-pub fn config(root: &Path) -> Config {
-    serde_json::from_value(config_value(root)).unwrap()
-}
-
-pub fn program(root: &Path) -> Program {
-    resolve(&config(root)).unwrap()
-}
-
-pub fn program_with(root: &Path, edit: impl FnOnce(&mut Value)) -> Result<Program, crate::ConfigError> {
+pub fn program_with(root: &Path, edit: impl FnOnce(&mut Value)) -> Result<Program, foe_config::ConfigError> {
     let mut value = config_value(root);
     edit(&mut value);
     let config: Config = serde_json::from_value(value)?;

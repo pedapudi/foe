@@ -1,15 +1,16 @@
 //! Properties of a configured program tree that `foe plan` reports: every
 //! distinct tool definition the tree can invoke with the paths that may
 //! call it, every elementary workflow cycle, and every pair of nodes whose
-//! write roots overlap. They live beside the executor whose guarantees
-//! they describe, and beside `spawner_config`, which walks the same tree
-//! for the same reason: a workflow model node is reachable because firing
-//! it starts that node's episode.
+//! write roots overlap. Each is read from the document and its resolution
+//! alone, which is what makes them reportable before anything runs. They
+//! encode one rule the executor in `foe-workflow` realizes as well, and
+//! which `spawner_config` there realizes from the same walk: a workflow
+//! model node is reachable because firing it starts that node's episode.
 
-use crate::WorkflowConfig;
-use foe_core::config::{resolve_node_program, Program};
-use foe_core::registry::{resolve_sources, resolve_specs, Source};
-use foe_core::{Effect, ToolSpec};
+use crate::config::{resolve_node_program, Program};
+use crate::tools::{resolve_sources, resolve_specs, Source};
+use crate::workflow::WorkflowConfig;
+use crate::{Effect, ToolSpec};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -42,7 +43,7 @@ pub fn authority(root: &Program, extra: &[ToolSpec]) -> Result<Vec<Authority>, S
 /// Where each name in `program.tools` resolved, in `tools` order. The
 /// built-in names are the blocking tool and the packs the binary links.
 pub fn tool_sources(program: &Program, extra: &[ToolSpec]) -> Result<Vec<Source>, String> {
-    let mut builtins: Vec<&str> = vec![foe_core::harness_text::BLOCK_NAME];
+    let mut builtins: Vec<&str> = vec![crate::harness_text::BLOCK_NAME];
     builtins.extend(extra.iter().map(|s| s.name.as_str()));
     let configured: Vec<&str> = program.tool_defs.keys().map(String::as_str).collect();
     let host: Vec<&str> = program.host_tools.keys().map(String::as_str).collect();
@@ -74,9 +75,9 @@ fn collect_authority(
         }
     }
     if let Some(wf) = &program.workflow {
-        for (node, node_program) in crate::model_nodes(wf, "") {
+        for (node, node_program) in crate::workflow::model_nodes(wf, "") {
             let child_path = format!("{path}.workflow.nodes.{}.model", node.replace('/', ".workflow.nodes."));
-            let child = resolve_node_program(&child_path, program, &crate::node_program(node_program))
+            let child = resolve_node_program(&child_path, program, &crate::workflow::node_program(node_program))
                 .map_err(|e| e.to_string())?;
             collect_authority(&child, &child_path, extra, found)?;
         }

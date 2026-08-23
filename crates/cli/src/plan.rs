@@ -6,20 +6,20 @@
 //! docs/design.md "Subagents and teams".
 
 use crate::run;
-use foe_core::config::Program;
-use foe_core::workflow::{MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
+use foe_config::config::Program;
+use foe_config::workflow::{MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
 use std::fmt::Write;
 
-pub use foe_workflow::inspect::{cycles, tool_sources, Authority};
+pub use foe_config::inspect::{cycles, tool_sources, Authority};
 
 /// Every distinct tool definition reachable from `root`, with the binary's
-/// extra built-in packs supplied. See `foe_workflow::inspect`.
+/// extra built-in packs supplied. See `foe_config::inspect`.
 pub fn authority(root: &Program) -> Result<Vec<Authority>, String> {
-    foe_workflow::inspect::authority(root, &run::extra_builtin_specs())
+    foe_config::inspect::authority(root, &run::extra_builtin_specs())
 }
 
 pub fn write_overlaps(program: &Program) -> Result<Vec<(String, String, String, String)>, String> {
-    foe_workflow::inspect::write_overlaps(program, &run::extra_builtin_specs())
+    foe_config::inspect::write_overlaps(program, &run::extra_builtin_specs())
 }
 
 /// The authority report `foe plan` prints below the program. One line per

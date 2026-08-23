@@ -12,14 +12,16 @@
 
 use crate::bind;
 use crate::graph::{Produced, Scheduler};
+use foe_config::config::Program;
+use foe_config::harness_text as text;
+use foe_config::schema::conforms;
+use foe_config::tools::Source;
+use foe_config::workflow::{ancestors, Node, WorkflowConfig};
+use foe_config::{Effect, ToolSpec};
 use foe_core::budget::Pool;
-use foe_core::config::Program;
-use foe_core::harness_text as text;
 use foe_core::loop_::{lock, settle, until, wait_stop, Log, Params, Recorder};
-use foe_core::registry::{Handles, Registry, Source};
-use foe_core::schema::conforms;
-use foe_core::workflow::{ancestors, Node, WorkflowConfig};
-use foe_core::{Effect, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolSpec, ToolValue, Transport};
+use foe_core::registry::{Handles, Registry};
+use foe_core::{ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolValue, Transport};
 use foe_log::{
     BlockedCode, BudgetAmount, Chunk, ContentBlock, Event, EventData, ExhaustedLimit, HeaderReason, InboxItem,
     InboxSource, Message, ModelRequest, Outcome, RequestHeader, SpawnContext, ToolCall, ToolResult, WorkflowBranch,

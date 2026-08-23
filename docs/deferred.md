@@ -83,19 +83,6 @@ definitions in a file or find the definition of a name without reading whole
 files. Tree-sitter symbols are not implemented. No event type or
 configuration key is reserved.
 
-## Program inspection crate
-
-`foe_workflow::inspect` holds the analysis `foe plan` reports — reachable
-tool authority, workflow cycles, write overlaps. The analysis reads only
-configuration, the registry, and two config-level helpers (`model_nodes`,
-`node_program`) that live in the executor crate; it touches nothing of the
-executor itself. Its natural shape is a crate of its own over `core` alone,
-after those two helpers move to `core::workflow` beside the config-level
-workflow logic already there. The move is deferred until inspection gains a
-second consumer beyond the command line; until then the analysis stays
-beside the helpers it needs. No event type or configuration key is
-reserved.
-
 ## Code mode
 
 Code mode lets the model write a short program that calls several tools and

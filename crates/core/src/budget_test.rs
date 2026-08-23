@@ -1,5 +1,5 @@
 use super::Pool;
-use crate::Budget;
+use foe_config::Budget;
 use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
 
 pub fn budget() -> Budget {

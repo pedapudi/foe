@@ -9,13 +9,15 @@
 //! applied on the main thread before the asynchronous runtime starts, so
 //! every thread of the episode inherits it.
 
+use foe_config::config::{resolve, Program};
+use foe_config::identity::{compute, Identity};
+use foe_config::{Config, ModelConfig, ToolSpec};
 use foe_core::budget::Pool;
-use foe_core::config::{resolve, Program};
 use foe_core::confine::{Confined, Unconfined};
 use foe_core::context::ContextPolicy;
 use foe_core::exec::LocalExecutor;
 use foe_core::grants::{RootReader, RootWriter};
-use foe_core::identity::{self, Identity};
+use foe_core::identity::runtime_info;
 use foe_core::loop_::{self, Log, Params};
 use foe_core::protocol::{stdout_mirror, Host};
 use foe_core::registry::{Handles, Registry};
@@ -23,7 +25,7 @@ use foe_core::sandbox::{Policy, Sandbox};
 use foe_core::spawn::{ProcessSpawner, Router, Uplink};
 use foe_core::team::{self, Team};
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
-use foe_core::{Config, ModelConfig, Spawner, Tool, ToolSpec, Transport, Writer};
+use foe_core::{Spawner, Tool, Transport, Writer};
 use foe_log::{EpisodeStart, Outcome};
 use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
@@ -63,7 +65,7 @@ pub fn extra_builtin_specs() -> Vec<ToolSpec> {
 }
 
 pub fn identity(program: &Program) -> Result<Identity, String> {
-    identity::compute(program, &extra_builtin_specs(), &identity::runtime_info()).map_err(|e| e.to_string())
+    compute(program, &extra_builtin_specs(), &runtime_info()).map_err(|e| e.to_string())
 }
 
 pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
@@ -145,7 +147,7 @@ fn load_config(options: &Options) -> Result<Config, String> {
         return builtin_config(task, model, options.key_file.as_deref());
     };
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut config = foe_core::config::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut config = foe_config::config::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     if let Some(task) = &options.task {
         config.task = task.clone();
     }
@@ -184,7 +186,7 @@ fn builtin_config(task: String, mut model: ModelConfig, key_file: Option<&Path>)
         model.options.insert("api_key_file".to_string(), key_file.to_string_lossy().into_owned());
     }
     let document = serde_json::json!({
-        "version": foe_core::config::CONFIG_VERSION, "name": "coding", "task": task, "model": model,
+        "version": foe_config::config::CONFIG_VERSION, "name": "coding", "task": task, "model": model,
         "instructions": { "role": BUILTIN_INSTRUCTION }, "tools": ["read", "grep", "edit", "bash"],
         "grants": { "read": [cwd], "write": [cwd] }, "budget": { "model_calls": 40 },
     });
@@ -277,7 +279,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let identity = identity(&program)?;
     let context = context_policy(&program)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
-    let runtime_info = identity::runtime_info();
+    let runtime_info = runtime_info();
     let transport = match &mut program.model {
         Some(model) => Some(built_in_transport(model, &mut unconfined, &log_dir)?),
         None if options.host => None,
