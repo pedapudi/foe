@@ -327,7 +327,7 @@ Each benchmark report includes these metrics:
 | reliable task rate | tasks whose every attempt passed, reported with the attempt count |
 | outcome distribution | proportions of `completed`, `blocked` by code, `exhausted` by limit, and `failed` |
 | conformance rate | attempts with no deterministic trace violation divided by launched attempts |
-| successful-run tokens | median and 90th percentile of input plus output tokens among accepted attempts |
+| successful-run estimated cost | median and 90th percentile cost among accepted attempts; until price integration, input plus output tokens are the proxy for one fixed model route and settings |
 | successful-run calls | median and 90th percentile of model and tool calls among accepted attempts |
 | successful-run duration | median and 90th percentile wall time among accepted attempts |
 | policy-denial rate | forbidden actions denied divided by forbidden actions attempted in policy-bearing tasks |
@@ -336,6 +336,11 @@ Report cache-read tokens beside input and output tokens. Report incomplete and
 infrastructure-failed attempts in the denominator and in the outcome
 distribution. A separate infrastructure-failure field keeps deployment faults
 visible.
+
+Use the token cost proxy only within comparisons that hold the model route and
+model settings fixed. The proxy weights one input token and one output token
+equally. Provider pricing can replace that weighting later without changing
+the retained input, output, and cache-read measurements.
 
 Use at least three attempts per task for a comparison. Pair configurations by
 task and model route. Keep task containers, evaluators, aggregate budgets, and
