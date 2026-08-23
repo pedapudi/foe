@@ -15,7 +15,8 @@ Changing an existing type's data requires a new log version.
 ```
 <episode-dir>/
   episode.jsonl          the log
-  spill/                 tool output too large to inline, named by call id
+  spill/                 canonical values and complete result renderings too large to inline
+    renderings/          complete renderings, named by their SHA-256 digest
   children/<child-id>/   child episodes, each with this same layout
 ```
 
@@ -255,6 +256,30 @@ the episode was interrupted receives a result with `synthetic: true` and
 `is_error: true`. The rejection of every call in a response that hit the
 output length limit is `is_error: true` with `synthetic: false`, because the
 runtime produced that result in the ordinary course of the step.
+
+`tool/rendering-archive` — implemented. The turn budget shortened one tool
+rendering. This event immediately precedes that call's `tool/result`.
+
+```json
+{
+  "step": 3,
+  "call_id": "tc_01",
+  "file": "renderings/8d969eef6ecad3c29a3a629280e686cff8ca…txt",
+  "digest": "sha256:8d969eef6ecad3c29a3a629280e686cff8ca…",
+  "bytes": 54830
+}
+```
+
+The file contains the complete UTF-8 rendering before the turn budget cut
+it. Its name is `renderings/<digest-hex>.txt` under `spill/`. Equal
+renderings in one episode share one file. The writer synchronizes the file
+before appending this event. The event carries the digest of the file bytes
+and their length.
+
+A reader verifies the length and SHA-256 digest before using the archive.
+The file path must be the content-addressed name derived from `digest`.
+`tool/result.rendered` remains the text that entered the model context.
+Archive events contribute nothing to derived messages.
 
 `host/tool-call` — implemented. A tool call that resolves to a host tool,
 emitted so that the host can execute it. The result arrives as an ordinary
@@ -645,8 +670,16 @@ Given a source log and a boundary `seq` N:
    settlement and did not receive it. Charging the reservation is the
    conservative reading, so a synthetic release never understates a
    subtree.
-5. Append `seed/end`.
-6. Continue with live events.
+5. Copy each rendering archive whose archive event and matching tool result
+   were copied. Verify the source before copying and the destination after
+   copying. Do not copy an archive referenced only at or after N.
+6. Append `seed/end`.
+7. Continue with live events.
+
+The destination contains its own archive files. Retrieval from a seeded log
+does not open the source episode. A missing archive, an unexpected path, a
+length mismatch, or a digest mismatch makes seeding fail with the archive
+event and violated rule named.
 
 Copied `team/*` events belong to the source episode and are excluded from the
 new episode's team fold. A fold reads team events only when the log's own

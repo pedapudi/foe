@@ -3,8 +3,8 @@
 //! Every episode writes one log. The log is the source of truth for the
 //! model's request history, the viewer, replay, forking, budget accounting,
 //! and team state. `docs/log-format.md` specifies the format; this crate
-//! implements it and nothing else. It depends on serde alone so that any
-//! program can read a log without taking on the runtime.
+//! implements it and nothing else. It depends only on serde, serde_json, and
+//! thiserror, so a log reader does not take on the runtime.
 //!
 //! The types in this file are the contract between crates. Their shapes
 //! follow the specification field for field. Behavior lives in the sibling
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub mod append;
+pub mod digest;
 pub mod fold;
 pub mod seed;
 
@@ -68,6 +69,9 @@ pub enum EventData {
     // ---- tools -----------------------------------------------------------
     #[serde(rename = "tool/result")]
     ToolResult(ToolResult),
+    /// The complete rendering retained before the turn budget shortened it.
+    #[serde(rename = "tool/rendering-archive")]
+    ToolRenderingArchive(RenderingArchive),
     /// A tool call that resolves to a host tool. The host answers with a
     /// `tool/result` line over the protocol.
     #[serde(rename = "host/tool-call")]
@@ -552,6 +556,20 @@ pub enum VerificationStatus {
     Failed,
 }
 
+// ---- archived rendering payloads --------------------------------------------
+
+/// Immutable evidence for a rendering shortened before `tool/result`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RenderingArchive {
+    pub step: u32,
+    pub call_id: String,
+    /// Path below `spill/`, derived from `digest`.
+    pub file: String,
+    /// `sha256:<lowercase hex>` of the complete UTF-8 rendering.
+    pub digest: String,
+    pub bytes: u64,
+}
+
 // ---- inbox payloads ----------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -767,6 +785,8 @@ pub enum LogError {
     Invalid { seq: u64, rule: &'static str },
     #[error("log is empty")]
     Empty,
+    #[error("rendering archive event {seq} at {path}: {rule}")]
+    Archive { seq: u64, path: String, rule: String },
 }
 
 /// A fold of the log into the state a reader needs. See [`fold`].
@@ -784,6 +804,8 @@ pub struct State {
     /// Children by id, with their last known outcome.
     pub children: BTreeMap<String, Option<Outcome>>,
     pub seeded_through: Option<u64>,
+    /// An archive event must be followed immediately by its result.
+    pub pending_rendering_archive: Option<RenderingArchive>,
     /// Obligations opened and not yet closed, by pairing and key.
     pub open: BTreeSet<(Obligation, String)>,
     /// Obligations whose most recent opening has been closed.

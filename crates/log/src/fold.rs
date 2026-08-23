@@ -126,6 +126,8 @@ pub fn apply(state: &mut State, event: &Event) {
         EventData::InboxItem(item) => {
             state.inbox.insert(event.seq, (item.clone(), false));
         }
+        EventData::ToolRenderingArchive(archive) => state.pending_rendering_archive = Some(archive.clone()),
+        EventData::ToolResult(_) => state.pending_rendering_archive = None,
         EventData::SpawnStart { child_id, .. } => {
             state.children.insert(child_id.clone(), None);
         }
@@ -264,6 +266,13 @@ pub fn validate_next(prior: &State, event: &Event) -> Result<(), LogError> {
     if prior.outcome.is_some() {
         return invalid("episode/end is the last event");
     }
+    if let Some(archive) = &prior.pending_rendering_archive {
+        if !matches!(&event.data, EventData::ToolResult(result)
+            if result.step == archive.step && result.call_id == archive.call_id)
+        {
+            return invalid("tool/rendering-archive is followed by its matching tool/result");
+        }
+    }
     match (&prior.start, &event.data) {
         (None, EventData::EpisodeStart(_)) if seq == 0 => return Ok(()),
         (None, _) => return invalid("episode/start is the first event, at seq 0"),
@@ -286,6 +295,17 @@ pub fn validate_next(prior: &State, event: &Event) -> Result<(), LogError> {
             }
         }
         EventData::SeedEnd {} if prior.seeded_through.is_some() => return invalid("at most one seed/end per log"),
+        EventData::ToolRenderingArchive(archive) => {
+            if prior.pending_rendering_archive.is_some() {
+                return invalid("one tool/rendering-archive precedes one tool/result");
+            }
+            if !prior.open.contains(&(Obligation::ToolCall, archive.call_id.clone())) {
+                return invalid("tool/rendering-archive names an open tool call");
+            }
+            if crate::digest::rendering_file(&archive.digest).as_deref() != Some(&archive.file) {
+                return invalid("tool/rendering-archive file is derived from its SHA-256 digest");
+            }
+        }
         _ => {}
     }
     // Two rules over every pairing at once. A `tool/result` names a tool

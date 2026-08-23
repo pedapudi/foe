@@ -21,12 +21,19 @@ fn shown(values: &[ToolValue]) -> usize {
     values.iter().map(|v| v.rendered.as_deref().unwrap_or_default().chars().count()).sum()
 }
 
+fn apply_bound(values: &mut [ToolValue]) -> Vec<Option<crate::retrieval::ArchivedRendering>> {
+    let calls: Vec<ToolCall> = (0..values.len())
+        .map(|index| ToolCall { id: format!("tc_{index}"), name: "probe".into(), args: json!({}) })
+        .collect();
+    bound(values, &calls, 1, false)
+}
+
 /// docs/tools.md: a turn whose results fit within the budget is unchanged.
 #[test]
 fn a_turn_within_the_budget_shows_every_result_whole() {
     let mut values = vec![value(300), value(40_000)];
     let before: Vec<String> = values.iter().map(|v| v.rendered.clone().unwrap()).collect();
-    bound(&mut values);
+    apply_bound(&mut values);
     assert_eq!(values.iter().map(|v| v.rendered.clone().unwrap()).collect::<Vec<_>>(), before);
 }
 
@@ -36,7 +43,7 @@ fn a_turn_within_the_budget_shows_every_result_whole() {
 fn one_maximal_result_passes_whole() {
     let mut values = vec![value(crate::result_budget::TURN_BUDGET_CHARS - 1)];
     let before = values[0].rendered.clone().unwrap();
-    bound(&mut values);
+    apply_bound(&mut values);
     assert_eq!(values[0].rendered.clone().unwrap(), before);
 }
 
@@ -45,17 +52,18 @@ fn one_maximal_result_passes_whole() {
 #[test]
 fn parallel_calls_divide_one_budget() {
     let mut six: Vec<ToolValue> = (0..6).map(|_| value(60_000)).collect();
-    bound(&mut six);
+    let archives = apply_bound(&mut six);
     assert!(shown(&six) <= TURN_BUDGET_CHARS, "six calls showed {}", shown(&six));
+    assert!(archives.iter().all(Option::is_some), "cut results remain archived without retrieve");
+    assert!(six.iter().all(|value| value.rendered.as_deref().unwrap().contains("Issue the call again")));
 }
-
 /// docs/tools.md: a result shorter than its equal part leaves the remainder
 /// to the others.
 #[test]
 fn a_short_result_leaves_its_remainder_to_the_others() {
     let mut values = vec![value(200), value(90_000)];
     let short = values[0].rendered.clone().unwrap();
-    bound(&mut values);
+    apply_bound(&mut values);
     assert_eq!(values[0].rendered.as_deref(), Some(short.as_str()), "the short result is untouched");
     let large = values[1].rendered.as_deref().unwrap().chars().count();
     assert!(large > TURN_BUDGET_CHARS / 2, "the large result received only {large} characters");
@@ -69,7 +77,7 @@ fn a_short_result_leaves_its_remainder_to_the_others() {
 fn no_result_is_held_below_the_floor() {
     const CALLS: usize = 40;
     let mut values: Vec<ToolValue> = (0..CALLS).map(|_| value(60_000)).collect();
-    bound(&mut values);
+    apply_bound(&mut values);
     for v in &values {
         // The share is the floor; the notice naming what was removed is
         // taken out of it, and the cut lands on a line boundary.
@@ -89,7 +97,7 @@ fn no_result_is_held_below_the_floor() {
 #[test]
 fn a_numbered_window_keeps_its_head_and_names_the_line_to_resume_at() {
     let mut values = vec![window(1, 4_000), value(90_000)];
-    bound(&mut values);
+    apply_bound(&mut values);
     let out = values[0].rendered.clone().unwrap();
     assert!(out.starts_with("1\tsource line 1\n"), "{out:.60}");
     assert!(!out.contains("source line 4000"), "the tail of a window is not kept");
@@ -108,7 +116,7 @@ fn a_numbered_window_keeps_its_head_and_names_the_line_to_resume_at() {
 #[test]
 fn a_window_resumes_at_a_line_of_the_file() {
     let mut values = vec![window(500, 4_000), value(90_000)];
-    bound(&mut values);
+    apply_bound(&mut values);
     let out = values[0].rendered.clone().unwrap();
     assert!(out.starts_with("500\tsource line 500\n"), "{out:.60}");
     assert!(!out.contains("offset=1 "), "{}", &out[out.len() - 120..]);
@@ -122,7 +130,7 @@ fn other_output_keeps_its_head_and_its_tail() {
         .chain((1..=6_000).map(|n| format!("output line {n}\n")))
         .collect();
     let mut values = vec![ToolValue::ok(json!({}), body), value(90_000)];
-    bound(&mut values);
+    apply_bound(&mut values);
     let out = values[0].rendered.clone().unwrap();
     assert!(out.starts_with("[exit 1 in 4.20s]\n"), "the status leads");
     assert!(out.ends_with("output line 6000"), "the verdict at the end survives");
@@ -137,7 +145,7 @@ fn output_whose_later_lines_look_numbered_is_not_a_window() {
         .chain((1..=6_000).map(|n| format!("{n}\toutput column\n")))
         .collect();
     let mut values = vec![ToolValue::ok(json!({}), body), value(90_000)];
-    bound(&mut values);
+    apply_bound(&mut values);
     let out = values[0].rendered.clone().unwrap();
     assert!(!out.contains("offset="), "a command's output names no offset to read");
     assert!(out.contains("lines omitted here"), "{out:.200}");
@@ -152,6 +160,25 @@ fn a_result_without_a_rendering_is_rendered_and_counted() {
         ToolValue { value: json!({ "text": "y".repeat(200_000) }), rendered: None, is_error: false, subject: None },
         value(90_000),
     ];
-    bound(&mut values);
+    apply_bound(&mut values);
     assert!(values[0].rendered.as_deref().unwrap().chars().count() <= TURN_BUDGET_CHARS);
+}
+
+/// docs/tools.md "What a cut keeps": every shortened rendering is retained,
+/// and a program with retrieve receives an opaque cursor in the notice.
+#[test]
+fn a_cut_retains_the_complete_rendering_and_offers_retrieval() {
+    let mut values = vec![value(60_000), value(60_000)];
+    let original = values[0].rendered.clone().unwrap();
+    let calls = vec![
+        ToolCall { id: "tc_a".into(), name: "probe".into(), args: json!({}) },
+        ToolCall { id: "tc_b".into(), name: "probe".into(), args: json!({}) },
+    ];
+    let archives = bound(&mut values, &calls, 4, true);
+    let archived = archives[0].as_ref().unwrap();
+    assert_eq!(archived.complete, original);
+    assert_eq!(archived.digest, crate::retrieval::digest(original.as_bytes()));
+    let notice = values[0].rendered.as_ref().unwrap();
+    assert!(notice.contains("Use retrieve with cursor \"r1."), "{}", &notice[notice.len() - 300..]);
+    assert!(notice.chars().count() <= TURN_BUDGET_CHARS / 2);
 }

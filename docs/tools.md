@@ -6,16 +6,17 @@ implementation, which runs when the model calls it. [design.md](design.md)
 defines the specification (`ToolSpec`), the declared effect, and how the
 registry checks effects against grants. This document specifies where tools
 come from, the contract for tools that are executables, the four built-in
-coding tools, and the budget that bounds what one model turn's results
-show.
+coding tools, archived result retrieval, and the budget that bounds what one
+model turn's results show.
 
 ## Where tools come from
 
 The `tools` list in the configuration names every tool the model may call.
 Each name resolves against three sources, checked in this order.
 
-1. **Built-in tools.** Implemented in the runtime. There are eleven: the
+1. **Built-in tools.** Implemented in the runtime. There are twelve: the
    four coding tools `read`, `grep`, `edit`, and `bash` specified below;
+   `retrieve`, which reads a bounded segment of a prior tool rendering;
    `block`, by which the model reports a blocking condition; `spawn`, which
    starts a child episode, and `wait`, which blocks until every child this
    episode started has ended; `steer`, which sends a message to a running
@@ -45,6 +46,56 @@ rendered string. The log stores the canonical value in full. The model
 receives the rendered string when present and a compact rendering of the
 value otherwise. The rendering, and only the rendering, is bounded by the
 turn budget specified below.
+
+## Archived result retrieval
+
+The `retrieve` built-in reads a bounded segment from the complete rendering
+of an earlier result in the same episode. Its effect is `pure`. It receives
+no filesystem handle. The runtime reads only its own log and rendering
+archives, which are episode evidence.
+
+A program declares `retrieve` before the episode starts. The runtime omits its
+schema from model requests until the first rendering archive enters the log.
+The next request records a changed header that includes the schema. Episodes
+whose results remain within the turn budget pay no model-input cost for the
+tool definition.
+
+The tool has one argument, `cursor`. A shortening notice or an aged-result
+residue supplies this opaque string. The model copies the whole string and
+does not interpret its fields. Internally, the cursor version identifies the
+source step, call, rendering digest, and byte offset. A SHA-256 checksum
+detects a changed field.
+
+The runtime accepts a cursor only when all of these conditions hold:
+
+- its syntax, version, and checksum are valid;
+- its source is a tool result from an earlier step in this episode;
+- the source step, call identifier, and complete-rendering digest agree;
+- its byte offset is within the rendering and starts a UTF-8 character.
+
+Cursor resolution is evidence-local. A cursor copied from another episode
+works only when the receiving episode contains the same eligible result.
+This rule keeps retrieval valid after seeding copies that result. A cursor
+cannot make the runtime open another episode log.
+
+An uncut source is read from `tool/result.rendered`. A cut source is read
+from the content-addressed archive named by its preceding
+`tool/rendering-archive` event. Retrieval verifies the archive path, byte
+length, and digest before reading from it. It never reads a parent, child,
+or sibling log. It never opens a path from the original tool call or runs
+that tool again.
+
+The model-facing rendering of one call is at most 16,000 bytes and ends at
+a UTF-8 character boundary. Its canonical value records the source result
+sequence, rendering digest, returned byte range, returned text, whether
+content remains, and the next cursor when content remains. The rendered
+form contains the text and the next cursor. Repeated calls reconstruct the
+complete archived rendering.
+
+Malformed, changed, out-of-range, future, and unavailable cursors return an
+error that names the `retrieve` rule. A missing or changed archive returns
+an error that names its archive event and expected digest. Every answer is a
+function of the current episode's recorded prefix and immutable files.
 
 ## Configured executables
 
@@ -284,11 +335,10 @@ rewrite an earlier turn, which the append-only rule forbids.
 
 ### What a cut keeps
 
-A rendering that exceeds its part ends with a notice stating what was
-removed and naming the call that shows it. No tool exists for retrieving the
-removed part. The tool that produced the rendering can be called again, and
-the notice says how, so recovery uses a tool the model already has rather
-than one it must learn.
+A rendering that exceeds its part is archived before the shortened result
+is appended. A program that includes `retrieve` receives an opaque cursor
+for the complete rendering. A program without `retrieve` receives an
+instruction to narrow and repeat the original call.
 
 Which end is kept depends on the shape of the rendering, because the two
 shapes carry their information in different places.
@@ -303,7 +353,7 @@ shapes carry their information in different places.
 
   ```
   [Cut to fit this turn's result budget: 596 more lines, 54830 characters
-  in all. Read the same path again with offset=338 to continue from here.]
+  in all. Use retrieve with cursor "r1.…" for the complete result.]
   ```
 
 - **Any other rendering** keeps its head and its tail, two thirds of the room
@@ -313,16 +363,16 @@ shapes carry their information in different places.
 
   ```
   [Cut to fit this turn's result budget: 1092 of 1598 lines omitted here,
-  51369 characters in all. Issue the call again, narrowed, for the part you
-  need.]
+  51369 characters in all. Use retrieve with cursor "r1.…" for the complete
+  result.]
   ```
 
-Two properties hold. The canonical value is untouched, so the log, the
-viewer, and any later analysis still see the whole result; the budget bounds
-what the model reads and nothing else. The cut is applied before the result
-is appended, so the request that first carries the result and every request
-after it carry the same text. No earlier turn is ever rewritten, which is
-what lets a provider reuse the key-value cache of the prefix.
+Three properties hold. The canonical value is untouched. The complete
+rendering remains immutable episode evidence. The budget bounds the text
+that enters ordinary requests. The cut is applied before the result is
+appended, so the request that first carries the result and every request
+after it carry the same text. No earlier turn is rewritten, which lets a
+provider reuse the key-value cache of the prefix.
 
 The per-call limits of `read` and `bash` remain as bounds on what a tool
 collects into its canonical value and into the log. Parallel calls no longer

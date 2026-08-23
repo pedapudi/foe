@@ -81,3 +81,38 @@ fn writer_rejects_a_duplicate_or_orphan_tool_result() {
     assert!(matches!(writer.append(fx::result(1, "tc_1", "again")), Err(LogError::Invalid { seq: 6, .. })));
     assert_eq!(read_all(&dir).unwrap().len(), 6);
 }
+
+/// docs/log-format.md `tool/rendering-archive`: an archive names an open
+/// call, uses its digest-derived path, and immediately precedes its result.
+#[test]
+fn writer_enforces_the_rendering_archive_pair() {
+    let dir = tmp("rendering-archive");
+    let mut writer = Writer::create(&dir, None).unwrap();
+    writer.append(EventData::EpisodeStart(fx::start("ep"))).unwrap();
+    writer.append(fx::inbox(InboxSource::Task, "t")).unwrap();
+    writer.append(fx::assistant(1, "", vec![fx::call("tc_1")], false)).unwrap();
+    let hex = "a".repeat(64);
+    let archive = RenderingArchive {
+        step: 1,
+        call_id: "tc_1".into(),
+        file: format!("renderings/{hex}.txt"),
+        digest: format!("sha256:{hex}"),
+        bytes: 3,
+    };
+    writer.append(EventData::ToolRenderingArchive(archive)).unwrap();
+    assert!(matches!(writer.append(fx::header()), Err(LogError::Invalid { seq: 4, .. })));
+    writer.append(fx::result(1, "tc_1", "cut")).unwrap();
+
+    let mut wrong = Writer::create(&tmp("rendering-archive-path"), None).unwrap();
+    wrong.append(EventData::EpisodeStart(fx::start("ep"))).unwrap();
+    wrong.append(fx::inbox(InboxSource::Task, "t")).unwrap();
+    wrong.append(fx::assistant(1, "", vec![fx::call("tc_2")], false)).unwrap();
+    let invalid = RenderingArchive {
+        step: 1,
+        call_id: "tc_2".into(),
+        file: "renderings/other.txt".into(),
+        digest: format!("sha256:{}", "b".repeat(64)),
+        bytes: 3,
+    };
+    assert!(matches!(wrong.append(EventData::ToolRenderingArchive(invalid)), Err(LogError::Invalid { seq: 3, .. })));
+}

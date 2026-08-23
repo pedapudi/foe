@@ -404,8 +404,8 @@ an operation runs rather than when a pathname was last checked.
 Tools come from three sources, resolved in this order at construction.
 A name that resolves in two sources is an error.
 
-1. Built in, eleven of them: `read`, `grep`, `edit`, `bash`, `block`,
-   `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
+1. Built in, twelve of them: `read`, `grep`, `edit`, `bash`, `retrieve`,
+   `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
 2. Configured executables, declared in `tool_defs` with a path and a
    description. The runtime passes the model's `args` array as argv, captures
    stdout and stderr, and reports the exit code as data. A non-zero exit is a
@@ -424,13 +424,17 @@ The runtime applies that lever to every tool through one budget. A tool
 result is re-sent in every request after the step that produced it, so the
 cost of a rendering is its size multiplied by the number of later requests.
 The renderings of one model turn therefore share one character budget, which
-the calls of that turn divide between them, and a rendering over its part
-ends with a notice stating what was removed and naming the call that shows
-it. No tool retrieves the removed part: the tool that produced the rendering
-is called again, so recovery costs no vocabulary. The canonical value is
-untouched, so nothing is lost from the log, and the cut is applied before
-the result is appended, so no earlier turn is ever rewritten and a
-provider's key-value cache of the prefix stays valid.
+the calls of that turn divide between them. A rendering over its part ends
+with a notice stating what was removed. The runtime archives the complete
+rendering as immutable episode evidence before it appends the shortened
+result. A program that declares `retrieve` receives an opaque cursor in the
+notice and can read the archive in bounded segments. Its schema enters the
+request header after the first archive is recorded. An episode that never
+shortens a result does not carry that schema. Other programs receive the
+existing instruction to narrow and repeat the original call. The canonical
+value is untouched. The cut is applied before the result is appended, so no
+earlier turn is rewritten and a provider can reuse its key-value cache of the
+prefix.
 [tools.md](tools.md#the-turn-budget) specifies the division and the
 notice.
 
@@ -611,9 +615,9 @@ without `--config` uses a built-in coding workflow. An implementation episode
 changes the current directory. A fresh audit episode then checks the task and
 implementation claim, repairs defects, and produces the outcome.
 
-Both episodes have `read`, `grep`, `edit`, and `bash`. Both may read and write
-the current directory. Each episode has a 60-call backstop. The root holds
-their additive 120-call allowance.
+Both episodes have `read`, `grep`, `edit`, `bash`, and `retrieve`. Both may
+read and write the current directory. Each episode has a 60-call backstop.
+The root holds their additive 120-call allowance.
 
 `--verify PATH` names an executable verifier for the built-in workflow.
 The path is canonicalized and becomes a `tool_defs` entry named `check`

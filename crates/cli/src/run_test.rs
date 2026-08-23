@@ -101,3 +101,13 @@ fn builtin_environment_reports_fixed_path_observations_and_their_scope() {
     assert!(text.contains("python3=not found"));
     assert!(text.contains("not-found result covers only the listed standard locations"));
 }
+
+#[test]
+fn builtin_coding_can_retrieve_shortened_tool_results() {
+    let config = builtin_config("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None).unwrap();
+    assert_eq!(config.tools, ["read", "grep", "edit", "bash", "retrieve"]);
+    for node in config.workflow.as_ref().unwrap().nodes.values() {
+        assert!(node.model.as_ref().unwrap().tools.iter().any(|tool| tool == "retrieve"));
+    }
+    assert!(extra_builtin_specs().iter().any(|spec| spec.name == foe_core::retrieval::NAME));
+}

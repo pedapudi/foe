@@ -86,7 +86,7 @@ episode.
     "20-style": "Prefer the smallest change that makes the test pass. Run the test after every edit."
   },
 
-  "tools": ["read", "grep", "edit", "bash", "ruff", "check"],
+  "tools": ["read", "grep", "edit", "bash", "retrieve", "ruff", "check"],
 
   "tool_defs": {
     "ruff": {
@@ -179,14 +179,16 @@ rendered order, so it changes what the model sees, so it changes identity.
 
 List of strings. Required, with at least one entry.
 
-Each string names a tool. The order of the list is the order in which tool
-schemas are sent to the model and the order in which tool instructions are
-appended to the system prompt. The order therefore participates in identity.
+Each string names a tool. The order of the list is the order in which eligible
+tool schemas are sent to the model. It is also the order in which tool
+instructions are appended to the system prompt. The order therefore
+participates in identity. The runtime withholds the `retrieve` schema until
+the episode records a rendering archive that the tool can read.
 
 A name resolves against three sources, checked in this order:
 
-1. Built-in tools: `read`, `grep`, `edit`, `bash`, `block`, `spawn`,
-   `wait`, `steer`, `notify`, `send`, `team`.
+1. Built-in tools: `read`, `grep`, `edit`, `bash`, `retrieve`, `block`,
+   `spawn`, `wait`, `steer`, `notify`, `send`, `team`.
 2. Entries in `tool_defs`.
 3. Entries in `host_tools`.
 

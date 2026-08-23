@@ -535,6 +535,13 @@ fn every_event_variant_round_trips() {
             EventData::AssistantMessage(m)
         },
         result(1, "c", "r"),
+        EventData::ToolRenderingArchive(RenderingArchive {
+            step: 1,
+            call_id: "c".into(),
+            file: format!("renderings/{}.txt", "a".repeat(64)),
+            digest: format!("sha256:{}", "a".repeat(64)),
+            bytes: 1,
+        }),
         EventData::HostToolCall { step: 1, call_id: "c".into(), name: "h".into(), args: reserved.clone() },
         inbox(InboxSource::Request, "reserved source"),
         EventData::BudgetReserve {
