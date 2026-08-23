@@ -46,7 +46,11 @@
       "regex-chess",
       "write-compressor",
       "fix-ocaml-gc",
-      "dna-assembly"
+      "dna-assembly",
+      "feal-linear-cryptanalysis",
+      "model-extraction-relu-logits",
+      "gpt2-codegolf",
+      "path-tracing"
     ],
     "confirmation": [
       "build-cython-ext",
@@ -153,6 +157,12 @@
       "expected_output_tokens": 80000,
       "seconds": 1800
     },
+    "feal-linear-cryptanalysis": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 1800
+    },
     "extract-elf": {
       "model_calls": 40,
       "expected_input_tokens": 400000,
@@ -181,6 +191,12 @@
       "model_calls": 40,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
+      "seconds": 900
+    },
+    "gpt2-codegolf": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
       "seconds": 900
     },
     "hf-model-inference": {
@@ -225,11 +241,23 @@
       "expected_output_tokens": 80000,
       "seconds": 3600
     },
+    "model-extraction-relu-logits": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 900
+    },
     "password-recovery": {
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
       "seconds": 3600
+    },
+    "path-tracing": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 1800
     },
     "path-tracing-reverse": {
       "model_calls": 60,

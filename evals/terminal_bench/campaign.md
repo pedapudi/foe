@@ -57,7 +57,7 @@ Six Terminal-Bench tasks already have inspected trajectories. They remain develo
 - `sanitize-git-repo`;
 - `large-scale-text-editing`.
 
-Eight additional tasks form the capability-search set:
+Twelve additional tasks form the capability-search set:
 
 - `password-recovery`;
 - `path-tracing-reverse`;
@@ -66,9 +66,17 @@ Eight additional tasks form the capability-search set:
 - `regex-chess`;
 - `write-compressor`;
 - `fix-ocaml-gc`;
-- `dna-assembly`.
+- `dna-assembly`;
+- `feal-linear-cryptanalysis`;
+- `model-extraction-relu-logits`;
+- `gpt2-codegolf`;
+- `path-tracing`.
 
-The final four tasks were added after Sol `low` solved both failures from the first four tasks. They were selected from task metadata at repository commit `7131e4375048a0e408a8fb404b5f499d726b695b`. Each is marked hard and represents a different implementation or reasoning demand. [The pinned task metadata](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b/tasks) is the selection source.
+The tasks from `regex-chess` through `dna-assembly` were added after Sol `low` solved both failures among the first four tasks. They were selected from task metadata at repository commit `7131e4375048a0e408a8fb404b5f499d726b695b`.
+
+Each selected task is marked hard and represents a different implementation or reasoning demand. [The pinned task metadata](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b/tasks) is the selection source.
+
+Four reasoning-heavy tasks were added after `dna-assembly` failed to qualify as a stable reasoning gap. Unchanged Sol `low` completed one of three attempts. Unchanged Sol `xhigh` also completed one of three attempts. The additional tasks were frozen from the same pinned metadata before their instructions were opened.
 
 Opening any capability-search result makes that task development evidence. These tasks can identify the Sol `low` and Sol `xhigh` capability gap. They cannot provide confirmation after inspection.
 
