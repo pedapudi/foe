@@ -178,7 +178,7 @@ integration builds the bundle before measuring and fails a build over
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |
-| [docs/telemetry.md](docs/telemetry.md) | what `foe-telemetry` derives from an episode log, the schema it emits, and what it never emits |
+| [docs/telemetry.md](docs/telemetry.md) | what telemetry derives from an episode log when enabled, the schema it emits, and what it never emits |
 | [docs/protocol.md](docs/protocol.md) | the line protocol between foe and the process that launched it |
 | [docs/sdk.md](docs/sdk.md) | the Python package |
 | [docs/tools.md](docs/tools.md) | built-in tools, configured executables, and host tools |

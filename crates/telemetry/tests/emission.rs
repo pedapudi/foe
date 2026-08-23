@@ -1,12 +1,9 @@
-//! End-to-end tests: the payload against a golden file, the binary against
+//! End-to-end tests: the payload against a golden file, emission against
 //! real episode logs, and the self-check against a log engineered to slip
 //! the known-value layer.
 
 use foe_log::Event;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-
-const BINARY: &str = env!("CARGO_BIN_EXE_foe-telemetry");
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -90,14 +87,10 @@ fn the_self_check_refuses_a_log_it_cannot_fully_scrub() {
 }
 
 #[test]
-fn the_binary_refuses_the_seeded_log_and_writes_nothing() {
+fn emission_refuses_the_seeded_log_and_writes_nothing() {
     let out = temp("seeded").join("otel.jsonl");
-    let run = Command::new(BINARY)
-        .args(["emit", fixtures().join("seeded").to_str().unwrap(), "--out", out.to_str().unwrap()])
-        .output()
-        .unwrap();
-    assert!(!run.status.success());
-    assert!(String::from_utf8_lossy(&run.stderr).contains("scrub self-check failed, nothing emitted"));
+    let refusal = foe_telemetry::emit_into(&fixtures().join("seeded"), &out, key());
+    assert!(refusal.unwrap_err().contains("scrub self-check failed, nothing emitted"));
     assert!(!out.exists(), "a refused emission still wrote a capture file");
 }
 
@@ -108,98 +101,66 @@ fn the_binary_refuses_the_seeded_log_and_writes_nothing() {
 /// written without a field this build requires, carrying grants naming a
 /// user whose name appears in a later tool subject.
 #[test]
-fn emit_refuses_a_log_it_cannot_fully_read_and_writes_nothing() {
+fn emission_refuses_a_log_it_cannot_fully_read_and_writes_nothing() {
     let out = temp("skewed").join("otel.jsonl");
-    let run = Command::new(BINARY)
-        .args(["emit", fixtures().join("skewed").to_str().unwrap(), "--out", out.to_str().unwrap()])
-        .output()
-        .unwrap();
-    assert!(!run.status.success());
-    let complaint = String::from_utf8_lossy(&run.stderr);
+    let complaint = foe_telemetry::emit_into(&fixtures().join("skewed"), &out, key()).unwrap_err();
     assert!(complaint.contains("1 line(s) this build cannot read"), "{complaint}");
     assert!(complaint.contains("scrubbing coverage cannot be guaranteed"), "{complaint}");
     assert!(complaint.contains("Nothing emitted."), "{complaint}");
     assert!(!out.exists(), "a refused emission still wrote a capture file");
 }
 
-/// Preview still runs, because seeing what the log holds is how a person
-/// finds out why it cannot be read. It says up front that emission refuses
-/// it, so nothing here is mistaken for what would be written.
+/// The leak the refusal exists to prevent is visible when the skewed log is
+/// read anyway: the grants never parsed, so the user name they would have
+/// taught the scrubber reaches a subject untouched. `read_log` reports the
+/// unreadable line for the caller to warn on, and the rendering shows what
+/// a person needs to see to understand why emission refuses.
 #[test]
-fn preview_of_a_log_it_cannot_fully_read_leads_with_a_warning() {
-    let out = temp("skewed-preview").join("otel.jsonl");
-    let run = Command::new(BINARY)
-        .args(["preview", fixtures().join("skewed").to_str().unwrap(), "--out", out.to_str().unwrap()])
-        .output()
-        .unwrap();
-    assert!(run.status.success());
-    let warning = String::from_utf8_lossy(&run.stderr);
-    assert!(warning.starts_with("!! "), "{warning}");
-    assert!(warning.contains("scrubbing coverage cannot be guaranteed"), "{warning}");
-    assert!(warning.contains("refuses this log"), "{warning}");
-    // The leak the refusal exists to prevent is visible in the preview: the
-    // user name reaches the subject because the grants never parsed.
-    assert!(String::from_utf8_lossy(&run.stdout).contains("marlow"));
+fn the_skewed_log_reports_its_unreadable_line_and_shows_the_leak() {
+    let (events, dir, unparsed) = foe_telemetry::read_log(&fixtures().join("skewed")).unwrap();
+    assert_eq!(unparsed, 1);
+    let derived = foe_telemetry::emission(&events, &dir.to_string_lossy(), key()).unwrap();
+    assert!(foe_telemetry::preview(&derived).contains("marlow"));
 }
 
 #[test]
-fn two_runs_of_emit_produce_byte_identical_output() {
+fn two_emissions_produce_byte_identical_output() {
     let dir = temp("determinism");
-    let log = fixtures().join("clean");
-    let run = |name: &str| {
+    let write = |name: &str| {
         let out = dir.join(name);
-        let status = Command::new(BINARY)
-            .args(["emit", log.to_str().unwrap(), "--out", out.to_str().unwrap()])
-            .status()
-            .unwrap();
-        assert!(status.success());
+        foe_telemetry::emit_into(&fixtures().join("clean"), &out, key()).unwrap();
         std::fs::read(out).unwrap()
     };
-    assert_eq!(run("first.jsonl"), run("second.jsonl"));
+    assert_eq!(write("first.jsonl"), write("second.jsonl"));
 }
 
 #[test]
-fn emit_appends_one_object_per_episode() {
+fn emission_appends_one_object_per_episode() {
     let out = temp("append").join("otel.jsonl");
-    let log = fixtures().join("clean");
     for _ in 0..3 {
-        let status = Command::new(BINARY)
-            .args(["emit", log.to_str().unwrap(), "--out", out.to_str().unwrap()])
-            .status()
-            .unwrap();
-        assert!(status.success());
+        foe_telemetry::emit_into(&fixtures().join("clean"), &out, key()).unwrap();
     }
     let written = std::fs::read_to_string(&out).unwrap();
     assert_eq!(written.lines().count(), 3);
     assert!(written.lines().all(|line| serde_json::from_str::<serde_json::Value>(line).is_ok()));
 }
 
+/// What emission writes is `Emission::line`, so the payload a reader is
+/// shown and the payload the capture holds cannot differ.
 #[test]
-fn preview_prints_what_emit_would_write() {
-    let out = temp("preview").join("otel.jsonl");
-    let log = fixtures().join("clean");
-    let capture = |command: &str, json: bool| {
-        let mut args = vec![command, log.to_str().unwrap(), "--out", out.to_str().unwrap()];
-        if json {
-            args.push("--json");
-        }
-        Command::new(BINARY).args(&args).output().unwrap()
-    };
-    let previewed = capture("preview", true);
-    assert!(previewed.status.success());
-    assert!(capture("emit", false).status.success());
-    assert_eq!(String::from_utf8_lossy(&previewed.stdout), std::fs::read_to_string(&out).unwrap());
+fn the_capture_holds_exactly_the_rendered_line() {
+    let out = temp("line").join("otel.jsonl");
+    foe_telemetry::emit_into(&fixtures().join("clean"), &out, key()).unwrap();
+    let (events, dir, _) = foe_telemetry::read_log(&fixtures().join("clean")).unwrap();
+    let derived = foe_telemetry::emission(&events, &dir.to_string_lossy(), key()).unwrap();
+    assert_eq!(std::fs::read_to_string(&out).unwrap(), derived.line());
 }
 
 #[test]
 fn preview_reports_the_bucket_its_evidence_the_totals_and_the_scrub_counts() {
-    let out = temp("readable").join("otel.jsonl");
-    let run = Command::new(BINARY)
-        .args(["preview", fixtures().join("clean").to_str().unwrap(), "--out", out.to_str().unwrap()])
-        .output()
-        .unwrap();
-    assert!(run.status.success());
-    let printed = String::from_utf8_lossy(&run.stdout);
+    let (events, dir, _) = foe_telemetry::read_log(&fixtures().join("clean")).unwrap();
+    let derived = foe_telemetry::emission(&events, &dir.to_string_lossy(), key()).unwrap();
+    let printed = foe_telemetry::preview(&derived);
     assert!(printed.contains("ep_7c1a · replay/recorded-1 · completed/none"));
     assert!(printed.contains("category  programming → programming"));
     assert!(printed.contains("cargo test=testing"));
@@ -219,7 +180,7 @@ fn preview_reports_the_bucket_its_evidence_the_totals_and_the_scrub_counts() {
 /// answer and the test accepts it, while requiring that every other
 /// fixture emits and that no fixture fails for any other reason.
 #[test]
-fn the_binary_runs_against_every_real_viewer_fixture() {
+fn emission_runs_against_every_real_viewer_fixture() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../view/fixtures");
     let out = temp("viewer").join("otel.jsonl");
     let mut logs: Vec<PathBuf> = std::fs::read_dir(&dir)
@@ -231,14 +192,9 @@ fn the_binary_runs_against_every_real_viewer_fixture() {
     assert!(logs.len() >= 10, "the viewer fixtures moved");
     let mut emitted = 0;
     for log in &logs {
-        let run = Command::new(BINARY)
-            .args(["emit", log.to_str().unwrap(), "--out", out.to_str().unwrap()])
-            .output()
-            .unwrap();
-        let complaint = String::from_utf8_lossy(&run.stderr);
-        match run.status.success() {
-            true => emitted += 1,
-            false => assert!(
+        match foe_telemetry::emit_into(log, &out, key()) {
+            Ok(_) => emitted += 1,
+            Err(complaint) => assert!(
                 complaint.contains("this build cannot read"),
                 "{} failed for a reason other than an unreadable line: {complaint}",
                 log.display()

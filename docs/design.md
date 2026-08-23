@@ -702,7 +702,7 @@ the browser, the outcome line, and the exit codes.
 Telemetry is budgeted apart too: `crates/telemetry` under 800 lines. It is
 separate because it reads a finished log rather than producing one. Nothing
 in the runtime depends on it, the crate depends on `log` alone, and an
-installation that never runs `foe-telemetry` carries none of its behavior.
+installation that never enables telemetry carries none of its behavior.
 See [docs/telemetry.md](telemetry.md).
 
 Rust outside every line budget, in the built-in transport, is bounded by the
