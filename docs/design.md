@@ -26,6 +26,7 @@ piece.
 | [workflow.md](workflow.md) | declared dataflow graphs, choice points, and recovery |
 | [compaction.md](compaction.md) | when and how the model's context is compacted, and what survives the cut |
 | [design-language.md](design-language.md) | the visual language the viewer follows |
+| [viewer-study.md](viewer-study.md) | a historical record of the layouts weighed before the viewer's outline |
 
 ## The problem
 
