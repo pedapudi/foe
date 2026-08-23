@@ -20,6 +20,7 @@ use foe_core::ModelConfig;
 use foe_transport::auth::{self, AuthKind};
 use foe_transport::paths;
 use foe_transport::providers::{Provider, PROVIDERS};
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -52,13 +53,9 @@ pub struct Endpoints {
 
 impl Default for Endpoints {
     fn default() -> Self {
-        Endpoints {
-            base_url: None,
-            authorize_url: auth::token_file::codex::AUTHORIZE_URL.to_string(),
-            token_url: auth::token_file::codex::TOKEN_URL.to_string(),
-            callback_port: auth::token_file::codex::REDIRECT_PORT,
-            open_browser: true,
-        }
+        use auth::token_file::codex;
+        let (authorize_url, token_url) = (codex::AUTHORIZE_URL.to_string(), codex::TOKEN_URL.to_string());
+        Endpoints { base_url: None, authorize_url, token_url, callback_port: codex::REDIRECT_PORT, open_browser: true }
     }
 }
 
@@ -119,12 +116,11 @@ pub fn run(session: &mut Session, options: Options) -> Result<ExitCode, String> 
 fn list(session: &mut Session) -> Result<(), String> {
     let width = PROVIDERS.iter().map(|p| p.name.len()).max().unwrap_or(0);
     for provider in PROVIDERS {
-        let state = if provider.auth == AuthKind::None {
-            "no login"
-        } else if paths::credentials_path(&session.home, provider.name).is_file() {
-            "configured"
-        } else {
-            "not configured"
+        let configured = paths::credentials_path(&session.home, provider.name).is_file();
+        let state = match (provider.auth == AuthKind::None, configured) {
+            (true, _) => "no login",
+            (_, true) => "configured",
+            _ => "not configured",
         };
         say(session, &format!("{:<width$}  {:<14}  {}", provider.name, state, provider.description))?;
     }
@@ -155,12 +151,15 @@ fn status(session: &mut Session) -> Result<(), String> {
 
 /// Configures the provider's credential and returns the options the
 /// default model block needs beyond `provider` and `model`.
-fn configure(
-    session: &mut Session,
-    provider: &'static Provider,
-) -> Result<std::collections::BTreeMap<String, String>, String> {
-    let mut extra = std::collections::BTreeMap::new();
-    match provider.auth {
+///
+/// Every flow has one shape: gather the provider's answers, verify them
+/// against the provider, and write one credential file. Only the gathering
+/// and the verification differ, so the arms produce the note that names
+/// what was written and share the path and the report.
+fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTreeMap<String, String>, String> {
+    let mut extra = BTreeMap::new();
+    let path = paths::credentials_path(&session.home, provider.name);
+    let note = match provider.auth {
         AuthKind::ApiKey { header } => {
             let base_url = match provider.default_base_url {
                 Some(_) => session.endpoints.base_url.clone(),
@@ -179,16 +178,14 @@ fn configure(
             say(session, "verifying...")?;
             foe_transport::verify_credential(provider, base_url.as_deref(), &credential)
                 .map_err(|e| format!("{e}; check the key and run `foe login {}` again", provider.name))?;
-            let path = paths::credentials_path(&session.home, provider.name);
             auth::api_key::write_api_key(&path, &key).map_err(|e| format!("{}: {e}", path.display()))?;
-            say(session, &format!("wrote {}", path.display()))?;
+            String::new()
         }
         AuthKind::TokenFile { .. } => {
             let token = browser_login(session)?;
-            let path = paths::credentials_path(&session.home, provider.name);
             auth::token_file::write_token(&path, &token).map_err(|e| format!("{}: {e}", path.display()))?;
             let last4 = token.account_id.as_deref().map(|id| &id[id.len().saturating_sub(4)..]).unwrap_or("none");
-            say(session, &format!("wrote {} (account ...{last4})", path.display()))?;
+            format!(" (account ...{last4})")
         }
         AuthKind::Google => {
             let default = session.home.join(GCLOUD_DEFAULT);
@@ -205,11 +202,10 @@ fn configure(
                 format!("{e}; run `gcloud auth application-default login` or name a service account key file")
             })?;
             google.token().map_err(|e| format!("could not mint an access token: {e}"))?;
-            let path = paths::credentials_path(&session.home, provider.name);
             let json = serde_json::json!({ "credentials_file": file, "project": project, "location": location });
             paths::write_private(&path, format!("{}\n", serde_json::to_string_pretty(&json).unwrap()).as_bytes())
                 .map_err(|e| format!("{}: {e}", path.display()))?;
-            say(session, &format!("wrote {} ({} credentials)", path.display(), google.credentials().kind()))?;
+            format!(" ({} credentials)", google.credentials().kind())
         }
         AuthKind::None => {
             return Err(format!(
@@ -217,7 +213,8 @@ fn configure(
                 provider.name, provider.name
             ));
         }
-    }
+    };
+    say(session, &format!("wrote {}{note}", path.display()))?;
     Ok(extra)
 }
 

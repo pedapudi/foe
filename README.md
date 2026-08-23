@@ -74,6 +74,10 @@ coding configuration against the current directory. The providers are
 `vertex`, and `exec`, a program of your own; [docs/models.md](docs/models.md)
 describes each.
 
+`foe --help` prints the command set and the options a bare `foe` takes;
+`foe <command> --help` prints one command's options, each with the value it
+takes, its default, and what it does.
+
 A configuration of your own is one JSON document. This is the smallest one
 that runs with the built-in model transport.
 

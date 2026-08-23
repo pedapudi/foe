@@ -574,7 +574,19 @@ foe view DIR [--serve [--port N]]                        write a self-contained 
 foe plan --config FILE [--json]                          print the resolved program, its identity, its transport, and its effective authority
 foe tools [--config FILE]                                list tools, with sources when a config is given
 foe schema                                               print the JSON Schema for the configuration
+foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
+
+One declarative table in `crates/cli/src/main.rs` names every form, its
+positional shape, and each option it accepts with that option's value
+placeholder, its default, and its meaning. The parser and both help screens
+read that table and nothing else, so an option the parser accepts is
+documented and an option the table omits is refused. `foe --help`, which
+`foe help` repeats, prints the running form's options and every other
+command word; `foe <command> --help`, which `foe help <command>` repeats,
+prints one command's options; both exit 0. An unrecognised option names
+itself and the help that lists what its command takes, rather than
+reprinting every form.
 
 In every running form except `--host`, standard output receives exactly one
 line when the episode ends: the outcome as JSON. A shell reads it with one

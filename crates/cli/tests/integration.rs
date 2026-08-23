@@ -884,3 +884,32 @@ fn every_example_conforms_to_the_schema_and_parses() {
     broken["budget"]["model_calls"] = json!("many");
     assert!(foe_core::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
 }
+
+/// The issue's acceptance, checked against the process a person runs:
+/// every help form succeeds and prints its screen on standard output, and
+/// an invocation that fails still fails on standard error.
+#[test]
+fn help_exits_zero_on_standard_output_for_every_form() {
+    for args in [
+        vec!["--help"],
+        vec!["help"],
+        vec!["login", "--help"],
+        vec!["view", "--help"],
+        vec!["plan", "--help"],
+        vec!["tools", "--help"],
+        vec!["schema", "--help"],
+        vec!["telemetry", "--help"],
+    ] {
+        let printed = Command::new(FOE).args(&args).output().unwrap();
+        let text = String::from_utf8(printed.stdout).unwrap();
+        assert!(printed.status.success(), "`foe {}` exited {:?}", args.join(" "), printed.status.code());
+        assert!(text.starts_with("usage: foe"), "`foe {}` printed no usage line: {text}", args.join(" "));
+        assert!(text.contains("\noptions:\n"), "`foe {}` documented no options: {text}", args.join(" "));
+        assert!(printed.stderr.is_empty(), "`foe {}` wrote to standard error", args.join(" "));
+    }
+    let refused = Command::new(FOE).arg("--nonesuch").output().unwrap();
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(String::from_utf8(refused.stderr).unwrap().contains("run `foe --help`"), "the refusal points at help");
+    let bare = Command::new(FOE).output().unwrap();
+    assert_eq!(bare.status.code(), Some(1), "a bare `foe` still refuses");
+}

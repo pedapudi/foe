@@ -23,13 +23,12 @@ pub struct Authority {
     source: &'static str,
     effect: Effect,
     definition: Value,
-    programs: Vec<String>,
+    programs: BTreeSet<String>,
 }
 
 /// A row is keyed by name, source, definition body, and effect together, so
 /// that two programs that define one name differently stay apart.
 type AuthorityKey = (String, &'static str, String, String);
-type AuthorityValue = (Value, Effect, BTreeSet<String>);
 
 /// Every distinct tool definition reachable from `root`, with the program
 /// paths that may call it. A child program is reachable only when its
@@ -37,18 +36,9 @@ type AuthorityValue = (Value, Effect, BTreeSet<String>);
 /// because firing it starts that node's episode.
 pub fn authority(root: &Program) -> Result<Vec<Authority>, String> {
     let extra = run::extra_builtin_specs();
-    let mut found: BTreeMap<AuthorityKey, AuthorityValue> = BTreeMap::new();
+    let mut found: BTreeMap<AuthorityKey, Authority> = BTreeMap::new();
     collect_authority(root, "program", &extra, &mut found)?;
-    Ok(found
-        .into_iter()
-        .map(|((name, source, _, _), (definition, effect, programs))| Authority {
-            name,
-            source,
-            effect,
-            definition,
-            programs: programs.into_iter().collect(),
-        })
-        .collect())
+    Ok(found.into_values().collect())
 }
 
 /// Where each name in `program.tools` resolved, in `tools` order. The
@@ -65,7 +55,7 @@ fn collect_authority(
     program: &Program,
     path: &str,
     extra: &[ToolSpec],
-    found: &mut BTreeMap<AuthorityKey, AuthorityValue>,
+    found: &mut BTreeMap<AuthorityKey, Authority>,
 ) -> Result<(), String> {
     let specs = resolve_specs(program, extra).map_err(|e| e.to_string())?;
     let sources = tool_sources(program, extra)?;
@@ -76,9 +66,9 @@ fn collect_authority(
             Source::Host => ("host", serde_json::to_value(&program.host_tools[name])),
         };
         let definition = definition.map_err(|e| e.to_string())?;
-        let effect = serde_json::to_value(spec.effect).map_err(|e| e.to_string())?.to_string();
-        let key = (name.clone(), source, definition.to_string(), effect);
-        found.entry(key).or_insert_with(|| (definition, spec.effect, BTreeSet::new())).2.insert(path.to_string());
+        let key = (name.clone(), source, definition.to_string(), format!("{:?}", spec.effect));
+        let row = Authority { name: name.clone(), source, effect: spec.effect, definition, programs: BTreeSet::new() };
+        found.entry(key).or_insert(row).programs.insert(path.to_string());
     }
     for name in &program.grants.spawn {
         if let Some(child) = program.programs.get(name) {
@@ -110,11 +100,10 @@ pub fn authority_report(rows: &[Authority]) -> String {
             "host" => row.definition["description"].as_str().unwrap_or_default().to_string(),
             _ => String::new(),
         };
-        let name = &row.name;
-        let (source, effect) = (row.source, effect.unwrap_or_default());
-        let line = format!("  {name:<12} {source:<10} {effect:<7} {body}");
+        let line = format!("  {:<12} {:<10} {:<7} {body}", row.name, row.source, effect.unwrap_or_default());
         writeln!(out, "{}", line.trim_end()).ok();
-        writeln!(out, "               programs {}", row.programs.join(", ")).ok();
+        let programs: Vec<&str> = row.programs.iter().map(String::as_str).collect();
+        writeln!(out, "               programs {}", programs.join(", ")).ok();
     }
     out
 }
@@ -220,22 +209,20 @@ pub fn workflow_report(program: &Program) -> Result<String, String> {
             (_, Some(program)) => format!("model {}", program.name),
             _ => "workflow".to_string(),
         };
+        let branches: Vec<String> = node.branches.iter().map(|(l, s)| format!("{l} -> [{}]", s.join(", "))).collect();
+        // Each part appears only when the node declares it, in this order.
+        let parts = [
+            (!inputs[name].is_empty()).then(|| format!("follows {}", inputs[name].join(", "))),
+            node.verify.as_ref().map(|verify| format!("verify {verify} (retries {})", node.retries)),
+            (!branches.is_empty()).then(|| format!("branches {}", branches.join("; "))),
+            node.max_fires.map(|n| format!("max_fires {n}")),
+            node.terminal.then(|| "terminal".to_string()),
+            node.empty.is_some().then(|| "empty".to_string()),
+        ];
         let mut line = format!("  {name:<12} {kind}");
-        if !inputs[name].is_empty() {
-            write!(line, "  follows {}", inputs[name].join(", ")).ok();
+        for part in parts.iter().flatten() {
+            write!(line, "  {part}").ok();
         }
-        if let Some(verify) = &node.verify {
-            write!(line, "  verify {verify} (retries {})", node.retries).ok();
-        }
-        if !node.branches.is_empty() {
-            let labels: Vec<String> = node.branches.iter().map(|(l, s)| format!("{l} -> [{}]", s.join(", "))).collect();
-            write!(line, "  branches {}", labels.join("; ")).ok();
-        }
-        if let Some(n) = node.max_fires {
-            write!(line, "  max_fires {n}").ok();
-        }
-        let flags = [(node.terminal, "  terminal"), (node.empty.is_some(), "  empty")];
-        line.extend(flags.iter().filter(|(set, _)| *set).map(|(_, flag)| *flag));
         writeln!(out, "{line}").ok();
     }
     out.push_str("workflow edges\n");
