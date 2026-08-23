@@ -294,7 +294,7 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
         budget,
         done_when: program.done_when.clone(),
         context: program.context.clone(),
-        model: parent.model.clone(),
+        model: program.model.clone().or_else(|| parent.model.clone()),
         sandbox: parent.sandbox.clone(),
         programs: program.programs.clone(),
         workflow: program.workflow.clone(),

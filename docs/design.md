@@ -434,6 +434,7 @@ notice.
 An episode with a `spawn` grant may start child episodes. A child is a
 separate process with its own log, its own grants, and a budget reserved from
 its parent's remaining budget. The child's log header names the parent.
+The child may select a model or inherit the nearest ancestor's selection.
 
 ```
    root   budget: 40 calls, 320k input, 80k output
