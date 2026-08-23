@@ -144,6 +144,19 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     assert_eq!(child.budget.max_episodes, 2, "the granted share caps the child's own allowance");
 }
 
+/// docs/config.md `model`: a spawned child's declared model replaces the
+/// parent's selection in the child configuration written to disk.
+#[test]
+fn child_configuration_preserves_a_model_override() {
+    let mut config = parent_config();
+    config.model = Some(crate::ModelConfig::new("openai-codex", "gpt-5.6-sol"));
+    let worker = config.programs.get_mut("worker").unwrap();
+    worker.model = Some(crate::ModelConfig::new("openai-codex", "gpt-5.6-luna"));
+    let worker = worker.clone();
+    let child = child_config(&config, &worker, "t".into(), BudgetAmount::default());
+    assert_eq!(child.model.unwrap().model, "gpt-5.6-luna");
+}
+
 /// docs/config.md `budget` and docs/workflow.md "Model nodes": a model node
 /// inside a child program's nested workflow is descendant work, so the child
 /// asks for its subtree allowance even with no explicit spawn grant.

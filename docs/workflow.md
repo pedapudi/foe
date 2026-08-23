@@ -172,7 +172,9 @@ that contains the workflow.
 - `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`,
   and `loop_threshold` are each at most the containing program's value. An
   omitted optional spend limit draws from the containing budget.
-- The `model` and `sandbox` blocks are inherited and cannot be declared.
+- The `sandbox` block is inherited and cannot be declared. A `model` block
+  selects the node's model. An omitted block inherits the nearest ancestor's
+  model.
 
 `max_episodes` and `max_concurrent` carry no ceiling here. The budget pool
 clamps the episode share a child receives when it reserves, and

@@ -145,6 +145,19 @@ fn every_rule_names_its_key() {
         ("model.provider", Box::new(|v| v["model"] = json!({ "provider": " ", "model": "m" }))),
         ("model.model", Box::new(|v| v["model"] = json!({ "provider": "anthropic", "model": "" }))),
         (
+            "programs.kid.model.provider",
+            Box::new({
+                let root = root.clone();
+                move |v| {
+                    v["programs"] = json!({ "kid": {
+                        "name": "kid", "instructions": { "a": "b" }, "tools": ["block"],
+                        "grants": { "read": [root] }, "budget": { "model_calls": 1 },
+                        "model": { "provider": " ", "model": "m" }
+                    } });
+                }
+            }),
+        ),
+        (
             "programs.kid.instructions",
             Box::new({
                 let root = root.clone();
@@ -186,7 +199,7 @@ fn a_workflow_model_node_schema_is_checked_at_its_dotted_key() {
 }
 
 #[test]
-fn children_inherit_model_and_sandbox_and_validate_recursively() {
+fn children_override_or_inherit_models_and_inherit_sandbox() {
     let root = tmp("config-children");
     std::fs::create_dir_all(root.join("child")).unwrap();
     std::fs::write(root.join("k.key"), "k").unwrap();
@@ -196,16 +209,41 @@ fn children_inherit_model_and_sandbox_and_validate_recursively() {
         v["model"] = json!({ "provider": "anthropic", "model": "m", "api_key_file": root.join("k.key") });
         v["programs"] = json!({ "kid": {
             "name": "kid", "instructions": { "a": "b" }, "tools": ["block"],
-            "grants": { "read": [root.join("child")], "write": [root.join("child")] }, "budget": { "model_calls": 1 }
+            "grants": { "read": [root.join("child")], "write": [root.join("child")] }, "budget": { "model_calls": 1 },
+            "model": { "provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "high" },
+            "programs": { "grandchild": {
+                "name": "grandchild", "instructions": { "a": "b" }, "tools": ["block"],
+                "grants": { "read": [root.join("child")] }, "budget": { "model_calls": 1 }
+            } }
         } });
     })
     .unwrap();
     let kid = &program.programs["kid"];
-    assert_eq!(kid.model, program.model);
+    assert_eq!(kid.model.as_ref().unwrap().model, "gpt-5.6-luna");
+    assert_eq!(kid.programs["grandchild"].model, kid.model, "an omitted model inherits the nearest declaration");
     assert_eq!(kid.sandbox, program.sandbox);
     assert_eq!(kid.grants.read, vec![std::fs::canonicalize(root.join("child")).unwrap()]);
     assert!(validate(&config(&root)).is_ok());
     assert!(resolve(&config(&root)).is_ok());
+}
+
+/// docs/workflow.md "Model nodes": a model node may select a model instead
+/// of inheriting the containing program's selection.
+#[test]
+fn a_workflow_model_node_can_select_its_model() {
+    let root = tmp("config-workflow-model");
+    let parent = program_with(&root, |v| {
+        v["model"] = json!({ "provider": "openai-codex", "model": "gpt-5.6-sol" });
+    })
+    .unwrap();
+    let child = serde_json::from_value(json!({
+        "name": "diagnose", "instructions": { "role": "diagnose" }, "tools": ["block"],
+        "grants": { "read": [root] }, "budget": { "model_calls": 1 },
+        "model": { "provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "high" }
+    }))
+    .unwrap();
+    let resolved = super::resolve_node_program("workflow.nodes.diagnose.model", &parent, &child).unwrap();
+    assert_eq!(resolved.model.unwrap().model, "gpt-5.6-luna");
 }
 
 fn node(name: &str, root: &std::path::Path) -> Value {

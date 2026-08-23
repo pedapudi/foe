@@ -63,6 +63,7 @@ impl From<&Config> for ChildProgram {
             budget: c.budget.clone(),
             done_when: c.done_when.clone(),
             context: c.context.clone(),
+            model: c.model.clone(),
             programs: c.programs.clone(),
             workflow: c.workflow.clone(),
         }
@@ -98,11 +99,6 @@ pub fn load(path: &Path) -> Result<Program, ConfigError> {
 pub fn validate(config: &Config) -> Result<(), ConfigError> {
     require(config.version == CONFIG_VERSION, "version", format!("is {CONFIG_VERSION}"))?;
     require(!config.task.trim().is_empty(), "task", "is not empty")?;
-    if let Some(model) = &config.model {
-        for (key, value) in [("model.provider", &model.provider), ("model.model", &model.model)] {
-            require(!value.trim().is_empty(), key, "is not empty")?;
-        }
-    }
     validate_section("", &ChildProgram::from(config))
 }
 
@@ -117,6 +113,11 @@ fn require_absolute(key: &str, path: &Path) -> Result<(), ConfigError> {
 
 fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
     let key = |k: &str| key_at(prefix, k);
+    if let Some(model) = &s.model {
+        for (field, value) in [("provider", &model.provider), ("model", &model.model)] {
+            require(!value.trim().is_empty(), key(&format!("model.{field}")), "is not empty")?;
+        }
+    }
     require(!s.name.trim().is_empty(), key("name"), "is not empty")?;
     require(!s.instructions.is_empty(), key("instructions"), "has at least one entry")?;
     for (section, text) in &s.instructions {
@@ -206,6 +207,8 @@ fn resolve_section(
     parent: Option<&Grants>,
 ) -> Result<Program, ConfigError> {
     let key = |k: &str| key_at(prefix, k);
+    let model = s.model.clone().or_else(|| inherited.0.clone());
+    let descendants = (model.clone(), inherited.1.clone());
     let canonical = |k: String, path: &Path| -> Result<PathBuf, ConfigError> {
         std::fs::canonicalize(path).map_err(|e| invalid(k, format!("names an existing path: {}: {e}", path.display())))
     };
@@ -240,7 +243,7 @@ fn resolve_section(
     }
     let mut programs = BTreeMap::new();
     for (name, child) in &s.programs {
-        let program = resolve_section(&key(&format!("programs.{name}")), child, inherited, Some(&grants))?;
+        let program = resolve_section(&key(&format!("programs.{name}")), child, &descendants, Some(&grants))?;
         programs.insert(name.clone(), program);
     }
     let program = Program {
@@ -253,14 +256,14 @@ fn resolve_section(
         budget: s.budget.clone(),
         done_when: s.done_when.clone(),
         context: s.context.clone(),
-        model: inherited.0.clone(),
+        model,
         sandbox: inherited.1.clone(),
         programs,
         workflow: s.workflow.clone(),
     };
     if let Some(wf) = &s.workflow {
         let mut subset = |k: &str, p: &ChildProgram| {
-            let node = resolve_section(k, p, inherited, Some(&program.grants))?;
+            let node = resolve_section(k, p, &descendants, Some(&program.grants))?;
             within_ceiling(k, &node, &program)
         };
         workflow::check(&key("workflow"), wf, &s.tools, &mut subset)?;
