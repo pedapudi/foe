@@ -52,7 +52,7 @@ def build_program(
             "provider": provider,
             "model": model,
             "reasoning_effort": reasoning_effort,
-            "api_key_file": credential_path,
+            "token_file": credential_path,
         },
         "sandbox": {"mode": "off"},
         "task": instruction,
@@ -61,12 +61,14 @@ def build_program(
 
 def read_episode_summary(log_dir: Path) -> dict[str, Any]:
     """Measure usage and read the root outcome from a retained episode tree."""
-    paths = sorted(log_dir.rglob("episode.jsonl")) if log_dir.is_dir() else []
+    root_path = log_dir / "episode.jsonl"
+    if not root_path.is_file():
+        raise FileNotFoundError(f"Foe episode log does not exist: {root_path}")
+    paths = sorted(log_dir.rglob("episode.jsonl"))
     calls = 0
     tool_calls = 0
     messages: list[dict[str, Any]] = []
     outcome: dict[str, Any] | None = None
-    root_path = log_dir / "episode.jsonl"
     for path in paths:
         for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip():

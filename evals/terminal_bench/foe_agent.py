@@ -47,6 +47,7 @@ class FoeAgent(BaseInstalledAgent):
         self._output_tokens = int(output_tokens)
         self._seconds = int(seconds)
         self._reasoning_effort = reasoning_effort
+        self._exit_code: int | None = None
         if not self._foe_binary.is_file():
             raise FileNotFoundError(f"Foe binary does not exist: {self._foe_binary}")
         if not self._credential_file.is_file():
@@ -145,8 +146,7 @@ class FoeAgent(BaseInstalledAgent):
                 cwd=environment.task_env_config.workdir,
             )
             status_line = (result.stdout or "").strip().splitlines()
-            status = int(status_line[-1]) if status_line else None
-            context.metadata = {"foe_exit_code": status}
+            self._exit_code = int(status_line[-1]) if status_line else None
         finally:
             await self._retain_credential(environment)
 
@@ -177,6 +177,7 @@ class FoeAgent(BaseInstalledAgent):
         metadata = dict(context.metadata or {})
         metadata.update(
             {
+                "foe_exit_code": self._exit_code,
                 "foe_model_calls": summary["model_calls"],
                 "foe_tool_calls": summary["tool_calls"],
                 "foe_usage_reported": summary["usage_reported"],
