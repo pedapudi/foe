@@ -38,6 +38,17 @@ bazel run //evals/harness_bench:foe-development -- \
   --confirm-spend
 ```
 
+Set one reasoning effort for every selected task when measuring the quality,
+token, and latency tradeoff of that model option:
+
+```sh
+bazel run //evals/harness_bench:foe-development -- \
+  --model openai-codex/gpt-5.6-sol \
+  --reasoning-effort medium \
+  --keep target/foe-harness-bench-medium-reasoning \
+  --confirm-spend
+```
+
 Each attempt retains its workspace, Foe program, complete episode tree,
 negative-control grade, final programmatic grade, usage, trace result, and
 process outcome. Grading runs after Foe exits. The grader source remains

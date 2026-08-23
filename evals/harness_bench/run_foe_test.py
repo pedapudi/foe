@@ -45,6 +45,16 @@ class HarnessBenchAdapterTest(unittest.TestCase):
             self.assertGreater(task.model_calls, 0)
             self.assertGreater(task.seconds, 0)
 
+    def test_reasoning_effort_is_recorded_in_the_model_route(self) -> None:
+        self.assertEqual(
+            run_foe.model_route("openai-codex/gpt-5.6-sol", "medium"),
+            {"provider": "openai-codex", "model": "gpt-5.6-sol", "reasoning_effort": "medium"},
+        )
+        self.assertEqual(
+            run_foe.model_route("openai-codex/gpt-5.6-sol"),
+            {"provider": "openai-codex", "model": "gpt-5.6-sol"},
+        )
+
     def test_grade_score_prefers_programmatic_outcome(self) -> None:
         self.assertEqual(run_foe.grade_score({"outcome_score": 0.75, "score": 0.5}), 0.75)
         self.assertIsNone(run_foe.grade_score({"checks": []}))

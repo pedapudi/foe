@@ -197,11 +197,14 @@ def prepare_task(task_dir: Path, workspace: Path) -> tuple[str, dict[str, Any], 
     return render_prompt(prompt, workspace, runtime), runtime, cleanup
 
 
-def model_route(value: str) -> dict[str, str]:
+def model_route(value: str, reasoning_effort: str | None = None) -> dict[str, str]:
     provider, slash, model = value.partition("/")
     if not slash or not provider or not model:
         raise ValueError("--model takes PROVIDER/MODEL")
-    return {"provider": provider, "model": model}
+    route = {"provider": provider, "model": model}
+    if reasoning_effort:
+        route["reasoning_effort"] = reasoning_effort
+    return route
 
 
 def program(task: Task, workspace: Path, prompt: str, route: dict[str, str], tools: dict[str, Path]) -> dict[str, Any]:
@@ -460,6 +463,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--task", action="append", choices=sorted(TASKS))
     parser.add_argument("--attempts", type=int, default=1)
     parser.add_argument("--model", default="openai-codex/gpt-5.6-sol")
+    parser.add_argument("--reasoning-effort", choices=("low", "medium", "high", "xhigh"))
     parser.add_argument("--keep", type=Path)
     parser.add_argument("--confirm-spend", action="store_true")
     return parser.parse_args()
@@ -469,7 +473,7 @@ def main() -> int:
     args = parse_args()
     if args.attempts < 1:
         raise SystemExit("--attempts must be positive")
-    route = model_route(args.model)
+    route = model_route(args.model, args.reasoning_effort)
     identifiers = args.task or list(TASKS)
     selected = [TASKS[name] for name in identifiers]
     task_dirs = {path.parent.name: path.parent.resolve() for path in args.task_dir}
