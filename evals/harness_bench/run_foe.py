@@ -261,7 +261,7 @@ def program(task: Task, workspace: Path, prompt: str, route: dict[str, str], too
 
 
 def visible_test_command(task: Task) -> str:
-    python = '"${0%/*}/../../pytest-venv/bin/python3"'
+    python = '"${0%/*}/../pytest-venv/bin/python3"'
     if task.identifier == "083-monorepo-interface-repair":
         return f"PYTHONPATH=packages/catalog:packages/orders:packages/reports exec {python} -m pytest tests"
     return f"exec {python} -m pytest tests"

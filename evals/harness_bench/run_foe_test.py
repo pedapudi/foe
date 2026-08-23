@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -74,8 +75,29 @@ class HarnessBenchAdapterTest(unittest.TestCase):
     def test_visible_test_wrapper_contains_no_attempt_path(self) -> None:
         for identifier in ("083-monorepo-interface-repair", "085-flaky-test-root-cause"):
             command = run_foe.visible_test_command(run_foe.TASKS[identifier])
-            self.assertIn('${0%/*}/../../pytest-venv/bin/python3', command)
+            self.assertIn('${0%/*}/../pytest-venv/bin/python3', command)
             self.assertNotIn("/tmp/", command)
+
+    def test_visible_test_wrapper_executes_sibling_python(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            executable = root / "tools" / "test"
+            python = root / "pytest-venv" / "bin" / "python3"
+            executable.parent.mkdir()
+            python.parent.mkdir(parents=True)
+            python.write_text('#!/bin/sh\nprintf "%s\\n" "$*"\n', encoding="utf-8")
+            python.chmod(0o755)
+            command = run_foe.visible_test_command(run_foe.TASKS["085-flaky-test-root-cause"])
+            executable.write_text(f"#!/bin/sh\n{command}\n", encoding="utf-8")
+            executable.chmod(0o755)
+            result = subprocess.run(
+                [str(executable)],
+                check=True,
+                capture_output=True,
+                cwd=root,
+                text=True,
+            )
+        self.assertEqual(result.stdout.strip(), "-m pytest tests")
 
     def test_reasoning_effort_is_recorded_in_the_model_route(self) -> None:
         self.assertEqual(
