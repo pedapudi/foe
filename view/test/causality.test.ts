@@ -424,6 +424,46 @@ test("every row carries its log position, because the outline reorders time", ()
   assert.ok(ids.indexOf("ep_child") < ids.indexOf("ep_root/step/3"), "the child is read before later steps");
 });
 
+test("a log position is printed once per event, not once per row", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  const deep = visibleRows(outline, "everything");
+  // A step's prose and a call's result body stand for the event their own
+  // row already named, so they leave the column blank; the column is there
+  // to show where reading order jumps, and a repeat hides that.
+  const prose = deep.find((r) => r.kind === "prose")!;
+  const result = deep.find((r) => r.kind === "result")!;
+  assert.equal(prose.showSeq, false);
+  assert.equal(result.showSeq, false);
+  for (const row of deep) {
+    if (row.showSeq !== false) continue;
+    const above = deep[deep.indexOf(row) - 1]!;
+    assert.equal(above.id, row.parent, `${row.id} continues the row above it`);
+    assert.equal(above.seq, row.seq, `${row.id} stands for the event above it`);
+  }
+  // No two rows in a row print the same number.
+  const printed = deep.filter((r) => r.showSeq !== false);
+  for (let i = 1; i < printed.length; i += 1) {
+    const a = printed[i - 1]!;
+    const b = printed[i]!;
+    assert.ok(a.seq !== b.seq || a.episodeId !== b.episodeId, `${a.id} and ${b.id} both print ${a.seq}`);
+  }
+});
+
+test("two episodes that both begin at zero each print their own zero", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  // Collapsed to the rail the child follows the root directly and both
+  // logs start at zero. That second zero is the jump the column exists to
+  // show, so it is printed rather than swallowed as a repeat.
+  const rail = visibleRows(outline, "episodes");
+  assert.deepEqual(
+    rail.map((r) => [r.seq, r.showSeq]),
+    [
+      [0, true],
+      [0, true],
+    ],
+  );
+});
+
 test("lanes hold at every reading, and every curve still lands on a line", () => {
   for (const files of [["root.jsonl", "child.jsonl"], WORKFLOW]) {
     const outline = causalityOutline(run(...files));

@@ -120,7 +120,13 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
       .join(" "),
     "data-row": row.id,
   });
-  el.appendChild(h("div", { class: "outline-seq", title: "log position" }, fmtInt(row.seq)));
+  // The position is printed once per event: a row that continues the one
+  // above it leaves the column blank rather than repeating the number.
+  el.appendChild(
+    row.showSeq === false
+      ? h("div", { class: "outline-seq" })
+      : h("div", { class: "outline-seq", title: "log position" }, fmtInt(row.seq)),
+  );
   const caret = openable
     ? h("button", {
         class: `outline-caret${open ? " open" : ""}`,

@@ -185,6 +185,16 @@ export interface CausalityRow {
   failed: boolean;
   /** Where the row sits in the log, which is the only sign that order jumped. */
   seq: number;
+  /**
+   * Whether this row is the one to print that position on. A row that
+   * continues the row above it — the prose of a step, the body of a
+   * result — stands for the same event, and printing the number twice
+   * turns the column into a ladder of repeats. The column exists so that a
+   * jump in reading order is visible, and a doubled number hides one.
+   * Set by `visibleRows`, because which row continues which depends on
+   * what the reading shows.
+   */
+  showSeq?: boolean;
   /** How many visible rows this one sits inside; set by `visibleRows`. */
   level?: number;
   /** A step row's own number and attempt count, for the label it earns. */
@@ -771,9 +781,15 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
     out.push(row);
   }
 
-  return out.map((row) => {
+  return out.map((row, index) => {
     const nested = level.get(row.id) ?? 0;
-    if (row.kind !== "step") return { ...row, level: nested };
+    // A row continues the one above it when that row is the one it is part
+    // of and the two stand for the same event. Two episodes that both
+    // begin at zero are not a continuation: each carries its own log, and
+    // the second zero is the jump the column is there to show.
+    const before = out[index - 1];
+    const showSeq = !(before !== undefined && before.id === row.parent && before.seq === row.seq);
+    if (row.kind !== "step") return { ...row, level: nested, showSeq };
     const callsShown = row.calls.some((call) => shown.has(`${row.id}/call/${call.id}`));
     const composed = composeLabel({
       kind: "step",
@@ -783,7 +799,7 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
       calls: row.calls,
       callsVisible: callsShown,
     });
-    return { ...row, level: nested, label: composed.label, aside: composed.aside, calls: callsShown ? [] : row.calls };
+    return { ...row, level: nested, showSeq, label: composed.label, aside: composed.aside, calls: callsShown ? [] : row.calls };
   });
 }
 

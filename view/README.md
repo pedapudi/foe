@@ -125,11 +125,12 @@ that exhausted its retries. The light one reads at `calls`: every label in
 one column with the tool calls stepped in one level under the steps that
 issued them, each step's own label fallen back to `step 1` now that its
 calls are on the page, the failed `bash` in the outcome hue, and the log
-position of every row in the gutter — where it jumps from 29 to 0 is the
+position of every row in the gutter — where it falls from 29 to 0 is the
 child episode's rows sitting under the call that spawned them. The dark
 one reads at `everything`, so the model's own words and each tool's result
 body stand under the rows that produced them, running the full width while
-the labels above them hold their column.
+the labels above them hold their column, and the gutter is blank beside
+each of those bodies because the row above already named that event.
 
 The `messages` list recorded in each `model/request` event is written by
 hand in the generator, so the tests compare it with the list the bundle

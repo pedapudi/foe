@@ -336,7 +336,12 @@ diff still has its mark beside the name it belongs to.
 Two costs come with it and are not hidden. A child episode's rows sit
 under the call that spawned it rather than interleaved by time, so reading
 order is not global order; every row keeps its log position in the gutter,
-which is the only way to see where order jumped. And one view reads at one
+which is the only way to see where order jumped. That position is printed
+once per event: a row that continues the row it is part of and stands for
+the same event — a step's prose, a call's result — leaves the column
+blank, because a column of doubled numbers hides the jump it exists to
+show. Two episodes that both begin at zero each print their zero: the
+second is the jump, not a repeat. And one view reads at one
 place in the hierarchy, so a reader cannot study one step's output while
 the whole shape stays in view. That is why the other arrangement remains.
 
