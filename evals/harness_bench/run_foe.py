@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Run and grade Foe on the pinned Harness-Bench development tasks."""
+"""Run and grade Foe on selected tasks from the pinned Harness-Bench source."""
 
 from __future__ import annotations
 
@@ -46,6 +46,8 @@ TASKS = {
             600,
             ("in/shopmono/packages", "out"),
         ),
+        Task("085-flaky-test-root-cause", 28, 300_000, 48_000, 600, ("in/flakyqueue", "out")),
+        Task("096-offline-knowledge-qa-insufficient-evidence", 28, 300_000, 48_000, 600, ("out",)),
     )
 }
 
@@ -474,9 +476,9 @@ def main() -> int:
     if args.attempts < 1:
         raise SystemExit("--attempts must be positive")
     route = model_route(args.model, args.reasoning_effort)
-    identifiers = args.task or list(TASKS)
-    selected = [TASKS[name] for name in identifiers]
     task_dirs = {path.parent.name: path.parent.resolve() for path in args.task_dir}
+    identifiers = args.task or list(task_dirs)
+    selected = [TASKS[name] for name in identifiers]
     missing = [task.identifier for task in selected if task.identifier not in task_dirs]
     if missing:
         raise SystemExit("benchmark source does not contain: " + ", ".join(missing))

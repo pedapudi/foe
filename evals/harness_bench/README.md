@@ -1,4 +1,4 @@
-# foe Harness-Bench development evaluation
+# foe Harness-Bench development and confirmation evaluation
 
 This package runs foe against four development tasks from Harness-Bench. Bazel
 downloads the benchmark at commit
@@ -9,6 +9,12 @@ unchanged prompt, setup hook, and programmatic grader.
 The four tasks cover untrusted instructions, SQLite migration safety, a local
 paginated API, and cross-package Python repair. They form a diagnostic sample.
 Their results do not constitute an official Harness-Bench score.
+
+A separate target runs two confirmation tasks that remain outside the
+self-improvement workflow's authority. The tasks cover flaky-test diagnosis
+and offline answers that must identify insufficient evidence. Run the
+confirmation target only after freezing a candidate and its comparison
+configuration.
 
 ## Review the maximum spend
 
@@ -53,6 +59,23 @@ Each attempt retains its workspace, Foe program, complete episode tree,
 negative-control grade, final programmatic grade, usage, trace result, and
 process outcome. Grading runs after Foe exits. The grader source remains
 outside Foe's read and write authority.
+
+## Run the frozen confirmation comparison
+
+Preview each three-attempt configuration before launching model calls:
+
+```sh
+bazel run //evals/harness_bench:foe-confirmation -- \
+  --attempts 3 \
+  --reasoning-effort medium \
+  --keep target/foe-harness-bench-confirmation-medium
+```
+
+After reviewing the maximum, add `--confirm-spend`. Repeat the command with
+`--reasoning-effort low` and a distinct retained directory. The two tasks,
+two settings, and three attempts produce twelve attempts. Do not give the
+confirmation reports to self-improvement until the candidate disposition is
+recorded.
 
 ## Prepare evidence for self-improvement
 

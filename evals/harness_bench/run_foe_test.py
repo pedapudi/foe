@@ -40,10 +40,21 @@ class HarnessBenchAdapterTest(unittest.TestCase):
             self.assertNotEqual(first, run_foe.tree_digest(root))
 
     def test_limits_are_split_and_finite(self) -> None:
+        self.assertEqual(len(run_foe.TASKS), 6)
         for task in run_foe.TASKS.values():
             self.assertGreater(task.input_tokens, task.output_tokens)
             self.assertGreater(task.model_calls, 0)
             self.assertGreater(task.seconds, 0)
+
+    def test_confirmation_tasks_have_only_the_required_write_roots(self) -> None:
+        self.assertEqual(
+            run_foe.TASKS["085-flaky-test-root-cause"].write_paths,
+            ("in/flakyqueue", "out"),
+        )
+        self.assertEqual(
+            run_foe.TASKS["096-offline-knowledge-qa-insufficient-evidence"].write_paths,
+            ("out",),
+        )
 
     def test_reasoning_effort_is_recorded_in_the_model_route(self) -> None:
         self.assertEqual(

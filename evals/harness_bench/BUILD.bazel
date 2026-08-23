@@ -33,6 +33,29 @@ sh_binary(
 )
 
 sh_binary(
+    name = "foe-confirmation",
+    srcs = ["run_foe.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe)",
+        "--trace-evaluator",
+        "$(rootpath //evals:score-trace)",
+        "--task-dir",
+        "$(rootpath @harness_bench//:task_085_yaml)",
+        "--task-dir",
+        "$(rootpath @harness_bench//:task_096_yaml)",
+    ],
+    data = [
+        "//:foe",
+        "//evals:score-trace",
+        "@harness_bench//:confirmation_tasks",
+        "@harness_bench//:task_085_yaml",
+        "@harness_bench//:task_096_yaml",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
     name = "collect-evidence",
     srcs = ["collect_evidence.py"],
     visibility = ["//visibility:public"],

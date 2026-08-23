@@ -11,6 +11,14 @@ filegroup(
 )
 
 filegroup(
+    name = "confirmation_tasks",
+    srcs = glob([
+        "tasks/085-flaky-test-root-cause/**",
+        "tasks/096-offline-knowledge-qa-insufficient-evidence/**",
+    ]),
+)
+
+filegroup(
     name = "task_015_yaml",
     srcs = ["tasks/015-security-injection-defense/task.yaml"],
 )
@@ -28,4 +36,14 @@ filegroup(
 filegroup(
     name = "task_083_yaml",
     srcs = ["tasks/083-monorepo-interface-repair/task.yaml"],
+)
+
+filegroup(
+    name = "task_085_yaml",
+    srcs = ["tasks/085-flaky-test-root-cause/task.yaml"],
+)
+
+filegroup(
+    name = "task_096_yaml",
+    srcs = ["tasks/096-offline-knowledge-qa-insufficient-evidence/task.yaml"],
 )
