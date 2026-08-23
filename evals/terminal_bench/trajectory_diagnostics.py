@@ -10,8 +10,7 @@ from pathlib import Path
 from typing import Any
 
 
-def read_events(log_dir: Path) -> list[dict[str, Any]]:
-    path = log_dir / "episode.jsonl"
+def read_event_file(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         raise FileNotFoundError(f"Foe episode log does not exist: {path}")
     events = []
@@ -23,6 +22,13 @@ def read_events(log_dir: Path) -> list[dict[str, Any]]:
             raise ValueError(f"{path}:{line_number} must contain a JSON object")
         events.append(value)
     return events
+
+
+def read_episode_tree(log_dir: Path) -> list[tuple[Path, list[dict[str, Any]]]]:
+    """Read the root log followed by every descendant log in path order."""
+    root = log_dir / "episode.jsonl"
+    paths = [root, *sorted(path for path in log_dir.rglob("episode.jsonl") if path != root)]
+    return [(path, read_event_file(path)) for path in paths]
 
 
 def data(event: dict[str, Any]) -> dict[str, Any]:
@@ -79,80 +85,118 @@ def diagnose_episode(
     """Return evidence that lets an optimizer locate costly or failed behavior."""
     if top_results <= 0:
         raise ValueError("top_results must be positive")
-    events = read_events(log_dir)
-    starts = [event for event in events if event.get("type") == "episode/start"]
+    tree = read_episode_tree(log_dir)
+    root_events = tree[0][1]
+    starts = [event for event in root_events if event.get("type") == "episode/start"]
     if len(starts) != 1:
         raise ValueError("root episode log must contain one episode/start event")
     start = data(starts[0])
-    requests = [event for event in events if event.get("type") == "model/request"]
-    messages = [event for event in events if event.get("type") == "assistant/message"]
-    results = [event for event in events if event.get("type") == "tool/result"]
-
-    usage_staircase = []
-    for event in messages:
-        item = data(event)
-        usage = item.get("usage")
-        if not isinstance(usage, dict):
-            continue
-        if not all(isinstance(usage.get(key), int) for key in ("input", "output", "cache_read")):
-            continue
-        usage_staircase.append(
+    episode_rows = []
+    requests_by_episode: dict[str, list[dict[str, Any]]] = {}
+    messages_by_episode: dict[str, list[dict[str, Any]]] = {}
+    results_by_episode: dict[str, list[dict[str, Any]]] = {}
+    for path, events in tree:
+        episode_starts = [event for event in events if event.get("type") == "episode/start"]
+        if len(episode_starts) != 1:
+            raise ValueError(f"episode log must contain one episode/start event: {path}")
+        episode_start = data(episode_starts[0])
+        episode_id = episode_start.get("id")
+        if not isinstance(episode_id, str):
+            raise ValueError(f"episode/start has no string id: {path}")
+        requests = [event for event in events if event.get("type") == "model/request"]
+        messages = [event for event in events if event.get("type") == "assistant/message"]
+        results = [event for event in events if event.get("type") == "tool/result"]
+        requests_by_episode[episode_id] = requests
+        messages_by_episode[episode_id] = messages
+        results_by_episode[episode_id] = results
+        ends = [event for event in events if event.get("type") == "episode/end"]
+        program = episode_start.get("program") if isinstance(episode_start.get("program"), dict) else {}
+        model = program.get("model") if isinstance(program.get("model"), dict) else {}
+        episode_rows.append(
             {
-                "seq": event.get("seq"),
-                "step": item.get("step"),
-                "input_tokens": usage["input"],
-                "cache_read_tokens": usage["cache_read"],
-                "output_tokens": usage["output"],
+                "episode_id": episode_id,
+                "parent_id": episode_start.get("parent_id"),
+                "program": program.get("name"),
+                "model": (
+                    f"{model.get('provider')}/{model.get('model')}"
+                    if isinstance(model.get("provider"), str) and isinstance(model.get("model"), str)
+                    else None
+                ),
+                "model_calls": len(requests),
+                "tool_results": len(results),
+                "outcome": data(ends[-1]).get("outcome") if ends else None,
             }
         )
 
-    calls: dict[str, dict[str, Any]] = {}
-    call_counts: Counter[tuple[str, str]] = Counter()
-    for event in messages:
-        for call in data(event).get("tool_calls", []):
-            if not isinstance(call, dict) or not isinstance(call.get("id"), str):
+    usage_staircase = []
+    for episode_id, messages in messages_by_episode.items():
+        for event in messages:
+            item = data(event)
+            usage = item.get("usage")
+            if not isinstance(usage, dict):
                 continue
-            calls[call["id"]] = call
-            key = (
-                str(call.get("name")),
-                json.dumps(call.get("args"), sort_keys=True, separators=(",", ":")),
+            if not all(isinstance(usage.get(key), int) for key in ("input", "output", "cache_read")):
+                continue
+            usage_staircase.append(
+                {
+                    "episode_id": episode_id,
+                    "seq": event.get("seq"),
+                    "step": item.get("step"),
+                    "input_tokens": usage["input"],
+                    "cache_read_tokens": usage["cache_read"],
+                    "output_tokens": usage["output"],
+                }
             )
-            call_counts[key] += 1
+
+    call_counts: Counter[tuple[str, str]] = Counter()
+    for messages in messages_by_episode.values():
+        for event in messages:
+            for call in data(event).get("tool_calls", []):
+                if not isinstance(call, dict) or not isinstance(call.get("id"), str):
+                    continue
+                key = (
+                    str(call.get("name")),
+                    json.dumps(call.get("args"), sort_keys=True, separators=(",", ":")),
+                )
+                call_counts[key] += 1
 
     result_rows = []
     failures = []
-    for event in results:
-        item = data(event)
-        rendered = item.get("rendered") if isinstance(item.get("rendered"), str) else ""
-        call_id = item.get("call_id")
-        replayed = (
-            sum(request_contains_call(request, call_id) for request in requests)
-            if isinstance(call_id, str)
-            else 0
-        )
-        value = item.get("value") if isinstance(item.get("value"), dict) else {}
-        row = {
-            "seq": event.get("seq"),
-            "step": item.get("step"),
-            "call_id": call_id,
-            "tool": item.get("name"),
-            "subject": item.get("subject"),
-            "rendered_characters": len(rendered),
-            "canonical_characters": len(json.dumps(item.get("value"), sort_keys=True)),
-            "replayed_requests": replayed,
-            "replayed_characters": replayed * len(rendered),
-            "is_error": bool(item.get("is_error")),
-            "exit_code": value.get("exit_code"),
-            "timed_out": bool(value.get("timed_out")),
-            "truncated": bool(value.get("truncated")),
-        }
-        result_rows.append(row)
-        if row["is_error"] or row["timed_out"] or (
-            isinstance(row["exit_code"], int) and row["exit_code"] != 0
-        ):
-            failures.append(row)
+    for episode_id, results in results_by_episode.items():
+        requests = requests_by_episode[episode_id]
+        for event in results:
+            item = data(event)
+            rendered = item.get("rendered") if isinstance(item.get("rendered"), str) else ""
+            call_id = item.get("call_id")
+            replayed = (
+                sum(request_contains_call(request, call_id) for request in requests)
+                if isinstance(call_id, str)
+                else 0
+            )
+            value = item.get("value") if isinstance(item.get("value"), dict) else {}
+            row = {
+                "episode_id": episode_id,
+                "seq": event.get("seq"),
+                "step": item.get("step"),
+                "call_id": call_id,
+                "tool": item.get("name"),
+                "subject": item.get("subject"),
+                "rendered_characters": len(rendered),
+                "canonical_characters": len(json.dumps(item.get("value"), sort_keys=True)),
+                "replayed_requests": replayed,
+                "replayed_characters": replayed * len(rendered),
+                "is_error": bool(item.get("is_error")),
+                "exit_code": value.get("exit_code"),
+                "timed_out": bool(value.get("timed_out")),
+                "truncated": bool(value.get("truncated")),
+            }
+            result_rows.append(row)
+            if row["is_error"] or row["timed_out"] or (
+                isinstance(row["exit_code"], int) and row["exit_code"] != 0
+            ):
+                failures.append(row)
 
-    ends = [event for event in events if event.get("type") == "episode/end"]
+    ends = [event for event in root_events if event.get("type") == "episode/end"]
     outcome = data(ends[-1]).get("outcome") if ends else None
     facts = trial_facts(trial_result)
     outcome_kind = outcome.get("kind") if isinstance(outcome, dict) else None
@@ -168,7 +212,7 @@ def diagnose_episode(
     ][:top_results]
     runtime = start.get("runtime") if isinstance(start.get("runtime"), dict) else {}
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "evidence_identity": {
             "program_identity": start.get("identity"),
             "runtime_build": runtime.get("build"),
@@ -180,9 +224,10 @@ def diagnose_episode(
         "verifier_reward": reward,
         "trial_error": facts["error"],
         "artifact_outcome_mismatch": mismatch,
+        "episodes": episode_rows,
         "usage": {
-            "model_calls": len(requests),
-            "tool_results": len(results),
+            "model_calls": sum(len(requests) for requests in requests_by_episode.values()),
+            "tool_results": sum(len(results) for results in results_by_episode.values()),
             "input_tokens": sum(row["input_tokens"] for row in usage_staircase),
             "cache_read_tokens": sum(row["cache_read_tokens"] for row in usage_staircase),
             "output_tokens": sum(row["output_tokens"] for row in usage_staircase),

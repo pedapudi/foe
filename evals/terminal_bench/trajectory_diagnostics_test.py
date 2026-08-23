@@ -80,6 +80,37 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
                 "\n".join(json.dumps(event) for event in events) + "\n",
                 encoding="utf-8",
             )
+            child = root / "children" / "ep_2"
+            child.mkdir(parents=True)
+            child_events = [
+                {
+                    "seq": 0,
+                    "type": "episode/start",
+                    "data": {
+                        "id": "ep_2",
+                        "parent_id": "ep_1",
+                        "program": {
+                            "name": "implementation",
+                            "model": {"provider": "openai-codex", "model": "gpt-5.6-sol"},
+                        },
+                    },
+                },
+                {"seq": 1, "type": "model/request", "data": {"step": 1, "messages": []}},
+                {
+                    "seq": 2,
+                    "type": "assistant/message",
+                    "data": {
+                        "step": 1,
+                        "usage": {"input": 75, "output": 3, "cache_read": 25},
+                        "tool_calls": [],
+                    },
+                },
+                {"seq": 3, "type": "episode/end", "data": {"outcome": {"kind": "completed"}}},
+            ]
+            (child / "episode.jsonl").write_text(
+                "\n".join(json.dumps(event) for event in child_events) + "\n",
+                encoding="utf-8",
+            )
             trial = root / "result.json"
             trial.write_text(
                 json.dumps(
@@ -95,8 +126,13 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
             report = diagnose_episode(root, trial_result=trial)
 
         self.assertEqual(report["evidence_identity"]["runtime_build"], "sha256:runtime")
-        self.assertEqual(report["usage"]["input_tokens"], 250)
-        self.assertEqual(report["usage"]["cache_read_tokens"], 120)
+        self.assertEqual(report["schema_version"], 2)
+        self.assertEqual(report["usage"]["model_calls"], 3)
+        self.assertEqual(report["usage"]["input_tokens"], 325)
+        self.assertEqual(report["usage"]["cache_read_tokens"], 145)
+        self.assertEqual(report["episodes"][1]["episode_id"], "ep_2")
+        self.assertEqual(report["episodes"][1]["model"], "openai-codex/gpt-5.6-sol")
+        self.assertEqual(report["usage"]["per_request"][-1]["episode_id"], "ep_2")
         self.assertEqual(report["largest_replayed_results"][0]["replayed_requests"], 1)
         self.assertEqual(report["largest_replayed_results"][0]["replayed_characters"], 16)
         self.assertEqual(report["tool_failures"][0]["exit_code"], 1)

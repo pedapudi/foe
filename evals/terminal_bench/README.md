@@ -186,7 +186,8 @@ and success criterion.
 
 Every completed trial contains `agent/foe-diagnostics.json`. This bounded
 digest reports request growth, replayed tool results, repeated calls, failures,
-verifier outcomes, and log sequence numbers.
+verifier outcomes, and log sequence numbers across the root and every child
+episode. Each sequence number is paired with its episode identifier.
 
 Collect diagnoses from one or more retained development runs. The command
 requires a clean source tree and the exact evaluated binary:
