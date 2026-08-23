@@ -175,6 +175,9 @@ impl Tool for Edit {
             return ToolValue::error(format!("edit: {shown}: {e}"));
         }
         let n = a.edits.len();
+        // The head of the rendering is also the one line a reader wants,
+        // so it is written once and used for both.
+        let did = format!("{shown}: {n} edit(s), +{} -{} lines", d.added, d.removed);
         ToolValue::ok(
             json!({
                 "path": path.display().to_string(),
@@ -183,8 +186,9 @@ impl Tool for Edit {
                 "removed": d.removed,
                 "diff": d.text,
             }),
-            format!("edited {shown}: {n} edit(s), +{} -{} lines\n{}", d.added, d.removed, d.text),
+            format!("edited {did}\n{}", d.text),
         )
+        .subject(did)
     }
 }
 

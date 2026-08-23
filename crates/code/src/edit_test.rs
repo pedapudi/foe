@@ -108,3 +108,14 @@ async fn missing_files_binary_files_and_denied_paths_are_errors() {
     let v = edit(&fx, json!({"path": "f.txt", "edits": []})).await;
     assert!(v.is_error);
 }
+
+/// The line the rendering already leads with, hoisted so a reader of a
+/// list gets it without the diff under it.
+#[tokio::test]
+async fn states_the_file_and_what_it_changed() {
+    let fx = Fixture::new();
+    fx.write("a.txt", "one\ntwo\n");
+    let v = edit(&fx, json!({"path": "a.txt", "edits": [{"old_text": "one", "new_text": "ONE"}]})).await;
+    assert_eq!(v.subject.as_deref(), Some("a.txt: 1 edit(s), +1 -1 lines"));
+    assert!(v.rendered.as_deref().unwrap().starts_with("edited a.txt: 1 edit(s), +1 -1 lines\n"));
+}

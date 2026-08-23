@@ -149,6 +149,7 @@ fn orphan_result(step: u32, call: &ToolCall) -> ToolResult {
         rendered: ORPHAN_RENDERED.to_string(),
         is_error: true,
         spill: None,
+        subject: Some(ORPHAN_RENDERED.to_string()),
         duration_ms: 0,
         synthetic: true,
     }

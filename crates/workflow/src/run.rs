@@ -822,6 +822,7 @@ impl Executor {
                 rendered: result.rendered.unwrap_or_default(),
                 is_error: result.is_error,
                 spill: None,
+                subject: result.subject,
                 duration_ms: 0,
                 synthetic: false,
             }))?;

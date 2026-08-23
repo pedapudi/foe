@@ -105,7 +105,7 @@ function root() {
     usage: { input: 410, output: 28, cache_read: 0 },
     interrupted: false,
   });
-  log.ev("tool/result", { step: 1, call_id: "tc_01", name: "read", value: { content: readRendered.replace(/^\d+\t/gm, "") }, rendered: readRendered, is_error: false, spill: null, duration_ms: 4, synthetic: false });
+  log.ev("tool/result", { step: 1, call_id: "tc_01", name: "read", value: { content: readRendered.replace(/^\d+\t/gm, "") }, rendered: readRendered, is_error: false, spill: null, subject: "tests/parser_test.py lines 1–5 of 5", duration_ms: 4, synthetic: false });
   const warning = log.ev("inbox/item", { source: "system", content: [text("Budget: 8 model calls remain.")], from: null, message_id: null });
 
   // Step 2 is requested twice: the first attempt fails in transport before
@@ -156,7 +156,7 @@ function root() {
     usage: { input: 610, output: 14, cache_read: 520 },
     interrupted: true,
   });
-  log.ev("tool/result", { step: 3, call_id: "tc_03", name: "bash", value: null, rendered: "The request was interrupted before the tool ran.", is_error: true, spill: null, duration_ms: 0, synthetic: true });
+  log.ev("tool/result", { step: 3, call_id: "tc_03", name: "bash", value: null, rendered: "The request was interrupted before the tool ran.", is_error: true, spill: null, subject: "bash: the request was interrupted before the tool ran", duration_ms: 0, synthetic: true });
 
   const messages4 = [...messages3, assistant("Running the test now.", [bashCall]), tool("tc_03", "bash", "The request was interrupted before the tool ran.", true)];
   log.ev("model/request", { step: 4, attempt: 1, request_id: "rq_05", header_seq: header, consumed: [], messages: messages4 });
@@ -198,7 +198,7 @@ function child() {
   const messages1 = [user(text(taskText), text("Report the count when done."))];
   log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_10", header_seq: header, consumed: [task, peer], messages: messages1 });
   log.ev("assistant/message", { step: 1, request_id: "rq_10", text: "", tool_calls: [grep], stop: "tool", usage: { input: 300, output: 20, cache_read: 0 }, interrupted: false });
-  log.ev("tool/result", { step: 1, call_id: "tc_10", name: "bash", value: { exit: 0, stdout: grepOut }, rendered: grepOut, is_error: false, spill: null, duration_ms: 12, synthetic: false });
+  log.ev("tool/result", { step: 1, call_id: "tc_10", name: "bash", value: { exit: 0, stdout: grepOut }, rendered: grepOut, is_error: false, spill: null, subject: "grep -rn TODO src · exit 0 in 0.01s", duration_ms: 12, synthetic: false });
   log.ev("workflow/node-end", { node: "survey", status: "ok" });
   const messages2 = [...messages1, assistant("", [grep]), tool("tc_10", "bash", grepOut)];
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_11", header_seq: header, consumed: [], messages: messages2 });
@@ -287,15 +287,15 @@ function compact() {
   const header = log.ev("request/header", { reason: "initial", system: "You fix failing tests with the smallest change.", tools: summaryTools, model });
   log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_0001", header_seq: header, consumed: [task], messages: [user(text(taskText))] });
   log.ev("assistant/message", { step: 1, request_id: "rq_0001", text: "I will grep for callers.", tool_calls: [grepCall], stop: "tool", usage: { input: 900, output: 12, cache_read: 0 }, interrupted: false });
-  log.ev("tool/result", { step: 1, call_id: "tc_01", name: "grep", value: { matches: 2 }, rendered: grepOut, is_error: false, spill: null, duration_ms: 9, synthetic: false });
+  log.ev("tool/result", { step: 1, call_id: "tc_01", name: "grep", value: { matches: 2 }, rendered: grepOut, is_error: false, spill: null, subject: "2 matches in 1 files under .", duration_ms: 9, synthetic: false });
   const messages2 = [user(text(taskText)), assistant("I will grep for callers.", [grepCall]), tool("tc_01", "grep", grepOut)];
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_0002", header_seq: header, consumed: [], messages: messages2 });
   log.ev("assistant/message", { step: 2, request_id: "rq_0002", text: "Reading a.", tool_calls: [readCall], stop: "tool", usage: { input: 1400, output: 10, cache_read: 900 }, interrupted: false });
-  log.ev("tool/result", { step: 2, call_id: "tc_02", name: "read", value: { content: "def helper():\n    return 1" }, rendered: readOut, is_error: false, spill: null, duration_ms: 3, synthetic: false });
+  log.ev("tool/result", { step: 2, call_id: "tc_02", name: "read", value: { content: "def helper():\n    return 1" }, rendered: readOut, is_error: false, spill: null, subject: "src/helper.py lines 1–2 of 2", duration_ms: 3, synthetic: false });
   const messages3 = [...messages2, assistant("Reading a.", [readCall]), tool("tc_02", "read", readOut)];
   const kept = log.ev("model/request", { step: 3, attempt: 1, request_id: "rq_0003", header_seq: header, consumed: [], messages: messages3 });
   log.ev("assistant/message", { step: 3, request_id: "rq_0003", text: "Editing a.", tool_calls: [editCall], stop: "tool", usage: { input: 1900, output: 30, cache_read: 1400 }, interrupted: false });
-  log.ev("tool/result", { step: 3, call_id: "tc_03", name: "edit", value: { added: 1, removed: 1 }, rendered: editOut, is_error: false, spill: null, duration_ms: 5, synthetic: false });
+  log.ev("tool/result", { step: 3, call_id: "tc_03", name: "edit", value: { added: 1, removed: 1 }, rendered: editOut, is_error: false, spill: null, subject: "src/helper.py: 1 edit(s), +1 -1 lines", duration_ms: 5, synthetic: false });
 
   // Step 4 begins with a compaction: the projection of the next request
   // crosses the threshold, the oldest two steps are summarized through a
@@ -347,7 +347,7 @@ function overlapParent() {
   // The parent keeps working while the child runs.
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_p2", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 500);
   log.ev("assistant/message", { step: 2, request_id: "rq_p2", text: "Reading the workspace manifest.", tool_calls: [readCall, writeCall], stop: "tool", usage: { input: 500, output: 18, cache_read: 400 }, interrupted: false }, 700);
-  log.ev("tool/result", { step: 2, call_id: "tc_p2", name: "read", value: { path: "Cargo.toml" }, rendered: "1\t[workspace]\n2\tresolver = \"2\"", is_error: false, spill: null, duration_ms: 1400, synthetic: false }, 1400);
+  log.ev("tool/result", { step: 2, call_id: "tc_p2", name: "read", value: { path: "Cargo.toml" }, rendered: "1\t[workspace]\n2\tresolver = \"2\"", is_error: false, spill: null, subject: "Cargo.toml lines 1–2 of 2", duration_ms: 1400, synthetic: false }, 1400);
   log.ev("budget/reserve", { child_id: "ep_rich", reserved: { model_calls: 6, input_tokens: 48000, output_tokens: 12000 } });
   log.ev("spawn/start", { child_id: "ep_rich", program: "writer", context: "fresh", call_id: "tc_p3" }, 90);
   log.ev("spawn/end", { child_id: "ep_rich", outcome: { kind: "completed", value: "The parser now propagates the error." } }, 2200);
@@ -382,7 +382,7 @@ function overlapChild() {
   const header = log.ev("request/header", { reason: "initial", system: "You read manifests.", tools: tools.slice(0, 2), model });
   log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_c1", header_seq: header, consumed: [task], messages: [user(text(taskText))] }, 800);
   log.ev("assistant/message", { step: 1, request_id: "rq_c1", text: "", tool_calls: [call], stop: "tool", usage: { input: 200, output: 12, cache_read: 0 }, interrupted: false }, 600);
-  log.ev("tool/result", { step: 1, call_id: "tc_c1", name: "bash", value: { exit: 0 }, rendered: "cli\ncode\ncore\nlog", is_error: false, spill: null, duration_ms: 2600, synthetic: false }, 2600);
+  log.ev("tool/result", { step: 1, call_id: "tc_c1", name: "bash", value: { exit: 0 }, rendered: "cli\ncode\ncore\nlog", is_error: false, spill: null, subject: "ls crates · exit 0 in 0.01s", duration_ms: 2600, synthetic: false }, 2600);
   log.ev("compaction/start", { step: 2, covered: { first_seq: 1, last_seq: 5 }, trigger: "threshold", projected_tokens: 74000, reserved: { model_calls: 6, input_tokens: 56000, output_tokens: 14000 } }, 400);
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_c2", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 900);
   log.ev("request/retry", { step: 2, attempt: 1, cause: "rate-limit", delay_ms: 1000 }, 300);
@@ -483,8 +483,8 @@ function rich() {
     usage: { input: 800, output: 420, cache_read: 0 },
     interrupted: false,
   }, 1200);
-  log.ev("tool/result", { step: 1, call_id: "tc_r1", name: "edit", value: { path: "src/parser.rs", added: 2, removed: 2 }, rendered: diff, is_error: false, spill: null, duration_ms: 21, synthetic: false });
-  log.ev("tool/result", { step: 1, call_id: "tc_r2", name: "read", value: { path: "src/parser.rs", offset: 1, shown: 6, total_lines: 40, truncated: true }, rendered: source, is_error: false, spill: null, duration_ms: 3, synthetic: false });
+  log.ev("tool/result", { step: 1, call_id: "tc_r1", name: "edit", value: { path: "src/parser.rs", added: 2, removed: 2 }, rendered: diff, is_error: false, spill: null, subject: "src/collate.py: 1 edit(s), +1 -1 lines", duration_ms: 21, synthetic: false });
+  log.ev("tool/result", { step: 1, call_id: "tc_r2", name: "read", value: { path: "src/parser.rs", offset: 1, shown: 6, total_lines: 40, truncated: true }, rendered: source, is_error: false, spill: null, subject: "src/collate.py lines 1–18 of 18", duration_ms: 3, synthetic: false });
   const messages2 = [user(text(taskText)), assistant(answer, [editCall, readCall]), tool("tc_r1", "edit", diff), tool("tc_r2", "read", source)];
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_r2", header_seq: header, consumed: [], messages: messages2 }, 300);
   log.ev("assistant/message", { step: 2, request_id: "rq_r2", text: "The parser now propagates the error.", tool_calls: [], stop: "end", usage: { input: 1400, output: 9, cache_read: 800 }, interrupted: false }, 500);

@@ -73,6 +73,12 @@ export interface ToolRow extends RowBase {
   kind: "tool";
   callId: string;
   name: string;
+  /**
+   * The one line the tool wrote naming what it acted on and what came of
+   * it. Absent for a log written before tools stated it, and for a tool
+   * that states none; `docs/log-format.md` gives the field.
+   */
+  subject: string;
   value: unknown;
   rendered: string;
   isError: boolean;
@@ -331,6 +337,7 @@ export class EpisodeFold {
           time: ev.time,
           callId: str(data.call_id),
           name: str(data.name, "?"),
+          subject: str(data.subject),
           value: data.value,
           rendered: str(data.rendered),
           isError: data.is_error === true,

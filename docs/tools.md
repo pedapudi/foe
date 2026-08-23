@@ -105,6 +105,34 @@ the first `read` root, and paths in results are shown relative to it.
 The limits in the table are constants in the crate, and every tool
 description sent to the model is formatted from the same constants.
 
+### What a tool says it acted on
+
+Each tool writes one line after it has run, naming what the call acted on
+and what came of it, which the log records as `tool/result.subject`. It is
+for a person reading a list of calls; `rendered` is the separate thing the
+model received.
+
+| tool | subject on success | subject on failure |
+|---|---|---|
+| `read` | `src/parser.rs lines 1–6 of 42`, the span actually shown | the error, which names the file and what went wrong |
+| `grep` | `3 match(es) in 2 file(s) under src`, what the search found | the error, which names the pattern or the root |
+| `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
+| `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
+
+A tool reports what the call did rather than what it was asked for, because
+the arguments are already in the log: `grep` states how many matches it
+found rather than echoing its pattern. On failure the line is the error
+message itself, which is where the field earns most, since only the tool
+knows the outcome.
+
+The model is never asked for this line and never sees it. It appears in no
+tool's parameters, description or instruction, so it reaches neither
+`ToolSpec::schema()` nor the system prompt. A model asked to supply it
+would be a weaker model dropping it or filling it with noise, and correct
+tool use would come to depend on prose that has nothing to do with the
+call. A configured executable and a host tool state no subject, and the
+field is then absent.
+
 ### Shared line fitting
 
 Every bound on how much text a result carries is measured by one function,

@@ -502,6 +502,10 @@ pub struct ToolResult {
     pub is_error: bool,
     /// File name under `spill/` when the canonical value was too large to inline.
     pub spill: Option<String>,
+    /// One line the tool wrote naming what it acted on and what came of
+    /// it, for a reader scanning a list. Never sent to the model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
     pub duration_ms: u64,
     /// True when written by seeding or by request-failure recovery rather
     /// than by running the tool.

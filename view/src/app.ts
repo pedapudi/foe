@@ -2,7 +2,9 @@
 // per episode; one tree; one optional diff. Views are patched, never rebuilt,
 // when events arrive, and the tree pane redraws only when its digest changes.
 
-import { Topbar, currentFontScale, onSettingsChange } from "./chrome.js";
+import { causalityOutline, readCausality } from "./causality.js";
+import type { CausalityEpisode, CausalityOutline, ConversationScope, Depth } from "./causality.js";
+import { Topbar, applyDepth, currentDepth, currentFontScale, currentLayout, onSettingsChange } from "./chrome.js";
 import type { ConnectionState, Crumb } from "./chrome.js";
 import { clear, h } from "./dom.js";
 import { EpisodeFold } from "./fold.js";
@@ -13,6 +15,9 @@ import { loadPanes, onPanesChange, rowGrip, setTrajectoryHeight, sidebarGrip } f
 import { ConversationView } from "./render/conversation.js";
 import { DiffView, renderNoDiff } from "./render/diff.js";
 import { RawView } from "./render/raw.js";
+import { drawOutline, depthControl } from "./render/outline.js";
+import { Hovercard } from "./render/hovercard.js";
+import { renderScope } from "./render/scoped.js";
 import { StatisticsView } from "./render/statistics.js";
 import { TrajectoryView } from "./render/trajectory.js";
 import { renderInfo, renderTree } from "./render/tree.js";
@@ -44,6 +49,15 @@ export class App implements Sink {
   private tab: Tab = "conversation";
   private diff: DiffView | null = null;
   private diffKey = "";
+  /** The node of the causality figure the conversation is scoped to. */
+  private scope: ConversationScope | null = null;
+  /** Which branches a caret opened past the depth the reader chose. */
+  private opened = new Set<string>();
+  private outlineRow: string | null = null;
+  private outline: CausalityOutline | null = null;
+  private outlineDigest = "";
+  /** What `applyLayoutMode` last put on the page, so it moves nothing twice. */
+  private layoutApplied: boolean | null = null;
   private sidebarScheduled = false;
   private treeDigest = "";
   private infoDigest = "";
@@ -54,6 +68,14 @@ export class App implements Sink {
   private readonly trajectory: TrajectoryView;
   private readonly workflow: WorkflowView;
   private readonly statistics: StatisticsView;
+  private readonly outlineHost = h("div", { class: "outline-host" });
+  private readonly trajectoryGrip: HTMLElement;
+  private readonly sideGrip: HTMLElement;
+  private readonly mainPane: HTMLElement;
+  private readonly leftColumn: HTMLElement;
+  private readonly outlineHead: HTMLElement;
+  private readonly outlinePane: HTMLElement;
+  private readonly outlineCard: Hovercard;
   private readonly treeHost = h("div", { class: "tree-host" });
   private readonly infoHost = h("div", { class: "details-host" });
   private readonly tabsBar: HTMLElement;
@@ -65,6 +87,7 @@ export class App implements Sink {
     this.trajectory = new TrajectoryView({
       select: (id) => this.select(id),
       reveal: (id, seq) => this.reveal(id, seq),
+      scope: (scope) => this.setScope(scope),
     });
     this.workflow = new WorkflowView({ select: (id) => this.select(id) });
     this.statistics = new StatisticsView({ reveal: (id, seq) => this.reveal(id, seq) });
@@ -85,12 +108,29 @@ export class App implements Sink {
       rowGrip("details", "height of the details pane"),
       h("section", { class: "pane-details", "aria-label": "episode details" }, h("div", { class: "pane-head" }, h("h2", null, "details")), this.infoHost),
     );
+    // The unified outline is one region of its own: it is the rail, the
+    // figure and the conversation at once, so it stands in for the left
+    // column, the trajectory and the conversation tab together.
+    this.outlineHead = h(
+      "div",
+      { class: "pane-head" },
+      h("h2", null, "run"),
+      h("span", { class: "spacer" }),
+      depthControl(currentDepth(), (depth) => this.setDepth(depth)),
+    );
+    this.outlinePane = h("section", { class: "pane-outline", "aria-label": "run" }, this.outlineHead, this.outlineHost);
+    this.outlineCard = new Hovercard(this.outlineHost);
+    this.outlineHost.appendChild(this.outlineCard.el);
+    this.trajectoryGrip = rowGrip("trajectory", "height of the trajectory pane");
+    this.sideGrip = sidebarGrip();
+    this.mainPane = h("section", { class: "pane-main" }, this.tabsBar, this.views);
     const right = h(
       "section",
       { class: "column-right" },
+      this.outlinePane,
       this.trajectory.el,
-      rowGrip("trajectory", "height of the trajectory pane"),
-      h("section", { class: "pane-main" }, this.tabsBar, this.views),
+      this.trajectoryGrip,
+      this.mainPane,
     );
     const keys = h(
       "div",
@@ -112,12 +152,14 @@ export class App implements Sink {
     );
     clear(root);
     root.classList.add("foe");
-    root.append(this.topbar.el, left, sidebarGrip(), right, keys);
+    this.leftColumn = left;
+    root.append(this.topbar.el, left, this.sideGrip, right, keys);
     loadPanes({ root, left, right });
     onPanesChange(() => this.trajectory.resized());
     // A figure is laid out in pixels, so a change of text size changes what
     // it should draw even when nothing resized the pane it sits in.
     onSettingsChange(() => {
+      this.applyLayoutMode();
       this.trajectory.resized();
       this.workflow.resized();
       this.statistics.resized();
@@ -138,9 +180,93 @@ export class App implements Sink {
       tabs.observe(this.views);
     }
     this.connection = { state: live ? "reconnecting" : "file", detail: live ? "connecting" : "file" };
+    this.applyLayoutMode();
     this.renderSidebar();
     this.renderMain();
     this.renderStatus();
+  }
+
+  /**
+   * Which arrangement is on the page. The unified outline stands in for the
+   * episode rail, the trajectory and the conversation together, so those
+   * three are hidden while it is shown; the other tabs stay reachable,
+   * because a raw table and a statistics figure are not readings of the
+   * same hierarchy.
+   */
+  private applyLayoutMode(): void {
+    const outline = currentLayout() === "outline";
+    if (this.layoutApplied === outline) return;
+    this.layoutApplied = outline;
+    this.outlinePane.hidden = !outline;
+    this.leftColumn.hidden = outline;
+    this.sideGrip.hidden = outline;
+    this.trajectory.el.hidden = outline;
+    this.trajectoryGrip.hidden = outline;
+    document.documentElement.classList.toggle("one-column", outline);
+    this.renderOutline();
+    this.renderMain();
+  }
+
+  /**
+   * How deep the outline reads. Coarser than a caret, which opens one
+   * branch; the choice is stored the way the theme and the arrangement
+   * are, so a reader who prefers one rung keeps it across a reload.
+   */
+  private setDepth(depth: Depth): void {
+    if (currentDepth() === depth) return;
+    applyDepth(depth);
+    clear(this.outlineHead);
+    this.outlineHead.append(
+      h("h2", null, "run"),
+      h("span", { class: "spacer" }),
+      depthControl(currentDepth(), (next) => this.setDepth(next)),
+    );
+    this.renderOutline();
+  }
+
+  /** Opens or shuts one branch one level past the current reading. */
+  private toggleRow(rowId: string): void {
+    if (this.opened.has(rowId)) this.opened.delete(rowId);
+    else this.opened.add(rowId);
+    this.renderOutline();
+  }
+
+  /**
+   * Selecting a row of the outline selects the episode it belongs to, so
+   * the tabs that read one episode follow the reader down the hierarchy.
+   */
+  private selectRow(rowId: string | null): void {
+    this.outlineRow = rowId;
+    const row = rowId === null ? undefined : this.outline?.rows.find((r) => r.id === rowId);
+    if (row) this.select(row.episodeId);
+    else this.renderOutline();
+  }
+
+  private renderOutline(): void {
+    if (this.outlinePane.hidden) return;
+    const outline = this.outline;
+    if (!outline) {
+      clear(this.outlineHost);
+      this.outlineHost.append(this.outlineCard.el, h("div", { class: "empty sub" }, "no episodes"));
+      return;
+    }
+    const board = h("div", { class: "outline-board" });
+    clear(this.outlineHost);
+    this.outlineHost.append(this.outlineCard.el, board);
+    this.outlineCard.hide();
+    drawOutline(
+      board,
+      outline,
+      { depth: currentDepth(), opened: this.opened, selected: this.outlineRow },
+      this.outlineCard,
+      {
+        toggle: (id) => this.toggleRow(id),
+        scope: (id) => this.selectRow(id),
+        select: (id) => this.select(id),
+        reveal: (id, seq) => this.reveal(id, seq),
+      },
+      currentFontScale(),
+    );
   }
 
   // Sink
@@ -332,7 +458,19 @@ export class App implements Sink {
     // The program name arrives with `episode/start`, after the first
     // selection is made, so the title is set on every sidebar redraw.
     this.title.textContent = s ? `${s.name} · ${s.id}` : "";
-    this.trajectory.update(this.trajectoryEpisodes(roots), { selected: this.selected, cursor: this.cursor });
+    const causality = this.causalityEpisodes(roots);
+    this.trajectory.update(this.trajectoryEpisodes(roots), causality, {
+      selected: this.selected,
+      cursor: this.cursor,
+    });
+    // The outline reads the same model the figure does, so a run that grew
+    // moves both. Its digest is the rows it would draw.
+    const digest = causality.map((e) => `${e.id}:${e.lastSeq}:${e.steps.length}:${e.firings.length}`).join("|");
+    if (digest !== this.outlineDigest) {
+      this.outlineDigest = digest;
+      this.outline = causalityOutline(causality);
+      this.renderOutline();
+    }
     // The trajectory region opens at the height its rows need, so a run of
     // one episode does not open a region of mostly empty ground. A row is
     // as tall as its own channels, so the height follows the drawing rather
@@ -364,6 +502,29 @@ export class App implements Sink {
     });
   }
 
+  /**
+   * The episodes the causality figure draws. It reads the folded rows and
+   * summary rather than the log, so no event is parsed twice and every
+   * edge it draws comes from an obligation pair the fold already matched.
+   */
+  private causalityEpisodes(roots: ReturnType<typeof buildTree>): CausalityEpisode[] {
+    return flatten(roots).map(({ node, depth }) => {
+      const state = this.episodes.get(node.id);
+      return readCausality(node.summary, state ? state.fold.rows : [], depth);
+    });
+  }
+
+  /**
+   * Scopes the conversation to one node of the causality figure. The pane
+   * shows the node's own messages and those of every node below it, with a
+   * header naming the scope and an escape back to the whole run.
+   */
+  private setScope(scope: ConversationScope | null): void {
+    this.scope = scope;
+    if (scope !== null && this.tab !== "conversation") this.tab = "conversation";
+    this.renderMain();
+  }
+
   private tabButton(tab: Tab, label: string): HTMLElement {
     return h("button", { class: "tab", type: "button", role: "tab", "data-tab": tab, onclick: () => this.setTab(tab) }, label);
   }
@@ -381,6 +542,10 @@ export class App implements Sink {
     const declared = this.declaresWorkflow(id);
     const button = this.tabsBar.querySelector<HTMLElement>('.tab[data-tab="workflow"]');
     if (button) button.hidden = !declared;
+    // The outline is the conversation, so the tab that would repeat it is
+    // not offered; the readings that are not of the same hierarchy are.
+    const conversation = this.tabsBar.querySelector<HTMLElement>('.tab[data-tab="conversation"]');
+    if (conversation) conversation.hidden = !this.outlinePane.hidden;
     const state = this.episodes.get(id);
     if (!state) {
       this.workflow.update(null, null);
@@ -427,6 +592,11 @@ export class App implements Sink {
   }
 
   private renderMain(): void {
+    // With the outline showing the run, the region below it is only worth
+    // the room when a reading that is not of the same hierarchy is open.
+    const spare = !this.outlinePane.hidden && this.tab === "conversation";
+    this.mainPane.hidden = spare;
+    if (spare) return;
     for (const b of this.tabsBar.querySelectorAll<HTMLElement>(".tab")) {
       const active = b.dataset.tab === this.tab;
       b.classList.toggle("active", active);
@@ -443,6 +613,19 @@ export class App implements Sink {
       next = this.workflow.el;
     } else if (this.tab === "statistics") {
       next = this.statistics.el;
+    } else if (this.tab === "conversation" && this.scope !== null) {
+      next = renderScope(
+        this.scope,
+        {
+          rows: (id) => this.episodes.get(id)?.fold.rows ?? [],
+          name: (id) => {
+            const s = this.episodes.get(id)?.fold.summary;
+            return s ? (s.name === s.id ? s.id : `${s.name} ${s.id}`) : id;
+          },
+        },
+        { select: (id: string) => this.select(id) },
+        () => this.trajectory.setScope(null),
+      );
     } else {
       next = this.tab === "raw" ? selected.raw.el : selected.conv.el;
     }
@@ -460,7 +643,10 @@ export class App implements Sink {
     const remembered = this.scrollMemory.get(next);
     // A dialogue opens at its end, because the last row is the newest; a
     // figure opens at its top, because the first figure is the first to read.
-    const foot = next !== this.workflow.el && next !== this.statistics.el;
+    // A dialogue opens at its end and a figure at its top; a scoped
+    // dialogue opens at its top too, because its first section is the node
+    // that was selected and the reason the scope exists.
+    const foot = next !== this.workflow.el && next !== this.statistics.el && !next.classList.contains("scoped");
     next.scrollTop = remembered === undefined ? (foot ? next.scrollHeight : 0) : remembered;
   }
 

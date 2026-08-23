@@ -98,3 +98,14 @@ async fn bad_patterns_and_unreadable_roots_are_errors() {
     let v = Grep::new().call(json!({"pattern": "a", "path": "/etc"}), &ctx(&fx)).await;
     assert!(v.is_error);
 }
+
+/// What the call found rather than what it was asked for: the pattern is
+/// in the arguments already, and only the tool knows the count.
+#[tokio::test]
+async fn states_how_many_matches_it_found() {
+    let fx = Fixture::new();
+    fx.write("a.txt", "alpha\nbeta\n");
+    fx.write("b.txt", "alpha\n");
+    let v = grep(&fx, json!({"pattern": "alpha"})).await;
+    assert_eq!(v.subject.as_deref(), Some("2 match(es) in 2 file(s) under ."));
+}

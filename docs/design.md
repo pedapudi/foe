@@ -26,6 +26,7 @@ piece.
 | [workflow.md](workflow.md) | declared dataflow graphs, choice points, and recovery |
 | [compaction.md](compaction.md) | when and how the model's context is compacted, and what survives the cut |
 | [design-language.md](design-language.md) | the visual language the viewer follows |
+| [viewer-study.md](viewer-study.md) | a historical record of the layouts weighed before the viewer's outline |
 
 ## The problem
 
@@ -671,10 +672,17 @@ model call. Nothing depends on `crates/view` except the binary.
 
 ## Size
 
-The runtime is `log`, `core`, and `code`, and its Rust source stays under
-6,000 lines, excluding tests and generated code. The workflow executor in
-`crates/workflow` stays under 1,000 lines on the same terms, and the
-compaction policy in `crates/context` under 500.
+The kernel is `log` and `core` — the log format, the loop, budgets, the
+sandbox, and spawning — and its Rust source stays under 5,400 lines,
+excluding tests and generated code. Its smallness is the product claim, so
+it carries the tightest budget relative to its size.
+
+The tool surface in `crates/code` is budgeted apart, under 1,600 lines on
+the same terms. It is separate because it grows a tool at a time: a new
+tool adds capability without touching the kernel, so room for tools must
+not become room for the loop. The workflow executor in `crates/workflow`
+stays under 1,000 lines, and the compaction policy in `crates/context`
+under 500.
 
 The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
 and the browser bundle it serves under 150 KB compressed. It is separate

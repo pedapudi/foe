@@ -433,7 +433,7 @@ impl Tool for ExecTool {
                     "stderr": String::from_utf8_lossy(&result.stderr), "timed_out": result.timed_out,
                     "duration_ms": result.duration.as_millis() as u64,
                 });
-                ToolValue { value, rendered: Some(self.render(&result)), is_error: false }
+                ToolValue { value, rendered: Some(self.render(&result)), is_error: false, subject: None }
             }
             Err(e) => ToolValue::error(format!("`{}` could not start: {e}", self.spec.name)),
         }

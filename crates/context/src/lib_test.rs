@@ -55,6 +55,7 @@ fn result(step: u32, call_id: &str, rendered: &str, is_error: bool) -> EventData
         rendered: rendered.into(),
         is_error,
         spill: None,
+        subject: None,
         duration_ms: 1,
         synthetic: false,
     })

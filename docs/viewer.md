@@ -177,9 +177,11 @@ stands beside it in the sidebar and in the breadcrumbs, so the row does not
 repeat it. The selected row carries the figure's one accent as a spine down
 its leading edge.
 
-A control in the region's header sets what x measures, and the three
-settings map linearly onto the same plot area, so switching moves the
-marks and changes nothing else.
+A control in the region's header sets how the run is read. Its first three
+settings are axes: they set what x measures and map linearly onto the same
+plot area, so switching moves the marks and changes nothing else. Its
+fourth, **causality**, replaces the timeline with a figure of a different
+orientation, specified under "Causality" below.
 
 - **wall clock** places a mark at its event's `time`. Two marks at one x
   happened at one moment, which is what a reader of a single tree wants.
@@ -200,6 +202,177 @@ carries a gridline down the plot in `--v2-rule-soft` at 0.6 pixels, because
 a bar's length is read against the axis. The figure fits the region's width
 and reflows when the region is resized; it neither pans nor zooms, and it
 redraws only when a digest of what it would draw changes.
+
+### Causality
+
+The three axes measure *when* and run left to right. Causality shows *what
+caused what* and runs top to bottom: left to right runs out of width at
+about eleven columns and a real run has more, while downward scrolls the
+way a long run already wants to and never needs horizontal room. Time runs
+down and structure runs across.
+
+The figure is built from the log's obligation pairs and never from an
+inferred parent, so it draws no edge the log does not carry. `spawn/start`
+names the tool call that opened a child, and `workflow/node-start` names
+the child a model node ran; those two are the whole of what opens a lane.
+
+A lane is earned. Two things earn one: an **episode**, which has its own
+agent, budget and typed outcome and can outlive the call that made it, and
+a **workflow**, which branches and loops. Everything else is a mark on the
+lane it belongs to. A **step** — one model request and the tool calls it
+produced, `step` on the log's own events — is a row on its episode's lane,
+and every step the log names is a row whether or not a message answered
+it. A **tool call** is a short tick off its step's row with its mark at the
+end; no return edge is drawn, because the lane continuing past the tick is
+the return, a call can neither diverge nor outlive its caller, and calls
+are the largest count in the model. `spawn` is not special-cased: it is
+the call whose tick opens a lane, because what it created can outlive it.
+
+A workflow node the run entered more than once is one row and a loop edge
+back up to it, not one row per firing. That is what lets the scoped
+conversation show every pass over the node.
+
+Each lane is one continuous line at its own column, from its first row to
+its last, stretched to reach every curve that joins it; a lane of one row
+gets a short stub, so its own elbow and its merge have ground between
+them. A lane takes the lowest free column when it opens and releases it
+when it closes, so column is occupancy and not tree depth — tree depth is
+carried by the label's indent instead. The layout claims no room past its
+own marks: it reports the width its strokes take and gives each row an
+indent from wherever its reader sets the text column, so what stands
+beside the drawing is the caller's decision and not the figure's. Edges
+are cubic with their control points on the midline, except a loop, which returns to the column it left
+and bows out of it. There are no arrowheads: time runs down, so direction
+is unambiguous and a head on every edge would be noise.
+
+The figure paints in three layers — the row highlight, the strokes, then
+the labels — so a selected row never hides a line and a line never crosses
+out a name.
+
+Lane colour carries branch identity, cycled over five tones mixed from the
+theme's own tokens so that it follows every theme, and none of the five is
+an outcome hue. Hue carries the outcome and carries it only on the marks:
+at the foot of a lane, a ring in `--v2-good` for `Completed`, in
+`--v2-caution` for `Exhausted` and in `--v2-flat` for `Blocked`, and a
+cross in `--v2-bad` for `Failed`. A tool call whose result reported a
+failure takes that same cross on its tick, so a failure is visible at the
+leaf without reading anything.
+
+A row is named by its semantic role first and its durable identifier
+second, never by a substring of free text: a workflow node by its own
+name, a step of one call by the tool and its target (`read
+src/parser.rs`), a step of several by the first call and a count (`read
+src/parser.rs +2`), a delegation by `spawn` and the child's program name
+(`spawn surveyor`), a step that called nothing by `answered`, and a step
+whose request no message answered by `no answer`. `step N` rides alongside
+in faint.
+
+The tool name stands beside the target even though the tick beside it
+already draws a mark. The redundancy is deliberate: a word is faster to
+scan than a glyph, and the target is the thing a reader is looking for.
+The target is the whole of the one short argument the call carries — a
+path, a program name — because which directory a file sits in is part of
+what identifies it; an argument with whitespace in it is free text and is
+never shown, and a path too long to set has its middle elided and its
+basename kept (`src/…/parser.rs`), never a trailing cut.
+
+Selecting a row scopes the conversation to it — that node's own messages
+and those of every node below it — rather than merely highlighting it. A
+header names the scope and carries an escape back to the whole run. A
+workflow node entered twice yields one section per pass, labelled `pass 1`
+and `pass 2`, and each section is named by the node itself, so a graph of
+four nodes reads `propose`, `check`, `revise`, `accept` and never four
+sections all reading "workflow".
+
+### The unified outline
+
+The episode rail, the causal figure and the conversation are not three
+things. They are one hierarchy — episode, step, call, message — read at
+different depths, so one collapsible outline replaces all three and a
+**depth control** moves between the readings. It is the arrangement the
+viewer opens in.
+
+Each rung is named for the class of row it adds to the one before it.
+
+| depth | what it adds |
+| --- | --- |
+| `episodes` | episodes alone, which is the rail |
+| `steps` | workflow nodes and steps, which is the tree |
+| `calls` | tool calls with their targets, which is the causal figure |
+| `conversation` | what the model said at each step |
+| `outputs` | what each tool returned |
+
+What the model said and what its tools returned are separate rungs because
+they differ in size by more than a factor of twenty. Over one recorded run
+of 1,255 events the model's own words came to 5,719 characters and the
+tool results to 139,281, so a reader who wanted the conversation would
+otherwise have had to take 96 percent of the run's text with it. The
+outline opens at `conversation`: the whole causal structure of a run plus
+the model's account of it, one rung short of the output.
+`docs/viewer-study.md` carries the measurement over every fixture.
+
+The reading is stored in `localStorage` under `foe.depth` beside the
+theme, the typeface, the text size and the arrangement, so a reader who
+prefers one rung keeps it across a reload.
+
+A caret on any row opens that one branch one level past the current
+reading, so a reader can sit at `steps`, open one step to see its calls,
+and open one call to see its result without expanding the run. The depth
+presets are the coarse control and the carets are the fine one.
+
+The gutter nests and the text does not. Every label starts in one column,
+because the lanes already draw the structure and a ragged left edge makes
+a run tedious to skim: the eye reads the indent instead of the sequence.
+The single exception is a tool call and its result, which step in one
+level under the step that issued them, because a call is part of that step
+rather than the next thing that happened. Exactly two label columns,
+therefore. Prose and result bodies break even that and run the full width
+from the text column, because a diff at depth five would otherwise lose
+the room it needs; the inconsistency is deliberate, and code needs the
+width.
+
+Depth is counted against the visible set and never against the raw
+hierarchy. Read at its coarsest a child episode is still an episode one
+level in, even though the call that spawned it is not on the page.
+
+A label stands in for children that are not on the page, so a step's label
+defers to its calls once those are rows of their own: with them hidden it
+reads `read src/parser.rs +1`, and with them shown it falls back to `step
+1`, plus `attempt N of N` when the request retried, so that it does not
+echo the line directly beneath it.
+
+The lane geometry is the same geometry, computed over the visible rows, so
+it is recomputed on every change of depth or caret. Rows are not one
+height — a line of prose and a result body are taller than a node — so the
+rows are laid out and measured first and the lanes are placed from the
+heights they actually took, never from an assumed pitch. A row's mark sits
+on its first line rather than at its vertical middle, so a row holding a
+diff still has its mark beside the name it belongs to.
+
+Two costs come with it and are not hidden. A child episode's rows sit
+under the call that spawned it rather than interleaved by time, so reading
+order is not global order; every row keeps its log position in the gutter,
+which is the only way to see where order jumped. That position is printed
+once per event: a row that continues the row it is part of and stands for
+the same event — a step's prose, a call's result — leaves the column
+blank, because a column of doubled numbers hides the jump it exists to
+show. Two episodes that both begin at zero each print their zero: the
+second is the jump, not a repeat. And one view reads at one
+place in the hierarchy, so a reader cannot study one step's output while
+the whole shape stays in view. That is why the other arrangement remains.
+
+### Figure and conversation
+
+The causal figure beside a conversation scoped to whatever is selected in
+it: the arrangement the outline cannot be, because it holds two places in
+the hierarchy at once. A control in the top bar chooses between the two,
+and the choice is stored in `localStorage` under `foe.layout` beside the
+theme, the typeface and the text size.
+
+With the outline showing the run it stands in for the episode rail, the
+trajectory region and the conversation tab together, and those are not
+drawn; the raw events, diff, workflow and statistics tabs are readings of
+something else and stay reachable below it.
 
 ### The channels of a row
 
