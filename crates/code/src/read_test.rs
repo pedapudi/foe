@@ -103,6 +103,91 @@ async fn paths_outside_the_roots_are_denied() {
     assert!(v.rendered.unwrap().contains("outside every granted root"));
 }
 
+/// docs/tools.md "read": the file is consumed as a stream, so the tool
+/// never asks the reader for a whole-file buffer, and the count of lines
+/// past the window is still exact.
+#[tokio::test]
+async fn streams_the_file_without_a_whole_file_buffer() {
+    let fx = Fixture::new();
+    let text: String = (1..=20_000).map(|i| format!("line {i}\n")).collect();
+    assert!(text.len() > 2 * READ_BUFFER_BYTES, "the fixture must span several stream buffers");
+    fx.write("big.txt", &text);
+    let v = read(&fx, json!({"path": "big.txt", "offset": 9000, "limit": 3})).await;
+    assert_eq!(fx.whole_reads(), 0, "read consumed the stream rather than a whole-file buffer");
+    let r = v.rendered.unwrap();
+    assert!(r.starts_with("9000\tline 9000\n9001\tline 9001\n9002\tline 9002\n"), "{r}");
+    assert!(r.ends_with("[Showing lines 9000-9002 of 20000. Use offset=9003 to continue.]"), "{r}");
+    assert_eq!(v.value["total_lines"], 20_000);
+    let v = read(&fx, json!({"path": "big.txt", "offset": 20_001})).await;
+    assert!(v.is_error);
+    assert!(v.rendered.unwrap().contains("offset 20001 is past the end of big.txt, which has 20000 lines"));
+}
+
+/// A multibyte character cut by the stream buffer boundary is reassembled
+/// before validation, so a boundary can never make a text file binary, and
+/// a line longer than the character limit reports its complete character
+/// count without being retained.
+#[tokio::test]
+async fn utf8_sequences_split_across_the_buffer_boundary_survive() {
+    let fx = Fixture::new();
+    // The two bytes of é fall on either side of the buffer boundary.
+    let mut text = "x".repeat(READ_BUFFER_BYTES - 1);
+    text.push_str("é\ntail é line\n");
+    fx.write("wide.txt", &text);
+    let v = read(&fx, json!({"path": "wide.txt", "offset": 2})).await;
+    assert!(!v.is_error, "{v:?}");
+    assert_eq!(v.rendered.as_deref(), Some("2\ttail é line\n"));
+    assert_eq!(v.value["total_lines"], 2);
+    let v = read(&fx, json!({"path": "wide.txt", "offset": 1, "limit": 1})).await;
+    assert!(!v.is_error, "{v:?}");
+    let r = v.rendered.unwrap();
+    assert!(r.contains(&format!("is {} characters", READ_BUFFER_BYTES)), "{r}");
+}
+
+/// A NUL byte after the displayed window still marks the file binary,
+/// because the whole stream is scanned rather than the window alone.
+#[tokio::test]
+async fn a_nul_byte_after_the_window_is_still_binary() {
+    let fx = Fixture::new();
+    let mut bytes: Vec<u8> = (1..=12_000).flat_map(|i| format!("line {i}\n").into_bytes()).collect();
+    assert!(bytes.len() > READ_BUFFER_BYTES, "the NUL must sit beyond the first stream buffer");
+    bytes.push(0);
+    let size = bytes.len();
+    fx.write_bytes("late-nul.txt", &bytes);
+    let v = read(&fx, json!({"path": "late-nul.txt", "limit": 2})).await;
+    assert!(v.is_error);
+    assert!(v.rendered.unwrap().contains(&format!("binary file ({size} bytes")));
+}
+
+/// CRLF endings render without the carriage return even when the buffer
+/// boundary falls between the carriage return and the line break.
+#[tokio::test]
+async fn crlf_split_across_the_buffer_boundary_renders_clean() {
+    let fx = Fixture::new();
+    // The carriage return is the last byte of the first buffer and the line
+    // break the first byte of the next.
+    let mut text = "x".repeat(READ_BUFFER_BYTES - 1);
+    text.push_str("\r\nok\r\n");
+    fx.write("split.txt", &text);
+    let v = read(&fx, json!({"path": "split.txt", "offset": 2})).await;
+    assert!(!v.is_error, "{v:?}");
+    assert_eq!(v.rendered.as_deref(), Some("2\tok\n"));
+    assert_eq!(v.value["total_lines"], 2);
+    // The same boundary split on a line too long to show: the reported
+    // character count excludes the carriage return.
+    let mut text = "y".repeat(10);
+    text.push('\n');
+    text.push_str(&"z".repeat(READ_BUFFER_BYTES - 12));
+    text.push_str("\r\nend\n");
+    fx.write("split2.txt", &text);
+    let v = read(&fx, json!({"path": "split2.txt", "offset": 2, "limit": 1})).await;
+    assert!(!v.is_error, "{v:?}");
+    let r = v.rendered.unwrap();
+    assert!(r.contains(&format!("is {} characters", READ_BUFFER_BYTES - 12)), "{r}");
+    let v = read(&fx, json!({"path": "split2.txt", "offset": 3})).await;
+    assert_eq!(v.rendered.as_deref(), Some("3\tend\n"));
+}
+
 /// What a person reads in a list: the file and the span actually shown,
 /// which the arguments alone do not give, because a limit and the end of
 /// the file both cut it.

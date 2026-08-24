@@ -38,6 +38,9 @@ pub const GREP_SEARCH_BUFFER_MAX_BYTES: usize = 8 * 1024 * 1024;
 /// Diff lines `edit` renders before one elision line stands in for the
 /// rest. The canonical value keeps the complete diff.
 pub const EDIT_DIFF_MAX_LINES: usize = 200;
+/// Bytes one `read` stream buffer holds. Reading retains this buffer and
+/// the kept window, so peak memory does not grow with the file.
+pub const READ_BUFFER_BYTES: usize = 64 * 1024;
 /// Seconds `bash` waits when the call names no `timeout_seconds`.
 pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
 

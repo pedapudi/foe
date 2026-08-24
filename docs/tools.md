@@ -97,7 +97,7 @@ the first `read` root, and paths in results are shown relative to it.
 
 | tool | effect | arguments | limits | canonical value |
 |---|---|---|---|---|
-| `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |
+| `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused; the file streams through a 64 KiB buffer, so memory does not grow with file size | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |
 | `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
 | `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
@@ -135,14 +135,16 @@ field is then absent.
 
 ### Shared line fitting
 
-Every bound on how much text a result carries is measured by one function,
-`foe_core::fitting`. It answers how many lines from a sequence, taken in the
-order given, fit within a line count and a character count. A line is taken
-whole or not at all, so a cut on this boundary never splits a character, and
-each line counts the newline that follows it. `read` fits the head of its
-window; `bash` fits the tail of its output, because the end of a build or
-test run usually carries the verdict. The turn budget below fits whichever
-end of a rendering carries its information.
+Every bound on how much text a result carries follows one rule, stated by
+the function `foe_core::fitting`: how many lines from a sequence, taken in
+the order given, fit within a line count and a character count. A line is
+taken whole or not at all, so a cut on this boundary never splits a
+character, and each line counts the newline that follows it. `bash` fits
+the tail of its output through that function, because the end of a build or
+test run usually carries the verdict; `read` applies the same rule to the
+head of its window as the file streams past, so buffered and streamed
+fitting keep one meaning. The turn budget below fits whichever end of a
+rendering carries its information.
 
 ### `read`
 
@@ -161,7 +163,15 @@ tool then returns no content and a notice naming the line's size and a
 
 A file that contains a NUL byte or is not valid UTF-8 is reported as binary
 with its size in bytes, and the call is an error. An offset past the end of
-the file is an error that states the file's line count.
+the file is an error that states the file's exact line count.
+
+The file is consumed as a stream through the reader's descriptor-bound
+open, in buffers of 64 KiB. The tool retains that buffer and the kept
+window, so peak memory is bounded by the window's own limits rather than by
+the file's size or by any one line's length; a line too long to show is
+counted rather than retained. NUL detection and UTF-8 validation cover
+every byte of the file, including bytes after the window, and a multibyte
+sequence cut by a buffer boundary is reassembled before validation.
 
 ### `grep`
 
