@@ -12,10 +12,8 @@
     "spawn": ["survey"]
   },
   "budget": {
-    "model_calls": 40,
-    "input_tokens": 320000,
-    "output_tokens": 80000,
-    "seconds": 1800,
+    "model_calls": 80,
+    "seconds": 3600,
     "max_depth": 1,
     "max_episodes": 4,
     "max_concurrent": 2
@@ -30,7 +28,7 @@
       "grants": {
         "read": ["/home/user/project"]
       },
-      "budget": { "model_calls": 8, "input_tokens": 48000, "output_tokens": 12000 }
+      "budget": { "model_calls": 20 }
     }
   },
   "model": {

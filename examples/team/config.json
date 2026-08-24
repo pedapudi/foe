@@ -12,10 +12,8 @@
     "spawn": ["reviewer", "tester"]
   },
   "budget": {
-    "model_calls": 60,
-    "input_tokens": 480000,
-    "output_tokens": 120000,
-    "seconds": 2400,
+    "model_calls": 100,
+    "seconds": 3600,
     "max_depth": 1,
     "max_episodes": 3,
     "max_concurrent": 2
@@ -30,7 +28,7 @@
       "grants": {
         "read": ["/home/user/project"]
       },
-      "budget": { "model_calls": 12, "input_tokens": 96000, "output_tokens": 24000 }
+      "budget": { "model_calls": 20 }
     },
     "tester": {
       "name": "tester",
@@ -41,7 +39,7 @@
       "grants": {
         "read": ["/home/user/project"]
       },
-      "budget": { "model_calls": 12, "input_tokens": 96000, "output_tokens": 24000 }
+      "budget": { "model_calls": 20 }
     }
   },
   "model": {

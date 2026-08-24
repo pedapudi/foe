@@ -118,7 +118,7 @@ outcome. That is how both reports and both endings reach the lead.
 ## What to look for
 
 The lead's log holds two `spawn/start` events and two `budget/reserve`
-events, each taking the 12 calls the member program declares. It holds a
+events, each taking the 20 calls the member program declares. It holds a
 `team/roster` event for each phase change of each member, and a
 `team/message` and `team/delivered` pair for each of the two `send` calls.
 It ends with four `inbox/item` events with source `child`, and a `spawn/end`

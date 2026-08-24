@@ -17,10 +17,8 @@
     "write": ["/home/user/project"]
   },
   "budget": {
-    "model_calls": 12,
-    "input_tokens": 72000,
-    "output_tokens": 6000,
-    "seconds": 240,
+    "model_calls": 40,
+    "seconds": 1200,
     "max_episodes": 2
   },
   "workflow": {
@@ -48,10 +46,8 @@
             "write": ["/home/user/project"]
           },
           "budget": {
-            "model_calls": 10,
-            "input_tokens": 72000,
-            "output_tokens": 5000,
-            "seconds": 180
+            "model_calls": 40,
+            "seconds": 900
           },
           "done_when": {
             "verify": "check",

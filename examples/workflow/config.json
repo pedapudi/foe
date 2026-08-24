@@ -15,7 +15,7 @@
     "read": ["/home/user/project"],
     "write": ["/home/user/project/src"]
   },
-  "budget": { "model_calls": 30, "input_tokens": 240000, "output_tokens": 60000, "max_episodes": 6 },
+  "budget": { "model_calls": 60, "max_episodes": 6 },
   "workflow": {
     "nodes": {
       "survey": {
@@ -30,7 +30,7 @@
           },
           "tools": ["read", "grep"],
           "grants": { "read": ["/home/user/project"] },
-          "budget": { "model_calls": 8 },
+          "budget": { "model_calls": 20 },
           "done_when": {
             "returns": {
               "type": "object",
@@ -54,7 +54,7 @@
           },
           "tools": ["read", "edit"],
           "grants": { "read": ["/home/user/project"], "write": ["/home/user/project/src"] },
-          "budget": { "model_calls": 12 }
+          "budget": { "model_calls": 40 }
         },
         "follows": ["propose"],
         "verify": "check",

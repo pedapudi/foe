@@ -87,14 +87,14 @@ start the transport its inherited `model` block names.
 
 ## The budget pool
 
-Budget is one pool held by the root episode. The parent declares 40 model
-calls, 320,000 input tokens, 80,000 output tokens, and 1,800 seconds. A
-`spawn` call names no amount, so the reservation is what the child program
-declares: 8 calls, 48,000 input tokens, and 12,000 output tokens. Both
-reservations stand at once, so 16 of the parent's 40 calls are held for its
-children while they run. When a child settles, the runtime debits what the
-child spent and returns the rest. The pool ends the run down by 3 calls per
-child rather than by 8.
+Budget is one pool held by the root episode. The parent permits 80 model
+calls and 3,600 seconds. Each child program permits 20 calls. Two concurrent
+children therefore reserve 40 calls while they run. When a child settles,
+the runtime debits what the child spent and returns the unused reservation.
+The pool ends the run down by 3 calls per child rather than by 20.
+
+The program records input and output token use without limiting either
+quantity. The call and time limits are generous loop and stall backstops.
 
 Three structural caps sit beside the spend caps. `max_depth: 1` allows
 children and forbids grandchildren. `max_episodes: 4` allows four episodes
@@ -112,7 +112,7 @@ the child and the amount taken from the remainder, then a `spawn/start` with
 `context: "fresh"` and the id of the tool call that spawned it:
 
 ```json
-{"seq": 12, "type": "budget/reserve", "data": { "child_id": "ep_ff6cef6d", "reserved": { "model_calls": 8, "input_tokens": 48000, "output_tokens": 12000, "seconds": 1800, "episodes": 1 } }}
+{"seq": 12, "type": "budget/reserve", "data": { "child_id": "ep_ff6cef6d", "reserved": { "model_calls": 20, "episodes": 1 } }}
 {"seq": 13, "type": "spawn/start", "data": { "child_id": "ep_ff6cef6d", "program": "survey", "context": "fresh", "call_id": "tc_spawn_config" }}
 ```
 
@@ -120,7 +120,7 @@ The child's own log is at `children/<child-id>/episode.jsonl` under the
 parent's log directory, beside the configuration the child was launched
 with. Its `episode/start.parent_id` names the parent, and its
 `episode/start.program` is the child program: no write root, no spawn root,
-and a budget of 8 calls against the parent's 40. When the child finishes,
+and a budget of 20 calls against the parent's 80. When the child finishes,
 the parent's log gains an `inbox/item` with source `child` carrying the
 report, a second one stating that the child ended, a `spawn/end` with the
 child's outcome, and a `budget/release` with what the child spent:
