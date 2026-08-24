@@ -1,12 +1,15 @@
 //! `grep`: regular-expression search over file contents, in process.
 //!
 //! The tree is walked with the `ignore` crate so that `.gitignore` and
-//! `.ignore` files apply, and each file's bytes are obtained through the
-//! `Reader`, which keeps containment in one place. Matches are sorted by
-//! path and line so that the result is deterministic regardless of the
-//! filesystem's directory order.
+//! `.ignore` files apply, and each file is streamed through the `Reader`,
+//! which keeps containment in one place. Matches are sorted by path and line
+//! so that the result is deterministic regardless of the filesystem's
+//! directory order.
 
-use crate::{display, parse_args, resolve, GREP_COLLECT_MAX, GREP_DEFAULT_LIMIT, GREP_LINE_MAX_CHARS};
+use crate::{
+    display, parse_args, resolve, GREP_COLLECT_MAX, GREP_DEFAULT_LIMIT, GREP_HIT_COLLECT_MAX, GREP_LINE_MAX_CHARS,
+    GREP_SEARCH_BUFFER_MAX_BYTES,
+};
 use foe_config::{Effect, ToolSpec};
 use foe_core::{CallCtx, Tool, ToolValue};
 use grep_regex::RegexMatcherBuilder;
@@ -49,8 +52,8 @@ struct Hit {
 struct Collected {
     hits: Vec<Hit>,
     matches: usize,
-    /// False once `GREP_COLLECT_MAX` matches were collected and the search stopped.
-    complete: bool,
+    /// Names the collection bound that stopped the search.
+    stopped_at: Option<&'static str>,
 }
 
 struct Collect<'a> {
@@ -60,9 +63,13 @@ struct Collect<'a> {
 
 impl Collect<'_> {
     fn push(&mut self, line: u64, bytes: &[u8], context: bool) -> Result<bool, std::io::Error> {
+        if self.into.hits.len() >= GREP_HIT_COLLECT_MAX {
+            self.into.stopped_at = Some("result lines");
+            return Ok(false);
+        }
         if !context {
             if self.into.matches >= GREP_COLLECT_MAX {
-                self.into.complete = false;
+                self.into.stopped_at = Some("matches");
                 return Ok(false);
             }
             self.into.matches += 1;
@@ -105,9 +112,10 @@ impl Grep {
                 description: format!(
                     "Search file contents with a regular expression under a directory or in one \
                      file, honoring .gitignore. Matching lines come back sorted by path and line, \
-                     up to limit (default {GREP_DEFAULT_LIMIT}); each line is clamped at \
-                     {GREP_LINE_MAX_CHARS} characters. The search stops after {GREP_COLLECT_MAX} \
-                     matches."
+                    up to limit (default {GREP_DEFAULT_LIMIT}); each line is clamped at \
+                     {GREP_LINE_MAX_CHARS} characters. The line-search buffer uses at most {} MiB and \
+                     stops after {GREP_COLLECT_MAX} matches or {GREP_HIT_COLLECT_MAX} result lines.",
+                    GREP_SEARCH_BUFFER_MAX_BYTES / 1024 / 1024
                 ),
                 instruction: Some(
                     "Use grep to locate definitions, call sites, and strings across the tree before \
@@ -180,21 +188,29 @@ impl Tool for Grep {
             .before_context(a.context)
             .after_context(a.context)
             .binary_detection(BinaryDetection::quit(0))
+            .heap_limit(Some(GREP_SEARCH_BUFFER_MAX_BYTES))
             .build();
-        let mut collected = Collected { hits: Vec::new(), matches: 0, complete: true };
+        let mut collected = Collected { hits: Vec::new(), matches: 0, stopped_at: None };
         let mut searched = 0usize;
+        let mut failed = 0usize;
+        let mut first_failure = None;
         for entry in walk.build() {
             let Ok(entry) = entry else { continue };
             if !entry.file_type().is_some_and(|t| t.is_file()) {
                 continue;
             }
-            let Ok(bytes) = reader.read(entry.path()) else {
+            let Ok(file) = reader.open(entry.path()) else {
                 continue;
             };
-            searched += 1;
             let sink = Collect { path: entry.path(), into: &mut collected };
-            let _ = searcher.search_slice(&matcher, &bytes, sink);
-            if !collected.complete {
+            match searcher.search_reader(&matcher, file, sink) {
+                Ok(()) => searched += 1,
+                Err(error) => {
+                    failed += 1;
+                    first_failure.get_or_insert_with(|| format!("{}: {error}", display(roots, entry.path())));
+                }
+            }
+            if collected.stopped_at.is_some() {
                 break;
             }
         }
@@ -207,8 +223,15 @@ impl Tool for Grep {
             paths.len()
         };
         let mut out = format!("{} matches in {files} files under {root_shown}", collected.matches);
-        if !collected.complete {
-            let _ = write!(out, " (search stopped at {GREP_COLLECT_MAX} matches)");
+        if let Some(bound) = collected.stopped_at {
+            let limit = if bound == "matches" { GREP_COLLECT_MAX } else { GREP_HIT_COLLECT_MAX };
+            let _ = write!(out, " (search stopped at {limit} {bound})");
+        }
+        if failed > 0 {
+            let _ = write!(out, "; {failed} file(s) could not be searched");
+            if let Some(error) = &first_failure {
+                let _ = write!(out, " (first: {})", clamp(error));
+            }
         }
         if collected.matches > limit {
             let _ = write!(out, "; showing the first {limit}. Refine the pattern or raise limit.");
@@ -225,6 +248,9 @@ impl Tool for Grep {
             let sep = if h.context { '-' } else { ':' };
             let _ = writeln!(out, "{}:{}{sep}{}", display(roots, &h.path), h.line, h.text);
         }
+        let complete = collected.stopped_at.is_none() && failed == 0;
+        let subject = format!("{} match(es) in {files} file(s) under {root_shown}", collected.matches);
+        let subject = if complete { subject } else { format!("{subject}; incomplete") };
         ToolValue::ok(
             json!({
                 "pattern": a.pattern,
@@ -232,12 +258,13 @@ impl Tool for Grep {
                 "matches": collected.matches,
                 "files": files,
                 "searched_files": searched,
-                "complete": collected.complete,
+                "failed_files": failed,
+                "complete": complete,
                 "hits": collected.hits,
             }),
             out.trim_end_matches('\n'),
         )
-        .subject(format!("{} match(es) in {files} file(s) under {root_shown}", collected.matches))
+        .subject(subject)
     }
 }
 

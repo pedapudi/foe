@@ -34,9 +34,20 @@ async fn matches_are_sorted_by_path_then_line_and_honor_gitignore() {
         ]
     );
     assert_eq!(v.value["matches"], 4);
+    assert_eq!(v.value["failed_files"], 0);
     assert_eq!(v.value["complete"], true, "a search under the collection limit is complete");
     assert!(v.value["searched_files"].as_u64().unwrap() >= 3, "{}", v.value["searched_files"]);
     assert!(!r.contains("build/out.rs"));
+}
+
+/// docs/tools.md `grep`: file content is streamed through the reader, so a
+/// search does not allocate a complete file before matching it.
+#[tokio::test]
+async fn streams_files_without_requesting_whole_file_buffers() {
+    let fx = tree();
+    let v = grep(&fx, json!({"pattern": "alpha"})).await;
+    assert_eq!(v.value["matches"], 4);
+    assert_eq!(fx.whole_reads(), 0);
 }
 
 /// docs/tools.md `grep`: the search stops after `GREP_COLLECT_MAX` matches.
@@ -51,6 +62,31 @@ async fn a_search_that_reaches_the_collection_limit_says_it_stopped() {
     assert_eq!(v.value["complete"], false);
     assert_eq!(v.value["matches"], GREP_COLLECT_MAX);
     assert!(v.rendered.unwrap().contains(&format!("search stopped at {GREP_COLLECT_MAX} matches")));
+}
+
+/// docs/tools.md `grep`: the line-search buffer has a fixed ceiling. A line
+/// beyond it makes the partial result explicit rather than exhausting memory.
+#[tokio::test]
+async fn a_line_beyond_the_search_buffer_limit_is_reported_as_unsearched() {
+    let fx = Fixture::new();
+    fx.write("huge.txt", &"x".repeat(GREP_SEARCH_BUFFER_MAX_BYTES + 1));
+    let v = grep(&fx, json!({"pattern": "needle"})).await;
+    assert_eq!(v.value["complete"], false);
+    assert_eq!(v.value["failed_files"], 1);
+    assert!(v.subject.unwrap().ends_with("; incomplete"));
+    assert!(v.rendered.unwrap().contains("configured allocation limit"));
+}
+
+#[tokio::test]
+async fn context_lines_have_a_collection_limit() {
+    let fx = Fixture::new();
+    let mut body = "context\n".repeat(GREP_HIT_COLLECT_MAX);
+    body.push_str("needle\n");
+    fx.write("context.txt", &body);
+    let v = grep(&fx, json!({"pattern": "needle", "context": GREP_HIT_COLLECT_MAX})).await;
+    assert_eq!(v.value["complete"], false);
+    assert_eq!(v.value["hits"].as_array().unwrap().len(), GREP_HIT_COLLECT_MAX);
+    assert!(v.rendered.unwrap().contains(&format!("search stopped at {GREP_HIT_COLLECT_MAX} result lines")));
 }
 
 #[tokio::test]

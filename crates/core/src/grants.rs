@@ -64,6 +64,11 @@ impl RootReader {
 }
 
 impl Reader for RootReader {
+    fn open(&self, path: &Path) -> Result<Box<dyn std::io::Read + Send>, CapError> {
+        let (i, rest) = locate(&self.roots, path)?;
+        Ok(Box::new(self.dirs[i].open(rest)?.into_std()))
+    }
+
     fn read(&self, path: &Path) -> Result<Vec<u8>, CapError> {
         let (i, rest) = locate(&self.roots, path)?;
         Ok(self.dirs[i].read(rest)?)
