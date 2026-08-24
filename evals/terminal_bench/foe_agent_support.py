@@ -432,6 +432,8 @@ def build_program(
                         "Independently determine whether the shared workspace satisfies the original task. "
                         "Treat the implementation episode's completion claim as unverified. Inspect the "
                         "artifacts and run checks that distinguish plausible incorrect implementations. "
+                        "For a program interface, test at least two materially different valid inputs. "
+                        "Generate a second valid fixture when the workspace supplies only one. "
                         "Repair every defect you find. After the final edit, run the strongest available "
                         "task-relevant checks. Complete with the workspace in the state the task requires. "
                         "Report every path changed by either episode, including valid implementation changes "

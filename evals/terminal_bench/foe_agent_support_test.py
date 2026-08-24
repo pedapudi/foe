@@ -231,6 +231,10 @@ class ProgramTest(unittest.TestCase):
             repair["model"]["instructions"]["environment"],
             "Working directory: /workspace. gcc=/usr/bin/gcc.",
         )
+        self.assertIn(
+            "Generate a second valid fixture when the workspace supplies only one",
+            repair["model"]["instructions"]["role"],
+        )
         self.assertEqual(
             repair["model"]["done_when"]["returns"]["required"],
             ["summary", "changed_paths", "validation", "unresolved_risks"],
