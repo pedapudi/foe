@@ -132,7 +132,8 @@ bazel run //evals/terminal_bench:foe-verifier-controls
 Each control uses a fresh task container. It requires the untouched task
 state to produce at least one finding. It then applies a separate oracle and
 requires both an empty finding list and a score of `1.0` from the task-owned
-verifier. The control agent makes no model request.
+verifier. The checker runs with an empty process environment, matching Foe's
+configured-executable contract. The control agent makes no model request.
 
 Preview one verifier-governed case:
 

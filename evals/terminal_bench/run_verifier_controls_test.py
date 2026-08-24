@@ -5,10 +5,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from run_verifier_controls import evaluate_control_job, read_verifier_cases
+from run_verifier_controls import (
+    checker_control_command,
+    evaluate_control_job,
+    read_verifier_cases,
+)
 
 
 class VerifierControlTest(unittest.TestCase):
+    def test_checker_control_matches_foe_empty_environment(self):
+        self.assertEqual(
+            checker_control_command("/tmp/foe-completion-check"),
+            "/usr/bin/env -i /tmp/foe-completion-check",
+        )
+
     def test_case_file_pins_dataset_and_resolves_artifacts(self):
         cases_path = Path(__file__).with_name("verifier_cases.json")
         cases = read_verifier_cases(
@@ -21,6 +31,10 @@ class VerifierControlTest(unittest.TestCase):
         )
         self.assertTrue(cases["cancel-async-tasks"].checker.is_file())
         self.assertTrue(cases["cancel-async-tasks"].oracle.is_file())
+        self.assertEqual(
+            cases["cancel-async-tasks"].checker.read_text(encoding="utf-8").splitlines()[0],
+            "#!/usr/local/bin/python3",
+        )
         with self.assertRaisesRegex(ValueError, "must equal"):
             read_verifier_cases(cases_path, "terminal-bench/terminal-bench-2-1@7")
 

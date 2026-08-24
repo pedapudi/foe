@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/local/bin/python3
 """Check the public concurrency and cancellation contract for /app/run.py."""
 
 from __future__ import annotations

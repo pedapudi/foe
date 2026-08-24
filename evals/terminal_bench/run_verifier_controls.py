@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -22,6 +23,11 @@ class VerifierCase:
     checker: Path
     oracle: Path
     contract: str
+
+
+def checker_control_command(checker: str) -> str:
+    """Run the checker under the configured executor's empty environment."""
+    return f"/usr/bin/env -i {shlex.quote(checker)}"
 
 
 def file_digest(path: Path) -> str:

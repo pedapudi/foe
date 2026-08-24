@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/local/bin/python3
 """Check the public Vim-macro contract without changing /app/input.csv."""
 
 from __future__ import annotations

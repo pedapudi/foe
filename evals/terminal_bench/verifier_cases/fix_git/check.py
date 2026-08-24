@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/local/bin/python3
 """Check that the lost personal-site commit is reachable from master."""
 
 from __future__ import annotations

@@ -12,6 +12,8 @@ from harbor.agents.installed.base import BaseInstalledAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
+from run_verifier_controls import checker_control_command
+
 
 REMOTE_CHECKER = "/tmp/foe-completion-check"
 REMOTE_ORACLE = "/tmp/foe-completion-oracle"
@@ -55,7 +57,7 @@ class VerifierControlAgent(BaseInstalledAgent):
     async def _check(self, environment: BaseEnvironment) -> tuple[int, list[str], str]:
         result = await self.exec_as_agent(
             environment,
-            command=shlex.quote(REMOTE_CHECKER),
+            command=checker_control_command(REMOTE_CHECKER),
             cwd=environment.task_env_config.workdir,
         )
         findings = [line for line in (result.stdout or "").splitlines() if line.strip()]
