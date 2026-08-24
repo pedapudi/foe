@@ -26,6 +26,7 @@ DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 MIN_AUXILIARY_MODEL_CALLS = 6
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
+AGENT_TIMEOUT_GRACE_SECONDS = 300
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,7 @@ class Task:
     expected_input_tokens: int
     expected_output_tokens: int
     seconds: int
+    harbor_agent_seconds: int
 
 
 @dataclass(frozen=True)
@@ -69,10 +71,18 @@ def read_cases(
     raw_groups = value.get("groups")
     raw_tasks = value.get("tasks")
     raw_pricing = value.get("pricing")
+    raw_agent_timeouts = value.get("harbor_agent_timeouts")
     if not isinstance(dataset, str) or "@" not in dataset:
         raise ValueError("cases.dataset must pin a dataset revision")
-    if not all(isinstance(item, dict) for item in (raw_groups, raw_tasks, raw_pricing)):
-        raise ValueError("cases.groups, cases.tasks, and cases.pricing must be objects")
+    if not all(
+        isinstance(item, dict)
+        for item in (raw_groups, raw_tasks, raw_pricing, raw_agent_timeouts)
+    ):
+        raise ValueError(
+            "cases.groups, cases.tasks, cases.pricing, and cases.harbor_agent_timeouts must be objects"
+        )
+    if set(raw_agent_timeouts) != set(raw_tasks):
+        raise ValueError("cases.harbor_agent_timeouts keys must match cases.tasks")
     pricing: dict[str, Pricing] = {}
     for model, raw in raw_pricing.items():
         if not isinstance(model, str) or not isinstance(raw, dict):
@@ -99,12 +109,14 @@ def read_cases(
             expected_input_tokens=limits.get("expected_input_tokens"),
             expected_output_tokens=limits.get("expected_output_tokens"),
             seconds=limits.get("seconds"),
+            harbor_agent_seconds=raw_agent_timeouts.get(name),
         )
         limits = (
             task.model_calls,
             task.expected_input_tokens,
             task.expected_output_tokens,
             task.seconds,
+            task.harbor_agent_seconds,
         )
         if any(not isinstance(value, int) or value <= 0 for value in limits):
             raise ValueError(f"cases.tasks.{name} limits must be positive integers")
@@ -256,6 +268,16 @@ def harbor_command(
     hard_token_limits: bool = False,
     install_only: bool = False,
 ) -> list[str]:
+    model_stages = 1 + sum(
+        stage_enabled
+        for stage_enabled in (
+            diagnosis_model is not None,
+            unresolved_diagnosis_reasoning_effort is not None,
+            escalation_reasoning_effort is not None,
+        )
+    )
+    agent_timeout_seconds = task.seconds * model_stages + AGENT_TIMEOUT_GRACE_SECONDS
+    agent_timeout_multiplier = agent_timeout_seconds / task.harbor_agent_seconds
     kwargs = {
         "foe_binary": foe,
         "credential_file": credential_state,
@@ -302,6 +324,8 @@ def harbor_command(
         "1",
         "--n-attempts",
         str(attempts),
+        "--agent-timeout-multiplier",
+        str(agent_timeout_multiplier),
         "--jobs-dir",
         str(jobs_dir),
         "--job-name",

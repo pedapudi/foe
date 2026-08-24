@@ -178,6 +178,11 @@ bazel run //evals/terminal_bench:foe-smoke -- --confirm-spend
 The runner records token usage and estimated cost without enforcing token
 ceilings. Model calls and wall time remain loop backstops. Use
 `--hard-token-limits` only when a token boundary is the subject of the test.
+The runner sets Harbor's outer agent timeout to the sum of every possible
+model stage's Foe time backstop, plus five minutes for process settlement.
+Harbor therefore cannot terminate a valid Foe episode before its declared
+time allowance ends. [`cases.json`](cases.json) records each multiplier's
+base timeout from the pinned task metadata.
 
 The default route is `openai-codex/gpt-5.6-sol` with low reasoning effort.
 Every model node requests the `priority` service tier by default. OpenAI calls

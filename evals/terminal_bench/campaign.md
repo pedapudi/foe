@@ -271,14 +271,23 @@ received full task-owned grader credit.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Sol low, one episode | 0 of 3 | 32 | 234,848 | 108,544 | 14,250 | $0.833634 |
 | Sol xhigh, one episode | 2 of 2 | 44 | 1,507,411 | 945,152 | 39,267 | $3.412437 |
-| Sol low implementation followed by Sol high audit | 1 of 1 | 43 | 894,612 | 492,544 | 21,431 | $2.233910 |
+| Sol low implementation followed by Sol high audit | 2 of 2 | 79 | 1,567,635 | 896,512 | 43,734 | $3.917777 |
 
 The low-reasoning implementation in the audit workflow observed repetitive
 sample output and reported unresolved checkpoint-layout risks. The fresh
 high-reasoning audit inspected the tensor layout and tokenizer, repaired the
 program, and passed the hidden grader. This trial shows that the audit stage
-can convert an observed implementation failure into a correct artifact. One
-trial does not estimate the workflow's reliability.
+can convert an observed implementation failure into a correct artifact. A
+second independent trial also received full grader credit. It used 36 model
+calls and cost an estimated $1.683867. Both traces were conformant, and both
+completed Foe outcomes agreed with the graders.
+
+A third audit trial also received full task-owned grader credit. Harbor killed
+the agent after 900 seconds while Foe was still inside its declared 3,600-second
+workflow allowance. Harbor recorded `AgentTimeoutError`, incomplete usage, and
+a nonconformant partial trace. The campaign excludes this infrastructure trial
+from quality and resource results. The runner now gives Harbor an outer agent
+timeout equal to all possible Foe stage allowances plus five minutes.
 
 The identity-bound evidence digest contained the five single-episode
 trajectories. Its evaluated source identity was
@@ -308,7 +317,11 @@ identity-bound contrast that activates a specific Foe mechanism.
 The retained self-improvement result is
 `target/current-source-gpt2-self-improvement-sufficiency-run/result.json`.
 The successful audit workflow is retained under
-`target/terminal-bench-jobs/current-source-default-workflow-gpt2-attempt-1-20260824T060432Z`.
+`target/terminal-bench-jobs/current-source-default-workflow-gpt2-attempt-1-20260824T060432Z`
+and
+`target/terminal-bench-jobs/sol-low-high-audit-gpt2-confirmation-2-20260824T062550Z`.
+The excluded timeout trial is retained under
+`target/terminal-bench-jobs/sol-low-high-audit-gpt2-confirmation-3-20260824T063905Z`.
 
 ## Recorded self-improvement failure analysis
 

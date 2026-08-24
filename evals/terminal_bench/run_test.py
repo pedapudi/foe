@@ -42,6 +42,7 @@ class CasesTest(unittest.TestCase):
         )
         self.assertGreaterEqual(min(task.model_calls for task in tasks.values()), 60)
         self.assertGreaterEqual(min(task.seconds for task in tasks.values()), 1800)
+        self.assertEqual(tasks["gpt2-codegolf"].harbor_agent_seconds, 900)
         self.assertEqual(pricing["openai-codex/gpt-5.6-sol"].output_per_million, 20.0)
 
     def test_harbor_command_runs_one_task_at_a_time(self):
@@ -74,6 +75,10 @@ class CasesTest(unittest.TestCase):
             )
         self.assertEqual(command[command.index("--n-concurrent") + 1], "1")
         self.assertEqual(command[command.index("--n-attempts") + 1], "2")
+        self.assertAlmostEqual(
+            float(command[command.index("--agent-timeout-multiplier") + 1]),
+            (tasks["fix-git"].seconds + 300) / tasks["fix-git"].harbor_agent_seconds,
+        )
         self.assertIn("terminal-bench/terminal-bench-2-1@6", command)
         self.assertIn("terminal-bench/fix-git", command)
         self.assertIn("foe_agent:FoeAgent", command)
@@ -144,6 +149,11 @@ class CasesTest(unittest.TestCase):
         self.assertIn("diagnosis_input_per_million=0.2", command)
         self.assertIn("escalation_reasoning_effort=xhigh", command)
         self.assertIn("escalation_model_calls=18", command)
+        self.assertAlmostEqual(
+            float(command[command.index("--agent-timeout-multiplier") + 1]),
+            (tasks["fix-git"].seconds * 3 + 300)
+            / tasks["fix-git"].harbor_agent_seconds,
+        )
 
     def test_harbor_command_records_the_completion_checker(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
