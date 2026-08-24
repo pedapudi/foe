@@ -164,6 +164,60 @@ and repair allowances are added to the implementation allowance.
 13. Freeze one calibration attempt per task. Run the twelve calibration tasks, then record the result before opening the six calibration-holdout tasks.
 14. Decide whether the evidence supports a full Terminal-Bench 2.1 run.
 
+## Recorded verifier-governed development result
+
+On 2026-08-24, three modified Terminal-Bench scenarios tested Foe's
+configured completion verifier. Every trial used GPT-5.6 Sol with low
+reasoning and the default service tier. The evaluated Foe binary was
+`sha256:50d99136ed988f8c4a1b4524f1274c29814aaa5635097f5c09427d7721f05644`.
+
+Each public checker passed an untouched-workspace negative control and a
+separate oracle control. The task-owned grader accepted every oracle. The
+retained control report is
+`target/terminal-bench-verifier-controls/controls-20260824T045804Z/verifier-controls.json`.
+
+The first configuration used a low-reasoning implementation child followed by
+a fresh high-reasoning audit child. The second configuration used one
+low-reasoning episode with the same `done_when.verify` checker.
+
+| Task | Implementation plus audit result | Implementation plus audit calls | Implementation plus audit cost | Single episode result | Single episode calls | Single episode cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 13 | $0.263318 | 1.0 | 5 | $0.074008 |
+| `fix-git` | 1.0 | 21 | $0.475483 | 1.0 | 10 | $0.208192 |
+| `large-scale-text-editing` | 1.0 | 15 | $0.246779 | 1.0 | 8 | $0.119688 |
+| **Total** | **3 accepted** | **49** | **$0.985581** | **3 accepted** | **23** | **$0.401888** |
+
+Both configurations produced three completed Foe outcomes, three conformant
+traces, and three task-owned grader scores of `1.0`. The checker digest was
+unchanged in every trial. The audit children changed no artifact.
+
+The single-episode configuration used 62.0 percent fewer input tokens, 66.4
+percent fewer output tokens, and 73.3 percent fewer cached-input tokens. Its
+estimated cost was 59.2 percent lower. Total Harbor time fell from 627 seconds
+to 280 seconds.
+
+The text-editing case established that the completion gate changed behavior.
+The first script transformed all one million rows but failed when the checker
+reapplied it to the final workspace. Foe returned the finding to the same
+episode. The episode made its substitutions idempotent, passed the checker,
+and then passed all five task-owned tests.
+
+The task-owned report includes `test_apply_macros_runs`, which executes the
+submitted script before testing byte equality. The gate therefore prevented a
+failure that the task-owned grader would exercise. This is direct evidence
+for verifier-governed completion on the activated case.
+
+The retained single-episode runs are:
+
+- `target/terminal-bench-jobs/verifier-governed-single-episode-cancel-async-tasks-20260824T051737Z`;
+- `target/terminal-bench-jobs/verifier-governed-single-episode-fix-git-20260824T051903Z`;
+- `target/terminal-bench-jobs/verifier-governed-single-episode-large-scale-text-editing-20260824T051504Z`.
+
+These three attempts establish development evidence for the mechanism. They
+do not estimate accuracy across Terminal-Bench. The verifier-governed lane
+retains the single-episode configuration until repeated confirmation shows a
+quality benefit from a separate audit stage.
+
 ## Self-improvement contract
 
 The self-improvement workflow has two model nodes. A Luna diagnosis node reads
