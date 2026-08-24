@@ -192,12 +192,6 @@ def read_log(foe_bin, path):
 
 # --- Corpus outputs -----------------------------------------------------
 
-DEFAULT_SOURCES = [
-    "/home/sunil/git/foe-*/target/terminal-bench-jobs/**/agent/foe-episode/**/episode.jsonl",
-    "/home/sunil/git/foe/.foe/ep_*/episode.jsonl",
-]
-
-
 def stats_markdown(rows, dropped):
     def table(title, key):
         counts = collections.Counter(key(r) for r in rows)
@@ -239,10 +233,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", required=True, help="corpus directory (outside any repository)")
     ap.add_argument("--foe-bin", required=True, help="path to the built foe binary")
-    ap.add_argument("--source", action="append", default=None, help="episode.jsonl glob (repeatable)")
+    ap.add_argument("--source", action="append", required=True, help="episode.jsonl glob (repeatable)")
     args = ap.parse_args()
 
-    sources = args.source or DEFAULT_SOURCES
+    sources = args.source
     paths = sorted({p for g in sources for p in globlib.glob(g, recursive=True)})
     if not paths:
         sys.exit("no episode logs matched the source globs")
