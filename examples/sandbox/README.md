@@ -4,9 +4,9 @@ This example demonstrates kernel-enforced file access. The runner creates two
 sibling directories. The configuration grants read access to one directory
 and gives no grant for the other directory.
 
-The agent calls `/usr/bin/cat` for one file in each directory. The granted
-file is returned. Landlock rejects the second file open with a permission
-error, which foe records as the tool result.
+The agent calls the repository-owned `read-file.sh` program for one file in
+each directory. The granted file is returned. Landlock rejects the second
+file open with a permission error, which foe records as the tool result.
 
 ## Requirements
 
@@ -53,9 +53,10 @@ target/foe-sandbox-demo.XXXXXX/
 └── episode/episode.jsonl
 ```
 
-The configured `cat` tool grants execute access to `/usr/bin/cat`. The child
+The configured `cat` tool grants execute access to `read-file.sh`. The child
 process inherits the episode read roots. It can open `allowed.txt` and cannot
-open `denied.txt`.
+open `denied.txt`. Program identity hashes the repository-owned script, so
+the example has the same identity when system utility binaries differ.
 
 ## Expected result
 
