@@ -260,8 +260,8 @@ pub struct SandboxConfig {
     pub mode: foe_log::SandboxMode,
 }
 
-/// A child program: a configuration without `version`, `task`, `model`, or
-/// `sandbox`, which are inherited.
+/// A child program: a configuration without `version`, `task`, or `sandbox`.
+/// An omitted `model` inherits the nearest ancestor's model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChildProgram {
@@ -278,6 +278,8 @@ pub struct ChildProgram {
     pub done_when: Option<DoneWhen>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<ContextConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelConfig>,
     #[serde(default)]
     pub programs: BTreeMap<String, ChildProgram>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -422,6 +422,10 @@ The provider name is opaque to the configuration format. Whether a build
 knows it is decided where the transport is composed; `foe plan` reports the
 resolved transport, or says the name is unknown and lists the known ones.
 
+A child program may declare its own `model` block. A child that omits the
+block inherits the nearest ancestor's block. The same rule applies to model
+nodes in a workflow and to descendants of those nodes.
+
 A block may omit its credential field. The transport then reads
 `~/.config/foe/credentials/<provider>.json`, the file `foe login` writes,
 with the home directory taken from the passwd database. An explicit
@@ -465,9 +469,9 @@ nothing else to declare.
 ### `programs`
 
 Object mapping program name to a nested configuration. Optional. Each value
-is a full configuration document without `version`, `task`, `model`, or
-`sandbox`, which are inherited from the parent. A name listed in
-`grants.spawn` must appear here.
+is a full configuration document without `version`, `task`, or `sandbox`.
+The `model` block is optional and follows the inheritance rule above. A name
+listed in `grants.spawn` must appear here.
 
 A child program's grants must be a subset of its parent's, checked at
 construction. Each child program's identity participates in the parent's
