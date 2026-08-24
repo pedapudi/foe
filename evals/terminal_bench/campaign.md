@@ -498,6 +498,54 @@ enters the candidate before holdout.
 The retained calibration run is
 `/home/sunil/git/foe-workflow-configuration-self-improvement/target/terminal-bench-jobs/workflow-candidate-calibration-20260824T104111Z`.
 
+## Recorded calibration-holdout result
+
+On 2026-08-24, the frozen workflow candidate ran once on each of the six
+sealed calibration-holdout tasks. Five untouched task-owned graders awarded a
+score of `1.0`. Harbor recorded no task exception, and all six Foe traces
+conformed.
+
+| Calibration-holdout task | Official score | Model calls | Harbor time | Estimated cost |
+| --- | ---: | ---: | ---: | ---: |
+| `circuit-fibsqrt` | 1.0 | 15 | 436 seconds | $0.640790 |
+| `cobol-modernization` | 1.0 | 34 | 495 seconds | $1.662385 |
+| `extract-elf` | 0.0 | 12 | 249 seconds | $0.457190 |
+| `hf-model-inference` | 1.0 | 18 | 407 seconds | $0.568374 |
+| `mcmc-sampling-stan` | 1.0 | 25 | 808 seconds | $1.502595 |
+| `sparql-university` | 1.0 | 11 | 145 seconds | $0.358942 |
+| **Total** | **5.0** | **115** | **2,540 seconds** | **$5.190275** |
+
+Every provider response reported usage. The run used 1,704,770 input tokens,
+787,968 cached-input tokens, and 60,394 output tokens. Every Foe outcome was
+completed. Five outcomes agreed with the task-owned grader.
+
+The `extract-elf` implementation and audit calculated 548 returned words from
+700 words in the supplied ELF image. The audit treated this calculation as
+evidence that coverage exceeded 75 percent. It generated no second valid ELF
+fixture. The hidden grader generated another ELF and found none of its
+reference addresses in the submitted output. One of two task-owned tests
+passed.
+
+This failure identifies a transfer-validation gap in the audit contract. The
+audit verified its own interpretation against one supplied artifact. It did
+not test whether the program interface generalized to a materially different
+valid input. The post-holdout audit instruction now requires two valid inputs
+and generation of a second fixture when the workspace supplies only one. That
+instruction has not received a provider-backed quality evaluation.
+
+The calibration-holdout result passes the required five accepted tasks from
+six attempts. Across development, confirmation, calibration, and
+calibration-holdout evaluation, the self-improvement workflow candidate
+received 31 task-owned successes in 32 attempts over 28 distinct tasks. This
+aggregate is a candidate result rather than a full Terminal-Bench estimate.
+
+The retained calibration-holdout run is
+`/home/sunil/git/foe-workflow-configuration-self-improvement/target/terminal-bench-jobs/workflow-candidate-calibration-holdout-20260824T132632Z`.
+
+The campaign has met its development, confirmation, calibration, and
+calibration-holdout quality gates. A full 89-task run remains outside this
+campaign and requires a separate decision.
+
 ## Recorded self-improvement failure analysis
 
 On 2026-08-23, two retained `gpt2-codegolf` self-improvement attempts failed
