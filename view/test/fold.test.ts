@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { EpisodeFold } from "../src/fold.js";
+import { EpisodeFold, completionProvenance, provenanceText } from "../src/fold.js";
 import type { AssistantRow, CompactionRow, NoteRow, Row, ToolRow, UserRow } from "../src/fold.js";
 import { buildTree, flatten, sharedPrefix, siblingShares, spentTokens } from "../src/lineage.js";
 import { fixture } from "./helpers.js";
@@ -317,6 +317,130 @@ test("an episode that runs the free loop records no firing and no decision", () 
   const s = fold("root.jsonl").summary;
   assert.deepEqual(s.firings, []);
   assert.deepEqual(s.decisions, []);
+});
+
+test("a verification becomes one compact row and joins the summary", () => {
+  const f = new EpisodeFold("ep_v", { stream: false });
+  f.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_v", program: {} } });
+  f.push({
+    seq: 1,
+    time: 2,
+    type: "verification/result",
+    data: { step: 1, tool: "check", status: "findings", findings: ["a", "b"], duration_ms: 12 },
+  });
+  f.push({
+    seq: 2,
+    time: 3,
+    type: "verification/result",
+    data: { step: 2, tool: "check", status: "accepted", findings: [], duration_ms: 9 },
+  });
+  const notes = rows<NoteRow>(f, "note").filter((n) => n.type === "verification/result");
+  assert.equal(notes.length, 2);
+  assert.equal(notes[0]!.label, "verify");
+  assert.match(notes[0]!.detail, /^check · findings · 2 findings · 12 ms$/);
+  assert.equal(notes[0]!.level, "info");
+  assert.match(notes[1]!.detail, /^check · accepted · 0 findings · 9 ms$/);
+  assert.equal(f.summary.verifications.length, 2);
+  assert.equal(f.summary.verifications[1]!.status, "accepted");
+});
+
+test("completion provenance derives verifier, reviewed, and model report", () => {
+  const completed = { type: "episode/end", data: { outcome: { kind: "completed", value: "v" } } };
+  const loop = new EpisodeFold("ep_a", { stream: false });
+  loop.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_a", program: { done_when: { verify: "check" } } } });
+  loop.push({
+    seq: 1,
+    time: 2,
+    type: "verification/result",
+    data: { tool: "check", status: "accepted", findings: [], duration_ms: 1 },
+  });
+  loop.push({ ...completed, seq: 2, time: 3 });
+  assert.deepEqual(completionProvenance(loop.summary), { kind: "verifier", verifier: "check" });
+  assert.equal(provenanceText({ kind: "verifier", verifier: "check" }), "verified by check");
+
+  const program = {
+    workflow: {
+      nodes: {
+        "implement-task": { model: { name: "implement-task" }, follows: ["task"] },
+        "audit-and-repair-task": {
+          model: { name: "audit-and-repair-task" },
+          follows: ["task", "implement-task"],
+          terminal: true,
+        },
+      },
+    },
+  };
+  const wf = new EpisodeFold("ep_b", { stream: false });
+  wf.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_b", program } });
+  wf.push({ seq: 1, time: 2, type: "workflow/node-start", data: { node: "implement-task", fire: 1, inputs: [] } });
+  wf.push({
+    seq: 2,
+    time: 3,
+    type: "workflow/node-end",
+    data: { node: "implement-task", fire: 1, value: {}, rendered: "", duration_ms: 1 },
+  });
+  wf.push({ seq: 3, time: 4, type: "workflow/node-start", data: { node: "audit-and-repair-task", fire: 1, inputs: [2] } });
+  wf.push({
+    seq: 4,
+    time: 5,
+    type: "workflow/node-end",
+    data: { node: "audit-and-repair-task", fire: 1, value: {}, rendered: "", duration_ms: 1 },
+  });
+  wf.push({ ...completed, seq: 5, time: 6 });
+  assert.deepEqual(completionProvenance(wf.summary), { kind: "reviewed", verifier: "" });
+  assert.equal(provenanceText({ kind: "reviewed", verifier: "" }), "independently reviewed");
+
+  const plain = new EpisodeFold("ep_c", { stream: false });
+  plain.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_c", program: {} } });
+  plain.push({ ...completed, seq: 1, time: 2 });
+  assert.deepEqual(completionProvenance(plain.summary), { kind: "model-report", verifier: "" });
+  assert.equal(provenanceText({ kind: "model-report", verifier: "" }), "model report");
+
+  assert.equal(completionProvenance(new EpisodeFold("ep_d", { stream: false }).summary), null, "only completed episodes");
+});
+
+test("a terminal skip is verifier provenance and a node-skipped row", () => {
+  const program = {
+    workflow: {
+      nodes: {
+        "implement-task": { model: { name: "implement-task", done_when: { verify: "check" } }, follows: ["task"] },
+        "audit-and-repair-task": {
+          model: { name: "audit" },
+          follows: ["implement-task"],
+          skip_when_verified: "implement-task",
+          terminal: true,
+        },
+      },
+    },
+  };
+  const f = new EpisodeFold("ep_s", { stream: false });
+  f.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_s", program } });
+  f.push({
+    seq: 1,
+    time: 2,
+    type: "workflow/node-start",
+    data: { node: "implement-task", fire: 1, inputs: [], child_id: "ep_impl" },
+  });
+  f.push({
+    seq: 2,
+    time: 3,
+    type: "workflow/node-end",
+    data: { node: "implement-task", fire: 1, value: {}, rendered: "", duration_ms: 1 },
+  });
+  f.push({
+    seq: 3,
+    time: 4,
+    type: "workflow/node-skipped",
+    data: { node: "audit-and-repair-task", verified_by: "implement-task", verification_seq: 41 },
+  });
+  f.push({ seq: 4, time: 5, type: "episode/end", data: { outcome: { kind: "completed", value: "v" } } });
+  assert.deepEqual(completionProvenance(f.summary), { kind: "verifier", verifier: "check" });
+  assert.deepEqual(f.summary.skips, [
+    { seq: 3, node: "audit-and-repair-task", verifiedBy: "implement-task", verificationSeq: 41 },
+  ]);
+  const note = rows<NoteRow>(f, "note").find((n) => n.type === "workflow/node-skipped")!;
+  assert.equal(note.label, "node skipped");
+  assert.match(note.detail, /verified by implement-task · verification seq 41/);
 });
 
 test("a retry's mark carries the backoff it imposes as its duration", () => {

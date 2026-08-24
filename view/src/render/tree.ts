@@ -4,7 +4,7 @@
 
 import { fmtDate, fmtDuration, fmtInt, h } from "../dom.js";
 import type { Child } from "../dom.js";
-import { outcomeLabel } from "../fold.js";
+import { completionProvenance, outcomeLabel, provenanceText } from "../fold.js";
 import type { Summary } from "../fold.js";
 import { flatten, programRuns, shortIdentity, siblingShares, spentTokens } from "../lineage.js";
 import type { TreeNode } from "../lineage.js";
@@ -163,8 +163,14 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     }
     g.appendChild(name);
 
-    // Second line: the outcome word, then what qualifies it.
+    // Second line: the outcome word, then what qualifies it. A completed
+    // outcome is qualified by how completion was established, in the same
+    // faint text the other outcomes set their detail in.
     const parts = outcomeParts(s.outcome);
+    if (s.outcome?.kind === "completed") {
+      const provenance = completionProvenance(s);
+      if (provenance) parts.detail = provenanceText(provenance);
+    }
     const sub = svg("text", { class: "sub", x: textX, y: y + 12 });
     const word = svg("tspan", { class: role || "running" });
     word.textContent = parts.word;
@@ -237,7 +243,14 @@ export function renderInfo(s: Summary | null): HTMLElement {
   if (!s) return h("div", { class: "episode-info" }, h("span", { class: "sub" }, "select an episode"));
   const rows: [string, Child][] = [];
   const role = outcomeRole(s.outcome);
-  rows.push(["outcome", h("span", { class: `outcome ${role}` }, outcomeLabel(s.outcome))]);
+  const provenance = completionProvenance(s);
+  rows.push([
+    "outcome",
+    [
+      h("span", { class: `outcome ${role}` }, outcomeLabel(s.outcome)),
+      provenance ? h("span", { class: "sub" }, ` · ${provenanceText(provenance)}`) : null,
+    ],
+  ]);
   // Consumption rows appear once something was consumed; before the first
   // request there is nothing observed to report.
   if (s.modelCalls > 0) {

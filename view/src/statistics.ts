@@ -231,6 +231,16 @@ export function computeStatistics(scope: StatisticsEpisode[], now: number): Stat
         if (data.is_error === true) group.errors += 1;
         groups.set(name, group);
         toolMs += num(data.duration_ms);
+      } else if (event.type === "verification/result") {
+        // A verification run is a tool execution the registry ran, so the
+        // per-tool table counts it. Wall-clock tool time keeps its
+        // documented definition over `tool/result` alone.
+        const name = str(data.tool, "?");
+        const group = groups.get(name) ?? { name, calls: 0, durationMs: 0, errors: 0 };
+        group.calls += 1;
+        group.durationMs += num(data.duration_ms);
+        if (str(data.status) === "failed") group.errors += 1;
+        groups.set(name, group);
       } else if (event.type === "request/retry") {
         retries += 1;
         backoffMs += num(data.delay_ms);

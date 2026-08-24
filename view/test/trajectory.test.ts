@@ -695,8 +695,8 @@ function openRun(now: number): TrajectoryEpisode {
     id: "ep_open", name: "grapher", identity: "sha256:grapher", depth: 0, startTime: start, endTime: null, lastSeq: 4,
     outcome: null, parentId: null, forkOrigin: null, marks: [], decisions: [],
     firings: [
-      { node: "survey", fire: 1, startSeq: 1, startTime: start + 1_000, endSeq: 2, endTime: start + 3_000, durationMs: 1_900, error: "", childId: null },
-      { node: "draft", fire: 1, startSeq: 3, startTime: start + 3_000, endSeq: null, endTime: null, durationMs: null, error: "", childId: "ep_child" },
+      { node: "survey", fire: 1, startSeq: 1, startTime: start + 1_000, endSeq: 2, endTime: start + 3_000, durationMs: 1_900, error: "", childId: null, inputs: [] },
+      { node: "draft", fire: 1, startSeq: 3, startTime: start + 3_000, endSeq: null, endTime: null, durationMs: null, error: "", childId: "ep_child", inputs: [] },
     ],
   };
 }
