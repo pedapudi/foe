@@ -87,23 +87,19 @@ config_template=$example_dir/config.json
 run_prefix=foe-self-extension-model
 description="model-backed self-extension"
 target=//examples/self-extension:self-extension-model
-input_token_limit=24000
-output_token_limit=4000
-model_call_limit=8
+model_call_limit=40
+seconds_limit=900
 if [ "$workflow" = true ]; then
   config_template=$example_dir/workflow-config.json
   run_prefix=foe-self-improvement-workflow-model
   description="model-backed self-improvement workflow"
   target=//examples/self-extension:self-improvement-workflow-model
-  input_token_limit=72000
-  output_token_limit=6000
-  model_call_limit=12
 fi
 if [ "$confirmed" != true ]; then
   echo "The $description uses $model_route."
-  echo "Each attempt declares $input_token_limit input tokens and $output_token_limit output tokens across $model_call_limit model calls."
+  echo "Each attempt permits up to $model_call_limit model calls and $seconds_limit seconds. Token use is measured without a hard allowance."
   if [ "$attempts" -gt 1 ]; then
-    echo "$attempts attempts can declare $((attempts * input_token_limit)) input tokens and $((attempts * output_token_limit)) output tokens across $((attempts * model_call_limit)) model calls."
+    echo "$attempts attempts permit up to $((attempts * model_call_limit)) model calls."
   fi
   echo "No episode was started. Add --confirm-spend to run it."
   exit 2
@@ -161,7 +157,7 @@ fi
   /home/user/project "$project_dir" \
   /home/user/foe "$repo_dir"
 
-/usr/bin/python3 - "$run_dir/config.json" "$provider" "$model" "$input_token_limit" "$output_token_limit" "$model_call_limit" <<'PY'
+/usr/bin/python3 - "$run_dir/config.json" "$provider" "$model" "$model_call_limit" "$seconds_limit" <<'PY'
 import json
 from pathlib import Path
 import sys
@@ -173,9 +169,18 @@ if provider == "exec":
     config["model"]["model"] = model
 else:
     config["model"] = {"provider": provider, "model": model}
-config["budget"]["input_tokens"] = int(sys.argv[4])
-config["budget"]["output_tokens"] = int(sys.argv[5])
-config["budget"]["model_calls"] = int(sys.argv[6])
+root_budget = config["budget"]
+root_budget.pop("input_tokens", None)
+root_budget.pop("output_tokens", None)
+root_budget["model_calls"] = int(sys.argv[4])
+root_budget["seconds"] = int(sys.argv[5]) + (300 if "workflow" in config else 0)
+for node in config.get("workflow", {}).get("nodes", {}).values():
+    if "model" in node:
+        budget = node["model"]["budget"]
+        budget.pop("input_tokens", None)
+        budget.pop("output_tokens", None)
+        budget["model_calls"] = int(sys.argv[4])
+        budget["seconds"] = int(sys.argv[5])
 path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 PY
 

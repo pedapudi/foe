@@ -104,8 +104,6 @@ episode.
 
   "budget": {
     "model_calls": 40,
-    "input_tokens": 320000,
-    "output_tokens": 80000,
     "seconds": 1800
   },
 
@@ -130,7 +128,7 @@ episode.
   "instructions": { "role": "You are a coding agent." },
   "tools": ["read", "grep", "edit", "bash"],
   "grants": { "read": ["/home/user/project"], "write": ["/home/user/project"] },
-  "budget": { "model_calls": 20 },
+  "budget": { "model_calls": 40 },
   "model": { "provider": "anthropic", "model": "claude-opus-5" },
   "task": "Fix the failing test in tests/parser_test.py."
 }
@@ -300,7 +298,7 @@ Object. Required.
 | `max_depth` | integer | no | 1 | how many levels of child episodes may exist below this one; 0 forbids spawning |
 | `max_episodes` | integer | no | 8 | lifetime count of episodes in the tree, including this one |
 | `max_concurrent` | integer | no | 4 | direct children of this episode running at once |
-| `loop_threshold` | integer | no | 3 | consecutive identical tool calls, or identical assistant turns, that end the episode as blocked |
+| `loop_threshold` | integer | no | 8 | consecutive identical tool calls, or identical assistant turns, that end the episode as blocked |
 
 `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`, and
 `max_episodes` apply to the whole tree below this episode. A child's budget
@@ -316,6 +314,12 @@ within an episode — so the final request may cross the remaining allowance,
 and the crossing ends the episode afterwards. Completion is checked before
 exhaustion, so a response that finishes the task on the crossing request
 completes the episode. Cached input remains part of `input_tokens`.
+
+For efficacy evaluation, omit `input_tokens` and `output_tokens` and record
+their actual use after the run. Use generous `model_calls` and `seconds`
+values as loop and stall backstops. Hard token allowances are appropriate for
+tests whose subject is budget enforcement or for deployments with a strict
+spend boundary.
 
 When the pool leaves one model call for an ordinary episode request, the
 runtime includes a system inbox warning in that request. The warning directs

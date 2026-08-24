@@ -70,8 +70,9 @@ bazel test //examples/self-extension:self_improvement_workflow_test
 
 The model-backed runner replaces the scripted transport with
 `openai-codex/gpt-5.6-sol`. It keeps the same disposable source, grants,
-task, and verifier. The episode has declared limits of 24,000 input tokens,
-4,000 output tokens, and eight model calls.
+task, and verifier. Each model episode permits up to forty model calls and
+900 seconds. These values are loop and stall backstops. Token use is measured
+without a hard allowance.
 
 The runner prints the limits and starts no episode until the command includes
 `--confirm-spend`:
@@ -102,9 +103,9 @@ bazel test //examples/self-extension:self_extension_model_runner_test
 
 ## Run the workflow with a model provider
 
-The model-backed workflow declares 72,000 input tokens, 6,000 output tokens,
-and twelve model calls per fresh attempt. The first command prints the spending
-plan. The second command runs three independent attempts:
+The model-backed workflow uses the same backstops for its model child. The
+first command prints the spending plan. The second command runs three
+independent attempts:
 
 ```sh
 bazel run //examples/self-extension:self-improvement-workflow-model -- \

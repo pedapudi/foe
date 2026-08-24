@@ -181,10 +181,10 @@ mechanics from regression.
 ### Budgets with observed headroom
 
 Budgets protect unattended runs from unbounded spend and execution. They also
-need enough headroom for ordinary variation. The model child permits ten
-calls even though the measured successful attempts used three calls. Input
-and output tokens have separate limits because long context and long answers
-create different risks.
+need enough headroom for ordinary variation. The model child permits forty
+calls even though successful attempts should stop much earlier. The runner
+records separate input and output usage after every response. It does not
+enforce token allowances during an efficacy measurement.
 
 The runtime charges provider-reported input usage after each response. Local
 token estimates guide context policy and planning. They do not reject a

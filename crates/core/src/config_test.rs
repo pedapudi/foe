@@ -34,7 +34,7 @@ fn a_valid_document_resolves_with_canonical_paths_and_defaults() {
     let lint = &program.tool_defs["lint"];
     assert_eq!(lint.cwd.as_deref(), Some(canonical.as_path()), "cwd defaults to the first read root");
     assert_eq!(lint.timeout_seconds, 120);
-    assert_eq!(program.budget.loop_threshold, 3);
+    assert_eq!(program.budget.loop_threshold, 8);
     assert!(program.to_value().get("task").is_none(), "the program omits the task");
 }
 

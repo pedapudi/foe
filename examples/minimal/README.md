@@ -2,7 +2,7 @@
 
 The smallest configuration that runs an episode. It grants one directory for
 reading and writing, lists the four built-in coding tools (`read`, `grep`,
-`edit`, `bash`), sets a budget of twenty model calls, and names a provider and
+`edit`, `bash`), sets a backstop of forty model calls, and names a provider and
 a model. `done_when` is absent, so the episode completes when the model
 produces a turn with no tool calls, and that turn's text is the outcome value.
 

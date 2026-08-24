@@ -9,7 +9,7 @@
     "read": ["/home/user/project"],
     "write": ["/home/user/project"]
   },
-  "budget": { "model_calls": 20 },
+  "budget": { "model_calls": 40 },
   "model": {
     "provider": "exec",
     "model": "minimal-demo",

@@ -48,7 +48,7 @@ program = foe.Program(
     instructions={"10-charter": "You propose experiments.", "20-grounding": "Ground every claim."},
     tools=["read", "grep", mutation_usage],
     grants=foe.Grants(read=["/gen/v37/snapshot"], write=["/tmp/scratch"]),
-    budget=foe.Budget(model_calls=12, input_tokens=160_000, output_tokens=40_000, seconds=600),
+    budget=foe.Budget(model_calls=40, seconds=900),
     done_when=foe.Verified(verify=validate_patches, retries=2),
 )
 
