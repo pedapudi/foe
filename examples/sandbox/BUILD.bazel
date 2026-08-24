@@ -3,6 +3,7 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 SANDBOX_DATA = [
     "config.json",
+    "read-file.sh",
     "//:foe",
     "//examples/support:materialize.py",
     "//examples/support:scripted-transport.py",

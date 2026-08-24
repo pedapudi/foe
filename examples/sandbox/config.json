@@ -7,8 +7,8 @@
   "tools": ["cat"],
   "tool_defs": {
     "cat": {
-      "exec": "/usr/bin/cat",
-      "description": "Prints a file. Usage: cat <absolute-path>. Exits 1 with a message on standard error when the file cannot be read."
+      "exec": "/home/user/foe/examples/sandbox/read-file.sh",
+      "description": "Prints a file. Usage: cat <absolute-path>. Exits nonzero with a message on standard error when the file cannot be read."
     }
   },
   "grants": {
