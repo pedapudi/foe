@@ -1,0 +1,22 @@
+# Spike crate for the evaluator selection gate in docs/code-mode.md.
+# The empty [workspace] table detaches this crate from the repository
+# workspace, so the shipping binary takes no dependency from here.
+[package]
+name = "starlark-confinement-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+starlark = "0.14"
+serde_json = "1"
+anyhow = "1"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
