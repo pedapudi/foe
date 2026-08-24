@@ -29,6 +29,20 @@ findings=$(CDPATH= cd -- "$candidate" && "$checker")
   exit 1
 }
 
+streamed=$TEST_TMPDIR/streamed
+mkdir -p "$streamed/crates/code/src" "$streamed/docs"
+cat > "$streamed/crates/code/src/read.rs" <<'EOF'
+let total_bytes = s.bytes;
+json!({"total_bytes": total_bytes})
+EOF
+cp "$candidate/crates/code/src/read_test.rs" "$streamed/crates/code/src/read_test.rs"
+cp "$candidate/docs/tools.md" "$streamed/docs/tools.md"
+findings=$(CDPATH= cd -- "$streamed" && "$checker")
+[ -z "$findings" ] || {
+  echo "the checker rejected the streamed implementation shape: $findings" >&2
+  exit 1
+}
+
 cat > "$candidate/crates/code/src/read_test.rs" <<'EOF'
 assert_eq!(v.value["total_lines"], 3);
 EOF

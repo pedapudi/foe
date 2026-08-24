@@ -14,6 +14,9 @@ if grep -Eq '"total_bytes"[[:space:]]*:[[:space:]]*bytes\.len\(\)' crates/code/s
 elif grep -Eq 'let total_bytes[[:space:]]*=[[:space:]]*bytes\.len\(\)' crates/code/src/read.rs \
     && grep -Eq '"total_bytes"[[:space:]]*:[[:space:]]*total_bytes' crates/code/src/read.rs; then
   :
+elif grep -Eq 'let total_bytes[[:space:]]*=[[:space:]]*(s|scan)\.bytes' crates/code/src/read.rs \
+    && grep -Eq '"total_bytes"[[:space:]]*:[[:space:]]*total_bytes' crates/code/src/read.rs; then
+  :
 else
   echo 'crates/code/src/read.rs does not report total_bytes as bytes.len()'
 fi
