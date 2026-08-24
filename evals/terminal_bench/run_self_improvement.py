@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,7 @@ ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
 SYSTEM_DEVELOPMENT_READ_DIRS = (Path("/usr/include"), Path("/usr/local/include"))
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
+LINE_BUDGET_ROW = re.compile(r"^(\w+)\s+(\d+)\s+\(budget (\d+)\)$")
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -75,6 +77,29 @@ def source_hashes(root: Path) -> dict[str, str]:
         if path.is_file():
             answer[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     return answer
+
+
+def line_budget_ceilings(root: Path) -> dict[str, int]:
+    """Return each declared budget, preserving a larger baseline count."""
+    result = subprocess.run(
+        ["/bin/bash", "scripts/loc.sh"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode not in (0, 1):
+        detail = result.stderr.strip() or f"exit status {result.returncode}"
+        raise ValueError(f"baseline line-budget check failed: {detail}")
+    ceilings = {}
+    for line in result.stdout.splitlines():
+        match = LINE_BUDGET_ROW.fullmatch(line.strip())
+        if match:
+            name, count, budget = match.groups()
+            ceilings[name] = max(int(count), int(budget))
+    if not ceilings:
+        raise ValueError("baseline line-budget check reported no declared budgets")
+    return ceilings
 
 
 def candidate_artifact_identity(
@@ -125,12 +150,14 @@ def git_metadata_root(candidate: Path) -> Path:
 
 def write_candidate_check(path: Path, candidate: Path, cargo: Path, cargo_home: Path, cargo_target: Path) -> None:
     baseline = source_hashes(candidate)
+    line_ceilings = line_budget_ceilings(candidate)
     toolchain = cargo.parent.parent
     rustup_home = toolchain.parent.parent if toolchain.parent.name == "toolchains" else None
     rustup_toolchain = toolchain.name if rustup_home else None
     script = f'''#!/usr/bin/python3
 import hashlib
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -143,7 +170,12 @@ cargo_home = {str(cargo_home)!r}
 cargo_target = {str(cargo_target)!r}
 rustup_home = {str(rustup_home) if rustup_home else None!r}
 rustup_toolchain = {rustup_toolchain!r}
-full_validation = sys.argv[1:] == ["--full"]
+line_ceilings = {line_ceilings!r}
+baseline_validation = sys.argv[1:] == ["--baseline"]
+full_validation = baseline_validation or sys.argv[1:] == ["--full"]
+if sys.argv[1:] not in ([], ["--baseline"], ["--full"]):
+    print("candidate checker accepts only --baseline or --full")
+    raise SystemExit(0)
 current = {{}}
 for directory in allowed_directories:
     for item in sorted((root / directory).rglob("*")):
@@ -163,15 +195,16 @@ status = subprocess.run(
 ).stdout.splitlines()
 all_changed = [line[3:] for line in status if len(line) > 3]
 findings = []
-outside = sorted(set(all_changed) - set(changed))
-if outside:
-    findings.append("changes outside the runtime, documentation, and example surface: " + ", ".join(outside))
-if not any(name.startswith("crates/") and name.endswith(".rs") and not name.endswith("_test.rs") for name in changed):
-    findings.append("the candidate contains no Rust implementation change")
-if not any(name.endswith("_test.rs") for name in changed):
-    findings.append("the candidate contains no Rust regression test")
-if not any(name.startswith("docs/") and name.endswith(".md") for name in changed):
-    findings.append("the candidate does not update an affected specification")
+if not baseline_validation:
+    outside = sorted(set(all_changed) - set(changed))
+    if outside:
+        findings.append("changes outside the runtime, documentation, and example surface: " + ", ".join(outside))
+    if not any(name.startswith("crates/") and name.endswith(".rs") and not name.endswith("_test.rs") for name in changed):
+        findings.append("the candidate contains no Rust implementation change")
+    if not any(name.endswith("_test.rs") for name in changed):
+        findings.append("the candidate contains no Rust regression test")
+    if not any(name.startswith("docs/") and name.endswith(".md") for name in changed):
+        findings.append("the candidate does not update an affected specification")
 for name in changed:
     item = root / name
     if not item.is_file():
@@ -213,7 +246,6 @@ if not findings:
         [cargo, "fmt", "--all", "--", "--check"],
         test_command,
         [cargo, "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
-        ["/bin/bash", "scripts/loc.sh"],
     ]
     for command in commands:
         try:
@@ -241,6 +273,32 @@ if not findings:
                 + (f": {{detail}}" if detail else "")
             )
             break
+    if not findings:
+        result = subprocess.run(
+            ["/bin/bash", "scripts/loc.sh"],
+            cwd=root,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        counts = {{}}
+        for line in result.stdout.splitlines():
+            match = re.fullmatch(r"(\\w+)\\s+(\\d+)\\s+\\(budget (\\d+)\\)", line.strip())
+            if match:
+                name, count, _ = match.groups()
+                counts[name] = int(count)
+        missing = sorted(set(line_ceilings) - set(counts))
+        if missing:
+            findings.append("candidate line-budget check omitted: " + ", ".join(missing))
+        for name, ceiling in sorted(line_ceilings.items()):
+            if counts.get(name, 0) > ceiling:
+                findings.append(
+                    f"candidate line budget {{name}} is {{counts[name]}} lines; allowed {{ceiling}}"
+                )
+        if result.returncode not in (0, 1):
+            detail = result.stderr.strip() or f"exit status {{result.returncode}}"
+            findings.append("candidate line-budget check failed: " + detail)
 print("\\n".join(findings))
 '''
     path.write_text(script, encoding="utf-8")
@@ -395,10 +453,10 @@ def build_config(
     }
 
 
-def check_candidate(check: Path, candidate: Path) -> dict[str, Any]:
+def run_candidate_check(check: Path, candidate: Path, mode: str) -> dict[str, Any]:
     try:
         result = subprocess.run(
-            [str(check), "--full"],
+            [str(check), mode],
             cwd=candidate,
             input="{}\n",
             text=True,
@@ -413,6 +471,14 @@ def check_candidate(check: Path, candidate: Path) -> dict[str, Any]:
         detail = result.stderr.strip() or f"exit status {result.returncode}"
         findings.append(f"candidate checker failed: {detail}")
     return {"accepted": not findings, "findings": findings, "exit_code": result.returncode}
+
+
+def check_baseline(check: Path, candidate: Path) -> dict[str, Any]:
+    return run_candidate_check(check, candidate, "--baseline")
+
+
+def check_candidate(check: Path, candidate: Path) -> dict[str, Any]:
+    return run_candidate_check(check, candidate, "--full")
 
 
 def measure_episode(root: Path, pricing: dict[str, Pricing]) -> dict[str, Any]:
@@ -607,6 +673,18 @@ def main(argv: list[str] | None = None) -> int:
         if temporary:
             temporary.cleanup()
         return 0
+
+    baseline_acceptance = check_baseline(check, candidate)
+    write_json(root / "baseline-validation.json", baseline_acceptance)
+    if not baseline_acceptance["accepted"]:
+        print(
+            "self-improvement: clean candidate baseline failed deterministic validation: "
+            + "; ".join(baseline_acceptance["findings"]),
+            file=sys.stderr,
+        )
+        if temporary:
+            temporary.cleanup()
+        return 2
 
     episode = root / "episode"
     started = time.monotonic()

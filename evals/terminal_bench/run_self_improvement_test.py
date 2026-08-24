@@ -10,7 +10,9 @@ from run import Pricing
 from run_self_improvement import (
     build_config,
     candidate_artifact_identity,
+    check_baseline,
     check_candidate,
+    line_budget_ceilings,
     measure_episode,
     model_config,
     rust_toolchain_identity,
@@ -129,7 +131,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "generated self-improvement program is invalid"):
                 validate_program(Path("/bin/false"), program)
 
-    def test_candidate_check_runs_rust_validation_and_accepts_clean_results(self):
+    def test_candidate_check_validates_the_baseline_and_preserves_an_existing_line_overage(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             candidate = root / "candidate"
@@ -142,7 +144,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             regression.write_text("#[test]\nfn value_is_one() {}\n", encoding="utf-8")
             specification.write_text("The value is one.\n", encoding="utf-8")
             loc = candidate / "scripts/loc.sh"
-            loc.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            loc.write_text("#!/bin/sh\nprintf 'cli 2 (budget 1)\\n'\nexit 1\n", encoding="utf-8")
             subprocess.run(["git", "init", "--quiet", str(candidate)], check=True)
             subprocess.run(["git", "-C", str(candidate), "add", "."], check=True)
             subprocess.run(
@@ -173,6 +175,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
             cargo_target.mkdir(parents=True)
             check = root / "candidate-check"
             write_candidate_check(check, candidate, cargo, cargo_home, cargo_target)
+            ceilings = line_budget_ceilings(candidate)
+            baseline = check_baseline(check, candidate)
             implementation.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
             regression.write_text("#[test]\nfn value_is_two() {}\n", encoding="utf-8")
             specification.write_text("The value is two.\n", encoding="utf-8")
@@ -181,12 +185,14 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 [str(check)], text=True, capture_output=True, check=True
             )
             cargo_calls = calls.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(ceilings, {"cli": 2})
+        self.assertTrue(baseline["accepted"], baseline)
         self.assertTrue(accepted["accepted"], accepted)
         self.assertEqual(sandboxed.stdout, "\n")
-        self.assertEqual(len(cargo_calls), 6)
+        self.assertEqual(len(cargo_calls), 9)
         self.assertEqual(cargo_calls[1], "test --workspace")
         self.assertEqual(
-            cargo_calls[4],
+            cargo_calls[7],
             "test --workspace --exclude foe --exclude foe-transport --exclude foe-view -- --skip sandbox::tests::",
         )
 
