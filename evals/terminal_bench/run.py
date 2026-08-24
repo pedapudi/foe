@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from trajectory_diagnostics import diagnose_episode
+from workflow_candidate import require_matching_run as require_matching_candidate_run
+from workflow_candidate import validate as validate_workflow_candidate
 
 
 HARBOR_VERSION = "0.22.0"
@@ -361,7 +363,7 @@ def read_job_result(path: Path) -> dict[str, Any]:
 
 
 def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
-    """Classify failures that cannot be used as model-accuracy evidence."""
+    """Record runtime, trace, and resource diagnostics beside task quality."""
     infrastructure_failures = []
     incomplete_resource_measurements = []
     trial_results = sorted(job_dir.glob("*/result.json"))
@@ -405,6 +407,11 @@ def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
         "infrastructure_failures": infrastructure_failures,
         "incomplete_resource_measurements": incomplete_resource_measurements,
     }
+
+
+def campaign_execution_complete(records: list[dict[str, Any]], expected: int) -> bool:
+    """Report whether every requested task produced a readable Harbor result."""
+    return len(records) == expected and all("result_error" not in row for row in records)
 
 
 def write_job_diagnostics(job_dir: Path) -> list[str]:
@@ -460,6 +467,11 @@ def parser() -> argparse.ArgumentParser:
         choices=("low", "medium", "high", "xhigh"),
     )
     answer.add_argument("--escalation-model-calls", type=int, default=0)
+    answer.add_argument(
+        "--workflow-candidate",
+        type=Path,
+        help="identity-bound workflow configuration produced by self-improvement",
+    )
     answer.add_argument("--label", default="baseline")
     answer.add_argument("--jobs-dir", type=Path, default=Path("target/terminal-bench-jobs"))
     answer.add_argument("--harbor", type=Path, default=default_harbor())
@@ -544,6 +556,14 @@ def main(argv: list[str] | None = None) -> int:
                 "--escalation-model-calls must be at least "
                 f"{MIN_AUXILIARY_MODEL_CALLS}"
             )
+        if args.workflow_candidate is not None and (
+            args.escalation_reasoning_effort is not None or args.escalation_model_calls != 0
+        ):
+            raise ValueError(
+                "--workflow-candidate cannot be combined with manual escalation settings"
+            )
+        if args.workflow_candidate is not None and args.install_only:
+            raise ValueError("--workflow-candidate cannot be used with --install-only")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
         agent_module = args.agent_module.resolve(strict=True)
@@ -571,11 +591,41 @@ def main(argv: list[str] | None = None) -> int:
         if credential_state.is_relative_to(jobs_dir):
             raise ValueError("--credential-state must remain outside --jobs-dir")
         selected = [tasks[name] for name in selected_names]
+        workflow_candidate_path = (
+            args.workflow_candidate.resolve(strict=True)
+            if args.workflow_candidate is not None
+            else None
+        )
+        evaluated_source = None
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
         return 2
 
     runtime_digest = digest(foe)
+    workflow_candidate = None
+    if workflow_candidate_path is not None:
+        try:
+            evaluated_source = source_tree(source_root)
+            identity = {
+                "source_tree": evaluated_source,
+                "runtime_binary": f"sha256:{runtime_digest}",
+            }
+            workflow_candidate = validate_workflow_candidate(
+                json.loads(workflow_candidate_path.read_text(encoding="utf-8")),
+                identity,
+            )
+            audit = require_matching_candidate_run(
+                workflow_candidate,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                service_tier=args.service_tier,
+                token_policy="hard" if args.hard_token_limits else "measurement_only",
+            )
+            args.escalation_reasoning_effort = audit["reasoning_effort"]
+            args.escalation_model_calls = audit["model_calls"]
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            print(f"terminal-bench eval: {error}", file=sys.stderr)
+            return 2
     auxiliary_calls = (
         args.diagnosis_model_calls if args.diagnosis_model is not None else 0
     ) + (
@@ -671,6 +721,8 @@ def main(argv: list[str] | None = None) -> int:
             f"reasoning_effort={args.escalation_reasoning_effort} "
             f"calls={args.escalation_model_calls}"
         )
+    if workflow_candidate is not None:
+        print(f"workflow      {workflow_candidate['digest']}")
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; concurrency 1")
     print("planning      calls      input     output  est. cost  seconds  task")
@@ -701,11 +753,10 @@ def main(argv: list[str] | None = None) -> int:
         print("No model requests were made. Add --confirm-spend after reviewing the maximum.")
         return 0
 
-    evaluated_source: str | None = None
-    try:
-        evaluated_source = source_tree(source_root)
-    except ValueError as error:
-        if not args.install_only:
+    if evaluated_source is None and not args.install_only:
+        try:
+            evaluated_source = source_tree(source_root)
+        except ValueError as error:
             print(f"terminal-bench eval: {error}", file=sys.stderr)
             return 2
 
@@ -796,14 +847,10 @@ def main(argv: list[str] | None = None) -> int:
             record["result_error"] = str(error)
         records.append(record)
         for failure in record.get("infrastructure_failures", []):
-            print(f"terminal-bench eval: invalid infrastructure trial: {failure}", file=sys.stderr)
+            print(f"terminal-bench eval: trial diagnostic: {failure}", file=sys.stderr)
         for failure in record.get("incomplete_resource_measurements", []):
             print(f"terminal-bench eval: incomplete resource measurement: {failure}", file=sys.stderr)
-        if (
-            result.returncode != 0
-            or record.get("n_errored_trials", 1) > 0
-            or bool(record.get("infrastructure_failures"))
-        ):
+        if "result_error" in record:
             break
     report = {
         "schema_version": 1,
@@ -841,6 +888,7 @@ def main(argv: list[str] | None = None) -> int:
             if completion_checker is not None
             else None
         ),
+        "workflow_candidate": workflow_candidate,
         "foe_sha256": runtime_digest,
         "evaluated_foe": (
             {"source_tree": evaluated_source, "runtime_binary": f"sha256:{runtime_digest}"}
@@ -855,13 +903,7 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     print(f"Terminal-Bench evidence: {run_dir}")
-    completed = len(records) == len(selected) and all(
-        row["harbor_exit_code"] == 0
-        and row.get("n_errored_trials") == 0
-        and not row.get("infrastructure_failures")
-        and "result_error" not in row
-        for row in records
-    )
+    completed = campaign_execution_complete(records, len(selected))
     return 0 if completed else 1
 
 

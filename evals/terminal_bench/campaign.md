@@ -8,7 +8,7 @@ Terminal-Bench 2.1 is pinned as `terminal-bench/terminal-bench-2-1@6`. The bench
 
 The campaign must convert model capability into reliable Foe performance. The central test is a task that GPT-5.6 Sol can solve with `xhigh` reasoning through Foe, while the same Foe runtime usually fails with `low` reasoning.
 
-The target improvement makes Sol with `low` reasoning solve that task reliably. The change must improve a general harness mechanism. Task-specific instructions, benchmark identifiers, fixture values, and grader rules are excluded from candidate changes.
+The target improvement makes Sol with `low` reasoning solve that task reliably. The change may affect Foe source or a general workflow configuration. Task-specific instructions, benchmark identifiers, fixture values, and grader rules are excluded from candidate changes.
 
 The reasoning ceiling is `xhigh`. The campaign does not run any model with `max` reasoning.
 
@@ -20,22 +20,23 @@ The capability conversion succeeds when all of these conditions hold:
 2. Unchanged Foe with Sol `xhigh` completes at least two of three attempts on that task.
 3. Improved Foe with Sol `low` completes at least two of three attempts. Three completions are the preferred result.
 4. The four confirmation tasks produce at least seven successful attempts across two attempts per task. Every confirmation task must succeed at least once.
-5. Previously successful development tasks retain their task-owned verifier result. Their aggregate estimated cost may increase by at most 15 percent.
-6. The converted Sol `low` configuration costs less than unchanged Sol `xhigh` on the selected task.
-7. Every assessed trial retains a complete Foe episode, provider usage, task verifier result, source identity, runtime identity, and conformance report.
-8. No assessed trial has an infrastructure exception, malformed trace, or disagreement between a successful task verifier and Foe completion.
-9. Foe self-improvement produces and evaluates at least one identity-bound candidate. A direct implementation follows when the workflow produces no valid change.
+5. The six development tasks retain six task-owned verifier successes on the frozen candidate.
+6. Every assessed trial retains its task verifier result, available Foe episode, source identity, runtime identity, and conformance report.
+7. Foe self-improvement produces and evaluates at least one identity-bound source or workflow candidate. A direct implementation follows when the workflow produces no valid change.
+
+Task quality is the only candidate promotion metric. Provider-reported tokens,
+estimated cost, wall time, cache use, outcome accuracy, and trace conformance
+remain required diagnostics. Missing provider usage marks the resource record
+as incomplete. It does not change the task-owned quality score.
+Infrastructure exceptions receive the score assigned by the task framework.
+They do not create a separate promotion gate.
 
 The calibration gate is intentionally ambitious. Foe must complete at least ten of twelve calibration tasks and at least five of six calibration-holdout tasks on one frozen attempt per task. This result is 15 successes across 18 tasks. It is a directional estimate near the campaign's eventual 85 percent full-benchmark target.
 
-Provider spend through the calibration gate should remain below 75 US dollars.
-The spend limit uses the retained token-derived cost estimate. Development
-runs request the `priority` service tier to reduce elapsed time. Their records
-also carry the documented 2.5-times ChatGPT credit multiplier for GPT-5.6.
-The service tier does not change the token-derived comparison metric. Foe
-records usage without enforcing token ceilings during development runs. The
-[OpenAI speed documentation](https://developers.openai.com/codex/speed)
-specifies the speed target and credit multiplier.
+Planning estimates bound campaign exposure before each confirmed command.
+They do not reject a candidate that improves task quality. Development runs
+use the service tier selected for that run and record it in the manifest. Foe
+records usage without enforcing token ceilings during ordinary quality runs.
 
 ## Task sets
 
@@ -155,10 +156,10 @@ and repair allowances are added to the implementation allowance.
 4. Run one Sol `low` attempt on the remaining capability-search tasks. Run Sol `xhigh` only on Sol `low` failures.
 5. Repeat the most promising Sol gap three times at each reasoning setting. Freeze the selected task and gap criterion.
 6. Produce typed trajectory diagnoses. Each diagnosis names its model setting and retained run. The digest groups verified results by task and model setting. It retains request growth, replayed results, final validation activity, bounded verifier failure classes, and log sequence numbers under fixed tree-wide bounds.
-7. Run identity-bound self-improvement with Luna `high` for bounded diagnosis and Terra `high` for implementation. The coding node receives only the typed diagnosis and acts as a full coding agent.
+7. Run identity-bound self-improvement with Luna `high` for bounded diagnosis and Sol at no more than `xhigh` for source implementation. The workflow may produce a source change or an independent-audit workflow configuration.
 8. Validate the generated candidate outside the self-improvement episode. Implement the diagnosed change directly when the generated candidate is absent, invalid, or unsupported by the evidence.
 9. Re-run the selected capability task with Sol `low`. Reject candidates that fail the capability-conversion criteria.
-10. Re-run the six development tasks. Compare successful completion, estimated cost, wall time, and trace integrity.
+10. Re-run the six development tasks. Require six successful task-owned verifier results. Record estimated cost, wall time, outcome accuracy, and trace integrity as diagnostics.
 11. Freeze the candidate source tree, binary digest, model settings, acceptance rule, and confirmation task list.
 12. Run two attempts on each confirmation task. Reject the candidate when the confirmation criteria fail.
 13. Freeze one calibration attempt per task. Run the twelve calibration tasks, then record the result before opening the six calibration-holdout tasks.
@@ -222,14 +223,19 @@ quality benefit from a separate audit stage.
 
 The self-improvement workflow has at most two model nodes. A Luna diagnosis
 node reads the bounded trajectory digest and returns a typed causal
-intervention. It has no source-tree inspection tool or access. It ends the
-workflow as `insufficient-evidence` when the contrast isolates only model
-capability or requires semantic information absent from the log. A separate
-coding node runs only after an `implement` choice. It receives the diagnosis
-and a clean context, then maps the intervention to source. The
-intervention must improve the lower-cost evaluated configuration. It preserves
-the model route, reasoning effort, task allowances, token policy, and task set.
-Higher-cost successful settings supply diagnostic contrasts.
+intervention. It has no source-tree inspection tool or access.
+
+The diagnosis selects `implement-source` when the evidence activates a source
+mechanism. A separate coding node then receives the diagnosis in a clean
+context and maps it to source. The diagnosis selects `configure-workflow` when
+an independent audit stage supplies the repeated quality gain. This path
+returns a typed workflow setting without starting the coding node.
+
+The diagnosis selects `insufficient-evidence` when the contrast isolates only
+model capability or requires semantic information absent from the log. Every
+candidate preserves the primary model route, reasoning effort, task
+allowances, token policy, service tier, and task set. Resource changes are
+recorded. Verified task quality governs candidate promotion.
 
 The digest retains the final edit and a bounded sequence of later tool
 results for each episode. Structured verifier reports contribute counts,
@@ -239,26 +245,33 @@ that differs between failures and successes. It must also state a falsifying
 observation, required product paths, and activation under the evaluated
 program.
 
-A Foe runtime failure or nonconformant trace invalidates the trial as accuracy
-evidence. A request without provider usage invalidates exact cost and token
-claims. The retained campaign record names each invalid trial. The required
-attempt count is completed with a replacement trial.
+A request without provider usage invalidates exact cost and token claims. The
+retained campaign record identifies each incomplete resource record. Runtime
+failures, nonconformant traces, and outcome disagreements remain diagnostic
+facts beside the task-owned quality score.
 
 The coding node has Foe's standard coding tools: `read`, `grep`, `edit`, and
 `bash`. Its write authority covers runtime crates, specifications, and
 examples. It cannot change evaluation code, benchmark material, model
 routes, reasoning settings, task allowances, token policy, or task selection.
 Its verifier uses a pinned Cargo binary. The verifier runs formatting,
-workspace tests, clippy, and line-budget checks.
+workspace tests, Clippy, and line-budget checks.
 
 The evidence file names the evaluated Git tree and Foe binary digest. It
 labels every trajectory with the run, token policy, service tier, and complete
 execution configuration that produced it. The workflow refuses a source or
-binary mismatch before making a model request. The candidate checker requires
-a Rust implementation change, a Rust regression test, and an affected
-specification.
+binary mismatch before making a model request. A source candidate requires a
+Rust implementation change, a Rust regression test, and an affected
+specification. A workflow candidate contains one independent-audit setting.
+Its digest binds the setting to the evaluated source, binary, evidence, and
+preserved execution controls.
 
-The workflow is one candidate generator. The runner validates changed files again after the episode. Its result binds the base Git tree and changed file content into one candidate artifact digest. A validated artifact survives an exhausted reporting outcome. Candidate promotion remains an external evaluation decision. A failed artifact sets `direct_implementation_required`. The campaign then proceeds with a direct implementation.
+The workflow is one candidate generator. The runner validates source changes
+again after the episode. It validates workflow settings before a benchmark
+run. A validated artifact survives an exhausted reporting outcome. Candidate
+promotion remains an external evaluation decision. A failed artifact sets
+`direct_implementation_required`. The campaign then proceeds with a direct
+implementation.
 
 ## Recorded capability conversion and diagnosis sufficiency
 
@@ -272,11 +285,11 @@ episode completed after its local checks passed, but the submitted program
 failed the hidden behavioral grader. The two xhigh-reasoning attempts both
 received full task-owned grader credit.
 
-| Configuration | Accepted trials | Model calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Sol low, one episode | 0 of 3 | 32 | 234,848 | 108,544 | 14,250 | $0.833634 |
-| Sol xhigh, one episode | 2 of 2 | 44 | 1,507,411 | 945,152 | 39,267 | $3.412437 |
-| Sol low implementation followed by Sol high audit | 2 of 2 | 79 | 1,567,635 | 896,512 | 43,734 | $3.917777 |
+| Configuration | Quality result | Complete resource records | Model calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sol low, one episode | 0 of 3 | 3 | 32 | 234,848 | 108,544 | 14,250 | $0.833634 |
+| Sol xhigh, one episode | 2 of 2 | 2 | 44 | 1,507,411 | 945,152 | 39,267 | $3.412437 |
+| Sol low implementation followed by Sol high audit | 3 of 3 | 2 | 79 | 1,567,635 | 896,512 | 43,734 | $3.917777 |
 
 The low-reasoning implementation in the audit workflow observed repetitive
 sample output and reported unresolved checkpoint-layout risks. The fresh
@@ -290,9 +303,9 @@ completed Foe outcomes agreed with the graders.
 A third audit trial also received full task-owned grader credit. Harbor killed
 the agent after 900 seconds while Foe was still inside its declared 3,600-second
 workflow allowance. Harbor recorded `AgentTimeoutError`, incomplete usage, and
-a nonconformant partial trace. The campaign excludes this infrastructure trial
-from quality and resource results. The runner now gives Harbor an outer agent
-timeout equal to all possible Foe stage allowances plus five minutes.
+a nonconformant partial trace. Its task quality remains part of the result. Its
+resource use is excluded from the exact totals. The runner gives Harbor an
+outer timeout equal to all possible Foe stage allowances plus five minutes.
 
 The identity-bound evidence digest contained the five single-episode
 trajectories. Its evaluated source identity was
@@ -327,6 +340,43 @@ and
 `target/terminal-bench-jobs/sol-low-high-audit-gpt2-confirmation-2-20260824T062550Z`.
 The excluded timeout trial is retained under
 `target/terminal-bench-jobs/sol-low-high-audit-gpt2-confirmation-3-20260824T063905Z`.
+
+## Recorded identity-bound workflow contrast
+
+On 2026-08-24, a matched contrast used source tree
+`git-tree-sha1:fec3eaa8cb39c6e005fa787aa6c46d0ce48d821e` and binary
+`sha256:b2a4ba85d8858b5b3bfd860e31d345ee8d9fe06b6784075004c1a4891a54fe43`.
+Every attempt used GPT-5.6 Sol with low primary reasoning, the default service
+tier, measurement-only token accounting, and the same Docker task image.
+
+The bare configuration scored zero in three attempts. All three Foe episodes
+completed and produced conformant traces. Each artifact compiled and ran, but
+the task-owned grader rejected its generated text. The three attempts used 31
+model calls, 277,424 input tokens, 68,608 cached-input tokens, and 15,879
+output tokens. Their estimated cost was $1.180287.
+
+The workflow configuration added one fresh Sol-high independent audit with a
+60-call backstop. It scored one in all three attempts. Every Foe outcome
+completed, every trace conformed, and Harbor recorded no task exception. The
+audit repaired checkpoint-layout defects in all three trajectories. It also
+ran multiple prompts and stronger compiler or sanitizer checks after the last
+edit.
+
+One audited attempt has complete provider usage. It used 37 model calls,
+571,138 input tokens, 248,320 cached-input tokens, and 19,441 output tokens.
+Its estimated cost was $1.779420. Two audited attempts each contain one
+provider retry without a usage record. Their quality scores remain valid, but
+their exact token and cost totals are unknown.
+
+The retained runs are:
+
+- `target/terminal-bench-jobs/workflow-contrast-bare-sol-low-20260824T072501Z`;
+- `target/terminal-bench-jobs/workflow-contrast-independent-audit-20260824T074142Z`.
+
+The bounded self-improvement input contains the three bare failures and two
+audited successes. The remaining audited trajectory stays in the raw archive.
+The identity-bound digest is
+`target/gpt2-workflow-contrast-trajectory-evidence.json`.
 
 ## Recorded self-improvement failure analysis
 

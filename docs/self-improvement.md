@@ -365,6 +365,21 @@ changed file digest into one candidate artifact digest. Benchmark promotion
 still requires a separate run against the frozen capability task and
 untouched confirmation tasks.
 
+Trajectory evidence may support a workflow configuration rather than a source
+change. The Terminal-Bench runner can return one typed independent-audit
+setting without starting the source-coding child. The retained workflow
+candidate binds that setting to the evaluated source tree, binary, evidence
+digest, primary model, primary reasoning effort, service tier, and token
+policy. The setting must match a repeated successful configuration in the
+evidence. A later benchmark run refuses any identity or preserved-setting
+mismatch before making a model request.
+
+Source and workflow candidates use the same external promotion rule. The
+task-owned verifier determines quality on development and untouched tasks.
+Provider-reported tokens, estimated cost, cache use, wall time, outcome
+accuracy, and trace conformance are retained diagnostics. They do not reject a
+candidate that raises task quality.
+
 ## Reproduction
 
 Run the deterministic workflow and its forced-correction test:

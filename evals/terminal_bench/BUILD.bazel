@@ -22,6 +22,7 @@ COMMON_DATA = [
     "foe_agent.py",
     "foe_agent_support.py",
     "trajectory_diagnostics.py",
+    "workflow_candidate.py",
 ]
 
 VERIFIER_CASE_DATA = [
@@ -64,6 +65,7 @@ sh_binary(
         "cases.json",
         "run.py",
         "trajectory_diagnostics.py",
+        "workflow_candidate.py",
     ],
     visibility = ["//visibility:public"],
 )
@@ -86,6 +88,7 @@ sh_binary(
         "cases.json",
         "run.py",
         "trajectory_diagnostics.py",
+        "workflow_candidate.py",
         "verifier_control_agent.py",
     ] + VERIFIER_CASE_DATA,
     visibility = ["//visibility:public"],
@@ -202,6 +205,7 @@ sh_binary(
         "//evals/harness_bench:foe_source_identity.py",
         "cases.json",
         "run.py",
+        "workflow_candidate.py",
     ],
     visibility = ["//visibility:public"],
 )
@@ -222,6 +226,7 @@ sh_binary(
         "foe_agent_support.py",
         "run.py",
         "trajectory_diagnostics.py",
+        "workflow_candidate.py",
     ],
     visibility = ["//visibility:public"],
 )
@@ -249,6 +254,8 @@ sh_test(
         "run_verifier_controls_test.py",
         "trajectory_diagnostics.py",
         "trajectory_diagnostics_test.py",
+        "workflow_candidate.py",
+        "workflow_candidate_test.py",
         "verifier_control_agent.py",
     ] + VERIFIER_CASE_DATA,
     size = "small",

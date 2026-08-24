@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from run import (
+    campaign_execution_complete,
     harbor_command,
     lock_credential_state,
     read_cases,
@@ -291,6 +292,25 @@ class CasesTest(unittest.TestCase):
             integrity["infrastructure_failures"],
             ["task__attempt: the completion checker changed during the trial"],
         )
+
+    def test_runtime_diagnostics_do_not_block_a_complete_quality_run(self):
+        records = [
+            {
+                "task": "one",
+                "harbor_exit_code": 1,
+                "n_errored_trials": 1,
+                "infrastructure_failures": ["one: Foe runtime failed"],
+            },
+            {
+                "task": "two",
+                "harbor_exit_code": 0,
+                "n_errored_trials": 0,
+                "infrastructure_failures": [],
+            },
+        ]
+        self.assertTrue(campaign_execution_complete(records, 2))
+        records[1]["result_error"] = "Harbor result has no stats object"
+        self.assertFalse(campaign_execution_complete(records, 2))
 
     def test_source_tree_requires_a_clean_checkout(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -377,33 +377,42 @@ bazel run //evals/terminal_bench:self-improve -- \
   --confirm-spend
 ```
 
-Luna with `low` reasoning produces the bounded diagnosis from the supplied
-digest. Its only ordinary tool is `block`, so it cannot inspect the candidate
-source or retained run directories. Its typed result contains one causal
-contrast, one intervention, and the controls and falsification condition
-needed to evaluate that intervention. It chooses `implement` when failed and
-successful trajectories isolate an activated Foe mechanism. It chooses
-`insufficient-evidence` when the contrast identifies only model capability or
-requires semantic task knowledge absent from the log. That choice ends the
-workflow before a coding episode and sets `direct_implementation_required`.
+Luna produces the bounded diagnosis from the supplied digest. Its only
+ordinary tool is `block`, so it cannot inspect the candidate source or
+retained run directories. Its typed result contains one causal contrast, one
+intervention, and the controls and falsification condition needed to evaluate
+that intervention.
 
-When the diagnosis chooses `implement`, the configured coding model receives
-the diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The coding
-child locates the affected implementation, test, and specification files.
-Its write authority covers runtime crates, specifications, and examples. It
-cannot write evaluation code or benchmark material.
+The diagnosis chooses `implement-source` when failed and successful
+trajectories isolate an activated source mechanism. It chooses
+`configure-workflow` when an independent audit stage supplies a repeated
+quality gain. It chooses `insufficient-evidence` when the contrast identifies
+only model capability or requires semantic task knowledge absent from the
+log. That choice ends the workflow before a coding episode and sets
+`direct_implementation_required`.
+
+When the diagnosis chooses `implement-source`, the configured coding model
+receives the diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The
+coding child locates the affected implementation, test, and specification
+files. Its write authority covers runtime crates, specifications, and
+examples. It cannot write evaluation code or benchmark material.
+
+When the diagnosis chooses `configure-workflow`, the runner validates the
+typed independent-audit setting. It writes `workflow-candidate.json` beside
+the retained result. The candidate digest binds the setting to the evaluated
+source tree, binary, evidence file, and preserved execution controls. The
+setting must appear in at least two successful attempts in the supplied
+evidence.
 
 The diagnosis prompt targets four requests and has a 20-call, 1,800-second
 loop backstop. The implementation has 28-call and 3,600-second safety
 backstops. Each model child ends as blocked after eight consecutive identical
 tool calls or assistant turns.
 
-The lower-cost evaluated configuration is the candidate configuration. The
-diagnosis preserves its model route, reasoning effort, task allowances, token
-policy, and task set. A higher-cost successful configuration supplies causal
-evidence. It is not a permitted replacement. The proposed change must affect
-the explicit program recorded in the evidence. A change to a built-in default
-has no effect when that program supplies the setting itself.
+The diagnosis preserves the primary model route, reasoning effort, task
+allowances, token policy, service tier, and task set. Verified task quality is
+the promotion metric. Tokens, cost, cache use, latency, outcome accuracy, and
+conformance remain recorded diagnostics.
 
 `--cargo` must name the pinned toolchain binary. A Rustup proxy is refused
 because its result depends on process environment and may download a
@@ -440,9 +449,23 @@ candidate checker operate when the candidate is a linked Git worktree.
 
 The runner validates the artifact after Foe exits. A valid artifact remains
 accepted when the episode exhausted its reporting budget after producing the
-files. The result binds the base Git tree and every changed file digest into
-one candidate artifact digest. `direct_implementation_required` is true when
-deterministic validation finds an error or the workflow changes no files.
+files. A source candidate binds the base Git tree and every changed file
+digest. A workflow candidate binds the independent-audit setting and preserved
+controls. `direct_implementation_required` is true when deterministic
+validation finds an error or the workflow produces no candidate.
+
+Apply a retained workflow candidate to any permitted task set with:
+
+```sh
+bazel run //evals/terminal_bench:foe-development -- \
+  --workflow-candidate /absolute/path/to/workflow-candidate.json \
+  --service-tier default \
+  --confirm-spend
+```
+
+The requested model, primary reasoning effort, service tier, and token policy
+must match the candidate. The current Foe source tree and binary must also
+match its recorded identity.
 
 Capability conversion still requires a separate benchmark rerun. Candidate
 promotion remains outside the workflow. The workflow mechanism and evidence

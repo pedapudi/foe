@@ -12,11 +12,14 @@ from run_self_improvement import (
     candidate_artifact_identity,
     check_baseline,
     check_candidate,
+    failed_base_configuration,
     line_budget_ceilings,
     measure_episode,
     model_config,
     rust_toolchain_identity,
+    supported_independent_audits,
     validate_program,
+    workflow_candidate_from_outcome,
     write_candidate_check,
 )
 
@@ -74,7 +77,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(
             nodes["diagnose-runtime"]["branches"],
             {
-                "implement": ["implement-runtime-improvement"],
+                "implement-source": ["implement-runtime-improvement"],
+                "configure-workflow": [],
                 "insufficient-evidence": [],
             },
         )
@@ -85,8 +89,9 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn("input_tokens", config["budget"])
         self.assertNotIn("output_tokens", implementation["budget"])
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
-        self.assertIn("higher-cost successful setting", diagnosis["instructions"]["controls"])
-        self.assertIn("recorded program", diagnosis["instructions"]["controls"])
+        self.assertIn("verified task quality", diagnosis["instructions"]["controls"])
+        self.assertIn("resource changes", diagnosis["instructions"]["controls"])
+        self.assertIn("general workflow setting", diagnosis["instructions"]["controls"])
         returns = diagnosis["done_when"]["returns"]
         self.assertEqual(
             returns["required"],
@@ -115,7 +120,9 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertIn("four model requests as a planning target", diagnosis["instructions"]["result"])
         self.assertIn("loop backstop", diagnosis["instructions"]["result"])
-        self.assertIn("model capability gap", diagnosis["instructions"]["sufficiency"])
+        self.assertIn("model capability", diagnosis["instructions"]["sufficiency"])
+        self.assertIn("configure-workflow", diagnosis["instructions"]["sufficiency"])
+        self.assertIn("independent_audit", returns["properties"])
         self.assertIn("must not branch on", diagnosis["instructions"]["controls"])
         self.assertEqual(
             implementation["grants"]["write"],
@@ -132,6 +139,101 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(config["task"], "Raise verified completion.")
         self.assertEqual(config["budget"]["loop_threshold"], 8)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
+
+    def test_failed_base_configuration_excludes_the_successful_audit_setting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text(
+                json.dumps(
+                    {
+                        "evaluation_summary": [
+                            {
+                                "attempts": 3,
+                                "verified_successes": 0,
+                                "execution_configuration": {
+                                    "implementation": {
+                                        "model": "openai-codex/gpt-5.6-sol",
+                                        "reasoning_effort": "low",
+                                    },
+                                    "service_tier": "default",
+                                    "token_policy": "measurement_only",
+                                },
+                            },
+                            {
+                                "attempts": 2,
+                                "verified_successes": 2,
+                                "execution_configuration": {
+                                    "implementation": {
+                                        "model": "openai-codex/gpt-5.6-sol",
+                                        "reasoning_effort": "low",
+                                    },
+                                    "independent_audit": {
+                                        "model": "openai-codex/gpt-5.6-sol",
+                                        "reasoning_effort": "high",
+                                        "model_calls": 60,
+                                    },
+                                    "service_tier": "default",
+                                    "token_policy": "measurement_only",
+                                },
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            configuration = failed_base_configuration(evidence)
+            audits = supported_independent_audits(evidence, configuration)
+        self.assertEqual(
+            configuration,
+            {
+                "model": "openai-codex/gpt-5.6-sol",
+                "reasoning_effort": "low",
+                "service_tier": "default",
+                "token_policy": "measurement_only",
+            },
+        )
+        self.assertEqual(audits, [{"reasoning_effort": "high", "model_calls": 60}])
+
+    def test_workflow_candidate_accepts_only_an_observed_successful_setting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text("{}\n", encoding="utf-8")
+            identity = {
+                "source_tree": "git-tree-sha1:" + "1" * 40,
+                "runtime_binary": "sha256:" + "2" * 64,
+            }
+            base = {
+                "model": "openai-codex/gpt-5.6-sol",
+                "reasoning_effort": "low",
+                "service_tier": "default",
+                "token_policy": "measurement_only",
+            }
+            supported = [{"reasoning_effort": "high", "model_calls": 60}]
+            candidate = workflow_candidate_from_outcome(
+                {
+                    "branch": "configure-workflow",
+                    "independent_audit": supported[0],
+                },
+                supported,
+                identity,
+                evidence,
+                base,
+            )
+            with self.assertRaisesRegex(ValueError, "not a repeated successful"):
+                workflow_candidate_from_outcome(
+                    {
+                        "branch": "configure-workflow",
+                        "independent_audit": {
+                            "reasoning_effort": "xhigh",
+                            "model_calls": 120,
+                        },
+                    },
+                    supported,
+                    identity,
+                    evidence,
+                    base,
+                )
+        self.assertEqual(candidate["independent_audit"], supported[0])
 
     def test_program_validation_reports_construction_failure(self):
         with tempfile.TemporaryDirectory() as directory:

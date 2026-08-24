@@ -16,7 +16,8 @@ python3 -m py_compile \
   verifier_cases/cancel_async_tasks/check.py \
   verifier_cases/fix_git/check.py \
   verifier_cases/large_scale_text_editing/check.py \
-  trajectory_diagnostics.py
+  trajectory_diagnostics.py \
+  workflow_candidate.py
 python3 -m unittest -v \
   capability_probe_support_test.py \
   collect_diagnostics_test.py \
@@ -24,4 +25,5 @@ python3 -m unittest -v \
   run_self_improvement_test.py \
   run_test.py \
   run_verifier_controls_test.py \
-  trajectory_diagnostics_test.py
+  trajectory_diagnostics_test.py \
+  workflow_candidate_test.py

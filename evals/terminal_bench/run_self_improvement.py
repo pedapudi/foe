@@ -20,6 +20,8 @@ from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256
 
 from foe_agent_support import estimate_usage_cost
 from run import Pricing, read_cases
+from workflow_candidate import create as create_workflow_candidate
+from workflow_candidate import validate_independent_audit
 
 
 DIAGNOSIS_CALLS = 20
@@ -64,6 +66,120 @@ def verify_evidence_identity(candidate: Path, binary: Path, evidence: Path) -> d
     if runtime_binary != identity["runtime_binary"]:
         raise ValueError("Foe binary differs from the evaluated evidence")
     return identity
+
+
+def failed_base_configuration(evidence: Path) -> dict[str, str]:
+    """Return the one failed configuration a candidate must preserve."""
+    report = json.loads(evidence.read_text(encoding="utf-8"))
+    summaries = report.get("evaluation_summary")
+    if not isinstance(summaries, list):
+        raise ValueError("self-improvement evidence has no evaluation_summary list")
+    candidates: dict[str, dict[str, str | None]] = {}
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            continue
+        attempts = summary.get("attempts")
+        successes = summary.get("verified_successes")
+        configuration = summary.get("execution_configuration")
+        if (
+            type(attempts) is not int
+            or type(successes) is not int
+            or successes >= attempts
+            or not isinstance(configuration, dict)
+            or "independent_audit" in configuration
+        ):
+            continue
+        implementation = configuration.get("implementation")
+        if not isinstance(implementation, dict):
+            continue
+        candidate = {
+            "model": implementation.get("model"),
+            "reasoning_effort": implementation.get("reasoning_effort"),
+            "service_tier": configuration.get("service_tier"),
+            "token_policy": configuration.get("token_policy"),
+        }
+        candidates[json.dumps(candidate, sort_keys=True)] = candidate
+    if len(candidates) != 1:
+        raise ValueError(
+            "self-improvement evidence must identify one failed configuration without an independent audit"
+        )
+    values = next(iter(candidates.values()))
+    if not all(isinstance(value, str) and value for value in values.values()):
+        raise ValueError("self-improvement evidence has an incomplete failed configuration")
+    return values
+
+
+def supported_independent_audits(
+    evidence: Path, base_configuration: dict[str, str]
+) -> list[dict[str, Any]]:
+    """Return repeated successful audit settings that preserve the base run."""
+    report = json.loads(evidence.read_text(encoding="utf-8"))
+    summaries = report.get("evaluation_summary")
+    if not isinstance(summaries, list):
+        raise ValueError("self-improvement evidence has no evaluation_summary list")
+    supported: dict[str, dict[str, Any]] = {}
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            continue
+        attempts = summary.get("attempts")
+        successes = summary.get("verified_successes")
+        configuration = summary.get("execution_configuration")
+        if (
+            type(attempts) is not int
+            or attempts < 2
+            or successes != attempts
+            or not isinstance(configuration, dict)
+        ):
+            continue
+        implementation = configuration.get("implementation")
+        audit = configuration.get("independent_audit")
+        observed_base = {
+            "model": implementation.get("model") if isinstance(implementation, dict) else None,
+            "reasoning_effort": (
+                implementation.get("reasoning_effort") if isinstance(implementation, dict) else None
+            ),
+            "service_tier": configuration.get("service_tier"),
+            "token_policy": configuration.get("token_policy"),
+        }
+        if observed_base != base_configuration or not isinstance(audit, dict):
+            continue
+        if audit.get("model") != base_configuration["model"]:
+            continue
+        setting = validate_independent_audit(
+            {
+                "reasoning_effort": audit.get("reasoning_effort"),
+                "model_calls": audit.get("model_calls"),
+            }
+        )
+        supported[json.dumps(setting, sort_keys=True)] = setting
+    if not supported:
+        raise ValueError(
+            "self-improvement evidence has no repeated successful independent-audit setting"
+        )
+    return [supported[key] for key in sorted(supported)]
+
+
+def workflow_candidate_from_outcome(
+    outcome_value: Any,
+    supported_audits: list[dict[str, Any]],
+    identity: dict[str, str],
+    evidence: Path,
+    base_configuration: dict[str, str],
+) -> dict[str, Any]:
+    """Validate a diagnosis result and bind its observed audit setting."""
+    if not isinstance(outcome_value, dict) or outcome_value.get("branch") != "configure-workflow":
+        raise ValueError("self-improvement outcome did not select configure-workflow")
+    audit = validate_independent_audit(outcome_value.get("independent_audit"))
+    if audit not in supported_audits:
+        raise ValueError(
+            "workflow candidate independent_audit was not a repeated successful evidence setting"
+        )
+    return create_workflow_candidate(
+        identity,
+        "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest(),
+        base_configuration,
+        audit,
+    )
 
 
 def source_hashes(root: Path) -> dict[str, str]:
@@ -337,8 +453,8 @@ def build_config(
             "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
             "evidence": "Compare the failed and successful settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
-            "controls": "Improve the lower-cost evaluated configuration. Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat a higher-cost successful setting as diagnostic evidence rather than the candidate configuration. The intervention must apply through general Foe behavior or an existing general configuration mechanism used by the recorded program. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity. Evaluation configuration is outside candidate scope.",
-            "sufficiency": "Choose `implement` only when the failed trajectories activate a specific Foe mechanism and the successful trajectories supply a causal contrast for changing it. A reasoning-effort difference alone establishes a model capability gap rather than a Foe defect. Choose `insufficient-evidence` when the intervention would require semantic knowledge absent from the log, an evaluator change, or a general instruction that no runtime signal can enforce.",
+            "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
+            "sufficiency": "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. Choose `configure-workflow` when a repeated quality gain is caused by an independent audit stage, and return the observed successful audit setting. Choose `insufficient-evidence` when the intervention requires semantic knowledge absent from the log, an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort difference without a workflow contrast establishes model capability rather than a Foe defect.",
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block"],
@@ -377,6 +493,22 @@ def build_config(
                     "activation_path": {"type": "string", "minLength": 1},
                     "preserved_controls": {"type": "string", "minLength": 1},
                     "falsification_condition": {"type": "string", "minLength": 1},
+                    "independent_audit": {
+                        "type": "object",
+                        "properties": {
+                            "reasoning_effort": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high", "xhigh"],
+                            },
+                            "model_calls": {
+                                "type": "integer",
+                                "minimum": 6,
+                                "maximum": 120,
+                            },
+                        },
+                        "required": ["reasoning_effort", "model_calls"],
+                        "additionalProperties": False,
+                    },
                 },
                 "required": [
                     "limitation",
@@ -440,7 +572,8 @@ def build_config(
                     "model": diagnosis,
                     "follows": ["task", "collect-trajectory-diagnostics"],
                     "branches": {
-                        "implement": ["implement-runtime-improvement"],
+                        "implement-source": ["implement-runtime-improvement"],
+                        "configure-workflow": [],
                         "insufficient-evidence": [],
                     },
                 },
@@ -606,6 +739,8 @@ def main(argv: list[str] | None = None) -> int:
         evidence = args.evidence.resolve(strict=True)
         binary = args.foe.resolve(strict=True)
         identity = verify_evidence_identity(candidate, binary, evidence)
+        base_configuration = failed_base_configuration(evidence)
+        supported_audits = supported_independent_audits(evidence, base_configuration)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"self-improvement: {error}", file=sys.stderr)
         return 2
@@ -708,12 +843,53 @@ def main(argv: list[str] | None = None) -> int:
         check=True,
     ).stdout.splitlines()
     changed = [line[3:] for line in changed_status if len(line) > 3]
-    artifact_identity = candidate_artifact_identity(candidate, identity["source_tree"], changed)
-    acceptance = check_candidate(check, candidate) if changed else {
-        "accepted": False,
-        "findings": ["candidate contains no changed files"],
-        "exit_code": None,
-    }
+    usage = measure_episode(episode, pricing)
+    outcome = usage.get("outcome")
+    outcome_value = outcome.get("value") if isinstance(outcome, dict) else None
+    branch = outcome_value.get("branch") if isinstance(outcome_value, dict) else None
+    workflow_candidate = None
+    workflow_candidate_path = None
+    if branch == "configure-workflow":
+        findings = []
+        if changed:
+            findings.append("workflow configuration candidate also changed source files")
+        try:
+            workflow_candidate = workflow_candidate_from_outcome(
+                outcome_value,
+                supported_audits,
+                identity,
+                evidence,
+                base_configuration,
+            )
+        except ValueError as error:
+            findings.append(str(error))
+        if not findings:
+            workflow_candidate_path = root / "workflow-candidate.json"
+            write_json(workflow_candidate_path, workflow_candidate)
+        acceptance = {
+            "accepted": not findings,
+            "findings": findings,
+            "exit_code": 0 if not findings else None,
+        }
+        artifact_identity = workflow_candidate
+        candidate_kind = "workflow-configuration"
+    elif branch == "implement-source":
+        artifact_identity = candidate_artifact_identity(candidate, identity["source_tree"], changed)
+        acceptance = check_candidate(check, candidate) if changed else {
+            "accepted": False,
+            "findings": ["source candidate contains no changed files"],
+            "exit_code": None,
+        }
+        candidate_kind = "source-change"
+    else:
+        artifact_identity = candidate_artifact_identity(candidate, identity["source_tree"], changed)
+        finding = (
+            "diagnosis reported insufficient evidence"
+            if branch == "insufficient-evidence"
+            else "self-improvement outcome contains no supported candidate branch"
+        )
+        acceptance = {"accepted": False, "findings": [finding], "exit_code": None}
+        candidate_kind = "no-candidate"
     record = {
         **preview,
         "evaluated_foe": identity,
@@ -721,12 +897,14 @@ def main(argv: list[str] | None = None) -> int:
         "exit_code": result.returncode,
         "stdout": result.stdout.strip(),
         "stderr": result.stderr.strip(),
-        "usage": measure_episode(episode, pricing),
+        "usage": usage,
         "candidate": str(candidate),
         "evidence": str(evidence),
         "episode": str(episode),
         "changed_files": changed,
+        "candidate_kind": candidate_kind,
         "candidate_artifact": artifact_identity,
+        "workflow_candidate": str(workflow_candidate_path) if workflow_candidate_path else None,
         "candidate_acceptance": acceptance,
         "artifact_outcome_mismatch": acceptance["accepted"] and result.returncode != 0,
         "direct_implementation_required": not acceptance["accepted"],
