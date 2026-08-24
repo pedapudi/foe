@@ -142,6 +142,38 @@ async fn missing_files_binary_files_and_denied_paths_are_errors() {
     assert!(v.is_error);
 }
 
+/// docs/tools.md "edit": the rendering shows the diff up to
+/// `EDIT_DIFF_MAX_LINES` lines and one elision line beyond it; the
+/// canonical value keeps the complete diff, so the bound costs the log
+/// nothing.
+#[tokio::test]
+async fn a_large_diff_is_rendered_up_to_the_window_and_elided_beyond_it() {
+    let fx = Fixture::new();
+    let body: String = (1..=300).map(|i| format!("line {i}\n")).collect();
+    let v = edit(&fx, json!({"path": "big.txt", "edits": [replace("", &body)]})).await;
+    assert!(!v.is_error, "{v:?}");
+    let canonical = v.value["diff"].as_str().unwrap();
+    assert_eq!(canonical.lines().count(), 303, "two headers, one hunk line, and every added line");
+    assert!(canonical.contains("+line 300\n"), "the canonical value keeps the complete diff");
+    let r = v.rendered.unwrap();
+    assert_eq!(r.lines().count(), 1 + EDIT_DIFF_MAX_LINES + 1, "the summary, the window, the elision line");
+    assert!(r.contains("+line 197\n"), "the window holds the head of the diff");
+    assert!(!r.contains("+line 198\n"));
+    assert!(
+        r.ends_with(
+            "[Diff cut at 200 lines: 103 added and 0 removed lines omitted. \
+             Every edit was applied; read the file to see the result.]\n"
+        ),
+        "{r}"
+    );
+
+    let v = edit(&fx, json!({"path": "big.txt", "edits": [replace(body.as_str(), "solo\n")]})).await;
+    assert!(!v.is_error, "{v:?}");
+    assert_eq!(fx.read("big.txt"), "solo\n", "the write applied in full despite the elided rendering");
+    let r = v.rendered.unwrap();
+    assert!(r.contains("1 added and 103 removed lines omitted"), "{r}");
+}
+
 /// The line the rendering already leads with, hoisted so a reader of a
 /// list gets it without the diff under it.
 #[tokio::test]

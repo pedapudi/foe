@@ -6,7 +6,7 @@
 //! model matches against the text it saw through `read`.
 
 use crate::diff::{self, Span};
-use crate::{display, parse_args, resolve};
+use crate::{display, parse_args, resolve, EDIT_DIFF_MAX_LINES};
 use foe_config::{Effect, ToolSpec};
 use foe_core::{CallCtx, CapError, Tool, ToolValue};
 use serde::Deserialize;
@@ -80,6 +80,28 @@ impl Edit {
 fn all_crlf(text: &str) -> bool {
     let lf = text.matches('\n').count();
     lf > 0 && text.matches("\r\n").count() == lf
+}
+
+/// The diff as the rendering shows it: whole up to [`EDIT_DIFF_MAX_LINES`]
+/// lines, then one elision line counting the added and removed lines not
+/// shown. The bound is applied here, where the rendering is produced; the
+/// canonical value keeps the complete diff.
+fn bounded_diff(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.len() <= EDIT_DIFF_MAX_LINES {
+        return text.to_owned();
+    }
+    let (added, removed) = lines[EDIT_DIFF_MAX_LINES..].iter().fold((0, 0), |(a, r), l| match l.as_bytes().first() {
+        Some(b'+') => (a + 1, r),
+        Some(b'-') => (a, r + 1),
+        _ => (a, r),
+    });
+    let mut out = lines[..EDIT_DIFF_MAX_LINES].join("\n");
+    out.push_str(&format!(
+        "\n[Diff cut at {EDIT_DIFF_MAX_LINES} lines: {added} added and {removed} removed lines omitted. \
+         Every edit was applied; read the file to see the result.]\n"
+    ));
+    out
 }
 
 #[async_trait::async_trait]
@@ -202,7 +224,7 @@ impl Tool for Edit {
                 "removed": d.removed,
                 "diff": d.text,
             }),
-            format!("edited {did}\n{}", d.text),
+            format!("edited {did}\n{}", bounded_diff(&d.text)),
         )
         .subject(did)
     }

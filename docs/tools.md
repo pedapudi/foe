@@ -99,7 +99,7 @@ the first `read` root, and paths in results are shown relative to it.
 |---|---|---|---|---|
 | `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |
 | `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
-| `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original | `path`, `edits`, `added`, `removed`, `diff` |
+| `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
 
 The limits in the table are constants in the crate, and every tool
@@ -219,7 +219,13 @@ endings is matched as it is. A file that is not valid UTF-8 is refused.
 
 The result is written through the writer, which replaces the file
 atomically. The canonical value carries a unified diff with three lines of
-context; the rendered form is a one-line summary followed by that diff.
+context; the rendered form is a one-line summary followed by that diff up
+to 200 lines. A diff past that bound ends with one elision line counting
+the added and removed lines not shown, because the rendering is re-sent
+with every later request while the model already knows what it wrote. The
+canonical value keeps the complete diff, so the log, the viewer, and any
+later analysis lose nothing. The bound is applied when the rendering is
+produced; an emitted rendering is never rewritten.
 
 ### `bash`
 
