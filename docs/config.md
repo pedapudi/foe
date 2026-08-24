@@ -304,7 +304,7 @@ Object. Required.
 | `max_depth` | integer | no | 1 | how many levels of child episodes may exist below this one; 0 forbids spawning |
 | `max_episodes` | integer | no | 8 | lifetime count of episodes in the tree, including this one |
 | `max_concurrent` | integer | no | 4 | direct children of this episode running at once |
-| `loop_threshold` | integer | no | 3 | consecutive identical tool calls, or identical assistant turns, that end the episode as blocked |
+| `loop_threshold` | integer | no | 8 | consecutive identical tool calls, or identical assistant turns, that end the episode as blocked |
 
 `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`, and
 `max_episodes` apply to the whole tree below this episode. A child's budget
