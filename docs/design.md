@@ -572,7 +572,7 @@ The binary has one running form and five forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
-foe "task" [--model PROVIDER/MODEL] [--key-file PATH]    run the built-in coding workflow
+foe "task" [--model PROVIDER/MODEL] [--key-file PATH] [--verify PATH]   run the built-in coding workflow
 foe "task" --headless                                    run; no viewer; print the outcome
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
@@ -614,6 +614,18 @@ implementation claim, repairs defects, and produces the outcome.
 Both episodes have `read`, `grep`, `edit`, and `bash`. Both may read and write
 the current directory. Each episode has a 60-call backstop. The root holds
 their additive 120-call allowance.
+
+`--verify PATH` names an executable verifier for the built-in workflow.
+The path is canonicalized and becomes a `tool_defs` entry named `check`
+with execute authority on that file; the implementation episode declares
+`done_when: {"verify": "check"}`, and the audit node
+`skip_when_verified: "implement-task"`. The verifier runs in the working
+directory, receives the completion value as JSON on standard input, and
+prints one finding per line; exit 0 with empty output is acceptance.
+Findings return to the implementation episode until its retries are
+spent. Acceptance completes that episode and skips the audit, recorded
+as `workflow/node-skipped`. Without `--verify` the built-in workflow is
+unchanged: the audit always runs.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
 interpreters, and repository tools. Both episodes receive the recorded result

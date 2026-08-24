@@ -99,6 +99,8 @@ pub struct Options {
     pub config: Option<PathBuf>,
     pub model: Option<String>,
     pub key_file: Option<PathBuf>,
+    /// An executable verifier for the built-in coding workflow.
+    pub verify: Option<PathBuf>,
     pub log_dir: Option<PathBuf>,
     pub no_open: bool,
     pub headless: bool,
@@ -192,8 +194,13 @@ fn load_config(options: &Options) -> Result<Config, String> {
             }
             None => default_model()?.ok_or(NO_DEFAULT_MODEL)?,
         };
-        return builtin_config(task, model, options.key_file.as_deref());
+        return builtin_config(task, model, options.key_file.as_deref(), options.verify.as_deref());
     };
+    if options.verify.is_some() {
+        return Err("--verify applies to the built-in coding workflow; a configuration document declares its own \
+                    done_when and skip_when_verified"
+            .into());
+    }
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut config = foe_config::config::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     if let Some(task) = &options.task {
@@ -224,9 +231,26 @@ fn default_model() -> Result<Option<ModelConfig>, String> {
     Ok(None)
 }
 
+/// What the model is told about the `--verify` executable, which it may
+/// also run as an ordinary tool. The authoritative contract is the
+/// verifier contract of docs/config.md `done_when`.
+const BUILTIN_VERIFIER_DESCRIPTION: &str = "The task's verifier. It runs in the working directory, prints one \
+finding per line, and exits 0 whether or not it found any; printing nothing is acceptance. An ordinary call takes \
+{\"args\": []}; the authoritative run after completion receives the completion value as JSON on standard input.";
+
 /// The built-in coding workflow. `--key-file` names the API key file
 /// explicitly; without it the provider's convention path is read.
-fn builtin_config(task: String, mut model: ModelConfig, key_file: Option<&Path>) -> Result<Config, String> {
+/// `verify` names an executable verifier: it becomes a `tool_defs` entry
+/// named `check` with execute authority on that file, the implementation
+/// episode declares `done_when.verify` on it, and the audit node gains
+/// `skip_when_verified`, so an accepted implementation skips the audit.
+/// Without it the workflow is unchanged: always audited.
+fn builtin_config(
+    task: String,
+    mut model: ModelConfig,
+    key_file: Option<&Path>,
+    verify: Option<&Path>,
+) -> Result<Config, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
     let explicit_reasoning = model.option("reasoning_effort").is_some();
     apply_builtin_model_defaults(&mut model);
@@ -311,6 +335,20 @@ fn builtin_config(task: String, mut model: ModelConfig, key_file: Option<&Path>)
         },
         "task": task,
     });
+    if let Some(check) = verify {
+        let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
+        let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": cwd });
+        let mut document = document;
+        let implement = "implement-task";
+        document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
+        let node_tools = &mut document["workflow"]["nodes"][implement]["model"]["tools"];
+        node_tools.as_array_mut().expect("a tool list").push(serde_json::json!("check"));
+        document["tool_defs"] = serde_json::json!({ "check": def });
+        document["workflow"]["nodes"][implement]["model"]["tool_defs"] = serde_json::json!({ "check": def });
+        document["workflow"]["nodes"][implement]["model"]["done_when"]["verify"] = serde_json::json!("check");
+        document["workflow"]["nodes"]["audit-and-repair-task"]["skip_when_verified"] = serde_json::json!(implement);
+        return serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"));
+    }
     serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"))
 }
 

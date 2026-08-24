@@ -557,6 +557,104 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
     assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2, "one child per model firing");
 }
 
+/// The built-in coding workflow's shape, as `foe "task" --verify PATH`
+/// composes it when `verifier` is set and as the bare form composes it
+/// otherwise: an implementation model node feeding a terminal audit model
+/// node, with the verifier declared as `done_when.verify` on the
+/// implementation program and `skip_when_verified` on the audit node.
+/// The wiring itself is pinned by the unit tests over `builtin_config`;
+/// the bare form cannot run under a scripted transport, because the exec
+/// provider needs a `model` option no flag sets, so these runs drive the
+/// same document under `--host`.
+fn coding_workflow(dir: &Path, verifier: Option<&Path>) -> Value {
+    let node = |name: &str, tools: Value| {
+        json!({
+            "name": name, "instructions": { "role": "Work on the task." }, "tools": tools,
+            "grants": { "read": [dir], "write": [dir] }, "budget": { "model_calls": 4 }
+        })
+    };
+    let mut implement = node("implement-task", json!(["read"]));
+    let audit = node("audit-and-repair-task", json!(["read"]));
+    let mut value = config(dir, |c| {
+        c["grants"]["write"] = json!([dir]);
+        c["budget"] = json!({ "model_calls": 8, "max_episodes": 3, "max_concurrent": 1 });
+    });
+    if let Some(script) = verifier {
+        let def = json!({ "check": { "exec": script, "description": "Prints one finding per line; silence is acceptance." } });
+        implement["tools"] = json!(["read", "check"]);
+        implement["tool_defs"] = def.clone();
+        implement["done_when"] = json!({ "verify": "check" });
+        value["tools"] = json!(["read", "check"]);
+        value["tool_defs"] = def;
+    }
+    let mut audit_node = json!({ "model": audit, "follows": ["task", "implement-task"], "terminal": true });
+    if verifier.is_some() {
+        audit_node["skip_when_verified"] = json!("implement-task");
+    }
+    value["workflow"] = json!({
+        "nodes": { "implement-task": { "model": implement, "follows": ["task"] }, "audit-and-repair-task": audit_node },
+        "recovery": { "enabled": false }
+    });
+    value
+}
+
+fn child_events(dir: &Path, child_id: &str) -> Vec<Value> {
+    let file = dir.join("log/children").join(child_id).join("episode.jsonl");
+    std::fs::read_to_string(file).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
+}
+
+/// docs/workflow.md "The conditional audit guard" and docs/design.md "The
+/// command line": when the implementation episode's verifier accepts, the
+/// audit node is skipped end to end — the skip event names the accepted
+/// verification in the child's log — and the workflow completes with the
+/// implementation's value.
+#[test]
+fn an_accepted_verification_skips_the_audit_node() {
+    let dir = scratch("verify-skip");
+    let script = executable(&dir, "check", "#!/bin/sh\nexit 0\n");
+    let config = coding_workflow(&dir, Some(&script));
+    let implement = vec![text("implemented the change"), done("end")];
+    let (events, code) = host_run(&dir, &config, vec![implement], |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert_eq!(
+        events.last().unwrap()["data"]["outcome"],
+        json!({ "kind": "completed", "value": "implemented the change" })
+    );
+    assert_eq!(node_starts(&events), [("implement-task".into(), 1)], "the audit never fired");
+    let skip = events.iter().find(|e| e["type"] == "workflow/node-skipped").expect("the skip is recorded");
+    assert_eq!(skip["data"]["node"], "audit-and-repair-task");
+    assert_eq!(skip["data"]["verified_by"], "implement-task");
+    let start = events.iter().find(|e| e["type"] == "workflow/node-start").unwrap();
+    let child = child_events(&dir, start["data"]["child_id"].as_str().unwrap());
+    let evidence = &child[skip["data"]["verification_seq"].as_u64().unwrap() as usize];
+    assert_eq!(evidence["type"], "verification/result");
+    assert_eq!(evidence["data"]["status"], "accepted");
+    assert_eq!(evidence["data"]["tool"], "check");
+    assert_eq!(evidence["data"]["findings"], json!([]));
+    let hashed = {
+        use sha2::Digest;
+        format!("sha256:{}", hex::encode(sha2::Sha256::digest(std::fs::read(&script).unwrap())))
+    };
+    assert_eq!(evidence["data"]["verifier_identity"], json!(hashed), "the executable's content hash at invocation");
+    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 1, "no audit episode started");
+}
+
+/// The same run without a verifier audits: both model nodes fire and the
+/// audit's value completes the workflow.
+#[test]
+fn without_a_verifier_the_audit_runs() {
+    let dir = scratch("verify-absent");
+    let config = coding_workflow(&dir, None);
+    let implement = vec![text("implemented"), done("end")];
+    let audit = vec![text("audited"), done("end")];
+    let (events, code) = host_run(&dir, &config, vec![implement, audit], |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "completed", "value": "audited" }));
+    assert_eq!(node_starts(&events), [("implement-task".into(), 1), ("audit-and-repair-task".into(), 1)]);
+    assert!(!types(&events).contains(&"workflow/node-skipped"));
+    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2, "both episodes ran");
+}
+
 fn done_with(stop: &str, input: u64) -> Value {
     json!({ "kind": "done", "stop": stop, "usage": { "input": input, "output": 5, "cache_read": 0 } })
 }
