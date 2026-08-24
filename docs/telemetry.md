@@ -296,6 +296,7 @@ A field that answers no question is not emitted. This table is the gate.
 | `foe.category.counts` | which categories an episode belongs to at once, and how strongly, since one episode can be both testing and infrastructure |
 | `foe.evidence` | why the classifier chose that category |
 | `foe.tokens.input`, `foe.tokens.output`, `foe.tokens.cache_read` | what an episode costs, and how much of the input the cache served |
+| `foe.tokens.cache_read_fraction` | what fraction of the input the cache served, as `cache_read` divided by `input`, on each model-call span and on the episode span; absent when no input token was recorded |
 | `foe.model_calls` | how many turns a kind of work takes |
 | `foe.tool_calls`, `foe.tool_errors` | how often tool calls fail, per episode |
 | `foe.duration_ms` | how long a kind of work takes end to end |
@@ -309,7 +310,10 @@ A field that answers no question is not emitted. This table is the gate.
 
 Input, output, and cache-read tokens are separate throughout, following the
 repository's standing convention that a single token total hides the three
-different costs it sums.
+different costs it sums. The cached-input fraction is emitted beside the
+two counts it is derived from, so a collector can chart cache efficiency
+without recomputing it, and its absence distinguishes an unmeasured spend
+from a cold cache.
 
 Span status is `OK` for a completed episode and a tool call that did not
 error, and `ERROR` otherwise.

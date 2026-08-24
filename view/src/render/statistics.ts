@@ -518,7 +518,7 @@ export class StatisticsView {
         "A run with no cache-read figure has no hit rate; drawing it as zero percent would assert a measurement that was not made.",
       );
     }
-    const { read, input, rate } = stats.cache;
+    const { read, input, rate, perRequest, measuredRequests } = stats.cache;
     const barWidth = Math.max(80, width - 24);
     const height = 26;
     const figure = barSvg("fig-svg", barWidth, height, "cache-read tokens against total input tokens");
@@ -531,9 +531,26 @@ export class StatisticsView {
       () => "cache-read tokens ÷ total input tokens",
       () => `${fmtInt(read)} ÷ ${fmtInt(input)} = ${percent(rate)}`,
     );
+    const total = h("span", { class: "fig-total" }, `${fmtInt(read)} of ${fmtInt(input)} input tokens · ${percent(rate)}`);
+    const body: Child[] = [figure, total];
+    if (perRequest !== null) {
+      const line = h(
+        "div",
+        { class: "sub" },
+        `per request, cache reads average ${percent(perRequest)} of input over ` +
+          `${fmtInt(measuredRequests)} request${measuredRequests === 1 ? "" : "s"}`,
+      );
+      this.card.attach(
+        line,
+        () => "per-request cached-input fraction",
+        () => "the mean over answered requests of each request's cache_read ÷ input; every request weighs the same, while the bar weights each by its input",
+        () => `${fmtInt(measuredRequests)} requests · mean ${percent(perRequest)}`,
+      );
+      body.push(line);
+    }
     return this.figure(
       "cache reads",
-      [figure, h("span", { class: "fig-total" }, `${fmtInt(read)} of ${fmtInt(input)} input tokens · ${percent(rate)}`)],
+      body,
       `${percent(rate)} of the input tokens this scope sent came from the provider's cache.`,
     );
   }
