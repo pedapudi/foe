@@ -6,6 +6,8 @@ full benchmark run. It does not constitute an official Terminal-Bench score.
 The [development evaluation record](evaluation-record.md) reports retained
 aggregate results and promotion decisions. The [capability campaign
 record](campaign.md) defines the staged evaluation and its success criteria.
+The [cross-trajectory capability analysis](cross-trajectory-analysis.md)
+maps retained failures to product changes and promotion gates.
 
 The dataset reference is `terminal-bench/terminal-bench-2-1@6`. The
 [Harbor Hub dataset record](https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1/6)
@@ -107,9 +109,10 @@ The supported reasoning settings end at `xhigh` for this campaign.
 
 A task can run as two model episodes with a typed handoff. The first episode
 uses `read`, `grep`, and `bash` to collect static and runtime evidence. It
-returns constraints, observations, implementation steps, verification steps,
-and risks. The second episode receives only the task and that return value in
-a fresh context. It holds the full coding tool set:
+returns facts, implementation steps, and verification steps. Facts include
+observed constraints, evidence, uncertainty, and implementation blockers. The
+second episode receives only the task and that return value in a fresh
+context. It holds the full coding tool set:
 
 ```sh
 bazel run //evals/terminal_bench:foe-capability-search -- \
