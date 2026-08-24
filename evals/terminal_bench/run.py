@@ -24,6 +24,7 @@ from trajectory_diagnostics import diagnose_episode
 HARBOR_VERSION = "0.22.0"
 DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+MIN_AUXILIARY_MODEL_CALLS = 6
 
 
 @dataclass(frozen=True)
@@ -458,12 +459,21 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("--diagnosis-model must name an openai-codex model")
             if args.diagnosis_model not in pricing:
                 raise ValueError(f"cases.pricing has no entry for {args.diagnosis_model}")
-            if args.diagnosis_model_calls < 2:
-                raise ValueError("--diagnosis-model-calls must be at least two")
+            if args.diagnosis_model_calls < MIN_AUXILIARY_MODEL_CALLS:
+                raise ValueError(
+                    "--diagnosis-model-calls must be at least "
+                    f"{MIN_AUXILIARY_MODEL_CALLS}"
+                )
         if args.escalation_reasoning_effort is None and args.escalation_model_calls != 0:
             raise ValueError("--escalation-model-calls requires --escalation-reasoning-effort")
-        if args.escalation_reasoning_effort is not None and args.escalation_model_calls < 2:
-            raise ValueError("--escalation-model-calls must be at least two")
+        if (
+            args.escalation_reasoning_effort is not None
+            and args.escalation_model_calls < MIN_AUXILIARY_MODEL_CALLS
+        ):
+            raise ValueError(
+                "--escalation-model-calls must be at least "
+                f"{MIN_AUXILIARY_MODEL_CALLS}"
+            )
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
         agent_module = args.agent_module.resolve(strict=True)

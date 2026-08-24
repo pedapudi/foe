@@ -101,6 +101,10 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(diagnosis["tools"], ["read", "grep", "bash"])
         self.assertNotIn("sandbox", diagnosis)
         self.assertIn("returns", diagnosis["done_when"])
+        self.assertEqual(
+            diagnosis["done_when"]["returns"]["required"],
+            ["facts", "implementation_steps", "verification_steps"],
+        )
         self.assertEqual(implementation["model"]["model"], "gpt-5.6-sol")
         self.assertIn(
             "two materially different behavioral inputs",
@@ -127,7 +131,7 @@ class ProgramTest(unittest.TestCase):
             reasoning_effort="low",
             diagnosis_model_name="openai-codex/gpt-5.6-luna",
             diagnosis_reasoning_effort="low",
-            diagnosis_model_calls=3,
+            diagnosis_model_calls=6,
             escalation_reasoning_effort="xhigh",
             escalation_model_calls=18,
         )
@@ -143,8 +147,38 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(repair["follows"], ["task", "implement-task"])
         self.assertTrue(repair["terminal"])
         self.assertEqual(program["budget"]["max_episodes"], 4)
-        self.assertEqual(program["budget"]["model_calls"], 81)
+        self.assertEqual(program["budget"]["model_calls"], 84)
         self.assertEqual(program["budget"]["seconds"], 1650)
+
+    def test_program_rejects_tight_auxiliary_backstops(self):
+        with self.assertRaisesRegex(ValueError, "diagnosis model calls must be at least 6"):
+            build_program(
+                "repair it",
+                "openai-codex/gpt-5.6-sol",
+                "/tmp/private.json",
+                "/workspace",
+                model_calls=40,
+                input_tokens=None,
+                output_tokens=None,
+                seconds=900,
+                reasoning_effort="low",
+                diagnosis_model_name="openai-codex/gpt-5.6-luna",
+                diagnosis_model_calls=5,
+            )
+        with self.assertRaisesRegex(ValueError, "escalation model calls must be at least 6"):
+            build_program(
+                "repair it",
+                "openai-codex/gpt-5.6-sol",
+                "/tmp/private.json",
+                "/workspace",
+                model_calls=40,
+                input_tokens=None,
+                output_tokens=None,
+                seconds=900,
+                reasoning_effort="low",
+                escalation_reasoning_effort="xhigh",
+                escalation_model_calls=5,
+            )
 
     def test_program_can_escalate_without_a_diagnosis_episode(self):
         program = build_program(

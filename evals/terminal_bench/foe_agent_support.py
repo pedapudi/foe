@@ -17,6 +17,7 @@ CODING_INSTRUCTION = (
     "behavioral inputs, including one that stresses parsing, length, or state."
 )
 EVALUATION_LOOP_THRESHOLD = 8
+MIN_AUXILIARY_MODEL_CALLS = 6
 
 
 def build_program(
@@ -86,12 +87,19 @@ def build_program(
         diagnosis_provider, diagnosis_model = diagnosis_model_name.split("/", 1)
         if not diagnosis_provider or not diagnosis_model:
             raise ValueError("diagnosis model must have the form provider/model")
-        if diagnosis_model_calls < 2:
-            raise ValueError("diagnosis model calls must be at least two")
+        if diagnosis_model_calls < MIN_AUXILIARY_MODEL_CALLS:
+            raise ValueError(
+                f"diagnosis model calls must be at least {MIN_AUXILIARY_MODEL_CALLS}"
+            )
     if escalation_reasoning_effort is None and escalation_model_calls != 0:
         raise ValueError("escalation model calls require an escalation reasoning effort")
-    if escalation_reasoning_effort is not None and escalation_model_calls < 2:
-        raise ValueError("escalation model calls must be at least two")
+    if (
+        escalation_reasoning_effort is not None
+        and escalation_model_calls < MIN_AUXILIARY_MODEL_CALLS
+    ):
+        raise ValueError(
+            f"escalation model calls must be at least {MIN_AUXILIARY_MODEL_CALLS}"
+        )
     diagnosis_calls = diagnosis_model_calls if diagnosis_model_name is not None else 0
     diagnosis_seconds = min(300, max(60, seconds // 3)) if diagnosis_model_name is not None else 0
     escalation_seconds = min(seconds, max(300, seconds // 2)) if escalation_reasoning_effort is not None else 0
@@ -102,13 +110,11 @@ def build_program(
     diagnosis_schema = {
         "type": "object",
         "properties": {
-            "constraints": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-            "observations": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "facts": {"type": "array", "items": {"type": "string"}, "minItems": 1},
             "implementation_steps": {"type": "array", "items": {"type": "string"}, "minItems": 1},
             "verification_steps": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-            "risks": {"type": "array", "items": {"type": "string"}, "minItems": 1},
         },
-        "required": ["constraints", "observations", "implementation_steps", "verification_steps", "risks"],
+        "required": ["facts", "implementation_steps", "verification_steps"],
         "additionalProperties": False,
     }
     program["budget"].update(
@@ -173,11 +179,11 @@ def build_program(
                     "role": (
                         "Analyze the task and repository without implementing the task. "
                         "Use read, grep, and bash for focused static and runtime evidence. "
-                        "Identify constraints, "
-                        "implementation steps, verification steps, and failure risks. "
+                        "Report observed constraints, evidence, and uncertainty together as facts. "
+                        "Give implementation steps and verification steps. "
                         f"Use no more than {investigation_calls} request(s) for inspection. "
                         "On the final request, call return with the best supported diagnosis, "
-                        "including uncertainty under risks. Keep the return concise."
+                        "and keep the return concise."
                     )
                 },
                 "tools": ["read", "grep", "bash"],
