@@ -392,10 +392,13 @@ log. That choice ends the workflow before a coding episode and sets
 `direct_implementation_required`.
 
 When the diagnosis chooses `implement-source`, the configured coding model
-receives the diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The
+acts with `read`, `grep`, `edit`, and `bash`. The diagnosis node's branch edge
+controls whether the coding node fires. The coding node lists `task` and
+`diagnose-runtime` under `follows`, which carries both values into its clean
+context. The raw trajectory digest remains inside the diagnosis child. The
 coding child locates the affected implementation, test, and specification
-files. Its write authority covers runtime crates, specifications, and
-examples. It cannot write evaluation code or benchmark material.
+files. Its write authority covers runtime crates, specifications, and examples.
+It cannot write evaluation code or benchmark material.
 
 When the diagnosis chooses `configure-workflow`, the runner validates the
 typed independent-audit setting. It writes `workflow-candidate.json` beside

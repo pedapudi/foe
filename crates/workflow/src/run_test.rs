@@ -353,6 +353,30 @@ async fn a_node_that_follows_task_receives_it_first() {
     assert!(text.starts_with("## task\n\nrun the graph\n\n## manifest"), "{text}");
 }
 
+/// docs/workflow.md "Choice points" and "Model nodes": a chosen branch
+/// controls whether a model successor fires, while `follows` carries the
+/// choosing node's rendered value into the child task.
+#[tokio::test]
+async fn a_chosen_branch_value_reaches_a_model_successor_that_follows_it() {
+    let mut fx = Fixture::new(
+        "branch-model-input",
+        &["diagnose"],
+        json!({ "nodes": {
+            "diagnose": { "tool": "diagnose", "branches": { "implement-source": ["implement"] } },
+            "implement": { "model": { "name": "implement", "instructions": { "r": "implement" },
+                                      "tools": ["block"], "grants": { "read": [fx_root("branch-model-input")] },
+                                      "budget": { "model_calls": 1 } },
+                           "follows": ["task", "diagnose"], "terminal": true }
+        } }),
+    )
+    .tool("diagnose", vec![ToolValue::ok(json!({ "branch": "implement-source" }), "typed diagnosis")], 0);
+    let (outcome, _) = fx.run().await;
+    assert!(matches!(outcome, Outcome::Failed { .. }), "the spawner starts nothing: {outcome:?}");
+    let spawned = fx.spawner.0.lock().unwrap().clone();
+    assert_eq!(spawned.len(), 1);
+    assert_eq!(spawned[0], "## task\n\nrun the graph\n\n## diagnose\n\ntyped diagnosis");
+}
+
 fn fx_root(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("foe-workflow-{}-{name}", std::process::id()))
 }

@@ -579,7 +579,7 @@ def build_config(
                 },
                 "implement-runtime-improvement": {
                     "model": implementation,
-                    "follows": ["task"],
+                    "follows": ["task", "diagnose-runtime"],
                     "terminal": True,
                 },
             },
