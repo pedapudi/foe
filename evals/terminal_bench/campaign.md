@@ -394,6 +394,70 @@ audited successes. The remaining audited trajectory stays in the raw archive.
 The identity-bound digest is
 `target/gpt2-workflow-contrast-trajectory-evidence.json`.
 
+## Recorded workflow self-improvement and candidate validation
+
+On 2026-08-24, Foe read the identity-bound workflow contrast and selected a
+general independent audit after implementation. One GPT-5.6 Luna request with
+high reasoning produced the workflow candidate. The request used 20,144 input
+tokens and 1,686 output tokens. It took 31.632 seconds and cost an estimated
+$0.006052.
+
+The candidate retained GPT-5.6 Sol with low reasoning for implementation. It
+added a fresh Sol-high audit with a 60-call backstop. The candidate preserved
+the default service tier and measurement-only token policy.
+
+The candidate is
+`sha256:1ce8dd0b3c1ce3f16e305d20e9d27848b1c8212d9636dccfc7aa7cfdc4da233a`.
+It binds source tree
+`git-tree-sha1:fec3eaa8cb39c6e005fa787aa6c46d0ce48d821e`, runtime binary
+`sha256:b2a4ba85d8858b5b3bfd860e31d345ee8d9fe06b6784075004c1a4891a54fe43`,
+and the evidence digest. The external candidate validator accepted it without
+findings. The self-improvement workflow required no direct source change.
+
+The generated candidate and its episode are under
+`target/gpt2-workflow-self-improvement-generated-candidate/`. The candidate
+was then applied to six development tasks without changing its bound model or
+workflow settings.
+
+| Development task | Official score | Model calls | Harbor time | Estimated cost |
+| --- | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 10 | 141 seconds | $0.216334 |
+| `git-multibranch` | 1.0 | 31 | 423 seconds | $1.089766 |
+| `fix-git` | 1.0 | 17 | 185 seconds | $0.503534 |
+| `sqlite-db-truncate` | 1.0 | 11 | 164 seconds | $0.318202 |
+| `sanitize-git-repo` | 1.0 | 20 | 357 seconds | incomplete |
+| `large-scale-text-editing` | 1.0 | 19 | 277 seconds | $0.425199 |
+
+All six task-owned graders accepted the candidate. Every Foe outcome was
+completed, and every trace conformed. One `sanitize-git-repo` request lacked
+provider usage. The other five tasks recorded at least 618,823 input tokens,
+207,360 cached-input tokens, 41,212 output tokens, and $2.553036 in estimated
+cost. The full development run took 1,547 seconds.
+
+The first three confirmation tasks produced six accepted attempts. The
+provider-policy substitution described above then produced two accepted
+`path-tracing` attempts.
+
+| Confirmation task | Accepted attempts | Model calls | Input tokens | Cached-input tokens | Output tokens | Harbor time | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `build-cython-ext` | 2 | 111 | 3,023,186 | 2,034,688 | 36,657 | 1,353 seconds | $5.501007 |
+| `constraints-scheduling` | 2 | 19 | 89,709 | 11,264 | 13,184 | 336 seconds | $0.581966 |
+| `custom-memory-heap-crash` | 2 | 48 | 442,191 | 103,424 | 15,656 | 662 seconds | $1.709558 |
+| `path-tracing` | 2 | 76 | 1,229,682 | 748,032 | 34,184 | 1,181 seconds | $2.909493 |
+| **Total** | **8** | **254** | **4,784,768** | **2,897,408** | **99,681** | **3,532 seconds** | **$10.702023** |
+
+All eight task-owned graders accepted the candidate. Harbor recorded no task
+exception. Every Foe outcome was completed, every trace conformed, and every
+provider response reported usage. The result passes the campaign's
+confirmation gate with every selected task represented.
+
+The retained development run is
+`/home/sunil/git/foe-workflow-configuration-self-improvement/target/terminal-bench-jobs/workflow-candidate-development-20260824T083844Z`.
+The retained confirmation runs are
+`/home/sunil/git/foe-workflow-configuration-self-improvement/target/terminal-bench-jobs/workflow-candidate-confirmation-20260824T092334Z`
+and
+`/home/sunil/git/foe-workflow-configuration-self-improvement/target/terminal-bench-jobs/workflow-candidate-confirmation-path-tracing-20260824T101914Z`.
+
 ## Recorded self-improvement failure analysis
 
 On 2026-08-23, two retained `gpt2-codegolf` self-improvement attempts failed
