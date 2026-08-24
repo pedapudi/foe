@@ -31,6 +31,8 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
 /// implementation claim in a fresh context.
 #[test]
 fn builtin_coding_runs_implementation_then_independent_audit() {
+    assert_eq!(BUILTIN_IMPLEMENTATION_CALLS, 60);
+    assert_eq!(BUILTIN_AUDIT_CALLS, 60);
     let config = builtin_config("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), None).unwrap();
     resolve(&config).expect("the built-in workflow resolves before an episode starts");
     assert_eq!(config.budget.model_calls, BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS);

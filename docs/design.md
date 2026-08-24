@@ -612,8 +612,8 @@ changes the current directory. A fresh audit episode then checks the task and
 implementation claim, repairs defects, and produces the outcome.
 
 Both episodes have `read`, `grep`, `edit`, and `bash`. Both may read and write
-the current directory. The implementation has a 40-call backstop. The audit
-has a 25-call backstop. The root holds their additive 65-call allowance.
+the current directory. Each episode has a 60-call backstop. The root holds
+their additive 120-call allowance.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
 interpreters, and repository tools. Both episodes receive the recorded result
