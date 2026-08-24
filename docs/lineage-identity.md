@@ -98,9 +98,15 @@ Two checks, both computable without running anything.
 - **Ancestry check.** Walk `parent` links back to `genesis`. For each
   transition, resolve the named episode's log, confirm the log's recorded
   identity equals the parent state, and confirm the log records a
-  successful run of the named verifier at the named content hash. A
-  lineage claim that fails any step is unsupported by the account and is
-  reported as such.
+  successful run of the named verifier at the named content hash. That
+  same log carries the parent state's full configuration in its
+  `episode/start` record, including the parent's own `lineage` field, so
+  each step of the walk yields the document the next step needs; verifying
+  a lineage requires the logs and nothing else. The walk moves from
+  document to document rather than by identity lookup, so a lineage that
+  revisits an earlier state — and therefore repeats an identity — remains
+  unambiguous. A lineage claim that fails any step is unsupported by the
+  account and is reported as such.
 
 The lineage field is a claim in a document; the ancestry check binds the
 claim to episode logs, which are the account everything else already

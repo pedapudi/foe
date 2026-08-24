@@ -15,9 +15,8 @@ survey whose answer is one count still deposits fifteen file listings into
 the conversation.
 
 Episodes already route around both prices through `bash`: the model writes
-a throwaway program, runs it, and reads only its output. Recorded
-trajectories show the same probe scripts written repeatedly across
-episodes. The composition is real, but it is invisible to the tool layer —
+a throwaway program, runs it, and reads only its output. The composition
+is real, but it is invisible to the tool layer —
 untyped, unnamed in the account except as shell text, and unable to call
 any tool other than the shell.
 
@@ -76,9 +75,10 @@ are its design goals rather than a configuration to maintain, models write
 its Python-shaped syntax fluently, and a maintained Rust implementation
 exists. The deferred WebAssembly tool tier ([deferred.md](deferred.md))
 remains compatible as a second backend for compiled programs; the `code`
-contract above does not name a language, and the configuration will record
-which evaluator a program ran under. Taking the dependency is an explicit
-decision to record with the implementation.
+contract above does not name a language. The evaluator ships inside the
+runtime, so identity's runtime version and build hash already pin which
+evaluator a program ran under, with no new configuration key. Taking the
+dependency is an explicit decision to record with the implementation.
 
 ## The log
 
@@ -105,7 +105,7 @@ requirements separate cleanly.
 
 ## What code mode is under the runtime's claims
 
-The workflow chapter's guarantee — a node's context is built from its
+The workflow guarantee ([workflow.md](workflow.md)) — a node's context is built from its
 declared predecessors and nothing else — is a property of structure at
 graph scale. Code mode is the same property at call scale: the program
 sees every inner result, the model sees the return value, and the log sees
