@@ -97,10 +97,12 @@ is reserved by the design; no event variant is present in `crates/log`.
 Program lineage relates immutable program states through content-addressed
 proposal evidence and a verifier declared by the parent state.
 [lineage-identity.md](lineage-identity.md) specifies it. The configuration
-key `program_lineage`, the lineage identity, and the `verification/result`
-event are implemented. The evidence-bundle checker and the ancestry checker
-are not, and the event does not carry the candidate digest binding the
-design proposes.
+key `program_lineage`, the lineage identity, the evidence-bundle checker,
+and the ancestry checker are implemented in `foe_config::lineage`. What
+remains open is the candidate digest binding: the implemented
+`verification/result` event does not carry `candidate_sha256`, and
+lineage-identity.md "The candidate binding gap" states the ways to close
+it without choosing one.
 
 ## Bazel targets for the browser bundle and the Python package
 
