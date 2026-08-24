@@ -1,7 +1,7 @@
 //! The structural classifier.
 //!
 //! Evidence is read from typed log fields alone — file extensions, shell
-//! command heads, tool names, the presence of spawning and workflows. No
+//! command heads, and tool names. No
 //! lexicon, no model, and no scan of task text or tool output, so the
 //! classifier cannot be steered by anything the model wrote and cannot leak
 //! what it read. Its cost is that it sees only the shape of the work.
@@ -48,7 +48,7 @@ pub const UNCLASSIFIED: &str = "unclassified";
 /// Identifies the rules below. Bumped when a rule's matching set changes
 /// without the taxonomy changing, so that a shift in counts can be
 /// attributed to the rules rather than to the population.
-pub const RULESET_VERSION: &str = "1";
+pub const RULESET_VERSION: &str = "2";
 
 /// File extension seen in a `read` or `edit` path or a `grep` glob.
 ///
@@ -82,10 +82,14 @@ const COMMAND_RULES: &[(&str, &str)] = &[
 /// and searching happen in every kind of episode and separate none of them.
 const TOOL_RULES: &[(&str, &str)] = &[("programming", "edit|write")];
 
-/// Delegation and workflow structure vote for infrastructure: an episode
-/// that spawns children or runs a graph is orchestrating work rather than
-/// doing one piece of it.
-const STRUCTURE_BUCKET: &str = "infrastructure";
+// Episode structure — spawned children, workflow nodes — casts no vote.
+// Ruleset 1 counted it toward infrastructure on the premise that
+// orchestration is machine management; on a labeled corpus of 149 real
+// episodes that premise misclassified every delegating programming parent
+// as technology, and requiring corroborating content evidence changed no
+// outcome at all. Structure says how the work was arranged, never what it
+// was about, so an episode whose only evidence is structure is
+// unclassified.
 
 /// One matched rule: the evidence token, the bucket it voted for, and how
 /// many times it was seen.
@@ -138,11 +142,6 @@ pub fn classify(evidence: &Evidence) -> Classification {
         [(EXTENSION_RULES, &evidence.extensions), (COMMAND_RULES, &evidence.heads), (TOOL_RULES, &evidence.tools)];
     for (table, counted) in histograms {
         counted.iter().for_each(|(token, count)| vote(table, token, *count));
-    }
-    for (token, count) in [("spawn", evidence.spawns), ("workflow", evidence.workflow_nodes)] {
-        if count > 0 {
-            votes.push(Vote { token: token.into(), bucket: STRUCTURE_BUCKET, count });
-        }
     }
 
     // Two views of the same votes. `direct` counts each bucket's own votes
