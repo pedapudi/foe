@@ -180,6 +180,8 @@ integration builds the bundle before measuring and fails a build over 8 MiB.
 | [docs/design.md](docs/design.md) | what foe guarantees and the structure that delivers it |
 | [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [docs/self-improvement.md](docs/self-improvement.md) | how foe evaluates and improves its own source, including measured results and operating guidance |
+| [docs/lineage-identity.md](docs/lineage-identity.md) | design: identity as a lineage of states, so a program and its improvements share a series |
+| [docs/code-mode.md](docs/code-mode.md) | design: a tool that runs a model-written program calling granted tools as functions |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |
