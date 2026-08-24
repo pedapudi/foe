@@ -242,9 +242,10 @@ node reads the bounded trajectory digest and returns a typed causal
 intervention. It has no source-tree inspection tool or access.
 
 The diagnosis selects `implement-source` when the evidence activates a source
-mechanism. A separate coding node then receives the diagnosis in a clean
-context and maps it to source. The diagnosis selects `configure-workflow` when
-an independent audit stage supplies the repeated quality gain. This path
+mechanism. Its branch edge controls whether a separate coding node fires. The
+coding node lists `task` and `diagnose-runtime` under `follows`, which carries
+both values into a clean context. The diagnosis selects `configure-workflow`
+when an independent audit stage supplies the repeated quality gain. This path
 returns a typed workflow setting without starting the coding node.
 
 The diagnosis selects `insufficient-evidence` when the contrast isolates only

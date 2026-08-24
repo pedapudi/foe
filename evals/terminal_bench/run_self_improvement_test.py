@@ -72,7 +72,11 @@ class SelfImprovementConfigTest(unittest.TestCase):
         implementation = nodes["implement-runtime-improvement"]["model"]
         self.assertEqual(
             nodes["implement-runtime-improvement"]["follows"],
-            ["task"],
+            ["task", "diagnose-runtime"],
+        )
+        self.assertNotIn(
+            "collect-trajectory-diagnostics",
+            nodes["implement-runtime-improvement"]["follows"],
         )
         self.assertEqual(
             nodes["diagnose-runtime"]["branches"],
