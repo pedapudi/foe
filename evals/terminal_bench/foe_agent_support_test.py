@@ -5,10 +5,31 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from foe_agent_support import build_program, estimate_usage_cost, read_episode_summary
+from foe_agent_support import (
+    FIXED_EXECUTABLE_PATHS,
+    build_program,
+    describe_container_environment,
+    estimate_usage_cost,
+    fixed_executable_probe_command,
+    read_episode_summary,
+)
 
 
 class ProgramTest(unittest.TestCase):
+    def test_fixed_path_probe_produces_validated_environment_facts(self):
+        command = fixed_executable_probe_command()
+        self.assertIn("test -x /usr/bin/python3", command)
+        observations = "\n".join(
+            f"{name}={path}" if name in {"sh", "gcc"} else f"{name}=not found at {path}"
+            for name, path in FIXED_EXECUTABLE_PATHS
+        )
+        facts = describe_container_environment("/app", observations)
+        self.assertIn("Working directory: /app", facts)
+        self.assertIn("gcc=/usr/bin/gcc", facts)
+        self.assertIn("python3=not found at /usr/bin/python3", facts)
+        with self.assertRaisesRegex(ValueError, "incomplete observation set"):
+            describe_container_environment("/app", "sh=/bin/sh")
+
     def test_program_declares_container_authority_and_split_allowances(self):
         program = build_program(
             "repair it",
@@ -155,6 +176,7 @@ class ProgramTest(unittest.TestCase):
             diagnosis_model_calls=6,
             escalation_reasoning_effort="xhigh",
             escalation_model_calls=18,
+            environment_facts="Working directory: /workspace. gcc=/usr/bin/gcc.",
         )
         nodes = program["workflow"]["nodes"]
         self.assertFalse(nodes["implement-task"]["terminal"])
@@ -165,6 +187,18 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(repair["model"]["model"]["reasoning_effort"], "xhigh")
         self.assertEqual(repair["model"]["budget"]["model_calls"], 18)
         self.assertEqual(repair["model"]["budget"]["seconds"], 900)
+        self.assertEqual(
+            repair["model"]["instructions"]["environment"],
+            "Working directory: /workspace. gcc=/usr/bin/gcc.",
+        )
+        self.assertEqual(
+            repair["model"]["done_when"]["returns"]["required"],
+            ["summary", "changed_paths", "validation", "unresolved_risks"],
+        )
+        self.assertEqual(
+            nodes["implement-task"]["model"]["done_when"]["returns"],
+            repair["model"]["done_when"]["returns"],
+        )
         self.assertEqual(repair["follows"], ["task", "implement-task"])
         self.assertTrue(repair["terminal"])
         self.assertEqual(program["budget"]["max_episodes"], 4)

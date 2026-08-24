@@ -15,7 +15,13 @@ from harbor.agents.installed.base import BaseInstalledAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-from foe_agent_support import build_program, read_episode_summary, replace_credential_state
+from foe_agent_support import (
+    build_program,
+    describe_container_environment,
+    fixed_executable_probe_command,
+    read_episode_summary,
+    replace_credential_state,
+)
 
 
 REMOTE_BINARY = "/usr/local/bin/foe"
@@ -164,7 +170,23 @@ class FoeAgent(BaseInstalledAgent):
             raise ValueError("the retained login credential supports only openai-codex models")
 
         pwd = await self.exec_as_agent(environment, command="/bin/pwd")
+        if pwd.return_code != 0:
+            raise RuntimeError(f"task working-directory probe exited with status {pwd.return_code}")
         working_directory = (pwd.stdout or "").strip()
+        executable_probe = await self.exec_as_agent(
+            environment,
+            command=fixed_executable_probe_command(),
+            cwd=environment.task_env_config.workdir,
+        )
+        if executable_probe.return_code != 0:
+            raise RuntimeError(
+                "fixed executable probe exited with status "
+                f"{executable_probe.return_code}"
+            )
+        environment_facts = describe_container_environment(
+            working_directory,
+            executable_probe.stdout or "",
+        )
         program = build_program(
             instruction,
             self.model_name,
@@ -176,6 +198,7 @@ class FoeAgent(BaseInstalledAgent):
             seconds=self._seconds,
             reasoning_effort=self._reasoning_effort,
             service_tier=self._service_tier,
+            environment_facts=environment_facts,
             diagnosis_model_name=self._diagnosis_model,
             diagnosis_reasoning_effort=self._diagnosis_reasoning_effort,
             diagnosis_model_calls=self._diagnosis_model_calls,

@@ -18,6 +18,77 @@ CODING_INSTRUCTION = (
 )
 EVALUATION_LOOP_THRESHOLD = 8
 MIN_AUXILIARY_MODEL_CALLS = 6
+FIXED_EXECUTABLE_PATHS = (
+    ("sh", "/bin/sh"),
+    ("bash", "/bin/bash"),
+    ("git", "/usr/bin/git"),
+    ("python3", "/usr/bin/python3"),
+    ("file", "/usr/bin/file"),
+    ("xxd", "/usr/bin/xxd"),
+    ("od", "/usr/bin/od"),
+    ("awk", "/usr/bin/awk"),
+    ("strings", "/usr/bin/strings"),
+    ("gcc", "/usr/bin/gcc"),
+    ("clang", "/usr/bin/clang"),
+    ("make", "/usr/bin/make"),
+    ("cmake", "/usr/bin/cmake"),
+    ("cargo", "/usr/bin/cargo"),
+    ("node", "/usr/bin/node"),
+    ("go", "/usr/bin/go"),
+)
+COMPLETION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "changed_paths": {
+            "type": "array",
+            "items": {"type": "string", "maxLength": 512},
+            "maxItems": 64,
+        },
+        "validation": {
+            "type": "array",
+            "items": {"type": "string", "maxLength": 1000},
+            "minItems": 1,
+            "maxItems": 32,
+        },
+        "unresolved_risks": {
+            "type": "array",
+            "items": {"type": "string", "maxLength": 1000},
+            "maxItems": 16,
+        },
+    },
+    "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
+    "additionalProperties": False,
+}
+
+
+def fixed_executable_probe_command() -> str:
+    """Return one fixed-path probe that works in a minimal POSIX shell."""
+    commands = []
+    for name, path in FIXED_EXECUTABLE_PATHS:
+        commands.append(
+            f"if test -x {path}; then echo '{name}={path}'; "
+            f"else echo '{name}=not found at {path}'; fi"
+        )
+    return "; ".join(commands)
+
+
+def describe_container_environment(working_directory: str, probe_output: str) -> str:
+    """Validate fixed-path observations and render one model instruction."""
+    if not working_directory.startswith("/"):
+        raise ValueError("working directory must be an absolute path")
+    observations = probe_output.splitlines()
+    if len(observations) != len(FIXED_EXECUTABLE_PATHS):
+        raise ValueError("fixed executable probe returned an incomplete observation set")
+    for observation, (name, path) in zip(observations, FIXED_EXECUTABLE_PATHS, strict=True):
+        allowed = (f"{name}={path}", f"{name}=not found at {path}")
+        if observation not in allowed:
+            raise ValueError(f"fixed executable probe returned an invalid {name} observation")
+    return (
+        f"Working directory: {working_directory}. Fixed-path executable probe: "
+        f"{', '.join(observations)}. A not-found result covers only the listed "
+        "standard location; project-local tools may still exist."
+    )
 
 
 def build_program(
@@ -32,6 +103,7 @@ def build_program(
     seconds: int,
     reasoning_effort: str,
     service_tier: str = "priority",
+    environment_facts: str | None = None,
     diagnosis_model_name: str | None = None,
     diagnosis_reasoning_effort: str = "high",
     diagnosis_model_calls: int = 20,
@@ -64,11 +136,15 @@ def build_program(
         raise ValueError("token allowances must be positive integers when present")
     if not working_directory.startswith("/"):
         raise ValueError("working directory must be an absolute path")
+    environment_facts = environment_facts or (
+        f"Working directory: {working_directory}. Fixed-path executable availability "
+        "was not observed."
+    )
     limits.update({key: value for key, value in optional_limits.items() if value is not None})
     program = {
         "version": 2,
         "name": "terminal-bench-coding",
-        "instructions": {"role": CODING_INSTRUCTION},
+        "instructions": {"environment": environment_facts, "role": CODING_INSTRUCTION},
         "tools": ["read", "grep", "edit", "bash"],
         "grants": {"read": [working_directory, "/"], "write": ["/"]},
         "budget": limits,
@@ -176,11 +252,15 @@ def build_program(
         "materially different behavioral inputs, including one that stresses parsing, length, "
         "or state."
     )
+    implementation_role += (
+        " In the completion value, report changed artifacts, commands and observed results, "
+        "and unresolved risks for an independent audit."
+    )
     def implementation_node(name: str, follows: list[str], terminal: bool) -> dict[str, Any]:
         return {
             "model": {
                 "name": name,
-                "instructions": {"role": implementation_role},
+                "instructions": {"environment": environment_facts, "role": implementation_role},
                 "tools": ["read", "grep", "edit", "bash"],
                 "grants": shared_grants,
                 "budget": {
@@ -188,6 +268,7 @@ def build_program(
                     "seconds": implementation_seconds,
                     "loop_threshold": EVALUATION_LOOP_THRESHOLD,
                 },
+                "done_when": {"returns": COMPLETION_SCHEMA},
                 "model": {
                     "provider": provider,
                     "model": model,
@@ -235,6 +316,7 @@ def build_program(
             "model": {
                 "name": "diagnose-coding-task",
                 "instructions": {
+                    "environment": environment_facts,
                     "role": (
                         "Analyze the task and repository without implementing the task. "
                         "Use read, grep, and bash for focused static and runtime evidence. "
@@ -281,6 +363,7 @@ def build_program(
                 "model": {
                     "name": "diagnose-unresolved-task",
                     "instructions": {
+                        "environment": environment_facts,
                         "role": (
                             "Resolve the implementation-critical uncertainty in the earlier "
                             "diagnosis. Analyze the task and repository without implementing the "
@@ -319,11 +402,15 @@ def build_program(
             "model": {
                 "name": "audit-and-repair-task",
                 "instructions": {
+                    "environment": environment_facts,
                     "role": (
-                        "Audit the existing implementation produced by another coding episode. "
-                        "Treat its completion claim as unverified. Inspect the current workspace, "
-                        "run representative behavioral tests, and repair every defect you find. "
-                        "Finish with the task-required files and services in their required state."
+                        "Independently determine whether the shared workspace satisfies the original task. "
+                        "Treat the implementation episode's completion claim as unverified. Inspect the "
+                        "artifacts and run checks that distinguish plausible incorrect implementations. "
+                        "Repair every defect you find. After the final edit, run the strongest available "
+                        "task-relevant checks. Complete with the workspace in the state the task requires. "
+                        "Report every path changed by either episode, including valid implementation changes "
+                        "that required no audit edit."
                     )
                 },
                 "tools": ["read", "grep", "edit", "bash"],
@@ -333,6 +420,7 @@ def build_program(
                     "seconds": escalation_seconds,
                     "loop_threshold": EVALUATION_LOOP_THRESHOLD,
                 },
+                "done_when": {"returns": COMPLETION_SCHEMA},
                 "model": {
                     "provider": provider,
                     "model": model,
