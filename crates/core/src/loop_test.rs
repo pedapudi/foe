@@ -38,6 +38,7 @@ struct Fixture {
     context: Option<Arc<dyn ContextPolicy>>,
     stop: watch::Sender<Option<String>>,
     stop_rx: watch::Receiver<Option<String>>,
+    parent_id: Option<String>,
 }
 
 impl Fixture {
@@ -57,7 +58,13 @@ impl Fixture {
             context: None,
             stop,
             stop_rx,
+            parent_id: None,
         }
+    }
+
+    fn child(mut self) -> Self {
+        self.parent_id = Some("ep_parent".into());
+        self
     }
 
     fn tool(mut self, tool: impl Tool + 'static) -> Self {
@@ -72,9 +79,11 @@ impl Fixture {
 
     async fn run(self) -> (Outcome, Vec<Event>) {
         let registry = Arc::new(Registry::new(&self.program, vec![], self.tools).unwrap());
+        let mut episode_start = start(&self.program);
+        episode_start.parent_id = self.parent_id;
         let params = Params {
             log: self.log.clone(),
-            start: start(&self.program),
+            start: episode_start,
             program: self.program.clone(),
             registry,
             handles: Handles::default(),
@@ -372,6 +381,28 @@ async fn the_last_available_request_carries_a_budget_warning() {
     assert!(!requests[0].consumed.contains(&warnings[0].seq) && !requests[1].consumed.contains(&warnings[0].seq));
     assert!(requests[2].consumed.contains(&warnings[0].seq));
     assert!(serde_json::to_string(&requests[2].messages).unwrap().contains(text::FINAL_REQUEST));
+}
+
+/// docs/config.md `budget`: a child receives the warning before its final
+/// call from its bounded pool.
+#[tokio::test]
+async fn a_bounded_child_receives_the_warning_before_its_final_call() {
+    let fx = Fixture::new(
+        "loop-child-final-request-warning",
+        |v| v["budget"]["model_calls"] = json!(1),
+        vec![turn("child evidence", vec![])],
+    )
+    .child();
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("child evidence") });
+    let EventData::EpisodeStart(start) = &events[0].data else { panic!() };
+    assert_eq!(start.parent_id.as_deref(), Some("ep_parent"));
+    let EventData::ModelRequest(request) =
+        &events.iter().find(|e| matches!(e.data, EventData::ModelRequest(_))).unwrap().data
+    else {
+        panic!()
+    };
+    assert!(serde_json::to_string(&request.messages).unwrap().contains(text::FINAL_REQUEST));
 }
 
 /// docs/config.md `budget`: the warning changes no completion rule. A last
