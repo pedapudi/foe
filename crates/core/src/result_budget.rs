@@ -14,21 +14,20 @@
 //! ordinary work passes whole and one turn of many large calls cannot fill
 //! the context.
 //!
-//! A rendering the budget cuts ends with a notice stating what was removed
-//! and naming the call that shows it. No tool exists for retrieving the
-//! removed part: the tool that produced the rendering can be called again,
-//! and the notice says how. A numbered window from `read` is cut to its
-//! head alone and the notice names the line to resume at, because the model
-//! that wants more of a file asks for the lines after the ones it has. Every
-//! other rendering keeps its head and its tail, because a command's output
-//! carries its verdict at both ends.
+//! A rendering the budget cuts is returned beside the shortened value for
+//! immutable archiving. A program with `retrieve` receives an opaque cursor
+//! in the notice. Other programs receive the instruction to narrow and
+//! repeat the original call. A numbered window from `read` is cut to its
+//! head alone. Every other rendering keeps its head and its tail because a
+//! command's output carries its verdict at both ends.
 //!
 //! The cut is applied before the result is appended to the log, so the
 //! first request that carries the result and every request after it carry
 //! the same text. No earlier turn is ever rewritten, which is what lets a
 //! provider reuse the key-value cache of the prefix.
 
-use crate::{fitting, ToolValue};
+use crate::retrieval::ArchivedRendering;
+use crate::{fitting, ToolCall, ToolValue};
 use foe_config::harness_text as text;
 
 /// Characters of tool-result text one model turn may show, divided between
@@ -43,6 +42,9 @@ pub const RESULT_FLOOR_CHARS: usize = 4_000;
 /// Characters held back from a cut result's share for the notice naming
 /// what was removed and the call that shows it.
 const NOTICE_CHARS: usize = 200;
+/// A retrieval notice carries a fixed-length source key and checksum in
+/// addition to the ordinary shortening explanation.
+const RETRIEVAL_NOTICE_CHARS: usize = 400;
 
 /// The line number `read` writes before a tab at the start of every line of
 /// its rendering. A rendering whose first line carries one is a numbered
@@ -77,9 +79,10 @@ fn shares(lengths: &[usize]) -> Vec<usize> {
 /// removed. A numbered window keeps its head alone, so that the notice can
 /// name the file line to resume at; any other rendering keeps its head and
 /// its tail, two thirds of the room going to the head.
-fn cut(body: &str, share: usize) -> String {
+fn cut(body: &str, share: usize, cursor: Option<&str>) -> String {
     let lines: Vec<&str> = body.lines().collect();
-    let room = share.saturating_sub(NOTICE_CHARS);
+    let notice_chars = if cursor.is_some() { RETRIEVAL_NOTICE_CHARS } else { NOTICE_CHARS };
+    let room = share.saturating_sub(notice_chars);
     let window = lines.first().and_then(|l| numbered(l)).is_some();
     let (head, used) = fitting(lines.iter(), usize::MAX, if window { room } else { room * 2 / 3 });
     let tail = match window {
@@ -91,14 +94,27 @@ fn cut(body: &str, share: usize) -> String {
     // Only a numbered window resumes at a line: a line of any other output
     // that happens to open with a number and a tab names nothing readable.
     let resume = window.then(|| head.checked_sub(1).and_then(|last| numbered(lines[last]))).flatten();
-    let notice = match resume {
-        Some(last) => text::fill(
+    let notice = match (resume, cursor) {
+        (Some(last), None) => text::fill(
             text::CUT_WINDOW,
             &[("omitted", &omitted), ("characters", &characters), ("next", &(last + 1).to_string())],
         ),
-        None => text::fill(
+        (None, None) => text::fill(
             text::CUT_OUTPUT,
             &[("omitted", &omitted), ("characters", &characters), ("total", &lines.len().to_string())],
+        ),
+        (Some(_), Some(cursor)) => text::fill(
+            text::CUT_RETRIEVABLE_WINDOW,
+            &[("omitted", &omitted), ("characters", &characters), ("cursor", cursor)],
+        ),
+        (None, Some(cursor)) => text::fill(
+            text::CUT_RETRIEVABLE,
+            &[
+                ("omitted", &omitted),
+                ("characters", &characters),
+                ("total", &lines.len().to_string()),
+                ("cursor", cursor),
+            ],
         ),
     };
     let mut out: Vec<&str> = lines[..head].to_vec();
@@ -111,7 +127,13 @@ fn cut(body: &str, share: usize) -> String {
 /// each rendering that exceeds its share. A result with no rendering of its
 /// own is rendered from its canonical value first, so that every result of
 /// the turn is counted.
-pub fn bound(values: &mut [ToolValue]) {
+pub fn bound(
+    values: &mut [ToolValue],
+    calls: &[ToolCall],
+    step: u32,
+    retrievable: bool,
+) -> Vec<Option<ArchivedRendering>> {
+    assert_eq!(values.len(), calls.len(), "one result per tool call");
     for value in values.iter_mut() {
         if value.rendered.is_none() {
             value.rendered = Some(value.value.to_string());
@@ -119,12 +141,19 @@ pub fn bound(values: &mut [ToolValue]) {
     }
     let lengths: Vec<usize> =
         values.iter().map(|v| v.rendered.as_deref().unwrap_or_default().chars().count()).collect();
-    for (value, share) in values.iter_mut().zip(shares(&lengths)) {
+    let mut archives = Vec::with_capacity(values.len());
+    for ((value, call), share) in values.iter_mut().zip(calls).zip(shares(&lengths)) {
         let Some(body) = value.rendered.as_deref().filter(|b| b.chars().count() > share) else {
+            archives.push(None);
             continue;
         };
-        value.rendered = Some(cut(body, share));
+        let archived =
+            ArchivedRendering { complete: body.to_string(), digest: crate::retrieval::digest(body.as_bytes()) };
+        let cursor = retrievable.then(|| crate::retrieval::cursor(step, &call.id, body, 0));
+        value.rendered = Some(cut(body, share, cursor.as_deref()));
+        archives.push(Some(archived));
     }
+    archives
 }
 
 #[cfg(test)]

@@ -32,6 +32,7 @@ pub mod loop_;
 pub mod protocol;
 pub mod registry;
 pub mod result_budget;
+pub mod retrieval;
 pub mod sandbox;
 pub mod spawn;
 pub mod team;

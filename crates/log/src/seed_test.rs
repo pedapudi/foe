@@ -101,3 +101,67 @@ fn closing_events_names_every_unsettled_call() {
     let [EventData::ToolResult(orphan)] = closing.as_slice() else { panic!("one closing event: {closing:?}") };
     assert_eq!((orphan.step, orphan.call_id.as_str()), (3, "a"));
 }
+
+fn archived(dir: &std::path::Path, step: u32, call_id: &str, content: &str) -> RenderingArchive {
+    let hex = digest::sha256_hex(content.as_bytes());
+    let file = format!("renderings/{hex}.txt");
+    let path = dir.join("spill").join(&file);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, content).unwrap();
+    RenderingArchive {
+        step,
+        call_id: call_id.into(),
+        file,
+        digest: format!("sha256:{hex}"),
+        bytes: content.len() as u64,
+    }
+}
+
+fn source_with_archives(dir: &std::path::Path) -> Vec<Event> {
+    let mut w = Writer::create(dir, None).unwrap();
+    let first = archived(dir, 1, "tc_a", "first complete rendering");
+    let second = archived(dir, 1, "tc_b", "second complete rendering");
+    [
+        EventData::EpisodeStart(fx::start("ep_src")),
+        fx::inbox(InboxSource::Task, "task"),
+        fx::header(),
+        fx::request(1, 2, vec![1], vec![]),
+        fx::assistant(1, "go", vec![fx::call("tc_a"), fx::call("tc_b")], false),
+        EventData::ToolRenderingArchive(first),
+        fx::result(1, "tc_a", "short first"),
+        EventData::ToolRenderingArchive(second),
+        fx::result(1, "tc_b", "short second"),
+    ]
+    .into_iter()
+    .map(|data| w.append(data).unwrap())
+    .collect()
+}
+
+/// docs/log-format.md "Seeding": a seed copies and verifies archives
+/// referenced by complete result pairs before its boundary.
+#[test]
+fn seed_copies_only_referenced_rendering_archives() {
+    let src = tmp("archive-src");
+    let dst = tmp("archive-dst");
+    let events = source_with_archives(&src);
+    let EventData::ToolRenderingArchive(first) = &events[5].data else { panic!() };
+    let EventData::ToolRenderingArchive(second) = &events[7].data else { panic!() };
+    seed(&src, 7, &dst, header()).unwrap();
+    assert_eq!(std::fs::read_to_string(dst.join("spill").join(&first.file)).unwrap(), "first complete rendering");
+    assert!(!dst.join("spill").join(&second.file).exists());
+    std::fs::remove_dir_all(&src).unwrap();
+    assert_eq!(std::fs::read_to_string(dst.join("spill").join(&first.file)).unwrap(), "first complete rendering");
+}
+
+/// docs/log-format.md "Seeding": a changed source archive makes seeding
+/// fail with its archive event and expected digest named.
+#[test]
+fn seed_rejects_a_changed_rendering_archive() {
+    let src = tmp("archive-changed-src");
+    let dst = tmp("archive-changed-dst");
+    let events = source_with_archives(&src);
+    let EventData::ToolRenderingArchive(first) = &events[5].data else { panic!() };
+    std::fs::write(src.join("spill").join(&first.file), "changed").unwrap();
+    let error = seed(&src, 7, &dst, header()).unwrap_err().to_string();
+    assert!(error.contains("event 5") && error.contains(&first.digest), "{error}");
+}

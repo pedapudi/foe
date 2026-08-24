@@ -21,6 +21,16 @@ pub const RETURN_DESCRIPTION: &str = "Finish the task by returning its result. T
 declared schema. A conforming value ends the episode; a value that does not conform is rejected with the \
 reason, and the episode continues.";
 
+pub const RETRIEVE_DESCRIPTION: &str = "Read the next bounded segment of a complete earlier tool result from \
+this episode. Copy the opaque cursor from a shortening notice or an aged-result notice. The result comes from \
+recorded episode evidence; this tool does not inspect the live filesystem or repeat the original call.";
+pub const RETRIEVE_INVALID: &str = "retrieve: cursor syntax, version, or checksum is invalid";
+pub const RETRIEVE_UNAVAILABLE: &str =
+    "retrieve: cursor does not name a result visible in an earlier step of this episode";
+pub const RETRIEVE_OFFSET: &str = "retrieve: cursor offset is outside the rendering or splits a UTF-8 character";
+pub const RETRIEVE_MORE: &str =
+    "{content}\n\n[More archived result bytes remain. Call retrieve with cursor \"{cursor}\".]";
+
 /// Ends a numbered window of a file that the turn budget shortened. `read`
 /// produced it, so `read` is what shows the rest.
 pub const CUT_WINDOW: &str = "[Cut to fit this turn's result budget: {omitted} more lines, {characters} \
@@ -30,6 +40,10 @@ characters in all. Read the same path again with offset={next} to continue from 
 /// produced it is what shows the rest.
 pub const CUT_OUTPUT: &str = "[Cut to fit this turn's result budget: {omitted} of {total} lines omitted here, \
 {characters} characters in all. Issue the call again, narrowed, for the part you need.]";
+pub const CUT_RETRIEVABLE: &str = "[Cut to fit this turn's result budget: {omitted} of {total} lines omitted here, \
+{characters} characters in all. Use retrieve with cursor \"{cursor}\" for the complete result.]";
+pub const CUT_RETRIEVABLE_WINDOW: &str = "[Cut to fit this turn's result budget: {omitted} more lines, \
+{characters} characters in all. Use retrieve with cursor \"{cursor}\" for the complete result.]";
 
 /// Shown as a system inbox item when the model finishes a turn without
 /// calling `return` although the program requires a returned value.
@@ -138,8 +152,15 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
     vec![
         ("block.description", BLOCK_DESCRIPTION),
         ("return.description", RETURN_DESCRIPTION),
+        ("retrieve.description", RETRIEVE_DESCRIPTION),
+        ("retrieve.invalid", RETRIEVE_INVALID),
+        ("retrieve.unavailable", RETRIEVE_UNAVAILABLE),
+        ("retrieve.offset", RETRIEVE_OFFSET),
+        ("retrieve.more", RETRIEVE_MORE),
         ("cut.window", CUT_WINDOW),
         ("cut.output", CUT_OUTPUT),
+        ("cut.retrievable", CUT_RETRIEVABLE),
+        ("cut.retrievable_window", CUT_RETRIEVABLE_WINDOW),
         ("return.required", RETURN_REQUIRED),
         ("final_request", FINAL_REQUEST),
         ("verify.findings", VERIFY_FINDINGS),

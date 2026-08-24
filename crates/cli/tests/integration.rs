@@ -963,18 +963,18 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
 /// model sees, never a side effect of moving code between crates.
 #[rustfmt::skip]
 const RECORDED_IDENTITIES: [(&str, &str); 12] = [
-    ("budget-exhausted", "sha256:a404a182f0aa60ec3c28dccc308f6cb3680a4b0556636d8f1cc3113468c4b3f0"),
-    ("exec-transport", "sha256:cbed175c329da0734c335758cb2aa5a3b39e03900afbb6aaa693bd39684dadf9"),
-    ("host-transport", "sha256:36bd95cffac3d9731bff52bec150af95f2c4aa438385f792812cd1b24cc53b8a"),
-    ("minimal", "sha256:f04f8adb64b2c5c77ae63735e59633131cb5647d1e8bd586a2a70e53e01ca90b"),
-    ("recovery-exhausted", "sha256:9f3c93544e0cd9e8f16501a327433a7116bc628c161733da315260333329e2ba"),
-    ("sandbox", "sha256:bbc2501f9e2b0cbd03d76cad4481c1ae62e03b4d267995396590979f313e9536"),
-    ("self-extension", "sha256:a0eea18baf9081b392467c02dba4f7a8347535849f64afaf1fe5a874f27b984b"),
-    ("subagents", "sha256:9844c779e565ab16824d6070f172e2662ab6524aa4e98262c397eca57795ea9f"),
-    ("team", "sha256:bf99901dbdc0e264bfe033f5cbb9b9fe9abe6c18c8e6e6c0b476b299941bfa38"),
-    ("verification-unsatisfiable", "sha256:00c06c8402210b7538e1d9c6ad5570718d7b4d3c9a46437f50af0d0e3b15bf14"),
-    ("workflow", "sha256:bbd3644520da29fd27fcc034c3fe2d93818504e606ae7e305433cfa5583294ee"),
-    ("wrap-a-binary", "sha256:d50d4d7528766e28f69ed0536e161909f454eeebbd5b2c4847fcdde0b9a664f3"),
+    ("budget-exhausted", "sha256:55673ae9e11b695dd314c575c5998f9a0dc4ada8bb20b9d78ed58dc793ee6c2f"),
+    ("exec-transport", "sha256:259ab6bf89a6c9998ec8f46d44cc39d5bf8a9dab7bacc83d56e3ab47f8a983da"),
+    ("host-transport", "sha256:21613b123d5d3416b2755bb0b439baeb043adf4b2881183918d64d2be7bf0c88"),
+    ("minimal", "sha256:ec0c546a85556f50c58dcd21ecc6f0b224a894fcfdfdad0a6425254d841ac54b"),
+    ("recovery-exhausted", "sha256:6f7a7be9fb2ea78715562e4104ec4671563cad7bf6a3bf032bb1c63b3698e272"),
+    ("sandbox", "sha256:02f8b3cbeffe5b23f5c48b88068460fb62f39d9668a3023fc484ec7bfed8c224"),
+    ("self-extension", "sha256:d982c3dc45cb8f5502e0b5c5917cbb2aed21eb2bd25e389aef4aa9ac5334207f"),
+    ("subagents", "sha256:c1cc3bca83079f62683ff70d99644822e90337729bda9c21d9c8762476559748"),
+    ("team", "sha256:2f88dc41d9dc8addabfb8ce07e08529e881a959bd961cbbcc3b35c7f0fa8f953"),
+    ("verification-unsatisfiable", "sha256:5cf6fd076b6b2214214c478375fb0842fec1c2f9450d1d635ae6ac9cd70f0054"),
+    ("workflow", "sha256:b6224f3561a821954c22bf582bc871914753ba3386fb3a2462587b9338cc17a7"),
+    ("wrap-a-binary", "sha256:4f3c17f298fb85edb7873ebf5950ab5dce52e5092c16113ca50a6d524b5dc663"),
 ];
 
 /// The runtime the recorded identities were computed under. The real one
@@ -993,7 +993,12 @@ fn recorded_runtime() -> foe_log::RuntimeInfo {
 /// test binary cannot reach the command line's modules — so this names the
 /// two packs itself, and the test below fails if the two lists ever part.
 fn builtin_specs() -> Vec<foe_config::ToolSpec> {
-    foe_code::all().iter().map(|t| t.spec().clone()).chain(foe_core::team::builtin_specs()).collect()
+    foe_code::all()
+        .iter()
+        .map(|tool| tool.spec().clone())
+        .chain(std::iter::once(foe_core::retrieval::spec()))
+        .chain(foe_core::team::builtin_specs())
+        .collect()
 }
 
 /// `foe tools` with no configuration prints every built-in the binary

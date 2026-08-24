@@ -345,15 +345,16 @@ credentials by placing the model transport in a separate process.
   restore the workspace that existed at the selected log event.
 - **No browser or computer use.** Cursor Cloud Agents and Devin give the
   agent a browser. foe's built-in coding tools are `read`, `grep`, `edit`,
-  and `bash`.
+  `bash`, and `retrieve`.
 - **No stable interface.** The design document states that no interface is
   stable. Every integration path below depends on CLI and protocol contracts
   that may change.
 
 ## Default coding tool surface
 
-The built-in coding program exposes `read`, `grep`, `edit`, and `bash`.
-These four tools cover inspection, content search, exact text replacement,
+The built-in coding program exposes `read`, `grep`, `edit`, `bash`, and
+`retrieve`.
+These five tools cover inspection, content search, exact text replacement,
 and arbitrary local commands. The `bash` tool also provides file discovery,
 file creation, version control, builds, and tests. This dependence gives
 read-only programs less file-discovery capability and makes common file

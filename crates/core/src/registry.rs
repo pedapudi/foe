@@ -108,6 +108,10 @@ impl Registry {
         self.entry(text::RETURN_NAME).is_some()
     }
 
+    pub fn has_retrieve(&self) -> bool {
+        self.entry(crate::retrieval::NAME).is_some()
+    }
+
     fn entry(&self, name: &str) -> Option<&Entry> {
         self.entries.iter().find(|e| e.spec.name == name)
     }

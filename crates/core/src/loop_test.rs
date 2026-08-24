@@ -77,7 +77,10 @@ impl Fixture {
         self
     }
 
-    async fn run(self) -> (Outcome, Vec<Event>) {
+    async fn run(mut self) -> (Outcome, Vec<Event>) {
+        if self.program.tools.iter().any(|name| name == crate::retrieval::NAME) {
+            self.tools.push(crate::retrieval::tool(self.log.clone()));
+        }
         let registry = Arc::new(Registry::new(&self.program, vec![], self.tools).unwrap());
         let mut episode_start = start(&self.program);
         episode_start.parent_id = self.parent_id;
@@ -660,6 +663,42 @@ async fn a_large_result_is_spilled_and_replaced_by_a_locator() {
     assert!(r.rendered.starts_with("The canonical value was") && r.rendered.len() < SPILL_LIMIT);
     let spilled: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("spill/a.json")).unwrap()).unwrap();
     assert_eq!(spilled["big"].as_str().unwrap().len(), SPILL_LIMIT + 1);
+}
+
+/// docs/log-format.md `tool/rendering-archive`: the complete rendering is
+/// synchronized and recorded before the shortened result enters the log.
+#[tokio::test]
+async fn a_shortened_result_records_its_complete_rendering_first() {
+    let fx = Fixture::new(
+        "loop-rendering-archive",
+        |v| v["tools"] = json!(["p", "retrieve"]),
+        vec![
+            turn("large", vec![call("a", "p", r#"{"big": 60000}"#), call("b", "p", r#"{"big": 60000}"#)]),
+            turn("", vec![]),
+        ],
+    );
+    let dir = fx.dir.clone();
+    let (_, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    let archive_index =
+        events.iter().position(|event| matches!(event.data, EventData::ToolRenderingArchive(_))).unwrap();
+    let EventData::ToolRenderingArchive(archive) = &events[archive_index].data else { panic!() };
+    let EventData::ToolResult(result) = &events[archive_index + 1].data else { panic!() };
+    assert_eq!((archive.step, archive.call_id.as_str()), (result.step, result.call_id.as_str()));
+    let complete = std::fs::read(dir.join("spill").join(&archive.file)).unwrap();
+    assert_eq!(complete.len(), archive.bytes as usize);
+    assert_eq!(format!("sha256:{}", foe_log::digest::sha256_hex(&complete)), archive.digest);
+    assert!(result.rendered.contains("Use retrieve with cursor \"r1."));
+    let headers: Vec<_> = events
+        .iter()
+        .filter_map(|event| match &event.data {
+            EventData::RequestHeader(header) => Some(header),
+            _ => None,
+        })
+        .collect();
+    // The header is a property of the program: one header, present from the
+    // first request, carrying every declared tool including retrieve.
+    assert_eq!(headers.len(), 1);
+    assert!(headers[0].tools.iter().any(|tool| tool.name == "retrieve"));
 }
 
 #[tokio::test]

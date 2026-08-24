@@ -472,7 +472,7 @@ impl Episode {
                     let message = recorder.message(StopReason::Interrupted, Usage::default(), true);
                     self.p.log.append(EventData::AssistantMessage(message.clone()))?;
                     for call in &message.tool_calls {
-                        self.append_result(call, ToolValue::error(text::INTERRUPTED_RESULT), 0, true)?;
+                        self.append_result(call, ToolValue::error(text::INTERRUPTED_RESULT), None, 0, true)?;
                     }
                     return Ok(Answer::Interrupted);
                 }
@@ -505,7 +505,7 @@ impl Episode {
         let mut results = Vec::new();
         if message.stop == StopReason::Length {
             for call in &message.tool_calls {
-                results.push(self.append_result(call, ToolValue::error(text::LENGTH_LIMIT_ERROR), 0, false)?);
+                results.push(self.append_result(call, ToolValue::error(text::LENGTH_LIMIT_ERROR), None, 0, false)?);
             }
             return Ok(Ok(results));
         }
@@ -529,9 +529,12 @@ impl Episode {
         // The turn's results are bounded together, before any is appended,
         // so that the log and every later request carry the same text.
         let (mut values, durations): (Vec<ToolValue>, Vec<u64>) = values.into_iter().unzip();
-        result_budget::bound(&mut values);
-        for ((call, value), duration_ms) in message.tool_calls.iter().zip(values).zip(durations) {
-            results.push(self.append_result(call, value, duration_ms, false)?);
+        let archives =
+            result_budget::bound(&mut values, &message.tool_calls, self.step, self.p.registry.has_retrieve());
+        for (((call, value), archive), duration_ms) in
+            message.tool_calls.iter().zip(values).zip(archives).zip(durations)
+        {
+            results.push(self.append_result(call, value, archive, duration_ms, false)?);
             if self.p.registry.effect(&call.name).is_some_and(|e| !e.concurrent()) {
                 self.p.log.sync()?;
             }
@@ -544,10 +547,15 @@ impl Episode {
         &self,
         call: &ToolCall,
         value: ToolValue,
+        archive: Option<crate::retrieval::ArchivedRendering>,
         duration_ms: u64,
         synthetic: bool,
     ) -> Result<ToolResult, RuntimeError> {
         let subject = value.subject.clone();
+        if let Some(archive) = archive {
+            let archive = crate::retrieval::retain(&self.spill_dir, self.step, &call.id, &archive)?;
+            self.p.log.append(EventData::ToolRenderingArchive(archive))?;
+        }
         let (value, rendered, spill) = spill(&self.spill_dir, &call.id, value)?;
         let is_error = value.get("error").is_some() && value.as_object().is_some_and(|o| o.len() == 1);
         let result = ToolResult {

@@ -111,7 +111,12 @@ pub struct Options {
 /// and the lead's team tools. Identity and the registry receive this same
 /// list, so `foe plan` and a run agree.
 pub fn extra_builtin_specs() -> Vec<ToolSpec> {
-    foe_code::all().iter().map(|t| t.spec().clone()).chain(team::builtin_specs()).collect()
+    foe_code::all()
+        .iter()
+        .map(|t| t.spec().clone())
+        .chain(std::iter::once(foe_core::retrieval::spec()))
+        .chain(team::builtin_specs())
+        .collect()
 }
 
 pub fn identity(program: &Program) -> Result<Identity, String> {
@@ -523,6 +528,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let host_tools = if host { protocol.tools(&program) } else { Vec::new() };
     let parent = start.parent_id.is_some().then_some(&protocol);
     let mut builtins: Vec<Box<dyn Tool>> = foe_code::all();
+    builtins.push(foe_core::retrieval::tool(log.clone()));
     builtins.extend(team::tools(team.clone(), parent));
     let registry = Registry::new(&program, host_tools, builtins).map_err(|e| format!("config: {e}"))?;
     let write = program.grants.write.clone();
