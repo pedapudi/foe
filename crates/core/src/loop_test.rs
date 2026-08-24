@@ -9,7 +9,7 @@ use foe_config::harness_text as text;
 use foe_config::Effect;
 use foe_log::{
     BlockedCode, Chunk, Covered, EpisodeStart, Event, EventData, ExhaustedLimit, InboxSource, Outcome, RuntimeInfo,
-    SandboxInfo, SandboxMode, StopReason, Usage,
+    SandboxInfo, SandboxMode, StopReason, Usage, VerificationStatus,
 };
 use serde_json::json;
 use std::sync::{Arc, Mutex};
@@ -484,6 +484,74 @@ async fn verifier_findings_return_as_inbox_items_until_accepted_or_retries_are_s
     let fx = Fixture::new("loop-verify-spent", edit, vec![turn("1", vec![]), turn("2", vec![])]);
     let (outcome, _) = fx.tool(stubborn).run().await;
     assert!(matches!(outcome, Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, .. }), "{outcome:?}");
+}
+
+fn verifications(events: &[Event]) -> Vec<&foe_log::VerificationResult> {
+    events
+        .iter()
+        .filter_map(|e| match &e.data {
+            EventData::VerificationResult(v) => Some(v),
+            _ => None,
+        })
+        .collect()
+}
+
+/// docs/log-format.md "Verification": every authoritative invocation is
+/// recorded as exactly one `verification/result` — each findings run and
+/// the accepted run that completes the episode — with the finding strings
+/// the inbox item carries, and the event never enters derived messages.
+#[tokio::test]
+async fn every_authoritative_verification_is_recorded_as_one_event() {
+    let verifier = Verifier {
+        spec: crate::test_util::spec("check", Effect::Pure),
+        findings: Mutex::new(vec![vec!["missing test".into()], vec![]].into()),
+    };
+    let fx = Fixture::new(
+        "loop-verify-recorded",
+        |v| {
+            v["tools"] = json!(["block", "check"]);
+            v["done_when"] = json!({ "verify": "check", "retries": 1 });
+        },
+        vec![turn("first try", vec![]), turn("second try", vec![])],
+    );
+    let (outcome, events) = fx.tool(verifier).run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("second try") });
+    let recorded = verifications(&events);
+    assert_eq!(recorded.len(), 2, "one event per invocation, the accepted run included");
+    assert_eq!(recorded[0].status, VerificationStatus::Findings);
+    assert_eq!(recorded[0].findings, vec!["missing test".to_string()]);
+    assert_eq!((recorded[0].tool.as_str(), recorded[0].error.as_deref()), ("check", None));
+    assert_eq!(recorded[0].verifier_identity, "unknown", "a built-in verifier carries the runtime build hash");
+    assert_eq!(recorded[1].status, VerificationStatus::Accepted);
+    assert!(recorded[1].findings.is_empty(), "an accepted run reports no finding");
+    let EventData::ModelRequest(second) =
+        &events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).nth(1).unwrap().data
+    else {
+        panic!()
+    };
+    let serialized = serde_json::to_string(&second.messages).unwrap();
+    assert!(!serialized.contains("verifier_identity"), "the event never enters derived messages");
+}
+
+/// A verifier that fails rather than judges is recorded as `failed` with
+/// the error, before the episode ends as failed.
+#[tokio::test]
+async fn a_failed_verifier_records_a_failed_verification() {
+    let fx = Fixture::new(
+        "loop-verify-failed",
+        |v| {
+            v["tools"] = json!(["block", "p"]);
+            v["done_when"] = json!({ "verify": "p" });
+        },
+        vec![turn("candidate", vec![])],
+    );
+    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert!(matches!(outcome, Outcome::Failed { error } if error.contains("not a list of strings")));
+    let recorded = verifications(&events);
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].status, VerificationStatus::Failed);
+    assert!(recorded[0].findings.is_empty());
+    assert!(recorded[0].error.as_deref().unwrap_or_default().contains("not a list of strings"));
 }
 
 /// docs/design.md "Termination": calling the declared verifier is a

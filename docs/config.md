@@ -383,6 +383,13 @@ the runtime to verify the assistant text after the turn settles. Acceptance
 completes the episode without another model request. The ordinary call and
 the authoritative verifier invocation remain separate tool executions.
 
+Every authoritative invocation is recorded as one `verification/result`
+event in the episode's own log — the accepted run that completes the
+episode, each findings run, and a failed run — carrying the verifier's
+identity at invocation; [log-format.md](log-format.md#verification)
+specifies the event. The model never sees it: findings reach the model
+only through the `verify` inbox item.
+
 ### `context`
 
 Object. Optional. Whether and when the conversation is compacted: the

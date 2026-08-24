@@ -264,6 +264,36 @@ emitted so that the host can execute it. The result arrives as an ordinary
 { "step": 3, "call_id": "tc_02", "name": "mutation_usage", "args": {} }
 ```
 
+### Verification
+
+`verification/result` — implemented. One authoritative verifier
+invocation, exactly one event per invocation: the accepted run that
+completes the work, a findings run that re-fires it, or a failed run.
+The episode's `done_when.verify` writes it in that episode's own log, and
+a workflow node's `verify` writes it in the workflow episode's log with
+the node's step context. The event contributes nothing to derived
+messages; the model sees findings only through the `verify` inbox item.
+
+```json
+{
+  "step": 3,
+  "tool": "check",
+  "verifier_identity": "sha256:…",
+  "status": "findings",
+  "findings": ["tests/parser_test.py::test_nested_brackets fails"],
+  "duration_ms": 412
+}
+```
+
+`status` is one of `accepted`, `findings`, and `failed`. `findings` holds
+the same strings the `verify` inbox item carries, and is empty for
+`accepted` and for `failed`. `error` is present only for `failed` and
+states why the verifier could not judge; the episode then ends as
+`failed`. `verifier_identity` is what ran: for a `tool_defs` executable,
+the SHA-256 of its file content read at invocation, so a binary replaced
+mid-episode is visible per invocation; for a built-in or host tool, the
+runtime build hash from `episode/start.runtime.build`.
+
 ### Inbox
 
 `inbox/item` — implemented. One message addressed to this episode. The task

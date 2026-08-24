@@ -606,6 +606,15 @@ fn every_event_variant_round_trips() {
             note: None,
             intervention: 1,
         }),
+        EventData::VerificationResult(VerificationResult {
+            step: 3,
+            tool: "check".into(),
+            verifier_identity: "sha256:aa".into(),
+            status: VerificationStatus::Findings,
+            findings: vec!["missing test".into()],
+            error: None,
+            duration_ms: 12,
+        }),
     ];
     let mut seen = std::collections::BTreeSet::new();
     for data in variants {

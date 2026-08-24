@@ -73,6 +73,10 @@ pub enum EventData {
     #[serde(rename = "host/tool-call")]
     HostToolCall { step: u32, call_id: String, name: String, args: serde_json::Value },
 
+    // ---- verification ----------------------------------------------------
+    #[serde(rename = "verification/result")]
+    VerificationResult(VerificationResult),
+
     // ---- inbox -----------------------------------------------------------
     #[serde(rename = "inbox/item")]
     InboxItem(InboxItem),
@@ -510,6 +514,40 @@ pub struct ToolResult {
     /// True when written by seeding or by request-failure recovery rather
     /// than by running the tool.
     pub synthetic: bool,
+}
+
+// ---- verification payloads ---------------------------------------------------
+
+/// One authoritative verifier invocation, per `done_when.verify` or a
+/// workflow node's `verify`: the accepted run that completes the work, a
+/// findings run that re-fires it, or a failed run. The event never enters
+/// derived messages; the model sees findings only through the `verify`
+/// inbox item.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VerificationResult {
+    /// The step whose completion attempt was verified.
+    pub step: u32,
+    /// The verifier tool's name.
+    pub tool: String,
+    /// For a configured executable, `sha256:<hex>` over its file content at
+    /// invocation; for a built-in or host tool, the runtime build hash.
+    pub verifier_identity: String,
+    pub status: VerificationStatus,
+    /// The finding strings the `verify` inbox item carries; empty for
+    /// `accepted` and for `failed`.
+    pub findings: Vec<String>,
+    /// Present only for `failed`: why the verifier could not judge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VerificationStatus {
+    Accepted,
+    Findings,
+    Failed,
 }
 
 // ---- inbox payloads ----------------------------------------------------------
