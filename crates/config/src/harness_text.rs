@@ -8,7 +8,7 @@
 
 /// Bumped whenever a constant in this module changes meaning rather than
 /// wording. Hashed with the texts.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 pub const BLOCK_NAME: &str = "block";
 pub const BLOCK_DESCRIPTION: &str = "Report that the task cannot proceed, and end the episode. Use it when the \
@@ -35,6 +35,12 @@ pub const CUT_OUTPUT: &str = "[Cut to fit this turn's result budget: {omitted} o
 /// calling `return` although the program requires a returned value.
 pub const RETURN_REQUIRED: &str = "This task is finished by calling the `return` tool with a value that \
 conforms to its schema. Call `return` when the result is ready.";
+
+/// Shown as a system inbox item on the last model request available to an
+/// episode. The configured completion rule remains authoritative.
+pub const FINAL_REQUEST: &str = "One model request remains in this episode. Use it for the highest-priority \
+unfinished work rather than repeated exploration. Synthesize the available evidence. When it establishes \
+completion, use the program's declared completion signal in this response.";
 
 /// Frames verifier findings fed back as an inbox item with source `verify`.
 pub const VERIFY_FINDINGS: &str = "Verification by `{tool}` reported the findings below. Resolve each finding, \
@@ -135,6 +141,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("cut.window", CUT_WINDOW),
         ("cut.output", CUT_OUTPUT),
         ("return.required", RETURN_REQUIRED),
+        ("final_request", FINAL_REQUEST),
         ("verify.findings", VERIFY_FINDINGS),
         ("length_limit_error", LENGTH_LIMIT_ERROR),
         ("interrupted_result", INTERRUPTED_RESULT),

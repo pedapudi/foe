@@ -189,6 +189,7 @@ A step is one model request and the tool calls it produces.
 ```
   ┌─────────────────────────────────────────────────────────────────┐
   │ 1. assemble                                                     │
+  │    if one request remains, enqueue the final-request warning    │
   │    header  = instructions + tool instructions + tool schemas    │
   │    messages = derived from the log + unconsumed inbox items     │
   │    write request/header if changed; write model/request         │
@@ -216,7 +217,10 @@ A step is one model request and the tool calls it produces.
 
 The settle order checks the budget last, so a turn that completes the task
 on the last permitted model call completes the episode. The budget ends the
-episode only when work remains.
+episode only when work remains. The last available ordinary request contains
+a recorded system inbox item that directs the model toward the
+highest-priority unfinished work. The item preserves the configured
+completion rule and the finite allowance.
 
 Three rules hold in every step. Each exists because its absence loses data.
 

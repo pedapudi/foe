@@ -289,6 +289,12 @@ itself is the first inbox item.
 | `verify` | the runtime, carrying findings from a `done_when` verifier |
 | `system` | the runtime, for text it must show the model, such as a budget warning |
 
+When the current pool has one model call left for an ordinary request, the
+runtime appends one `system` item before deriving that request. The content
+directs the model toward the highest-priority unfinished work and the
+configured completion signal. The request records the item's sequence in
+`consumed`. The item changes no budget and completes no episode.
+
 The values `request` and `response` are reserved for correlated exchanges.
 
 ### Budget and spawn
