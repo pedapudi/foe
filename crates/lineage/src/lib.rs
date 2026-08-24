@@ -1,57 +1,44 @@
-//! Program lineage: the ancestry claim a root configuration carries, the
-//! identity derived from it, the evidence bundle that makes a transition
-//! verifiable, and the checker that verifies a claim. Implements
-//! docs/lineage-identity.md.
+//! Evidence about how program states relate. Implements
+//! docs/lineage-identity.md: the lineage identity derived from a program
+//! identity and its ancestry claim, the evidence bundle that makes a
+//! transition verifiable after files move between machines, and the
+//! checker that verifies a claim through two resolvers.
 //!
-//! A resolved program's identity names its content. The lineage identity
-//! names that content together with one ancestry claim: which parent state
-//! this one descends from, and which content-addressed evidence bundle
-//! records the transition. Everything here is a pure function over values
-//! and files already on disk: nothing runs, no grant is exercised, no log
-//! is written.
+//! The claim's shape is the configuration document's business and lives in
+//! `foe-config` as [`ProgramLineage`]. This crate consumes both contracts
+//! — the document from `foe-config` and the episode record from `foe-log`
+//! — and is part of neither: nothing in the runtime depends on it, and
+//! everything here is a pure function over values and files already on
+//! disk. Nothing runs, no grant is exercised, no log is written.
 
-use crate::identity::{canonical, sha256_hex};
-use crate::ConfigError;
+#![forbid(unsafe_code)]
+
+use foe_config::identity::{canonical, sha256_hex};
+pub use foe_config::{LineageParent, ProgramLineage};
 use foe_log::{fold, Event, EventData, State, VerificationStatus};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-/// The immediate predecessor named by an ancestry claim.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LineageParent {
-    /// The parent state's program identity.
-    pub program_identity: String,
-    /// The parent state's own ancestry claim, selecting one among the
-    /// claims that can accompany a single program identity.
-    pub lineage_identity: String,
+/// Every check names the key, file, or event it judged and the rule it
+/// applied.
+#[derive(Debug, thiserror::Error)]
+pub enum LineageError {
+    #[error("{key}: {rule}")]
+    Invalid { key: String, rule: String },
+    #[error("{0}")]
+    Parse(#[from] serde_json::Error),
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
 }
 
-/// The `program_lineage` object of a root configuration. The identity
-/// computation omits it; the resolved program records it, so the claim
-/// reaches `episode/start.program`. See docs/config.md `program_lineage`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProgramLineage {
-    pub parent: LineageParent,
-    /// Content address of the proposal episode's evidence bundle: the
-    /// SHA-256 digest of the bundle's canonical manifest.
-    pub evidence: String,
-    /// Path of the episode log holding the authoritative verifier result,
-    /// relative to the bundle root, in manifest path form.
-    pub verification_log: String,
-    /// `seq` of that `verification/result` event inside `verification_log`.
-    pub verification_seq: u64,
-}
-
-fn invalid(key: impl Into<String>, rule: impl Into<String>) -> ConfigError {
-    ConfigError::Invalid { key: key.into(), rule: rule.into() }
+fn invalid(key: impl Into<String>, rule: impl Into<String>) -> LineageError {
+    LineageError::Invalid { key: key.into(), rule: rule.into() }
 }
 
 /// `Ok` when `text` is `sha256:` followed by 64 lowercase hex digits.
-pub fn require_digest(key: &str, text: &str) -> Result<(), ConfigError> {
+pub fn require_digest(key: &str, text: &str) -> Result<(), LineageError> {
     let hex = text.strip_prefix("sha256:").unwrap_or("");
     match hex.len() == 64 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
         true => Ok(()),
@@ -62,15 +49,16 @@ pub fn require_digest(key: &str, text: &str) -> Result<(), ConfigError> {
 /// `Ok` when `path` is in manifest path form: relative, forward slashes,
 /// and no empty, `.`, or `..` component. See docs/lineage-identity.md
 /// "Evidence bundle".
-pub fn require_manifest_path(key: &str, path: &str) -> Result<(), ConfigError> {
+pub fn require_manifest_path(key: &str, path: &str) -> Result<(), LineageError> {
     match !path.contains('\\') && path.split('/').all(|c| !matches!(c, "" | "." | "..")) {
         true => Ok(()),
         false => Err(invalid(key, "is a relative path with no empty, `.`, or `..` component")),
     }
 }
 
-/// Checks the shape rules of the `program_lineage` object.
-pub fn validate(lineage: &ProgramLineage) -> Result<(), ConfigError> {
+/// Checks the shape rules of an ancestry claim, as the configuration
+/// parser does at construction.
+pub fn validate(lineage: &ProgramLineage) -> Result<(), LineageError> {
     require_digest("program_lineage.parent.program_identity", &lineage.parent.program_identity)?;
     require_digest("program_lineage.parent.lineage_identity", &lineage.parent.lineage_identity)?;
     require_digest("program_lineage.evidence", &lineage.evidence)?;
@@ -129,7 +117,7 @@ pub struct Manifest {
 /// Parses and checks a manifest without opening any listed file: canonical
 /// serialization, path form, byte order without duplicates, and that the
 /// proposal log and the candidate envelope are listed.
-pub fn check_manifest(bytes: &[u8]) -> Result<Manifest, ConfigError> {
+pub fn check_manifest(bytes: &[u8]) -> Result<Manifest, LineageError> {
     let manifest: Manifest = serde_json::from_slice(bytes)?;
     let key = "evidence.manifest";
     if canonical(&serde_json::to_value(&manifest)?).as_bytes() != bytes {
@@ -157,7 +145,7 @@ pub fn check_manifest(bytes: &[u8]) -> Result<Manifest, ConfigError> {
 /// Verifies a bundle directory: the manifest parses and is canonical, and
 /// every listed file has the recorded length and digest. Returns the
 /// manifest and the bundle's content address.
-pub fn verify_bundle(dir: &Path) -> Result<(Manifest, String), ConfigError> {
+pub fn verify_bundle(dir: &Path) -> Result<(Manifest, String), LineageError> {
     let bytes = std::fs::read(dir.join(MANIFEST_FILE))
         .map_err(|e| invalid("evidence.manifest", format!("is readable: {}: {e}", dir.display())))?;
     let manifest = check_manifest(&bytes)?;
@@ -174,7 +162,7 @@ pub fn verify_bundle(dir: &Path) -> Result<(Manifest, String), ConfigError> {
 /// Builds the manifest of `dir`: every file below it except the manifest
 /// itself, in byte order. The caller writes [`manifest_bytes`] to
 /// [`MANIFEST_FILE`]; the digest of those bytes is the bundle's address.
-pub fn build_manifest(dir: &Path, proposal_log: &str, candidate_envelope: &str) -> Result<Manifest, ConfigError> {
+pub fn build_manifest(dir: &Path, proposal_log: &str, candidate_envelope: &str) -> Result<Manifest, LineageError> {
     let mut files = Vec::new();
     let mut pending = vec![dir.to_path_buf()];
     while let Some(next) = pending.pop() {
@@ -209,7 +197,7 @@ pub fn build_manifest(dir: &Path, proposal_log: &str, candidate_envelope: &str) 
 }
 
 /// The canonical bytes of a manifest: what [`MANIFEST_FILE`] holds.
-pub fn manifest_bytes(manifest: &Manifest) -> Result<Vec<u8>, ConfigError> {
+pub fn manifest_bytes(manifest: &Manifest) -> Result<Vec<u8>, LineageError> {
     Ok(canonical(&serde_json::to_value(manifest)?).into_bytes())
 }
 
@@ -267,7 +255,7 @@ pub fn check_ancestry(
     state: &StateDocument,
     states: StateResolver,
     evidence: EvidenceResolver,
-) -> Result<AncestryReport, ConfigError> {
+) -> Result<AncestryReport, LineageError> {
     let mut current = state.clone();
     let mut seen = BTreeSet::new();
     let mut report = AncestryReport { chain: Vec::new(), unverifiable: Vec::new() };
@@ -304,7 +292,7 @@ fn check_transition(
     parent_document: &Value,
     evidence: EvidenceResolver,
     report: &mut AncestryReport,
-) -> Result<(), ConfigError> {
+) -> Result<(), LineageError> {
     let dir = evidence(&claim.evidence)
         .map_err(|e| invalid("program_lineage.evidence", format!("resolves to a bundle: {e}")))?;
     let (manifest, address) = verify_bundle(&dir)?;
@@ -386,7 +374,7 @@ fn check_transition(
 /// spawn provenance: each `children/<id>/episode.jsonl` hop is announced by
 /// a `spawn/start` naming `<id>` in the log above it, and the child's
 /// `episode/start` names that episode as its parent.
-fn verify_provenance(root: &str, log: &str, logs: &BTreeMap<String, (Vec<Event>, State)>) -> Result<(), ConfigError> {
+fn verify_provenance(root: &str, log: &str, logs: &BTreeMap<String, (Vec<Event>, State)>) -> Result<(), LineageError> {
     if log == root {
         return Ok(());
     }
@@ -432,7 +420,7 @@ fn check_verifier(
     start: &foe_log::EpisodeStart,
     parent_document: &Value,
     report: &mut AncestryReport,
-) -> Result<(), ConfigError> {
+) -> Result<(), LineageError> {
     let parent_identity = digest_of(canonical(parent_document).as_bytes());
     let mut reachable = BTreeSet::new();
     reachable.insert(parent_identity.clone());
@@ -516,5 +504,5 @@ fn workflow_verifiers<'a>(workflow: &'a Value, out: &mut BTreeSet<&'a str>) {
 }
 
 #[cfg(test)]
-#[path = "lineage_test.rs"]
+#[path = "lib_test.rs"]
 mod tests;

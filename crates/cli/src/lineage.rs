@@ -3,7 +3,7 @@
 //! checker; this file supplies the two directory-backed resolvers and the
 //! page a person reads.
 
-use foe_config::lineage::{check_ancestry, AncestryReport, StateDocument};
+use foe_lineage::{check_ancestry, AncestryReport, StateDocument};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 

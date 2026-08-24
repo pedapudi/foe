@@ -39,7 +39,7 @@ pub struct Program {
     /// The root configuration's ancestry claim, kept so that
     /// `episode/start.program` records it. Identity omits it.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub program_lineage: Option<crate::lineage::ProgramLineage>,
+    pub program_lineage: Option<crate::ProgramLineage>,
     pub programs: BTreeMap<String, Program>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow: Option<WorkflowConfig>,
@@ -103,9 +103,6 @@ pub fn load(path: &Path) -> Result<Program, ConfigError> {
 pub fn validate(config: &Config) -> Result<(), ConfigError> {
     require(config.version == CONFIG_VERSION, "version", format!("is {CONFIG_VERSION}"))?;
     require(!config.task.trim().is_empty(), "task", "is not empty")?;
-    if let Some(lineage) = &config.program_lineage {
-        crate::lineage::validate(lineage)?;
-    }
     validate_section("", &ChildProgram::from(config))
 }
 
@@ -207,9 +204,8 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
 pub fn resolve(config: &Config) -> Result<Program, ConfigError> {
     validate(config)?;
     let inherited = (config.model.clone(), config.sandbox.clone());
-    let mut program = resolve_section("", &ChildProgram::from(config), &inherited, None)?;
-    program.program_lineage = config.program_lineage.clone();
-    Ok(program)
+    let lineage = config.program_lineage.clone();
+    Ok(Program { program_lineage: lineage, ..resolve_section("", &ChildProgram::from(config), &inherited, None)? })
 }
 
 fn resolve_section(

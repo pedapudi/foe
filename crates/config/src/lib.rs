@@ -24,7 +24,6 @@ pub mod config;
 pub mod harness_text;
 pub mod identity;
 pub mod inspect;
-pub mod lineage;
 pub mod schema;
 #[cfg(test)]
 #[path = "fixtures_test.rs"]
@@ -111,7 +110,7 @@ pub struct Config {
     /// An ancestry claim relating this program state to a parent state.
     /// Root only; identity omits it. See docs/lineage-identity.md.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub program_lineage: Option<lineage::ProgramLineage>,
+    pub program_lineage: Option<ProgramLineage>,
     #[serde(default)]
     pub programs: BTreeMap<String, ChildProgram>,
     /// A declared graph that replaces the free loop. See docs/workflow.md.
@@ -263,6 +262,36 @@ impl ModelConfig {
 pub struct SandboxConfig {
     #[serde(default)]
     pub mode: foe_log::SandboxMode,
+}
+
+/// The immediate predecessor named by a `program_lineage` ancestry claim.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LineageParent {
+    /// The parent state's program identity.
+    pub program_identity: String,
+    /// The parent state's own ancestry claim, selecting one among the
+    /// claims that can accompany a single program identity.
+    pub lineage_identity: String,
+}
+
+/// The `program_lineage` object of a root configuration: an ancestry claim
+/// relating this program state to a parent state. The identity computation
+/// omits it; the resolved program records it, so the claim reaches
+/// `episode/start.program`. This crate carries only the key's shape;
+/// `foe-lineage` verifies claims. See docs/config.md `program_lineage`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProgramLineage {
+    pub parent: LineageParent,
+    /// Content address of the proposal episode's evidence bundle: the
+    /// SHA-256 digest of the bundle's canonical manifest.
+    pub evidence: String,
+    /// Path of the episode log holding the authoritative verifier result,
+    /// relative to the bundle root, in manifest path form.
+    pub verification_log: String,
+    /// `seq` of that `verification/result` event inside `verification_log`.
+    pub verification_seq: u64,
 }
 
 /// A child program: a configuration without `version`, `task`, or `sandbox`.

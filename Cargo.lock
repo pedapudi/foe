@@ -240,6 +240,7 @@ dependencies = [
  "foe-config",
  "foe-context",
  "foe-core",
+ "foe-lineage",
  "foe-log",
  "foe-telemetry",
  "foe-transport",
@@ -311,6 +312,17 @@ dependencies = [
  "sha2",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "foe-lineage"
+version = "0.1.0"
+dependencies = [
+ "foe-config",
+ "foe-log",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

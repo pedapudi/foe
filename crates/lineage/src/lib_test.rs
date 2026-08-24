@@ -1,18 +1,48 @@
 use super::{
-    build_manifest, check_ancestry, digest_of, lineage_identity, manifest_bytes, validate, CandidateEnvelope,
-    LineageParent, ProgramLineage, StateDocument, MANIFEST_FILE,
+    build_manifest, check_ancestry, digest_of, lineage_identity, manifest_bytes, validate, AncestryReport,
+    CandidateEnvelope, LineageParent, ProgramLineage, StateDocument, MANIFEST_FILE,
 };
-use crate::config::{resolve, Program};
-use crate::identity::{canonical, compute, sha256_hex, Identity};
-use crate::test_util::{config_value, program, program_with, tmp};
+use foe_config::config::{resolve, Program};
+use foe_config::identity::{canonical, compute, sha256_hex, Identity};
+use foe_config::Config;
 use foe_log::append::Writer;
 use foe_log::{EpisodeStart, EventData, Outcome, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+// ---- fixtures -----------------------------------------------------------
+
 fn runtime() -> RuntimeInfo {
     RuntimeInfo { version: "0.1.0".into(), build: "sha256:test".into() }
+}
+
+fn tmp(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("foe-lineage-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// A valid root document granting read and write on `root`, with `block`
+/// as its only tool and the host transport.
+fn config_value(root: &Path) -> Value {
+    json!({
+        "version": 2,
+        "name": "fixture",
+        "instructions": { "10-role": "You are a test agent.", "05-first": "Be brief." },
+        "tools": ["block"],
+        "grants": { "read": [root], "write": [root] },
+        "budget": { "model_calls": 10 },
+        "task": "do the thing"
+    })
+}
+
+fn program_with(root: &Path, edit: impl FnOnce(&mut Value)) -> Program {
+    let mut value = config_value(root);
+    edit(&mut value);
+    let config: Config = serde_json::from_value(value).unwrap();
+    resolve(&config).unwrap()
 }
 
 pub fn digest(fill: char) -> String {
@@ -26,37 +56,6 @@ pub fn claim_value() -> Value {
         "verification_log": "children/ep_1/episode.jsonl",
         "verification_seq": 7
     })
-}
-
-#[test]
-fn identity_omits_the_claim_and_the_resolved_program_records_it() {
-    let root = tmp("lineage-omitted");
-    let bare = program(&root);
-    let mut value = config_value(&root);
-    value["program_lineage"] = claim_value();
-    let config = serde_json::from_value(value).unwrap();
-    let claimed = resolve(&config).unwrap();
-    assert!(claimed.program_lineage.is_some());
-    assert_eq!(claimed.to_value()["program_lineage"], claim_value());
-    assert_eq!(
-        compute(&claimed, &[], &runtime()).unwrap().hash,
-        compute(&bare, &[], &runtime()).unwrap().hash,
-        "the claim does not participate in identity"
-    );
-}
-
-#[test]
-fn the_claim_is_root_only() {
-    let root = tmp("lineage-root-only");
-    let mut value = config_value(&root);
-    value["grants"]["spawn"] = json!(["kid"]);
-    value["programs"] = json!({ "kid": {
-        "name": "kid", "instructions": { "a": "b" }, "tools": ["block"],
-        "grants": { "read": [root] }, "budget": { "model_calls": 1 },
-        "program_lineage": claim_value(),
-    }});
-    let parsed: Result<crate::Config, _> = serde_json::from_value(value);
-    assert!(parsed.is_err(), "a nested program does not carry program_lineage");
 }
 
 #[test]
@@ -117,7 +116,6 @@ fn verified_config(root: &Path, edit: impl FnOnce(&mut Value)) -> Program {
         v["done_when"] = json!({ "verify": "check" });
         edit(v);
     })
-    .unwrap()
 }
 
 fn fixture(name: &str) -> Fixture {
@@ -174,8 +172,8 @@ fn write_log(dir: &Path, events: Vec<EventData>) {
     }
 }
 
-/// Writes the candidate files of a bundle and returns nothing; `seal`
-/// completes the bundle with its manifest.
+/// Writes the candidate files of a bundle; `seal` completes the bundle
+/// with its manifest.
 fn write_candidate_files(dir: &Path, child: &Identity) {
     let document = canonical(&child.document);
     std::fs::write(dir.join("child-identity.json"), &document).unwrap();
@@ -224,7 +222,7 @@ fn check(
     state: &StateDocument,
     states: BTreeMap<String, StateDocument>,
     bundles: BTreeMap<String, PathBuf>,
-) -> Result<super::AncestryReport, crate::ConfigError> {
+) -> Result<AncestryReport, super::LineageError> {
     let resolve_state = move |id: &str| states.get(id).cloned().ok_or_else(|| format!("unknown state {id}"));
     let resolve_bundle =
         move |address: &str| bundles.get(address).cloned().ok_or_else(|| format!("unknown bundle {address}"));
@@ -240,7 +238,7 @@ fn root_state(f: &Fixture) -> (String, StateDocument) {
 
 #[test]
 fn a_valid_root_and_one_valid_descendant() {
-    let f = fixture("lineage-valid");
+    let f = fixture("valid");
     let child = child_of(&f, "descendant");
     let dir = f.root.join("bundle");
     std::fs::create_dir_all(&dir).unwrap();
@@ -256,7 +254,7 @@ fn a_valid_root_and_one_valid_descendant() {
 
 #[test]
 fn a_missing_or_modified_evidence_file_is_rejected() {
-    let f = fixture("lineage-tampered");
+    let f = fixture("tampered");
     let child = child_of(&f, "descendant");
     let dir = f.root.join("bundle");
     std::fs::create_dir_all(&dir).unwrap();
@@ -281,7 +279,7 @@ fn a_missing_or_modified_evidence_file_is_rejected() {
 
 #[test]
 fn a_child_that_differs_from_the_accepted_candidate_is_rejected() {
-    let f = fixture("lineage-wrong-child");
+    let f = fixture("wrong-child");
     let child = child_of(&f, "proposed");
     let other = child_of(&f, "different");
     let dir = f.root.join("bundle");
@@ -297,7 +295,7 @@ fn a_child_that_differs_from_the_accepted_candidate_is_rejected() {
 
 #[test]
 fn a_verifier_absent_from_the_parent_is_rejected() {
-    let f = fixture("lineage-foreign-verifier");
+    let f = fixture("foreign-verifier");
     let child = child_of(&f, "descendant");
     let dir = f.root.join("bundle");
     std::fs::create_dir_all(&dir).unwrap();
@@ -312,7 +310,7 @@ fn a_verifier_absent_from_the_parent_is_rejected() {
 
 #[test]
 fn a_verifier_executable_changed_before_invocation_is_rejected() {
-    let f = fixture("lineage-swapped-verifier");
+    let f = fixture("swapped-verifier");
     let child = child_of(&f, "descendant");
     let dir = f.root.join("bundle");
     std::fs::create_dir_all(&dir).unwrap();
@@ -327,7 +325,7 @@ fn a_verifier_executable_changed_before_invocation_is_rejected() {
 
 #[test]
 fn an_ancestry_cycle_is_rejected() {
-    let f = fixture("lineage-cycle");
+    let f = fixture("cycle");
     let dir = f.root.join("bundle");
     std::fs::create_dir_all(&dir).unwrap();
     // The proposal admits the parent program itself, so a state can claim
@@ -343,7 +341,7 @@ fn an_ancestry_cycle_is_rejected() {
 
 #[test]
 fn two_children_of_one_parent_both_verify() {
-    let f = fixture("lineage-two-children");
+    let f = fixture("two-children");
     let (root_id, root) = root_state(&f);
     for marker in ["first", "second"] {
         let child = child_of(&f, marker);
@@ -360,7 +358,7 @@ fn two_children_of_one_parent_both_verify() {
 
 #[test]
 fn one_program_identity_with_two_valid_ancestry_claims() {
-    let f = fixture("lineage-two-claims");
+    let f = fixture("two-claims");
     let child = child_of(&f, "descendant");
     let (root_id, root) = root_state(&f);
     let mut lineage_ids = Vec::new();
@@ -383,7 +381,7 @@ fn one_program_identity_with_two_valid_ancestry_claims() {
 
 #[test]
 fn verification_survives_moving_the_evidence_directory() {
-    let f = fixture("lineage-moved");
+    let f = fixture("moved");
     let child = child_of(&f, "descendant");
     let built = f.root.join("bundle-built-here");
     std::fs::create_dir_all(&built).unwrap();
@@ -398,7 +396,7 @@ fn verification_survives_moving_the_evidence_directory() {
 
 #[test]
 fn a_verifier_result_in_a_spawned_child_log_is_reached_by_provenance() {
-    let root = tmp("lineage-child-verifier");
+    let root = tmp("child-verifier");
     let exec = root.join("check.sh");
     std::fs::write(&exec, "#!/bin/sh\nexit 0\n").unwrap();
     let kid = json!({
@@ -411,8 +409,7 @@ fn a_verifier_result_in_a_spawned_child_log_is_reached_by_provenance() {
     let parent_program = program_with(&root, |v| {
         v["grants"]["spawn"] = json!(["kid"]);
         v["programs"] = json!({ "kid": kid });
-    })
-    .unwrap();
+    });
     let parent = compute(&parent_program, &[], &runtime()).unwrap();
     let f = Fixture {
         root: root.clone(),

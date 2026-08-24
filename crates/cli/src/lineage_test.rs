@@ -1,5 +1,5 @@
 use super::{check, rendered};
-use foe_config::lineage::{AncestryReport, ChainEntry};
+use foe_lineage::{AncestryReport, ChainEntry};
 use std::path::Path;
 
 fn digest(fill: char) -> String {

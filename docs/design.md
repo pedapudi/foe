@@ -706,6 +706,8 @@ not finished.
                                         context seam └── crates/view ◄── view/ (browser bundle)
                                                           projection, HTTP, SSE, export
 
+                     crates/lineage ◄── config and log; the ancestry checker
+
                                           crates/cli ◄── all of the above; plan reports
 
    python/foe    a thin host: builds config, runs the binary, serves the protocol
@@ -768,6 +770,14 @@ write. The binary supplies only the path that file is found at, which is a
 convention `crates/transport` owns, so the telemetry crate still depends on
 `crates/log` alone.
 
+`crates/lineage` is evidence about how program states relate: the lineage
+identity, the evidence-bundle canonical manifest and its checker, and the
+ancestry checker [lineage-identity.md](lineage-identity.md) specifies. It
+depends on `crates/config` for the claim's shape and the canonical
+serialization, and on `crates/log` for the episode record, and is part of
+neither contract: nothing in the runtime depends on it. The binary
+supplies only the two directory-backed resolvers `foe lineage` builds.
+
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
@@ -775,12 +785,10 @@ sandbox, and spawning — and its Rust source stays under 5,000 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/config`, which is budgeted
-apart under 1,800 lines. The config budget covers the document, its
-resolution, identity, and the lineage evidence that relates one program
-state to another. The two are separate because a configuration document
-that gains a key must not buy room in the loop, and because the claim the
-kernel's number supports is about the machine that runs a program rather
-than about the data model it runs.
+apart under 1,400 lines. The two are separate because a configuration
+document that gains a key must not buy room in the loop, and because the
+claim the kernel's number supports is about the machine that runs a program
+rather than about the data model it runs.
 
 The tool surface in `crates/code` is budgeted apart, under 1,600 lines on
 the same terms. It is separate because it grows a tool at a time: a new
@@ -815,6 +823,13 @@ and the preview `foe telemetry` prints. Nothing in the runtime depends on it,
 the crate depends on `log` alone, and an installation that never enables
 telemetry carries none of its behavior.
 See [docs/telemetry.md](telemetry.md).
+
+Lineage is budgeted apart on the same terms: `crates/lineage` under 500
+lines. It is separate because it reads finished evidence rather than
+producing any: it consumes the configuration contract and the log contract
+to verify how one program state descends from another, and nothing in the
+runtime depends on it. A claim that gains a check must not buy room inside
+either contract. See [lineage-identity.md](lineage-identity.md).
 
 Rust outside every line budget, in the built-in transport, is bounded by the
 size of the binary it compiles into. Continuous integration enforces every

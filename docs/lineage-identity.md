@@ -2,7 +2,7 @@
 
 Status: implemented, except the candidate digest binding. The
 configuration parser accepts the `program_lineage` key, the identity
-computation omits it, and `foe_config::lineage` derives the lineage
+computation omits it, and the `foe-lineage` crate derives the lineage
 identity, checks an evidence bundle against its canonical manifest, and
 verifies an ancestry claim through two resolvers. The runtime emits an
 authoritative `verification/result` event without the `candidate_sha256`

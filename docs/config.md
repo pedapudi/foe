@@ -495,9 +495,12 @@ and the checker that verifies the claim.
 | `verification_log` | string | bundle-relative path of the log holding the verifier result |
 | `verification_seq` | integer | `seq` of that result inside `verification_log` |
 
-Each digest is `sha256:` followed by 64 lowercase hex digits.
-`verification_log` uses forward slashes and has no empty, `.`, or `..`
-component. The key does not participate in identity: a configuration with
+Each digest is `sha256:` followed by 64 lowercase hex digits, and
+`verification_log` uses forward slashes with no empty, `.`, or `..`
+component. The parser checks the member types and rejects an unknown
+member; the digest and path forms are enforced where a claim is verified,
+by the checker [lineage-identity.md](lineage-identity.md) specifies. The
+key does not participate in identity: a configuration with
 `program_lineage` resolves to the same program identity as one without it.
 The resolved program retains the claim, so `episode/start.program` records
 it. A configuration without the key describes a root state, the first in a
