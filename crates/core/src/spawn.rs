@@ -296,6 +296,9 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
         context: program.context.clone(),
         model: program.model.clone().or_else(|| parent.model.clone()),
         sandbox: parent.sandbox.clone(),
+        // An ancestry claim belongs to a root state; a spawned child is
+        // part of its parent's episode tree, not a new program state.
+        program_lineage: None,
         programs: program.programs.clone(),
         workflow: program.workflow.clone(),
         task,

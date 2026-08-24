@@ -24,6 +24,7 @@ pub mod config;
 pub mod harness_text;
 pub mod identity;
 pub mod inspect;
+pub mod lineage;
 pub mod schema;
 #[cfg(test)]
 #[path = "fixtures_test.rs"]
@@ -107,6 +108,10 @@ pub struct Config {
     pub model: Option<ModelConfig>,
     #[serde(default)]
     pub sandbox: SandboxConfig,
+    /// An ancestry claim relating this program state to a parent state.
+    /// Root only; identity omits it. See docs/lineage-identity.md.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program_lineage: Option<lineage::ProgramLineage>,
     #[serde(default)]
     pub programs: BTreeMap<String, ChildProgram>,
     /// A declared graph that replaces the free loop. See docs/workflow.md.

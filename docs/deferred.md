@@ -95,11 +95,12 @@ is reserved by the design; no event variant is present in `crates/log`.
 ## Program lineage
 
 Program lineage relates immutable program states through content-addressed
-proposal evidence and a verifier declared by the parent state. The design is
-specified in [lineage-identity.md](lineage-identity.md), which proposes the
-configuration key `program_lineage` and the `verification/result` event.
-Program lineage is not implemented. Neither name is present in the
-configuration or log types.
+proposal evidence and a verifier declared by the parent state.
+[lineage-identity.md](lineage-identity.md) specifies it. The configuration
+key `program_lineage`, the lineage identity, and the `verification/result`
+event are implemented. The evidence-bundle checker and the ancestry checker
+are not, and the event does not carry the candidate digest binding the
+design proposes.
 
 ## Bazel targets for the browser bundle and the Python package
 

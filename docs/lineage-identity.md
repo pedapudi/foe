@@ -1,8 +1,13 @@
 # Program lineage and transition evidence
 
-Status: design. The configuration key `program_lineage` and the log event
-`verification/result` are proposed here. The configuration parser does not
-accept the key, and the runtime does not emit the event.
+Status: partly implemented. The configuration parser accepts the
+`program_lineage` key, the identity computation omits it, and
+`foe_config::lineage` derives the lineage identity. The runtime emits an
+authoritative `verification/result` event without the `candidate_sha256`
+member proposed here; the log format freezes an implemented type's data,
+so adding the member requires a new event type, a new log version, or an
+envelope record outside the log. The evidence-bundle checker and the
+ancestry checker are not implemented.
 
 ## Scope of the existing identity
 

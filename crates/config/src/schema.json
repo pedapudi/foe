@@ -33,6 +33,7 @@
         "mode": { "type": "string", "enum": ["best-effort", "required", "off"], "default": "best-effort" }
       }
     },
+    "program_lineage": { "$ref": "#/$defs/program_lineage" },
     "programs": { "$ref": "#/$defs/programs" },
     "workflow": { "$ref": "#/$defs/workflow" },
     "task": {
@@ -151,6 +152,26 @@
         "reserve_tokens": { "description": "Tokens kept free below the window; compaction runs when the projected request exceeds window_tokens minus reserve_tokens.", "type": "integer", "minimum": 0, "default": 16384 },
         "keep_recent_tokens": { "description": "Approximate size of the most recent steps kept verbatim after a compaction.", "type": "integer", "minimum": 0, "default": 20000 },
         "margin_tokens": { "description": "Added to the projection of the next request to absorb estimation error.", "type": "integer", "minimum": 0, "default": 2048 }
+      }
+    },
+    "program_lineage": {
+      "description": "An ancestry claim relating this program state to a parent state through a content-addressed evidence bundle. Root only. Does not participate in identity. docs/lineage-identity.md specifies the claim and its verification.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parent", "evidence", "verification_log", "verification_seq"],
+      "properties": {
+        "parent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["program_identity", "lineage_identity"],
+          "properties": {
+            "program_identity": { "description": "The parent state's program identity.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+            "lineage_identity": { "description": "The parent state's own ancestry claim.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        },
+        "evidence": { "description": "SHA-256 digest of the evidence bundle's canonical manifest.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "verification_log": { "description": "Bundle-relative path of the episode log holding the authoritative verifier result: forward slashes, no empty, '.', or '..' component.", "type": "string", "minLength": 1 },
+        "verification_seq": { "description": "seq of that verification/result event inside verification_log.", "type": "integer", "minimum": 0 }
       }
     },
     "programs": {

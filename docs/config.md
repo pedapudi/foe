@@ -479,6 +479,30 @@ version obtained. `required` refuses to start when Landlock is unavailable.
 The rules themselves are compiled from `grants` and `tool_defs`; there is
 nothing else to declare.
 
+### `program_lineage`
+
+Object. Optional. Root only: a nested program and a workflow model node
+cannot carry it. An ancestry claim relating this program state to a parent
+state through a content-addressed evidence bundle.
+[lineage-identity.md](lineage-identity.md) specifies the claim, the bundle,
+and the checker that verifies the claim.
+
+| field | type | meaning |
+|---|---|---|
+| `parent.program_identity` | string | the parent state's program identity |
+| `parent.lineage_identity` | string | the parent state's own ancestry claim |
+| `evidence` | string | SHA-256 digest of the evidence bundle's canonical manifest |
+| `verification_log` | string | bundle-relative path of the log holding the verifier result |
+| `verification_seq` | integer | `seq` of that result inside `verification_log` |
+
+Each digest is `sha256:` followed by 64 lowercase hex digits.
+`verification_log` uses forward slashes and has no empty, `.`, or `..`
+component. The key does not participate in identity: a configuration with
+`program_lineage` resolves to the same program identity as one without it.
+The resolved program retains the claim, so `episode/start.program` records
+it. A configuration without the key describes a root state, the first in a
+lineage.
+
 ### `programs`
 
 Object mapping program name to a nested configuration. Optional. Each value
@@ -524,7 +548,7 @@ hash, the kinds and counts in `grants`, `budget`, `done_when`, `context`,
 every entry of `programs`, `workflow`, and the runtime's version and build.
 
 The following do not participate: the paths in `grants`, `model`, `sandbox`,
-and `task`.
+`program_lineage`, and `task`.
 
 ## Errors
 

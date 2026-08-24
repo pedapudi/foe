@@ -42,6 +42,7 @@ fn the_schema_is_json_and_names_every_key_of_the_document() {
         "instructions",
         "model",
         "name",
+        "program_lineage",
         "programs",
         "sandbox",
         "task",

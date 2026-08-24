@@ -774,10 +774,12 @@ sandbox, and spawning — and its Rust source stays under 5,000 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/config`, which is budgeted
-apart under 1,400 lines. The two are separate because a configuration
-document that gains a key must not buy room in the loop, and because the
-claim the kernel's number supports is about the machine that runs a program
-rather than about the data model it runs.
+apart under 1,800 lines. The config budget covers the document, its
+resolution, identity, and the lineage evidence that relates one program
+state to another. The two are separate because a configuration document
+that gains a key must not buy room in the loop, and because the claim the
+kernel's number supports is about the machine that runs a program rather
+than about the data model it runs.
 
 The tool surface in `crates/code` is budgeted apart, under 1,600 lines on
 the same terms. It is separate because it grows a tool at a time: a new
