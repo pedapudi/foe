@@ -404,8 +404,10 @@ cannot consume the self-improvement episode.
 
 The candidate checker repeats formatting, workspace tests, Clippy, and line
 counts under the supplied Cargo cache. It rejects a line count above the
-recorded baseline ceiling. Its only generated-file write authority is the
-candidate's private `target/foe-self-improvement-check` directory. Read grants
+recorded baseline ceiling. The coding child uses this checker as the line-count
+authority because the repository script reports only absolute limits. Its only
+generated-file write authority is the candidate's private
+`target/foe-self-improvement-check` directory. Read grants
 cover Cargo and Rustup metadata and installed C headers. Execute grants cover
 the pinned toolchain and candidate build directory. They also cover Cargo's
 command shims for `fmt` and `clippy`. The result records content digests for

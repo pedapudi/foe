@@ -396,7 +396,7 @@ def build_config(
             "role": "Act as a fully capable Foe coding agent and implement the supplied typed diagnosis.",
             "scope": "Inspect source before editing. Change runtime source, a regression test, and each affected specification. Preserve reconstructable logs, declared authority, typed outcomes, and explicit completion semantics.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Do not encode benchmark identifiers, fixture values, or grader rules. Refuse an intervention that changes only a built-in default overridden by the explicit evaluated program.",
-            "validation": "The candidate check runs formatting, the Rust workspace tests, clippy, and line budgets under the declared toolchain. Run it after implementation and use its findings to correct the candidate. State expected accuracy, cost, latency, and compatibility effects in the final result.",
+            "validation": "The candidate check runs formatting, the Rust workspace tests, Clippy, and baseline-relative line budgets under the declared toolchain. Run it after implementation and use its findings to correct the candidate. Use the check tool as the authority for line counts because scripts/loc.sh alone cannot distinguish an existing overage from candidate growth. State expected accuracy, cost, latency, and compatibility effects in the final result.",
         },
         "tools": [*CODING_TOOLS, "check"],
         "tool_defs": {"check": check_tool},

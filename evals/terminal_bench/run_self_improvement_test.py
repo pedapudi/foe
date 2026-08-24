@@ -99,6 +99,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn("implementation_files", returns["properties"])
         self.assertNotIn("model", implementation)
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
+        self.assertIn("baseline-relative line budgets", implementation["instructions"]["validation"])
         self.assertEqual(config["model"]["reasoning_effort"], "high")
         self.assertEqual(config["model"]["service_tier"], "priority")
         self.assertEqual(
