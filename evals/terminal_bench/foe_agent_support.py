@@ -237,7 +237,10 @@ def build_program(
                         "Use read, grep, and bash for focused static and runtime evidence. "
                         "Report observed constraints, evidence, and uncertainty together as facts. "
                         "Give implementation steps and verification steps. "
-                        "Return as soon as the useful facts and next steps are supported. "
+                        "Use four model requests as a planning target. Return earlier when the "
+                        "branch decision and useful next steps are supported. Continue past the "
+                        "target only when a named implementation-critical fact prevents choosing "
+                        "a branch. "
                         "The model-call allowance is a loop backstop rather than an inspection "
                         "target. Keep the return concise."
                     )
@@ -280,9 +283,13 @@ def build_program(
                             "task. Use read, grep, and bash for focused static and runtime evidence. "
                             "Return a consolidated set of facts, implementation steps, and "
                             "verification steps for a fresh coding episode. State remaining "
-                            "uncertainty explicitly. Return as soon as the implementation-critical "
-                            "facts are supported. The model-call allowance is a loop backstop "
-                            "rather than an inspection target."
+                            "uncertainty explicitly. Use six model requests as a planning target. "
+                            "Return earlier when the facts needed to begin a viable implementation "
+                            "are supported. Continue past the target only while a named unresolved "
+                            "fact prevents implementation. The coding episode owns end-to-end "
+                            "validation and repair, so avoid exhaustive validation and avoid "
+                            "building the task solution here. The larger model-call allowance is a "
+                            "loop backstop."
                         )
                     },
                     "tools": ["read", "grep", "bash"],

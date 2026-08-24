@@ -100,6 +100,7 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(diagnosis["budget"]["loop_threshold"], 8)
         self.assertEqual(diagnosis["tools"], ["read", "grep", "bash"])
         self.assertNotIn("sandbox", diagnosis)
+        self.assertIn("four model requests as a planning target", diagnosis["instructions"]["role"])
         self.assertIn("loop backstop", diagnosis["instructions"]["role"])
         self.assertNotIn("final request", diagnosis["instructions"]["role"])
         self.assertIn("returns", diagnosis["done_when"])
@@ -185,6 +186,8 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(deeper["model"]["model"]["reasoning_effort"], "xhigh")
         self.assertEqual(deeper["model"]["budget"]["model_calls"], 20)
         self.assertEqual(deeper["model"]["budget"]["seconds"], 1800)
+        self.assertIn("six model requests as a planning target", deeper["model"]["instructions"]["role"])
+        self.assertIn("coding episode owns end-to-end validation", deeper["model"]["instructions"]["role"])
         self.assertIn("loop backstop", deeper["model"]["instructions"]["role"])
         self.assertNotIn("final request", deeper["model"]["instructions"]["role"])
         self.assertEqual(

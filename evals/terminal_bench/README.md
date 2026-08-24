@@ -147,7 +147,10 @@ resolves every implementation-critical fact. Otherwise a read-only Sol
 the implementation on either path. The spending preview includes the maximum
 conditional path. Actual cost includes only the branch that fires. The deeper
 diagnosis has a twenty-call backstop because it may need to derive and validate
-an implementation-critical fact before returning its typed report.
+an implementation-critical fact before returning its typed report. Its prompt
+uses six requests as a soft planning target. It can continue when a named fact
+still prevents implementation. The coding episode owns exhaustive validation
+and repair.
 
 The implementation can receive a fresh higher-reasoning repair episode while
 the primary implementation remains at low reasoning. The repair episode does
