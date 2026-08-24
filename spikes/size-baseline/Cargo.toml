@@ -1,0 +1,21 @@
+# Baseline for the evaluator size measurement: the same profile and the
+# same serde_json dependency as the spike's size probe, without the
+# starlark dependency. The size difference between the two release
+# binaries is the evaluator's cost.
+[package]
+name = "size-baseline"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+serde_json = "1"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
