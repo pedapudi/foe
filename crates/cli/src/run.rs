@@ -39,8 +39,8 @@ use std::time::Duration;
 /// open page receives the final events.
 const VIEWER_GRACE: Duration = Duration::from_secs(3);
 
-const BUILTIN_IMPLEMENTATION_CALLS: u64 = 40;
-const BUILTIN_AUDIT_CALLS: u64 = 25;
+const BUILTIN_IMPLEMENTATION_CALLS: u64 = 60;
+const BUILTIN_AUDIT_CALLS: u64 = 60;
 
 /// Runtime-owned instructions for the built-in coding workflow. They name no
 /// path, so the program identity is the same in every directory.
