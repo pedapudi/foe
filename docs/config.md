@@ -503,8 +503,11 @@ model node's program is a child program in the sense of `programs` whose
 tools, configured executable authority, host tool definitions, filesystem
 grants, spawn grants with their descendant programs, and spend limits all
 lie within the document's own. A child program may carry a `workflow` of
-its own. The graph participates in identity as workflow.md "Identity"
-lists.
+its own. A node may declare `skip_when_verified`, naming a node whose
+verifier-accepted result lets the declaring node be skipped; workflow.md
+"The conditional audit guard" specifies it, and the `workflow/node-skipped`
+event records each skip. The graph participates in identity as
+workflow.md "Identity" lists.
 
 ### `task`
 

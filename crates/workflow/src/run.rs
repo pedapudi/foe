@@ -19,17 +19,18 @@ use foe_config::tools::Source;
 use foe_config::workflow::{ancestors, Node, WorkflowConfig};
 use foe_config::{Effect, ToolSpec};
 use foe_core::budget::Pool;
-use foe_core::loop_::{lock, settle, until, wait_stop, Log, Params, Recorder};
+use foe_core::loop_::{lock, settle, until, verify_recorded, wait_stop, Log, Params, Recorder};
 use foe_core::registry::{Handles, Registry};
 use foe_core::{ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolValue, Transport};
 use foe_log::{
     BlockedCode, BudgetAmount, Chunk, ContentBlock, Event, EventData, ExhaustedLimit, HeaderReason, InboxItem,
-    InboxSource, Message, ModelRequest, Outcome, RequestHeader, SpawnContext, ToolCall, ToolResult, WorkflowBranch,
-    WorkflowNodeEnd, WorkflowNodeStart, WorkflowRecovery,
+    InboxSource, Message, ModelRequest, Outcome, RequestHeader, SpawnContext, ToolCall, ToolResult, VerificationStatus,
+    WorkflowBranch, WorkflowNodeEnd, WorkflowNodeSkipped, WorkflowNodeStart, WorkflowRecovery,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::future::Future;
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -50,6 +51,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
     let p = params.episode;
     let log = p.log.clone();
     let text = p.start.task.clone();
+    let runtime_build = p.start.runtime.build.clone();
     if log.next_seq() == 0 {
         log.append(EventData::EpisodeStart(p.start))?;
         let content = vec![ContentBlock::Text { text: text.clone() }];
@@ -70,6 +72,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
         stop: p.stop,
         spawner: params.spawner,
         program: p.program,
+        runtime_build,
         task,
         step: AtomicU32::new(0),
         header: Mutex::new(None),
@@ -97,6 +100,9 @@ struct Shared {
     stop: watch::Receiver<Option<String>>,
     spawner: Arc<dyn Spawner>,
     program: Program,
+    /// `episode/start.runtime.build`, which a `verification/result` records
+    /// as the identity of a built-in or host verifier.
+    runtime_build: String,
     /// The invocation task as the value of the `task` source, at every depth.
     task: Produced,
     /// Counts firings, verifications, and recovery requests; a recovery
@@ -194,6 +200,19 @@ fn classify_tool(value: ToolValue, configured: bool) -> Output {
         Some(outcome) => Err(Trouble::settled(outcome)),
         None => Err(Trouble::recoverable("tool-error", rendered.clone(), Outcome::Failed { error: rendered })),
     }
+}
+
+/// The `seq` of the last accepted `verification/result` in a child
+/// episode's log: the evidence a `skip_when_verified` guard reads for a
+/// model node whose program declares `done_when.verify`. `None` when the
+/// log cannot be read or holds no accepted run, and the guarded node then
+/// fires as it would without the guard.
+fn accepted_in_child(dir: &Path) -> Option<u64> {
+    let events = foe_log::fold::read_all(dir).ok()?;
+    events.iter().rev().find_map(|e| match &e.data {
+        EventData::VerificationResult(v) if v.status == VerificationStatus::Accepted => Some(e.seq),
+        _ => None,
+    })
 }
 
 /// The text successors of a node receive: a string as itself, anything
@@ -371,7 +390,24 @@ impl Executor {
                 return Ok(Outcome::Exhausted { limit });
             }
             let mut deferred = false;
+            let mut skipped = false;
             for name in self.sched.ready() {
+                // The guard: a node whose `skip_when_verified` names a node
+                // with an accepted verification does not fire. On every
+                // other path the node fires exactly as it would without the
+                // guard. The runtime evaluates it from the log's evidence
+                // alone; the model makes no choice here.
+                let guard = self.sched.nodes[&name]
+                    .skip_when_verified
+                    .clone()
+                    .and_then(|target| self.sched.state[&target].accepted.map(|seq| (target, seq)));
+                if let Some((target, seq)) = guard {
+                    if let Some(outcome) = self.skip(&name, &target, seq).await? {
+                        return Ok(outcome);
+                    }
+                    skipped = true;
+                    continue;
+                }
                 let node = &self.sched.nodes[&name];
                 let bound = node.max_fires.unwrap_or(1);
                 if self.sched.state[&name].fires >= bound {
@@ -399,6 +435,11 @@ impl Executor {
                 self.launch(&name, permit)?;
             }
             if self.tasks.is_empty() {
+                // A skip refreshed its successors, so the ready set has
+                // moved on even though nothing is running.
+                if skipped {
+                    continue;
+                }
                 if deferred {
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                     continue;
@@ -487,6 +528,7 @@ impl Executor {
                 }
             })
         };
+        self.sched.state.get_mut(name).expect("a known node").child_id = child_id.clone();
         self.log(EventData::WorkflowNodeStart(WorkflowNodeStart { node: full, fire, inputs: input_seqs, child_id }))?;
         let name = name.to_string();
         self.tasks.spawn(async move { Fired { node: name, fire, started, result: task.await } });
@@ -512,7 +554,10 @@ impl Executor {
         self.log(EventData::WorkflowNodeEnd(end))
     }
 
-    async fn verify_with(&self, verifier: &str, value: &Value) -> Result<Vec<String>, RuntimeError> {
+    /// One authoritative verifier invocation over a node's or the terminal
+    /// value, recorded as a `verification/result` with the verification
+    /// step as its context. Returns the findings and the event's `seq`.
+    async fn verify_with(&self, verifier: &str, value: &Value) -> Result<(Vec<String>, u64), RuntimeError> {
         let sh = &self.shared;
         let serial = sh.registry.effect(verifier).is_some_and(|effect| !effect.concurrent());
         let _permit = if serial {
@@ -520,10 +565,19 @@ impl Executor {
         } else {
             None
         };
-        sh.registry
-            .verify_with(verifier, &sh.handles, value, self.next_step(), sh.log.dir().join("spill"), self.deadline())
-            .await
-            .map_err(RuntimeError::Protocol)
+        let (judged, seq) = verify_recorded(
+            &sh.log,
+            &sh.registry,
+            &sh.handles,
+            &sh.runtime_build,
+            verifier,
+            self.next_step(),
+            value,
+            sh.log.dir().join("spill"),
+            self.deadline(),
+        )
+        .await?;
+        Ok((judged.map_err(RuntimeError::Protocol)?, seq))
     }
 
     /// Verifies, records, and propagates a finished firing. `Some` ends the episode.
@@ -538,9 +592,17 @@ impl Executor {
             Ok(produced) => produced,
             Err(trouble) => return self.trouble(&name, fire, trouble).await,
         };
+        // A model node whose program declares `done_when.verify` completed
+        // only through an acceptance its own loop recorded; the guard's
+        // evidence is that event in the child episode's log.
+        if node.model.as_ref().and_then(|m| m.done_when.as_ref()).is_some_and(|d| d.verify.is_some()) {
+            let children = self.shared.log.dir().join("children");
+            let state = self.sched.state.get_mut(&name).expect("a known node");
+            state.accepted = state.child_id.as_deref().and_then(|child| accepted_in_child(&children.join(child)));
+        }
         let result = Ok((value.clone(), rendered.clone()));
         if let Some(verifier) = &node.verify {
-            let findings = self.verify_with(verifier, &value).await?;
+            let (findings, verified_seq) = self.verify_with(verifier, &value).await?;
             if !findings.is_empty() {
                 let error = format!("`{verifier}` reported {} finding(s)", findings.len());
                 self.node_end(&name, fire, started, &result, Some(error))?;
@@ -555,6 +617,7 @@ impl Executor {
                 let outcome = Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, message };
                 return self.trouble(&name, fire, Trouble::findings("verify-findings", findings, outcome)).await;
             }
+            self.sched.state.get_mut(&name).expect("a known node").accepted = Some(verified_seq);
         }
         let label = value.get("branch").and_then(Value::as_str).filter(|l| node.branches.contains_key(*l));
         if !node.branches.is_empty() && label.is_none() {
@@ -567,6 +630,30 @@ impl Executor {
         let label = label.map(str::to_string);
         let event = self.node_end(&name, fire, started, &result, None)?;
         self.produce(&name, fire, Produced { value, rendered, seq: event.seq }, label).await
+    }
+
+    /// Applies a satisfied `skip_when_verified` guard: the node does not
+    /// fire. It records `workflow/node-skipped` and contributes the named
+    /// node's value to its successors through the ordinary propagation
+    /// path, so a terminal node completes the workflow with that value and
+    /// the episode's `done_when`, when declared, still applies to it.
+    async fn skip(&mut self, name: &str, target: &str, verification_seq: u64) -> Result<Option<Outcome>, RuntimeError> {
+        let node = self.sched.nodes[name].clone();
+        let carried = self.sched.state[target].value.clone().expect("an accepted node produced a value");
+        let event = self.log(EventData::WorkflowNodeSkipped(WorkflowNodeSkipped {
+            node: self.full(name),
+            verified_by: self.full(target),
+            verification_seq,
+        }))?;
+        self.sched.skip(name);
+        let label = carried
+            .value
+            .get("branch")
+            .and_then(Value::as_str)
+            .filter(|l| node.branches.contains_key(*l))
+            .map(str::to_string);
+        let produced = Produced { value: carried.value, rendered: carried.rendered, seq: event.seq };
+        self.produce(name, 0, produced, label).await
     }
 
     /// Propagates a value along the admitted edges and completes the
@@ -608,7 +695,7 @@ impl Executor {
             findings.push(format!("the terminal value does not conform to done_when.returns: {reason}"));
         }
         if let (true, Some(verifier)) = (findings.is_empty(), &done.verify) {
-            findings = self.verify_with(verifier, &value).await?;
+            (findings, _) = self.verify_with(verifier, &value).await?;
         }
         if findings.is_empty() {
             return Ok(Some(Outcome::Completed { value }));

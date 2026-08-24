@@ -606,6 +606,11 @@ fn every_event_variant_round_trips() {
             note: None,
             intervention: 1,
         }),
+        EventData::WorkflowNodeSkipped(WorkflowNodeSkipped {
+            node: "audit".into(),
+            verified_by: "derive".into(),
+            verification_seq: 9,
+        }),
         EventData::VerificationResult(VerificationResult {
             step: 3,
             tool: "check".into(),
