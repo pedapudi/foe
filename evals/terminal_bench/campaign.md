@@ -149,7 +149,7 @@ and repair allowances are added to the implementation allowance.
 
 ## Execution sequence
 
-1. Run deterministic capability probes in a pinned task container. Record harness support before spending model requests.
+1. Run deterministic capability probes in every selected task container before its first provider request. Keep each report scoped to its exact dataset task and image.
 2. Run the local micro evaluation and repository tests. Correct runtime contract failures before benchmark work.
 3. Run one Luna `low` attempt on capability-search tasks when a cheap trajectory can reveal obvious tool or adapter failures.
 4. Run one Sol `low` attempt on the remaining capability-search tasks. Run Sol `xhigh` only on Sol `low` failures.
@@ -237,3 +237,5 @@ The first probe assessment accepted any reported working directory. Inspection s
 The adapter now queries the container's effective working directory before it writes the Foe program. That directory is the first read root. The corrected probe compares the observed `bash` directory with the recorded first read root.
 
 The retained local report is under `target/terminal-bench-capability-probes/`. Raw jobs and credentials remain outside Git.
+
+On 2026-08-24, the same probe ran in the pinned `gpt2-codegolf` image. The working directory, workspace writes, package authority, large-file operations, and timeouts passed. The standard executable-path check failed because the image did not provide both `git` and `sh` through its path. This contrast proves that a capability report cannot be generalized across task images.

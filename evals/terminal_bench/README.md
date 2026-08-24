@@ -63,7 +63,7 @@ model request:
 bazel run //evals/terminal_bench:foe-install-check
 ```
 
-## Probe the container without model spend
+## Probe each task container without model spend
 
 The deterministic capability target runs Foe in the pinned `fix-git` task
 container. It checks the executable path, working directory, process lifetime,
@@ -73,8 +73,23 @@ large-file tools, timeouts, package tooling, and terminal availability:
 bazel run //evals/terminal_bench:foe-capability-probes
 ```
 
+Task images have independent package sets and process behavior. A successful
+probe for `fix-git` does not establish capabilities for another task. Probe
+every selected task before its first provider-backed attempt:
+
+```sh
+bazel run //evals/terminal_bench:foe-capability-probes -- --task gpt2-codegolf
+```
+
 The target makes no provider request. It writes a typed report under
 `target/terminal-bench-capability-probes/`.
+
+The report describes the benchmark image as supplied. Do not install optional
+utilities to make the report pass. The coding program receives the observed
+working directory and fixed-path executable availability. A missing optional
+utility therefore changes tool selection without invalidating the benchmark.
+An installation failure or a missing task-required capability is an
+infrastructure failure and must not contribute a quality score.
 
 ## Preview and run one assessed task
 

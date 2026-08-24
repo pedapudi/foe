@@ -135,6 +135,18 @@ Every reported configuration identifies:
 - the sandbox mode and observed Landlock ABI;
 - the number of independent attempts per task.
 
+Container capability evidence applies to one exact dataset task and image.
+Evidence from one task does not establish executable availability or process
+behavior in another task. Before the first provider request for a task, the
+campaign must probe that task image or record equivalent deterministic facts.
+
+The probe records the working directory, fixed executable paths, workspace
+writes, process lifetime, timeouts, package tooling, network probes, and
+terminal availability. An absent optional utility is an image property. The
+agent must receive that fact so it can choose available tools. A missing
+task-required capability or an agent installation failure invalidates the
+trial as infrastructure evidence.
+
 The source-tree and binary values identify the evaluated pair. They do not
 establish reproducible-build provenance between the source tree and binary.
 
