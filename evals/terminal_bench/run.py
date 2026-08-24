@@ -416,7 +416,7 @@ def parser() -> argparse.ArgumentParser:
         "--unresolved-diagnosis-reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
     )
-    answer.add_argument("--unresolved-diagnosis-model-calls", type=int, default=12)
+    answer.add_argument("--unresolved-diagnosis-model-calls", type=int, default=20)
     answer.add_argument(
         "--escalation-reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
@@ -578,20 +578,10 @@ def main(argv: list[str] | None = None) -> int:
             expected_cost += diagnosis_pricing.expected_cost(
                 diagnosis_input, diagnosis_output
             )
-        diagnosis_seconds = (
-            min(300, max(60, task.seconds // 3))
-            if args.diagnosis_model is not None
-            else 0
-        )
-        escalation_seconds = (
-            min(task.seconds, max(300, task.seconds // 2))
-            if args.escalation_reasoning_effort is not None
-            else 0
-        )
+        diagnosis_seconds = task.seconds if args.diagnosis_model is not None else 0
+        escalation_seconds = task.seconds if args.escalation_reasoning_effort is not None else 0
         unresolved_diagnosis_seconds = (
-            min(300, max(60, task.seconds // 3))
-            if args.unresolved_diagnosis_reasoning_effort is not None
-            else 0
+            task.seconds if args.unresolved_diagnosis_reasoning_effort is not None else 0
         )
         plans.append(
             (

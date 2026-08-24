@@ -123,11 +123,10 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
   --confirm-spend
 ```
 
-The diagnosis allowance is added to the task's implementation allowance. The
-implementation retains its full model-call and time backstops. A diagnosis can
-use up to one-third of the implementation time, capped at 300 seconds. An early
-typed return releases the remaining work immediately. The runner prices each
-child from the model route recorded in its episode log. Omitting
+The diagnosis allowance is added to the task's implementation allowance. Each
+stage receives the task's full time backstop. An early typed return releases
+the remaining work immediately. The runner prices each child from the model
+route recorded in its episode log. Omitting
 `--diagnosis-model` preserves the single-episode coding program.
 
 A cheap diagnosis can conditionally request deeper reasoning from the primary
@@ -147,7 +146,7 @@ resolves every implementation-critical fact. Otherwise a read-only Sol
 `xhigh` episode resolves the uncertainty. A fresh Sol `low` episode performs
 the implementation on either path. The spending preview includes the maximum
 conditional path. Actual cost includes only the branch that fires. The deeper
-diagnosis has a twelve-call backstop because it may need to derive and validate
+diagnosis has a twenty-call backstop because it may need to derive and validate
 an implementation-critical fact before returning its typed report.
 
 The implementation can receive a fresh higher-reasoning repair episode while

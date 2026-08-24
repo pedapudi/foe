@@ -35,7 +35,7 @@ def build_program(
     diagnosis_reasoning_effort: str = "high",
     diagnosis_model_calls: int = 6,
     unresolved_diagnosis_reasoning_effort: str | None = None,
-    unresolved_diagnosis_model_calls: int = 12,
+    unresolved_diagnosis_model_calls: int = 20,
     escalation_reasoning_effort: str | None = None,
     escalation_model_calls: int = 0,
 ) -> dict[str, Any]:
@@ -119,18 +119,14 @@ def build_program(
             f"escalation model calls must be at least {MIN_AUXILIARY_MODEL_CALLS}"
         )
     diagnosis_calls = diagnosis_model_calls if diagnosis_model_name is not None else 0
-    diagnosis_seconds = min(300, max(60, seconds // 3)) if diagnosis_model_name is not None else 0
+    diagnosis_seconds = seconds if diagnosis_model_name is not None else 0
     unresolved_diagnosis_calls = (
         unresolved_diagnosis_model_calls
         if unresolved_diagnosis_reasoning_effort is not None
         else 0
     )
-    unresolved_diagnosis_seconds = (
-        min(300, max(60, seconds // 3))
-        if unresolved_diagnosis_reasoning_effort is not None
-        else 0
-    )
-    escalation_seconds = min(seconds, max(300, seconds // 2)) if escalation_reasoning_effort is not None else 0
+    unresolved_diagnosis_seconds = seconds if unresolved_diagnosis_reasoning_effort is not None else 0
+    escalation_seconds = seconds if escalation_reasoning_effort is not None else 0
     implementation_seconds = seconds
     implementation_calls = model_calls
     shared_grants = {"read": [working_directory, "/"], "write": ["/"]}
