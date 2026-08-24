@@ -72,8 +72,8 @@ Earlier task programs also divided a fixed root call allowance between
 diagnosis and implementation. One implementation produced an accepted
 repository on its final child call and then reported exhaustion.
 
-The evaluation adapter now gives every implementation at least 40 model calls
-and 900 seconds. Diagnosis and repair allowances are additive. Input and
+The evaluation adapter gives every implementation at least 60 model calls
+and 1,800 seconds. Diagnosis and repair allowances are additive. Input and
 output tokens are measured without hard allowances during efficacy tests.
 Eight identical calls or turns establish a loop. These settings preserve
 strict hard limits for explicit boundary tests through

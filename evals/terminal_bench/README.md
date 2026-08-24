@@ -148,7 +148,7 @@ Its allowance is additive. The implementation retains its full capacity when
 repair is enabled. A diagnosis episode can still precede both children when
 the task benefits from a cheaper model's typed analysis.
 
-The task registry uses at least 40 model calls and 900 seconds for every task.
+The task registry uses at least 60 model calls and 1,800 seconds for every task.
 These values serve only as loop and stall backstops. Actual use determines
 spend. The adapter permits eight consecutive identical tool calls or assistant
 turns before classifying a loop. The runner records actual calls, time, token

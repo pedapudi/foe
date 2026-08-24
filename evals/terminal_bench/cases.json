@@ -86,28 +86,28 @@
   },
   "tasks": {
     "adaptive-rejection-sampler": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "break-filter-js-from-html": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 1200
+      "seconds": 1800
     },
     "build-cython-ext": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "cancel-async-tasks": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 240000,
       "expected_output_tokens": 32000,
-      "seconds": 900
+      "seconds": 1800
     },
     "circuit-fibsqrt": {
       "model_calls": 60,
@@ -116,40 +116,40 @@
       "seconds": 3600
     },
     "cobol-modernization": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 300000,
       "expected_output_tokens": 40000,
-      "seconds": 900
+      "seconds": 1800
     },
     "compile-compcert": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
       "seconds": 2400
     },
     "constraints-scheduling": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 1200
+      "seconds": 1800
     },
     "custom-memory-heap-crash": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
       "seconds": 1800
     },
     "db-wal-recovery": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "distribution-search": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "dna-assembly": {
       "model_calls": 60,
@@ -164,16 +164,16 @@
       "seconds": 1800
     },
     "extract-elf": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "financial-document-processor": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "fix-ocaml-gc": {
       "model_calls": 60,
@@ -182,52 +182,52 @@
       "seconds": 3600
     },
     "git-multibranch": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 360000,
       "expected_output_tokens": 48000,
-      "seconds": 900
+      "seconds": 1800
     },
     "git-leak-recovery": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "gpt2-codegolf": {
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
-      "seconds": 900
+      "seconds": 1800
     },
     "hf-model-inference": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "fix-git": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 120000,
       "expected_output_tokens": 20000,
-      "seconds": 900
+      "seconds": 1800
     },
     "sqlite-db-truncate": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 300000,
       "expected_output_tokens": 40000,
-      "seconds": 900
+      "seconds": 1800
     },
     "sanitize-git-repo": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 300000,
       "expected_output_tokens": 40000,
-      "seconds": 900
+      "seconds": 1800
     },
     "large-scale-text-editing": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 300000,
       "expected_output_tokens": 40000,
-      "seconds": 1200
+      "seconds": 1800
     },
     "make-mips-interpreter": {
       "model_calls": 60,
@@ -245,7 +245,7 @@
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
-      "seconds": 900
+      "seconds": 1800
     },
     "password-recovery": {
       "model_calls": 60,
@@ -272,10 +272,10 @@
       "seconds": 1800
     },
     "query-optimize": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "regex-chess": {
       "model_calls": 60,
@@ -284,19 +284,19 @@
       "seconds": 3600
     },
     "regex-log": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "reshard-c4-data": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
       "seconds": 3600
     },
     "schemelike-metacircular-eval": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
       "seconds": 2400
@@ -305,7 +305,7 @@
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
-      "seconds": 900
+      "seconds": 1800
     },
     "train-fasttext": {
       "model_calls": 60,
@@ -314,16 +314,16 @@
       "seconds": 3600
     },
     "vulnerable-secret": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     },
     "write-compressor": {
-      "model_calls": 40,
+      "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 900
+      "seconds": 1800
     }
   }
 }

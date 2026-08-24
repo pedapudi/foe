@@ -135,8 +135,8 @@ The official model pages publish these rates and the long-context multipliers: [
 
 Planning token estimates provide a spend preview while ordinary development
 episodes run without token ceilings. Model calls and wall time are high
-backstops for loops and stalled tools. Every task receives at least 40 calls
-and 900 seconds. Eight identical calls or turns establish a loop. Diagnosis
+backstops for loops and stalled tools. Every task receives at least 60 calls
+and 1,800 seconds. Eight identical calls or turns establish a loop. Diagnosis
 and repair allowances are added to the implementation allowance.
 `--hard-token-limits` is reserved for explicit budget-boundary tests.
 

@@ -40,8 +40,8 @@ class CasesTest(unittest.TestCase):
             tasks["fix-git"].expected_input_tokens,
             tasks["fix-git"].expected_output_tokens,
         )
-        self.assertGreaterEqual(min(task.model_calls for task in tasks.values()), 40)
-        self.assertGreaterEqual(min(task.seconds for task in tasks.values()), 900)
+        self.assertGreaterEqual(min(task.model_calls for task in tasks.values()), 60)
+        self.assertGreaterEqual(min(task.seconds for task in tasks.values()), 1800)
         self.assertEqual(pricing["openai-codex/gpt-5.6-sol"].output_per_million, 20.0)
 
     def test_harbor_command_runs_one_task_at_a_time(self):
