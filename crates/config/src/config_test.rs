@@ -23,12 +23,14 @@ fn a_valid_document_resolves_with_canonical_paths_and_defaults() {
     std::fs::write(&exec, "#!/bin/sh\n").unwrap();
     let program = program_with(&root, |v| {
         v["grants"]["read"] = json!([root.join("link")]);
+        v["grants"]["execute"] = json!([root.join("link")]);
         v["tools"] = json!(["block", "lint"]);
         v["tool_defs"] = json!({ "lint": { "exec": exec, "description": "lints" } });
     })
     .unwrap();
     let canonical = std::fs::canonicalize(root.join("sub")).unwrap();
     assert_eq!(program.grants.read, vec![canonical.clone()]);
+    assert_eq!(program.grants.execute, vec![canonical.clone()]);
     let lint = &program.tool_defs["lint"];
     assert_eq!(lint.cwd.as_deref(), Some(canonical.as_path()), "cwd defaults to the first read root");
     assert_eq!(lint.timeout_seconds, 120);
@@ -132,6 +134,7 @@ fn every_rule_names_its_key() {
             }),
         ),
         ("grants.write[0]", Box::new(|v| v["grants"]["write"] = json!(["relative"]))),
+        ("grants.execute[0]", Box::new(|v| v["grants"]["execute"] = json!(["relative"]))),
         ("grants.spawn[0]", Box::new(|v| v["grants"]["spawn"] = json!(["ghost"]))),
         ("budget.model_calls", Box::new(|v| v["budget"]["model_calls"] = json!(0))),
         ("budget.input_tokens", Box::new(|v| v["budget"]["input_tokens"] = json!(0))),
@@ -165,6 +168,25 @@ fn every_rule_names_its_key() {
     for (key, edit) in cases {
         assert_eq!(rejected(&root, edit), key);
     }
+}
+
+#[test]
+fn a_childs_execute_grants_stay_within_its_parent() {
+    let root = tmp("config-child-execute");
+    let child = root.join("child");
+    let outside = tmp("config-child-execute-outside");
+    std::fs::create_dir_all(&child).unwrap();
+    let error = program_with(&root, |v| {
+        v["grants"]["spawn"] = json!(["kid"]);
+        v["programs"] = json!({ "kid": {
+            "name": "kid", "instructions": {"role": "work"}, "tools": ["block"],
+            "grants": {"read": [root], "execute": [outside]}, "budget": {"model_calls": 1}
+        }});
+    })
+    .unwrap_err();
+    let ConfigError::Invalid { key, rule } = error else { unreachable!() };
+    assert_eq!(key, "programs.kid.grants.execute[0]");
+    assert!(rule.contains("parent program"));
 }
 
 /// docs/workflow.md "Model nodes": a model node's program is validated like

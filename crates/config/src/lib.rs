@@ -157,6 +157,10 @@ pub struct Grants {
     pub read: Vec<PathBuf>,
     #[serde(default)]
     pub write: Vec<PathBuf>,
+    /// Files or directories that a configured executable may read and
+    /// execute when it starts a subprocess.
+    #[serde(default)]
+    pub execute: Vec<PathBuf>,
     #[serde(default)]
     pub spawn: Vec<String>,
 }

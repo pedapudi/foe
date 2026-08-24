@@ -382,7 +382,8 @@ error rather than a constraint the runtime silently drops.
 At dispatch, the runtime passes the tool only the capability handles its
 effect entitles it to. The handles are a filesystem reader holding the read
 roots open, a writer holding the write roots open, an executor bounded to the
-declared executables, and a spawner bounded to the declared child programs.
+configured executable and explicit execute grants, and a spawner bounded to
+the declared child programs.
 A tool that declares `reads` receives no writer. The reader and the writer
 hold their roots open for the episode's lifetime, so containment holds when
 an operation runs rather than when a pathname was last checked.
@@ -392,7 +393,7 @@ an operation runs rather than when a pathname was last checked.
    ──────                    ───────────────────────          ───────────────────
    read:  [/src]     ──►     read   effect=reads   ok    ──►  Reader(/src)
    write: [/scratch] ──►     edit   effect=writes  ok    ──►  Reader(/src) + Writer(/scratch)
-                             bash   effect=execs   ok    ──►  Executor(bash, env, cwd)
+   execute: [/tools] ──►     bash   effect=execs   ok    ──►  Executor(bash, env, cwd, /tools)
    spawn: []         ──►     spawn  effect=spawns  REFUSED
 ```
 
@@ -503,7 +504,7 @@ as further processes. Restrictions only narrow at each spawn.
 ```
    host            no restriction applied by foe, ever
      │
-     └─ episode    Landlock: read roots, write roots, own log dir, exec files
+     └─ episode    Landlock: read roots, write roots, execute roots, own log dir
           │        network: open when foe holds the transport; closed when the host does
           │
           ├─ tool  Landlock: subset of the episode's; network closed
@@ -513,13 +514,13 @@ as further processes. Restrictions only narrow at each spawn.
 ```
 
 On Linux with Landlock available, the runtime compiles the grants into a
-ruleset. Read roots become read rules, write roots become write rules, each
-configured executable becomes an execute rule on that exact file, and the
-episode's own log directory becomes a write rule. When the kernel supports
-it, TCP access is removed from executables, and denied accesses are captured
-from the audit log and written to the episode log as `sandbox/denied` events.
-A blocked attempt is therefore evidence in the record rather than a silent
-error.
+ruleset. Read roots become read rules, write roots become write rules, and
+execute roots become read-and-execute rules. Each configured executable
+becomes an execute rule on that exact file. The episode's log directory
+becomes a write rule. When the kernel supports it, TCP access is removed from
+executables. Denied accesses are captured from the audit log and written to
+the episode log as `sandbox/denied` events. A blocked attempt therefore
+becomes evidence in the record.
 
 `sandbox.mode` controls behavior when Landlock is unavailable. `best-effort`,
 the default, applies what the kernel supports and records which version it

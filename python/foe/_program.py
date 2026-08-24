@@ -40,10 +40,11 @@ def _absolute(key: str, path: PathLike) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Grants:
-    """What the episode may reach. Paths are absolute directory prefixes."""
+    """What the episode may reach. Every path is absolute."""
 
     read: Sequence[PathLike]
     write: Sequence[PathLike] = ()
+    execute: Sequence[PathLike] = ()
     spawn: Sequence[str] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -52,6 +53,8 @@ class Grants:
         out: dict[str, Any] = {"read": [_absolute("grants.read", p) for p in self.read]}
         if self.write:
             out["write"] = [_absolute("grants.write", p) for p in self.write]
+        if self.execute:
+            out["execute"] = [_absolute("grants.execute", p) for p in self.execute]
         if self.spawn:
             out["spawn"] = list(self.spawn)
         return out

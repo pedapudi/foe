@@ -93,6 +93,27 @@ fn executable_policy_keeps_only_its_own_file() {
     assert!(!run(&tool), "the same file is denied under a policy naming only /bin/sh");
 }
 
+/// docs/sandbox.md "Executables": an explicit execute grant remains in the
+/// narrowed policy so a shell or build tool can start a declared subprocess.
+#[test]
+fn executable_policy_keeps_explicit_subprocess_grants() {
+    let Some(s) = sandbox() else { return };
+    let dir = temp_dir("delegated-exec");
+    let helper = dir.join("true");
+    std::fs::copy("/bin/true", &helper).unwrap();
+    let episode = Policy {
+        exec: vec!["/bin/sh".into(), helper.clone()],
+        delegated_exec: vec![helper.clone()],
+        ..Policy::default()
+    };
+    let tool = episode.for_executable(Path::new("/bin/sh"), false);
+    assert_eq!(tool.exec, vec![PathBuf::from("/bin/sh"), helper.clone()]);
+    let mut cmd = Command::new("/bin/sh");
+    cmd.arg("-c").arg(helper.display().to_string()).env_clear();
+    let status = s.spawn_narrowed(&tool, cmd).unwrap().wait().unwrap();
+    assert!(status.success(), "the explicit subprocess grant survives executable narrowing");
+}
+
 #[test]
 fn tcp_connect_is_denied_from_abi_4() {
     let Some(s) = sandbox() else { return };
@@ -153,14 +174,19 @@ fn episode_policy_follows_grants_and_tool_defs() {
     let config: Config = serde_json::from_value(serde_json::json!({
         "version": 2, "name": "p", "instructions": {"r": "x"}, "tools": ["ruff"],
         "tool_defs": {"ruff": {"exec": "/usr/bin/ruff", "description": "d"}},
-        "grants": {"read": ["/src"], "write": ["/src/out"]},
+        "grants": {"read": ["/src"], "write": ["/src/out"], "execute": ["/opt/toolchain"]},
         "budget": {"model_calls": 1}, "task": "t"
     }))
     .unwrap();
     let p = Policy::for_episode(&config, Path::new("/logs/ep"));
     assert_eq!(p.read, vec![PathBuf::from("/src")]);
     assert_eq!(p.write, vec![PathBuf::from("/src/out")]);
-    assert_eq!(p.exec, vec![PathBuf::from("/usr/bin/ruff")], "the configured tool alone; no child program to start");
+    assert_eq!(p.delegated_exec, vec![PathBuf::from("/opt/toolchain")]);
+    assert_eq!(
+        p.exec,
+        vec![PathBuf::from("/usr/bin/ruff"), PathBuf::from("/opt/toolchain")],
+        "the configured tool and explicit subprocess grant; no child program to start"
+    );
     assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
     assert!(!p.connect_tcp, "an episode without a model block holds no transport");
     let resolver: Vec<PathBuf> = std::fs::canonicalize("/etc/resolv.conf").into_iter().collect();
@@ -170,7 +196,9 @@ fn episode_policy_follows_grants_and_tool_defs() {
     with_children.model = Some(foe_config::ModelConfig::new("anthropic", "m"));
     let mut p = Policy::for_episode(&with_children, Path::new("/logs/ep"));
     assert_eq!(p.read_files, resolver, "the credential file is appended by the binary after resolution");
-    assert_eq!(p.exec.last(), std::env::current_exe().ok().as_ref(), "the binary starts children");
+    if let Ok(binary) = std::env::current_exe() {
+        assert!(p.exec.contains(&binary), "the binary starts children");
+    }
     assert!(p.connect_tcp);
     p.read_files.push(PathBuf::from("/keys/anthropic"));
     let offline = p.for_executable(Path::new("/bin/sh"), false);

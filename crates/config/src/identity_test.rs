@@ -45,6 +45,8 @@ fn identity_changes_with_what_the_model_sees() {
     assert_ne!(compute(&ab, &probes, &runtime()).unwrap().hash, compute(&ba, &probes, &runtime()).unwrap().hash);
     let more_grants = program_with(&root, |v| v["grants"]["write"] = json!([])).unwrap();
     assert_ne!(compute(&more_grants, &[], &runtime()).unwrap().hash, base, "grant counts participate");
+    let execute_grant = program_with(&root, |v| v["grants"]["execute"] = json!([root])).unwrap();
+    assert_ne!(compute(&execute_grant, &[], &runtime()).unwrap().hash, base, "execute grant counts participate");
     let other_runtime = RuntimeInfo { version: "0.2.0".into(), build: "sha256:test".into() };
     assert_ne!(compute(&program(&root), &[], &other_runtime).unwrap().hash, base);
 }
