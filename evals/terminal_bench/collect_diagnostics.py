@@ -16,7 +16,14 @@ from run import read_cases
 MAX_DIAGNOSES = 24
 MAX_EVIDENCE_BYTES = 64 * 1024
 MAX_INPUT_GROWTH_LANDMARKS = 4
-EVALUATION_FIELDS = ("dataset", "label", "model", "reasoning_effort", "token_limits")
+EVALUATION_FIELDS = (
+    "dataset",
+    "label",
+    "model",
+    "reasoning_effort",
+    "service_tier",
+    "token_limits",
+)
 
 
 def input_growth_landmarks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -45,14 +52,69 @@ def input_growth_landmarks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{**rows[index], "input_growth": deltas[index]} for index in selected]
 
 
-def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[str, str]:
-    """Return the run labels required to compare trajectory outcomes."""
-    answer = {}
+def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[str, Any]:
+    """Return the complete execution setting required for causal comparison."""
+    answer: dict[str, Any] = {}
     for field in EVALUATION_FIELDS:
         value = manifest.get(field)
         if not isinstance(value, str) or not value:
             raise ValueError(f"Terminal-Bench manifest {manifest_path} has no string `{field}`")
         answer[field] = value
+    configuration: dict[str, Any] = {
+        "service_tier": answer["service_tier"],
+        "token_policy": answer["token_limits"],
+        "implementation": {
+            "model": answer["model"],
+            "reasoning_effort": answer["reasoning_effort"],
+        }
+    }
+    optional_stages = {
+        "diagnosis": (
+            ("model", "diagnosis_model", str),
+            ("reasoning_effort", "diagnosis_reasoning_effort", str),
+            ("model_calls", "diagnosis_model_calls", int),
+        ),
+        "unresolved_diagnosis": (
+            ("reasoning_effort", "unresolved_diagnosis_reasoning_effort", str),
+            ("model_calls", "unresolved_diagnosis_model_calls", int),
+        ),
+        "independent_audit": (
+            ("reasoning_effort", "escalation_reasoning_effort", str),
+            ("model_calls", "escalation_model_calls", int),
+        ),
+    }
+    for stage, fields in optional_stages.items():
+        values = [manifest.get(source) for _, source, _ in fields]
+        if all(value is None for value in values):
+            continue
+        if any(value is None for value in values):
+            raise ValueError(
+                f"Terminal-Bench manifest {manifest_path} has incomplete `{stage}` settings"
+            )
+        stage_value = {}
+        for target, source, expected in fields:
+            value = manifest.get(source)
+            if expected is int:
+                valid = type(value) is int and value > 0
+            else:
+                valid = isinstance(value, expected) and bool(value)
+            if not valid:
+                raise ValueError(
+                    f"Terminal-Bench manifest {manifest_path} has invalid `{source}`"
+                )
+            stage_value[target] = value
+        if stage in ("independent_audit", "unresolved_diagnosis"):
+            stage_value["model"] = answer["model"]
+        configuration[stage] = stage_value
+    checker = manifest.get("completion_checker")
+    if checker is not None:
+        digest = checker.get("sha256") if isinstance(checker, dict) else None
+        if not isinstance(digest, str) or not digest:
+            raise ValueError(
+                f"Terminal-Bench manifest {manifest_path} has invalid `completion_checker`"
+            )
+        configuration["completion_verifier"] = {"sha256": digest}
+    answer["execution_configuration"] = configuration
     return answer
 
 
@@ -110,22 +172,23 @@ def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dic
 
 
 def evaluation_summary(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Summarize outcomes by task, model, and reasoning setting."""
-    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    """Summarize outcomes by task and complete execution configuration."""
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
     for report in reports:
         evaluation = report["evaluation"]
         task = report.get("task")
+        configuration = evaluation["execution_configuration"]
         key = (
             task if isinstance(task, str) and task else "unknown",
-            evaluation["model"],
-            evaluation["reasoning_effort"],
+            json.dumps(configuration, sort_keys=True, separators=(",", ":")),
         )
         group = groups.setdefault(
             key,
             {
                 "task": key[0],
-                "model": key[1],
-                "reasoning_effort": key[2],
+                "model": evaluation["model"],
+                "reasoning_effort": evaluation["reasoning_effort"],
+                "execution_configuration": configuration,
                 "attempts": 0,
                 "verified_successes": 0,
                 "artifact_outcome_mismatches": 0,

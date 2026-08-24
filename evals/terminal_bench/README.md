@@ -351,15 +351,18 @@ bazel run //evals/terminal_bench:collect-diagnostics -- \
   --output "$PWD/target/foe-trajectory-evidence.json"
 ```
 
-The collector labels every diagnosis with its dataset, run label, model, and
-reasoning setting. It groups verified results by task and model setting so a
-diagnosis node can compare failed and successful configurations. The file
-keeps up to four input-growth landmarks and three entries from each ranked
-result list. Input growth resets at each episode boundary. The four-landmark
-limit applies to the complete episode tree. The collector accepts at most 24
-diagnoses and 64 KiB of encoded evidence. It accepts only development and
-opened capability-search tasks from `cases.json`. Confirmation, calibration,
-and calibration-holdout evidence remains unavailable to self-improvement.
+The collector labels every diagnosis with its dataset, run label, token
+policy, service tier, and complete execution configuration. The configuration
+identifies diagnosis, unresolved-diagnosis, implementation, independent-audit,
+and completion-verifier stages when present. It groups verified results by
+task and complete configuration so a diagnosis node can
+compare failed and successful mechanisms. The file keeps up to four
+input-growth landmarks and three entries from each ranked result list. Input
+growth resets at each episode boundary. The four-landmark limit applies to the
+complete episode tree. The collector accepts at most 24 diagnoses and 64 KiB
+of encoded evidence. It accepts only development and opened capability-search
+tasks from `cases.json`. Confirmation, calibration, and calibration-holdout
+evidence remains unavailable to self-improvement.
 
 Create a clean candidate worktree at the evaluated commit. Run the
 self-improvement workflow from that worktree:

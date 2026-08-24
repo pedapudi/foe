@@ -251,7 +251,12 @@ routes, reasoning settings, task allowances, token policy, or task selection.
 Its verifier uses a pinned Cargo binary. The verifier runs formatting,
 workspace tests, clippy, and line-budget checks.
 
-The evidence file names the evaluated Git tree and Foe binary digest. It labels every trajectory with the run and model setting that produced it. The workflow refuses a source or binary mismatch before making a model request. The candidate checker requires a Rust implementation change, a Rust regression test, and an affected specification.
+The evidence file names the evaluated Git tree and Foe binary digest. It
+labels every trajectory with the run, token policy, service tier, and complete
+execution configuration that produced it. The workflow refuses a source or
+binary mismatch before making a model request. The candidate checker requires
+a Rust implementation change, a Rust regression test, and an affected
+specification.
 
 The workflow is one candidate generator. The runner validates changed files again after the episode. Its result binds the base Git tree and changed file content into one candidate artifact digest. A validated artifact survives an exhausted reporting outcome. Candidate promotion remains an external evaluation decision. A failed artifact sets `direct_implementation_required`. The campaign then proceeds with a direct implementation.
 

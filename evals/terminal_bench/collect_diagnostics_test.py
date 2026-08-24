@@ -7,7 +7,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from collect_diagnostics import collect, input_growth_landmarks
+from collect_diagnostics import (
+    EVALUATION_FIELDS,
+    collect,
+    evaluation_metadata,
+    evaluation_summary,
+    input_growth_landmarks,
+)
 
 
 class CollectDiagnosticsTest(unittest.TestCase):
@@ -56,7 +62,16 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     "label": "development",
                     "model": "openai-codex/gpt-5.6-luna",
                     "reasoning_effort": "low",
+                    "service_tier": "default",
                     "token_limits": "measurement_only",
+                    "diagnosis_model": None,
+                    "diagnosis_reasoning_effort": None,
+                    "diagnosis_model_calls": None,
+                    "unresolved_diagnosis_reasoning_effort": None,
+                    "unresolved_diagnosis_model_calls": None,
+                    "escalation_reasoning_effort": None,
+                    "escalation_model_calls": None,
+                    "completion_checker": None,
                 }
             ),
             encoding="utf-8",
@@ -128,6 +143,14 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     "task": "terminal-bench/example",
                     "model": "openai-codex/gpt-5.6-luna",
                     "reasoning_effort": "low",
+                    "execution_configuration": {
+                        "service_tier": "default",
+                        "token_policy": "measurement_only",
+                        "implementation": {
+                            "model": "openai-codex/gpt-5.6-luna",
+                            "reasoning_effort": "low",
+                        }
+                    },
                     "attempts": 1,
                     "verified_successes": 1,
                     "artifact_outcome_mismatches": 0,
@@ -161,7 +184,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
         self.assertLessEqual(len(landmarks), 4)
 
     def test_collector_rejects_nullable_evaluation_metadata(self):
-        for field in ("dataset", "label", "model", "reasoning_effort", "token_limits"):
+        for field in EVALUATION_FIELDS:
             with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
                 source, binary, run, _ = self.fixture(Path(directory))
                 manifest = run / "campaign.json"
@@ -170,6 +193,64 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 manifest.write_text(json.dumps(value), encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, f"string `{field}`"):
                     collect(source, binary, [run], {"example"})
+
+    def test_summary_keeps_an_independent_audit_separate_from_a_bare_episode(self):
+        manifest = {
+            "dataset": "terminal-bench/example@1",
+            "label": "bare",
+            "model": "openai-codex/gpt-5.6-sol",
+            "reasoning_effort": "low",
+            "service_tier": "default",
+            "token_limits": "measurement_only",
+            "diagnosis_model": None,
+            "diagnosis_reasoning_effort": None,
+            "diagnosis_model_calls": None,
+            "unresolved_diagnosis_reasoning_effort": None,
+            "unresolved_diagnosis_model_calls": None,
+            "escalation_reasoning_effort": None,
+            "escalation_model_calls": None,
+            "completion_checker": None,
+        }
+        bare = evaluation_metadata(manifest, Path("bare/campaign.json"))
+        manifest.update(
+            {
+                "label": "independent-audit",
+                "escalation_reasoning_effort": "high",
+                "escalation_model_calls": 60,
+            }
+        )
+        audit = evaluation_metadata(manifest, Path("audit/campaign.json"))
+        reports = [
+            {
+                "task": "terminal-bench/example",
+                "evaluation": bare,
+                "verifier_reward": 0.0,
+                "usage": {"model_calls": 3, "estimated_cost_usd": 0.1},
+            },
+            {
+                "task": "terminal-bench/example",
+                "evaluation": audit,
+                "verifier_reward": 1.0,
+                "usage": {"model_calls": 8, "estimated_cost_usd": 0.3},
+            },
+        ]
+        summary = evaluation_summary(reports)
+        self.assertEqual(len(summary), 2)
+        bare_summary = next(
+            row for row in summary if "independent_audit" not in row["execution_configuration"]
+        )
+        audit_summary = next(
+            row for row in summary if "independent_audit" in row["execution_configuration"]
+        )
+        self.assertEqual(bare_summary["verified_successes"], 0)
+        self.assertEqual(
+            audit_summary["execution_configuration"]["independent_audit"],
+            {
+                "model": "openai-codex/gpt-5.6-sol",
+                "reasoning_effort": "high",
+                "model_calls": 60,
+            },
+        )
 
     def test_collector_rejects_held_back_tasks(self):
         with tempfile.TemporaryDirectory() as directory:
