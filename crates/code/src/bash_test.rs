@@ -31,7 +31,7 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert_eq!(req.timeout, Duration::from_secs(BASH_DEFAULT_TIMEOUT_SECS));
     assert!(req.stdin.is_none());
     assert!(!req.network);
-    assert_eq!(req.env["PATH"], "/usr/local/bin:/usr/bin:/bin");
+    assert_eq!(req.env["PATH"], "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
     assert_eq!(req.env["HOME"], fx.root().display().to_string());
 }
 

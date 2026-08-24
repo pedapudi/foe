@@ -217,8 +217,9 @@ context; the rendered form is a one-line summary followed by that diff.
 
 The tool runs `/bin/bash -c COMMAND` through the executor with the first
 read root as the working directory and a fixed environment: `PATH` is
-`/usr/local/bin:/usr/bin:/bin`, `HOME` is the working directory, and `LANG`
-is `C.UTF-8`. Standard input is `/dev/null`, and the network is closed.
+`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, `HOME` is
+the working directory, and `LANG` is `C.UTF-8`. Standard input is `/dev/null`,
+and the network is closed.
 `timeout_seconds` defaults to 120 and is reduced to the episode's remaining
 wall-clock budget when that is smaller.
 
