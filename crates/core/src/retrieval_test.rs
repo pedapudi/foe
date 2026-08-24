@@ -60,6 +60,7 @@ fn context(spill_dir: &Path, step: u32) -> CallCtx {
         writer: None,
         executor: None,
         spawner: None,
+        sessions: None,
         spill_dir: spill_dir.into(),
         deadline: None,
     }

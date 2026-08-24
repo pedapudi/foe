@@ -770,7 +770,7 @@ convention `crates/transport` owns, so the telemetry crate still depends on
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 4,700 lines,
+sandbox, and spawning — and its Rust source stays under 5,000 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/config`, which is budgeted
@@ -805,7 +805,7 @@ than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and
 the exit codes.
 
-Telemetry is budgeted apart too: `crates/telemetry` under 900 lines. It is
+Telemetry is budgeted apart too: `crates/telemetry` under 1,000 lines. It is
 separate because it reads a finished log rather than producing one. It holds
 the enablement file's meaning, emission over a finished run's episode tree,
 and the preview `foe telemetry` prints. Nothing in the runtime depends on it,

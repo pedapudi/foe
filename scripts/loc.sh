@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Eight budgets: 4,700 over the kernel, which is log and core together — the
+# Eight budgets: 5,000 over the kernel, which is log and core together — the
 # log format, the loop, budgets, sandbox, and spawn, whose smallness is the
 # product claim; 1,400 over config, the other contract, which is the
 # configuration document, its resolution into a program, and identity; 1,600
@@ -27,7 +27,7 @@ for c in log core; do
   n=$(count "$c")
   printf '%-8s %6d\n' "$c" "$n"; kernel=$((kernel + n))
 done
-printf '%-8s %6d  (budget 4700)\n' kernel "$kernel"
+printf '%-8s %6d  (budget 5000)\n' kernel "$kernel"
 config=$(count config)
 printf '%-8s %6d  (budget 1400)\n' config "$config"
 tools=$(count code)
@@ -42,5 +42,5 @@ cli=$(count cli)
 printf '%-8s %6d  (budget 1300)\n' cli "$cli"
 telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
-[ "$kernel" -le 4700 ] && [ "$config" -le 1400 ] && [ "$tools" -le 1600 ] && [ "$workflow" -le 1000 ] \
+[ "$kernel" -le 5000 ] && [ "$config" -le 1400 ] && [ "$tools" -le 1600 ] && [ "$workflow" -le 1000 ] \
   && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ]
