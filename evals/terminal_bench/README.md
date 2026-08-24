@@ -104,10 +104,10 @@ infrastructure failure and must not contribute a quality score.
 ## Validate verifier-governed completion without model spend
 
 Three modified scenarios expose a public, read-only checker as a configured
-tool. Each coding node combines a typed return with `done_when.verify`. Foe
-therefore rejects a completion claim when the checker reports findings. The
-model receives those findings and can continue within the node's remaining
-allowance.
+tool. One Sol-low coding episode combines a typed return with
+`done_when.verify`. Foe rejects a completion claim when the checker reports
+findings. The model receives those findings and can continue within the
+episode's remaining allowance.
 
 The public checker provides development feedback. Harbor still runs the
 unaltered task-owned Terminal-Bench verifier after Foe exits. Only the
