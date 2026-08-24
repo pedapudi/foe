@@ -72,6 +72,19 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     "task": "terminal-bench/example",
                     "verifier_reward": 1.0,
                     "artifact_outcome_mismatch": False,
+                    "verifier_feedback": {
+                        "failure_classes": [],
+                        "summary": {"tests": 1, "passed": 1, "failed": 0},
+                    },
+                    "verification_timeline": [
+                        {
+                            "episode_id": "ep_root",
+                            "last_edit_seq": 7,
+                            "results": [{"seq": 9, "tool": "bash", "exit_code": 0}],
+                            "omitted_results": 0,
+                            "outcome": {"kind": "completed"},
+                        }
+                    ],
                     "usage": {
                         "model_calls": 3,
                         "estimated_cost_usd": 0.01,
@@ -90,14 +103,19 @@ class CollectDiagnosticsTest(unittest.TestCase):
     def test_collector_binds_diagnostics_to_source_and_binary(self):
         with tempfile.TemporaryDirectory() as directory:
             source, binary, run, identity = self.fixture(Path(directory))
-            report = collect(source, binary, [run])
+            report = collect(source, binary, [run], {"example"})
         self.assertEqual(report["evaluated_foe"], identity)
-        self.assertEqual(report["schema_version"], 2)
+        self.assertEqual(report["schema_version"], 3)
         diagnosis = report["trajectory_diagnostics"][0]
         self.assertEqual(diagnosis["task"], "terminal-bench/example")
         self.assertEqual(diagnosis["evaluation"]["label"], "development")
         self.assertEqual(diagnosis["evaluation"]["reasoning_effort"], "low")
         self.assertNotIn("per_request", diagnosis["usage"])
+        self.assertEqual(diagnosis["verifier_feedback"]["summary"]["passed"], 1)
+        self.assertEqual(
+            diagnosis["verification_timeline"][0]["results"][0]["exit_code"],
+            0,
+        )
         self.assertEqual([row["seq"] for row in diagnosis["input_growth_landmarks"]], [1, 5, 9])
         self.assertEqual(
             {row["episode_id"] for row in diagnosis["input_growth_landmarks"]},
@@ -127,7 +145,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
             report["evidence_identity"]["runtime_build"] = "sha256:" + "0" * 64
             path.write_text(json.dumps(report), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "different runtime identity"):
-                collect(source, binary, [run])
+                collect(source, binary, [run], {"example"})
 
     def test_input_growth_resets_when_a_second_child_starts_lower(self):
         rows = [
@@ -151,7 +169,13 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 value[field] = None
                 manifest.write_text(json.dumps(value), encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, f"string `{field}`"):
-                    collect(source, binary, [run])
+                    collect(source, binary, [run], {"example"})
+
+    def test_collector_rejects_held_back_tasks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, binary, run, _ = self.fixture(Path(directory))
+            with self.assertRaisesRegex(ValueError, "outside development evidence"):
+                collect(source, binary, [run], set())
 
 
 if __name__ == "__main__":

@@ -216,7 +216,8 @@ and success criterion.
 
 Every completed trial contains `agent/foe-diagnostics.json`. The report names
 request growth, replayed tool results, repeated calls, failures, verifier
-outcomes, and log sequence numbers across the episode tree.
+outcomes, final post-edit tool results, bounded verifier failure classes, and
+log sequence numbers across the episode tree.
 
 Collect diagnoses from one or more retained development runs. The command
 requires a clean source tree and the exact evaluated binary:
@@ -233,7 +234,9 @@ diagnosis node can compare failed and successful configurations. The file
 keeps up to four input-growth landmarks and three entries from each ranked
 result list. Input growth resets at each episode boundary. The four-landmark
 limit applies to the complete episode tree. The collector accepts at most 24
-diagnoses and 64 KiB of encoded evidence.
+diagnoses and 64 KiB of encoded evidence. It accepts only development and
+opened capability-search tasks from `cases.json`. Confirmation, calibration,
+and calibration-holdout evidence remains unavailable to self-improvement.
 
 Create a clean candidate worktree at the evaluated commit. Run the
 self-improvement workflow from that worktree:

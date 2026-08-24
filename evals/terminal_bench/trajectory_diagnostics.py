@@ -4,10 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
+
+
+MAX_VERIFICATION_RESULTS = 8
+MAX_VERIFIER_FAILURES = 4
+MAX_EVIDENCE_TEXT = 320
 
 
 def read_event_file(path: Path) -> list[dict[str, Any]]:
@@ -47,6 +54,68 @@ def request_contains_call(request: dict[str, Any], call_id: str) -> bool:
     return False
 
 
+def bounded_text(value: Any) -> str | None:
+    """Return one bounded line."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    collapsed = " ".join(value.split())
+    return collapsed[:MAX_EVIDENCE_TEXT]
+
+
+def verifier_feedback(path: Path | None) -> dict[str, Any] | None:
+    """Return bounded failure classes from Harbor's structured verifier report."""
+    if path is None:
+        return None
+    report_path = path.parent / "verifier" / "ctrf.json"
+    if not report_path.is_file():
+        return None
+    encoded = report_path.read_bytes()
+    value = json.loads(encoded)
+    results = value.get("results") if isinstance(value, dict) else None
+    if not isinstance(results, dict):
+        raise ValueError(f"verifier report has no object `results`: {report_path}")
+    summary = results.get("summary")
+    summary = summary if isinstance(summary, dict) else {}
+    tests = results.get("tests")
+    tests = tests if isinstance(tests, list) else []
+    failed_tests = [
+        test
+        for test in tests
+        if isinstance(test, dict) and test.get("status") not in ("passed", "skipped")
+    ]
+    failures = []
+    failure_classes = set()
+    for test in failed_tests:
+        trace = test.get("trace") if isinstance(test.get("trace"), str) else ""
+        classes = re.findall(r"\b([A-Za-z][A-Za-z0-9_.]*(?:Error|Exception))\b", trace)
+        failure_class = classes[-1] if classes else None
+        if failure_class:
+            failure_classes.add(failure_class)
+        failures.append(
+            {
+                "status": test.get("status"),
+                "raw_status": test.get("raw_status"),
+                "failure_class": failure_class,
+                "message": bounded_text(test.get("message")),
+            }
+        )
+        if len(failures) == MAX_VERIFIER_FAILURES:
+            break
+    counts = {
+        key: summary.get(key)
+        for key in ("tests", "passed", "failed", "skipped", "pending", "other")
+        if isinstance(summary.get(key), int)
+    }
+    return {
+        "source": "verifier/ctrf.json",
+        "sha256": "sha256:" + hashlib.sha256(encoded).hexdigest(),
+        "summary": counts,
+        "failure_classes": sorted(failure_classes),
+        "failures": failures,
+        "omitted_failures": max(0, len(failed_tests) - len(failures)),
+    }
+
+
 def trial_facts(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {
@@ -55,6 +124,7 @@ def trial_facts(path: Path | None) -> dict[str, Any]:
             "reward": None,
             "error": None,
             "estimated_cost_usd": None,
+            "verifier_feedback": None,
         }
     value = json.loads(path.read_text(encoding="utf-8"))
     verifier = value.get("verifier_result")
@@ -73,6 +143,50 @@ def trial_facts(path: Path | None) -> dict[str, Any]:
         "estimated_cost_usd": (
             estimated_cost if isinstance(estimated_cost, (int, float)) else None
         ),
+        "verifier_feedback": verifier_feedback(path),
+    }
+
+
+def verification_timeline(
+    episode_id: str,
+    results: list[dict[str, Any]],
+    outcome: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Keep the final edit and bounded results that followed it."""
+    last_edit = max(
+        (index for index, row in enumerate(results) if row.get("tool") == "edit"),
+        default=None,
+    )
+    if last_edit is None:
+        selected = results[-MAX_VERIFICATION_RESULTS:]
+        omitted = max(0, len(results) - len(selected))
+        last_edit_seq = None
+    else:
+        after_edit = results[last_edit:]
+        selected = (
+            after_edit
+            if len(after_edit) <= MAX_VERIFICATION_RESULTS
+            else [after_edit[0], *after_edit[-(MAX_VERIFICATION_RESULTS - 1) :]]
+        )
+        omitted = max(0, len(after_edit) - len(selected))
+        last_edit_seq = results[last_edit].get("seq")
+    fields = (
+        "seq",
+        "step",
+        "call_id",
+        "tool",
+        "subject",
+        "is_error",
+        "exit_code",
+        "timed_out",
+        "truncated",
+    )
+    return {
+        "episode_id": episode_id,
+        "last_edit_seq": last_edit_seq,
+        "results": [{key: row.get(key) for key in fields} for row in selected],
+        "omitted_results": omitted,
+        "outcome": outcome,
     }
 
 
@@ -95,6 +209,7 @@ def diagnose_episode(
     requests_by_episode: dict[str, list[dict[str, Any]]] = {}
     messages_by_episode: dict[str, list[dict[str, Any]]] = {}
     results_by_episode: dict[str, list[dict[str, Any]]] = {}
+    outcomes_by_episode: dict[str, dict[str, Any] | None] = {}
     for path, events in tree:
         episode_starts = [event for event in events if event.get("type") == "episode/start"]
         if len(episode_starts) != 1:
@@ -110,6 +225,10 @@ def diagnose_episode(
         messages_by_episode[episode_id] = messages
         results_by_episode[episode_id] = results
         ends = [event for event in events if event.get("type") == "episode/end"]
+        episode_outcome = data(ends[-1]).get("outcome") if ends else None
+        outcomes_by_episode[episode_id] = (
+            episode_outcome if isinstance(episode_outcome, dict) else None
+        )
         program = episode_start.get("program") if isinstance(episode_start.get("program"), dict) else {}
         model = program.get("model") if isinstance(program.get("model"), dict) else {}
         episode_rows.append(
@@ -124,7 +243,7 @@ def diagnose_episode(
                 ),
                 "model_calls": len(requests),
                 "tool_results": len(results),
-                "outcome": data(ends[-1]).get("outcome") if ends else None,
+                "outcome": episode_outcome,
             }
         )
 
@@ -180,7 +299,7 @@ def diagnose_episode(
                 "step": item.get("step"),
                 "call_id": call_id,
                 "tool": item.get("name"),
-                "subject": item.get("subject"),
+                "subject": bounded_text(item.get("subject")),
                 "rendered_characters": len(rendered),
                 "canonical_characters": len(json.dumps(item.get("value"), sort_keys=True)),
                 "replayed_requests": replayed,
@@ -210,9 +329,17 @@ def diagnose_episode(
         for key, count in call_counts.most_common()
         if count > 1
     ][:top_results]
+    timeline = [
+        verification_timeline(
+            episode_id,
+            [row for row in result_rows if row["episode_id"] == episode_id],
+            outcomes_by_episode[episode_id],
+        )
+        for episode_id in results_by_episode
+    ]
     runtime = start.get("runtime") if isinstance(start.get("runtime"), dict) else {}
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "evidence_identity": {
             "program_identity": start.get("identity"),
             "runtime_build": runtime.get("build"),
@@ -224,7 +351,9 @@ def diagnose_episode(
         "verifier_reward": reward,
         "trial_error": facts["error"],
         "artifact_outcome_mismatch": mismatch,
+        "verifier_feedback": facts["verifier_feedback"],
         "episodes": episode_rows,
+        "verification_timeline": timeline,
         "usage": {
             "model_calls": sum(len(requests) for requests in requests_by_episode.values()),
             "tool_results": sum(len(results) for results in results_by_episode.values()),

@@ -128,11 +128,15 @@ sh_binary(
         "$(rootpath //:foe-portable)",
         "--source-root",
         "$(rootpath //:Cargo.toml)",
+        "--cases",
+        "$(rootpath :cases.json)",
     ],
     data = [
         "//:Cargo.toml",
         "//:foe-portable",
         "//evals/harness_bench:foe_source_identity.py",
+        "cases.json",
+        "run.py",
     ],
     visibility = ["//visibility:public"],
 )

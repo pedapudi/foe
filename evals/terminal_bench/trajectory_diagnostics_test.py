@@ -126,7 +126,7 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
             report = diagnose_episode(root, trial_result=trial)
 
         self.assertEqual(report["evidence_identity"]["runtime_build"], "sha256:runtime")
-        self.assertEqual(report["schema_version"], 2)
+        self.assertEqual(report["schema_version"], 3)
         self.assertEqual(report["usage"]["model_calls"], 3)
         self.assertEqual(report["usage"]["input_tokens"], 325)
         self.assertEqual(report["usage"]["cache_read_tokens"], 145)
@@ -137,6 +137,113 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
         self.assertEqual(report["largest_replayed_results"][0]["replayed_characters"], 16)
         self.assertEqual(report["tool_failures"][0]["exit_code"], 1)
         self.assertFalse(report["artifact_outcome_mismatch"])
+
+    def test_diagnosis_retains_successful_validation_and_bounded_verifier_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            events = [
+                {
+                    "seq": 0,
+                    "type": "episode/start",
+                    "data": {
+                        "id": "ep_failed",
+                        "identity": "sha256:program",
+                        "runtime": {"build": "sha256:runtime"},
+                    },
+                },
+                {
+                    "seq": 10,
+                    "type": "tool/result",
+                    "data": {
+                        "step": 2,
+                        "call_id": "edit_1",
+                        "name": "edit",
+                        "subject": "main.c: 1 edit",
+                        "rendered": "changed",
+                        "value": {},
+                        "is_error": False,
+                    },
+                },
+                {
+                    "seq": 20,
+                    "type": "tool/result",
+                    "data": {
+                        "step": 3,
+                        "call_id": "bash_1",
+                        "name": "bash",
+                        "subject": "compile candidate · exit 0",
+                        "rendered": "",
+                        "value": {"exit_code": 0},
+                        "is_error": False,
+                    },
+                },
+                {
+                    "seq": 30,
+                    "type": "tool/result",
+                    "data": {
+                        "step": 4,
+                        "call_id": "bash_2",
+                        "name": "bash",
+                        "subject": "run sample · exit 0",
+                        "rendered": "sample output",
+                        "value": {"exit_code": 0},
+                        "is_error": False,
+                    },
+                },
+                {
+                    "seq": 40,
+                    "type": "episode/end",
+                    "data": {"outcome": {"kind": "completed", "value": "done"}},
+                },
+            ]
+            (root / "episode.jsonl").write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n",
+                encoding="utf-8",
+            )
+            trial = root / "result.json"
+            trial.write_text(
+                json.dumps(
+                    {
+                        "task_name": "terminal-bench/example",
+                        "task_checksum": "task-sha",
+                        "verifier_result": {"rewards": {"reward": 0.0}},
+                        "exception_info": None,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            verifier = root / "verifier"
+            verifier.mkdir()
+            (verifier / "ctrf.json").write_text(
+                json.dumps(
+                    {
+                        "results": {
+                            "summary": {"tests": 1, "passed": 0, "failed": 1},
+                            "tests": [
+                                {
+                                    "status": "failed",
+                                    "raw_status": "call_failed",
+                                    "message": "The semantic assertion failed",
+                                    "trace": "AssertionError: fixture value SECRET-VALUE",
+                                }
+                            ],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = diagnose_episode(root, trial_result=trial)
+
+        timeline = report["verification_timeline"][0]
+        self.assertEqual(timeline["last_edit_seq"], 10)
+        self.assertEqual(
+            [(row["tool"], row["exit_code"]) for row in timeline["results"]],
+            [("edit", None), ("bash", 0), ("bash", 0)],
+        )
+        feedback = report["verifier_feedback"]
+        self.assertEqual(feedback["failure_classes"], ["AssertionError"])
+        self.assertEqual(feedback["summary"]["failed"], 1)
+        self.assertNotIn("SECRET-VALUE", json.dumps(feedback))
 
 
 if __name__ == "__main__":

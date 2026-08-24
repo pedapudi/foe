@@ -11,6 +11,7 @@ from typing import Any
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "harness_bench"))
 from foe_source_identity import evaluated_foe, require_evaluated_foe
+from run import read_cases
 
 MAX_DIAGNOSES = 24
 MAX_EVIDENCE_BYTES = 64 * 1024
@@ -89,7 +90,9 @@ def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dic
             "verifier_reward",
             "trial_error",
             "artifact_outcome_mismatch",
+            "verifier_feedback",
             "episodes",
+            "verification_timeline",
         )
         if key in report
     }
@@ -144,6 +147,7 @@ def collect(
     source_root: Path,
     binary: Path,
     run_dirs: list[Path],
+    eligible_tasks: set[str],
 ) -> dict[str, Any]:
     if not run_dirs:
         raise ValueError("at least one retained Terminal-Bench run is required")
@@ -166,6 +170,12 @@ def collect(
         evaluation = evaluation_metadata(manifest, manifest_path)
         for path in diagnostic_paths:
             report = json.loads(path.read_text(encoding="utf-8"))
+            task = report.get("task")
+            task_name = task.rsplit("/", 1)[-1] if isinstance(task, str) else None
+            if task_name not in eligible_tasks:
+                raise ValueError(
+                    f"trajectory diagnosis is outside development evidence: {path}"
+                )
             evidence = report.get("evidence_identity")
             if not isinstance(evidence, dict) or evidence.get("runtime_build") != identity["runtime_binary"]:
                 raise ValueError(f"trajectory diagnosis has a different runtime identity: {path}")
@@ -174,7 +184,7 @@ def collect(
                 raise ValueError(f"self-improvement evidence exceeds {MAX_DIAGNOSES} trajectory diagnoses")
         runs.append({**evaluation, "diagnoses": len(diagnostic_paths)})
     answer = {
-        "schema_version": 2,
+        "schema_version": 3,
         "evaluated_foe": identity,
         "runs": runs,
         "evaluation_summary": evaluation_summary(reports),
@@ -193,6 +203,7 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--source-root", type=Path, required=True)
     answer.add_argument("--foe", type=Path, required=True)
     answer.add_argument("--run-dir", type=Path, action="append", required=True)
+    answer.add_argument("--cases", type=Path, required=True)
     answer.add_argument("--output", type=Path, required=True)
     return answer
 
@@ -200,10 +211,13 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
+        _, groups, _, _ = read_cases(args.cases.resolve(strict=True))
+        eligible_tasks = set(groups["development"]) | set(groups["capability_search"])
         report = collect(
             args.source_root.resolve(strict=True),
             args.foe.resolve(strict=True),
             [path.resolve(strict=True) for path in args.run_dir],
+            eligible_tasks,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(

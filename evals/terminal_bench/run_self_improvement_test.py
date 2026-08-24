@@ -80,7 +80,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("explicit program", diagnosis["instructions"]["controls"])
         returns = diagnosis["done_when"]["returns"]
         self.assertIn("preserved_evaluation_controls", returns["required"])
-        self.assertIn("explicit_program_effect", returns["required"])
+        self.assertIn("causal_discriminant", returns["required"])
+        self.assertIn("falsification_condition", returns["required"])
+        self.assertIn("required_paths", returns["required"])
+        self.assertIn("runtime_activation", returns["required"])
         self.assertNotIn("implementation_files", returns["properties"])
         self.assertNotIn("model", implementation)
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
