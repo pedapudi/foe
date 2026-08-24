@@ -146,7 +146,9 @@ The Luna episode chooses direct implementation only when repository evidence
 resolves every implementation-critical fact. Otherwise a read-only Sol
 `xhigh` episode resolves the uncertainty. A fresh Sol `low` episode performs
 the implementation on either path. The spending preview includes the maximum
-conditional path. Actual cost includes only the branch that fires.
+conditional path. Actual cost includes only the branch that fires. The deeper
+diagnosis has a twelve-call backstop because it may need to derive and validate
+an implementation-critical fact before returning its typed report.
 
 The implementation can receive a fresh higher-reasoning repair episode while
 the primary implementation remains at low reasoning. The repair episode does

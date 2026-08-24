@@ -167,7 +167,7 @@ class ProgramTest(unittest.TestCase):
             diagnosis_reasoning_effort="high",
             diagnosis_model_calls=6,
             unresolved_diagnosis_reasoning_effort="xhigh",
-            unresolved_diagnosis_model_calls=6,
+            unresolved_diagnosis_model_calls=12,
         )
         nodes = program["workflow"]["nodes"]
         self.assertNotIn("implement-task", nodes)
@@ -183,7 +183,7 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(deeper["follows"], ["task", "diagnose-task"])
         self.assertEqual(deeper["model"]["model"]["model"], "gpt-5.6-sol")
         self.assertEqual(deeper["model"]["model"]["reasoning_effort"], "xhigh")
-        self.assertEqual(deeper["model"]["budget"]["model_calls"], 6)
+        self.assertEqual(deeper["model"]["budget"]["model_calls"], 12)
         self.assertIn("loop backstop", deeper["model"]["instructions"]["role"])
         self.assertNotIn("final request", deeper["model"]["instructions"]["role"])
         self.assertEqual(
@@ -201,7 +201,7 @@ class ProgramTest(unittest.TestCase):
         self.assertTrue(nodes["implement-resolved-task"]["terminal"])
         self.assertTrue(nodes["implement-after-unresolved-diagnosis"]["terminal"])
         self.assertEqual(program["budget"]["max_episodes"], 4)
-        self.assertEqual(program["budget"]["model_calls"], 72)
+        self.assertEqual(program["budget"]["model_calls"], 78)
         self.assertEqual(program["budget"]["seconds"], 2400)
 
     def test_program_rejects_tight_auxiliary_backstops(self):

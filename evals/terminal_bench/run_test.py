@@ -163,14 +163,14 @@ class CasesTest(unittest.TestCase):
             diagnosis_model_calls=6,
             diagnosis_pricing=pricing["openai-codex/gpt-5.6-luna"],
             unresolved_diagnosis_reasoning_effort="xhigh",
-            unresolved_diagnosis_model_calls=6,
+            unresolved_diagnosis_model_calls=12,
             escalation_reasoning_effort=None,
             escalation_model_calls=0,
             runtime_digest="abc123",
             pricing=pricing["openai-codex/gpt-5.6-sol"],
         )
         self.assertIn("unresolved_diagnosis_reasoning_effort=xhigh", command)
-        self.assertIn("unresolved_diagnosis_model_calls=6", command)
+        self.assertIn("unresolved_diagnosis_model_calls=12", command)
 
     def test_job_result_reports_trial_exceptions(self):
         with tempfile.TemporaryDirectory() as directory:

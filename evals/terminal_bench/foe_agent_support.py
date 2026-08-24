@@ -35,7 +35,7 @@ def build_program(
     diagnosis_reasoning_effort: str = "high",
     diagnosis_model_calls: int = 6,
     unresolved_diagnosis_reasoning_effort: str | None = None,
-    unresolved_diagnosis_model_calls: int = 6,
+    unresolved_diagnosis_model_calls: int = 12,
     escalation_reasoning_effort: str | None = None,
     escalation_model_calls: int = 0,
 ) -> dict[str, Any]:

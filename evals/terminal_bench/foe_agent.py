@@ -53,7 +53,7 @@ class FoeAgent(BaseInstalledAgent):
         diagnosis_long_context_input_multiplier: float | str | None = None,
         diagnosis_long_context_output_multiplier: float | str | None = None,
         unresolved_diagnosis_reasoning_effort: str | None = None,
-        unresolved_diagnosis_model_calls: int | str = 6,
+        unresolved_diagnosis_model_calls: int | str = 12,
         escalation_reasoning_effort: str | None = None,
         escalation_model_calls: int | str = 0,
         **kwargs: Any,
