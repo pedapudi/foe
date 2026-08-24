@@ -87,8 +87,20 @@ configuration key is reserved.
 
 Code mode lets the model write a short program that calls several tools and
 combines their results, which the runtime executes as one tool call, rather
-than issuing each call as a separate model turn. Code mode is not
-implemented. No event type or configuration key is reserved.
+than issuing each call as a separate model turn. A full design — the `code`
+built-in tool, the evaluator requirements, the log treatment, and the
+staging toward runtime tool definition — is specified in
+[code-mode.md](code-mode.md), which reserves the tool name `code`. Code
+mode is not implemented. No event type is reserved.
+
+## Lineage identity
+
+Lineage identity relates a program's states so that an improved program and
+its predecessor share a series, with every transition evidenced by the
+proposing episode's log and an admitting verifier already in the lineage.
+The design is specified in [lineage-identity.md](lineage-identity.md),
+which reserves the configuration key `lineage`. Lineage identity is not
+implemented. No event type is reserved.
 
 ## Bazel targets for the browser bundle and the Python package
 
