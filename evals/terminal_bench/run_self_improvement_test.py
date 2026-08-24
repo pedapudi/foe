@@ -89,7 +89,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
         self.assertEqual(config["model"]["reasoning_effort"], "high")
         self.assertEqual(config["model"]["service_tier"], "priority")
-        self.assertEqual(diagnosis["budget"], {"model_calls": 20, "seconds": 1800})
+        self.assertEqual(
+            diagnosis["budget"],
+            {"model_calls": 20, "seconds": 1800, "loop_threshold": 8},
+        )
         self.assertIn("four model requests as a planning target", diagnosis["instructions"]["result"])
         self.assertIn("loop backstop", diagnosis["instructions"]["result"])
         self.assertEqual(
@@ -102,6 +105,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertEqual(implementation["grants"]["execute"], ["/opt/toolchain"])
         self.assertEqual(config["task"], "Raise verified completion.")
+        self.assertEqual(config["budget"]["loop_threshold"], 8)
+        self.assertEqual(implementation["budget"]["loop_threshold"], 8)
 
     def test_program_validation_reports_construction_failure(self):
         with tempfile.TemporaryDirectory() as directory:

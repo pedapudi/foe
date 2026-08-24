@@ -295,7 +295,8 @@ cannot write evaluation code or benchmark material.
 
 The diagnosis prompt targets four requests and has a 20-call, 1,800-second
 loop backstop. The implementation has 28-call and 3,600-second safety
-backstops.
+backstops. Each model child ends as blocked after eight consecutive identical
+tool calls or assistant turns.
 
 The lower-cost evaluated configuration is the candidate configuration. The
 diagnosis preserves its model route, reasoning effort, task allowances, token

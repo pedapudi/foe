@@ -26,6 +26,7 @@ IMPLEMENTATION_CALLS = 28
 DIAGNOSIS_SECONDS = 1_800
 IMPLEMENTATION_SECONDS = 3_600
 SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS
+LOOP_THRESHOLD = 8
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
 ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel.lock")
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
@@ -280,7 +281,11 @@ def build_config(
         },
         "tools": ["block"],
         "grants": {"read": diagnosis_read_roots},
-        "budget": {"model_calls": DIAGNOSIS_CALLS, "seconds": DIAGNOSIS_SECONDS},
+        "budget": {
+            "model_calls": DIAGNOSIS_CALLS,
+            "seconds": DIAGNOSIS_SECONDS,
+            "loop_threshold": LOOP_THRESHOLD,
+        },
         "model": diagnosis_model,
         "done_when": {
             "returns": {
@@ -353,7 +358,11 @@ def build_config(
         "tools": [*CODING_TOOLS, "check"],
         "tool_defs": {"check": check_tool},
         "grants": {"read": implementation_read_roots, "write": write_roots, "execute": execute},
-        "budget": {"model_calls": IMPLEMENTATION_CALLS, "seconds": IMPLEMENTATION_SECONDS},
+        "budget": {
+            "model_calls": IMPLEMENTATION_CALLS,
+            "seconds": IMPLEMENTATION_SECONDS,
+            "loop_threshold": LOOP_THRESHOLD,
+        },
         "done_when": {"verify": "check", "retries": 2},
     }
     return {
@@ -375,7 +384,7 @@ def build_config(
             "max_depth": 1,
             "max_episodes": 3,
             "max_concurrent": 1,
-            "loop_threshold": 6,
+            "loop_threshold": LOOP_THRESHOLD,
         },
         "workflow": {
             "nodes": {
