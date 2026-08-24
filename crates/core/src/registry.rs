@@ -96,15 +96,6 @@ impl Registry {
         self.specs().map(ToolSpec::schema).collect()
     }
 
-    /// Model-facing schemas for one request. `retrieve` remains hidden until
-    /// the episode contains archived content that it can return.
-    pub fn request_schemas(&self, archived_content_available: bool) -> Vec<foe_log::ToolSchema> {
-        self.specs()
-            .filter(|spec| archived_content_available || spec.name != crate::retrieval::NAME)
-            .map(ToolSpec::schema)
-            .collect()
-    }
-
     pub fn source(&self, name: &str) -> Option<Source> {
         self.entry(name).map(|e| e.source)
     }

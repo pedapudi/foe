@@ -664,9 +664,10 @@ async fn a_shortened_result_records_its_complete_rendering_first() {
             _ => None,
         })
         .collect();
-    assert_eq!(headers.len(), 2);
-    assert!(!headers[0].tools.iter().any(|tool| tool.name == "retrieve"));
-    assert!(headers[1].tools.iter().any(|tool| tool.name == "retrieve"));
+    // The header is a property of the program: one header, present from the
+    // first request, carrying every declared tool including retrieve.
+    assert_eq!(headers.len(), 1);
+    assert!(headers[0].tools.iter().any(|tool| tool.name == "retrieve"));
 }
 
 #[tokio::test]

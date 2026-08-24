@@ -290,7 +290,7 @@ fn builtin_config(
         "additionalProperties": false
     });
     let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });
-    let tools = serde_json::json!(["read", "grep", "edit", "bash", "retrieve"]);
+    let tools = serde_json::json!(["read", "grep", "edit", "bash"]);
     let document = serde_json::json!({
         "version": foe_config::config::CONFIG_VERSION,
         "name": "coding",

@@ -182,8 +182,7 @@ List of strings. Required, with at least one entry.
 Each string names a tool. The order of the list is the order in which eligible
 tool schemas are sent to the model. It is also the order in which tool
 instructions are appended to the system prompt. The order therefore
-participates in identity. The runtime withholds the `retrieve` schema until
-the episode records a rendering archive that the tool can read.
+participates in identity.
 
 A name resolves against three sources, checked in this order:
 

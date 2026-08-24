@@ -299,13 +299,7 @@ impl Episode {
             if final_request {
                 self.append_inbox(InboxSource::System, text::FINAL_REQUEST)?;
             }
-            let archived_content_available = self.p.log.with_events(|events| {
-                events.iter().any(|event| matches!(event.data, EventData::ToolRenderingArchive(_)))
-            });
-            self.write_header(
-                self.p.registry.system_prompt(&self.p.program.instructions),
-                self.p.registry.request_schemas(archived_content_available),
-            )?;
+            self.write_header(self.p.registry.system_prompt(&self.p.program.instructions), self.p.registry.schemas())?;
             let message = match self.request(Request::Step).await? {
                 Answer::Message { message, .. } => message,
                 Answer::Interrupted => continue,

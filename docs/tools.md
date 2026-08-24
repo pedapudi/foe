@@ -54,11 +54,11 @@ of an earlier result in the same episode. Its effect is `pure`. It receives
 no filesystem handle. The runtime reads only its own log and rendering
 archives, which are episode evidence.
 
-A program declares `retrieve` before the episode starts. The runtime omits its
-schema from model requests until the first rendering archive enters the log.
-The next request records a changed header that includes the schema. Episodes
-whose results remain within the turn budget pay no model-input cost for the
-tool definition.
+A program declares `retrieve` before the episode starts, and its schema is
+present in every request the episode makes, like any declared tool's: the
+model-visible header is a property of the program, fixed for the episode's
+lifetime, and a stable header is served from the provider's prompt cache. A
+shortening notice names a cursor only when the program declares the tool.
 
 The tool has one argument, `cursor`. A shortening notice or an aged-result
 residue supplies this opaque string. The model copies the whole string and
