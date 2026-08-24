@@ -1,0 +1,148 @@
+#!/usr/bin/python3
+"""Create and validate identity-bound workflow configuration candidates."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from typing import Any
+
+
+SCHEMA_VERSION = 1
+KIND = "independent-audit-workflow"
+REASONING_EFFORTS = ("low", "medium", "high", "xhigh")
+MIN_AUDIT_MODEL_CALLS = 6
+MAX_AUDIT_MODEL_CALLS = 120
+
+
+def _hash_identity(value: Any, prefix: str, digits: int) -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith(prefix)
+        and len(value) == len(prefix) + digits
+        and all(character in "0123456789abcdef" for character in value[len(prefix) :])
+    )
+
+
+def _digest(value: dict[str, Any]) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def validate_independent_audit(value: Any) -> dict[str, Any]:
+    """Return one normalized independent-audit setting."""
+    if not isinstance(value, dict) or set(value) != {"reasoning_effort", "model_calls"}:
+        raise ValueError(
+            "workflow candidate independent_audit must contain reasoning_effort and model_calls"
+        )
+    effort = value.get("reasoning_effort")
+    calls = value.get("model_calls")
+    if effort not in REASONING_EFFORTS:
+        raise ValueError("workflow candidate independent_audit.reasoning_effort is invalid")
+    if type(calls) is not int or not MIN_AUDIT_MODEL_CALLS <= calls <= MAX_AUDIT_MODEL_CALLS:
+        raise ValueError(
+            "workflow candidate independent_audit.model_calls must be between "
+            f"{MIN_AUDIT_MODEL_CALLS} and {MAX_AUDIT_MODEL_CALLS}"
+        )
+    return {"reasoning_effort": effort, "model_calls": calls}
+
+
+def validate_base_configuration(value: Any) -> dict[str, str]:
+    """Return the evaluation settings a workflow candidate preserves."""
+    required = {"model", "reasoning_effort", "service_tier", "token_policy"}
+    if not isinstance(value, dict) or set(value) != required:
+        raise ValueError(
+            "workflow candidate base_configuration must contain model, reasoning_effort, "
+            "service_tier, and token_policy"
+        )
+    if not isinstance(value.get("model"), str) or "/" not in value["model"]:
+        raise ValueError("workflow candidate base_configuration.model is invalid")
+    if value.get("reasoning_effort") not in REASONING_EFFORTS:
+        raise ValueError("workflow candidate base_configuration.reasoning_effort is invalid")
+    if value.get("service_tier") not in ("default", "priority"):
+        raise ValueError("workflow candidate base_configuration.service_tier is invalid")
+    if value.get("token_policy") not in ("measurement_only", "hard"):
+        raise ValueError("workflow candidate base_configuration.token_policy is invalid")
+    return {key: value[key] for key in sorted(required)}
+
+
+def create(
+    evaluated_foe: dict[str, str],
+    evidence_sha256: str,
+    base_configuration: dict[str, str],
+    independent_audit: dict[str, Any],
+) -> dict[str, Any]:
+    """Bind a workflow setting to the evaluated source, binary, and evidence."""
+    body = {
+        "schema_version": SCHEMA_VERSION,
+        "candidate_kind": KIND,
+        "evaluated_foe": dict(evaluated_foe),
+        "evidence_sha256": evidence_sha256,
+        "base_configuration": validate_base_configuration(base_configuration),
+        "independent_audit": validate_independent_audit(independent_audit),
+    }
+    return {**body, "digest": _digest(body)}
+
+
+def validate(value: Any, evaluated_foe: dict[str, str] | None = None) -> dict[str, Any]:
+    """Validate a complete candidate and optionally require one Foe identity."""
+    required = {
+        "schema_version",
+        "candidate_kind",
+        "evaluated_foe",
+        "evidence_sha256",
+        "base_configuration",
+        "independent_audit",
+        "digest",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        raise ValueError("workflow candidate has unknown or missing fields")
+    if value.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError(f"workflow candidate schema_version must be {SCHEMA_VERSION}")
+    if value.get("candidate_kind") != KIND:
+        raise ValueError(f"workflow candidate candidate_kind must be {KIND}")
+    identity = value.get("evaluated_foe")
+    if not isinstance(identity, dict) or set(identity) != {"source_tree", "runtime_binary"}:
+        raise ValueError("workflow candidate evaluated_foe is invalid")
+    source_tree = identity.get("source_tree")
+    if not (
+        _hash_identity(source_tree, "git-tree-sha1:", 40)
+        or _hash_identity(source_tree, "git-tree-sha256:", 64)
+    ):
+        raise ValueError("workflow candidate evaluated_foe.source_tree is invalid")
+    if not _hash_identity(identity.get("runtime_binary"), "sha256:", 64):
+        raise ValueError("workflow candidate evaluated_foe.runtime_binary is invalid")
+    if evaluated_foe is not None and identity != evaluated_foe:
+        raise ValueError("workflow candidate evaluates a different Foe source or binary")
+    evidence_sha256 = value.get("evidence_sha256")
+    if not _hash_identity(evidence_sha256, "sha256:", 64):
+        raise ValueError("workflow candidate evidence_sha256 is invalid")
+    body = {key: value[key] for key in required - {"digest"}}
+    if value.get("digest") != _digest(body):
+        raise ValueError("workflow candidate digest does not match its contents")
+    return create(
+        identity,
+        evidence_sha256,
+        validate_base_configuration(value.get("base_configuration")),
+        validate_independent_audit(value.get("independent_audit")),
+    )
+
+
+def require_matching_run(
+    candidate: dict[str, Any],
+    *,
+    model: str,
+    reasoning_effort: str,
+    service_tier: str,
+    token_policy: str,
+) -> dict[str, Any]:
+    """Return the audit setting after checking the preserved run controls."""
+    observed = {
+        "model": model,
+        "reasoning_effort": reasoning_effort,
+        "service_tier": service_tier,
+        "token_policy": token_policy,
+    }
+    if candidate["base_configuration"] != validate_base_configuration(observed):
+        raise ValueError("workflow candidate base configuration differs from the requested run")
+    return candidate["independent_audit"]

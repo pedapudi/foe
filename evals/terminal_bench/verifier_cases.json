@@ -1,0 +1,20 @@
+{
+  "dataset": "terminal-bench/terminal-bench-2-1@6",
+  "cases": {
+    "cancel-async-tasks": {
+      "checker": "verifier_cases/cancel_async_tasks/check.py",
+      "oracle": "verifier_cases/cancel_async_tasks/oracle.sh",
+      "contract": "The public checker exercises bounded concurrency and cancellation cleanup without changing the task workspace."
+    },
+    "fix-git": {
+      "checker": "verifier_cases/fix_git/check.py",
+      "oracle": "verifier_cases/fix_git/oracle.sh",
+      "contract": "The public checker requires the lost commit to be reachable from master in a clean worktree without testing hidden file hashes."
+    },
+    "large-scale-text-editing": {
+      "checker": "verifier_cases/large_scale_text_editing/check.py",
+      "oracle": "verifier_cases/large_scale_text_editing/oracle.sh",
+      "contract": "The public checker validates the declared Vim grammar and transforms a temporary 10,000-row prefix before comparing it with the visible expected file."
+    }
+  }
+}

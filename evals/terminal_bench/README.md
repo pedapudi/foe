@@ -4,7 +4,10 @@ This package runs Foe through Harbor against a small, pinned subset of
 Terminal-Bench 2.1. The subset supports development and confirmation before a
 full benchmark run. It does not constitute an official Terminal-Bench score.
 The [development evaluation record](evaluation-record.md) reports retained
-aggregate results and promotion decisions.
+aggregate results and promotion decisions. The [capability campaign
+record](campaign.md) defines the staged evaluation and its success criteria.
+The [cross-trajectory capability analysis](cross-trajectory-analysis.md)
+maps retained failures to product changes and promotion gates.
 
 The dataset reference is `terminal-bench/terminal-bench-2-1@6`. The
 [Harbor Hub dataset record](https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1/6)
@@ -16,6 +19,16 @@ The adapter implements Harbor's installed-agent interface. Harbor downloads a
 task image, uploads a statically linked Foe binary, runs one Foe episode, and
 executes the task-owned verifier. Harbor documents the custom interface in its
 [agent integration guide](https://harborframework.com/docs/agents).
+
+The installed-agent program sets `sandbox.mode` to `off`. The Harbor Docker
+container is the isolation boundary for the task. Disabling Landlock inside
+the container removes host-kernel compatibility from the quality measurement.
+The recorded episode must report sandbox mode `off` and no observed Landlock
+ABI. A different sandbox record invalidates the trial as infrastructure data.
+
+The self-improvement runner executes candidate changes on the host. Its
+program retains `sandbox.mode: best-effort` because the Docker isolation
+boundary does not cover that process.
 
 ## Prerequisites
 
@@ -60,11 +73,97 @@ model request:
 bazel run //evals/terminal_bench:foe-install-check
 ```
 
+## Probe each task container without model spend
+
+The deterministic capability target runs Foe in the pinned `fix-git` task
+container. It checks the executable path, working directory, process lifetime,
+large-file tools, timeouts, package tooling, and terminal availability:
+
+```sh
+bazel run //evals/terminal_bench:foe-capability-probes
+```
+
+Task images have independent package sets and process behavior. A successful
+probe for `fix-git` does not establish capabilities for another task. Probe
+every selected task before its first provider-backed attempt:
+
+```sh
+bazel run //evals/terminal_bench:foe-capability-probes -- --task gpt2-codegolf
+```
+
+The target makes no provider request. It writes a typed report under
+`target/terminal-bench-capability-probes/`.
+
+The report describes the benchmark image as supplied. Do not install optional
+utilities to make the report pass. The coding program receives the observed
+working directory and fixed-path executable availability. A missing optional
+utility therefore changes tool selection without invalidating the benchmark.
+An installation failure or a missing task-required capability is an
+infrastructure failure and must not contribute a quality score.
+
+## Validate verifier-governed completion without model spend
+
+Three modified scenarios expose a public, read-only checker as a configured
+tool. One Sol-low coding episode combines a typed return with
+`done_when.verify`. Foe rejects a completion claim when the checker reports
+findings. The model receives those findings and can continue within the
+episode's remaining allowance.
+
+The public checker provides development feedback. Harbor still runs the
+unaltered task-owned Terminal-Bench verifier after Foe exits. Only the
+task-owned verifier determines task quality. Results from this modified lane
+are Foe-specific convergence evidence and do not contribute to a standard
+Terminal-Bench score.
+
+The selected scenarios cover three forms of completion:
+
+- `cancel-async-tasks` executes concurrency and cancellation-cleanup probes.
+- `fix-git` checks that the lost commit reaches `master` in a clean worktree.
+- `large-scale-text-editing` checks the allowed Vim grammar and a temporary
+  10,000-row sample. The task-owned verifier applies the script to all one
+  million rows.
+
+Validate every checker before a provider-backed run:
+
+```sh
+bazel run //evals/terminal_bench:foe-verifier-controls
+```
+
+Each control uses a fresh task container. It requires the untouched task
+state to produce at least one finding. It then applies a separate oracle and
+requires both an empty finding list and a score of `1.0` from the task-owned
+verifier. The checker runs with an empty process environment, matching Foe's
+configured-executable contract. The control agent makes no model request.
+
+Preview one verifier-governed case:
+
+```sh
+bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks
+```
+
+Run the case after reviewing the maximum:
+
+```sh
+bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
+  --label verifier-governed-cancel-async-tasks \
+  --confirm-spend
+```
+
+Equivalent targets end in `foe-verifier-fix-git` and
+`foe-verifier-large-scale-text-editing`. These targets use the default service
+tier, low reasoning for implementation, and high reasoning for an independent
+audit. The implementation retains 60 model calls. The audit receives 25
+additional calls. These values are loop backstops.
+
+The configured executable's bytes participate in Foe's program identity. The
+adapter also downloads the checker after the episode and compares its digest
+with the source digest. A changed checker invalidates the trial as
+infrastructure evidence.
+
 ## Preview and run one assessed task
 
-Every model-backed target prints its maximum model calls, input tokens, output
-tokens, total-token cost proxy, and wall time. The preview makes no model
-request:
+Every model-backed target prints planning token estimates and an estimated
+cost. The preview makes no model request:
 
 ```sh
 bazel run //evals/terminal_bench:foe-smoke
@@ -76,25 +175,120 @@ Run the `fix-git` smoke case after reviewing that maximum:
 bazel run //evals/terminal_bench:foe-smoke -- --confirm-spend
 ```
 
-The runner uses `openai-codex/gpt-5.6-sol` with low reasoning effort. Override
-the reasoning setting only when that setting is the subject of the comparison:
+The runner records token usage and estimated cost without enforcing token
+ceilings. Model calls and wall time remain loop backstops. Use
+`--hard-token-limits` only when a token boundary is the subject of the test.
+The runner sets Harbor's outer agent timeout to the sum of every possible
+model stage's Foe time backstop, plus five minutes for process settlement.
+Harbor therefore cannot terminate a valid Foe episode before its declared
+time allowance ends. [`cases.json`](cases.json) records each multiplier's
+base timeout from the pinned task metadata.
+
+The default route is `openai-codex/gpt-5.6-sol` with low reasoning effort.
+Every model node requests the `priority` service tier by default. OpenAI calls
+this setting Fast mode. The documented target is 1.5 times Standard speed, and
+GPT-5.6 consumes 2.5 times the Standard ChatGPT credits. The runner records
+the requested tier and credit multiplier beside its token-derived cost
+estimate. Use `--service-tier default` for a Standard run. See the
+[OpenAI speed documentation](https://developers.openai.com/codex/speed).
+
+Luna and Terra are available for inexpensive development diagnosis:
 
 ```sh
 bazel run //evals/terminal_bench:foe-smoke -- \
-  --reasoning-effort medium \
+  --model openai-codex/gpt-5.6-luna \
+  --reasoning-effort low \
   --confirm-spend
 ```
 
-## Run development and holdout cases
+The supported reasoning settings end at `xhigh` for this campaign.
 
-The development set contains four tasks:
+A task can run as two model episodes with a typed handoff. The first episode
+uses `read`, `grep`, and `bash` to collect static and runtime evidence. It
+returns facts, implementation steps, and verification steps. Facts include
+observed constraints, evidence, uncertainty, and implementation blockers. The
+second episode receives only the task and that return value in a fresh
+context. It holds the full coding tool set:
+
+```sh
+bazel run //evals/terminal_bench:foe-capability-search -- \
+  --task gpt2-codegolf \
+  --diagnosis-model openai-codex/gpt-5.6-luna \
+  --diagnosis-reasoning-effort high \
+  --confirm-spend
+```
+
+The diagnosis allowance is added to the task's implementation allowance. The
+default is a twenty-call hard backstop with a four-request planning target.
+Each stage receives the task's full time backstop. An early typed return
+releases the remaining work immediately. The runner prices each child from
+the model route recorded in its episode log. Omitting
+`--diagnosis-model` preserves the single-episode coding program.
+
+A cheap diagnosis can conditionally request deeper reasoning from the primary
+model before implementation:
+
+```sh
+bazel run //evals/terminal_bench:foe-capability-search -- \
+  --task gpt2-codegolf \
+  --diagnosis-model openai-codex/gpt-5.6-luna \
+  --diagnosis-reasoning-effort high \
+  --unresolved-diagnosis-reasoning-effort xhigh \
+  --confirm-spend
+```
+
+The Luna episode chooses direct implementation only when repository evidence
+resolves every implementation-critical fact. Otherwise a read-only Sol
+`xhigh` episode resolves the uncertainty. A fresh Sol `low` episode performs
+the implementation on either path. The spending preview includes the maximum
+conditional path. Actual cost includes only the branch that fires. The deeper
+diagnosis has a twenty-call backstop because it may need to derive and validate
+an implementation-critical fact before returning its typed report. Its prompt
+uses six requests as a soft planning target. It can continue when a named fact
+still prevents implementation. The coding episode owns exhaustive validation
+and repair.
+
+The implementation can receive a fresh higher-reasoning repair episode while
+the primary implementation remains at low reasoning. The repair episode does
+not require a separate diagnosis episode:
+
+```sh
+bazel run //evals/terminal_bench:foe-capability-search -- \
+  --task gpt2-codegolf \
+  --escalation-reasoning-effort xhigh \
+  --escalation-model-calls 25 \
+  --confirm-spend
+```
+
+The repair episode receives the task and the earlier episode's completion
+claim in a fresh context. It audits the shared workspace before completing.
+Its allowance is additive. The implementation retains its full capacity when
+repair is enabled. A diagnosis episode can still precede both children when
+the task benefits from a cheaper model's typed analysis. Conditional unresolved
+diagnosis and post-implementation repair are separate experiments, so the
+runner refuses a command that enables both.
+
+The task registry uses at least 60 model calls and 1,800 seconds for every task.
+These values serve only as loop and stall backstops. Actual use determines
+spend. The adapter permits eight consecutive identical tool calls or assistant
+turns before classifying a loop. The runner records actual calls, time, token
+usage, and estimated cost. Input and output token allowances remain absent
+unless `--hard-token-limits` is supplied for an explicit budget-boundary test.
+The spend preview estimates auxiliary episode tokens from the task's per-call
+planning average and prices each model route separately.
+
+## Run the staged task sets
+
+The development target contains six tasks with inspected trajectories:
 
 - `cancel-async-tasks`
 - `git-multibranch`
 - `fix-git`
 - `sqlite-db-truncate`
+- `sanitize-git-repo`
+- `large-scale-text-editing`
 
-Preview their aggregate allowance:
+Preview or run one attempt per development task:
 
 ```sh
 bazel run //evals/terminal_bench:foe-development
@@ -108,56 +302,188 @@ bazel run //evals/terminal_bench:foe-development -- \
   --confirm-spend
 ```
 
-The holdout set contains `sanitize-git-repo` and
-`large-scale-text-editing`. Keep their trajectories outside the evidence given
-to an improvement episode. Freeze the candidate source and comparison settings
-before running them:
+The capability-search target contains twelve development tasks. Opening a result
+makes that task development evidence:
 
 ```sh
-bazel run //evals/terminal_bench:foe-holdout
-bazel run //evals/terminal_bench:foe-holdout -- \
-  --label candidate-confirmation \
-  --attempts 3 \
+bazel run //evals/terminal_bench:foe-capability-search
+bazel run //evals/terminal_bench:foe-capability-search -- \
+  --task regex-log \
+  --label sol-low-search \
   --confirm-spend
 ```
 
-One attempt per task gives a directional result. A candidate that improves the
-development cases receives three attempts on each holdout task. The broader
-Terminal-Bench calibration uses 10 to 20 frozen tasks with three attempts per
-task, as specified in [`docs/evaluation.md`](../../docs/evaluation.md).
+The confirmation target contains four tasks that stay closed until a candidate
+and acceptance rule are frozen. Run two attempts per task:
+
+```sh
+bazel run //evals/terminal_bench:foe-confirmation
+bazel run //evals/terminal_bench:foe-confirmation -- \
+  --label candidate-confirmation \
+  --attempts 2 \
+  --confirm-spend
+```
+
+The calibration targets remain closed until the development and confirmation
+criteria pass:
+
+```sh
+bazel run //evals/terminal_bench:foe-calibration
+bazel run //evals/terminal_bench:foe-calibration-holdout
+```
+
+[`campaign.md`](campaign.md) defines every task set, exposure rule, quality
+gate, and success criterion.
 
 ## Use the trajectories for improvement
 
-Run a baseline from one clean worktree. Review only its four development
-trajectories and task grades. Produce a compact diagnosis that identifies the
-failed task, the relevant Foe events, the proposed source files, and the
-expected measurable effect.
+Every completed trial contains `agent/foe-diagnostics.json`. The report names
+request growth, replayed tool results, repeated calls, failures, verifier
+outcomes, final post-edit tool results, bounded verifier failure classes, and
+log sequence numbers across the episode tree.
 
-Apply one candidate change in a separate clean worktree. The change may be
-implemented directly or by a bounded self-improvement workflow. The workflow
-mechanism and its evidence requirements are specified in
-[`docs/self-improvement.md`](../../docs/self-improvement.md). Run the same four
-development tasks from the candidate worktree. Freeze the candidate before
-opening the two holdout results.
+Collect diagnoses from one or more retained development runs. The command
+requires a clean source tree and the exact evaluated binary:
 
-The following sequence preserves the comparison boundary:
+```sh
+bazel run //evals/terminal_bench:collect-diagnostics -- \
+  --run-dir "$PWD/target/terminal-bench-jobs/development-20260823T120000Z" \
+  --output "$PWD/target/foe-trajectory-evidence.json"
+```
 
-1. Run the development target from the baseline worktree.
-2. Diagnose only the retained development evidence.
-3. Implement and verify one candidate change.
-4. Run the development target from the candidate worktree.
-5. Freeze the candidate source, model settings, task list, and allowances.
-6. Run the holdout target from both worktrees.
-7. Retain or reject the candidate from paired task completion, estimated cost,
-   and wall time. Until model pricing is integrated, input plus output tokens
-   provide the cost proxy for trials with the same model route and settings.
+The collector labels every diagnosis with its dataset, run label, token
+policy, service tier, and complete execution configuration. The configuration
+identifies diagnosis, unresolved-diagnosis, implementation, independent-audit,
+and completion-verifier stages when present. It groups verified results by
+task and complete configuration so a diagnosis node can
+compare failed and successful mechanisms. The file keeps up to four
+input-growth landmarks and three entries from each ranked result list. Input
+growth resets at each episode boundary. The four-landmark limit applies to the
+complete episode tree. The collector accepts at most 24 diagnoses and 64 KiB
+of encoded evidence. It accepts only development and opened capability-search
+tasks from `cases.json`. Confirmation, calibration, and calibration-holdout
+evidence remains unavailable to self-improvement.
+
+Create a clean candidate worktree at the evaluated commit. Run the
+self-improvement workflow from that worktree:
+
+```sh
+bazel run //evals/terminal_bench:self-improve -- \
+  --candidate /path/to/clean/foe-candidate \
+  --evidence "$PWD/target/foe-trajectory-evidence.json" \
+  --cargo /absolute/path/to/toolchain/bin/cargo \
+  --cargo-home /absolute/path/to/cargo-home \
+  --keep "$PWD/target/foe-self-improvement" \
+  --confirm-spend
+```
+
+Luna produces the bounded diagnosis from the supplied digest. Its only
+ordinary tool is `block`, so it cannot inspect the candidate source or
+retained run directories. Its typed result contains one causal contrast, one
+intervention, and the controls and falsification condition needed to evaluate
+that intervention.
+
+The diagnosis chooses `implement-source` when failed and successful
+trajectories isolate an activated source mechanism. It chooses
+`configure-workflow` when an independent audit stage supplies a repeated
+quality gain. It chooses `insufficient-evidence` when the contrast identifies
+only model capability or requires semantic task knowledge absent from the
+log. That choice ends the workflow before a coding episode and sets
+`direct_implementation_required`.
+
+When the diagnosis chooses `implement-source`, the configured coding model
+receives the diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The
+coding child locates the affected implementation, test, and specification
+files. Its write authority covers runtime crates, specifications, and
+examples. It cannot write evaluation code or benchmark material.
+
+When the diagnosis chooses `configure-workflow`, the runner validates the
+typed independent-audit setting. It writes `workflow-candidate.json` beside
+the retained result. The candidate digest binds the setting to the evaluated
+source tree, binary, evidence file, and preserved execution controls. The
+setting must appear in at least two successful attempts in the supplied
+evidence.
+
+The diagnosis prompt targets four requests and has a 20-call, 1,800-second
+loop backstop. The implementation has 28-call and 3,600-second safety
+backstops. Each model child ends as blocked after eight consecutive identical
+tool calls or assistant turns.
+
+The diagnosis preserves the primary model route, reasoning effort, task
+allowances, token policy, service tier, and task set. Verified task quality is
+the promotion metric. Tokens, cost, cache use, latency, outcome accuracy, and
+conformance remain recorded diagnostics.
+
+`--cargo` must name the pinned toolchain binary. A Rustup proxy is refused
+because its result depends on process environment and may download a
+toolchain. Before the first model request, the runner checks formatting,
+workspace tests, Clippy, and line counts in the clean candidate worktree. A
+formatting, test, or Clippy failure stops the run. Each line budget uses the
+declared limit as its ceiling. A baseline count above its declared limit
+becomes a no-growth ceiling for that budget, so an unrelated existing overage
+cannot consume the self-improvement episode.
+
+The candidate checker repeats formatting, workspace tests, Clippy, and line
+counts under the supplied Cargo cache. It rejects a line count above the
+recorded baseline ceiling. The coding child uses this checker as the line-count
+authority because the repository script reports only absolute limits. Its only
+generated-file write authority is the candidate's private
+`target/foe-self-improvement-check` directory. Read grants
+cover Cargo and Rustup metadata and installed C headers. Execute grants cover
+the pinned toolchain and candidate build directory. They also cover Cargo's
+command shims for `fmt` and `clippy`. The result records content digests for
+Cargo, Rustc, Rustfmt, and Clippy.
+Executable tools cannot bind loopback listeners, so the
+in-episode check excludes the command-line, transport, and viewer packages
+whose tests bind loopback servers. It also skips nested sandbox tests that
+cannot expand the checker's existing Landlock domain. The runner repeats
+validation after the episode with the complete workspace test suite.
+
+The no-spend form generates the complete workflow document. It runs that
+document through `foe plan`. A schema, authority, or construction error
+therefore fails before the runner reports that the workflow is ready.
+
+The coding child receives read-only access to the candidate worktree's Git
+metadata. This access lets `git status`, `git diff`, and the independent
+candidate checker operate when the candidate is a linked Git worktree.
+
+The runner validates the artifact after Foe exits. A valid artifact remains
+accepted when the episode exhausted its reporting budget after producing the
+files. A source candidate binds the base Git tree and every changed file
+digest. A workflow candidate binds the independent-audit setting and preserved
+controls. `direct_implementation_required` is true when deterministic
+validation finds an error or the workflow produces no candidate.
+
+Apply a retained workflow candidate to any permitted task set with:
+
+```sh
+bazel run //evals/terminal_bench:foe-development -- \
+  --workflow-candidate /absolute/path/to/workflow-candidate.json \
+  --service-tier default \
+  --confirm-spend
+```
+
+The requested model, primary reasoning effort, service tier, and token policy
+must match the candidate. The current Foe source tree and binary must also
+match its recorded identity.
+
+Capability conversion still requires a separate benchmark rerun. Candidate
+promotion remains outside the workflow. The workflow mechanism and evidence
+requirements are specified in
+[`docs/self-improvement.md`](../../docs/self-improvement.md).
 
 ## Retained evidence
 
 Each confirmed command writes under `target/terminal-bench-jobs/`. One
 timestamped run contains a `campaign.json` manifest and one Harbor job per
 task. Harbor retains the task configuration, verifier result, exception data,
-and aggregate token fields. The manifest records the provisional cost formula.
+aggregate token fields, and estimated cost. The manifest records the pricing
+source and whether token estimates were measurements or hard limits.
+
+The adapter runs `foe plan` against the task-specific program inside the task
+container before its first provider request. An invalid program is a setup
+error with zero model spend. It is excluded from task accuracy and must be
+replaced before a repeated result is complete.
 
 The Harbor trial's `agent/foe-episode/` directory is the complete native Foe
 episode tree. It contains `episode.jsonl`, child episodes, spill values, and
@@ -165,8 +491,14 @@ renderings. The neighboring files include the generated Foe program, Foe
 standard output, Foe standard error, the typed process exit status, and the
 runtime conformance report. The adapter sums provider-reported input, output,
 and cache-read tokens into the Harbor agent context. It also records Foe's
-outcome and conformance status as Harbor agent metadata. Reports retain the
-three token counts when input plus output tokens provide the cost proxy.
+outcome and conformance status as Harbor agent metadata. Cost estimation uses
+the provider-reported uncached-input, cached-input, and output usage for each
+request.
+
+A runtime `failed` outcome or a nonconformant trace makes the trial invalid as
+model-accuracy evidence. A model request without provider usage makes the
+resource measurement incomplete. The runner records both classes and exits
+unsuccessfully, so a repeated result cannot silently include either class.
 
 Keep raw jobs under ignored `target/` directories. Keep the private credential
 state under `~/.cache/foe/terminal-bench/`. Git tracks the adapter, case
