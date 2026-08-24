@@ -32,6 +32,7 @@ class ProgramTest(unittest.TestCase):
                 "input_tokens": 120_000,
                 "output_tokens": 20_000,
                 "seconds": 600,
+                "loop_threshold": 8,
             },
         )
         self.assertEqual(program["sandbox"], {"mode": "off"})
@@ -56,7 +57,10 @@ class ProgramTest(unittest.TestCase):
             seconds=600,
             reasoning_effort="low",
         )
-        self.assertEqual(program["budget"], {"model_calls": 20, "seconds": 600})
+        self.assertEqual(
+            program["budget"],
+            {"model_calls": 20, "seconds": 600, "loop_threshold": 8},
+        )
 
     def test_program_rejects_unqualified_model(self):
         with self.assertRaisesRegex(ValueError, "provider/model"):
@@ -93,6 +97,7 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
         self.assertEqual(diagnosis["budget"]["model_calls"], 6)
         self.assertEqual(diagnosis["budget"]["seconds"], 200)
+        self.assertEqual(diagnosis["budget"]["loop_threshold"], 8)
         self.assertEqual(diagnosis["tools"], ["read", "grep", "bash"])
         self.assertNotIn("sandbox", diagnosis)
         self.assertIn("returns", diagnosis["done_when"])
@@ -101,8 +106,11 @@ class ProgramTest(unittest.TestCase):
             "two materially different behavioral inputs",
             implementation["instructions"]["role"],
         )
-        self.assertEqual(implementation["budget"]["model_calls"], 14)
-        self.assertEqual(implementation["budget"]["seconds"], 400)
+        self.assertEqual(implementation["budget"]["model_calls"], 20)
+        self.assertEqual(implementation["budget"]["seconds"], 600)
+        self.assertEqual(implementation["budget"]["loop_threshold"], 8)
+        self.assertEqual(program["budget"]["model_calls"], 26)
+        self.assertEqual(program["budget"]["seconds"], 800)
         self.assertEqual(nodes["implement-task"]["follows"], ["task", "diagnose-task"])
         self.assertTrue(nodes["implement-task"]["terminal"])
 
@@ -125,16 +133,18 @@ class ProgramTest(unittest.TestCase):
         )
         nodes = program["workflow"]["nodes"]
         self.assertFalse(nodes["implement-task"]["terminal"])
-        self.assertEqual(nodes["implement-task"]["model"]["budget"]["model_calls"], 39)
+        self.assertEqual(nodes["implement-task"]["model"]["budget"]["model_calls"], 60)
         self.assertEqual(nodes["diagnose-task"]["model"]["budget"]["seconds"], 300)
-        self.assertEqual(nodes["implement-task"]["model"]["budget"]["seconds"], 300)
+        self.assertEqual(nodes["implement-task"]["model"]["budget"]["seconds"], 900)
         repair = nodes["audit-and-repair-task"]
         self.assertEqual(repair["model"]["model"]["reasoning_effort"], "xhigh")
         self.assertEqual(repair["model"]["budget"]["model_calls"], 18)
-        self.assertEqual(repair["model"]["budget"]["seconds"], 300)
+        self.assertEqual(repair["model"]["budget"]["seconds"], 450)
         self.assertEqual(repair["follows"], ["task", "implement-task"])
         self.assertTrue(repair["terminal"])
         self.assertEqual(program["budget"]["max_episodes"], 4)
+        self.assertEqual(program["budget"]["model_calls"], 81)
+        self.assertEqual(program["budget"]["seconds"], 1650)
 
     def test_program_can_escalate_without_a_diagnosis_episode(self):
         program = build_program(
@@ -154,9 +164,17 @@ class ProgramTest(unittest.TestCase):
         self.assertNotIn("diagnose-task", nodes)
         self.assertEqual(nodes["implement-task"]["model"]["name"], "implement-task")
         self.assertEqual(nodes["implement-task"]["follows"], ["task"])
-        self.assertEqual(nodes["implement-task"]["model"]["budget"], {"model_calls": 35, "seconds": 450})
-        self.assertEqual(nodes["audit-and-repair-task"]["model"]["budget"], {"model_calls": 25, "seconds": 450})
+        self.assertEqual(
+            nodes["implement-task"]["model"]["budget"],
+            {"model_calls": 60, "seconds": 900, "loop_threshold": 8},
+        )
+        self.assertEqual(
+            nodes["audit-and-repair-task"]["model"]["budget"],
+            {"model_calls": 25, "seconds": 450, "loop_threshold": 8},
+        )
         self.assertEqual(program["budget"]["max_episodes"], 3)
+        self.assertEqual(program["budget"]["model_calls"], 85)
+        self.assertEqual(program["budget"]["seconds"], 1350)
 
 
 class EpisodeSummaryTest(unittest.TestCase):

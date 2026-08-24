@@ -16,6 +16,7 @@ CODING_INSTRUCTION = (
     "program interface, completion requires at least two materially different "
     "behavioral inputs, including one that stresses parsing, length, or state."
 )
+EVALUATION_LOOP_THRESHOLD = 8
 
 
 def build_program(
@@ -41,7 +42,11 @@ def build_program(
     provider, model = model_name.split("/", 1)
     if not provider or not model:
         raise ValueError("model must have the form provider/model")
-    limits = {"model_calls": model_calls, "seconds": seconds}
+    limits = {
+        "model_calls": model_calls,
+        "seconds": seconds,
+        "loop_threshold": EVALUATION_LOOP_THRESHOLD,
+    }
     optional_limits = {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
@@ -81,20 +86,17 @@ def build_program(
         diagnosis_provider, diagnosis_model = diagnosis_model_name.split("/", 1)
         if not diagnosis_provider or not diagnosis_model:
             raise ValueError("diagnosis model must have the form provider/model")
-        if not 2 <= diagnosis_model_calls < model_calls:
-            raise ValueError("diagnosis model calls must be at least two and below the total model-call allowance")
+        if diagnosis_model_calls < 2:
+            raise ValueError("diagnosis model calls must be at least two")
     if escalation_reasoning_effort is None and escalation_model_calls != 0:
         raise ValueError("escalation model calls require an escalation reasoning effort")
     if escalation_reasoning_effort is not None and escalation_model_calls < 2:
         raise ValueError("escalation model calls must be at least two")
-    reserved_diagnosis_calls = diagnosis_model_calls if diagnosis_model_name is not None else 0
-    if reserved_diagnosis_calls + escalation_model_calls >= model_calls:
-        raise ValueError("diagnosis and escalation calls must leave at least one implementation call")
+    diagnosis_calls = diagnosis_model_calls if diagnosis_model_name is not None else 0
     diagnosis_seconds = min(300, max(60, seconds // 3)) if diagnosis_model_name is not None else 0
-    working_seconds = seconds - diagnosis_seconds
-    escalation_seconds = working_seconds // 2 if escalation_reasoning_effort is not None else 0
-    implementation_seconds = working_seconds - escalation_seconds
-    implementation_calls = model_calls - reserved_diagnosis_calls - escalation_model_calls
+    escalation_seconds = min(seconds, max(300, seconds // 2)) if escalation_reasoning_effort is not None else 0
+    implementation_seconds = seconds
+    implementation_calls = model_calls
     investigation_calls = diagnosis_model_calls - 1
     shared_grants = {"read": [working_directory, "/"], "write": ["/"]}
     diagnosis_schema = {
@@ -111,6 +113,8 @@ def build_program(
     }
     program["budget"].update(
         {
+            "model_calls": model_calls + diagnosis_calls + escalation_model_calls,
+            "seconds": seconds + diagnosis_seconds + escalation_seconds,
             "max_episodes": 2
             + int(diagnosis_model_name is not None)
             + int(escalation_reasoning_effort is not None),
@@ -145,6 +149,7 @@ def build_program(
                     "budget": {
                         "model_calls": implementation_calls,
                         "seconds": implementation_seconds,
+                        "loop_threshold": EVALUATION_LOOP_THRESHOLD,
                     },
                     "model": {
                         "provider": provider,
@@ -177,7 +182,11 @@ def build_program(
                 },
                 "tools": ["read", "grep", "bash"],
                 "grants": {"read": [working_directory, "/"]},
-                "budget": {"model_calls": diagnosis_model_calls, "seconds": diagnosis_seconds},
+                "budget": {
+                    "model_calls": diagnosis_model_calls,
+                    "seconds": diagnosis_seconds,
+                    "loop_threshold": EVALUATION_LOOP_THRESHOLD,
+                },
                 "done_when": {"returns": diagnosis_schema},
                 "model": {
                     "provider": diagnosis_provider,
@@ -205,6 +214,7 @@ def build_program(
                 "budget": {
                     "model_calls": escalation_model_calls,
                     "seconds": escalation_seconds,
+                    "loop_threshold": EVALUATION_LOOP_THRESHOLD,
                 },
                 "model": {
                     "provider": provider,

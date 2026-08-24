@@ -486,23 +486,62 @@ def main(argv: list[str] | None = None) -> int:
         if credential_state.is_relative_to(jobs_dir):
             raise ValueError("--credential-state must remain outside --jobs-dir")
         selected = [tasks[name] for name in selected_names]
-        if args.diagnosis_model is not None and any(args.diagnosis_model_calls >= task.model_calls for task in selected):
-            raise ValueError("--diagnosis-model-calls must be below every selected task model-call allowance")
-        reserved_calls = (
-            args.diagnosis_model_calls if args.diagnosis_model is not None else 0
-        ) + args.escalation_model_calls
-        if reserved_calls and any(reserved_calls >= task.model_calls for task in selected):
-            raise ValueError("diagnosis and escalation calls must leave implementation capacity for every task")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
         return 2
 
     runtime_digest = digest(foe)
-    total_calls = sum(task.model_calls for task in selected) * args.attempts
+    auxiliary_calls = (
+        args.diagnosis_model_calls if args.diagnosis_model is not None else 0
+    ) + args.escalation_model_calls
     selected_pricing = pricing[args.model]
-    total_input = sum(task.expected_input_tokens for task in selected) * args.attempts
-    total_output = sum(task.expected_output_tokens for task in selected) * args.attempts
-    total_expected_cost = selected_pricing.expected_cost(total_input, total_output)
+    diagnosis_pricing = pricing[args.diagnosis_model] if args.diagnosis_model else None
+    plans = []
+    for task in selected:
+        diagnosis_fraction = (
+            args.diagnosis_model_calls / task.model_calls
+            if args.diagnosis_model is not None
+            else 0.0
+        )
+        escalation_fraction = args.escalation_model_calls / task.model_calls
+        diagnosis_input = round(task.expected_input_tokens * diagnosis_fraction)
+        diagnosis_output = round(task.expected_output_tokens * diagnosis_fraction)
+        escalation_input = round(task.expected_input_tokens * escalation_fraction)
+        escalation_output = round(task.expected_output_tokens * escalation_fraction)
+        expected_input = task.expected_input_tokens + diagnosis_input + escalation_input
+        expected_output = task.expected_output_tokens + diagnosis_output + escalation_output
+        expected_cost = selected_pricing.expected_cost(
+            task.expected_input_tokens + escalation_input,
+            task.expected_output_tokens + escalation_output,
+        )
+        if diagnosis_pricing is not None:
+            expected_cost += diagnosis_pricing.expected_cost(
+                diagnosis_input, diagnosis_output
+            )
+        diagnosis_seconds = (
+            min(300, max(60, task.seconds // 3))
+            if args.diagnosis_model is not None
+            else 0
+        )
+        escalation_seconds = (
+            min(task.seconds, max(300, task.seconds // 2))
+            if args.escalation_reasoning_effort is not None
+            else 0
+        )
+        plans.append(
+            (
+                task,
+                task.model_calls + auxiliary_calls,
+                expected_input,
+                expected_output,
+                expected_cost,
+                task.seconds + diagnosis_seconds + escalation_seconds,
+            )
+        )
+    total_calls = sum(plan[1] for plan in plans) * args.attempts
+    total_input = sum(plan[2] for plan in plans) * args.attempts
+    total_output = sum(plan[3] for plan in plans) * args.attempts
+    total_expected_cost = sum(plan[4] for plan in plans) * args.attempts
     print(f"dataset       {dataset}")
     print(f"model         {args.model} reasoning_effort={args.reasoning_effort}")
     if args.diagnosis_model is not None:
@@ -520,14 +559,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; concurrency 1")
     print("planning      calls      input     output  est. cost  seconds  task")
-    for task in selected:
-        task_input = task.expected_input_tokens * args.attempts
-        task_output = task.expected_output_tokens * args.attempts
-        task_cost = selected_pricing.expected_cost(task_input, task_output)
+    for task, task_calls, expected_input, expected_output, expected_cost, seconds in plans:
         print(
-            f"              {task.model_calls * args.attempts:>5}  "
-            f"{task_input:>9,}  {task_output:>9,}  ${task_cost:>8.2f}  "
-            f"{task.seconds:>7}  {task.name}"
+            f"              {task_calls * args.attempts:>5}  "
+            f"{expected_input * args.attempts:>9,}  "
+            f"{expected_output * args.attempts:>9,}  "
+            f"${expected_cost * args.attempts:>8.2f}  "
+            f"{seconds:>7}  {task.name}"
         )
     print(
         f"total         {total_calls:>5}  {total_input:>9,}  "

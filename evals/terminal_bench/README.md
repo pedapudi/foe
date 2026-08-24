@@ -120,10 +120,11 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
   --confirm-spend
 ```
 
-The diagnosis calls come from the task's existing model-call allowance. A
-diagnosis can use up to one-third of the task time, capped at 300 seconds. An
-early typed return releases the remaining work immediately. The runner prices
-each child from the model route recorded in its episode log. Omitting
+The diagnosis allowance is added to the task's implementation allowance. The
+implementation retains its full model-call and time backstops. A diagnosis can
+use up to one-third of the implementation time, capped at 300 seconds. An early
+typed return releases the remaining work immediately. The runner prices each
+child from the model route recorded in its episode log. Omitting
 `--diagnosis-model` preserves the single-episode coding program.
 
 The implementation can receive a fresh higher-reasoning repair episode while
@@ -140,9 +141,18 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
 
 The repair episode receives the task and the earlier episode's completion
 claim in a fresh context. It audits the shared workspace before completing.
-The two child allowances divide the task's original model-call and wall-time
-budgets. A diagnosis episode can still precede both children when the task
-benefits from a cheaper model's typed analysis.
+Its allowance is additive. The implementation retains its full capacity when
+repair is enabled. A diagnosis episode can still precede both children when
+the task benefits from a cheaper model's typed analysis.
+
+The task registry uses at least 40 model calls and 900 seconds for every task.
+These values serve only as loop and stall backstops. Actual use determines
+spend. The adapter permits eight consecutive identical tool calls or assistant
+turns before classifying a loop. The runner records actual calls, time, token
+usage, and estimated cost. Input and output token allowances remain absent
+unless `--hard-token-limits` is supplied for an explicit budget-boundary test.
+The spend preview estimates auxiliary episode tokens from the task's per-call
+planning average and prices each model route separately.
 
 ## Run the staged task sets
 

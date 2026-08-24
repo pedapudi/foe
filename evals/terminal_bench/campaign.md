@@ -133,7 +133,12 @@ The pricing manifest records the source URL with each route. As of 2026-08-23, t
 
 The official model pages publish these rates and the long-context multipliers: [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [GPT-5.6 Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra), and [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol).
 
-Planning token estimates provide a spend preview. They do not stop ordinary development episodes. Model calls and wall time are high backstops for loops and stalled tools. `--hard-token-limits` is reserved for explicit budget-boundary tests.
+Planning token estimates provide a spend preview while ordinary development
+episodes run without token ceilings. Model calls and wall time are high
+backstops for loops and stalled tools. Every task receives at least 40 calls
+and 900 seconds. Eight identical calls or turns establish a loop. Diagnosis
+and repair allowances are added to the implementation allowance.
+`--hard-token-limits` is reserved for explicit budget-boundary tests.
 
 ## Execution sequence
 
