@@ -861,7 +861,7 @@ const RECORDED_IDENTITIES: [(&str, &str); 12] = [
     ("host-transport", "sha256:f4cc1785221fe2121461927a7222138ba72cede0c380700f50186905b8968905"),
     ("minimal", "sha256:88b057fbba006d4583d74d21e6f5a61df6f303eb2cb342acf842d1941612f582"),
     ("recovery-exhausted", "sha256:cd9b947deeb0023f36f08d4f35c852a890212997c754be80cf1f1d4c667bc73e"),
-    ("sandbox", "sha256:028a568b96ed503fd9e013d4b2322a1ac11ad8e496d8044e4173923fdc990d43"),
+    ("sandbox", "sha256:fd4ba25cf14af4e3039207aac8184297ce4c84f8794c50fa975efaafa6f31696"),
     ("self-extension", "sha256:f7db47b66a8bc0eee3961401c9ee302239d4b78e12806501f8d555502b997280"),
     ("subagents", "sha256:c3dc2f3d274b33692849de5836bb72862e38c80fa801f1da0680f88afaf8fa14"),
     ("team", "sha256:1b634774007f0345e56995081ad7044da20224aa7b24b0ac663da73fdaa7bcf2"),
