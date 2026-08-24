@@ -221,6 +221,11 @@ impl StreamDecoder {
             cache_read: n(&usage["input_tokens_details"]["cached_tokens"]),
         }
     }
+
+    fn message_code(message: &str) -> Option<&str> {
+        let code = message.split_once(':')?.0;
+        (!code.is_empty() && code.bytes().all(|byte| byte.is_ascii_lowercase() || byte == b'_')).then_some(code)
+    }
 }
 
 impl Decoder for StreamDecoder {
@@ -313,7 +318,6 @@ impl Decoder for StreamDecoder {
             }
             "response.failed" | "error" => {
                 let error = if kind == "error" { &data } else { &data["response"]["error"] };
-                let code = error["code"].as_str().unwrap_or("unknown");
                 let detail =
                     error["message"].as_str().filter(|value| !value.is_empty()).map(str::to_string).unwrap_or_else(
                         || {
@@ -321,8 +325,19 @@ impl Decoder for StreamDecoder {
                             crate::describe_error_body(&serde_json::to_string(value).unwrap_or_default())
                         },
                     );
+                let explicit_code = error["code"].as_str().filter(|value| !value.is_empty());
+                let inferred_code = Self::message_code(&detail);
+                let code = explicit_code.or(inferred_code).unwrap_or("unknown");
+                let display_detail = if explicit_code.is_none() && inferred_code.is_some() {
+                    detail.strip_prefix(code).and_then(|value| value.strip_prefix(':')).unwrap_or(&detail).trim()
+                } else {
+                    &detail
+                };
                 let retryable = matches!(code, "unknown" | "server_error" | "rate_limit_exceeded");
-                out(Chunk::Error { message: format!("{provider}: response failed {code}: {detail}"), retryable });
+                out(Chunk::Error {
+                    message: format!("{provider}: response failed {code}: {display_detail}"),
+                    retryable,
+                });
             }
             _ => {}
         }
@@ -542,6 +557,16 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
             vec![Chunk::Error {
                 message: "openai: response failed unknown: {\"error\":null,\"status\":\"failed\"}".into(),
                 retryable: true,
+            }]
+        );
+        let transcript =
+            "event: error\ndata: {\"type\":\"error\",\"message\":\"invalid_request: content rejected\"}\n\n";
+        let (chunks, _server) = run(Reply::sse(transcript)).await;
+        assert_eq!(
+            chunks,
+            vec![Chunk::Error {
+                message: "openai: response failed invalid_request: content rejected".into(),
+                retryable: false,
             }]
         );
         let transcript = "event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"content_filter\"}}}\n\n";
