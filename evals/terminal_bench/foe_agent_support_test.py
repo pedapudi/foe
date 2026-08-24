@@ -150,6 +150,56 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(program["budget"]["model_calls"], 84)
         self.assertEqual(program["budget"]["seconds"], 1650)
 
+    def test_program_routes_unresolved_cheap_diagnosis_to_deeper_diagnosis(self):
+        program = build_program(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            "/workspace",
+            model_calls=60,
+            input_tokens=None,
+            output_tokens=None,
+            seconds=1800,
+            reasoning_effort="low",
+            diagnosis_model_name="openai-codex/gpt-5.6-luna",
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            unresolved_diagnosis_reasoning_effort="xhigh",
+            unresolved_diagnosis_model_calls=6,
+        )
+        nodes = program["workflow"]["nodes"]
+        self.assertNotIn("implement-task", nodes)
+        self.assertEqual(
+            nodes["diagnose-task"]["branches"],
+            {
+                "implement": ["implement-resolved-task"],
+                "investigate-unresolved-facts": ["diagnose-unresolved-task"],
+            },
+        )
+        self.assertIn("implementation-critical fact", nodes["diagnose-task"]["model"]["instructions"]["role"])
+        deeper = nodes["diagnose-unresolved-task"]
+        self.assertEqual(deeper["follows"], ["task", "diagnose-task"])
+        self.assertEqual(deeper["model"]["model"]["model"], "gpt-5.6-sol")
+        self.assertEqual(deeper["model"]["model"]["reasoning_effort"], "xhigh")
+        self.assertEqual(deeper["model"]["budget"]["model_calls"], 6)
+        self.assertEqual(
+            deeper["model"]["done_when"]["returns"]["required"],
+            ["facts", "implementation_steps", "verification_steps"],
+        )
+        self.assertEqual(
+            nodes["implement-resolved-task"]["follows"],
+            ["task", "diagnose-task"],
+        )
+        self.assertEqual(
+            nodes["implement-after-unresolved-diagnosis"]["follows"],
+            ["task", "diagnose-unresolved-task"],
+        )
+        self.assertTrue(nodes["implement-resolved-task"]["terminal"])
+        self.assertTrue(nodes["implement-after-unresolved-diagnosis"]["terminal"])
+        self.assertEqual(program["budget"]["max_episodes"], 4)
+        self.assertEqual(program["budget"]["model_calls"], 72)
+        self.assertEqual(program["budget"]["seconds"], 2400)
+
     def test_program_rejects_tight_auxiliary_backstops(self):
         with self.assertRaisesRegex(ValueError, "diagnosis model calls must be at least 6"):
             build_program(
@@ -178,6 +228,47 @@ class ProgramTest(unittest.TestCase):
                 reasoning_effort="low",
                 escalation_reasoning_effort="xhigh",
                 escalation_model_calls=5,
+            )
+        with self.assertRaisesRegex(
+            ValueError,
+            "unresolved diagnosis model calls must be at least 6",
+        ):
+            build_program(
+                "repair it",
+                "openai-codex/gpt-5.6-sol",
+                "/tmp/private.json",
+                "/workspace",
+                model_calls=60,
+                input_tokens=None,
+                output_tokens=None,
+                seconds=1800,
+                reasoning_effort="low",
+                diagnosis_model_name="openai-codex/gpt-5.6-luna",
+                unresolved_diagnosis_reasoning_effort="xhigh",
+                unresolved_diagnosis_model_calls=5,
+            )
+
+    def test_unresolved_diagnosis_requires_cheap_diagnosis_and_excludes_repair(self):
+        arguments = {
+            "instruction": "repair it",
+            "model_name": "openai-codex/gpt-5.6-sol",
+            "credential_path": "/tmp/private.json",
+            "working_directory": "/workspace",
+            "model_calls": 60,
+            "input_tokens": None,
+            "output_tokens": None,
+            "seconds": 1800,
+            "reasoning_effort": "low",
+            "unresolved_diagnosis_reasoning_effort": "xhigh",
+        }
+        with self.assertRaisesRegex(ValueError, "requires a diagnosis model"):
+            build_program(**arguments)
+        with self.assertRaisesRegex(ValueError, "cannot be combined"):
+            build_program(
+                **arguments,
+                diagnosis_model_name="openai-codex/gpt-5.6-luna",
+                escalation_reasoning_effort="xhigh",
+                escalation_model_calls=6,
             )
 
     def test_program_can_escalate_without_a_diagnosis_episode(self):

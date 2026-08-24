@@ -52,6 +52,8 @@ class FoeAgent(BaseInstalledAgent):
         diagnosis_long_context_threshold: int | str | None = None,
         diagnosis_long_context_input_multiplier: float | str | None = None,
         diagnosis_long_context_output_multiplier: float | str | None = None,
+        unresolved_diagnosis_reasoning_effort: str | None = None,
+        unresolved_diagnosis_model_calls: int | str = 6,
         escalation_reasoning_effort: str | None = None,
         escalation_model_calls: int | str = 0,
         **kwargs: Any,
@@ -75,6 +77,8 @@ class FoeAgent(BaseInstalledAgent):
         self._diagnosis_model = diagnosis_model
         self._diagnosis_reasoning_effort = diagnosis_reasoning_effort
         self._diagnosis_model_calls = int(diagnosis_model_calls)
+        self._unresolved_diagnosis_reasoning_effort = unresolved_diagnosis_reasoning_effort
+        self._unresolved_diagnosis_model_calls = int(unresolved_diagnosis_model_calls)
         self._escalation_reasoning_effort = escalation_reasoning_effort
         self._escalation_model_calls = int(escalation_model_calls)
         diagnosis_prices = (
@@ -172,6 +176,8 @@ class FoeAgent(BaseInstalledAgent):
             diagnosis_model_name=self._diagnosis_model,
             diagnosis_reasoning_effort=self._diagnosis_reasoning_effort,
             diagnosis_model_calls=self._diagnosis_model_calls,
+            unresolved_diagnosis_reasoning_effort=self._unresolved_diagnosis_reasoning_effort,
+            unresolved_diagnosis_model_calls=self._unresolved_diagnosis_model_calls,
             escalation_reasoning_effort=self._escalation_reasoning_effort,
             escalation_model_calls=self._escalation_model_calls,
         )

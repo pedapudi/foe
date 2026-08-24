@@ -64,6 +64,8 @@ class CasesTest(unittest.TestCase):
                 diagnosis_reasoning_effort="high",
                 diagnosis_model_calls=6,
                 diagnosis_pricing=None,
+                unresolved_diagnosis_reasoning_effort=None,
+                unresolved_diagnosis_model_calls=6,
                 escalation_reasoning_effort=None,
                 escalation_model_calls=0,
                 runtime_digest="abc123",
@@ -100,6 +102,8 @@ class CasesTest(unittest.TestCase):
             diagnosis_reasoning_effort="high",
             diagnosis_model_calls=6,
             diagnosis_pricing=None,
+            unresolved_diagnosis_reasoning_effort=None,
+            unresolved_diagnosis_model_calls=6,
             escalation_reasoning_effort=None,
             escalation_model_calls=0,
             runtime_digest="abc123",
@@ -127,6 +131,8 @@ class CasesTest(unittest.TestCase):
             diagnosis_reasoning_effort="high",
             diagnosis_model_calls=6,
             diagnosis_pricing=pricing["openai-codex/gpt-5.6-luna"],
+            unresolved_diagnosis_reasoning_effort=None,
+            unresolved_diagnosis_model_calls=6,
             escalation_reasoning_effort="xhigh",
             escalation_model_calls=18,
             runtime_digest="abc123",
@@ -137,6 +143,34 @@ class CasesTest(unittest.TestCase):
         self.assertIn("diagnosis_input_per_million=0.2", command)
         self.assertIn("escalation_reasoning_effort=xhigh", command)
         self.assertIn("escalation_model_calls=18", command)
+
+    def test_harbor_command_records_conditional_unresolved_diagnosis(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        command = harbor_command(
+            harbor=Path("/tools/harbor"),
+            dataset="terminal-bench/terminal-bench-2-1@6",
+            task=tasks["gpt2-codegolf"],
+            attempts=1,
+            jobs_dir=Path("/tmp/jobs"),
+            agent_module=Path("/tmp/foe_agent.py"),
+            trace_evaluator=Path("/tmp/score-trace"),
+            foe=Path("/tmp/foe"),
+            credential_state=Path("/tmp/private.json"),
+            model="openai-codex/gpt-5.6-sol",
+            reasoning_effort="low",
+            diagnosis_model="openai-codex/gpt-5.6-luna",
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            diagnosis_pricing=pricing["openai-codex/gpt-5.6-luna"],
+            unresolved_diagnosis_reasoning_effort="xhigh",
+            unresolved_diagnosis_model_calls=6,
+            escalation_reasoning_effort=None,
+            escalation_model_calls=0,
+            runtime_digest="abc123",
+            pricing=pricing["openai-codex/gpt-5.6-sol"],
+        )
+        self.assertIn("unresolved_diagnosis_reasoning_effort=xhigh", command)
+        self.assertIn("unresolved_diagnosis_model_calls=6", command)
 
     def test_job_result_reports_trial_exceptions(self):
         with tempfile.TemporaryDirectory() as directory:

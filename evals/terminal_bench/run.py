@@ -244,6 +244,8 @@ def harbor_command(
     diagnosis_reasoning_effort: str,
     diagnosis_model_calls: int,
     diagnosis_pricing: Pricing | None,
+    unresolved_diagnosis_reasoning_effort: str | None,
+    unresolved_diagnosis_model_calls: int,
     escalation_reasoning_effort: str | None,
     escalation_model_calls: int,
     runtime_digest: str,
@@ -271,6 +273,9 @@ def harbor_command(
         if diagnosis_pricing is None:
             raise ValueError("diagnosis model pricing is required")
         kwargs.update({f"diagnosis_{key}": value for key, value in diagnosis_pricing.agent_kwargs().items()})
+    if unresolved_diagnosis_reasoning_effort is not None:
+        kwargs["unresolved_diagnosis_reasoning_effort"] = unresolved_diagnosis_reasoning_effort
+        kwargs["unresolved_diagnosis_model_calls"] = unresolved_diagnosis_model_calls
     if escalation_reasoning_effort is not None:
         kwargs["escalation_reasoning_effort"] = escalation_reasoning_effort
         kwargs["escalation_model_calls"] = escalation_model_calls
@@ -408,6 +413,11 @@ def parser() -> argparse.ArgumentParser:
     )
     answer.add_argument("--diagnosis-model-calls", type=int, default=6)
     answer.add_argument(
+        "--unresolved-diagnosis-reasoning-effort",
+        choices=("low", "medium", "high", "xhigh"),
+    )
+    answer.add_argument("--unresolved-diagnosis-model-calls", type=int, default=6)
+    answer.add_argument(
         "--escalation-reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
     )
@@ -464,6 +474,21 @@ def main(argv: list[str] | None = None) -> int:
                     "--diagnosis-model-calls must be at least "
                     f"{MIN_AUXILIARY_MODEL_CALLS}"
                 )
+        if args.unresolved_diagnosis_reasoning_effort is not None:
+            if args.diagnosis_model is None:
+                raise ValueError(
+                    "--unresolved-diagnosis-reasoning-effort requires --diagnosis-model"
+                )
+            if args.unresolved_diagnosis_model_calls < MIN_AUXILIARY_MODEL_CALLS:
+                raise ValueError(
+                    "--unresolved-diagnosis-model-calls must be at least "
+                    f"{MIN_AUXILIARY_MODEL_CALLS}"
+                )
+            if args.escalation_reasoning_effort is not None:
+                raise ValueError(
+                    "conditional unresolved diagnosis cannot be combined with "
+                    "post-implementation escalation"
+                )
         if args.escalation_reasoning_effort is None and args.escalation_model_calls != 0:
             raise ValueError("--escalation-model-calls requires --escalation-reasoning-effort")
         if (
@@ -503,6 +528,10 @@ def main(argv: list[str] | None = None) -> int:
     runtime_digest = digest(foe)
     auxiliary_calls = (
         args.diagnosis_model_calls if args.diagnosis_model is not None else 0
+    ) + (
+        args.unresolved_diagnosis_model_calls
+        if args.unresolved_diagnosis_reasoning_effort is not None
+        else 0
     ) + args.escalation_model_calls
     selected_pricing = pricing[args.model]
     diagnosis_pricing = pricing[args.diagnosis_model] if args.diagnosis_model else None
@@ -514,15 +543,36 @@ def main(argv: list[str] | None = None) -> int:
             else 0.0
         )
         escalation_fraction = args.escalation_model_calls / task.model_calls
+        unresolved_diagnosis_fraction = (
+            args.unresolved_diagnosis_model_calls / task.model_calls
+            if args.unresolved_diagnosis_reasoning_effort is not None
+            else 0.0
+        )
         diagnosis_input = round(task.expected_input_tokens * diagnosis_fraction)
         diagnosis_output = round(task.expected_output_tokens * diagnosis_fraction)
         escalation_input = round(task.expected_input_tokens * escalation_fraction)
         escalation_output = round(task.expected_output_tokens * escalation_fraction)
-        expected_input = task.expected_input_tokens + diagnosis_input + escalation_input
-        expected_output = task.expected_output_tokens + diagnosis_output + escalation_output
+        unresolved_diagnosis_input = round(
+            task.expected_input_tokens * unresolved_diagnosis_fraction
+        )
+        unresolved_diagnosis_output = round(
+            task.expected_output_tokens * unresolved_diagnosis_fraction
+        )
+        expected_input = (
+            task.expected_input_tokens
+            + diagnosis_input
+            + unresolved_diagnosis_input
+            + escalation_input
+        )
+        expected_output = (
+            task.expected_output_tokens
+            + diagnosis_output
+            + unresolved_diagnosis_output
+            + escalation_output
+        )
         expected_cost = selected_pricing.expected_cost(
-            task.expected_input_tokens + escalation_input,
-            task.expected_output_tokens + escalation_output,
+            task.expected_input_tokens + unresolved_diagnosis_input + escalation_input,
+            task.expected_output_tokens + unresolved_diagnosis_output + escalation_output,
         )
         if diagnosis_pricing is not None:
             expected_cost += diagnosis_pricing.expected_cost(
@@ -538,6 +588,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.escalation_reasoning_effort is not None
             else 0
         )
+        unresolved_diagnosis_seconds = (
+            min(300, max(60, task.seconds // 3))
+            if args.unresolved_diagnosis_reasoning_effort is not None
+            else 0
+        )
         plans.append(
             (
                 task,
@@ -545,7 +600,10 @@ def main(argv: list[str] | None = None) -> int:
                 expected_input,
                 expected_output,
                 expected_cost,
-                task.seconds + diagnosis_seconds + escalation_seconds,
+                task.seconds
+                + diagnosis_seconds
+                + unresolved_diagnosis_seconds
+                + escalation_seconds,
             )
         )
     total_calls = sum(plan[1] for plan in plans) * args.attempts
@@ -559,6 +617,12 @@ def main(argv: list[str] | None = None) -> int:
             f"diagnosis     {args.diagnosis_model} "
             f"reasoning_effort={args.diagnosis_reasoning_effort} "
             f"calls={args.diagnosis_model_calls}"
+        )
+    if args.unresolved_diagnosis_reasoning_effort is not None:
+        print(
+            f"unresolved    {args.model} "
+            f"reasoning_effort={args.unresolved_diagnosis_reasoning_effort} "
+            f"calls={args.unresolved_diagnosis_model_calls}; conditional"
         )
     if args.escalation_reasoning_effort is not None:
         print(
@@ -657,6 +721,8 @@ def main(argv: list[str] | None = None) -> int:
             diagnosis_reasoning_effort=args.diagnosis_reasoning_effort,
             diagnosis_model_calls=args.diagnosis_model_calls,
             diagnosis_pricing=pricing.get(args.diagnosis_model) if args.diagnosis_model else None,
+            unresolved_diagnosis_reasoning_effort=args.unresolved_diagnosis_reasoning_effort,
+            unresolved_diagnosis_model_calls=args.unresolved_diagnosis_model_calls,
             escalation_reasoning_effort=args.escalation_reasoning_effort,
             escalation_model_calls=args.escalation_model_calls,
             runtime_digest=runtime_digest,
@@ -698,6 +764,12 @@ def main(argv: list[str] | None = None) -> int:
         "diagnosis_model": args.diagnosis_model,
         "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort if args.diagnosis_model else None,
         "diagnosis_model_calls": args.diagnosis_model_calls if args.diagnosis_model else None,
+        "unresolved_diagnosis_reasoning_effort": args.unresolved_diagnosis_reasoning_effort,
+        "unresolved_diagnosis_model_calls": (
+            args.unresolved_diagnosis_model_calls
+            if args.unresolved_diagnosis_reasoning_effort
+            else None
+        ),
         "escalation_reasoning_effort": args.escalation_reasoning_effort,
         "escalation_model_calls": args.escalation_model_calls if args.escalation_reasoning_effort else None,
         "attempts": args.attempts,

@@ -130,6 +130,24 @@ typed return releases the remaining work immediately. The runner prices each
 child from the model route recorded in its episode log. Omitting
 `--diagnosis-model` preserves the single-episode coding program.
 
+A cheap diagnosis can conditionally request deeper reasoning from the primary
+model before implementation:
+
+```sh
+bazel run //evals/terminal_bench:foe-capability-search -- \
+  --task gpt2-codegolf \
+  --diagnosis-model openai-codex/gpt-5.6-luna \
+  --diagnosis-reasoning-effort high \
+  --unresolved-diagnosis-reasoning-effort xhigh \
+  --confirm-spend
+```
+
+The Luna episode chooses direct implementation only when repository evidence
+resolves every implementation-critical fact. Otherwise a read-only Sol
+`xhigh` episode resolves the uncertainty. A fresh Sol `low` episode performs
+the implementation on either path. The spending preview includes the maximum
+conditional path. Actual cost includes only the branch that fires.
+
 The implementation can receive a fresh higher-reasoning repair episode while
 the primary implementation remains at low reasoning. The repair episode does
 not require a separate diagnosis episode:
@@ -146,7 +164,9 @@ The repair episode receives the task and the earlier episode's completion
 claim in a fresh context. It audits the shared workspace before completing.
 Its allowance is additive. The implementation retains its full capacity when
 repair is enabled. A diagnosis episode can still precede both children when
-the task benefits from a cheaper model's typed analysis.
+the task benefits from a cheaper model's typed analysis. Conditional unresolved
+diagnosis and post-implementation repair are separate experiments, so the
+runner refuses a command that enables both.
 
 The task registry uses at least 60 model calls and 1,800 seconds for every task.
 These values serve only as loop and stall backstops. Actual use determines

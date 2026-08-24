@@ -34,6 +34,8 @@ def build_program(
     diagnosis_model_name: str | None = None,
     diagnosis_reasoning_effort: str = "high",
     diagnosis_model_calls: int = 6,
+    unresolved_diagnosis_reasoning_effort: str | None = None,
+    unresolved_diagnosis_model_calls: int = 6,
     escalation_reasoning_effort: str | None = None,
     escalation_model_calls: int = 0,
 ) -> dict[str, Any]:
@@ -78,7 +80,11 @@ def build_program(
         "sandbox": {"mode": "off"},
         "task": instruction,
     }
-    if diagnosis_model_name is None and escalation_reasoning_effort is None:
+    if (
+        diagnosis_model_name is None
+        and unresolved_diagnosis_reasoning_effort is None
+        and escalation_reasoning_effort is None
+    ):
         return program
     diagnosis_provider = diagnosis_model = None
     if diagnosis_model_name is not None:
@@ -91,6 +97,18 @@ def build_program(
             raise ValueError(
                 f"diagnosis model calls must be at least {MIN_AUXILIARY_MODEL_CALLS}"
             )
+    if unresolved_diagnosis_reasoning_effort is not None:
+        if diagnosis_model_name is None:
+            raise ValueError("unresolved diagnosis requires a diagnosis model")
+        if unresolved_diagnosis_model_calls < MIN_AUXILIARY_MODEL_CALLS:
+            raise ValueError(
+                "unresolved diagnosis model calls must be at least "
+                f"{MIN_AUXILIARY_MODEL_CALLS}"
+            )
+        if escalation_reasoning_effort is not None:
+            raise ValueError(
+                "unresolved diagnosis and post-implementation escalation cannot be combined"
+            )
     if escalation_reasoning_effort is None and escalation_model_calls != 0:
         raise ValueError("escalation model calls require an escalation reasoning effort")
     if (
@@ -102,6 +120,16 @@ def build_program(
         )
     diagnosis_calls = diagnosis_model_calls if diagnosis_model_name is not None else 0
     diagnosis_seconds = min(300, max(60, seconds // 3)) if diagnosis_model_name is not None else 0
+    unresolved_diagnosis_calls = (
+        unresolved_diagnosis_model_calls
+        if unresolved_diagnosis_reasoning_effort is not None
+        else 0
+    )
+    unresolved_diagnosis_seconds = (
+        min(300, max(60, seconds // 3))
+        if unresolved_diagnosis_reasoning_effort is not None
+        else 0
+    )
     escalation_seconds = min(seconds, max(300, seconds // 2)) if escalation_reasoning_effort is not None else 0
     implementation_seconds = seconds
     implementation_calls = model_calls
@@ -119,10 +147,21 @@ def build_program(
     }
     program["budget"].update(
         {
-            "model_calls": model_calls + diagnosis_calls + escalation_model_calls,
-            "seconds": seconds + diagnosis_seconds + escalation_seconds,
+            "model_calls": (
+                model_calls
+                + diagnosis_calls
+                + unresolved_diagnosis_calls
+                + escalation_model_calls
+            ),
+            "seconds": (
+                seconds
+                + diagnosis_seconds
+                + unresolved_diagnosis_seconds
+                + escalation_seconds
+            ),
             "max_episodes": 2
             + int(diagnosis_model_name is not None)
+            + int(unresolved_diagnosis_reasoning_effort is not None)
             + int(escalation_reasoning_effort is not None),
             "max_concurrent": 1,
         }
@@ -140,37 +179,59 @@ def build_program(
         "materially different behavioral inputs, including one that stresses parsing, length, "
         "or state."
     )
+    def implementation_node(name: str, follows: list[str], terminal: bool) -> dict[str, Any]:
+        return {
+            "model": {
+                "name": name,
+                "instructions": {"role": implementation_role},
+                "tools": ["read", "grep", "edit", "bash"],
+                "grants": shared_grants,
+                "budget": {
+                    "model_calls": implementation_calls,
+                    "seconds": implementation_seconds,
+                    "loop_threshold": EVALUATION_LOOP_THRESHOLD,
+                },
+                "model": {
+                    "provider": provider,
+                    "model": model,
+                    "reasoning_effort": reasoning_effort,
+                    "token_file": credential_path,
+                },
+            },
+            "follows": follows,
+            "terminal": terminal,
+        }
+
     program["workflow"] = {
         "nodes": {
-            "implement-task": {
-                "model": {
-                    "name": (
-                        "implement-diagnosed-task"
-                        if diagnosis_model_name is not None
-                        else "implement-task"
-                    ),
-                    "instructions": {"role": implementation_role},
-                    "tools": ["read", "grep", "edit", "bash"],
-                    "grants": shared_grants,
-                    "budget": {
-                        "model_calls": implementation_calls,
-                        "seconds": implementation_seconds,
-                        "loop_threshold": EVALUATION_LOOP_THRESHOLD,
-                    },
-                    "model": {
-                        "provider": provider,
-                        "model": model,
-                        "reasoning_effort": reasoning_effort,
-                        "token_file": credential_path,
-                    },
-                },
-                "follows": ["task"]
-                + (["diagnose-task"] if diagnosis_model_name is not None else []),
-                "terminal": escalation_reasoning_effort is None,
-            },
+            "implement-task": implementation_node(
+                (
+                    "implement-diagnosed-task"
+                    if diagnosis_model_name is not None
+                    else "implement-task"
+                ),
+                ["task"] + (["diagnose-task"] if diagnosis_model_name is not None else []),
+                escalation_reasoning_effort is None,
+            ),
         },
         "recovery": {"enabled": False},
     }
+    if unresolved_diagnosis_reasoning_effort is not None:
+        del program["workflow"]["nodes"]["implement-task"]
+        program["workflow"]["nodes"].update(
+            {
+                "implement-resolved-task": implementation_node(
+                    "implement-resolved-task",
+                    ["task", "diagnose-task"],
+                    True,
+                ),
+                "implement-after-unresolved-diagnosis": implementation_node(
+                    "implement-after-unresolved-diagnosis",
+                    ["task", "diagnose-unresolved-task"],
+                    True,
+                ),
+            }
+        )
     if diagnosis_model_name is not None:
         program["workflow"]["nodes"]["diagnose-task"] = {
             "model": {
@@ -203,6 +264,50 @@ def build_program(
             },
             "follows": ["task"],
         }
+        if unresolved_diagnosis_reasoning_effort is not None:
+            program["workflow"]["nodes"]["diagnose-task"]["branches"] = {
+                "implement": ["implement-resolved-task"],
+                "investigate-unresolved-facts": ["diagnose-unresolved-task"],
+            }
+            program["workflow"]["nodes"]["diagnose-task"]["model"]["instructions"]["role"] += (
+                " Choose branch `implement` only when every fact required to implement and "
+                "verify the task is resolved by evidence. Choose branch "
+                "`investigate-unresolved-facts` when any implementation-critical fact remains "
+                "uncertain."
+            )
+            program["workflow"]["nodes"]["diagnose-unresolved-task"] = {
+                "model": {
+                    "name": "diagnose-unresolved-task",
+                    "instructions": {
+                        "role": (
+                            "Resolve the implementation-critical uncertainty in the earlier "
+                            "diagnosis. Analyze the task and repository without implementing the "
+                            "task. Use read, grep, and bash for focused static and runtime evidence. "
+                            "Return a consolidated set of facts, implementation steps, and "
+                            "verification steps for a fresh coding episode. State remaining "
+                            "uncertainty explicitly. "
+                            f"Use no more than {unresolved_diagnosis_model_calls - 1} request(s) "
+                            "for inspection. On the final request, call return with the best "
+                            "supported diagnosis."
+                        )
+                    },
+                    "tools": ["read", "grep", "bash"],
+                    "grants": {"read": [working_directory, "/"]},
+                    "budget": {
+                        "model_calls": unresolved_diagnosis_model_calls,
+                        "seconds": unresolved_diagnosis_seconds,
+                        "loop_threshold": EVALUATION_LOOP_THRESHOLD,
+                    },
+                    "done_when": {"returns": diagnosis_schema},
+                    "model": {
+                        "provider": provider,
+                        "model": model,
+                        "reasoning_effort": unresolved_diagnosis_reasoning_effort,
+                        "token_file": credential_path,
+                    },
+                },
+                "follows": ["task", "diagnose-task"],
+            }
     if escalation_reasoning_effort is not None:
         program["workflow"]["nodes"]["audit-and-repair-task"] = {
             "model": {
