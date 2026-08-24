@@ -20,6 +20,16 @@ task image, uploads a statically linked Foe binary, runs one Foe episode, and
 executes the task-owned verifier. Harbor documents the custom interface in its
 [agent integration guide](https://harborframework.com/docs/agents).
 
+The installed-agent program sets `sandbox.mode` to `off`. The Harbor Docker
+container is the isolation boundary for the task. Disabling Landlock inside
+the container removes host-kernel compatibility from the quality measurement.
+The recorded episode must report sandbox mode `off` and no observed Landlock
+ABI. A different sandbox record invalidates the trial as infrastructure data.
+
+The self-improvement runner executes candidate changes on the host. Its
+program retains `sandbox.mode: best-effort` because the Docker isolation
+boundary does not cover that process.
+
 ## Prerequisites
 
 The host needs Bazel, Docker, Docker Compose 2, and Harbor 0.22.0. The user who

@@ -444,6 +444,14 @@ their exposure rules are frozen in
 [`evals/terminal_bench/campaign.md`](../evals/terminal_bench/campaign.md). A
 complete official run follows only when calibration supports its accuracy and
 cost target.
+
+The adapter disables Foe's Landlock sandbox inside each task container. The
+Harbor Docker container supplies the benchmark isolation boundary. Every
+retained trial must record sandbox mode `off` and no observed Landlock ABI.
+This rule prevents differences in host Landlock support from affecting task
+quality. Host-side self-improvement episodes retain their declared sandbox
+because they execute outside the task container.
+
 Terminal-Bench completion alone does not establish Foe's trace or authority
 guarantees, so every trial also receives the local conformance evaluation.
 
