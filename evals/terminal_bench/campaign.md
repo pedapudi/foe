@@ -28,7 +28,14 @@ The capability conversion succeeds when all of these conditions hold:
 
 The calibration gate is intentionally ambitious. Foe must complete at least ten of twelve calibration tasks and at least five of six calibration-holdout tasks on one frozen attempt per task. This result is 15 successes across 18 tasks. It is a directional estimate near the campaign's eventual 85 percent full-benchmark target.
 
-Provider spend through the calibration gate should remain below 75 US dollars. The spend limit is a campaign decision gate. Foe records usage without enforcing token ceilings during development runs.
+Provider spend through the calibration gate should remain below 75 US dollars.
+The spend limit uses the retained token-derived cost estimate. Development
+runs request the `priority` service tier to reduce elapsed time. Their records
+also carry the documented 2.5-times ChatGPT credit multiplier for GPT-5.6.
+The service tier does not change the token-derived comparison metric. Foe
+records usage without enforcing token ceilings during development runs. The
+[OpenAI speed documentation](https://developers.openai.com/codex/speed)
+specifies the speed target and credit multiplier.
 
 ## Task sets
 

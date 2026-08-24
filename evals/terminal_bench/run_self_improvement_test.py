@@ -88,6 +88,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn("model", implementation)
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
         self.assertEqual(config["model"]["reasoning_effort"], "high")
+        self.assertEqual(config["model"]["service_tier"], "priority")
         self.assertEqual(
             implementation["grants"]["write"],
             [str(root / directory) for directory in ("crates", "docs", "examples")],

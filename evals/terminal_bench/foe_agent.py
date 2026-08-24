@@ -43,6 +43,7 @@ class FoeAgent(BaseInstalledAgent):
         long_context_input_multiplier: float | str,
         long_context_output_multiplier: float | str,
         reasoning_effort: str = "low",
+        service_tier: str = "priority",
         diagnosis_model: str | None = None,
         diagnosis_reasoning_effort: str = "high",
         diagnosis_model_calls: int | str = 6,
@@ -74,6 +75,7 @@ class FoeAgent(BaseInstalledAgent):
             "long_context_output_multiplier": float(long_context_output_multiplier),
         }
         self._reasoning_effort = reasoning_effort
+        self._service_tier = service_tier
         self._diagnosis_model = diagnosis_model
         self._diagnosis_reasoning_effort = diagnosis_reasoning_effort
         self._diagnosis_model_calls = int(diagnosis_model_calls)
@@ -173,6 +175,7 @@ class FoeAgent(BaseInstalledAgent):
             output_tokens=self._output_tokens,
             seconds=self._seconds,
             reasoning_effort=self._reasoning_effort,
+            service_tier=self._service_tier,
             diagnosis_model_name=self._diagnosis_model,
             diagnosis_reasoning_effort=self._diagnosis_reasoning_effort,
             diagnosis_model_calls=self._diagnosis_model_calls,

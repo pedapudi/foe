@@ -28,13 +28,14 @@ ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
 ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel.lock")
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
 SYSTEM_DEVELOPMENT_READ_DIRS = (Path("/usr/include"), Path("/usr/local/include"))
+FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
 
 
 def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def model_config(route: str, reasoning_effort: str) -> dict[str, str]:
+def model_config(route: str, reasoning_effort: str, service_tier: str = "priority") -> dict[str, str]:
     provider, slash, model = route.partition("/")
     if not slash or not provider or not model:
         raise ValueError("model routes must have the form provider/model")
@@ -42,6 +43,7 @@ def model_config(route: str, reasoning_effort: str) -> dict[str, str]:
         "provider": provider,
         "model": model,
         "reasoning_effort": reasoning_effort,
+        "service_tier": service_tier,
     }
 
 
@@ -474,6 +476,7 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--evidence", type=Path, required=True)
     answer.add_argument("--cases", type=Path, required=True)
     answer.add_argument("--model", default="openai-codex/gpt-5.6-terra")
+    answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
     answer.add_argument(
         "--reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
@@ -509,8 +512,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         _, _, _, pricing = read_cases(args.cases.resolve(strict=True))
-        model = model_config(args.model, args.reasoning_effort)
-        diagnosis_model = model_config(args.diagnosis_model, args.diagnosis_reasoning_effort)
+        model = model_config(args.model, args.reasoning_effort, args.service_tier)
+        diagnosis_model = model_config(
+            args.diagnosis_model, args.diagnosis_reasoning_effort, args.service_tier
+        )
         if args.model not in pricing:
             raise ValueError(f"cases.pricing has no entry for {args.model}")
         if args.diagnosis_model not in pricing:
@@ -542,6 +547,10 @@ def main(argv: list[str] | None = None) -> int:
         "evaluation": "identity-bound-trajectory-self-improvement",
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "service_tier": args.service_tier,
+        "chatgpt_credit_multiplier": (
+            FAST_SERVICE_CREDIT_MULTIPLIER if args.service_tier == "priority" else 1.0
+        ),
         "diagnosis_model": args.diagnosis_model,
         "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort,
         "maximum": {"model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS, "seconds": SECONDS},

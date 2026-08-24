@@ -421,7 +421,7 @@ host process must answer model requests over the [protocol](protocol.md).
 | `provider` | string | yes | a provider name the build knows; [models.md](models.md) lists them |
 | `model` | string | yes | the model identifier the provider expects |
 | `max_output_tokens` | integer | no | per-request output limit; default is the provider's |
-| any other key | string | per provider | a provider-specific option, such as `api_key_file`, `base_url`, `project`, or `exec` |
+| any other key | string | per provider | a provider-specific option, such as `api_key_file`, `base_url`, `project`, `service_tier`, or `exec` |
 
 The provider name is opaque to the configuration format. Whether a build
 knows it is decided where the transport is composed; `foe plan` reports the
@@ -442,10 +442,10 @@ One block per provider:
 
 ```json
 { "provider": "anthropic", "model": "claude-opus-5" }
-{ "provider": "openai", "model": "gpt-5.6-sol", "reasoning_effort": "medium" }
+{ "provider": "openai", "model": "gpt-5.6-sol", "reasoning_effort": "medium", "service_tier": "priority" }
 { "provider": "openai-compatible", "model": "llama3.1", "base_url": "http://127.0.0.1:11434/v1", "api_key_file": "/home/user/.config/foe/ollama.key" }
 { "provider": "openrouter", "model": "anthropic/claude-opus-5" }
-{ "provider": "openai-codex", "model": "gpt-5.6-sol" }
+{ "provider": "openai-codex", "model": "gpt-5.6-sol", "service_tier": "priority" }
 { "provider": "vertex", "model": "gemini-2.5-pro", "project": "my-project", "location": "us-east5" }
 { "provider": "exec", "model": "openai/gpt-5", "exec": "/home/user/project/tools/litellm-transport", "api_key_file": "/home/user/project/.secrets/openai.key" }
 ```

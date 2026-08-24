@@ -96,6 +96,13 @@ ceilings. Model calls and wall time remain loop backstops. Use
 `--hard-token-limits` only when a token boundary is the subject of the test.
 
 The default route is `openai-codex/gpt-5.6-sol` with low reasoning effort.
+Every model node requests the `priority` service tier by default. OpenAI calls
+this setting Fast mode. The documented target is 1.5 times Standard speed, and
+GPT-5.6 consumes 2.5 times the Standard ChatGPT credits. The runner records
+the requested tier and credit multiplier beside its token-derived cost
+estimate. Use `--service-tier default` for a Standard run. See the
+[OpenAI speed documentation](https://developers.openai.com/codex/speed).
+
 Luna and Terra are available for inexpensive development diagnosis:
 
 ```sh

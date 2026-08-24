@@ -25,6 +25,7 @@ HARBOR_VERSION = "0.22.0"
 DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 MIN_AUXILIARY_MODEL_CALLS = 6
+FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
 
 
 @dataclass(frozen=True)
@@ -240,6 +241,7 @@ def harbor_command(
     credential_state: Path,
     model: str,
     reasoning_effort: str,
+    service_tier: str = "priority",
     diagnosis_model: str | None,
     diagnosis_reasoning_effort: str,
     diagnosis_model_calls: int,
@@ -260,6 +262,7 @@ def harbor_command(
         "model_calls": task.model_calls,
         "seconds": task.seconds,
         "reasoning_effort": reasoning_effort,
+        "service_tier": service_tier,
         "version": f"sha256:{runtime_digest}",
         **pricing.agent_kwargs(),
     }
@@ -400,6 +403,7 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--task", action="append", default=[])
     answer.add_argument("--attempts", type=int, default=1)
     answer.add_argument("--model", default=DEFAULT_MODEL)
+    answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
     answer.add_argument(
         "--reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
@@ -602,6 +606,7 @@ def main(argv: list[str] | None = None) -> int:
     total_expected_cost = sum(plan[4] for plan in plans) * args.attempts
     print(f"dataset       {dataset}")
     print(f"model         {args.model} reasoning_effort={args.reasoning_effort}")
+    print(f"service tier  {args.service_tier}")
     if args.diagnosis_model is not None:
         print(
             f"diagnosis     {args.diagnosis_model} "
@@ -637,6 +642,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     token_policy = "hard allowances" if args.hard_token_limits else "measurement only"
     print(f"token limits  {token_policy}")
+    if args.service_tier == "priority":
+        print(f"Fast credits  {FAST_SERVICE_CREDIT_MULTIPLIER:g}x Standard ChatGPT credits")
     if args.install_only:
         print("Installation compatibility check selected; no model requests will be made.")
     elif not args.confirm_spend:
@@ -707,6 +714,7 @@ def main(argv: list[str] | None = None) -> int:
             credential_state=credential_state,
             model=args.model,
             reasoning_effort=args.reasoning_effort,
+            service_tier=args.service_tier,
             diagnosis_model=args.diagnosis_model,
             diagnosis_reasoning_effort=args.diagnosis_reasoning_effort,
             diagnosis_model_calls=args.diagnosis_model_calls,
@@ -751,6 +759,10 @@ def main(argv: list[str] | None = None) -> int:
         "label": args.label,
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "service_tier": args.service_tier,
+        "chatgpt_credit_multiplier": (
+            FAST_SERVICE_CREDIT_MULTIPLIER if args.service_tier == "priority" else 1.0
+        ),
         "diagnosis_model": args.diagnosis_model,
         "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort if args.diagnosis_model else None,
         "diagnosis_model_calls": args.diagnosis_model_calls if args.diagnosis_model else None,

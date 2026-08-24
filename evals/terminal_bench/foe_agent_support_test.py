@@ -37,6 +37,7 @@ class ProgramTest(unittest.TestCase):
         )
         self.assertEqual(program["sandbox"], {"mode": "off"})
         self.assertEqual(program["model"]["reasoning_effort"], "low")
+        self.assertEqual(program["model"]["service_tier"], "priority")
         self.assertEqual(program["model"]["token_file"], "/tmp/private.json")
         self.assertNotIn("api_key_file", program["model"])
         self.assertEqual(program["task"], "repair it")

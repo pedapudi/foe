@@ -82,6 +82,7 @@ class CasesTest(unittest.TestCase):
         self.assertNotIn("input_tokens=120000", command)
         self.assertNotIn("output_tokens=20000", command)
         self.assertIn("input_per_million=4.0", command)
+        self.assertIn("service_tier=priority", command)
         self.assertIn("--install-only", command)
 
     def test_hard_token_limits_are_an_explicit_runner_option(self):

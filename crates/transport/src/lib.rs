@@ -273,6 +273,7 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
                 model.model.clone(),
                 max,
                 model.option("reasoning_effort").map(str::to_string),
+                model.option("service_tier").map(str::to_string),
             )),
             base(provider.default_base_url)?.join(provider.path),
         ),

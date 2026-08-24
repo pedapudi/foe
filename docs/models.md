@@ -81,6 +81,7 @@ Every provider-specific option is a flat string. The options by provider:
 | `location` | `vertex` | the region, such as `us-east5`, or `global`; required |
 | `base_url` | every HTTP provider | replaces the default endpoint; required for `openai-compatible` |
 | `reasoning_effort` | `openai`, `openai-codex` | sent as `reasoning.effort`; models without reasoning reject it |
+| `service_tier` | `openai`, `openai-codex` | sent as the Responses request's `service_tier`, such as `priority` |
 | `include_thoughts` | `vertex` with Gemini models | `"false"` leaves `thinkingConfig` out, for models without thinking |
 | `exec` | `exec` | absolute path of the program; required |
 
@@ -88,6 +89,10 @@ The public OpenAI Responses API accepts `max_output_tokens`. The ChatGPT
 Codex backend used by `openai-codex` rejects that field, so foe omits it on
 that route. Foe charges the output usage that the backend reports after each
 response. One response can cross the remaining output-token allowance.
+
+The Responses providers send `service_tier` when the model block supplies
+it. The provider may schedule the request on another tier. Foe accepts the
+provider's completed response under the provider's fallback behavior.
 
 `base_url` follows each provider's own convention. For `anthropic` it is an
 origin, `https://api.anthropic.com`, and `/v1/messages` is appended. For the
