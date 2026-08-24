@@ -170,6 +170,15 @@ fn a_guard_that_could_never_observe_a_verification_is_refused() {
     let (found, rule) = rejection(guard("propose", |_| {}));
     assert_eq!(found, key);
     assert!(rule.contains("could never observe a verification"), "{rule}");
+    // A guarded node cannot be a choice point: a skipped node makes no
+    // choice, so `branches` beside the guard is refused.
+    let (found, rule) = rejection(guard("propose", |v| {
+        v["workflow"]["nodes"]["propose"]["model"]["done_when"] = json!({ "verify": "block" });
+        v["workflow"]["nodes"]["derive"]["branches"] = json!({ "accept": [] });
+        v["workflow"]["nodes"]["derive"]["terminal"] = json!(false);
+    }));
+    assert_eq!(found, key);
+    assert!(rule.contains("choice point"), "{rule}");
     // With `done_when.verify` on the named node's program the guard stands.
     let accepted = guard("propose", |v| {
         v["workflow"]["nodes"]["propose"]["model"]["done_when"] = json!({ "verify": "block" });
