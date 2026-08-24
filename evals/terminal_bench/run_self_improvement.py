@@ -338,7 +338,8 @@ def build_config(
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
             "evidence": "Compare the failed and successful settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Improve the lower-cost evaluated configuration. Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat a higher-cost successful setting as diagnostic evidence rather than the candidate configuration. The intervention must apply through general Foe behavior or an existing general configuration mechanism used by the recorded program. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity. Evaluation configuration is outside candidate scope.",
-            "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports it. Continue only while a named causal uncertainty prevents a supported intervention. The model-call allowance is a loop backstop. Each string should contain no more than two sentences. The coding episode receives the diagnosis without the trajectory reports.",
+            "sufficiency": "Choose `implement` only when the failed trajectories activate a specific Foe mechanism and the successful trajectories supply a causal contrast for changing it. A reasoning-effort difference alone establishes a model capability gap rather than a Foe defect. Choose `insufficient-evidence` when the intervention would require semantic knowledge absent from the log, an evaluator change, or a general instruction that no runtime signal can enforce.",
+            "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block"],
         "grants": {"read": diagnosis_read_roots},
@@ -438,10 +439,14 @@ def build_config(
                 "diagnose-runtime": {
                     "model": diagnosis,
                     "follows": ["task", "collect-trajectory-diagnostics"],
+                    "branches": {
+                        "implement": ["implement-runtime-improvement"],
+                        "insufficient-evidence": [],
+                    },
                 },
                 "implement-runtime-improvement": {
                     "model": implementation,
-                    "follows": ["task", "diagnose-runtime"],
+                    "follows": ["task"],
                     "terminal": True,
                 },
             },

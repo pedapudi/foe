@@ -373,13 +373,17 @@ Luna with `low` reasoning produces the bounded diagnosis from the supplied
 digest. Its only ordinary tool is `block`, so it cannot inspect the candidate
 source or retained run directories. Its typed result contains one causal
 contrast, one intervention, and the controls and falsification condition
-needed to evaluate that intervention.
+needed to evaluate that intervention. It chooses `implement` when failed and
+successful trajectories isolate an activated Foe mechanism. It chooses
+`insufficient-evidence` when the contrast identifies only model capability or
+requires semantic task knowledge absent from the log. That choice ends the
+workflow before a coding episode and sets `direct_implementation_required`.
 
-Terra with `high` reasoning receives the diagnosis and acts with `read`,
-`grep`, `edit`, and `bash`. The coding child locates the affected
-implementation, test, and specification files. Its write authority covers
-runtime crates, specifications, and examples. It cannot write evaluation code
-or benchmark material.
+When the diagnosis chooses `implement`, the configured coding model receives
+the diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The coding
+child locates the affected implementation, test, and specification files.
+Its write authority covers runtime crates, specifications, and examples. It
+cannot write evaluation code or benchmark material.
 
 The diagnosis prompt targets four requests and has a 20-call, 1,800-second
 loop backstop. The implementation has 28-call and 3,600-second safety

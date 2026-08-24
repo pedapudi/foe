@@ -220,10 +220,13 @@ quality benefit from a separate audit stage.
 
 ## Self-improvement contract
 
-The self-improvement workflow has two model nodes. A Luna diagnosis node reads
-the bounded trajectory digest and returns a typed causal intervention. It has
-no source-tree inspection tool or access. A separate Terra coding node
-receives the diagnosis and a clean context, then maps the intervention to source. The
+The self-improvement workflow has at most two model nodes. A Luna diagnosis
+node reads the bounded trajectory digest and returns a typed causal
+intervention. It has no source-tree inspection tool or access. It ends the
+workflow as `insufficient-evidence` when the contrast isolates only model
+capability or requires semantic information absent from the log. A separate
+coding node runs only after an `implement` choice. It receives the diagnosis
+and a clean context, then maps the intervention to source. The
 intervention must improve the lower-cost evaluated configuration. It preserves
 the model route, reasoning effort, task allowances, token policy, and task set.
 Higher-cost successful settings supply diagnostic contrasts.
@@ -251,6 +254,61 @@ workspace tests, clippy, and line-budget checks.
 The evidence file names the evaluated Git tree and Foe binary digest. It labels every trajectory with the run and model setting that produced it. The workflow refuses a source or binary mismatch before making a model request. The candidate checker requires a Rust implementation change, a Rust regression test, and an affected specification.
 
 The workflow is one candidate generator. The runner validates changed files again after the episode. Its result binds the base Git tree and changed file content into one candidate artifact digest. A validated artifact survives an exhausted reporting outcome. Candidate promotion remains an external evaluation decision. A failed artifact sets `direct_implementation_required`. The campaign then proceeds with a direct implementation.
+
+## Recorded capability conversion and diagnosis sufficiency
+
+On 2026-08-24, five single-episode `gpt2-codegolf` attempts measured the
+capability difference between Sol reasoning settings. Every attempt used the
+default service tier and the same Foe binary:
+`sha256:50d99136ed988f8c4a1b4524f1274c29814aaa5635097f5c09427d7721f05644`.
+
+The three low-reasoning attempts received no task-owned grader credit. Each
+episode completed after its local checks passed, but the submitted program
+failed the hidden behavioral grader. The two xhigh-reasoning attempts both
+received full task-owned grader credit.
+
+| Configuration | Accepted trials | Model calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sol low, one episode | 0 of 3 | 32 | 234,848 | 108,544 | 14,250 | $0.833634 |
+| Sol xhigh, one episode | 2 of 2 | 44 | 1,507,411 | 945,152 | 39,267 | $3.412437 |
+| Sol low implementation followed by Sol high audit | 1 of 1 | 43 | 894,612 | 492,544 | 21,431 | $2.233910 |
+
+The low-reasoning implementation in the audit workflow observed repetitive
+sample output and reported unresolved checkpoint-layout risks. The fresh
+high-reasoning audit inspected the tensor layout and tokenizer, repaired the
+program, and passed the hidden grader. This trial shows that the audit stage
+can convert an observed implementation failure into a correct artifact. One
+trial does not estimate the workflow's reliability.
+
+The identity-bound evidence digest contained the five single-episode
+trajectories. Its evaluated source identity was
+`git-tree-sha1:267cbce2b9da0d6eff3970acb335986050db0ead`. The retained file is
+`target/current-source-gpt2-trajectory-evidence.json`.
+
+Two self-improvement attempts used this evidence before the diagnosis gained
+an evidence-sufficiency choice. The first attempt consumed 14 model calls and
+an estimated $1.782781. The second attempt consumed 13 model calls and an
+estimated $1.624444. Neither attempt changed a source file. Both coding
+episodes tried to infer a runtime change from a contrast that varied reasoning
+effort and model-call opportunity without exposing the failed semantic
+assertion.
+
+After the diagnosis gained an `insufficient-evidence` branch, a Luna
+high-reasoning diagnosis selected that branch in one request. The request used
+13,316 input tokens and 2,526 output tokens. Its estimated cost was $0.005694.
+The workflow spawned no coding episode and changed no candidate file. The
+diagnosis stated that the evidence isolated a model-capability difference and
+did not identify an enforceable Foe mechanism.
+
+This result validates abstention from an unsupported source candidate. It
+does not satisfy the campaign requirement for a verified self-improvement.
+The campaign therefore requires a direct product improvement and a new
+identity-bound contrast that activates a specific Foe mechanism.
+
+The retained self-improvement result is
+`target/current-source-gpt2-self-improvement-sufficiency-run/result.json`.
+The successful audit workflow is retained under
+`target/terminal-bench-jobs/current-source-default-workflow-gpt2-attempt-1-20260824T060432Z`.
 
 ## Recorded self-improvement failure analysis
 

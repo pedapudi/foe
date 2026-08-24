@@ -69,7 +69,14 @@ class SelfImprovementConfigTest(unittest.TestCase):
         implementation = nodes["implement-runtime-improvement"]["model"]
         self.assertEqual(
             nodes["implement-runtime-improvement"]["follows"],
-            ["task", "diagnose-runtime"],
+            ["task"],
+        )
+        self.assertEqual(
+            nodes["diagnose-runtime"]["branches"],
+            {
+                "implement": ["implement-runtime-improvement"],
+                "insufficient-evidence": [],
+            },
         )
         self.assertEqual(implementation["tools"][:4], ["read", "grep", "edit", "bash"])
         self.assertEqual(diagnosis["tools"], ["block"])
@@ -108,6 +115,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertIn("four model requests as a planning target", diagnosis["instructions"]["result"])
         self.assertIn("loop backstop", diagnosis["instructions"]["result"])
+        self.assertIn("model capability gap", diagnosis["instructions"]["sufficiency"])
         self.assertIn("must not branch on", diagnosis["instructions"]["controls"])
         self.assertEqual(
             implementation["grants"]["write"],
