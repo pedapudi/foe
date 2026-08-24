@@ -21,9 +21,11 @@ from foe_agent_support import estimate_usage_cost
 from run import Pricing, read_cases
 
 
-DIAGNOSIS_CALLS = 4
+DIAGNOSIS_CALLS = 20
 IMPLEMENTATION_CALLS = 28
-SECONDS = 3_600
+DIAGNOSIS_SECONDS = 1_800
+IMPLEMENTATION_SECONDS = 3_600
+SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
 ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel.lock")
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
@@ -274,11 +276,11 @@ def build_config(
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
             "evidence": "Compare failed and successful model settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Tie claims to episode identifiers and log sequence numbers. Separate model limitations from harness limitations.",
             "controls": "Improve the lower-cost evaluated configuration. Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat a higher-cost successful setting as diagnostic evidence rather than the candidate configuration. The intervention must change general product behavior under crates, docs, or examples and must be active for the explicit program recorded in the evidence. Evaluation configuration is outside candidate scope.",
-            "result": "Return one typed causal intervention before the final available request. Name evidence that differs between failed and successful attempts, plus the observation that would falsify the intervention. The coding episode receives the diagnosis without the trajectory reports.",
+            "result": "Use four model requests as a planning target. Return one typed causal intervention as soon as the evidence supports it. Continue only while a named causal uncertainty prevents a supported intervention. The model-call allowance is a loop backstop. Name evidence that differs between failed and successful attempts, plus the observation that would falsify the intervention. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block"],
         "grants": {"read": diagnosis_read_roots},
-        "budget": {"model_calls": DIAGNOSIS_CALLS, "seconds": 600},
+        "budget": {"model_calls": DIAGNOSIS_CALLS, "seconds": DIAGNOSIS_SECONDS},
         "model": diagnosis_model,
         "done_when": {
             "returns": {
@@ -351,7 +353,7 @@ def build_config(
         "tools": [*CODING_TOOLS, "check"],
         "tool_defs": {"check": check_tool},
         "grants": {"read": implementation_read_roots, "write": write_roots, "execute": execute},
-        "budget": {"model_calls": IMPLEMENTATION_CALLS, "seconds": 3_000},
+        "budget": {"model_calls": IMPLEMENTATION_CALLS, "seconds": IMPLEMENTATION_SECONDS},
         "done_when": {"verify": "check", "retries": 2},
     }
     return {

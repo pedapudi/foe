@@ -122,6 +122,23 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(nodes["implement-task"]["follows"], ["task", "diagnose-task"])
         self.assertTrue(nodes["implement-task"]["terminal"])
 
+    def test_default_diagnosis_allowance_is_a_backstop(self):
+        program = build_program(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            "/workspace",
+            model_calls=60,
+            input_tokens=None,
+            output_tokens=None,
+            seconds=1800,
+            reasoning_effort="low",
+            diagnosis_model_name="openai-codex/gpt-5.6-luna",
+        )
+        diagnosis = program["workflow"]["nodes"]["diagnose-task"]["model"]
+        self.assertEqual(diagnosis["budget"]["model_calls"], 20)
+        self.assertEqual(program["budget"]["model_calls"], 80)
+
     def test_program_can_escalate_to_a_fresh_repair_episode(self):
         program = build_program(
             "repair it",

@@ -415,7 +415,7 @@ def parser() -> argparse.ArgumentParser:
         choices=("low", "medium", "high", "xhigh"),
         default="high",
     )
-    answer.add_argument("--diagnosis-model-calls", type=int, default=6)
+    answer.add_argument("--diagnosis-model-calls", type=int, default=20)
     answer.add_argument(
         "--unresolved-diagnosis-reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),

@@ -89,6 +89,9 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
         self.assertEqual(config["model"]["reasoning_effort"], "high")
         self.assertEqual(config["model"]["service_tier"], "priority")
+        self.assertEqual(diagnosis["budget"], {"model_calls": 20, "seconds": 1800})
+        self.assertIn("four model requests as a planning target", diagnosis["instructions"]["result"])
+        self.assertIn("loop backstop", diagnosis["instructions"]["result"])
         self.assertEqual(
             implementation["grants"]["write"],
             [str(root / directory) for directory in ("crates", "docs", "examples")],

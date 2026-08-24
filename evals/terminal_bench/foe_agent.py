@@ -46,7 +46,7 @@ class FoeAgent(BaseInstalledAgent):
         service_tier: str = "priority",
         diagnosis_model: str | None = None,
         diagnosis_reasoning_effort: str = "high",
-        diagnosis_model_calls: int | str = 6,
+        diagnosis_model_calls: int | str = 20,
         diagnosis_input_per_million: float | str | None = None,
         diagnosis_cached_input_per_million: float | str | None = None,
         diagnosis_output_per_million: float | str | None = None,

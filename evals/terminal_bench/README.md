@@ -126,14 +126,14 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
   --task gpt2-codegolf \
   --diagnosis-model openai-codex/gpt-5.6-luna \
   --diagnosis-reasoning-effort high \
-  --diagnosis-model-calls 6 \
   --confirm-spend
 ```
 
-The diagnosis allowance is added to the task's implementation allowance. Each
-stage receives the task's full time backstop. An early typed return releases
-the remaining work immediately. The runner prices each child from the model
-route recorded in its episode log. Omitting
+The diagnosis allowance is added to the task's implementation allowance. The
+default is a twenty-call hard backstop with a four-request planning target.
+Each stage receives the task's full time backstop. An early typed return
+releases the remaining work immediately. The runner prices each child from
+the model route recorded in its episode log. Omitting
 `--diagnosis-model` preserves the single-episode coding program.
 
 A cheap diagnosis can conditionally request deeper reasoning from the primary
@@ -292,6 +292,10 @@ diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The coding child
 locates the affected implementation, test, and specification files.
 Its write authority covers runtime crates, specifications, and examples. It
 cannot write evaluation code or benchmark material.
+
+The diagnosis prompt targets four requests and has a 20-call, 1,800-second
+loop backstop. The implementation has 28-call and 3,600-second safety
+backstops.
 
 The lower-cost evaluated configuration is the candidate configuration. The
 diagnosis preserves its model route, reasoning effort, task allowances, token

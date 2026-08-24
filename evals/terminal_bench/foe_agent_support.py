@@ -34,7 +34,7 @@ def build_program(
     service_tier: str = "priority",
     diagnosis_model_name: str | None = None,
     diagnosis_reasoning_effort: str = "high",
-    diagnosis_model_calls: int = 6,
+    diagnosis_model_calls: int = 20,
     unresolved_diagnosis_reasoning_effort: str | None = None,
     unresolved_diagnosis_model_calls: int = 20,
     escalation_reasoning_effort: str | None = None,
