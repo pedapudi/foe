@@ -1,133 +1,290 @@
-# Lineage identity
+# Program lineage and transition evidence
 
-Status: design. Nothing in this document is implemented. The configuration
-key `lineage` is reserved by this document. No event type is reserved.
+Status: design. The configuration key `program_lineage` and the log event
+`verification/result` are proposed here. The configuration parser does not
+accept the key, and the runtime does not emit the event.
 
-## The ceiling in the current identity
+## Scope of the existing identity
 
-The identity of a program is a SHA-256 over a canonical serialization of
-everything that shapes the model's behavior: instruction sections, tool
-specifications, the grant policy's kinds and counts, the runtime-contributed
-strings, and the runtime's version and build hash
-([design.md](design.md)). Two identities are equal when and only when the
-model would see the same text. Identity names one state.
+A resolved program has a content hash called its program identity. The hash
+covers instructions, tool specifications, grant kinds and counts, budgets,
+completion and context policies, child programs, workflows, runtime text,
+and the runtime build. [design.md](design.md#programs-and-identity) specifies
+the complete input.
 
-That definition caps growth in two ways.
+Program identity is a portable compatibility fingerprint. It omits the task,
+model route, sandbox mode, and concrete grant paths. Two episodes with the
+same program identity can therefore use different models, directories, and
+sandbox modes. A runtime build change can also change identity when the
+model-visible text remains the same.
 
-- **No two states are related.** A program and an improved successor share
-  no identifier. Every series keyed by identity — an evaluation curve, a
-  telemetry group — ends at the first adopted improvement, and the runtime
-  has no way to state the sentence its self-improvement mechanism exists to
-  make true: this is the same program, improved.
-- **Change happens only at launch.** A new state requires a new
-  configuration constructed outside the runtime. The interval between
-  states is unbounded and the transition itself is unrecorded: nothing
-  connects the new configuration to the episode that motivated it or to
-  the check that justified it.
+This design keeps that identity function unchanged. It adds evidence that
+relates one immutable program state to another. The relation records descent
+and admission. An evaluation must establish whether the descendant improves
+quality.
 
-The sandbox and the budgets are backstops: floors that hold regardless of
-what the program becomes, sealed per episode, enforced by the kernel.
-Identity is an account. An account of a changing program must be able to
-name the change; the current account can only name unrelated states.
+## Program states and transitions
 
-## Design
+A program state consists of a resolved program, its canonical identity
+document, its existing program identity, and an optional lineage record. An
+episode uses one state for its entire lifetime. Its `episode/start` event
+records the resolved program and identity.
 
-A program is a lineage of states.
+A transition relates one parent state to one child state. The transition has
+three parts:
 
-- **State.** A resolved configuration. Its identity is `identity(program)`
-  exactly as specified today: a pure content hash, unchanged by this
-  design.
-- **Lineage.** A configuration may carry a `lineage` object with three
-  members. `genesis` is the identity of the lineage's first state.
-  `parent` is the identity of the immediately preceding state.
-  `transition` is the evidence for the step from parent to this state: the
-  id of the episode that proposed the change and the name and content hash
-  of the verifier that admitted it. A configuration without `lineage` is a
-  genesis state, and its own identity is the `genesis` value of every
-  descendant.
-- **Exclusion from the hash.** `lineage` is excluded from identity's
-  hashed material, alongside resolved paths and the task. Identity answers
-  one question — would the model behave the same — and ancestry does not
-  change the answer. Two behaviorally identical states reached by
-  different histories share an identity and differ in lineage, which is
-  the correct reading of both.
-- **Series.** Anything that groups by identity today may group by
-  `lineage.genesis` instead to see one program across its states. An
-  evaluation reports a curve over a lineage; an adoption decision cites a
-  transition.
+- the parent program identity;
+- a content-addressed evidence bundle from the episode that proposed the
+  child;
+- an accepted verifier result bound to a candidate envelope that names the
+  child program identity.
 
-## Transitions
+A chain of valid transitions is a program lineage. The first state in the
+chain is its root. Each ancestry claim has a lineage identity derived from
+the current program identity and its transition record.
 
-A transition is a parent state, a change to it, and evidence. Five rules
-govern it.
+Program lineage is distinct from episode lineage. Episode lineage connects a
+running parent episode to the children that it spawned. Program lineage
+connects immutable program states across separate launches.
 
-1. **States are immutable while in use.** A transition takes effect only
-   in episodes launched from the child state. Every episode runs its whole
-   life against one state, with the sandbox policy sealed at start and the
-   budgets fixed. The backstops hold per state; nothing widens a running
-   episode.
-2. **Evidence is mandatory.** `transition` names the proposing episode,
-   whose log records what motivated the change and what the episode was
-   permitted to do, and the admitting verifier, whose recorded run is the
-   justification for adoption.
-3. **The admitting verifier precedes the proposal.** The verifier named in
-   `transition` must exist in the parent state — as a `done_when.verify`
-   tool, a `tool_defs` entry, or a workflow tool node. A verifier that
-   first appears in the proposing episode cannot admit that episode's own
-   proposal. Verifiers therefore grow by the same rule as everything else:
-   each is admitted by verifiers already in the lineage.
-4. **Authority changes ride transitions.** Wider grants, new executables,
-   and new child programs appear only in a child state, and only episodes
-   launched from that state receive them, each sealing its own kernel
-   policy at start. Vocabulary that adds no authority — tool composition
-   inside an episode ([code-mode.md](code-mode.md)) — is below this line
-   and moves no state.
-5. **Unattended transitions are legal.** The two-node self-improvement
-   workflow ([self-improvement.md](self-improvement.md)) is a transition
-   function: an evaluator node produces findings, a model node produces
-   the change, `done_when.verify` admits it, and the next episode launches
-   from the child state. No rule requires a person between states; the
-   rules above are what stand in for one.
+## Configuration representation
 
-## Verifying a lineage
+A root configuration for a descendant state carries one optional object.
+Nested entries under `programs` and workflow model nodes do not carry this
+field because their identities already participate in the root program
+identity.
 
-Two checks, both computable without running anything.
+```json
+{
+  "program_lineage": {
+    "parent": {
+      "program_identity": "sha256:…",
+      "lineage_identity": "sha256:…"
+    },
+    "evidence": "sha256:…",
+    "verification_log": "children/ep_9c21/episode.jsonl",
+    "verification_seq": 74
+  }
+}
+```
 
-- **State check.** Recompute `identity` over the configuration; it must
-  equal the recorded value. This is today's check, unchanged.
-- **Ancestry check.** Walk `parent` links back to `genesis`. For each
-  transition, resolve the named episode's log, confirm the log's recorded
-  identity equals the parent state, and confirm the log records a
-  successful run of the named verifier at the named content hash. A
-  lineage claim that fails any step is unsupported by the account and is
-  reported as such.
+`parent.program_identity` is the program identity of the immediate
+predecessor. `parent.lineage_identity` selects that predecessor's ancestry
+claim. `evidence` is the content address of the proposal episode's evidence
+bundle. `verification_log` is the relative path of the episode log that
+contains the authoritative verifier result. `verification_seq` identifies
+the result inside that log.
 
-The lineage field is a claim in a document; the ancestry check binds the
-claim to episode logs, which are the account everything else already
-trusts.
+The identity computation omits `program_lineage`. The omission avoids a
+self-reference and preserves the existing identity function. A configuration
+without `program_lineage` is a root state.
 
-## What is retired and what is preserved
+Configuration resolution copies `program_lineage` into the program recorded
+by `episode/start`. The identity document omits it. The log therefore records
+the ancestry claim while program identity retains its existing input.
 
-Retired: the equation of improvement with a new unrelated program, and the
-restriction of change to manually constructed launches.
+The lineage identity is a SHA-256 digest over this canonical object:
 
-Preserved: the identity function and its guarantee, byte for byte; the
-reproducibility of every state; the frozen log format, because `lineage`
-travels inside the configuration that `episode/start` already records in
-its `program` member; and the backstops, which this design never touches —
-each state's episodes run under a policy sealed at start, however fast the
-lineage moves.
+```json
+{
+  "schema_version": 1,
+  "program_identity": "sha256:…",
+  "program_lineage": null
+}
+```
 
-## Open questions
+For a descendant, `program_lineage` contains the four members shown above.
+The lineage identity therefore names program content and one ancestry claim.
+It is derived and does not appear inside the object it hashes.
 
-- **Evidence portability.** A transition names an episode id; resolving it
-  to a log requires knowing where logs live. A content address for the
-  proposing log would make lineages verifiable across machines and is the
-  likely resolution.
-- **Branching.** Two episodes may propose transitions from one parent.
-  Both children are valid states sharing a parent; nothing in this design
-  merges branches. Whether a lineage identifies one preferred head, and
-  who chooses it, is unresolved.
-- **Ancestry length.** A long-lived lineage accumulates transitions
-  without bound. Whether a state may summarize ancestry behind a
-  checkpoint, and what such a checkpoint must prove, is unresolved.
+A state document is the canonical identity document paired with the optional
+`program_lineage` object. A state resolver returns this pair for a requested
+lineage identity.
+
+Two state documents can contain the same resolved program and different
+`program_lineage` objects. They share a program identity and make different
+ancestry claims. Their lineage identities differ. A verified series groups
+state documents by the root lineage identity after validating each claim.
+
+## Evidence bundle
+
+The evidence bundle makes a transition verifiable after files move between
+machines. Its canonical manifest lists every retained file by relative path,
+byte length, and SHA-256 digest. The manifest identifies the proposal log and
+the verifier input. The `evidence` value is the SHA-256 digest of the
+canonical manifest.
+
+Manifest paths use forward slashes, contain no empty, `.` or `..` component,
+and appear in byte order without duplicates. A checker rejects a manifest
+that violates any of these rules before opening a listed file.
+
+The bundle contains these files:
+
+- every log and referenced spill file in the proposal episode tree;
+- the canonical identity document for the proposed child program;
+- the complete verifier input, called the transition candidate envelope;
+- every artifact manifest that the verifier assessed.
+
+The manifest contains no absolute path. A store may place the bundle
+anywhere, provided that a resolver can retrieve it by content address.
+
+The transition candidate envelope has this canonical form:
+
+```json
+{
+  "program_identity": "sha256:…",
+  "identity_document_sha256": "sha256:…",
+  "artifact_manifest_sha256": "sha256:…"
+}
+```
+
+The verifier accepts this envelope as its candidate. The child configuration
+is absent from the bundle because it contains the bundle address. An artifact
+manifest is a checker-defined list of candidate files and their content
+digests.
+
+## Authoritative verifier record
+
+The existing completion verifier runs authoritatively after an ordinary
+model call. Its authoritative invocation is not currently represented by a
+log event. Program lineage requires an additive `verification/result` event
+for that invocation.
+
+The event records these fields:
+
+```json
+{
+  "step": 8,
+  "tool": "check-candidate",
+  "verifier_identity": "sha256:…",
+  "candidate_sha256": "sha256:…",
+  "status": "accepted",
+  "findings": [],
+  "duration_ms": 1834
+}
+```
+
+`candidate_sha256` is the SHA-256 digest of the candidate's canonical JSON.
+It binds the event to the exact value given to the verifier. `status` is
+`accepted`, `findings`, or `failed`. A findings result carries the finding
+strings in `findings`. A failed result carries an `error` string. The other
+two statuses omit `error`.
+
+`verifier_identity` binds the execution to the verifier that the parent
+program declared. It hashes the complete tool specification and its
+implementation identity. A configured executable uses its content hash at
+invocation time. A built-in verifier uses the runtime build. The first
+implementation excludes host tools because the current host-tool contract
+does not identify their implementations.
+
+The event does not enter the model's derived messages. Verifier findings
+continue to reach the model through the existing `verify` inbox item.
+
+## Transition rules
+
+Seven rules govern a valid transition.
+
+1. **One state per episode.** A transition affects only episodes launched
+   from the child state. It never changes a running episode's program,
+   sandbox policy, or budget.
+2. **Exact child binding.** The transition candidate envelope names the
+   program identity recomputed from the child state's canonical identity
+   document.
+3. **Exact input binding.** The event's `candidate_sha256` equals the digest
+   of the transition candidate envelope retained in the bundle.
+4. **Parent-owned admission.** The verifier is present in the parent
+   program's reachable child-program and workflow tree. A verifier introduced
+   by the candidate can admit only a later transition.
+5. **Protected verifier implementation.** The verifier identity observed at
+   invocation equals the identity recorded in the parent program. A proposing
+   episode cannot replace its verifier and retain valid evidence.
+6. **Separate authority decision.** Lineage records provenance and supplies
+   no grant. The launcher validates the child configuration and applies its
+   deployment policy before starting an episode.
+7. **Evidence before adoption.** The proposal episode has ended, its evidence
+   bundle is complete, and its transition verifier has accepted before the
+   launcher constructs the lineage-bearing child state.
+
+The deployment policy may permit unattended adoption. For example, it can
+require the child's effective authority to remain within a predeclared
+ceiling. A wider deployment requires authority that the launcher already
+holds; the lineage record cannot create that authority.
+
+## Verifying an ancestry claim
+
+An ancestry checker receives a state document and two resolvers. The state
+resolver retrieves a state record by lineage identity. The evidence resolver
+retrieves an evidence bundle by content address. The checker performs these
+steps:
+
+1. Hash the canonical identity document to recompute the program identity.
+2. Recompute the lineage identity from the program identity and
+   `program_lineage`.
+3. Accept a state without `program_lineage` as a root.
+4. Resolve the evidence bundle and verify its canonical manifest and files.
+5. Validate the proposal log under [log-format.md](log-format.md).
+6. Resolve `verification_log` within the bundle and read its
+   `verification/result` event at `verification_seq`.
+7. Require an accepted result whose candidate digest equals the transition
+   candidate envelope.
+8. Require the envelope's identity-document and artifact-manifest digests to
+   equal the corresponding files in the bundle.
+9. Require the envelope's program identity to equal the hash of the canonical
+   child identity document.
+10. Require the proposal tree's root log program identity to equal
+   `parent.program_identity`.
+11. Require `verification_log` to be the root log or a descendant linked by
+    valid spawn or workflow provenance.
+12. Resolve `parent.lineage_identity` and require its program identity to
+    equal `parent.program_identity`.
+13. Require the verifier episode's program identity to be reachable in the
+    parent state's program tree.
+14. Require the recorded verifier identity to match the verifier declared by
+    the verifier episode's program.
+15. Repeat from the parent while rejecting a repeated lineage identity as a
+    cycle.
+
+The check establishes a complete chain from the state to a chosen root. It
+does not establish that the verifier measured the right property. Evaluator
+quality remains part of the adoption policy and the evaluation record.
+
+## Branches and repeated states
+
+One parent can have several valid children. The lineage data does not select
+a preferred child. Selection belongs to an evaluator or deployment policy
+whose evidence is retained separately.
+
+The same program identity can occur with more than one ancestry claim. This
+happens when independent transitions produce identical resolved programs.
+Each claim has a distinct lineage identity and is verified through its own
+evidence bundle.
+
+A state document names one parent. Merging several parent histories into one
+claim requires a separate design because one successful verifier result does
+not establish compatibility with every parent.
+
+## Interaction with code mode
+
+A [code-mode](code-mode.md) call is ordinary behavior inside one episode.
+Its source is a tool argument recorded in the episode log. It does not alter
+the program state or request header.
+
+Promoting a useful program into the configured tool surface changes what the
+model sees. The promoted tool therefore belongs in a child program state and
+can be admitted through a transition.
+
+## Required implementation tests
+
+The implementation must cover these cases before the configuration key is
+accepted:
+
+- a valid root and one valid descendant;
+- a missing or modified evidence file;
+- a child identity that differs from the accepted candidate identity;
+- a verifier absent from the parent;
+- a verifier executable changed before invocation;
+- an ancestry cycle;
+- two children of one parent;
+- one program identity accompanied by two valid ancestry claims;
+- verification with the evidence directory removed from its original
+  machine path.
