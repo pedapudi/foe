@@ -102,12 +102,8 @@ def edit_read_tool_and_test(request_id: str) -> None:
             "path": "crates/code/src/read.rs",
             "edits": [
                 {
-                    "old_text": "        let total = lines.len();\n        let offset = a.offset.unwrap_or(1);\n",
-                    "new_text": (
-                        "        let total = lines.len();\n"
-                        "        let total_bytes = bytes.len();\n"
-                        "        let offset = a.offset.unwrap_or(1);\n"
-                    ),
+                    "old_text": "        let total = s.total;\n",
+                    "new_text": ("        let total = s.total;\n        let total_bytes = s.bytes;\n"),
                 },
                 {
                     "old_text": '                "total_lines": total,\n                "shown": shown_n,\n',
