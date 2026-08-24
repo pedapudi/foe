@@ -133,7 +133,6 @@ def build_program(
     escalation_seconds = min(seconds, max(300, seconds // 2)) if escalation_reasoning_effort is not None else 0
     implementation_seconds = seconds
     implementation_calls = model_calls
-    investigation_calls = diagnosis_model_calls - 1
     shared_grants = {"read": [working_directory, "/"], "write": ["/"]}
     diagnosis_schema = {
         "type": "object",
@@ -242,9 +241,9 @@ def build_program(
                         "Use read, grep, and bash for focused static and runtime evidence. "
                         "Report observed constraints, evidence, and uncertainty together as facts. "
                         "Give implementation steps and verification steps. "
-                        f"Use no more than {investigation_calls} request(s) for inspection. "
-                        "On the final request, call return with the best supported diagnosis, "
-                        "and keep the return concise."
+                        "Return as soon as the useful facts and next steps are supported. "
+                        "The model-call allowance is a loop backstop rather than an inspection "
+                        "target. Keep the return concise."
                     )
                 },
                 "tools": ["read", "grep", "bash"],
@@ -285,10 +284,9 @@ def build_program(
                             "task. Use read, grep, and bash for focused static and runtime evidence. "
                             "Return a consolidated set of facts, implementation steps, and "
                             "verification steps for a fresh coding episode. State remaining "
-                            "uncertainty explicitly. "
-                            f"Use no more than {unresolved_diagnosis_model_calls - 1} request(s) "
-                            "for inspection. On the final request, call return with the best "
-                            "supported diagnosis."
+                            "uncertainty explicitly. Return as soon as the implementation-critical "
+                            "facts are supported. The model-call allowance is a loop backstop "
+                            "rather than an inspection target."
                         )
                     },
                     "tools": ["read", "grep", "bash"],

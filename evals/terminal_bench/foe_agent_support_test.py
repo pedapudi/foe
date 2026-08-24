@@ -100,6 +100,8 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(diagnosis["budget"]["loop_threshold"], 8)
         self.assertEqual(diagnosis["tools"], ["read", "grep", "bash"])
         self.assertNotIn("sandbox", diagnosis)
+        self.assertIn("loop backstop", diagnosis["instructions"]["role"])
+        self.assertNotIn("final request", diagnosis["instructions"]["role"])
         self.assertIn("returns", diagnosis["done_when"])
         self.assertEqual(
             diagnosis["done_when"]["returns"]["required"],
@@ -182,6 +184,8 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(deeper["model"]["model"]["model"], "gpt-5.6-sol")
         self.assertEqual(deeper["model"]["model"]["reasoning_effort"], "xhigh")
         self.assertEqual(deeper["model"]["budget"]["model_calls"], 6)
+        self.assertIn("loop backstop", deeper["model"]["instructions"]["role"])
+        self.assertNotIn("final request", deeper["model"]["instructions"]["role"])
         self.assertEqual(
             deeper["model"]["done_when"]["returns"]["required"],
             ["facts", "implementation_steps", "verification_steps"],
