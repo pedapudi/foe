@@ -81,8 +81,10 @@ log, so nothing in the output is mistaken for what would be written.
 
 The classifier reads typed log fields and nothing else: file extensions
 from `read` and `edit` path arguments and `grep` globs, the head of each
-segment of every `bash` command line, the tool names called, and whether
-the episode spawned children or ran a workflow. It never reads the task
+segment of every `bash` command line, and the tool names called. Episode
+structure — spawned children, workflow nodes — casts no vote: it says how
+the work was arranged rather than what it was about, so an episode whose
+only evidence is structure is unclassified. It never reads the task
 text, the model's output, or a tool result body. It therefore cannot be
 steered by anything the model wrote, and it cannot leak what the episode
 read. The cost is that it sees only the shape of the work.

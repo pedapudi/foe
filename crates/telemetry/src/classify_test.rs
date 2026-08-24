@@ -94,12 +94,11 @@ fn evidence_is_the_whole_explanation_of_the_choice() {
 }
 
 #[test]
-fn delegation_and_workflow_structure_vote_for_infrastructure() {
+fn structure_alone_leaves_an_episode_unclassified() {
     let structural = Evidence { spawns: 3, workflow_nodes: 2, ..Evidence::default() };
     let result = classify(&structural);
-    assert_eq!(result.bucket, "infrastructure");
-    assert_eq!(result.top_level, "technology");
-    assert_eq!(result.counts.get("technology"), Some(&5));
+    assert_eq!(result.bucket, UNCLASSIFIED);
+    assert!(result.votes.is_empty());
 }
 
 #[test]
@@ -137,7 +136,6 @@ fn every_rule_names_a_declared_bucket() {
     for (bucket, tokens) in EXTENSION_RULES.iter().chain(COMMAND_RULES).chain(TOOL_RULES) {
         assert!(declared(bucket), "{tokens} vote for {bucket}, which is not a bucket");
     }
-    assert!(declared(STRUCTURE_BUCKET));
 }
 
 #[test]
