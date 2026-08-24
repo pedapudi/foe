@@ -1,7 +1,8 @@
 //! `read`: a numbered window of a text file.
 
 use crate::{display, parse_args, resolve, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES};
-use foe_core::{fitting, CallCtx, Effect, Tool, ToolSpec, ToolValue};
+use foe_config::{Effect, ToolSpec};
+use foe_core::{fitting, CallCtx, Tool, ToolValue};
 use serde::Deserialize;
 use serde_json::json;
 use std::fmt::Write;

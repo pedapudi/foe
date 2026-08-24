@@ -74,6 +74,10 @@ coding configuration against the current directory. The providers are
 `vertex`, and `exec`, a program of your own; [docs/models.md](docs/models.md)
 describes each.
 
+`foe --help` prints the command set and the options a bare `foe` takes;
+`foe <command> --help` prints one command's options, each with the value it
+takes, its default, and what it does.
+
 A configuration of your own is one JSON document. This is the smallest one
 that runs with the built-in model transport.
 
@@ -147,22 +151,26 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 
-Eight numbers bound the source. Six are line budgets over Rust, excluding
-tests and generated code: the kernel, which is the log and core crates
-together, stays under 5,400 lines, the tool crate under 1,600, the workflow
-executor under 1,000, the compaction policy under 500, the viewer crate
-under 600, and the command-line crate under 1,300. The kernel and the tools
-are budgeted apart because a new tool adds capability without touching the
-loop, so room for tools must not become room for the kernel. The viewer is budgeted apart from the
-runtime because it delivers a record of a run rather than running one; its
-HTML, TypeScript, and CSS count toward no line budget at all. The command
-line is budgeted apart from the runtime because it serves a person at a
-terminal rather than an episode. `scripts/loc.sh` counts the six, and
-continuous integration fails a build over any of them. The seventh number
-bounds the browser bundle at 150 KB compressed. The eighth is the stripped
-release binary with that bundle embedded, which measured 5,404,568 bytes on
-2026-08-22; continuous integration builds the bundle before measuring and
-fails a build over 8 MiB.
+Ten numbers bound the source. Eight are line budgets over Rust, excluding tests
+and generated code: the kernel, which is the log and core crates together,
+stays under 4,700 lines, the configuration crate under 1,400, the tool crate
+under 1,600, the workflow executor under 1,000, the compaction policy under
+500, the viewer crate under 600, the command-line crate under 1,000, and the
+telemetry crate under 900. The kernel and the tools are budgeted apart because
+a new tool adds capability without touching the loop, so room for tools must
+not become room for the kernel. The kernel and the configuration are budgeted
+apart because the kernel measures the machine and the configuration measures
+the data model, so a document that gains a key must not buy room in the loop.
+The viewer is budgeted apart from the runtime because it delivers a record of a
+run rather than running one; its HTML, TypeScript, and CSS count toward no line
+budget at all. The command line is budgeted apart from the runtime because it
+serves a person at a terminal rather than an episode. Telemetry is budgeted
+apart because it reads a finished log rather than producing one, and no part of
+the runtime depends on it. `scripts/loc.sh` counts the eight, and continuous
+integration fails a build over any of them. The ninth number bounds the browser
+bundle at 150 KB compressed. The tenth is the stripped release binary with that
+bundle embedded, which measured 5,404,568 bytes on 2026-08-22; continuous
+integration builds the bundle before measuring and fails a build over 8 MiB.
 
 ## Documents
 
@@ -172,9 +180,12 @@ fails a build over 8 MiB.
 | [docs/design.md](docs/design.md) | what foe guarantees and the structure that delivers it |
 | [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [docs/self-improvement.md](docs/self-improvement.md) | how foe evaluates and improves its own source, including measured results and operating guidance |
+| [docs/lineage-identity.md](docs/lineage-identity.md) | design: content-addressed evidence that relates immutable program states |
+| [docs/code-mode.md](docs/code-mode.md) | design: bounded model-written programs that compose granted tools through the registry |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |
+| [docs/telemetry.md](docs/telemetry.md) | what telemetry derives from an episode log when enabled, the schema it emits, and what it never emits |
 | [docs/protocol.md](docs/protocol.md) | the line protocol between foe and the process that launched it |
 | [docs/sdk.md](docs/sdk.md) | the Python package |
 | [docs/tools.md](docs/tools.md) | built-in tools, configured executables, and host tools |

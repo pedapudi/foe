@@ -12,17 +12,24 @@
 //! runs. Secrets are read with echo off and never printed. Every prompt is
 //! plain standard input and standard error.
 //!
-//! The flows are one function per credential source, all driven through a
-//! [`Session`] so that a test can script the input, capture the output,
-//! and point the verification and token endpoints at a local server.
+//! What lives here is the conversation: which questions each credential
+//! source needs, in what order, and how the answers are read from a
+//! terminal. The protocol underneath — verifying a key, the
+//! authorization-code flow with PKCE and its loopback callback, the
+//! credential-file and default-model formats — is
+//! [`foe_transport::auth::login`], beside the code that spends what it
+//! writes. Everything runs through a [`Session`] so that a test can script
+//! the input, capture the output, and point the endpoints at a local
+//! server.
 
-use foe_core::ModelConfig;
-use foe_transport::auth::{self, AuthKind};
+use foe_config::ModelConfig;
+use foe_transport::auth::login::{self, default_model_in, write_default_model, BrowserLogin, Endpoints};
+use foe_transport::auth::AuthKind;
 use foe_transport::paths;
 use foe_transport::providers::{Provider, PROVIDERS};
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpListener;
-use std::path::{Path, PathBuf};
+use std::collections::BTreeMap;
+use std::io::{BufRead, Write};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 #[derive(Debug, Default)]
@@ -35,33 +42,6 @@ pub struct Options {
 /// The command the person runs next, printed after every successful login.
 pub const NEXT_COMMAND: &str = "foe \"describe what this repository does\"";
 
-/// Where `gcloud auth application-default login` writes its file, offered
-/// as the default for Vertex AI.
-const GCLOUD_DEFAULT: &str = ".config/gcloud/application_default_credentials.json";
-
-/// Endpoints and ports that tests redirect to local servers.
-pub struct Endpoints {
-    /// Replaces a provider's default base URL for verification.
-    pub base_url: Option<String>,
-    pub authorize_url: String,
-    pub token_url: String,
-    /// The loopback port for the OAuth callback; 0 takes an ephemeral port.
-    pub callback_port: u16,
-    pub open_browser: bool,
-}
-
-impl Default for Endpoints {
-    fn default() -> Self {
-        Endpoints {
-            base_url: None,
-            authorize_url: auth::token_file::codex::AUTHORIZE_URL.to_string(),
-            token_url: auth::token_file::codex::TOKEN_URL.to_string(),
-            callback_port: auth::token_file::codex::REDIRECT_PORT,
-            open_browser: true,
-        }
-    }
-}
-
 /// One login conversation: where files go, where prompts and answers flow.
 pub struct Session<'a> {
     pub home: PathBuf,
@@ -71,6 +51,8 @@ pub struct Session<'a> {
     /// while a secret is typed.
     pub terminal: bool,
     pub endpoints: Endpoints,
+    /// Whether the browser flow starts a browser, which a test must not.
+    pub open_browser: bool,
 }
 
 pub fn login(options: Options) -> Result<ExitCode, String> {
@@ -79,8 +61,8 @@ pub fn login(options: Options) -> Result<ExitCode, String> {
     let mut input = stdin.lock();
     let mut output = std::io::stderr();
     let terminal = nix::unistd::isatty(std::io::stdin()).unwrap_or(false);
-    let mut session =
-        Session { home, input: &mut input, output: &mut output, terminal, endpoints: Endpoints::default() };
+    let endpoints = Endpoints::default();
+    let mut session = Session { home, input: &mut input, output: &mut output, terminal, endpoints, open_browser: true };
     run(&mut session, options)
 }
 
@@ -119,12 +101,11 @@ pub fn run(session: &mut Session, options: Options) -> Result<ExitCode, String> 
 fn list(session: &mut Session) -> Result<(), String> {
     let width = PROVIDERS.iter().map(|p| p.name.len()).max().unwrap_or(0);
     for provider in PROVIDERS {
-        let state = if provider.auth == AuthKind::None {
-            "no login"
-        } else if paths::credentials_path(&session.home, provider.name).is_file() {
-            "configured"
-        } else {
-            "not configured"
+        let configured = paths::credentials_path(&session.home, provider.name).is_file();
+        let state = match (provider.auth == AuthKind::None, configured) {
+            (true, _) => "no login",
+            (_, true) => "configured",
+            _ => "not configured",
         };
         say(session, &format!("{:<width$}  {:<14}  {}", provider.name, state, provider.description))?;
     }
@@ -155,13 +136,16 @@ fn status(session: &mut Session) -> Result<(), String> {
 
 /// Configures the provider's credential and returns the options the
 /// default model block needs beyond `provider` and `model`.
-fn configure(
-    session: &mut Session,
-    provider: &'static Provider,
-) -> Result<std::collections::BTreeMap<String, String>, String> {
-    let mut extra = std::collections::BTreeMap::new();
-    match provider.auth {
-        AuthKind::ApiKey { header } => {
+///
+/// Every flow has one shape: gather the provider's answers, verify them
+/// against the provider, and write one credential file. Only the gathering
+/// and the verification differ, so the arms produce the note that names
+/// what was written and share the report. The verifying and the writing
+/// are `foe_transport::auth::login`; the asking is here.
+fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTreeMap<String, String>, String> {
+    let mut extra = BTreeMap::new();
+    let (path, note) = match provider.auth {
+        AuthKind::ApiKey { .. } => {
             let base_url = match provider.default_base_url {
                 Some(_) => session.endpoints.base_url.clone(),
                 None => {
@@ -175,23 +159,19 @@ fn configure(
             if key.is_empty() {
                 return Err("no key was entered; paste the key and press return".into());
             }
-            let credential = auth::api_key::ApiKey::new(header, key.clone());
             say(session, "verifying...")?;
-            foe_transport::verify_credential(provider, base_url.as_deref(), &credential)
+            login::verify_api_key(provider, base_url.as_deref(), &key)
                 .map_err(|e| format!("{e}; check the key and run `foe login {}` again", provider.name))?;
-            let path = paths::credentials_path(&session.home, provider.name);
-            auth::api_key::write_api_key(&path, &key).map_err(|e| format!("{}: {e}", path.display()))?;
-            say(session, &format!("wrote {}", path.display()))?;
+            (login::save_api_key(&session.home, provider, &key)?, String::new())
         }
         AuthKind::TokenFile { .. } => {
             let token = browser_login(session)?;
-            let path = paths::credentials_path(&session.home, provider.name);
-            auth::token_file::write_token(&path, &token).map_err(|e| format!("{}: {e}", path.display()))?;
             let last4 = token.account_id.as_deref().map(|id| &id[id.len().saturating_sub(4)..]).unwrap_or("none");
-            say(session, &format!("wrote {} (account ...{last4})", path.display()))?;
+            let note = format!(" (account ...{last4})");
+            (login::save_token(&session.home, provider, &token)?, note)
         }
         AuthKind::Google => {
-            let default = session.home.join(GCLOUD_DEFAULT);
+            let default = session.home.join(login::GCLOUD_DEFAULT);
             let answer = ask(session, &format!("Google credentials file [{}]:", default.display()))?;
             let file = if answer.is_empty() { default } else { PathBuf::from(answer) };
             if !file.is_absolute() {
@@ -201,15 +181,12 @@ fn configure(
             let prompt = "Location (for example us-east5 or global):";
             let location = ask_required(session, prompt, "a location is required")?;
             say(session, "verifying...")?;
-            let google = auth::google::Google::open(&file).map_err(|e| {
+            let google = foe_transport::auth::google::Google::open(&file).map_err(|e| {
                 format!("{e}; run `gcloud auth application-default login` or name a service account key file")
             })?;
             google.token().map_err(|e| format!("could not mint an access token: {e}"))?;
-            let path = paths::credentials_path(&session.home, provider.name);
-            let json = serde_json::json!({ "credentials_file": file, "project": project, "location": location });
-            paths::write_private(&path, format!("{}\n", serde_json::to_string_pretty(&json).unwrap()).as_bytes())
-                .map_err(|e| format!("{}: {e}", path.display()))?;
-            say(session, &format!("wrote {} ({} credentials)", path.display(), google.credentials().kind()))?;
+            let note = format!(" ({} credentials)", google.credentials().kind());
+            (login::save_google(&session.home, provider, &file, &project, &location)?, note)
         }
         AuthKind::None => {
             return Err(format!(
@@ -217,94 +194,23 @@ fn configure(
                 provider.name, provider.name
             ));
         }
-    }
+    };
+    say(session, &format!("wrote {}{note}", path.display()))?;
     Ok(extra)
 }
 
-/// The authorization-code flow with PKCE for the ChatGPT Codex client:
-/// a loopback listener receives the code, which is exchanged for a token.
-fn browser_login(session: &mut Session) -> Result<auth::token_file::Token, String> {
-    use auth::token_file::codex;
-    let port = session.endpoints.callback_port;
-    let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|e| {
-        format!("cannot listen on 127.0.0.1:{port} for the login callback: {e}; stop the program using that port")
-    })?;
-    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-    let redirect_uri = codex::redirect_uri(port);
-    let pkce = codex::pkce().map_err(|e| format!("/dev/urandom: {e}"))?;
-    let state = codex::state().map_err(|e| format!("/dev/urandom: {e}"))?;
-    let url = codex::authorization_url(&session.endpoints.authorize_url, &pkce.challenge, &state, &redirect_uri);
+/// Shows the sign-in URL, starts a browser on it unless told not to, and
+/// waits for the authorization server to come back to the loopback
+/// listener the flow bound.
+fn browser_login(session: &mut Session) -> Result<foe_transport::auth::token_file::Token, String> {
+    let flow = BrowserLogin::begin(&session.endpoints)?;
     say(session, "Open this URL in your browser to sign in:")?;
-    say(session, &url)?;
-    if session.endpoints.open_browser {
-        crate::open_browser(&url);
+    say(session, &flow.url)?;
+    if session.open_browser {
+        crate::open_browser(&flow.url);
     }
-    say(session, &format!("waiting for the browser to return to {redirect_uri} ..."))?;
-    let code = wait_for_code(&listener, &state)?;
-    let client = auth::token_file::OAuthClient {
-        token_url: session.endpoints.token_url.clone(),
-        client_id: codex::CLIENT_ID.into(),
-    };
-    client
-        .exchange_code(&code, &pkce.verifier, &redirect_uri)
-        .map_err(|e| format!("token exchange failed: {e}; run `foe login openai-codex` again"))
-}
-
-/// Serves callback requests until one carries a code with the expected
-/// state. Any other request receives an error page and the wait goes on.
-fn wait_for_code(listener: &TcpListener, state: &str) -> Result<String, String> {
-    loop {
-        let (mut stream, _) = listener.accept().map_err(|e| format!("callback listener: {e}"))?;
-        let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
-        let mut line = String::new();
-        if reader.read_line(&mut line).is_err() {
-            continue;
-        }
-        let target = line.split_whitespace().nth(1).unwrap_or("");
-        let (path, query) = target.split_once('?').unwrap_or((target, ""));
-        let param = |name: &str| {
-            query.split('&').find_map(|pair| {
-                let (k, v) = pair.split_once('=')?;
-                (k == name).then(|| percent_decode(v))
-            })
-        };
-        let outcome = if path != auth::token_file::codex::REDIRECT_PATH {
-            Err("not the callback path")
-        } else if param("state").as_deref() != Some(state) {
-            Err("state mismatch; start the login again")
-        } else if let Some(error) = param("error") {
-            return Err(format!("the authorization server returned {error}"));
-        } else {
-            param("code").filter(|c| !c.is_empty()).ok_or("no code in the callback")
-        };
-        let (status, text) = match &outcome {
-            Ok(_) => ("200 OK", "foe is signed in. You can close this window."),
-            Err(reason) => ("400 Bad Request", *reason),
-        };
-        let body = format!("<!doctype html><title>foe</title><p>{text}</p>");
-        let _ = write!(stream, "HTTP/1.1 {status}\r\ncontent-type: text/html; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
-        let _ = stream.flush();
-        if let Ok(code) = outcome {
-            return Ok(code);
-        }
-    }
-}
-
-/// Decodes one form-encoded query value: `%` and two hexadecimal digits
-/// become that byte, `+` becomes a space. A `%` that no pair of hexadecimal
-/// digits follows stands for itself.
-fn percent_decode(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let escape = (bytes[i] == b'%' && i + 2 < bytes.len())
-            .then(|| u8::from_str_radix(&text[i + 1..i + 3], 16).ok())
-            .flatten();
-        out.push(escape.unwrap_or(if bytes[i] == b'+' { b' ' } else { bytes[i] }));
-        i += if escape.is_some() { 3 } else { 1 };
-    }
-    String::from_utf8_lossy(&out).into_owned()
+    say(session, &format!("waiting for the browser to return to {} ...", flow.redirect_uri))?;
+    flow.finish()
 }
 
 // ---- the default model ----------------------------------------------------------
@@ -328,32 +234,6 @@ fn choose_model(session: &mut Session, provider: &Provider) -> Result<String, St
         _ if !answer.is_empty() && answer.parse::<usize>().is_err() => Ok(answer),
         _ => Err(format!("choose a number from 1 to {}", provider.presets.len() + 1)),
     }
-}
-
-/// The `model` block a bare `foe "task"` runs, from the home directory of
-/// the passwd database.
-pub fn default_model() -> Result<Option<ModelConfig>, String> {
-    default_model_in(&paths::home_dir()?)
-}
-
-pub fn default_model_in(home: &Path) -> Result<Option<ModelConfig>, String> {
-    let path = paths::default_model_path(home);
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("{}: {e}", path.display())),
-    };
-    let model: ModelConfig = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    if model.provider.trim().is_empty() || model.model.trim().is_empty() {
-        return Err(format!("{}: provider and model are both required", path.display()));
-    }
-    Ok(Some(model))
-}
-
-pub fn write_default_model(home: &Path, model: &ModelConfig) -> Result<(), String> {
-    let path = paths::default_model_path(home);
-    let text = serde_json::to_string_pretty(model).map_err(|e| e.to_string())?;
-    paths::write_private(&path, format!("{text}\n").as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 // ---- prompts ----------------------------------------------------------------------
@@ -397,14 +277,6 @@ fn ask_secret(session: &mut Session, prompt: &str) -> Result<String, String> {
     let _ = nix::sys::termios::tcsetattr(&stdin, nix::sys::termios::SetArg::TCSANOW, &saved);
     let _ = writeln!(session.output);
     answer
-}
-
-/// Reads the rest of a stream for tests that drive a callback by hand.
-#[cfg(test)]
-fn drain(mut stream: impl std::io::Read) -> String {
-    let mut text = String::new();
-    let _ = stream.read_to_string(&mut text);
-    text
 }
 
 #[cfg(test)]

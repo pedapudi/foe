@@ -8,14 +8,14 @@
 //! projection with a summary; docs/compaction.md specifies that.
 
 use crate::budget::Pool;
-use crate::config::Program;
 use crate::context::{Answer, ContextPolicy, ContextState, Summarized, SummaryCall};
-use crate::harness_text as text;
 use crate::inbox::Inbox;
 use crate::registry::{Handles, Registry};
 use crate::result_budget;
 use crate::spawn::Router;
 use crate::{ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
+use foe_config::config::Program;
+use foe_config::harness_text as text;
 use foe_log::{
     fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
     Event, EventData, ExhaustedLimit, HeaderReason, InboxItem, InboxSource, LogError, Message, ModelRequest, Outcome,
@@ -329,7 +329,6 @@ impl Episode {
             Summarized::Failed { error, usage } => (false, usage, cut.projected_tokens, Some(error)),
         };
         self.p.log.append(EventData::CompactionEnd { step, ok, usage, active_estimate, error })?;
-        lock(&self.p.pool).note_compaction();
         Ok((!ok && cut.exceeds_window).then_some(Outcome::Exhausted { limit: ExhaustedLimit::ContextWindow }))
     }
 
@@ -848,7 +847,7 @@ fn close_open(text: &str) -> String {
 }
 
 fn signature(name: &str, args: &Value, result: &Value) -> String {
-    format!("{name} {} -> {}", crate::identity::canonical(args), crate::identity::canonical(result))
+    format!("{name} {} -> {}", foe_config::identity::canonical(args), foe_config::identity::canonical(result))
 }
 
 /// The two forms of lack of progress in docs/design.md "Blocking conditions

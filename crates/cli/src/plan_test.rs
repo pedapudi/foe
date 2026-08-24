@@ -1,5 +1,5 @@
 use super::cycles;
-use foe_core::workflow::WorkflowConfig;
+use foe_config::workflow::WorkflowConfig;
 use serde_json::json;
 
 /// docs/workflow.md "Firing": the report lists each elementary cycle

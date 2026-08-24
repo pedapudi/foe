@@ -8,6 +8,7 @@ description = "Episode runtime: config, identity, grants, budget, registry, loop
 
 [dependencies]
 foe-log = { path = "../log" }
+foe-config = { path = "../config" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

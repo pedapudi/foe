@@ -4,7 +4,6 @@ load("@rules_rust//rust:defs.bzl", "rust_binary")
 rust_binary(
     name = "foe",
     srcs = glob(["src/**/*.rs"]),
-    compile_data = ["src/schema.json"],
     crate_features = ["transport"],
     crate_name = "foe",
     crate_root = "src/main.rs",
@@ -12,10 +11,12 @@ rust_binary(
     version = "0.1.0",
     visibility = ["//visibility:public"],
     deps = [
+        "//crates/config:foe_config",
         "//crates/code:foe_code",
         "//crates/context:foe_context",
         "//crates/core:foe_core",
         "//crates/log:foe_log",
+        "//crates/telemetry:foe_telemetry",
         "//crates/transport:foe_transport",
         "//crates/view:foe_view",
         "//crates/workflow:foe_workflow",

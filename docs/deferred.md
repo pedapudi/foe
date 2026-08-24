@@ -86,9 +86,20 @@ configuration key is reserved.
 ## Code mode
 
 Code mode lets the model write a short program that calls several tools and
-combines their results, which the runtime executes as one tool call, rather
-than issuing each call as a separate model turn. Code mode is not
-implemented. No event type or configuration key is reserved.
+combines their results. The model sees the source and returned value while
+inner results remain in the log. [code-mode.md](code-mode.md) specifies the
+`code` built-in tool, evaluator confinement, registry dispatch, and the
+proposed `code/inner-call` event. Code mode is not implemented. The tool name
+is reserved by the design; no event variant is present in `crates/log`.
+
+## Program lineage
+
+Program lineage relates immutable program states through content-addressed
+proposal evidence and a verifier declared by the parent state. The design is
+specified in [lineage-identity.md](lineage-identity.md), which proposes the
+configuration key `program_lineage` and the `verification/result` event.
+Program lineage is not implemented. Neither name is present in the
+configuration or log types.
 
 ## Bazel targets for the browser bundle and the Python package
 
@@ -128,3 +139,28 @@ grants into such a profile. macOS sandboxing is not implemented; on macOS
 `sandbox.mode: "best-effort"` applies no restriction and records
 `landlock_abi: 0`, and `sandbox.mode: "required"` refuses to start. No event
 type or configuration key is reserved.
+
+## Unicode normalization in the scrubber
+
+The scrubber removes invisible characters (zero-width spaces and joiners,
+the byte-order mark, the soft hyphen, the directional marks) before any
+other layer runs, so a value split by them is matched whole. It does not
+apply compatibility normalization (NFKC), which would additionally fold
+full-width and other confusable code points onto their ASCII forms. The
+two scrubbed fields are written by tools rather than by a model and are
+ASCII in every recorded trajectory, so the folding has no input to act on
+today, and a correct implementation means taking on a Unicode data table
+dependency. NFKC folding is deferred until either field can carry
+model-authored text. No event type or configuration key is reserved.
+
+## Checksum validation for provider tokens
+
+Payment-card-shaped digit runs are masked only when they pass the Luhn
+checksum, which keeps version strings and issue numbers out of the mask.
+GitHub tokens carry a comparable embedded checksum (a CRC32 over the token
+body, base62-encoded in the last six characters), which would let the
+detector drop its length heuristic. Validating it requires reference
+vectors verified against real token structure, which cannot be taken from
+documentation alone; until then GitHub tokens are matched by prefix and
+length like every other provider prefix. No event type or configuration
+key is reserved.

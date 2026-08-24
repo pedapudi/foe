@@ -7,7 +7,8 @@
 //! rather than as a tool error.
 
 use crate::{parse_args, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES};
-use foe_core::{fitting, CallCtx, Effect, ExecRequest, Tool, ToolSpec, ToolValue, SUBJECT_MAX};
+use foe_config::{Effect, ToolSpec};
+use foe_core::{fitting, CallCtx, ExecRequest, Tool, ToolValue, SUBJECT_MAX};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -23,7 +24,7 @@ const SHELL: &str = "/bin/bash";
 /// writable location.
 fn environment(cwd: &std::path::Path) -> BTreeMap<String, String> {
     BTreeMap::from([
-        ("PATH".to_owned(), "/usr/local/bin:/usr/bin:/bin".to_owned()),
+        ("PATH".to_owned(), "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_owned()),
         ("HOME".to_owned(), cwd.display().to_string()),
         ("LANG".to_owned(), "C.UTF-8".to_owned()),
     ])

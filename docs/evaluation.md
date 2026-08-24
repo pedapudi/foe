@@ -119,9 +119,9 @@ detect. The trace evaluator alone reports 0 or 1.
 ## Model-backed task quality
 
 Agent capability belongs to a specific model and harness configuration.
-[Harness-Bench](https://arxiv.org/abs/2605.27922) evaluates configurations
-under shared tasks, budgets, timeouts, and evaluators while preserving each
-harness's execution behavior. foe results follow the same comparison unit.
+Model-backed comparisons use shared tasks, budgets, timeouts, and evaluators
+while preserving each harness's execution behavior. Foe results use that
+configuration as the comparison unit.
 
 Every reported configuration identifies:
 
@@ -138,11 +138,11 @@ Every reported configuration identifies:
 The source-tree and binary values identify the evaluated pair. They do not
 establish reproducible-build provenance between the source tree and binary.
 
-The Harness-Bench development and confirmation runners, together with the
-evidence-guided self-improvement workflow, are documented in
-[`evals/harness_bench/README.md`](../evals/harness_bench/README.md). The runner
-records the pinned source and every local grader patch. Its diagnostic sample
-does not support an official score or a comparison with another harness.
+The primary external integration uses Terminal-Bench 2.1 through Harbor. Its
+small development and holdout sets are documented in
+[`evals/terminal_bench/README.md`](../evals/terminal_bench/README.md).
+Harness-Bench fixtures remain available for local diagnostics in
+[`evals/harness_bench/README.md`](../evals/harness_bench/README.md).
 
 The benchmark's executable evaluator decides task completion. foe's outcome
 and conformance report remain separate fields. This separation distinguishes a
@@ -296,12 +296,11 @@ bazel test //evals:micro_tasks_test
 #### Provider-reported input and reserved child budgets
 
 The runtime charges provider-reported input after each completed response.
-It starts another request only while the remainder could fit one: the last
-response's reported input is a floor under the next request's cost, and a
-remainder below the floor ends the episode before the request is sent. The
-first request has no floor and no per-request input cap, so that one
-response can cross the remaining input allowance. The root account records
-the reported usage, including an overrun in a descendant.
+It starts another request only while cumulative spend remains below the
+allowance. Foe sends no per-request input cap and infers nothing from
+earlier reports, so one response can cross the remaining input allowance.
+The root account records the reported usage, including an overrun in a
+descendant.
 
 The runner treats such an attempt as outside budget. Each attempt reports
 `input_overrun_tokens` and `output_overrun_tokens` under
@@ -328,7 +327,7 @@ Each benchmark report includes these metrics:
 | reliable task rate | tasks whose every attempt passed, reported with the attempt count |
 | outcome distribution | proportions of `completed`, `blocked` by code, `exhausted` by limit, and `failed` |
 | conformance rate | attempts with no deterministic trace violation divided by launched attempts |
-| successful-run tokens | median and 90th percentile of input plus output tokens among accepted attempts |
+| successful-run estimated cost | median and 90th percentile cost among accepted attempts; until price integration, input plus output tokens are the proxy for one fixed model route and settings |
 | successful-run calls | median and 90th percentile of model and tool calls among accepted attempts |
 | successful-run duration | median and 90th percentile wall time among accepted attempts |
 | policy-denial rate | forbidden actions denied divided by forbidden actions attempted in policy-bearing tasks |
@@ -337,6 +336,11 @@ Report cache-read tokens beside input and output tokens. Report incomplete and
 infrastructure-failed attempts in the denominator and in the outcome
 distribution. A separate infrastructure-failure field keeps deployment faults
 visible.
+
+Use the token cost proxy only within comparisons that hold the model route and
+model settings fixed. The proxy weights one input token and one output token
+equally. Provider pricing can replace that weighting later without changing
+the retained input, output, and cache-read measurements.
 
 Use at least three attempts per task for a comparison. Pair configurations by
 task and model route. Keep task containers, evaluators, aggregate budgets, and

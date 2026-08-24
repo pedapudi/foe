@@ -1,5 +1,5 @@
 use super::Pool;
-use crate::Budget;
+use foe_config::Budget;
 use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
 
 pub fn budget() -> Budget {
@@ -213,66 +213,38 @@ fn compaction_end_does_not_charge_summary_usage_twice() {
     assert_eq!(pool.remaining(), once);
 }
 
-// ---- the input floor -------------------------------------------------------
+// ---- input admission under provider-reported usage ------------------------
 
+/// Provider-reported input is not monotonic within an episode: the staircase
+/// below is from a recorded `openai-codex` run whose reports fall mid-episode
+/// (seq of `usage.input` per response). Admission therefore uses cumulative
+/// spend alone. A rule that inferred the next request's cost from the last
+/// report would have refused requests this episode completed within its
+/// allowance.
 #[test]
-fn a_remainder_below_the_last_reported_input_ends_the_episode_before_the_request() {
-    let mut pool = Pool::new(Budget { input_tokens: Some(1000), ..budget() });
-    pool.note_usage(Usage { input: 600, output: 10, cache_read: 0 });
-    // 400 remain and the next request carries at least the 600 the last one
-    // did, so it provably cannot fit; the episode ends without paying for it.
+fn admission_uses_cumulative_spend_and_never_a_per_request_inference() {
+    let recorded = [878u64, 1141, 1825, 3580, 7130, 7860, 8006, 8299, 4345, 4699, 5111, 5357];
+    let total: u64 = recorded.iter().sum();
+    let mut pool = Pool::new(Budget { model_calls: 20, input_tokens: Some(total + 1), ..budget() });
+    for &input in &recorded {
+        assert_eq!(pool.exhausted(), None, "admitted while cumulative spend is below the allowance");
+        pool.note_request();
+        pool.note_usage(Usage { input, output: 5, cache_read: 0 });
+    }
+    // The allowance is spent only when the sum crosses it, not when a report
+    // spikes: after every recorded response one token remains.
+    assert_eq!(pool.remaining().input_tokens, Some(1));
+    pool.note_usage(Usage { input: 1, output: 0, cache_read: 0 });
     assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
 }
 
+/// The final request may cross the allowance, because its size cannot be
+/// known exactly beforehand; the crossing ends the episode afterwards.
 #[test]
-fn a_remainder_equal_to_the_floor_still_fits_because_a_retry_resends_the_same_conversation() {
+fn one_request_may_cross_the_input_allowance_and_the_next_is_refused() {
     let mut pool = Pool::new(Budget { input_tokens: Some(1000), ..budget() });
-    pool.note_usage(Usage { input: 500, output: 10, cache_read: 0 });
-    assert_eq!(pool.exhausted(), None);
-}
-
-#[test]
-fn the_first_request_is_never_refused_by_the_floor() {
-    let pool = Pool::new(Budget { input_tokens: Some(1), ..budget() });
-    // Nothing has been reported, so there is no floor; only a spent
-    // allowance can refuse the first request.
-    assert_eq!(pool.exhausted(), None);
-}
-
-#[test]
-fn compaction_clears_the_floor_until_the_next_report() {
-    let mut pool = Pool::new(Budget { input_tokens: Some(1000), ..budget() });
-    pool.note_usage(Usage { input: 600, output: 10, cache_read: 0 });
+    pool.note_usage(Usage { input: 990, output: 5, cache_read: 0 });
+    assert_eq!(pool.exhausted(), None, "10 remain, so another request is admitted");
+    pool.note_usage(Usage { input: 700, output: 5, cache_read: 0 });
     assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
-    // The conversation shrank, so the last report no longer bounds the next
-    // request; the spent 600 still count against the allowance.
-    pool.note_compaction();
-    assert_eq!(pool.exhausted(), None);
-    pool.note_usage(Usage { input: 350, output: 10, cache_read: 0 });
-    // 950 spent, 50 remain, floor 350: provably too small again.
-    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
-}
-
-#[test]
-fn the_folded_pool_learns_the_floor_and_its_compaction_reset_from_the_log() {
-    let mut pool = Pool::new(Budget { input_tokens: Some(1000), ..budget() });
-    pool.apply(&EventData::AssistantMessage(foe_log::AssistantMessage {
-        step: 1,
-        request_id: "rq_1".into(),
-        text: String::new(),
-        tool_calls: vec![],
-        stop: foe_log::StopReason::End,
-        usage: Usage { input: 600, output: 10, cache_read: 0 },
-        interrupted: false,
-        thinking: vec![],
-    }));
-    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
-    pool.apply(&EventData::CompactionEnd {
-        step: 1,
-        ok: true,
-        usage: Usage { input: 0, output: 0, cache_read: 0 },
-        active_estimate: 0,
-        error: None,
-    });
-    assert_eq!(pool.exhausted(), None);
 }

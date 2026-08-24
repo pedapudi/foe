@@ -9,6 +9,9 @@ rust_library(
     edition = crate_edition(),
     version = "0.1.0",
     visibility = ["//visibility:public"],
-    deps = ["//crates/log:foe_log"] + all_crate_deps(normal = True),
+    deps = [
+        "//crates/config:foe_config",
+        "//crates/log:foe_log",
+    ] + all_crate_deps(normal = True),
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )

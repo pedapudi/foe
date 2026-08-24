@@ -20,7 +20,8 @@ use crate::budget::Pool;
 use crate::loop_::settled_children;
 use crate::protocol::{Host, InboxSink};
 use crate::spawn::{ChildObserver, Router};
-use crate::{CallCtx, CapError, Effect, SpawnHandle, SpawnRequest, Spawner, Tool, ToolSpec, ToolValue};
+use crate::{CallCtx, CapError, SpawnHandle, SpawnRequest, Spawner, Tool, ToolValue};
+use foe_config::{Effect, ToolSpec};
 use foe_log::{
     BudgetAmount, ContentBlock, Event, EventData, InboxItem, InboxSource, MemberPhase, Outcome, SpawnContext,
 };

@@ -23,13 +23,6 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// True when `path` equals one of `roots` or lies below it, compared by
-/// components so that `/src-other` is outside `/src`. A child's grants are
-/// checked against its parent's this way, before any directory is opened.
-pub fn contains(roots: &[PathBuf], path: &Path) -> bool {
-    roots.iter().any(|root| path.starts_with(root))
-}
-
 /// The root that holds `path`, and the remainder of `path` below it. A
 /// relative path belongs to the first root, as `resolve` treats it. An
 /// absolute path takes the deepest root that is a prefix of it, so that a

@@ -19,6 +19,10 @@ document and offer completions. `foe plan --config FILE` prints the resolved
 program, its identity, and every tool definition the program's reachable
 tree can invoke, without running anything.
 
+`crates/config` implements this document: every rule stated here is a check
+there, it holds the JSON Schema `foe schema` prints, and it resolves a
+document into the program `episode/start.program` records.
+
 ## JSON Schema subset
 
 Two keys hold a schema written by the document's author: `host_tools.*.params`
@@ -302,16 +306,13 @@ subtree used. A child program that declares a larger limit runs under its
 reserved share.
 
 The runtime charges provider-reported input after each completed response.
-It starts another request only while the remaining input allowance could
-fit one: within an episode the conversation only grows, so the last
-response's reported input is a floor under the next request's cost, and a
-remainder below that floor ends the episode as exhausted before the request
-is sent rather than after it is paid for. A remainder equal to the floor
-still fits, because a retry resends the same conversation. Compaction
-shrinks the conversation, so it clears the floor until the next response
-reports. The first request has no floor; foe does not send a per-request
-input cap, so that one response can cross the remaining input allowance.
-Cached input remains part of `input_tokens`.
+It starts another request only while cumulative spend remains below the
+allowance. Foe does not send a per-request input cap and does not infer the
+next request's cost from earlier reports — provider accounting varies
+within an episode — so the final request may cross the remaining allowance,
+and the crossing ends the episode afterwards. Completion is checked before
+exhaustion, so a response that finishes the task on the crossing request
+completes the episode. Cached input remains part of `input_tokens`.
 
 For a provider that accepts a per-request output cap, the runtime clamps the
 cap to the remaining `output_tokens`. This applies to ordinary requests,

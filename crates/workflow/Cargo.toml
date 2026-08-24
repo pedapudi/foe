@@ -8,6 +8,7 @@ description = "Workflow executor: fires a declared graph of tool, model, and nes
 
 [dependencies]
 foe-log = { path = "../log" }
+foe-config = { path = "../config" }
 foe-core = { path = "../core" }
 serde.workspace = true
 serde_json.workspace = true
