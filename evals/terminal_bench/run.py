@@ -18,30 +18,89 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from trajectory_diagnostics import diagnose_episode
+from workflow_candidate import require_matching_run as require_matching_candidate_run
+from workflow_candidate import validate as validate_workflow_candidate
+
 
 HARBOR_VERSION = "0.22.0"
 DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+MIN_AUXILIARY_MODEL_CALLS = 6
+FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
+AGENT_TIMEOUT_GRACE_SECONDS = 300
 
 
 @dataclass(frozen=True)
 class Task:
     name: str
     model_calls: int
-    input_tokens: int
-    output_tokens: int
+    expected_input_tokens: int
+    expected_output_tokens: int
     seconds: int
+    harbor_agent_seconds: int
 
 
-def read_cases(path: Path) -> tuple[str, dict[str, tuple[str, ...]], dict[str, Task]]:
+@dataclass(frozen=True)
+class Pricing:
+    source: str
+    input_per_million: float
+    cached_input_per_million: float
+    output_per_million: float
+    long_context_threshold: int
+    long_context_input_multiplier: float
+    long_context_output_multiplier: float
+
+    def agent_kwargs(self) -> dict[str, float | int]:
+        return {
+            key: value
+            for key, value in self.__dict__.items()
+            if key != "source"
+        }
+
+    def expected_cost(self, input_tokens: int, output_tokens: int) -> float:
+        return (
+            input_tokens * self.input_per_million
+            + output_tokens * self.output_per_million
+        ) / 1_000_000
+
+
+def read_cases(
+    path: Path,
+) -> tuple[str, dict[str, tuple[str, ...]], dict[str, Task], dict[str, Pricing]]:
     value = json.loads(path.read_text(encoding="utf-8"))
     dataset = value.get("dataset")
     raw_groups = value.get("groups")
     raw_tasks = value.get("tasks")
+    raw_pricing = value.get("pricing")
+    raw_agent_timeouts = value.get("harbor_agent_timeouts")
     if not isinstance(dataset, str) or "@" not in dataset:
         raise ValueError("cases.dataset must pin a dataset revision")
-    if not isinstance(raw_groups, dict) or not isinstance(raw_tasks, dict):
-        raise ValueError("cases.groups and cases.tasks must be objects")
+    if not all(
+        isinstance(item, dict)
+        for item in (raw_groups, raw_tasks, raw_pricing, raw_agent_timeouts)
+    ):
+        raise ValueError(
+            "cases.groups, cases.tasks, cases.pricing, and cases.harbor_agent_timeouts must be objects"
+        )
+    if set(raw_agent_timeouts) != set(raw_tasks):
+        raise ValueError("cases.harbor_agent_timeouts keys must match cases.tasks")
+    pricing: dict[str, Pricing] = {}
+    for model, raw in raw_pricing.items():
+        if not isinstance(model, str) or not isinstance(raw, dict):
+            raise ValueError("every cases.pricing entry must be an object")
+        try:
+            price = Pricing(**raw)
+        except TypeError as error:
+            raise ValueError(f"cases.pricing.{model} has invalid fields") from error
+        numeric = tuple(
+            value for key, value in price.__dict__.items() if key != "source"
+        )
+        if not isinstance(price.source, str) or not price.source.startswith("https://"):
+            raise ValueError(f"cases.pricing.{model}.source must be an HTTPS URL")
+        if any(not isinstance(item, (int, float)) or item <= 0 for item in numeric):
+            raise ValueError(f"cases.pricing.{model} rates must be positive numbers")
+        pricing[model] = price
     tasks: dict[str, Task] = {}
     for name, limits in raw_tasks.items():
         if not isinstance(name, str) or not isinstance(limits, dict):
@@ -49,11 +108,18 @@ def read_cases(path: Path) -> tuple[str, dict[str, tuple[str, ...]], dict[str, T
         task = Task(
             name=name,
             model_calls=limits.get("model_calls"),
-            input_tokens=limits.get("input_tokens"),
-            output_tokens=limits.get("output_tokens"),
+            expected_input_tokens=limits.get("expected_input_tokens"),
+            expected_output_tokens=limits.get("expected_output_tokens"),
             seconds=limits.get("seconds"),
+            harbor_agent_seconds=raw_agent_timeouts.get(name),
         )
-        limits = (task.model_calls, task.input_tokens, task.output_tokens, task.seconds)
+        limits = (
+            task.model_calls,
+            task.expected_input_tokens,
+            task.expected_output_tokens,
+            task.seconds,
+            task.harbor_agent_seconds,
+        )
         if any(not isinstance(value, int) or value <= 0 for value in limits):
             raise ValueError(f"cases.tasks.{name} limits must be positive integers")
         tasks[name] = task
@@ -64,10 +130,20 @@ def read_cases(path: Path) -> tuple[str, dict[str, tuple[str, ...]], dict[str, T
         ):
             raise ValueError(f"cases.groups.{group} must name configured tasks")
         groups[group] = tuple(names)
-    overlap = set(groups.get("development", ())) & set(groups.get("holdout", ()))
-    if overlap:
-        raise ValueError(f"development and holdout tasks overlap: {', '.join(sorted(overlap))}")
-    return dataset, groups, tasks
+    protected = (
+        "development",
+        "capability_search",
+        "confirmation",
+        "calibration",
+        "calibration_holdout",
+    )
+    for index, left in enumerate(protected):
+        for right in protected[index + 1 :]:
+            overlap = set(groups.get(left, ())) & set(groups.get(right, ()))
+            if overlap:
+                names = ", ".join(sorted(overlap))
+                raise ValueError(f"{left} and {right} tasks overlap: {names}")
+    return dataset, groups, tasks, pricing
 
 
 def default_harbor() -> Path:
@@ -179,20 +255,60 @@ def harbor_command(
     credential_state: Path,
     model: str,
     reasoning_effort: str,
+    service_tier: str = "priority",
+    diagnosis_model: str | None,
+    diagnosis_reasoning_effort: str,
+    diagnosis_model_calls: int,
+    diagnosis_pricing: Pricing | None,
+    unresolved_diagnosis_reasoning_effort: str | None,
+    unresolved_diagnosis_model_calls: int,
+    escalation_reasoning_effort: str | None,
+    escalation_model_calls: int,
     runtime_digest: str,
+    pricing: Pricing,
+    completion_checker: Path | None = None,
+    hard_token_limits: bool = False,
     install_only: bool = False,
 ) -> list[str]:
+    model_stages = 1 + sum(
+        stage_enabled
+        for stage_enabled in (
+            diagnosis_model is not None,
+            unresolved_diagnosis_reasoning_effort is not None,
+            escalation_reasoning_effort is not None,
+        )
+    )
+    agent_timeout_seconds = task.seconds * model_stages + AGENT_TIMEOUT_GRACE_SECONDS
+    agent_timeout_multiplier = agent_timeout_seconds / task.harbor_agent_seconds
     kwargs = {
         "foe_binary": foe,
         "credential_file": credential_state,
         "trace_evaluator": trace_evaluator,
         "model_calls": task.model_calls,
-        "input_tokens": task.input_tokens,
-        "output_tokens": task.output_tokens,
         "seconds": task.seconds,
         "reasoning_effort": reasoning_effort,
+        "service_tier": service_tier,
         "version": f"sha256:{runtime_digest}",
+        **pricing.agent_kwargs(),
     }
+    if hard_token_limits:
+        kwargs["input_tokens"] = task.expected_input_tokens
+        kwargs["output_tokens"] = task.expected_output_tokens
+    if diagnosis_model is not None:
+        kwargs["diagnosis_model"] = diagnosis_model
+        kwargs["diagnosis_reasoning_effort"] = diagnosis_reasoning_effort
+        kwargs["diagnosis_model_calls"] = diagnosis_model_calls
+        if diagnosis_pricing is None:
+            raise ValueError("diagnosis model pricing is required")
+        kwargs.update({f"diagnosis_{key}": value for key, value in diagnosis_pricing.agent_kwargs().items()})
+    if unresolved_diagnosis_reasoning_effort is not None:
+        kwargs["unresolved_diagnosis_reasoning_effort"] = unresolved_diagnosis_reasoning_effort
+        kwargs["unresolved_diagnosis_model_calls"] = unresolved_diagnosis_model_calls
+    if escalation_reasoning_effort is not None:
+        kwargs["escalation_reasoning_effort"] = escalation_reasoning_effort
+        kwargs["escalation_model_calls"] = escalation_model_calls
+    if completion_checker is not None:
+        kwargs["completion_checker"] = completion_checker
     command = [
         "/usr/bin/env",
         f"PYTHONPATH={agent_module.parent}",
@@ -210,6 +326,8 @@ def harbor_command(
         "1",
         "--n-attempts",
         str(attempts),
+        "--agent-timeout-multiplier",
+        str(agent_timeout_multiplier),
         "--jobs-dir",
         str(jobs_dir),
         "--job-name",
@@ -223,7 +341,7 @@ def harbor_command(
     return command
 
 
-def read_job_result(path: Path) -> dict[str, int]:
+def read_job_result(path: Path) -> dict[str, Any]:
     """Read the Harbor counts that its process exit status does not represent."""
     value = json.loads(path.read_text(encoding="utf-8"))
     stats = value.get("stats") if isinstance(value, dict) else None
@@ -235,7 +353,84 @@ def read_job_result(path: Path) -> dict[str, int]:
     total = value.get("n_total_trials")
     if not isinstance(total, int):
         raise ValueError(f"Harbor result has no total trial count: {path}")
-    return {**{key: stats[key] for key in keys}, "n_total_trials": total}
+    result: dict[str, Any] = {**{key: stats[key] for key in keys}, "n_total_trials": total}
+    for key in ("n_input_tokens", "n_cache_tokens", "n_output_tokens"):
+        if stats.get(key) is None or isinstance(stats.get(key), int):
+            result[key] = stats.get(key)
+    if stats.get("cost_usd") is None or isinstance(stats.get("cost_usd"), (int, float)):
+        result["estimated_cost_usd"] = stats.get("cost_usd")
+    return result
+
+
+def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
+    """Record runtime, trace, and resource diagnostics beside task quality."""
+    infrastructure_failures = []
+    incomplete_resource_measurements = []
+    trial_results = sorted(job_dir.glob("*/result.json"))
+    if not trial_results:
+        raise ValueError(f"Harbor job has no trial results: {job_dir}")
+    for path in trial_results:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        trial = value.get("trial_name")
+        if not isinstance(trial, str):
+            trial = path.parent.name
+        exception = value.get("exception_info")
+        if exception is not None:
+            infrastructure_failures.append(f"{trial}: Harbor recorded a trial exception")
+            continue
+        agent_result = value.get("agent_result")
+        metadata = agent_result.get("metadata") if isinstance(agent_result, dict) else None
+        if not isinstance(metadata, dict):
+            infrastructure_failures.append(f"{trial}: Harbor recorded no Foe metadata")
+            continue
+        outcome = metadata.get("foe_outcome")
+        outcome_kind = outcome.get("kind") if isinstance(outcome, dict) else None
+        if outcome_kind is None:
+            infrastructure_failures.append(f"{trial}: Foe recorded no terminal outcome")
+        elif outcome_kind == "failed":
+            detail = outcome.get("error") if isinstance(outcome.get("error"), str) else "no error detail"
+            infrastructure_failures.append(f"{trial}: Foe runtime failed: {detail}")
+        if metadata.get("foe_trace_conformant") is not True:
+            infrastructure_failures.append(f"{trial}: Foe trace conformance was not established")
+        if (
+            "foe_completion_checker_unchanged" in metadata
+            and metadata.get("foe_completion_checker_unchanged") is not True
+        ):
+            infrastructure_failures.append(
+                f"{trial}: the completion checker changed during the trial"
+            )
+        if metadata.get("foe_usage_reported") is not True:
+            missing = metadata.get("foe_unreported_model_calls")
+            count = missing if isinstance(missing, int) else "unknown"
+            incomplete_resource_measurements.append(f"{trial}: {count} model call(s) lack provider usage")
+    return {
+        "infrastructure_failures": infrastructure_failures,
+        "incomplete_resource_measurements": incomplete_resource_measurements,
+    }
+
+
+def campaign_execution_complete(records: list[dict[str, Any]], expected: int) -> bool:
+    """Report whether every requested task produced a readable Harbor result."""
+    return len(records) == expected and all("result_error" not in row for row in records)
+
+
+def write_job_diagnostics(job_dir: Path) -> list[str]:
+    """Write one verifier-aware Foe diagnosis beside each retained episode."""
+    written = []
+    for episode_dir in sorted(job_dir.glob("*/agent/foe-episode")):
+        trial_dir = episode_dir.parent.parent
+        trial_result = trial_dir / "result.json"
+        report = diagnose_episode(
+            episode_dir,
+            trial_result=trial_result if trial_result.is_file() else None,
+        )
+        output = episode_dir.parent / "foe-diagnostics.json"
+        output.write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        written.append(str(output.relative_to(job_dir)))
+    return written
 
 
 def parser() -> argparse.ArgumentParser:
@@ -249,10 +444,33 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--task", action="append", default=[])
     answer.add_argument("--attempts", type=int, default=1)
     answer.add_argument("--model", default=DEFAULT_MODEL)
+    answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
     answer.add_argument(
         "--reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
         default="low",
+    )
+    answer.add_argument("--diagnosis-model")
+    answer.add_argument(
+        "--diagnosis-reasoning-effort",
+        choices=("low", "medium", "high", "xhigh"),
+        default="high",
+    )
+    answer.add_argument("--diagnosis-model-calls", type=int, default=20)
+    answer.add_argument(
+        "--unresolved-diagnosis-reasoning-effort",
+        choices=("low", "medium", "high", "xhigh"),
+    )
+    answer.add_argument("--unresolved-diagnosis-model-calls", type=int, default=20)
+    answer.add_argument(
+        "--escalation-reasoning-effort",
+        choices=("low", "medium", "high", "xhigh"),
+    )
+    answer.add_argument("--escalation-model-calls", type=int, default=0)
+    answer.add_argument(
+        "--workflow-candidate",
+        type=Path,
+        help="identity-bound workflow configuration produced by self-improvement",
     )
     answer.add_argument("--label", default="baseline")
     answer.add_argument("--jobs-dir", type=Path, default=Path("target/terminal-bench-jobs"))
@@ -264,6 +482,16 @@ def parser() -> argparse.ArgumentParser:
         default=default_credential_state(),
     )
     answer.add_argument("--install-only", action="store_true")
+    answer.add_argument(
+        "--completion-checker",
+        type=Path,
+        help="read-only checker used by done_when.verify; requires one selected task",
+    )
+    answer.add_argument(
+        "--hard-token-limits",
+        action="store_true",
+        help="enforce the planning token estimates as Foe allowances",
+    )
     answer.add_argument("--confirm-spend", action="store_true")
     return answer
 
@@ -271,7 +499,7 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        dataset, groups, tasks = read_cases(args.cases.resolve())
+        dataset, groups, tasks, pricing = read_cases(args.cases.resolve())
         if args.group not in groups:
             raise ValueError(f"unknown task group: {args.group}")
         selected_names = args.task or list(groups[args.group])
@@ -280,6 +508,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError(f"unknown tasks: {', '.join(unknown)}")
         if len(selected_names) != len(set(selected_names)):
             raise ValueError("a task may be selected only once")
+        if args.completion_checker is not None and len(selected_names) != 1:
+            raise ValueError("--completion-checker requires exactly one selected task")
         if not 1 <= args.attempts <= 3:
             raise ValueError("--attempts must be between 1 and 3")
         if not SAFE_LABEL.fullmatch(args.label):
@@ -289,10 +519,60 @@ def main(argv: list[str] | None = None) -> int:
             )
         if not args.model.startswith("openai-codex/") or args.model == "openai-codex/":
             raise ValueError("--model must name an openai-codex model")
+        if args.model not in pricing:
+            raise ValueError(f"cases.pricing has no entry for {args.model}")
+        if args.diagnosis_model is not None:
+            if not args.diagnosis_model.startswith("openai-codex/") or args.diagnosis_model == "openai-codex/":
+                raise ValueError("--diagnosis-model must name an openai-codex model")
+            if args.diagnosis_model not in pricing:
+                raise ValueError(f"cases.pricing has no entry for {args.diagnosis_model}")
+            if args.diagnosis_model_calls < MIN_AUXILIARY_MODEL_CALLS:
+                raise ValueError(
+                    "--diagnosis-model-calls must be at least "
+                    f"{MIN_AUXILIARY_MODEL_CALLS}"
+                )
+        if args.unresolved_diagnosis_reasoning_effort is not None:
+            if args.diagnosis_model is None:
+                raise ValueError(
+                    "--unresolved-diagnosis-reasoning-effort requires --diagnosis-model"
+                )
+            if args.unresolved_diagnosis_model_calls < MIN_AUXILIARY_MODEL_CALLS:
+                raise ValueError(
+                    "--unresolved-diagnosis-model-calls must be at least "
+                    f"{MIN_AUXILIARY_MODEL_CALLS}"
+                )
+            if args.escalation_reasoning_effort is not None:
+                raise ValueError(
+                    "conditional unresolved diagnosis cannot be combined with "
+                    "post-implementation escalation"
+                )
+        if args.escalation_reasoning_effort is None and args.escalation_model_calls != 0:
+            raise ValueError("--escalation-model-calls requires --escalation-reasoning-effort")
+        if (
+            args.escalation_reasoning_effort is not None
+            and args.escalation_model_calls < MIN_AUXILIARY_MODEL_CALLS
+        ):
+            raise ValueError(
+                "--escalation-model-calls must be at least "
+                f"{MIN_AUXILIARY_MODEL_CALLS}"
+            )
+        if args.workflow_candidate is not None and (
+            args.escalation_reasoning_effort is not None or args.escalation_model_calls != 0
+        ):
+            raise ValueError(
+                "--workflow-candidate cannot be combined with manual escalation settings"
+            )
+        if args.workflow_candidate is not None and args.install_only:
+            raise ValueError("--workflow-candidate cannot be used with --install-only")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
         agent_module = args.agent_module.resolve(strict=True)
         trace_evaluator = args.trace_evaluator.resolve(strict=True)
+        completion_checker = (
+            args.completion_checker.resolve(strict=True)
+            if args.completion_checker is not None
+            else None
+        )
         harbor = args.harbor.resolve(strict=True)
         credential = args.credential_file.resolve()
         workspace = source_root.parent
@@ -311,40 +591,172 @@ def main(argv: list[str] | None = None) -> int:
         if credential_state.is_relative_to(jobs_dir):
             raise ValueError("--credential-state must remain outside --jobs-dir")
         selected = [tasks[name] for name in selected_names]
+        workflow_candidate_path = (
+            args.workflow_candidate.resolve(strict=True)
+            if args.workflow_candidate is not None
+            else None
+        )
+        evaluated_source = None
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
         return 2
 
     runtime_digest = digest(foe)
-    total_calls = sum(task.model_calls for task in selected) * args.attempts
-    total_input = sum(task.input_tokens for task in selected) * args.attempts
-    total_output = sum(task.output_tokens for task in selected) * args.attempts
-    total_cost_proxy = total_input + total_output
+    workflow_candidate = None
+    if workflow_candidate_path is not None:
+        try:
+            evaluated_source = source_tree(source_root)
+            identity = {
+                "source_tree": evaluated_source,
+                "runtime_binary": f"sha256:{runtime_digest}",
+            }
+            workflow_candidate = validate_workflow_candidate(
+                json.loads(workflow_candidate_path.read_text(encoding="utf-8")),
+                identity,
+            )
+            audit = require_matching_candidate_run(
+                workflow_candidate,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                service_tier=args.service_tier,
+                token_policy="hard" if args.hard_token_limits else "measurement_only",
+            )
+            args.escalation_reasoning_effort = audit["reasoning_effort"]
+            args.escalation_model_calls = audit["model_calls"]
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            print(f"terminal-bench eval: {error}", file=sys.stderr)
+            return 2
+    auxiliary_calls = (
+        args.diagnosis_model_calls if args.diagnosis_model is not None else 0
+    ) + (
+        args.unresolved_diagnosis_model_calls
+        if args.unresolved_diagnosis_reasoning_effort is not None
+        else 0
+    ) + args.escalation_model_calls
+    selected_pricing = pricing[args.model]
+    diagnosis_pricing = pricing[args.diagnosis_model] if args.diagnosis_model else None
+    plans = []
+    for task in selected:
+        diagnosis_fraction = (
+            args.diagnosis_model_calls / task.model_calls
+            if args.diagnosis_model is not None
+            else 0.0
+        )
+        escalation_fraction = args.escalation_model_calls / task.model_calls
+        unresolved_diagnosis_fraction = (
+            args.unresolved_diagnosis_model_calls / task.model_calls
+            if args.unresolved_diagnosis_reasoning_effort is not None
+            else 0.0
+        )
+        diagnosis_input = round(task.expected_input_tokens * diagnosis_fraction)
+        diagnosis_output = round(task.expected_output_tokens * diagnosis_fraction)
+        escalation_input = round(task.expected_input_tokens * escalation_fraction)
+        escalation_output = round(task.expected_output_tokens * escalation_fraction)
+        unresolved_diagnosis_input = round(
+            task.expected_input_tokens * unresolved_diagnosis_fraction
+        )
+        unresolved_diagnosis_output = round(
+            task.expected_output_tokens * unresolved_diagnosis_fraction
+        )
+        expected_input = (
+            task.expected_input_tokens
+            + diagnosis_input
+            + unresolved_diagnosis_input
+            + escalation_input
+        )
+        expected_output = (
+            task.expected_output_tokens
+            + diagnosis_output
+            + unresolved_diagnosis_output
+            + escalation_output
+        )
+        expected_cost = selected_pricing.expected_cost(
+            task.expected_input_tokens + unresolved_diagnosis_input + escalation_input,
+            task.expected_output_tokens + unresolved_diagnosis_output + escalation_output,
+        )
+        if diagnosis_pricing is not None:
+            expected_cost += diagnosis_pricing.expected_cost(
+                diagnosis_input, diagnosis_output
+            )
+        diagnosis_seconds = task.seconds if args.diagnosis_model is not None else 0
+        escalation_seconds = task.seconds if args.escalation_reasoning_effort is not None else 0
+        unresolved_diagnosis_seconds = (
+            task.seconds if args.unresolved_diagnosis_reasoning_effort is not None else 0
+        )
+        plans.append(
+            (
+                task,
+                task.model_calls + auxiliary_calls,
+                expected_input,
+                expected_output,
+                expected_cost,
+                task.seconds
+                + diagnosis_seconds
+                + unresolved_diagnosis_seconds
+                + escalation_seconds,
+            )
+        )
+    total_calls = sum(plan[1] for plan in plans) * args.attempts
+    total_input = sum(plan[2] for plan in plans) * args.attempts
+    total_output = sum(plan[3] for plan in plans) * args.attempts
+    total_expected_cost = sum(plan[4] for plan in plans) * args.attempts
     print(f"dataset       {dataset}")
     print(f"model         {args.model} reasoning_effort={args.reasoning_effort}")
+    print(f"service tier  {args.service_tier}")
+    if args.diagnosis_model is not None:
+        print(
+            f"diagnosis     {args.diagnosis_model} "
+            f"reasoning_effort={args.diagnosis_reasoning_effort} "
+            f"calls={args.diagnosis_model_calls}"
+        )
+    if args.unresolved_diagnosis_reasoning_effort is not None:
+        print(
+            f"unresolved    {args.model} "
+            f"reasoning_effort={args.unresolved_diagnosis_reasoning_effort} "
+            f"calls={args.unresolved_diagnosis_model_calls}; conditional"
+        )
+    if args.escalation_reasoning_effort is not None:
+        print(
+            f"escalation    {args.model} "
+            f"reasoning_effort={args.escalation_reasoning_effort} "
+            f"calls={args.escalation_model_calls}"
+        )
+    if workflow_candidate is not None:
+        print(f"workflow      {workflow_candidate['digest']}")
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; concurrency 1")
-    print("maximum       calls      input     output  cost proxy  seconds  task")
-    for task in selected:
-        task_input = task.input_tokens * args.attempts
-        task_output = task.output_tokens * args.attempts
+    print("planning      calls      input     output  est. cost  seconds  task")
+    for task, task_calls, expected_input, expected_output, expected_cost, seconds in plans:
         print(
-            f"              {task.model_calls * args.attempts:>5}  "
-            f"{task_input:>9,}  {task_output:>9,}  {task_input + task_output:>10,}  "
-            f"{task.seconds:>7}  {task.name}"
+            f"              {task_calls * args.attempts:>5}  "
+            f"{expected_input * args.attempts:>9,}  "
+            f"{expected_output * args.attempts:>9,}  "
+            f"${expected_cost * args.attempts:>8.2f}  "
+            f"{seconds:>7}  {task.name}"
         )
-    print(f"total         {total_calls:>5}  {total_input:>9,}  {total_output:>9,}  {total_cost_proxy:>10,}")
+    print(
+        f"total         {total_calls:>5}  {total_input:>9,}  "
+        f"{total_output:>9,}  ${total_expected_cost:>8.2f}"
+    )
+    token_policy = "hard allowances" if args.hard_token_limits else "measurement only"
+    print(f"token limits  {token_policy}")
+    if completion_checker is not None:
+        print(
+            "completion    done_when.verify "
+            f"sha256:{digest(completion_checker)}"
+        )
+    if args.service_tier == "priority":
+        print(f"Fast credits  {FAST_SERVICE_CREDIT_MULTIPLIER:g}x Standard ChatGPT credits")
     if args.install_only:
         print("Installation compatibility check selected; no model requests will be made.")
     elif not args.confirm_spend:
         print("No model requests were made. Add --confirm-spend after reviewing the maximum.")
         return 0
 
-    evaluated_source: str | None = None
-    try:
-        evaluated_source = source_tree(source_root)
-    except ValueError as error:
-        if not args.install_only:
+    if evaluated_source is None and not args.install_only:
+        try:
+            evaluated_source = source_tree(source_root)
+        except ValueError as error:
             print(f"terminal-bench eval: {error}", file=sys.stderr)
             return 2
 
@@ -404,7 +816,19 @@ def main(argv: list[str] | None = None) -> int:
             credential_state=credential_state,
             model=args.model,
             reasoning_effort=args.reasoning_effort,
+            service_tier=args.service_tier,
+            diagnosis_model=args.diagnosis_model,
+            diagnosis_reasoning_effort=args.diagnosis_reasoning_effort,
+            diagnosis_model_calls=args.diagnosis_model_calls,
+            diagnosis_pricing=pricing.get(args.diagnosis_model) if args.diagnosis_model else None,
+            unresolved_diagnosis_reasoning_effort=args.unresolved_diagnosis_reasoning_effort,
+            unresolved_diagnosis_model_calls=args.unresolved_diagnosis_model_calls,
+            escalation_reasoning_effort=args.escalation_reasoning_effort,
+            escalation_model_calls=args.escalation_model_calls,
             runtime_digest=runtime_digest,
+            pricing=selected_pricing,
+            completion_checker=completion_checker,
+            hard_token_limits=args.hard_token_limits,
             install_only=args.install_only,
         )
         result = subprocess.run(command, cwd=agent_module.parent, check=False)
@@ -416,10 +840,17 @@ def main(argv: list[str] | None = None) -> int:
         }
         try:
             record.update(read_job_result(job_result_path))
+            record["diagnostics"] = write_job_diagnostics(run_dir / task.name)
+            if not args.install_only:
+                record.update(read_job_integrity(run_dir / task.name))
         except (OSError, ValueError, json.JSONDecodeError) as error:
             record["result_error"] = str(error)
         records.append(record)
-        if result.returncode != 0 or record.get("n_errored_trials", 1) > 0:
+        for failure in record.get("infrastructure_failures", []):
+            print(f"terminal-bench eval: trial diagnostic: {failure}", file=sys.stderr)
+        for failure in record.get("incomplete_resource_measurements", []):
+            print(f"terminal-bench eval: incomplete resource measurement: {failure}", file=sys.stderr)
+        if "result_error" in record:
             break
     report = {
         "schema_version": 1,
@@ -427,10 +858,37 @@ def main(argv: list[str] | None = None) -> int:
         "label": args.label,
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "service_tier": args.service_tier,
+        "chatgpt_credit_multiplier": (
+            FAST_SERVICE_CREDIT_MULTIPLIER if args.service_tier == "priority" else 1.0
+        ),
+        "diagnosis_model": args.diagnosis_model,
+        "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort if args.diagnosis_model else None,
+        "diagnosis_model_calls": args.diagnosis_model_calls if args.diagnosis_model else None,
+        "unresolved_diagnosis_reasoning_effort": args.unresolved_diagnosis_reasoning_effort,
+        "unresolved_diagnosis_model_calls": (
+            args.unresolved_diagnosis_model_calls
+            if args.unresolved_diagnosis_reasoning_effort
+            else None
+        ),
+        "escalation_reasoning_effort": args.escalation_reasoning_effort,
+        "escalation_model_calls": args.escalation_model_calls if args.escalation_reasoning_effort else None,
         "attempts": args.attempts,
         "concurrency": 1,
-        "cost_proxy": {"unit": "tokens", "formula": "input_tokens + output_tokens"},
+        "pricing": selected_pricing.__dict__,
+        "diagnosis_pricing": pricing[args.diagnosis_model].__dict__ if args.diagnosis_model else None,
+        "planning_estimated_cost_usd": total_expected_cost,
+        "token_limits": "hard" if args.hard_token_limits else "measurement_only",
         "install_only": args.install_only,
+        "completion_checker": (
+            {
+                "path": str(completion_checker),
+                "sha256": digest(completion_checker),
+            }
+            if completion_checker is not None
+            else None
+        ),
+        "workflow_candidate": workflow_candidate,
         "foe_sha256": runtime_digest,
         "evaluated_foe": (
             {"source_tree": evaluated_source, "runtime_binary": f"sha256:{runtime_digest}"}
@@ -445,9 +903,7 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     print(f"Terminal-Bench evidence: {run_dir}")
-    completed = len(records) == len(selected) and all(
-        row["harbor_exit_code"] == 0 and row.get("n_errored_trials") == 0 for row in records
-    )
+    completed = campaign_execution_complete(records, len(selected))
     return 0 if completed else 1
 
 

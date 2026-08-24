@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shlex
 import subprocess
@@ -15,12 +16,19 @@ from harbor.agents.installed.base import BaseInstalledAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-from foe_agent_support import build_program, read_episode_summary, replace_credential_state
+from foe_agent_support import (
+    build_program,
+    describe_container_environment,
+    fixed_executable_probe_command,
+    read_episode_summary,
+    replace_credential_state,
+)
 
 
 REMOTE_BINARY = "/usr/local/bin/foe"
 REMOTE_CREDENTIAL = "/tmp/foe-openai-codex.json"
 REMOTE_PROGRAM = "/tmp/foe-terminal-bench-program.json"
+REMOTE_COMPLETION_CHECKER = "/tmp/foe-completion-check"
 
 
 class FoeAgent(BaseInstalledAgent):
@@ -33,20 +41,82 @@ class FoeAgent(BaseInstalledAgent):
         credential_file: str,
         trace_evaluator: str,
         model_calls: int | str,
-        input_tokens: int | str,
-        output_tokens: int | str,
         seconds: int | str,
+        input_tokens: int | str | None = None,
+        output_tokens: int | str | None = None,
+        input_per_million: float | str,
+        cached_input_per_million: float | str,
+        output_per_million: float | str,
+        long_context_threshold: int | str,
+        long_context_input_multiplier: float | str,
+        long_context_output_multiplier: float | str,
         reasoning_effort: str = "low",
+        service_tier: str = "priority",
+        diagnosis_model: str | None = None,
+        diagnosis_reasoning_effort: str = "high",
+        diagnosis_model_calls: int | str = 20,
+        diagnosis_input_per_million: float | str | None = None,
+        diagnosis_cached_input_per_million: float | str | None = None,
+        diagnosis_output_per_million: float | str | None = None,
+        diagnosis_long_context_threshold: int | str | None = None,
+        diagnosis_long_context_input_multiplier: float | str | None = None,
+        diagnosis_long_context_output_multiplier: float | str | None = None,
+        unresolved_diagnosis_reasoning_effort: str | None = None,
+        unresolved_diagnosis_model_calls: int | str = 20,
+        escalation_reasoning_effort: str | None = None,
+        escalation_model_calls: int | str = 0,
+        completion_checker: str | None = None,
         **kwargs: Any,
     ) -> None:
         self._foe_binary = Path(foe_binary)
         self._credential_file = Path(credential_file)
         self._trace_evaluator = Path(trace_evaluator)
         self._model_calls = int(model_calls)
-        self._input_tokens = int(input_tokens)
-        self._output_tokens = int(output_tokens)
+        self._input_tokens = int(input_tokens) if input_tokens is not None else None
+        self._output_tokens = int(output_tokens) if output_tokens is not None else None
         self._seconds = int(seconds)
+        self._pricing = {
+            "input_per_million": float(input_per_million),
+            "cached_input_per_million": float(cached_input_per_million),
+            "output_per_million": float(output_per_million),
+            "long_context_threshold": int(long_context_threshold),
+            "long_context_input_multiplier": float(long_context_input_multiplier),
+            "long_context_output_multiplier": float(long_context_output_multiplier),
+        }
         self._reasoning_effort = reasoning_effort
+        self._service_tier = service_tier
+        self._diagnosis_model = diagnosis_model
+        self._diagnosis_reasoning_effort = diagnosis_reasoning_effort
+        self._diagnosis_model_calls = int(diagnosis_model_calls)
+        self._unresolved_diagnosis_reasoning_effort = unresolved_diagnosis_reasoning_effort
+        self._unresolved_diagnosis_model_calls = int(unresolved_diagnosis_model_calls)
+        self._escalation_reasoning_effort = escalation_reasoning_effort
+        self._escalation_model_calls = int(escalation_model_calls)
+        self._completion_checker = (
+            Path(completion_checker) if completion_checker is not None else None
+        )
+        self._completion_checker_digest: str | None = None
+        self._observed_completion_checker_digest: str | None = None
+        diagnosis_prices = (
+            diagnosis_input_per_million,
+            diagnosis_cached_input_per_million,
+            diagnosis_output_per_million,
+            diagnosis_long_context_threshold,
+            diagnosis_long_context_input_multiplier,
+            diagnosis_long_context_output_multiplier,
+        )
+        if diagnosis_model is not None and any(value is None for value in diagnosis_prices):
+            raise ValueError("diagnosis model pricing must name every rate and long-context rule")
+        self._diagnosis_pricing = None
+        if diagnosis_model is not None:
+            self._diagnosis_pricing = {
+                "input_per_million": float(diagnosis_input_per_million),
+                "cached_input_per_million": float(diagnosis_cached_input_per_million),
+                "output_per_million": float(diagnosis_output_per_million),
+                "long_context_threshold": int(diagnosis_long_context_threshold),
+                "long_context_input_multiplier": float(diagnosis_long_context_input_multiplier),
+                "long_context_output_multiplier": float(diagnosis_long_context_output_multiplier),
+            }
         self._exit_code: int | None = None
         if not self._foe_binary.is_file():
             raise FileNotFoundError(f"Foe binary does not exist: {self._foe_binary}")
@@ -58,6 +128,14 @@ class FoeAgent(BaseInstalledAgent):
             raise FileNotFoundError(
                 f"Foe trace evaluator does not exist: {self._trace_evaluator}"
             )
+        if self._completion_checker is not None and not self._completion_checker.is_file():
+            raise FileNotFoundError(
+                f"completion checker does not exist: {self._completion_checker}"
+            )
+        if self._completion_checker is not None:
+            self._completion_checker_digest = hashlib.sha256(
+                self._completion_checker.read_bytes()
+            ).hexdigest()
         super().__init__(*args, **kwargs)
 
     @staticmethod
@@ -69,6 +147,13 @@ class FoeAgent(BaseInstalledAgent):
     async def install(self, environment: BaseEnvironment) -> None:
         await environment.upload_file(self._foe_binary, REMOTE_BINARY)
         await environment.upload_file(self._credential_file, REMOTE_CREDENTIAL)
+        checker_setup = ""
+        if self._completion_checker is not None:
+            await environment.upload_file(
+                self._completion_checker,
+                REMOTE_COMPLETION_CHECKER,
+            )
+            checker_setup = f"chmod 755 {shlex.quote(REMOTE_COMPLETION_CHECKER)} && "
         owner = environment.default_user
         ownership = ""
         if owner is not None:
@@ -76,7 +161,7 @@ class FoeAgent(BaseInstalledAgent):
         await self.exec_as_root(
             environment,
             command=(
-                f"{ownership}chmod 755 {shlex.quote(REMOTE_BINARY)} && "
+                f"{ownership}{checker_setup}chmod 755 {shlex.quote(REMOTE_BINARY)} && "
                 f"chmod 600 {shlex.quote(REMOTE_CREDENTIAL)} && "
                 f"{shlex.quote(REMOTE_BINARY)} schema >/dev/null"
             ),
@@ -107,15 +192,48 @@ class FoeAgent(BaseInstalledAgent):
         if not self.model_name.startswith("openai-codex/"):
             raise ValueError("the retained login credential supports only openai-codex models")
 
+        pwd = await self.exec_as_agent(environment, command="/bin/pwd")
+        if pwd.return_code != 0:
+            raise RuntimeError(f"task working-directory probe exited with status {pwd.return_code}")
+        working_directory = (pwd.stdout or "").strip()
+        executable_probe = await self.exec_as_agent(
+            environment,
+            command=fixed_executable_probe_command(),
+            cwd=environment.task_env_config.workdir,
+        )
+        if executable_probe.return_code != 0:
+            raise RuntimeError(
+                "fixed executable probe exited with status "
+                f"{executable_probe.return_code}"
+            )
+        environment_facts = describe_container_environment(
+            working_directory,
+            executable_probe.stdout or "",
+        )
         program = build_program(
             instruction,
             self.model_name,
             REMOTE_CREDENTIAL,
+            working_directory,
             model_calls=self._model_calls,
             input_tokens=self._input_tokens,
             output_tokens=self._output_tokens,
             seconds=self._seconds,
             reasoning_effort=self._reasoning_effort,
+            service_tier=self._service_tier,
+            environment_facts=environment_facts,
+            completion_checker=(
+                REMOTE_COMPLETION_CHECKER
+                if self._completion_checker is not None
+                else None
+            ),
+            diagnosis_model_name=self._diagnosis_model,
+            diagnosis_reasoning_effort=self._diagnosis_reasoning_effort,
+            diagnosis_model_calls=self._diagnosis_model_calls,
+            unresolved_diagnosis_reasoning_effort=self._unresolved_diagnosis_reasoning_effort,
+            unresolved_diagnosis_model_calls=self._unresolved_diagnosis_model_calls,
+            escalation_reasoning_effort=self._escalation_reasoning_effort,
+            escalation_model_calls=self._escalation_model_calls,
         )
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         local_program = self.logs_dir / "foe-program.json"
@@ -140,6 +258,14 @@ class FoeAgent(BaseInstalledAgent):
             "printf '%s\\n' \"$foe_status\""
         )
         try:
+            await self.exec_as_agent(
+                environment,
+                command=(
+                    f"{shlex.quote(REMOTE_BINARY)} plan "
+                    f"--config {shlex.quote(REMOTE_PROGRAM)} >/dev/null"
+                ),
+                cwd=environment.task_env_config.workdir,
+            )
             result = await self.exec_as_agent(
                 environment,
                 command=command,
@@ -148,12 +274,26 @@ class FoeAgent(BaseInstalledAgent):
             status_line = (result.stdout or "").strip().splitlines()
             self._exit_code = int(status_line[-1]) if status_line else None
         finally:
-            await self._retain_credential(environment)
+            try:
+                if self._completion_checker is not None:
+                    retained_checker = self.logs_dir / "foe-completion-checker.after"
+                    await environment.download_file(
+                        REMOTE_COMPLETION_CHECKER,
+                        retained_checker,
+                    )
+                    self._observed_completion_checker_digest = hashlib.sha256(
+                        retained_checker.read_bytes()
+                    ).hexdigest()
+            finally:
+                await self._retain_credential(environment)
 
     @override
     def populate_context_post_run(self, context: AgentContext) -> None:
         episode_dir = self.logs_dir / "foe-episode"
-        summary = read_episode_summary(episode_dir)
+        prices = {self.model_name: self._pricing}
+        if self._diagnosis_model is not None and self._diagnosis_pricing is not None:
+            prices[self._diagnosis_model] = self._diagnosis_pricing
+        summary = read_episode_summary(episode_dir, prices)
         trace_process = subprocess.run(
             [sys.executable, str(self._trace_evaluator), str(episode_dir)],
             text=True,
@@ -174,6 +314,7 @@ class FoeAgent(BaseInstalledAgent):
             context.n_input_tokens = summary["input_tokens"]
             context.n_output_tokens = summary["output_tokens"]
             context.n_cache_tokens = summary["cache_read_tokens"]
+            context.cost_usd = summary["estimated_cost_usd"]
         metadata = dict(context.metadata or {})
         metadata.update(
             {
@@ -181,6 +322,8 @@ class FoeAgent(BaseInstalledAgent):
                 "foe_model_calls": summary["model_calls"],
                 "foe_tool_calls": summary["tool_calls"],
                 "foe_usage_reported": summary["usage_reported"],
+                "foe_unreported_model_calls": summary["unreported_model_calls"],
+                "foe_estimated_cost_usd": summary["estimated_cost_usd"],
                 "foe_outcome": summary["outcome"],
                 "foe_episode_path": "agent/foe-episode",
                 "foe_trace_exit_code": trace_process.returncode,
@@ -190,4 +333,15 @@ class FoeAgent(BaseInstalledAgent):
                 else None,
             }
         )
+        if self._completion_checker_digest is not None:
+            metadata.update(
+                {
+                    "foe_completion_checker_sha256": self._completion_checker_digest,
+                    "foe_completion_checker_observed_sha256": self._observed_completion_checker_digest,
+                    "foe_completion_checker_unchanged": (
+                        self._observed_completion_checker_digest
+                        == self._completion_checker_digest
+                    ),
+                }
+            )
         context.metadata = metadata

@@ -21,6 +21,109 @@ COMMON_DATA = [
     "cases.json",
     "foe_agent.py",
     "foe_agent_support.py",
+    "trajectory_diagnostics.py",
+    "workflow_candidate.py",
+]
+
+VERIFIER_CASE_DATA = [
+    "verifier_cases.json",
+    "verifier_cases/cancel_async_tasks/check.py",
+    "verifier_cases/cancel_async_tasks/oracle.sh",
+    "verifier_cases/fix_git/check.py",
+    "verifier_cases/fix_git/oracle.sh",
+    "verifier_cases/large_scale_text_editing/check.py",
+    "verifier_cases/large_scale_text_editing/oracle.sh",
+]
+
+sh_binary(
+    name = "foe-trajectory-diagnostics",
+    srcs = ["trajectory_diagnostics.py"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-capability-probes",
+    srcs = ["run_capability_probes.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe-portable)",
+        "--source-root",
+        "$(rootpath //:Cargo.toml)",
+        "--agent-module",
+        "$(rootpath :capability_probe_agent.py)",
+        "--transport",
+        "$(rootpath :capability_transport.sh)",
+        "--cases",
+        "$(rootpath :cases.json)",
+    ],
+    data = [
+        "//:foe-portable",
+        "//:Cargo.toml",
+        "capability_probe_agent.py",
+        "capability_probe_support.py",
+        "capability_transport.sh",
+        "cases.json",
+        "run.py",
+        "trajectory_diagnostics.py",
+        "workflow_candidate.py",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-verifier-controls",
+    srcs = ["run_verifier_controls.py"],
+    args = [
+        "--source-root",
+        "$(rootpath //:Cargo.toml)",
+        "--agent-module",
+        "$(rootpath :verifier_control_agent.py)",
+        "--cases",
+        "$(rootpath :cases.json)",
+        "--verifier-cases",
+        "$(rootpath :verifier_cases.json)",
+    ],
+    data = [
+        "//:Cargo.toml",
+        "cases.json",
+        "run.py",
+        "trajectory_diagnostics.py",
+        "workflow_candidate.py",
+        "verifier_control_agent.py",
+    ] + VERIFIER_CASE_DATA,
+    visibility = ["//visibility:public"],
+)
+
+[
+    sh_binary(
+        name = "foe-verifier-" + name,
+        srcs = ["run.py"],
+        args = COMMON_ARGS + [
+            "--group",
+            "development",
+            "--task",
+            task,
+            "--completion-checker",
+            "$(rootpath " + checker + ")",
+            "--service-tier",
+            "default",
+        ],
+        data = COMMON_DATA + [checker],
+        visibility = ["//visibility:public"],
+    )
+    for name, task, checker in [
+        (
+            "cancel-async-tasks",
+            "cancel-async-tasks",
+            "verifier_cases/cancel_async_tasks/check.py",
+        ),
+        ("fix-git", "fix-git", "verifier_cases/fix_git/check.py"),
+        (
+            "large-scale-text-editing",
+            "large-scale-text-editing",
+            "verifier_cases/large_scale_text_editing/check.py",
+        ),
+    ]
 ]
 
 sh_binary(
@@ -54,10 +157,77 @@ sh_binary(
 )
 
 sh_binary(
-    name = "foe-holdout",
+    name = "foe-capability-search",
     srcs = ["run.py"],
-    args = COMMON_ARGS + ["--group", "holdout"],
+    args = COMMON_ARGS + ["--group", "capability_search"],
     data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-confirmation",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + ["--group", "confirmation"],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-calibration",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + ["--group", "calibration"],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "foe-calibration-holdout",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + ["--group", "calibration_holdout"],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "collect-diagnostics",
+    srcs = ["collect_diagnostics.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe-portable)",
+        "--source-root",
+        "$(rootpath //:Cargo.toml)",
+        "--cases",
+        "$(rootpath :cases.json)",
+    ],
+    data = [
+        "//:Cargo.toml",
+        "//:foe-portable",
+        "//evals/harness_bench:foe_source_identity.py",
+        "cases.json",
+        "run.py",
+        "workflow_candidate.py",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "self-improve",
+    srcs = ["run_self_improvement.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe-portable)",
+        "--cases",
+        "$(rootpath :cases.json)",
+    ],
+    data = [
+        "//:foe-portable",
+        "//evals/harness_bench:foe_source_identity.py",
+        "cases.json",
+        "foe_agent_support.py",
+        "run.py",
+        "trajectory_diagnostics.py",
+        "workflow_candidate.py",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -66,11 +236,27 @@ sh_test(
     srcs = ["run_unit_tests.sh"],
     data = [
         "cases.json",
+        "capability_probe_agent.py",
+        "capability_probe_support.py",
+        "capability_probe_support_test.py",
+        "collect_diagnostics.py",
+        "collect_diagnostics_test.py",
+        "//evals/harness_bench:foe_source_identity.py",
         "foe_agent.py",
         "foe_agent_support.py",
         "foe_agent_support_test.py",
         "run.py",
+        "run_capability_probes.py",
         "run_test.py",
-    ],
+        "run_self_improvement.py",
+        "run_self_improvement_test.py",
+        "run_verifier_controls.py",
+        "run_verifier_controls_test.py",
+        "trajectory_diagnostics.py",
+        "trajectory_diagnostics_test.py",
+        "workflow_candidate.py",
+        "workflow_candidate_test.py",
+        "verifier_control_agent.py",
+    ] + VERIFIER_CASE_DATA,
     size = "small",
 )
