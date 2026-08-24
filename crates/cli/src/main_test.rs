@@ -70,6 +70,9 @@ fn golden(line: &str) -> String {
         Ok(Command::View { dir, serve, port }) => format!("view dir={dir:?} serve={serve} port={port}"),
         Ok(Command::Plan { config, json }) => format!("plan config={config:?} json={json}"),
         Ok(Command::Tools { config }) => format!("tools config={config:?}"),
+        Ok(Command::Lineage { state, states, evidence, json }) => {
+            format!("lineage state={state:?} states={states:?} evidence={evidence:?} json={json}")
+        }
         Ok(Command::Schema) => "schema".to_string(),
         Ok(Command::Telemetry { logs, json }) => format!("telemetry logs={logs:?} json={json}"),
         Ok(Command::Help(form)) => format!("help {}", form.name),
@@ -104,6 +107,11 @@ fn representative_invocations_parse_to_known_values() {
         ("tools", "tools config=None"),
         ("tools --config c.json", "tools config=Some(\"c.json\")"),
         ("schema", "schema"),
+        (
+            "lineage s.json --states st --evidence ev",
+            "lineage state=\"s.json\" states=\"st\" evidence=\"ev\" json=false",
+        ),
+        ("lineage --states st --evidence ev", "error"),
         ("telemetry a.jsonl b.jsonl --json", "telemetry logs=[\"a.jsonl\", \"b.jsonl\"] json=true"),
         ("", "error"),
     ];

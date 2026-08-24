@@ -572,7 +572,7 @@ own.
 
 ## The command line
 
-The binary has one running form and five forms that run nothing.
+The binary has one running form and six forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
@@ -584,6 +584,7 @@ foe view DIR [--serve [--port N]]                        write a self-contained 
 foe plan --config FILE [--json]                          print the resolved program, its identity, its transport, and its effective authority
 foe tools [--config FILE]                                list tools, with sources when a config is given
 foe schema                                               print the JSON Schema for the configuration
+foe lineage STATE --states DIR --evidence DIR [--json]   verify a state document's ancestry claim against retained evidence
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
 

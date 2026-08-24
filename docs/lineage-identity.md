@@ -254,6 +254,12 @@ The check establishes a complete chain from the state to a chosen root. It
 does not establish that the verifier measured the right property. Evaluator
 quality remains part of the adoption policy and the evaluation record.
 
+The command line exposes the checker. `foe lineage STATE --states DIR
+--evidence DIR` reads a state document from STATE, resolves states from
+`DIR/<hex>.json` by lineage identity and bundles from `DIR/<hex>` by
+content address, and prints the chain with every check the retained
+evidence leaves open. `--json` prints the same report as one object.
+
 ## The candidate binding gap
 
 The implemented `verification/result` event carries every member of the
