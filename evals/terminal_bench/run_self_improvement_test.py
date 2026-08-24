@@ -108,7 +108,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("must not branch on", diagnosis["instructions"]["controls"])
         self.assertEqual(
             implementation["grants"]["write"],
-            [str(root / directory) for directory in ("crates", "docs", "examples")],
+            [
+                *(str(root / directory) for directory in ("crates", "docs", "examples")),
+                str(root / "target" / "foe-self-improvement-check"),
+            ],
         )
         self.assertEqual(
             implementation["grants"]["read"],

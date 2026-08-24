@@ -262,7 +262,10 @@ def build_config(
     development_reads = [str(path) for path in [*source_metadata_roots, *development_read_roots]]
     implementation_read_roots = [str(candidate), *development_reads]
     root_read_roots = [str(candidate), *diagnosis_read_roots, *development_reads]
-    write_roots = [str(candidate / directory) for directory in ALLOWED_DIRECTORIES]
+    write_roots = [
+        *(str(candidate / directory) for directory in ALLOWED_DIRECTORIES),
+        str(candidate / "target" / "foe-self-improvement-check"),
+    ]
     execute = [str(path) for path in execute_roots]
     check_tool = {
         "exec": str(check),
