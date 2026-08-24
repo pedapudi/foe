@@ -32,11 +32,11 @@ class CasesTest(unittest.TestCase):
         for index, left in enumerate(protected):
             for right in protected[index + 1 :]:
                 self.assertFalse(set(groups[left]) & set(groups[right]))
-        self.assertEqual(len(groups["development"]), 6)
-        self.assertEqual(len(groups["capability_search"]), 11)
-        self.assertEqual(len(groups["confirmation"]), 4)
-        self.assertEqual(len(groups["calibration"]), 12)
-        self.assertEqual(len(groups["calibration_holdout"]), 6)
+        self.assertEqual(len(groups["development"]), 12)
+        self.assertEqual(len(groups["capability_search"]), 5)
+        self.assertEqual(len(groups["confirmation"]), 8)
+        self.assertEqual(len(groups["calibration"]), 20)
+        self.assertEqual(len(groups["calibration_holdout"]), 8)
         self.assertEqual(groups["provider_policy_incompatible"], ("vulnerable-secret",))
         self.assertEqual(groups["smoke"], ("fix-git",))
         self.assertGreater(

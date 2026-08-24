@@ -6,37 +6,74 @@ Terminal-Bench 2.1 is pinned as `terminal-bench/terminal-bench-2-1@6`. The bench
 
 ## Campaign objective
 
-The campaign must convert model capability into reliable Foe performance. The central test is a task that GPT-5.6 Sol can solve with `xhigh` reasoning through Foe, while the same Foe runtime usually fails with `low` reasoning.
+The campaign must produce one frozen Foe release that converts at least three
+reproducible harness-limited failures into successes. The release must reach at
+least 85 percent quality on the twenty-task calibration set. It must also
+demonstrate repeatable self-improvement that transfers beyond each activation
+case.
 
-The target improvement makes Sol with `low` reasoning solve that task reliably. The change may affect Foe source or a general workflow configuration. Task-specific instructions, benchmark identifiers, fixture values, and grader rules are excluded from candidate changes.
+GPT-5.6 Sol with low reasoning is the primary coding model. Conditional
+escalation may use Sol with at most `xhigh` reasoning. Every provider request
+uses the `priority` service tier. Token use, estimated cost, cache use, and
+latency are measurements. Task quality is the only candidate promotion metric
+until every quality gate passes.
 
-The reasoning ceiling is `xhigh`. The campaign does not run any model with `max` reasoning.
+Candidate changes may affect any Foe source, built-in tool, or general workflow
+configuration. Task-specific instructions, benchmark identifiers, fixture
+values, and grader rules are excluded from candidate changes.
 
 ## Success criteria
 
-The capability conversion succeeds when all of these conditions hold:
+The release must satisfy all of these quality conditions:
 
-1. Unchanged Foe with Sol `low` completes no more than one of three attempts on the selected development task.
-2. Unchanged Foe with Sol `xhigh` completes at least two of three attempts on that task.
-3. Improved Foe with Sol `low` completes at least two of three attempts. Three completions are the preferred result.
-4. The four confirmation tasks produce at least seven successful attempts across two attempts per task. Every confirmation task must succeed at least once.
-5. The six development tasks retain six task-owned verifier successes on the frozen candidate.
-6. Every assessed trial retains its task verifier result, available Foe episode, source identity, runtime identity, and conformance report.
-7. Foe self-improvement produces and evaluates at least one identity-bound source or workflow candidate. A direct implementation follows when the workflow produces no valid change.
+1. Convert at least three reproducible harness-limited development failures
+   into task-verifier successes.
+2. Preserve every development-task success that the baseline established.
+3. Lose no assessed attempt to an avoidable configuration, executable,
+   sandbox, allowance, credential, or container error.
+4. Pass every local runtime-contract evaluation.
+5. Produce at least fourteen successes across two attempts on each of the
+   eight confirmation tasks. Every confirmation task must succeed at least
+   once.
+6. Pass at least seventeen of the twenty calibration tasks.
+7. Pass at least seven of the eight sealed holdout tasks. A second attempt may
+   resolve no more than two ambiguous first-attempt failures.
+8. Retain each task verifier result, Foe episode, source identity, runtime
+   identity, and conformance report.
+
+The self-improvement evidence must satisfy all of these conditions:
+
+1. Identity-bound cross-trajectory evidence must produce at least two accepted
+   improvements.
+2. At least one improvement must change source, add a regression test, and
+   update every affected specification.
+3. The other improvement may change source, a tool, or a general workflow
+   configuration.
+4. One declared workflow must perform diagnosis, implementation,
+   `done_when.verify` correction, and external evaluation.
+5. Each improvement must raise task quality on its activation cases and
+   transfer beyond those cases.
+6. A failed self-improvement attempt triggers a direct implementation and a
+   repair to the failed self-improvement mechanism. The repaired workflow must
+   then run again.
 
 Task quality is the only candidate promotion metric. Provider-reported tokens,
 estimated cost, wall time, cache use, outcome accuracy, and trace conformance
 remain required diagnostics. Missing provider usage marks the resource record
 as incomplete. It does not change the task-owned quality score.
 Infrastructure exceptions receive the score assigned by the task framework.
-They do not create a separate promotion gate.
+They also violate the requirement to eliminate avoidable infrastructure
+failures when the failure originates in Foe or its evaluation adapter.
 
-The calibration gate is intentionally ambitious. Foe must complete at least ten of twelve calibration tasks and at least five of six calibration-holdout tasks on one frozen attempt per task. This result is 15 successes across 18 tasks. It is a directional estimate near the campaign's eventual 85 percent full-benchmark target.
+After every quality condition passes, matched successful tasks must show at
+least a 20 percent reduction in median estimated cost. The cost comparison may
+use conditional model escalation or bounded work by Luna or Terra. It must
+preserve task quality.
 
 Planning estimates bound campaign exposure before each confirmed command.
 They do not reject a candidate that improves task quality. Development runs
-use the service tier selected for that run and record it in the manifest. Foe
-records usage without enforcing token ceilings during ordinary quality runs.
+use the `priority` service tier and record it in the manifest. Foe records
+usage without enforcing token ceilings during ordinary quality runs.
 
 ## Task sets
 
@@ -56,45 +93,44 @@ These cases are inexpensive diagnostics. They test runtime contracts and do not 
 
 ### Development evidence
 
-Six Terminal-Bench tasks already have inspected trajectories. They remain development evidence:
+The development set contains twelve tasks with inspected trajectories:
 
 - `cancel-async-tasks`;
 - `git-multibranch`;
 - `fix-git`;
 - `sqlite-db-truncate`;
 - `sanitize-git-repo`;
-- `large-scale-text-editing`.
+- `large-scale-text-editing`;
+- `gpt2-codegolf`;
+- `fix-ocaml-gc`;
+- `path-tracing-reverse`;
+- `regex-chess`;
+- `model-extraction-relu-logits`;
+- `dna-assembly`.
 
-Eleven additional tasks form the capability-search set:
+Five other inspected tasks remain available for diagnostic work:
 
 - `password-recovery`;
-- `path-tracing-reverse`;
 - `polyglot-rust-c`;
 - `regex-log`;
-- `regex-chess`;
 - `write-compressor`;
-- `fix-ocaml-gc`;
-- `dna-assembly`;
-- `feal-linear-cryptanalysis`;
-- `model-extraction-relu-logits`;
-- `gpt2-codegolf`.
+- `feal-linear-cryptanalysis`.
 
-The tasks from `regex-chess` through `dna-assembly` were added after Sol `low` solved both failures among the first four tasks. They were selected from task metadata at repository commit `7131e4375048a0e408a8fb404b5f499d726b695b`.
-
-Each selected task is marked hard and represents a different implementation or reasoning demand. [The pinned task metadata](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b/tasks) is the selection source.
-
-Four reasoning-heavy tasks were added after `dna-assembly` failed to qualify as a stable reasoning gap. Unchanged Sol `low` completed one of three attempts. Unchanged Sol `xhigh` also completed one of three attempts. The additional tasks were frozen from the same pinned metadata before their instructions were opened.
-
-Opening any capability-search result makes that task development evidence. These tasks can identify the Sol `low` and Sol `xhigh` capability gap. They cannot provide confirmation after inspection.
+These five tasks do not contribute to a protected-set score. They may provide
+extra activation evidence for a change proposed from the development set.
 
 ### Confirmation evidence
 
-Four tasks remain closed until a candidate and its acceptance rule are frozen:
+Eight tasks remain closed until a candidate and its acceptance rule are frozen:
 
 - `build-cython-ext`;
 - `constraints-scheduling`;
 - `custom-memory-heap-crash`;
-- `path-tracing`.
+- `path-tracing`;
+- `build-pmars`;
+- `headless-terminal`;
+- `kv-store-grpc`;
+- `qemu-startup`.
 
 Each candidate receives two attempts per confirmation task. Raw confirmation trajectories remain outside self-improvement evidence until the candidate disposition is recorded.
 
@@ -109,15 +145,9 @@ selected route. The case remains in `provider_policy_incompatible` for route
 compatibility testing. It does not contribute to the candidate's confirmation
 score.
 
-`path-tracing` replaced the incompatible case before its task instruction,
-container, or trajectory was opened. The retained campaign manifests contained
-no prior `path-tracing` trial. It was the only unopened member of the frozen
-capability-search set, which made the substitution rule independent of an
-observed task result.
-
 ### Calibration evidence
 
-The calibration set contains twelve tasks:
+The calibration set contains twenty tasks:
 
 - `adaptive-rejection-sampler`;
 - `break-filter-js-from-html`;
@@ -130,18 +160,36 @@ The calibration set contains twelve tasks:
 - `query-optimize`;
 - `reshard-c4-data`;
 - `schemelike-metacircular-eval`;
-- `train-fasttext`.
+- `train-fasttext`;
+- `bn-fit-modify`;
+- `filter-js-from-html`;
+- `largest-eigenval`;
+- `llm-inference-batching-scheduler`;
+- `multi-source-data-merger`;
+- `nginx-request-logging`;
+- `pytorch-model-cli`;
+- `sqlite-with-gcov`.
 
-The calibration holdout contains six tasks:
+The sealed holdout contains eight tasks:
 
 - `circuit-fibsqrt`;
 - `cobol-modernization`;
 - `extract-elf`;
 - `hf-model-inference`;
 - `mcmc-sampling-stan`;
-- `sparql-university`.
+- `sparql-university`;
+- `qemu-alpine-ssh`;
+- `torch-tensor-parallelism`.
 
-Calibration trajectories remain closed until the development and confirmation criteria pass. Calibration-holdout trajectories remain closed until the calibration result and decision rule are recorded.
+The added tasks were selected using only descriptions, categories,
+difficulties, resource limits, and timeouts from the pinned metadata. Their
+instructions, workspaces, and trajectories remained unopened at selection.
+[The pinned task metadata](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b/tasks)
+is the selection source.
+
+Calibration trajectories remain closed until the development and confirmation
+criteria pass. Sealed-holdout trajectories remain closed until the calibration
+result and its decision rule are recorded.
 
 ## Cost accounting
 
@@ -166,20 +214,45 @@ and repair allowances are added to the implementation allowance.
 
 ## Execution sequence
 
-1. Run deterministic capability probes in every selected task container before its first provider request. Keep each report scoped to its exact dataset task and image.
-2. Run the local micro evaluation and repository tests. Correct runtime contract failures before benchmark work.
-3. Run one Luna `low` attempt on capability-search tasks when a cheap trajectory can reveal obvious tool or adapter failures.
-4. Run one Sol `low` attempt on the remaining capability-search tasks. Run Sol `xhigh` only on Sol `low` failures.
-5. Repeat the most promising Sol gap three times at each reasoning setting. Freeze the selected task and gap criterion.
-6. Produce typed trajectory diagnoses. Each diagnosis names its model setting and retained run. The digest groups verified results by task and model setting. It retains request growth, replayed results, final validation activity, bounded verifier failure classes, and log sequence numbers under fixed tree-wide bounds.
-7. Run identity-bound self-improvement with Luna `high` for bounded diagnosis and Sol at no more than `xhigh` for source implementation. The workflow may produce a source change or an independent-audit workflow configuration.
-8. Validate the generated candidate outside the self-improvement episode. Implement the diagnosed change directly when the generated candidate is absent, invalid, or unsupported by the evidence.
-9. Re-run the selected capability task with Sol `low`. Reject candidates that fail the capability-conversion criteria.
-10. Re-run the six development tasks. Require six successful task-owned verifier results. Record estimated cost, wall time, outcome accuracy, and trace integrity as diagnostics.
-11. Freeze the candidate source tree, binary digest, model settings, acceptance rule, and confirmation task list.
-12. Run two attempts on each confirmation task. Reject the candidate when the confirmation criteria fail.
-13. Freeze one calibration attempt per task. Run the twelve calibration tasks, then record the result before opening the six calibration-holdout tasks.
-14. Decide whether the evidence supports a full Terminal-Bench 2.1 run.
+1. Run deterministic capability probes in every selected task container before
+   its first provider request. Scope each report to its dataset task and image.
+2. Run the local micro evaluation and repository tests. Correct runtime
+   contract failures before benchmark work.
+3. Establish at least three reproducible development failures with Sol `low`.
+   Use Sol `xhigh` only to determine whether the model can solve a failed case.
+4. Add a public, read-only completion checker when a development task supports
+   one. Validate each checker with an untouched-workspace negative control and
+   an independently produced oracle before model spend.
+5. Run the checker through `done_when.verify`, then run the resulting candidate
+   against the unchanged task-owned verifier.
+6. Produce typed trajectory diagnoses. Each diagnosis names its model setting,
+   retained run, source identity, and runtime identity. It includes request
+   growth, replayed results, final validation activity, verifier failures, and
+   cited log sequences.
+7. Run identity-bound self-improvement. Use a bounded cheaper model for
+   diagnosis only when it preserves the diagnosis contract. Use Sol `low` for
+   implementation and at most Sol `xhigh` for conditional escalation.
+8. Validate each generated candidate outside the self-improvement episode.
+   Implement the diagnosed change directly when the generated candidate is
+   absent, invalid, or unsupported. Repair and repeat the self-improvement
+   workflow when it failed to produce the candidate.
+9. Re-run each activation task with Sol `low`. Reject a candidate that does not
+   improve task-verifier quality.
+10. Re-run all twelve development tasks. Preserve every baseline success and
+    record cost, wall time, outcome accuracy, and trace integrity.
+11. Freeze the candidate source tree, binary digest, model settings, and
+    acceptance rule.
+12. Run two attempts on each of the eight confirmation tasks. Require fourteen
+    successes and at least one success per task.
+13. Record the confirmation decision before opening calibration trajectories.
+    Run one attempt on each of the twenty calibration tasks and require
+    seventeen successes.
+14. Record the calibration decision before opening sealed-holdout trajectories.
+    Require seven successes across the eight holdout tasks under the stated
+    retry rule.
+15. Reduce median estimated cost by at least 20 percent on matched successful
+    tasks without reducing quality.
+16. Decide whether the evidence supports a full Terminal-Bench 2.1 run.
 
 ## Recorded verifier-governed development result
 

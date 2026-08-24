@@ -2,8 +2,10 @@
   "dataset": "terminal-bench/terminal-bench-2-1@6",
   "harbor_agent_timeouts": {
     "adaptive-rejection-sampler": 900,
+    "bn-fit-modify": 3600,
     "break-filter-js-from-html": 1200,
     "build-cython-ext": 900,
+    "build-pmars": 900,
     "cancel-async-tasks": 900,
     "circuit-fibsqrt": 3600,
     "cobol-modernization": 900,
@@ -15,21 +17,31 @@
     "dna-assembly": 1800,
     "extract-elf": 900,
     "feal-linear-cryptanalysis": 1800,
+    "filter-js-from-html": 1800,
     "financial-document-processor": 1200,
     "fix-git": 900,
     "fix-ocaml-gc": 3600,
     "git-leak-recovery": 900,
     "git-multibranch": 900,
     "gpt2-codegolf": 900,
+    "headless-terminal": 900,
     "hf-model-inference": 900,
+    "kv-store-grpc": 900,
     "large-scale-text-editing": 1200,
+    "largest-eigenval": 900,
+    "llm-inference-batching-scheduler": 1800,
     "make-mips-interpreter": 1800,
     "mcmc-sampling-stan": 1800,
     "model-extraction-relu-logits": 900,
+    "multi-source-data-merger": 900,
+    "nginx-request-logging": 900,
     "password-recovery": 900,
     "path-tracing": 1800,
     "path-tracing-reverse": 1800,
     "polyglot-rust-c": 900,
+    "pytorch-model-cli": 900,
+    "qemu-alpine-ssh": 900,
+    "qemu-startup": 900,
     "query-optimize": 900,
     "regex-chess": 3600,
     "regex-log": 900,
@@ -38,6 +50,8 @@
     "schemelike-metacircular-eval": 2400,
     "sparql-university": 900,
     "sqlite-db-truncate": 900,
+    "sqlite-with-gcov": 900,
+    "torch-tensor-parallelism": 900,
     "train-fasttext": 3600,
     "vulnerable-secret": 900,
     "write-compressor": 900
@@ -78,26 +92,30 @@
       "fix-git",
       "sqlite-db-truncate",
       "sanitize-git-repo",
-      "large-scale-text-editing"
+      "large-scale-text-editing",
+      "gpt2-codegolf",
+      "fix-ocaml-gc",
+      "path-tracing-reverse",
+      "regex-chess",
+      "model-extraction-relu-logits",
+      "dna-assembly"
     ],
     "capability_search": [
       "password-recovery",
-      "path-tracing-reverse",
       "polyglot-rust-c",
       "regex-log",
-      "regex-chess",
       "write-compressor",
-      "fix-ocaml-gc",
-      "dna-assembly",
-      "feal-linear-cryptanalysis",
-      "model-extraction-relu-logits",
-      "gpt2-codegolf"
+      "feal-linear-cryptanalysis"
     ],
     "confirmation": [
       "build-cython-ext",
       "constraints-scheduling",
       "custom-memory-heap-crash",
-      "path-tracing"
+      "path-tracing",
+      "build-pmars",
+      "headless-terminal",
+      "kv-store-grpc",
+      "qemu-startup"
     ],
     "provider_policy_incompatible": [
       "vulnerable-secret"
@@ -114,7 +132,15 @@
       "query-optimize",
       "reshard-c4-data",
       "schemelike-metacircular-eval",
-      "train-fasttext"
+      "train-fasttext",
+      "bn-fit-modify",
+      "filter-js-from-html",
+      "largest-eigenval",
+      "llm-inference-batching-scheduler",
+      "multi-source-data-merger",
+      "nginx-request-logging",
+      "pytorch-model-cli",
+      "sqlite-with-gcov"
     ],
     "calibration_holdout": [
       "circuit-fibsqrt",
@@ -122,7 +148,9 @@
       "extract-elf",
       "hf-model-inference",
       "mcmc-sampling-stan",
-      "sparql-university"
+      "sparql-university",
+      "qemu-alpine-ssh",
+      "torch-tensor-parallelism"
     ],
     "smoke": [
       "fix-git"
@@ -135,6 +163,12 @@
       "expected_output_tokens": 50000,
       "seconds": 1800
     },
+    "bn-fit-modify": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
     "break-filter-js-from-html": {
       "model_calls": 60,
       "expected_input_tokens": 400000,
@@ -142,6 +176,12 @@
       "seconds": 1800
     },
     "build-cython-ext": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "build-pmars": {
       "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
@@ -219,6 +259,12 @@
       "expected_output_tokens": 50000,
       "seconds": 1800
     },
+    "filter-js-from-html": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
     "fix-ocaml-gc": {
       "model_calls": 60,
       "expected_input_tokens": 600000,
@@ -249,6 +295,18 @@
       "expected_output_tokens": 50000,
       "seconds": 1800
     },
+    "headless-terminal": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "kv-store-grpc": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
     "fix-git": {
       "model_calls": 60,
       "expected_input_tokens": 120000,
@@ -261,6 +319,12 @@
       "expected_output_tokens": 40000,
       "seconds": 1800
     },
+    "sqlite-with-gcov": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
     "sanitize-git-repo": {
       "model_calls": 60,
       "expected_input_tokens": 300000,
@@ -271,6 +335,18 @@
       "model_calls": 60,
       "expected_input_tokens": 300000,
       "expected_output_tokens": 40000,
+      "seconds": 1800
+    },
+    "largest-eigenval": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "llm-inference-batching-scheduler": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
       "seconds": 1800
     },
     "make-mips-interpreter": {
@@ -289,6 +365,18 @@
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
+      "seconds": 1800
+    },
+    "multi-source-data-merger": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "nginx-request-logging": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
       "seconds": 1800
     },
     "password-recovery": {
@@ -313,6 +401,24 @@
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
+      "seconds": 1800
+    },
+    "pytorch-model-cli": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "qemu-alpine-ssh": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "qemu-startup": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
       "seconds": 1800
     },
     "query-optimize": {
@@ -356,6 +462,12 @@
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
       "seconds": 3600
+    },
+    "torch-tensor-parallelism": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 1800
     },
     "vulnerable-secret": {
       "model_calls": 60,

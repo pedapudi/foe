@@ -278,7 +278,7 @@ planning average and prices each model route separately.
 
 ## Run the staged task sets
 
-The development target contains six tasks with inspected trajectories:
+The development target contains twelve tasks with inspected trajectories:
 
 - `cancel-async-tasks`
 - `git-multibranch`
@@ -286,6 +286,12 @@ The development target contains six tasks with inspected trajectories:
 - `sqlite-db-truncate`
 - `sanitize-git-repo`
 - `large-scale-text-editing`
+- `gpt2-codegolf`
+- `fix-ocaml-gc`
+- `path-tracing-reverse`
+- `regex-chess`
+- `model-extraction-relu-logits`
+- `dna-assembly`
 
 Preview or run one attempt per development task:
 
@@ -301,8 +307,9 @@ bazel run //evals/terminal_bench:foe-development -- \
   --confirm-spend
 ```
 
-The capability-search target contains twelve development tasks. Opening a result
-makes that task development evidence:
+The capability-search target contains five inspected diagnostic tasks. These
+tasks may provide extra activation evidence without contributing to a
+protected-set score:
 
 ```sh
 bazel run //evals/terminal_bench:foe-capability-search
@@ -312,7 +319,7 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
   --confirm-spend
 ```
 
-The confirmation target contains four tasks that stay closed until a candidate
+The confirmation target contains eight tasks that stay closed until a candidate
 and acceptance rule are frozen. Run two attempts per task:
 
 ```sh
@@ -323,8 +330,9 @@ bazel run //evals/terminal_bench:foe-confirmation -- \
   --confirm-spend
 ```
 
-The calibration targets remain closed until the development and confirmation
-criteria pass:
+The twenty calibration tasks remain closed until the development and
+confirmation criteria pass. The eight sealed-holdout tasks remain closed until
+the calibration result and its decision rule are recorded:
 
 ```sh
 bazel run //evals/terminal_bench:foe-calibration
