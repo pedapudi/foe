@@ -216,3 +216,145 @@ fn a_blocked_outcome_names_its_code_and_carries_its_message() {
     let outcome = Outcome::Blocked { code: foe_log::BlockedCode::AmbiguousTask, message: "which one".into() };
     assert_eq!(outcome_terms(Some(&outcome)), ("blocked", "ambiguous-task".into(), "which one".into()));
 }
+
+// ---- completion provenance ---------------------------------------------------
+
+fn verification(seq: u64, status: foe_log::VerificationStatus, findings: &[&str]) -> Event {
+    event(
+        seq,
+        1000 + seq as i64,
+        EventData::VerificationResult(foe_log::VerificationResult {
+            step: 1,
+            tool: "check".into(),
+            verifier_identity: "sha256:cc".into(),
+            status,
+            findings: findings.iter().map(|f| f.to_string()).collect(),
+            error: None,
+            duration_ms: 5,
+        }),
+    )
+}
+
+fn completed(seq: u64) -> Event {
+    event(
+        seq,
+        1000 + seq as i64,
+        EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::json!("done") } },
+    )
+}
+
+fn node_start(seq: u64, node: &str, inputs: Vec<u64>) -> Event {
+    event(
+        seq,
+        1000 + seq as i64,
+        EventData::WorkflowNodeStart(foe_log::WorkflowNodeStart {
+            node: node.into(),
+            fire: 1,
+            inputs,
+            child_id: Some(format!("ep_{node}")),
+        }),
+    )
+}
+
+fn node_end(seq: u64, node: &str) -> Event {
+    event(
+        seq,
+        1000 + seq as i64,
+        EventData::WorkflowNodeEnd(foe_log::WorkflowNodeEnd {
+            node: node.into(),
+            fire: 1,
+            value: serde_json::json!({}),
+            rendered: String::new(),
+            error: None,
+            duration_ms: 2,
+        }),
+    )
+}
+
+/// The workflow of the built-in coding configuration in shape: a model
+/// node feeding a terminal model node.
+fn review_program() -> serde_json::Value {
+    serde_json::json!({ "workflow": { "nodes": {
+        "implement-task": { "model": { "name": "implement-task" }, "follows": ["task"] },
+        "audit-and-repair-task": { "model": { "name": "audit-and-repair-task" },
+                                   "follows": ["task", "implement-task"], "terminal": true }
+    } } })
+}
+
+#[test]
+fn provenance_is_verifier_when_the_last_verification_accepted() {
+    let events = vec![
+        event(0, 1000, start(serde_json::json!({}))),
+        verification(1, foe_log::VerificationStatus::Findings, &["a", "b"]),
+        verification(2, foe_log::VerificationStatus::Accepted, &[]),
+        completed(3),
+    ];
+    let facts = extract(&events, "/logs");
+    assert_eq!(facts.provenance, Some("verifier"));
+    assert_eq!((facts.verification_runs, facts.verification_findings), (2, 2));
+}
+
+#[test]
+fn provenance_is_reviewed_for_a_terminal_model_node_fed_by_a_model_node() {
+    let events = vec![
+        event(0, 1000, start(review_program())),
+        node_start(1, "implement-task", vec![]),
+        node_end(2, "implement-task"),
+        node_start(3, "audit-and-repair-task", vec![2]),
+        node_end(4, "audit-and-repair-task"),
+        completed(5),
+    ];
+    let facts = extract(&events, "/logs");
+    assert_eq!(facts.provenance, Some("reviewed"));
+    assert_eq!(facts.verification_runs, 0);
+}
+
+#[test]
+fn provenance_is_verifier_for_a_terminal_skip() {
+    let events = vec![
+        event(0, 1000, start(review_program())),
+        node_start(1, "implement-task", vec![]),
+        node_end(2, "implement-task"),
+        event(
+            3,
+            1003,
+            EventData::WorkflowNodeSkipped(foe_log::WorkflowNodeSkipped {
+                node: "audit-and-repair-task".into(),
+                verified_by: "implement-task".into(),
+                verification_seq: 40,
+            }),
+        ),
+        completed(4),
+    ];
+    assert_eq!(extract(&events, "/logs").provenance, Some("verifier"));
+}
+
+#[test]
+fn provenance_is_model_report_when_nothing_verified_or_reviewed() {
+    let plain = vec![event(0, 1000, start(serde_json::json!({}))), completed(1)];
+    assert_eq!(extract(&plain, "/logs").provenance, Some("model-report"));
+    // A terminal model node fed by a tool node is no independent review.
+    let program = serde_json::json!({ "workflow": { "nodes": {
+        "survey": { "tool": "grep" },
+        "write-up": { "model": { "name": "write-up" }, "follows": ["survey"], "terminal": true }
+    } } });
+    let events = vec![
+        event(0, 1000, start(program)),
+        node_start(1, "survey", vec![]),
+        node_end(2, "survey"),
+        node_start(3, "write-up", vec![2]),
+        node_end(4, "write-up"),
+        completed(5),
+    ];
+    assert_eq!(extract(&events, "/logs").provenance, Some("model-report"));
+}
+
+#[test]
+fn provenance_is_absent_for_an_episode_that_did_not_complete() {
+    let events = vec![
+        event(0, 1000, start(serde_json::json!({}))),
+        verification(1, foe_log::VerificationStatus::Accepted, &[]),
+        event(2, 1002, EventData::EpisodeEnd { outcome: Outcome::Failed { error: "no".into() } }),
+    ];
+    assert_eq!(extract(&events, "/logs").provenance, None);
+}

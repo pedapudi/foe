@@ -289,6 +289,8 @@ A field that answers no question is not emitted. This table is the gate.
 | `foe.outcome.kind` | what fraction of episodes complete, block, exhaust, or fail |
 | `foe.outcome.exit_class` | which limit was reached, or which blocking condition was hit |
 | `foe.outcome.detail` | what a blocked or failed episode said about why |
+| `foe.completion.provenance` | how a completed episode's completion was established: `verifier`, `reviewed`, or `model-report`; absent for any other outcome |
+| `foe.verification.runs`, `foe.verification.findings` | how often authoritative verification ran in the episode, and how many findings it returned in all |
 | `foe.model.provider`, `foe.model.model` | does outcome or cost differ by route |
 | `foe.category`, `foe.category.top_level` | failure rate and cost distribution by kind of work |
 | `foe.category.counts` | which categories an episode belongs to at once, and how strongly, since one episode can be both testing and infrastructure |
@@ -311,6 +313,30 @@ different costs it sums.
 
 Span status is `OK` for a completed episode and a tool call that did not
 error, and `ERROR` otherwise.
+
+### Completion provenance
+
+`foe.completion.provenance` states how a completed episode's completion
+was established, derived from the log alone — no episode event carries
+it. The derivation lives in `crates/telemetry/src/extract.rs` and is the
+one place it is implemented.
+
+- `verifier` — the completing value was accepted by an authoritative
+  `verification/result`. For an episode running the free loop that is the
+  log's last such event, since acceptance is what completes it. For a
+  workflow episode it is an accepted event after the completing terminal
+  `workflow/node-end` (the episode's `done_when.verify`), one between
+  that firing's start and end (the node's own `verify`), or a terminal
+  `workflow/node-skipped`, which stands on an acceptance by definition.
+- `reviewed` — no verifier accepted the completing value, but the
+  completing terminal node is a model node that received another model
+  node's completion value among its inputs: an independent review
+  episode, as in the built-in coding workflow.
+- `model-report` — neither: completion rests on the model's own account.
+
+A workflow that completes through a branch label with no successors
+flags no terminal node; the last errorless `workflow/node-end` then
+stands in as the completing firing.
 
 ## Reading the capture
 

@@ -6,7 +6,7 @@
 # configuration document, its resolution into a program, and identity; 1,600
 # over tools, which is code — the tool surface, which grows a tool at a time
 # without touching the kernel; 1,000 over workflow; 500 over context; 600
-# over view; 1,300 over cli; 900 over telemetry. The kernel is budgeted apart
+# over view; 1,300 over cli; 1,000 over telemetry. The kernel is budgeted apart
 # from config because the kernel measures the machine and config measures the
 # data model; a document that gains a key must not buy room in the loop. The
 # viewer
@@ -41,6 +41,6 @@ printf '%-8s %6d  (budget 600)\n' view "$view"
 cli=$(count cli)
 printf '%-8s %6d  (budget 1300)\n' cli "$cli"
 telemetry=$(count telemetry)
-printf '%-8s %6d  (budget 900)\n' telemetry "$telemetry"
+printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 [ "$kernel" -le 4700 ] && [ "$config" -le 1400 ] && [ "$tools" -le 1600 ] && [ "$workflow" -le 1000 ] \
-  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 900 ]
+  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ]
