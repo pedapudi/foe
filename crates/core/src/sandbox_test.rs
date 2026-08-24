@@ -193,7 +193,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert!(p.read_files.is_empty(), "an episode that opens no connection reads no resolver file");
     let mut with_children = config.clone();
     with_children.grants.spawn = vec!["survey".into()];
-    with_children.model = Some(crate::ModelConfig::new("anthropic", "m"));
+    with_children.model = Some(foe_config::ModelConfig::new("anthropic", "m"));
     let mut p = Policy::for_episode(&with_children, Path::new("/logs/ep"));
     assert_eq!(p.read_files, resolver, "the credential file is appended by the binary after resolution");
     if let Ok(binary) = std::env::current_exe() {

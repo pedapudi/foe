@@ -11,7 +11,8 @@
 //! itself rather than through a `pre_exec` hook. The effect is the same: the
 //! child inherits the narrower domain before it executes anything.
 
-use crate::{Config, RuntimeError};
+use crate::RuntimeError;
+use foe_config::Config;
 use foe_log::{SandboxInfo, SandboxMode};
 use landlock::{
     Access, AccessFs, AccessNet, BitFlags, CompatLevel, Compatible, LandlockStatus, NetPort, PathBeneath, PathFd,
@@ -87,7 +88,7 @@ impl Policy {
     /// `read_files` after resolving the `model` block.
     pub fn for_episode(config: &Config, log_dir: &Path) -> Policy {
         let mut exec = Vec::new();
-        configured_executables(&crate::ChildProgram::from(config), &mut exec);
+        configured_executables(&foe_config::ChildProgram::from(config), &mut exec);
         if !config.grants.spawn.is_empty() {
             exec.extend(std::env::current_exe().ok());
         }
@@ -134,7 +135,7 @@ impl Policy {
 /// names. Reserving is what makes the descendant's own narrowing possible;
 /// the descendant's ruleset still holds its own executables alone, so no
 /// episode gains reach over a sibling's tool.
-fn configured_executables(program: &crate::ChildProgram, into: &mut Vec<PathBuf>) {
+fn configured_executables(program: &foe_config::ChildProgram, into: &mut Vec<PathBuf>) {
     into.extend(program.tool_defs.values().map(|d| d.exec.clone()));
     let mut models = Vec::new();
     if let Some(graph) = &program.workflow {
@@ -147,7 +148,7 @@ fn configured_executables(program: &crate::ChildProgram, into: &mut Vec<PathBuf>
 
 /// Every model node's program in `graph`, including those of the workflows
 /// its nodes nest.
-fn model_programs<'a>(graph: &'a crate::workflow::WorkflowConfig, into: &mut Vec<&'a crate::ChildProgram>) {
+fn model_programs<'a>(graph: &'a foe_config::workflow::WorkflowConfig, into: &mut Vec<&'a foe_config::ChildProgram>) {
     for node in graph.nodes.values() {
         into.extend(node.model.as_ref());
         if let Some(nested) = &node.workflow {

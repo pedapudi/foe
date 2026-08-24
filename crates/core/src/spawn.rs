@@ -20,7 +20,8 @@
 //! `budget/release` are the loop's to write around a call to
 //! [`Spawner::spawn`] and a wait on [`ChildRun`].
 
-use crate::{Budget, CapError, ChildProgram, Config, SpawnHandle, SpawnRequest, Spawner, ToolValue};
+use crate::{CapError, SpawnHandle, SpawnRequest, Spawner, ToolValue};
+use foe_config::{Budget, ChildProgram, Config};
 use foe_log::seed::SeedHeader;
 use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
 use sha2::{Digest, Sha256};

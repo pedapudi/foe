@@ -3,9 +3,9 @@
 //! executor lives in the `foe-workflow` crate; this module holds what the
 //! document, validation, and identity need.
 
-use crate::{ChildProgram, ConfigError};
+use crate::{ChildProgram, ConfigError, DoneWhen};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The reserved name of the built-in source any node may follow: the
@@ -240,6 +240,41 @@ pub fn check(
         }
     }
     Ok(())
+}
+
+/// Every model node at any depth with its path: the node name at the top,
+/// `outer/inner` inside a nested workflow node.
+pub fn model_nodes<'a>(wf: &'a WorkflowConfig, prefix: &str) -> Vec<(String, &'a Node)> {
+    let mut found = Vec::new();
+    for (name, node) in &wf.nodes {
+        if node.model.is_some() {
+            found.push((format!("{prefix}{name}"), node));
+        }
+        if let Some(inner) = &node.workflow {
+            found.extend(model_nodes(inner, &format!("{prefix}{name}/")));
+        }
+    }
+    found
+}
+
+/// The program a model node's child episode runs: the node's program with
+/// `branch` added to its `done_when.returns` as a required enum over the
+/// labels when the node declares `branches`. See docs/workflow.md "Choice
+/// points".
+pub fn node_program(node: &Node) -> ChildProgram {
+    let mut program = node.model.clone().expect("a model node");
+    if node.branches.is_empty() {
+        return program;
+    }
+    let done = program.done_when.get_or_insert(DoneWhen { verify: None, retries: 2, returns: None });
+    let returns = done.returns.get_or_insert_with(|| json!({ "type": "object", "properties": {} }));
+    returns["properties"]["branch"] = json!({ "type": "string", "enum": node.branches.keys().collect::<Vec<_>>() });
+    let mut required = returns["required"].as_array().cloned().unwrap_or_default();
+    if !required.contains(&json!("branch")) {
+        required.push(json!("branch"));
+    }
+    returns["required"] = Value::Array(required);
+    program
 }
 
 #[cfg(test)]

@@ -580,7 +580,19 @@ foe view DIR [--serve [--port N]]                        write a self-contained 
 foe plan --config FILE [--json]                          print the resolved program, its identity, its transport, and its effective authority
 foe tools [--config FILE]                                list tools, with sources when a config is given
 foe schema                                               print the JSON Schema for the configuration
+foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
+
+One declarative table in `crates/cli/src/main.rs` names every form, its
+positional shape, and each option it accepts with that option's value
+placeholder, its default, and its meaning. The parser and both help screens
+read that table and nothing else, so an option the parser accepts is
+documented and an option the table omits is refused. `foe --help`, which
+`foe help` repeats, prints the running form's options and every other
+command word; `foe <command> --help`, which `foe help <command>` repeats,
+prints one command's options; both exit 0. An unrecognised option names
+itself and the help that lists what its command takes, rather than
+reprinting every form.
 
 In every running form except `--host`, standard output receives exactly one
 line when the episode ends: the outcome as JSON. A shell reads it with one
@@ -663,51 +675,105 @@ not finished.
 ## Structure
 
 ```
-   crates/log ◄─────────── crates/core ◄──┬── crates/code
-    serde, serde_json,       loop,        │    read grep edit bash
-                             registry,    ├── crates/transport (feature)
-                             grants,      │    built-in model clients
-                             budget,      │
-                             identity,    ├── crates/workflow
-                             spawn,       │    graph scheduling and recovery
-                             teams,       │
-                        result budget,    │
-                             exec,        ├── crates/context
-                             landlock,    │    projection, cut, summarization prompt
-                             protocol,    │
-                             workflow     └── crates/view ◄── view/ (browser bundle)
-                             config,           projection, HTTP, SSE, export
-                             context seam
-                                                 crates/cli ◄── all of the above; plan reports
+   crates/log ◄─── crates/config ◄─── crates/core ◄──┬── crates/code
+    every event      the document,      loop,        │    read grep edit bash
+    type,            resolution,        registry,    ├── crates/transport (feature)
+    serde,           tool specs,        grants,      │    model clients, credentials
+    serde_json       schema subset,     budget,      │
+                     harness text,      spawn,       ├── crates/workflow
+                     identity,          teams,       │    graph scheduling and recovery
+                     inspection    result budget,    │
+                                        exec,        ├── crates/context
+                                        landlock,    │    projection, cut, summarization prompt
+                                        protocol,    │
+                                        context seam └── crates/view ◄── view/ (browser bundle)
+                                                          projection, HTTP, SSE, export
+
+                                          crates/cli ◄── all of the above; plan reports
 
    python/foe    a thin host: builds config, runs the binary, serves the protocol
    examples/     one runnable example per job, each checking its own result
 ```
 
-`crates/log` depends on serde, serde_json, and thiserror, and on no crate of
-this repository, and defines every event type, including
-the reserved ones. `crates/core` depends on `crates/log`. Tools depend on
-`crates/core` for the tool trait and capability handles. `crates/workflow`
-depends on `crates/core` for the configuration types, the log, the
-registry, the budget pool, and the spawner, and runs an episode whose
-configuration declares a `workflow` in place of the loop. `crates/context`
-depends on `crates/core` for the context policy trait and implements it:
-the loop consults the policy before each request and lends it one recorded
-model call. Nothing depends on `crates/view` except the binary.
+foe has two contracts, and each is a crate the rest of the repository reads.
+`crates/log` is the lower one, and states what happened. It defines every
+event type, including the reserved ones. It depends on serde, serde_json, and
+thiserror, and on no crate of this repository.
+
+`crates/config` is the second contract, and states what was to run: the
+configuration document, the validation and resolution that turn it into the
+program `episode/start.program` records, the specification of every tool the
+model will see, and the identity that hashes them. It runs nothing: no
+process starts there, no grant is exercised, and no log is written. It sits
+above `crates/log` rather than beside it, and states part of itself in the
+log's vocabulary, because the two contracts meet at two places by design.
+
+- The sandbox mode. `sandbox.mode` in the document and the mode in the
+  `episode/start` sandbox record are one word over one closed set. A
+  configured confinement and an observed confinement are the same fact, read
+  before the run and after it.
+- The continuation a compaction writes. Identity hashes its shape: the
+  fields of the carried state, the labels its rendered lines take, and the
+  templates that render them. A program is defined in part by how its
+  conversation survives a compaction, because two programs that differ only
+  there put different text in front of the model.
+
+`crates/config` therefore depends on `crates/log`, and on no other crate of
+this repository.
+
+`crates/core` is the machine between the two contracts, and depends on both.
+The line between it and `crates/config` is resolution against execution: what
+a name means and what a program would be belong to the configuration, and
+running it, guarding it, and charging it belong to the kernel. Tools depend
+on `crates/core` for the tool trait and capability handles and on
+`crates/config` for what a tool declares. `crates/workflow` depends on
+`crates/config` for the graph type and the program each model node runs, and
+on `crates/core` for the log, the registry, the budget pool, and the spawner,
+and runs an episode whose configuration declares a `workflow` in place of the
+loop. `crates/context` depends on `crates/core` for the context policy trait
+and implements it: the loop consults the policy before each request and lends
+it one recorded model call. Nothing depends on `crates/view` except the
+binary.
+
+`crates/transport` owns each provider's authentication protocol whole: the
+provider registry, the credential sources that turn a stored credential into
+request headers, and — in `auth::login` — the acquisition that produces those
+files in the first place. Verifying a key, the authorization-code flow with
+PKCE and the loopback listener its browser half returns to, the
+credential-file formats, and the default model file are all there, beside the
+code that reads them back. What `foe login` adds is the conversation: which
+questions each source needs, in what order, and how the answers are read from
+a terminal.
+
+`crates/telemetry` likewise owns what the enablement file means, the walk over
+an episode tree that emission covers, and the preview of what emission would
+write. The binary supplies only the path that file is found at, which is a
+convention `crates/transport` owns, so the telemetry crate still depends on
+`crates/log` alone.
 
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 5,400 lines,
+sandbox, and spawning — and its Rust source stays under 4,700 lines,
 excluding tests and generated code. Its smallness is the product claim, so
-it carries the tightest budget relative to its size.
+it carries the tightest budget relative to its size. The number measures the
+machine alone: what a program is lives in `crates/config`, which is budgeted
+apart under 1,400 lines. The two are separate because a configuration
+document that gains a key must not buy room in the loop, and because the
+claim the kernel's number supports is about the machine that runs a program
+rather than about the data model it runs.
 
 The tool surface in `crates/code` is budgeted apart, under 1,600 lines on
 the same terms. It is separate because it grows a tool at a time: a new
 tool adds capability without touching the kernel, so room for tools must
 not become room for the loop. The workflow executor in `crates/workflow`
-stays under 1,000 lines, and the compaction policy in `crates/context`
-under 500.
+stays under 1,000 lines: it carries the executor and nothing else, now that
+the inspection of a configured program tree that `foe plan` reports has
+reached `foe_config::inspect`, beside the model it analyses. What the two
+crates still share is one rule — firing a model node starts that node's
+episode — which `spawner_config` realizes in the executor as an ordinary
+spawn and the inspection reads as reachability. The compaction policy in
+`crates/context` stays under 500.
 
 The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
 and the browser bundle it serves under 150 KB compressed. It is separate
@@ -717,10 +783,19 @@ TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,300 lines. It is separate because it serves a person at a terminal
+under 1,000 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
-than to a run: argument parsing, the plan reports, credential acquisition,
-the browser, the outcome line, and the exit codes.
+than to a run: argument parsing and the help derived from the command table,
+the plan reports, the login conversation, the browser, the outcome line, and
+the exit codes.
+
+Telemetry is budgeted apart too: `crates/telemetry` under 900 lines. It is
+separate because it reads a finished log rather than producing one. It holds
+the enablement file's meaning, emission over a finished run's episode tree,
+and the preview `foe telemetry` prints. Nothing in the runtime depends on it,
+the crate depends on `log` alone, and an installation that never enables
+telemetry carries none of its behavior.
+See [docs/telemetry.md](telemetry.md).
 
 Rust outside every line budget, in the built-in transport, is bounded by the
 size of the binary it compiles into. Continuous integration enforces every

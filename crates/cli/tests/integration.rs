@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const FOE: &str = env!("CARGO_BIN_EXE_foe");
-const SCHEMA: &str = include_str!("../src/schema.json");
+use foe_config::SCHEMA;
 const EXAMPLES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples");
 
 fn scratch(name: &str) -> PathBuf {
@@ -627,7 +627,7 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert!(end["data"].get("error").is_none());
     let header_of = |request: &Value| events.iter().find(|e| e["seq"] == request["data"]["header_seq"]).unwrap();
     let summary_header = header_of(requests[2]);
-    assert_eq!(summary_header["data"]["system"], foe_core::harness_text::COMPACTION_INSTRUCTION);
+    assert_eq!(summary_header["data"]["system"], foe_config::harness_text::COMPACTION_INSTRUCTION);
     assert_eq!(summary_header["data"]["tools"], json!([]));
     assert_eq!(header_of(requests[3])["data"]["tools"][0]["name"], "read", "the ordinary header returns");
     let messages = requests[3]["data"]["messages"].as_array().unwrap();
@@ -639,7 +639,7 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert_eq!(messages[2]["tool_calls"][0]["id"], "tc_2", "the kept suffix starts with the second step");
     assert_eq!(messages.len(), 5, "the final-request warning follows the compacted context");
     assert!(
-        messages.iter().any(|message| message.to_string().contains(foe_core::harness_text::FINAL_REQUEST)),
+        messages.iter().any(|message| message.to_string().contains(foe_config::harness_text::FINAL_REQUEST)),
         "the last ordinary request carries the recorded warning"
     );
     let prompt = requests[2]["data"]["messages"][0]["content"][0]["text"].as_str().unwrap();
@@ -689,7 +689,7 @@ fn a_failed_summarization_leaves_the_context_as_it_was() {
     let messages = last["data"]["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 6, "the prior context and final-request warning are present");
     assert!(
-        messages.iter().any(|message| message.to_string().contains(foe_core::harness_text::FINAL_REQUEST)),
+        messages.iter().any(|message| message.to_string().contains(foe_config::harness_text::FINAL_REQUEST)),
         "failed compaction preserves the warning"
     );
 }
@@ -856,6 +856,95 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
     }
 }
 
+/// The recorded identity of every example program, under the fixed runtime
+/// [`RECORDED_RUNTIME`] rather than the running binary. A recorded identity
+/// is what tells a reader of a retained trajectory which program produced
+/// it, so the hash a document resolves to is a compatibility surface: a
+/// hash that moves silently makes every stored identity name a program
+/// nobody can reproduce. A change here is a deliberate change to what the
+/// model sees, never a side effect of moving code between crates.
+#[rustfmt::skip]
+const RECORDED_IDENTITIES: [(&str, &str); 12] = [
+    ("budget-exhausted", "sha256:a404a182f0aa60ec3c28dccc308f6cb3680a4b0556636d8f1cc3113468c4b3f0"),
+    ("exec-transport", "sha256:cbed175c329da0734c335758cb2aa5a3b39e03900afbb6aaa693bd39684dadf9"),
+    ("host-transport", "sha256:36bd95cffac3d9731bff52bec150af95f2c4aa438385f792812cd1b24cc53b8a"),
+    ("minimal", "sha256:d50297c3f74ab618d04f1a886ac9589c1a8d9eacf53d89d222122cd2eaec5c4b"),
+    ("recovery-exhausted", "sha256:9f3c93544e0cd9e8f16501a327433a7116bc628c161733da315260333329e2ba"),
+    ("sandbox", "sha256:9bc5fb451e8b472473f6add09a4ded63ff470407e55e7f97108b546ab614318a"),
+    ("self-extension", "sha256:a0eea18baf9081b392467c02dba4f7a8347535849f64afaf1fe5a874f27b984b"),
+    ("subagents", "sha256:06b1b01a1c6bacd582dde83a413032df54c9d750a57b9e9387c7f5684a4b3b60"),
+    ("team", "sha256:471a17bf3e6b9648351162eaa0afe166ced36f73913b88fdd401a6ad8528335a"),
+    ("verification-unsatisfiable", "sha256:00c06c8402210b7538e1d9c6ad5570718d7b4d3c9a46437f50af0d0e3b15bf14"),
+    ("workflow", "sha256:76f049d9ec411a4815bc423ce8d52cf577440054072cd7505d4f5b3a2be1b8bf"),
+    ("wrap-a-binary", "sha256:54b2e9672dd2df8c46e2d44db5c2b7677a1045f3e683ac443263486da21223d6"),
+];
+
+/// The runtime the recorded identities were computed under. The real one
+/// hashes the running binary, so it differs on every build; pinning it here
+/// leaves the configuration and the harness text as the only things the
+/// recorded hashes measure. Passing `runtime_info()` instead would make this
+/// test fail on every rebuild, and would measure the build where the point is
+/// to hold the contract still.
+fn recorded_runtime() -> foe_log::RuntimeInfo {
+    foe_log::RuntimeInfo { version: "0.1.0".into(), build: "sha256:recorded".into() }
+}
+
+/// The built-in tool specifications the binary composes, which identity
+/// hashes with the rest of the program. Which packs a binary links is the
+/// binary's own decision, taken in `foe::run::extra_builtin_specs`, and a
+/// test binary cannot reach the command line's modules — so this names the
+/// two packs itself, and the test below fails if the two lists ever part.
+fn builtin_specs() -> Vec<foe_config::ToolSpec> {
+    foe_code::all().iter().map(|t| t.spec().clone()).chain(foe_core::team::builtin_specs()).collect()
+}
+
+/// `foe tools` with no configuration prints every built-in the binary
+/// carries. The recorded identities are computed over [`builtin_specs`], so a
+/// pack the binary gains or loses has to appear there too; without this check
+/// the recorded hashes would go on describing programs the binary no longer
+/// builds.
+#[test]
+fn the_recorded_builtins_are_the_ones_the_binary_links() {
+    let effect = |spec: &foe_config::ToolSpec| serde_json::to_value(spec.effect).unwrap().as_str().unwrap().to_string();
+    let mine: Vec<(String, String)> = std::iter::once(foe_config::tools::block_spec())
+        .chain(builtin_specs())
+        .map(|spec| (spec.name.clone(), effect(&spec)))
+        .collect();
+    let printed = Command::new(FOE).arg("tools").output().unwrap();
+    let rows: Vec<(String, String)> = String::from_utf8(printed.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let mut fields = line.split_whitespace();
+            let name = fields.next().expect("a row names a tool").to_string();
+            (name, fields.nth(1).expect("a row names an effect").to_string())
+        })
+        .collect();
+    assert_eq!(rows, mine, "the built-in list this test records has parted from the one the binary links");
+}
+
+/// docs/design.md "Programs and identity": every example program hashes to
+/// the identity recorded for it.
+#[test]
+fn every_example_program_hashes_to_its_recorded_identity() {
+    let dir = scratch("identity-recorded");
+    let specs = builtin_specs();
+    let recorded: std::collections::BTreeMap<&str, &str> = RECORDED_IDENTITIES.into_iter().collect();
+    let found = examples();
+    assert_eq!(found.len(), recorded.len(), "every example has a recorded identity");
+    let mut mismatches = Vec::new();
+    for (name, text) in found {
+        let path = materialize(&dir, &name, &text, "the task the recording ignores");
+        let program = foe_config::config::load(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let identity = foe_config::identity::compute(&program, &specs, &recorded_runtime())
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        if identity.hash != recorded[name.as_str()] {
+            mismatches.push(format!("{name}: {}", identity.hash));
+        }
+    }
+    assert!(mismatches.is_empty(), "the following programs hash to another identity:\n{}", mismatches.join("\n"));
+}
+
 /// Replaces every `$ref` into `$defs` by the definition it names, to the
 /// given depth, so that the runtime's subset validator can check a document
 /// against the whole schema.
@@ -886,10 +975,39 @@ fn every_example_conforms_to_the_schema_and_parses() {
     let inlined = inline(&schema, &schema["$defs"], 4);
     for (name, text) in examples() {
         let document: Value = serde_json::from_str(&text).unwrap();
-        foe_core::schema::conforms(&inlined, &document).unwrap_or_else(|e| panic!("{name}: {e}"));
-        foe_core::config::parse(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
+        foe_config::schema::conforms(&inlined, &document).unwrap_or_else(|e| panic!("{name}: {e}"));
+        foe_config::config::parse(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
     }
     let mut broken: Value = serde_json::from_str(&examples()[0].1).unwrap();
     broken["budget"]["model_calls"] = json!("many");
-    assert!(foe_core::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
+    assert!(foe_config::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
+}
+
+/// The issue's acceptance, checked against the process a person runs:
+/// every help form succeeds and prints its screen on standard output, and
+/// an invocation that fails still fails on standard error.
+#[test]
+fn help_exits_zero_on_standard_output_for_every_form() {
+    for args in [
+        vec!["--help"],
+        vec!["help"],
+        vec!["login", "--help"],
+        vec!["view", "--help"],
+        vec!["plan", "--help"],
+        vec!["tools", "--help"],
+        vec!["schema", "--help"],
+        vec!["telemetry", "--help"],
+    ] {
+        let printed = Command::new(FOE).args(&args).output().unwrap();
+        let text = String::from_utf8(printed.stdout).unwrap();
+        assert!(printed.status.success(), "`foe {}` exited {:?}", args.join(" "), printed.status.code());
+        assert!(text.starts_with("usage: foe"), "`foe {}` printed no usage line: {text}", args.join(" "));
+        assert!(text.contains("\noptions:\n"), "`foe {}` documented no options: {text}", args.join(" "));
+        assert!(printed.stderr.is_empty(), "`foe {}` wrote to standard error", args.join(" "));
+    }
+    let refused = Command::new(FOE).arg("--nonesuch").output().unwrap();
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(String::from_utf8(refused.stderr).unwrap().contains("run `foe --help`"), "the refusal points at help");
+    let bare = Command::new(FOE).output().unwrap();
+    assert_eq!(bare.status.code(), Some(1), "a bare `foe` still refuses");
 }

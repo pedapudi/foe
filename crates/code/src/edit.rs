@@ -7,7 +7,8 @@
 
 use crate::diff::{self, Span};
 use crate::{display, parse_args, resolve};
-use foe_core::{CallCtx, CapError, Effect, Tool, ToolSpec, ToolValue};
+use foe_config::{Effect, ToolSpec};
+use foe_core::{CallCtx, CapError, Tool, ToolValue};
 use serde::Deserialize;
 use serde_json::json;
 

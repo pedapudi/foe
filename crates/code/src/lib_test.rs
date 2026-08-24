@@ -22,7 +22,7 @@ fn all_lists_each_tool_once_and_readonly_lists_the_reads_tools() {
 fn every_coding_tool_schema_stays_inside_the_implemented_subset() {
     for tool in super::all() {
         let spec = tool.spec();
-        foe_core::schema::check(format!("tools.{}.params", spec.name), &spec.params).unwrap();
+        foe_config::schema::check(format!("tools.{}.params", spec.name), &spec.params).unwrap();
     }
 }
 
@@ -56,7 +56,7 @@ fn nothing_about_the_subject_reaches_the_model() {
 fn the_assembled_system_prompt_never_mentions_the_subject() {
     let root = std::env::temp_dir().join("foe-subject-prompt");
     std::fs::create_dir_all(&root).unwrap();
-    let config: foe_core::Config = serde_json::from_value(serde_json::json!({
+    let config: foe_config::Config = serde_json::from_value(serde_json::json!({
         "version": 2,
         "name": "subject-prohibition",
         "instructions": { "10-role": "You fix failing tests." },
@@ -66,7 +66,7 @@ fn the_assembled_system_prompt_never_mentions_the_subject() {
         "task": "do the thing"
     }))
     .unwrap();
-    let program = foe_core::config::resolve(&config).unwrap();
+    let program = foe_config::config::resolve(&config).unwrap();
     let registry = foe_core::registry::Registry::new(&program, vec![], super::all()).unwrap();
     let prompt = registry.system_prompt(&program.instructions);
     assert!(!prompt.contains("subject"), "the system prompt mentions the subject:\n{prompt}");

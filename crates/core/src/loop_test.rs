@@ -1,11 +1,12 @@
 use super::{parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
-use crate::config::Program;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
-use crate::harness_text as text;
 use crate::registry::{Handles, Registry};
 use crate::test_util::{call, done, program_with, text as text_chunk, tmp, turn, Probe, ScriptedTransport, Verifier};
-use crate::{Effect, Tool, Transport};
+use crate::{Tool, Transport};
+use foe_config::config::Program;
+use foe_config::harness_text as text;
+use foe_config::Effect;
 use foe_log::{
     BlockedCode, Chunk, Covered, EpisodeStart, Event, EventData, ExhaustedLimit, InboxSource, Outcome, RuntimeInfo,
     SandboxInfo, SandboxMode, StopReason, Usage,
@@ -196,7 +197,7 @@ struct Shared(Arc<Probe>);
 
 #[async_trait::async_trait]
 impl Tool for Shared {
-    fn spec(&self) -> &crate::ToolSpec {
+    fn spec(&self) -> &foe_config::ToolSpec {
         self.0.spec()
     }
     async fn call(&self, args: serde_json::Value, ctx: &crate::CallCtx) -> crate::ToolValue {

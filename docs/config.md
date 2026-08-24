@@ -19,6 +19,10 @@ document and offer completions. `foe plan --config FILE` prints the resolved
 program, its identity, and every tool definition the program's reachable
 tree can invoke, without running anything.
 
+`crates/config` implements this document: every rule stated here is a check
+there, it holds the JSON Schema `foe schema` prints, and it resolves a
+document into the program `episode/start.program` records.
+
 ## JSON Schema subset
 
 Two keys hold a schema written by the document's author: `host_tools.*.params`

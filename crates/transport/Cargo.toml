@@ -23,6 +23,7 @@ exec = []
 [dependencies]
 foe-core = { path = "../core" }
 foe-log = { path = "../log" }
+foe-config = { path = "../config" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

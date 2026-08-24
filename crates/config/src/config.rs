@@ -6,7 +6,7 @@
 
 use crate::workflow::{self, WorkflowConfig};
 use crate::{
-    grants, Budget, ChildProgram, Config, ConfigError, ContextConfig, DoneWhen, Grants, HostToolDef, ModelConfig,
+    contains, Budget, ChildProgram, Config, ConfigError, ContextConfig, DoneWhen, Grants, HostToolDef, ModelConfig,
     SandboxConfig, ToolDef,
 };
 use serde::Serialize;
@@ -230,7 +230,7 @@ fn resolve_section(
             ("write", &grants.write, &parent.write),
             ("execute", &grants.execute, &parent.execute),
         ] {
-            if let Some(i) = own.iter().position(|p| !grants::contains(theirs, p)) {
+            if let Some(i) = own.iter().position(|p| !contains(theirs, p)) {
                 return Err(invalid(
                     key(&format!("grants.{field}[{i}]")),
                     format!("lies within a {field} root of the parent program"),

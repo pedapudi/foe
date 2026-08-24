@@ -8,7 +8,7 @@ document specifies the graph, the three places, and the guarantee that
 holds across all of them.
 
 Status: implemented. The configuration types and construction rules are in
-`crates/core/src/workflow.rs`; the executor is `crates/workflow`;
+`crates/config/src/workflow.rs`; the executor is `crates/workflow`;
 `examples/workflow` runs one graph.
 
 ## Why a graph, and why agency inside it

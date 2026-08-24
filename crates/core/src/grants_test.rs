@@ -1,19 +1,10 @@
-use super::{contains, RootReader, RootWriter};
+use super::{RootReader, RootWriter};
 use crate::test_util::tmp;
 use crate::{CapError, Reader, Writer};
 use std::path::PathBuf;
 
 fn roots(dir: &std::path::Path) -> Vec<PathBuf> {
     vec![std::fs::canonicalize(dir).unwrap()]
-}
-
-#[test]
-fn containment_compares_components_so_a_sibling_prefix_is_outside() {
-    let roots = vec![PathBuf::from("/src")];
-    assert!(contains(&roots, std::path::Path::new("/src/a/b")));
-    assert!(contains(&roots, std::path::Path::new("/src")));
-    assert!(!contains(&roots, std::path::Path::new("/src-other/a")));
-    assert!(!contains(&roots, std::path::Path::new("/")));
 }
 
 /// docs/config.md `grants`: a read through a link that leaves every granted

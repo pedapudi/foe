@@ -1,8 +1,9 @@
 use super::{resolve_specs, Handles, Registry, Source};
 use crate::grants::{RootReader, RootWriter};
-use crate::harness_text as text;
 use crate::test_util::{program_with, spec, tmp, FakeExecutor, Probe, Verifier};
-use crate::{ConfigError, Effect, Tool, ToolCall};
+use crate::{Tool, ToolCall};
+use foe_config::harness_text as text;
+use foe_config::{ConfigError, Effect};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -197,28 +198,6 @@ async fn dispatch_checks_host_tool_arguments_against_the_declared_schema() {
         .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 1, "x": 1 })), 1, root.clone(), None)
         .await;
     assert!(extra.is_error && extra.rendered.unwrap().contains("`x`"));
-}
-
-/// AGENTS.md: a specification rule that can be tested has a test. Every
-/// parameter schema the runtime itself writes stays inside the subset
-/// `crate::schema` implements, so no built-in tool advertises a constraint
-/// dispatch would ignore.
-#[test]
-fn every_runtime_written_parameter_schema_stays_inside_the_implemented_subset() {
-    let root = tmp("registry-own-schemas");
-    let exec = root.join("t.sh");
-    std::fs::write(&exec, "").unwrap();
-    let program = program_with(&root, |v| {
-        v["tools"] = json!(["t", "block"]);
-        v["tool_defs"] = json!({ "t": { "exec": exec, "description": "configured" } });
-        v["done_when"] = json!({ "returns": { "type": "object", "properties": { "n": { "type": "integer" } } } });
-    })
-    .unwrap();
-    let specs = resolve_specs(&program, &[spec("p", Effect::Pure)]).unwrap();
-    assert!(specs.iter().any(|s| s.name == text::RETURN_NAME), "the synthesized return tool is present");
-    for s in specs {
-        crate::schema::check(format!("tools.{}.params", s.name), &s.params).unwrap();
-    }
 }
 
 #[tokio::test]

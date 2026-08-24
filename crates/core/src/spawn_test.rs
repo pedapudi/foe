@@ -149,9 +149,9 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
 #[test]
 fn child_configuration_preserves_a_model_override() {
     let mut config = parent_config();
-    config.model = Some(crate::ModelConfig::new("openai-codex", "gpt-5.6-sol"));
+    config.model = Some(foe_config::ModelConfig::new("openai-codex", "gpt-5.6-sol"));
     let worker = config.programs.get_mut("worker").unwrap();
-    worker.model = Some(crate::ModelConfig::new("openai-codex", "gpt-5.6-luna"));
+    worker.model = Some(foe_config::ModelConfig::new("openai-codex", "gpt-5.6-luna"));
     let worker = worker.clone();
     let child = child_config(&config, &worker, "t".into(), BudgetAmount::default());
     assert_eq!(child.model.unwrap().model, "gpt-5.6-luna");
