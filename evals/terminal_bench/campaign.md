@@ -458,6 +458,46 @@ The retained confirmation runs are
 and
 `/home/sunil/git/foe-workflow-configuration-self-improvement/target/terminal-bench-jobs/workflow-candidate-confirmation-path-tracing-20260824T101914Z`.
 
+## Recorded calibration result
+
+On 2026-08-24, the frozen workflow candidate ran once on each of the twelve
+calibration tasks. Every untouched task-owned grader awarded a score of `1.0`.
+Harbor recorded no task exception, and all twelve Foe traces conformed.
+
+| Calibration task | Model calls | Harbor time | Estimated cost |
+| --- | ---: | ---: | ---: |
+| `adaptive-rejection-sampler` | 28 | 682 seconds | $1.878429 |
+| `break-filter-js-from-html` | 11 | 170 seconds | incomplete |
+| `compile-compcert` | 36 | 1,484 seconds | $3.075176 |
+| `db-wal-recovery` | 11 | 125 seconds | $0.204456 |
+| `distribution-search` | 12 | 141 seconds | $0.240216 |
+| `financial-document-processor` | 32 | 354 seconds | $1.263138 |
+| `git-leak-recovery` | 10 | 175 seconds | $0.263158 |
+| `make-mips-interpreter` | 53 | 750 seconds | $4.133114 |
+| `query-optimize` | 29 | 1,183 seconds | $1.142188 |
+| `reshard-c4-data` | 30 | 987 seconds | $1.532546 |
+| `schemelike-metacircular-eval` | 35 | 1,110 seconds | $2.457325 |
+| `train-fasttext` | 37 | 2,619 seconds | $1.326511 |
+
+The run used 324 model calls and took 9,780 seconds. Eleven tasks reported at
+least 7,460,679 input tokens, 4,393,472 cached-input tokens, 174,502 output
+tokens, and $17.516257 in estimated cost. Seven `break-filter-js-from-html`
+calls lacked provider usage, so complete resource totals are unavailable.
+
+Eleven Foe outcomes were completed. `break-filter-js-from-html` produced the
+required artifact before five request attempts failed at step 6. Its untouched
+grader accepted the artifact, while Foe reported `blocked`. This outcome
+disagreement remains a product diagnostic and does not alter the official
+quality score.
+
+The calibration result is twelve accepted tasks from twelve attempts. It
+exceeds the required ten accepted tasks and qualifies the frozen candidate for
+the sealed calibration holdout. No calibration trajectory or grader output
+enters the candidate before holdout.
+
+The retained calibration run is
+`/home/sunil/git/foe-workflow-configuration-self-improvement/target/terminal-bench-jobs/workflow-candidate-calibration-20260824T104111Z`.
+
 ## Recorded self-improvement failure analysis
 
 On 2026-08-23, two retained `gpt2-codegolf` self-improvement attempts failed
