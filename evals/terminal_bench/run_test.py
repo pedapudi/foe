@@ -27,15 +27,17 @@ class CasesTest(unittest.TestCase):
             "confirmation",
             "calibration",
             "calibration_holdout",
+            "provider_policy_incompatible",
         )
         for index, left in enumerate(protected):
             for right in protected[index + 1 :]:
                 self.assertFalse(set(groups[left]) & set(groups[right]))
         self.assertEqual(len(groups["development"]), 6)
-        self.assertEqual(len(groups["capability_search"]), 12)
+        self.assertEqual(len(groups["capability_search"]), 11)
         self.assertEqual(len(groups["confirmation"]), 4)
         self.assertEqual(len(groups["calibration"]), 12)
         self.assertEqual(len(groups["calibration_holdout"]), 6)
+        self.assertEqual(groups["provider_policy_incompatible"], ("vulnerable-secret",))
         self.assertEqual(groups["smoke"], ("fix-git",))
         self.assertGreater(
             tasks["fix-git"].expected_input_tokens,

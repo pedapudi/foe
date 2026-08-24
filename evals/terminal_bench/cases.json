@@ -91,13 +91,15 @@
       "dna-assembly",
       "feal-linear-cryptanalysis",
       "model-extraction-relu-logits",
-      "gpt2-codegolf",
-      "path-tracing"
+      "gpt2-codegolf"
     ],
     "confirmation": [
       "build-cython-ext",
       "constraints-scheduling",
       "custom-memory-heap-crash",
+      "path-tracing"
+    ],
+    "provider_policy_incompatible": [
       "vulnerable-secret"
     ],
     "calibration": [

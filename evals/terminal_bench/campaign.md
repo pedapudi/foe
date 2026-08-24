@@ -65,7 +65,7 @@ Six Terminal-Bench tasks already have inspected trajectories. They remain develo
 - `sanitize-git-repo`;
 - `large-scale-text-editing`.
 
-Twelve additional tasks form the capability-search set:
+Eleven additional tasks form the capability-search set:
 
 - `password-recovery`;
 - `path-tracing-reverse`;
@@ -77,8 +77,7 @@ Twelve additional tasks form the capability-search set:
 - `dna-assembly`;
 - `feal-linear-cryptanalysis`;
 - `model-extraction-relu-logits`;
-- `gpt2-codegolf`;
-- `path-tracing`.
+- `gpt2-codegolf`.
 
 The tasks from `regex-chess` through `dna-assembly` were added after Sol `low` solved both failures among the first four tasks. They were selected from task metadata at repository commit `7131e4375048a0e408a8fb404b5f499d726b695b`.
 
@@ -95,9 +94,26 @@ Four tasks remain closed until a candidate and its acceptance rule are frozen:
 - `build-cython-ext`;
 - `constraints-scheduling`;
 - `custom-memory-heap-crash`;
-- `vulnerable-secret`.
+- `path-tracing`.
 
 Each candidate receives two attempts per confirmation task. Raw confirmation trajectories remain outside self-improvement evidence until the candidate disposition is recorded.
+
+The OpenAI Codex route rejected `vulnerable-secret` because its requests
+triggered the provider's cybersecurity policy. Two frozen attempts were
+blocked at the initial request or first follow-up. One authorization-scope
+repair attempt was blocked at the initial request. The provider returned
+`invalid_request`, and none of the three attempts produced a gradable artifact.
+
+This provider restriction prevents the case from measuring Foe quality on the
+selected route. The case remains in `provider_policy_incompatible` for route
+compatibility testing. It does not contribute to the candidate's confirmation
+score.
+
+`path-tracing` replaced the incompatible case before its task instruction,
+container, or trajectory was opened. The retained campaign manifests contained
+no prior `path-tracing` trial. It was the only unopened member of the frozen
+capability-search set, which made the substitution rule independent of an
+observed task result.
 
 ### Calibration evidence
 
