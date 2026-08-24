@@ -37,13 +37,15 @@ fn times_are_the_logs_own_milliseconds_in_nanoseconds() {
 #[test]
 fn an_attribute_encodes_as_the_protobuf_json_any_value() {
     let boolean = Attribute { key: "c".into(), value: AnyValue::BoolValue(true) };
-    let attributes = vec![text("a", "x"), number("b", 7), boolean, list("d", ["p".to_string(), "q".to_string()])];
+    let attributes =
+        vec![text("a", "x"), number("b", 7), boolean, list("d", ["p".to_string(), "q".to_string()]), real("e", 0.75)];
     let rendered = serde_json::to_string(&attributes).unwrap();
     assert_eq!(
         rendered,
         r#"[{"key":"a","value":{"stringValue":"x"}},{"key":"b","value":{"intValue":"7"}},"#.to_string()
             + r#"{"key":"c","value":{"boolValue":true}},"#
-            + r#"{"key":"d","value":{"arrayValue":{"values":[{"stringValue":"p"},{"stringValue":"q"}]}}}]"#
+            + r#"{"key":"d","value":{"arrayValue":{"values":[{"stringValue":"p"},{"stringValue":"q"}]}}},"#
+            + r#"{"key":"e","value":{"doubleValue":0.75}}]"#
     );
 }
 

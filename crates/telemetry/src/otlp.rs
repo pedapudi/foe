@@ -72,6 +72,7 @@ pub struct Attribute {
 pub enum AnyValue {
     StringValue(String),
     IntValue(String),
+    DoubleValue(f64),
     BoolValue(bool),
     ArrayValue(ArrayValue),
 }
@@ -87,6 +88,12 @@ pub fn text(key: &str, value: impl Into<String>) -> Attribute {
 
 pub fn number(key: &str, value: u64) -> Attribute {
     Attribute { key: key.into(), value: AnyValue::IntValue(value.to_string()) }
+}
+
+/// A ratio or other non-integral quantity, as the double-valued attribute
+/// the encoding provides for it.
+pub fn real(key: &str, value: f64) -> Attribute {
+    Attribute { key: key.into(), value: AnyValue::DoubleValue(value) }
 }
 
 pub fn list(key: &str, values: impl IntoIterator<Item = String>) -> Attribute {

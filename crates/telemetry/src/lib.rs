@@ -28,14 +28,21 @@ pub mod scrub;
 
 use classify::Classification;
 use extract::Facts;
-use foe_log::{Event, LogError};
-use otlp::{list, number, span, text, AnyValue, Attribute};
+use foe_log::{Event, LogError, Usage};
+use otlp::{list, number, real, span, text, AnyValue, Attribute};
 use scrub::{Report, Scrubber};
 use std::path::{Path, PathBuf};
 
 /// Changes whenever an emitted field is added, removed, renamed, or given a
 /// different meaning. Every payload carries it as a resource attribute.
-pub const SCHEMA_VERSION: &str = "2";
+pub const SCHEMA_VERSION: &str = "3";
+
+/// The fraction of the input tokens the cache served, absent when no input
+/// token was recorded: an unmeasured spend has no fraction rather than a
+/// fraction of zero.
+fn cached_fraction(usage: &Usage) -> Option<Attribute> {
+    (usage.input > 0).then(|| real("foe.tokens.cache_read_fraction", usage.cache_read as f64 / usage.input as f64))
+}
 
 /// The one way deriving telemetry fails: the scrubber found something in
 /// its own output. Reading and writing errors belong to the caller that
@@ -87,16 +94,15 @@ pub fn emission(events: &[Event], log_dir: &str, key: Vec<u8>) -> Result<Emissio
     for step in &facts.steps {
         let id = otlp::span_id(&facts.id, "step", step.seq);
         let name = format!("step {}", step.step);
-        spans.push(span(&trace, id, root.clone(), name, step.start_ms, step.end_ms).with(
-            vec![
-                number("foe.step", step.step as u64),
-                number("foe.tokens.input", step.usage.input),
-                number("foe.tokens.output", step.usage.output),
-                number("foe.tokens.cache_read", step.usage.cache_read),
-                text("foe.stop_reason", step.stop.map(|s| extract::term(&s)).unwrap_or("unfinished".into())),
-            ],
-            true,
-        ));
+        let mut attributes = vec![
+            number("foe.step", step.step as u64),
+            number("foe.tokens.input", step.usage.input),
+            number("foe.tokens.output", step.usage.output),
+            number("foe.tokens.cache_read", step.usage.cache_read),
+        ];
+        attributes.extend(cached_fraction(&step.usage));
+        attributes.push(text("foe.stop_reason", step.stop.map(|s| extract::term(&s)).unwrap_or("unfinished".into())));
+        spans.push(span(&trace, id, root.clone(), name, step.start_ms, step.end_ms).with(attributes, true));
     }
     for call in &facts.calls {
         let id = otlp::span_id(&facts.id, "tool", call.seq);
@@ -135,6 +141,9 @@ pub fn emission(events: &[Event], log_dir: &str, key: Vec<u8>) -> Result<Emissio
         number("foe.tokens.input", facts.usage.input),
         number("foe.tokens.output", facts.usage.output),
         number("foe.tokens.cache_read", facts.usage.cache_read),
+    ]);
+    episode_attributes.extend(cached_fraction(&facts.usage));
+    episode_attributes.extend(vec![
         number("foe.model_calls", facts.model_calls),
         number("foe.tool_calls", facts.calls.len() as u64),
         number("foe.tool_errors", facts.calls.iter().filter(|c| c.is_error).count() as u64),
