@@ -17,6 +17,8 @@ mod diff;
 mod edit;
 mod grep;
 mod read;
+#[cfg(feature = "exec")]
+mod session;
 #[cfg(test)]
 #[path = "handles_test.rs"]
 mod testing;
@@ -43,6 +45,25 @@ pub const EDIT_DIFF_MAX_LINES: usize = 200;
 pub const READ_BUFFER_BYTES: usize = 64 * 1024;
 /// Seconds `bash` waits when the call names no `timeout_seconds`.
 pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
+/// Process sessions the `session` tool may hold alive at once.
+pub const SESSION_MAX_ALIVE: usize = 8;
+
+/// The shell that runs every `bash` and `session` command line.
+#[cfg(feature = "exec")]
+pub(crate) const SHELL: &str = "/bin/bash";
+
+/// The complete environment of the shell, identical for `bash` and
+/// `session`. The runtime sets exactly what it is given and inherits
+/// nothing, so the shell needs a search path to find programs; `HOME` is
+/// the working directory, since the tools have no other writable location.
+#[cfg(feature = "exec")]
+pub(crate) fn shell_environment(cwd: &Path) -> std::collections::BTreeMap<String, String> {
+    std::collections::BTreeMap::from([
+        ("PATH".to_owned(), "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_owned()),
+        ("HOME".to_owned(), cwd.display().to_string()),
+        ("LANG".to_owned(), "C.UTF-8".to_owned()),
+    ])
+}
 
 /// Every built-in coding tool, in the order `foe tools` lists them.
 pub fn all() -> Vec<Box<dyn Tool>> {
@@ -59,7 +80,7 @@ pub fn readonly() -> Vec<Box<dyn Tool>> {
 
 #[cfg(feature = "exec")]
 fn exec_tools() -> Vec<Box<dyn Tool>> {
-    vec![Box::new(bash::Bash::new())]
+    vec![Box::new(bash::Bash::new()), Box::new(session::Session::new())]
 }
 
 #[cfg(not(feature = "exec"))]

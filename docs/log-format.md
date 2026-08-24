@@ -255,7 +255,11 @@ recovery rather than by running the tool: a call left without a result when
 the episode was interrupted receives a result with `synthetic: true` and
 `is_error: true`. The rejection of every call in a response that hit the
 output length limit is `is_error: true` with `synthetic: false`, because the
-runtime produced that result in the ordinary course of the step.
+runtime produced that result in the ordinary course of the step. At episode
+settlement the runtime also writes one result with `synthetic: true` for
+each process session it stopped: the ordinary result of the implicit stop,
+whose `call_id` names no call and which therefore closes nothing; see
+[Open obligations](#open-obligations).
 
 `tool/rendering-archive` — implemented. The turn budget shortened one tool
 rendering. This event immediately precedes that call's `tool/result`.
@@ -583,6 +587,13 @@ recorded. The lead offers such a message again when the target restarts,
 which records a second delivery for one message, and no event records a
 message given up on. An undelivered message may therefore stand at
 `episode/end`, and a message may be delivered more than once.
+
+One closing-shaped event is exempt from the first rule: a `tool/result`
+with `synthetic: true` whose call id names no call closes nothing and
+opens nothing. It is the runtime's account of work it settled itself — the
+implicit stop of a process session surviving at settlement — and only the
+runtime writes synthetic results. The second rule still binds it: a call
+already closed cannot be closed again.
 
 A log that stops without `episode/end` is a different record from a log
 that ends with an obligation open. The first was cut short: the process

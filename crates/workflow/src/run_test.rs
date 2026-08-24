@@ -202,6 +202,7 @@ impl Fixture {
             transport: Arc::new(responses),
             stop: stop_rx,
             children: None,
+            sessions: None,
             program: program.clone(),
             context: None,
         };

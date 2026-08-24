@@ -130,6 +130,9 @@ pub struct Params {
     /// ends the ones still running, so that no child outlives the episode
     /// that started it and no reservation stands unreturned.
     pub children: Option<Arc<Router>>,
+    /// The episode's process sessions. The teardown stops every surviving
+    /// session, so that no session outlives the episode that started it.
+    pub sessions: Option<Arc<dyn crate::Sessions>>,
     pub context: Option<Arc<dyn ContextPolicy>>,
 }
 
@@ -146,7 +149,8 @@ pub fn append_inbox_item(log: &Log, item: InboxItem) -> Result<Option<Event>, Lo
 /// Runs the episode to its end, closes what its log left open through
 /// [`settle`], and writes `episode/end`.
 pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
-    let (log, pool, children) = (params.log.clone(), params.pool.clone(), params.children.clone());
+    let (log, pool) = (params.log.clone(), params.pool.clone());
+    let (children, sessions) = (params.children.clone(), params.sessions.clone());
     let driven = match Episode::new(params) {
         Ok(mut episode) => episode.drive().await,
         Err(e) => Err(e),
@@ -156,7 +160,7 @@ pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
         Err(RuntimeError::Log(e)) => return Err(e.into()),
         Err(e) => Outcome::Failed { error: e.to_string() },
     };
-    settle(&log, &pool, children.as_deref()).await?;
+    settle(&log, &pool, children.as_deref(), sessions).await?;
     log.append(EventData::EpisodeEnd { outcome: outcome.clone() })?;
     log.sync()?;
     Ok(outcome)
@@ -165,13 +169,53 @@ pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
 /// Closes every obligation the log opened, so that `episode/end` is valid.
 /// See docs/log-format.md "Open obligations".
 ///
-/// A child still running when the episode ends is asked to end, and the
-/// `spawn/end` and `budget/release` its reservation owes are awaited for
-/// [`SETTLE_GRACE`]. Whatever is still open after that, including every
-/// tool call left without a result, is closed by the synthetic events the
-/// log crate produces. The workflow executor ends its episodes through this
-/// too.
-pub async fn settle(log: &Log, pool: &Mutex<Pool>, children: Option<&Router>) -> Result<(), RuntimeError> {
+/// A process session still alive when the episode ends is stopped, and the
+/// termination is recorded as the ordinary result of that implicit stop: a
+/// `tool/result` with `synthetic: true` whose subject states the final
+/// status. A child still running is asked to end, and the `spawn/end` and
+/// `budget/release` its reservation owes are awaited for [`SETTLE_GRACE`].
+/// Whatever is still open after that, including every tool call left
+/// without a result, is closed by the synthetic events the log crate
+/// produces. The workflow executor ends its episodes through this too.
+pub async fn settle(
+    log: &Log,
+    pool: &Mutex<Pool>,
+    children: Option<&Router>,
+    sessions: Option<Arc<dyn crate::Sessions>>,
+) -> Result<(), RuntimeError> {
+    if let Some(sessions) = sessions {
+        let stopped = tokio::task::spawn_blocking(move || sessions.stop_all())
+            .await
+            .map_err(|e| RuntimeError::Protocol(format!("session settlement task failed: {e}")))?;
+        let step = log.with_events(|events| {
+            events
+                .iter()
+                .rev()
+                .find_map(|e| match &e.data {
+                    EventData::ModelRequest(r) => Some(r.step),
+                    _ => None,
+                })
+                .unwrap_or(0)
+        });
+        for status in stopped {
+            let subject = crate::session::subject(&status);
+            log.append(EventData::ToolResult(ToolResult {
+                step,
+                call_id: format!("session-{}-settle", status.id),
+                name: crate::session::SESSION_TOOL.into(),
+                value: serde_json::json!({
+                    "session": status.id, "name": status.name, "alive": false,
+                    "exit_code": status.exit_code, "seconds": status.seconds,
+                }),
+                rendered: subject.clone(),
+                is_error: false,
+                spill: None,
+                subject: Some(subject),
+                duration_ms: 0,
+                synthetic: true,
+            }))?;
+        }
+    }
     if lock(pool).active_children() > 0 {
         if let Some(children) = children {
             children.cancel_all();

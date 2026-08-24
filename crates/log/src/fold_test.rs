@@ -436,6 +436,45 @@ fn an_obligation_is_closed_once_and_only_after_it_was_opened() {
     }
 }
 
+/// docs/log-format.md "Open obligations": a `tool/result` with `synthetic`
+/// true whose call id names no call is the runtime's account of work it
+/// settled itself, such as the implicit stop of a surviving process
+/// session. It closes nothing. The same result without `synthetic` stays
+/// invalid.
+#[test]
+fn a_synthetic_result_for_no_call_is_the_runtimes_own_account() {
+    let settle = |synthetic| {
+        let EventData::ToolResult(mut r) = result(2, "session-1-settle", "session 1: killed after 3s") else {
+            unreachable!()
+        };
+        r.synthetic = synthetic;
+        EventData::ToolResult(r)
+    };
+    let mut events = fixture();
+    events.push(Event { seq: 11, time: 0, data: settle(false) });
+    assert!(
+        matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("an earlier event opened")),
+        "a result closing no call is invalid unless it is synthetic"
+    );
+    events[11] = Event { seq: 11, time: 0, data: settle(true) };
+    events.push(ended(12));
+    fold(&events).expect("a synthetic result closing no call is valid");
+}
+
+/// The closed-once rule binds synthetic results too: a call already closed
+/// cannot be closed again by the runtime's own account.
+#[test]
+fn a_synthetic_result_cannot_close_a_call_twice() {
+    let EventData::ToolResult(mut r) = result(1, "tc_1", "again") else { unreachable!() };
+    r.synthetic = true;
+    let mut events = fixture();
+    events.push(Event { seq: 11, time: 0, data: EventData::ToolResult(r) });
+    assert!(
+        matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("closed once")),
+        "a synthetic result naming a closed call is invalid"
+    );
+}
+
 #[test]
 fn a_team_message_may_stand_undelivered_at_episode_end() {
     let mut events = fixture();

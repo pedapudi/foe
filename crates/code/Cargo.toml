@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Built-in coding tools: read, grep, edit, bash"
+description = "Built-in coding tools: read, grep, edit, bash, session"
 
 [features]
 default = ["exec"]

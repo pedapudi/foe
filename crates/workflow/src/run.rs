@@ -62,7 +62,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
     // The task item is at seq 1 in every log (docs/log-format.md), so a
     // firing that follows `task` names that event among its inputs.
     let task = Produced { value: Value::String(text.clone()), rendered: text, seq: 1 };
-    let (shared_pool, children) = (p.pool.clone(), p.children.clone());
+    let (shared_pool, children, sessions) = (p.pool.clone(), p.children.clone(), p.sessions.clone());
     let shared = Arc::new(Shared {
         log: log.clone(),
         registry: p.registry,
@@ -84,7 +84,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
         Err(RuntimeError::Log(e)) => return Err(e.into()),
         Err(e) => Outcome::Failed { error: e.to_string() },
     };
-    settle(&log, &shared_pool, children.as_deref()).await?;
+    settle(&log, &shared_pool, children.as_deref(), sessions).await?;
     log.append(EventData::EpisodeEnd { outcome: outcome.clone() })?;
     log.sync()?;
     Ok(outcome)

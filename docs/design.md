@@ -404,7 +404,7 @@ an operation runs rather than when a pathname was last checked.
 Tools come from three sources, resolved in this order at construction.
 A name that resolves in two sources is an error.
 
-1. Built in, twelve of them: `read`, `grep`, `edit`, `bash`, `retrieve`,
+1. Built in, thirteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
    `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
 2. Configured executables, declared in `tool_defs` with a path and a
    description. The runtime passes the model's `args` array as argv, captures
