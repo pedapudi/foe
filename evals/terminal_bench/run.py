@@ -252,6 +252,7 @@ def harbor_command(
     escalation_model_calls: int,
     runtime_digest: str,
     pricing: Pricing,
+    completion_checker: Path | None = None,
     hard_token_limits: bool = False,
     install_only: bool = False,
 ) -> list[str]:
@@ -282,6 +283,8 @@ def harbor_command(
     if escalation_reasoning_effort is not None:
         kwargs["escalation_reasoning_effort"] = escalation_reasoning_effort
         kwargs["escalation_model_calls"] = escalation_model_calls
+    if completion_checker is not None:
+        kwargs["completion_checker"] = completion_checker
     command = [
         "/usr/bin/env",
         f"PYTHONPATH={agent_module.parent}",
@@ -363,6 +366,13 @@ def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
             infrastructure_failures.append(f"{trial}: Foe runtime failed: {detail}")
         if metadata.get("foe_trace_conformant") is not True:
             infrastructure_failures.append(f"{trial}: Foe trace conformance was not established")
+        if (
+            "foe_completion_checker_unchanged" in metadata
+            and metadata.get("foe_completion_checker_unchanged") is not True
+        ):
+            infrastructure_failures.append(
+                f"{trial}: the completion checker changed during the trial"
+            )
         if metadata.get("foe_usage_reported") is not True:
             missing = metadata.get("foe_unreported_model_calls")
             count = missing if isinstance(missing, int) else "unknown"
@@ -437,6 +447,11 @@ def parser() -> argparse.ArgumentParser:
     )
     answer.add_argument("--install-only", action="store_true")
     answer.add_argument(
+        "--completion-checker",
+        type=Path,
+        help="read-only checker used by done_when.verify; requires one selected task",
+    )
+    answer.add_argument(
         "--hard-token-limits",
         action="store_true",
         help="enforce the planning token estimates as Foe allowances",
@@ -457,6 +472,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError(f"unknown tasks: {', '.join(unknown)}")
         if len(selected_names) != len(set(selected_names)):
             raise ValueError("a task may be selected only once")
+        if args.completion_checker is not None and len(selected_names) != 1:
+            raise ValueError("--completion-checker requires exactly one selected task")
         if not 1 <= args.attempts <= 3:
             raise ValueError("--attempts must be between 1 and 3")
         if not SAFE_LABEL.fullmatch(args.label):
@@ -507,6 +524,11 @@ def main(argv: list[str] | None = None) -> int:
         source_root = args.source_root.resolve(strict=True)
         agent_module = args.agent_module.resolve(strict=True)
         trace_evaluator = args.trace_evaluator.resolve(strict=True)
+        completion_checker = (
+            args.completion_checker.resolve(strict=True)
+            if args.completion_checker is not None
+            else None
+        )
         harbor = args.harbor.resolve(strict=True)
         credential = args.credential_file.resolve()
         workspace = source_root.parent
@@ -642,6 +664,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     token_policy = "hard allowances" if args.hard_token_limits else "measurement only"
     print(f"token limits  {token_policy}")
+    if completion_checker is not None:
+        print(
+            "completion    done_when.verify "
+            f"sha256:{digest(completion_checker)}"
+        )
     if args.service_tier == "priority":
         print(f"Fast credits  {FAST_SERVICE_CREDIT_MULTIPLIER:g}x Standard ChatGPT credits")
     if args.install_only:
@@ -725,6 +752,7 @@ def main(argv: list[str] | None = None) -> int:
             escalation_model_calls=args.escalation_model_calls,
             runtime_digest=runtime_digest,
             pricing=selected_pricing,
+            completion_checker=completion_checker,
             hard_token_limits=args.hard_token_limits,
             install_only=args.install_only,
         )
@@ -781,6 +809,14 @@ def main(argv: list[str] | None = None) -> int:
         "planning_estimated_cost_usd": total_expected_cost,
         "token_limits": "hard" if args.hard_token_limits else "measurement_only",
         "install_only": args.install_only,
+        "completion_checker": (
+            {
+                "path": str(completion_checker),
+                "sha256": digest(completion_checker),
+            }
+            if completion_checker is not None
+            else None
+        ),
         "foe_sha256": runtime_digest,
         "evaluated_foe": (
             {"source_tree": evaluated_source, "runtime_binary": f"sha256:{runtime_digest}"}

@@ -101,6 +101,64 @@ utility therefore changes tool selection without invalidating the benchmark.
 An installation failure or a missing task-required capability is an
 infrastructure failure and must not contribute a quality score.
 
+## Validate verifier-governed completion without model spend
+
+Three modified scenarios expose a public, read-only checker as a configured
+tool. Each coding node combines a typed return with `done_when.verify`. Foe
+therefore rejects a completion claim when the checker reports findings. The
+model receives those findings and can continue within the node's remaining
+allowance.
+
+The public checker provides development feedback. Harbor still runs the
+unaltered task-owned Terminal-Bench verifier after Foe exits. Only the
+task-owned verifier determines task quality. Results from this modified lane
+are Foe-specific convergence evidence and do not contribute to a standard
+Terminal-Bench score.
+
+The selected scenarios cover three forms of completion:
+
+- `cancel-async-tasks` executes concurrency and cancellation-cleanup probes.
+- `fix-git` checks that the lost commit reaches `master` in a clean worktree.
+- `large-scale-text-editing` checks the allowed Vim grammar and a temporary
+  10,000-row sample. The task-owned verifier applies the script to all one
+  million rows.
+
+Validate every checker before a provider-backed run:
+
+```sh
+bazel run //evals/terminal_bench:foe-verifier-controls
+```
+
+Each control uses a fresh task container. It requires the untouched task
+state to produce at least one finding. It then applies a separate oracle and
+requires both an empty finding list and a score of `1.0` from the task-owned
+verifier. The control agent makes no model request.
+
+Preview one verifier-governed case:
+
+```sh
+bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks
+```
+
+Run the case after reviewing the maximum:
+
+```sh
+bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
+  --label verifier-governed-cancel-async-tasks \
+  --confirm-spend
+```
+
+Equivalent targets end in `foe-verifier-fix-git` and
+`foe-verifier-large-scale-text-editing`. These targets use the default service
+tier, low reasoning for implementation, and high reasoning for an independent
+audit. The implementation retains 60 model calls. The audit receives 25
+additional calls. These values are loop backstops.
+
+The configured executable's bytes participate in Foe's program identity. The
+adapter also downloads the checker after the episode and compares its digest
+with the source digest. A changed checker invalidates the trial as
+infrastructure evidence.
+
 ## Preview and run one assessed task
 
 Every model-backed target prints planning token estimates and an estimated

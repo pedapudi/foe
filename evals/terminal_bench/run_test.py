@@ -145,6 +145,34 @@ class CasesTest(unittest.TestCase):
         self.assertIn("escalation_reasoning_effort=xhigh", command)
         self.assertIn("escalation_model_calls=18", command)
 
+    def test_harbor_command_records_the_completion_checker(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        command = harbor_command(
+            harbor=Path("/tools/harbor"),
+            dataset="terminal-bench/terminal-bench-2-1@6",
+            task=tasks["fix-git"],
+            attempts=1,
+            jobs_dir=Path("/tmp/jobs"),
+            agent_module=Path("/tmp/foe_agent.py"),
+            trace_evaluator=Path("/tmp/score-trace"),
+            foe=Path("/tmp/foe"),
+            credential_state=Path("/tmp/private.json"),
+            model="openai-codex/gpt-5.6-sol",
+            reasoning_effort="low",
+            diagnosis_model=None,
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            diagnosis_pricing=None,
+            unresolved_diagnosis_reasoning_effort=None,
+            unresolved_diagnosis_model_calls=6,
+            escalation_reasoning_effort=None,
+            escalation_model_calls=0,
+            runtime_digest="abc123",
+            pricing=pricing["openai-codex/gpt-5.6-sol"],
+            completion_checker=Path("/tmp/completion-check"),
+        )
+        self.assertIn("completion_checker=/tmp/completion-check", command)
+
     def test_harbor_command_records_conditional_unresolved_diagnosis(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
         command = harbor_command(
@@ -224,6 +252,34 @@ class CasesTest(unittest.TestCase):
         self.assertEqual(
             integrity["incomplete_resource_measurements"],
             ["task__attempt: 1 model call(s) lack provider usage"],
+        )
+
+    def test_job_integrity_rejects_a_changed_completion_checker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            job = Path(directory)
+            trial = job / "task__attempt"
+            trial.mkdir()
+            (trial / "result.json").write_text(
+                json.dumps(
+                    {
+                        "trial_name": "task__attempt",
+                        "exception_info": None,
+                        "agent_result": {
+                            "metadata": {
+                                "foe_outcome": {"kind": "completed", "value": "done"},
+                                "foe_trace_conformant": True,
+                                "foe_usage_reported": True,
+                                "foe_completion_checker_unchanged": False,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            integrity = read_job_integrity(job)
+        self.assertEqual(
+            integrity["infrastructure_failures"],
+            ["task__attempt: the completion checker changed during the trial"],
         )
 
     def test_source_tree_requires_a_clean_checkout(self):

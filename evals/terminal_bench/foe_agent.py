@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shlex
 import subprocess
@@ -27,6 +28,7 @@ from foe_agent_support import (
 REMOTE_BINARY = "/usr/local/bin/foe"
 REMOTE_CREDENTIAL = "/tmp/foe-openai-codex.json"
 REMOTE_PROGRAM = "/tmp/foe-terminal-bench-program.json"
+REMOTE_COMPLETION_CHECKER = "/tmp/foe-completion-check"
 
 
 class FoeAgent(BaseInstalledAgent):
@@ -63,6 +65,7 @@ class FoeAgent(BaseInstalledAgent):
         unresolved_diagnosis_model_calls: int | str = 20,
         escalation_reasoning_effort: str | None = None,
         escalation_model_calls: int | str = 0,
+        completion_checker: str | None = None,
         **kwargs: Any,
     ) -> None:
         self._foe_binary = Path(foe_binary)
@@ -89,6 +92,11 @@ class FoeAgent(BaseInstalledAgent):
         self._unresolved_diagnosis_model_calls = int(unresolved_diagnosis_model_calls)
         self._escalation_reasoning_effort = escalation_reasoning_effort
         self._escalation_model_calls = int(escalation_model_calls)
+        self._completion_checker = (
+            Path(completion_checker) if completion_checker is not None else None
+        )
+        self._completion_checker_digest: str | None = None
+        self._observed_completion_checker_digest: str | None = None
         diagnosis_prices = (
             diagnosis_input_per_million,
             diagnosis_cached_input_per_million,
@@ -120,6 +128,14 @@ class FoeAgent(BaseInstalledAgent):
             raise FileNotFoundError(
                 f"Foe trace evaluator does not exist: {self._trace_evaluator}"
             )
+        if self._completion_checker is not None and not self._completion_checker.is_file():
+            raise FileNotFoundError(
+                f"completion checker does not exist: {self._completion_checker}"
+            )
+        if self._completion_checker is not None:
+            self._completion_checker_digest = hashlib.sha256(
+                self._completion_checker.read_bytes()
+            ).hexdigest()
         super().__init__(*args, **kwargs)
 
     @staticmethod
@@ -131,6 +147,13 @@ class FoeAgent(BaseInstalledAgent):
     async def install(self, environment: BaseEnvironment) -> None:
         await environment.upload_file(self._foe_binary, REMOTE_BINARY)
         await environment.upload_file(self._credential_file, REMOTE_CREDENTIAL)
+        checker_setup = ""
+        if self._completion_checker is not None:
+            await environment.upload_file(
+                self._completion_checker,
+                REMOTE_COMPLETION_CHECKER,
+            )
+            checker_setup = f"chmod 755 {shlex.quote(REMOTE_COMPLETION_CHECKER)} && "
         owner = environment.default_user
         ownership = ""
         if owner is not None:
@@ -138,7 +161,7 @@ class FoeAgent(BaseInstalledAgent):
         await self.exec_as_root(
             environment,
             command=(
-                f"{ownership}chmod 755 {shlex.quote(REMOTE_BINARY)} && "
+                f"{ownership}{checker_setup}chmod 755 {shlex.quote(REMOTE_BINARY)} && "
                 f"chmod 600 {shlex.quote(REMOTE_CREDENTIAL)} && "
                 f"{shlex.quote(REMOTE_BINARY)} schema >/dev/null"
             ),
@@ -199,6 +222,11 @@ class FoeAgent(BaseInstalledAgent):
             reasoning_effort=self._reasoning_effort,
             service_tier=self._service_tier,
             environment_facts=environment_facts,
+            completion_checker=(
+                REMOTE_COMPLETION_CHECKER
+                if self._completion_checker is not None
+                else None
+            ),
             diagnosis_model_name=self._diagnosis_model,
             diagnosis_reasoning_effort=self._diagnosis_reasoning_effort,
             diagnosis_model_calls=self._diagnosis_model_calls,
@@ -246,7 +274,18 @@ class FoeAgent(BaseInstalledAgent):
             status_line = (result.stdout or "").strip().splitlines()
             self._exit_code = int(status_line[-1]) if status_line else None
         finally:
-            await self._retain_credential(environment)
+            try:
+                if self._completion_checker is not None:
+                    retained_checker = self.logs_dir / "foe-completion-checker.after"
+                    await environment.download_file(
+                        REMOTE_COMPLETION_CHECKER,
+                        retained_checker,
+                    )
+                    self._observed_completion_checker_digest = hashlib.sha256(
+                        retained_checker.read_bytes()
+                    ).hexdigest()
+            finally:
+                await self._retain_credential(environment)
 
     @override
     def populate_context_post_run(self, context: AgentContext) -> None:
@@ -294,4 +333,15 @@ class FoeAgent(BaseInstalledAgent):
                 else None,
             }
         )
+        if self._completion_checker_digest is not None:
+            metadata.update(
+                {
+                    "foe_completion_checker_sha256": self._completion_checker_digest,
+                    "foe_completion_checker_observed_sha256": self._observed_completion_checker_digest,
+                    "foe_completion_checker_unchanged": (
+                        self._observed_completion_checker_digest
+                        == self._completion_checker_digest
+                    ),
+                }
+            )
         context.metadata = metadata

@@ -156,6 +156,13 @@ development, confirmation, calibration, and calibration-holdout sets are documen
 Harness-Bench fixtures remain available for local diagnostics in
 [`evals/harness_bench/README.md`](../evals/harness_bench/README.md).
 
+The Terminal-Bench integration also includes a verifier-governed development
+lane. A public checker supplies iterative findings through `done_when.verify`.
+The original task-owned verifier remains the final quality evaluator. The
+lane first requires a negative control and an oracle control in separate task
+containers. These modified scenarios measure convergence under Foe's
+completion contract and remain separate from standard Terminal-Bench scores.
+
 The benchmark's executable evaluator decides task completion. foe's outcome
 and conformance report remain separate fields. This separation distinguishes a
 correct artifact from the runtime path that produced it.

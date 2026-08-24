@@ -18,6 +18,7 @@ CODING_INSTRUCTION = (
 )
 EVALUATION_LOOP_THRESHOLD = 8
 MIN_AUXILIARY_MODEL_CALLS = 6
+COMPLETION_CHECK_RETRIES = 12
 FIXED_EXECUTABLE_PATHS = (
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
@@ -104,6 +105,7 @@ def build_program(
     reasoning_effort: str,
     service_tier: str = "priority",
     environment_facts: str | None = None,
+    completion_checker: str | None = None,
     diagnosis_model_name: str | None = None,
     diagnosis_reasoning_effort: str = "high",
     diagnosis_model_calls: int = 20,
@@ -136,16 +138,36 @@ def build_program(
         raise ValueError("token allowances must be positive integers when present")
     if not working_directory.startswith("/"):
         raise ValueError("working directory must be an absolute path")
+    if completion_checker is not None and not completion_checker.startswith("/"):
+        raise ValueError("completion checker must be an absolute path")
     environment_facts = environment_facts or (
         f"Working directory: {working_directory}. Fixed-path executable availability "
         "was not observed."
     )
     limits.update({key: value for key, value in optional_limits.items() if value is not None})
+    coding_tools = ["read", "grep", "edit", "bash"]
+    check_tool_defs: dict[str, Any] = {}
+    completion_contract: dict[str, Any] = {"returns": COMPLETION_SCHEMA}
+    if completion_checker is not None:
+        coding_tools.append("check")
+        check_tool_defs["check"] = {
+            "exec": completion_checker,
+            "description": (
+                "Runs the task's read-only completion checker. An empty standard output "
+                "means the public completion conditions passed. Each output line is a "
+                "finding to repair."
+            ),
+            "timeout_seconds": 300,
+        }
+        completion_contract.update(
+            {"verify": "check", "retries": COMPLETION_CHECK_RETRIES}
+        )
     program = {
         "version": 2,
         "name": "terminal-bench-coding",
         "instructions": {"environment": environment_facts, "role": CODING_INSTRUCTION},
-        "tools": ["read", "grep", "edit", "bash"],
+        "tools": coding_tools,
+        "tool_defs": check_tool_defs,
         "grants": {"read": [working_directory, "/"], "write": ["/"]},
         "budget": limits,
         "model": {
@@ -158,6 +180,8 @@ def build_program(
         "sandbox": {"mode": "off"},
         "task": instruction,
     }
+    if completion_checker is not None:
+        program["done_when"] = completion_contract
     if (
         diagnosis_model_name is None
         and unresolved_diagnosis_reasoning_effort is None
@@ -261,14 +285,15 @@ def build_program(
             "model": {
                 "name": name,
                 "instructions": {"environment": environment_facts, "role": implementation_role},
-                "tools": ["read", "grep", "edit", "bash"],
+                "tools": coding_tools,
+                "tool_defs": check_tool_defs,
                 "grants": shared_grants,
                 "budget": {
                     "model_calls": implementation_calls,
                     "seconds": implementation_seconds,
                     "loop_threshold": EVALUATION_LOOP_THRESHOLD,
                 },
-                "done_when": {"returns": COMPLETION_SCHEMA},
+                "done_when": completion_contract,
                 "model": {
                     "provider": provider,
                     "model": model,
@@ -413,14 +438,15 @@ def build_program(
                         "that required no audit edit."
                     )
                 },
-                "tools": ["read", "grep", "edit", "bash"],
+                "tools": coding_tools,
+                "tool_defs": check_tool_defs,
                 "grants": shared_grants,
                 "budget": {
                     "model_calls": escalation_model_calls,
                     "seconds": escalation_seconds,
                     "loop_threshold": EVALUATION_LOOP_THRESHOLD,
                 },
-                "done_when": {"returns": COMPLETION_SCHEMA},
+                "done_when": completion_contract,
                 "model": {
                     "provider": provider,
                     "model": model,

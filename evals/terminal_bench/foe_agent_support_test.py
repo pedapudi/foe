@@ -84,6 +84,46 @@ class ProgramTest(unittest.TestCase):
             {"model_calls": 20, "seconds": 600, "loop_threshold": 8},
         )
 
+    def test_completion_checker_governs_root_and_workflow_coding_nodes(self):
+        program = build_program(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            "/workspace",
+            model_calls=20,
+            input_tokens=None,
+            output_tokens=None,
+            seconds=600,
+            reasoning_effort="low",
+            completion_checker="/tmp/completion-check",
+            escalation_reasoning_effort="high",
+            escalation_model_calls=10,
+        )
+        self.assertEqual(program["tool_defs"]["check"]["exec"], "/tmp/completion-check")
+        self.assertEqual(program["done_when"]["verify"], "check")
+        self.assertEqual(program["done_when"]["retries"], 12)
+        self.assertIn("check", program["tools"])
+        for name in ("implement-task", "audit-and-repair-task"):
+            node = program["workflow"]["nodes"][name]["model"]
+            self.assertEqual(node["done_when"], program["done_when"])
+            self.assertEqual(node["tool_defs"], program["tool_defs"])
+            self.assertIn("check", node["tools"])
+
+    def test_completion_checker_requires_an_absolute_path(self):
+        with self.assertRaisesRegex(ValueError, "completion checker must be an absolute path"):
+            build_program(
+                "repair it",
+                "openai-codex/gpt-5.6-sol",
+                "/tmp/private.json",
+                "/workspace",
+                model_calls=20,
+                input_tokens=None,
+                output_tokens=None,
+                seconds=600,
+                reasoning_effort="low",
+                completion_checker="relative-check",
+            )
+
     def test_program_rejects_unqualified_model(self):
         with self.assertRaisesRegex(ValueError, "provider/model"):
             build_program(

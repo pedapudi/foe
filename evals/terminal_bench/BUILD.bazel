@@ -24,6 +24,16 @@ COMMON_DATA = [
     "trajectory_diagnostics.py",
 ]
 
+VERIFIER_CASE_DATA = [
+    "verifier_cases.json",
+    "verifier_cases/cancel_async_tasks/check.py",
+    "verifier_cases/cancel_async_tasks/oracle.sh",
+    "verifier_cases/fix_git/check.py",
+    "verifier_cases/fix_git/oracle.sh",
+    "verifier_cases/large_scale_text_editing/check.py",
+    "verifier_cases/large_scale_text_editing/oracle.sh",
+]
+
 sh_binary(
     name = "foe-trajectory-diagnostics",
     srcs = ["trajectory_diagnostics.py"],
@@ -57,6 +67,65 @@ sh_binary(
     ],
     visibility = ["//visibility:public"],
 )
+
+sh_binary(
+    name = "foe-verifier-controls",
+    srcs = ["run_verifier_controls.py"],
+    args = [
+        "--source-root",
+        "$(rootpath //:Cargo.toml)",
+        "--agent-module",
+        "$(rootpath :verifier_control_agent.py)",
+        "--cases",
+        "$(rootpath :cases.json)",
+        "--verifier-cases",
+        "$(rootpath :verifier_cases.json)",
+    ],
+    data = [
+        "//:Cargo.toml",
+        "cases.json",
+        "run.py",
+        "trajectory_diagnostics.py",
+        "verifier_control_agent.py",
+    ] + VERIFIER_CASE_DATA,
+    visibility = ["//visibility:public"],
+)
+
+[
+    sh_binary(
+        name = "foe-verifier-" + name,
+        srcs = ["run.py"],
+        args = COMMON_ARGS + [
+            "--group",
+            "development",
+            "--task",
+            task,
+            "--completion-checker",
+            "$(rootpath " + checker + ")",
+            "--service-tier",
+            "default",
+            "--escalation-reasoning-effort",
+            "high",
+            "--escalation-model-calls",
+            "25",
+        ],
+        data = COMMON_DATA + [checker],
+        visibility = ["//visibility:public"],
+    )
+    for name, task, checker in [
+        (
+            "cancel-async-tasks",
+            "cancel-async-tasks",
+            "verifier_cases/cancel_async_tasks/check.py",
+        ),
+        ("fix-git", "fix-git", "verifier_cases/fix_git/check.py"),
+        (
+            "large-scale-text-editing",
+            "large-scale-text-editing",
+            "verifier_cases/large_scale_text_editing/check.py",
+        ),
+    ]
+]
 
 sh_binary(
     name = "foe-smoke",
@@ -180,8 +249,11 @@ sh_test(
         "run_test.py",
         "run_self_improvement.py",
         "run_self_improvement_test.py",
+        "run_verifier_controls.py",
+        "run_verifier_controls_test.py",
         "trajectory_diagnostics.py",
         "trajectory_diagnostics_test.py",
-    ],
+        "verifier_control_agent.py",
+    ] + VERIFIER_CASE_DATA,
     size = "small",
 )
