@@ -82,6 +82,7 @@ impl Fixture {
             pool: Arc::new(Mutex::new(Pool::new(self.program.budget.clone()))),
             stop: self.stop_rx,
             children: None,
+            sessions: None,
             context: self.context,
         };
         let outcome = run(params).await.unwrap();
@@ -672,6 +673,7 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
         pool: Arc::new(Mutex::new(Pool::new(program.budget.clone()))),
         stop: stop_rx,
         children: None,
+        sessions: None,
         context: None,
     };
     let outcome = run(params).await.unwrap();

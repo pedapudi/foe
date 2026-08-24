@@ -291,13 +291,22 @@ pub fn validate_next(prior: &State, event: &Event) -> Result<(), LogError> {
     // Two rules over every pairing at once. A `tool/result` names a tool
     // call an earlier `assistant/message` issued, a `budget/release` names
     // a reservation, a `model/request` past its first attempt names the
-    // retry that announced it, and each closes what it names once.
+    // retry that announced it, and each closes what it names once. One
+    // event is exempt from the first rule: a `tool/result` with
+    // `synthetic: true` whose call id names no call closes nothing. It is
+    // the runtime's account of work it settled itself, such as the
+    // implicit stop of a surviving process session, and only the runtime
+    // writes synthetic results.
+    let settled = matches!(&event.data, EventData::ToolResult(r) if r.synthetic);
     let closings = crate::obligations(&event.data).into_iter().filter(|(k, _, opens)| k.is_binding() && !opens);
     for (kind, key, _) in closings {
         if prior.closed.contains(&(kind, key.clone())) {
             return invalid("an obligation is closed once");
         }
         if !prior.open.contains(&(kind, key)) {
+            if settled && kind == Obligation::ToolCall {
+                continue;
+            }
             return invalid("an event that closes an obligation names one an earlier event opened");
         }
     }

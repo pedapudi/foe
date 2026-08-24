@@ -5,7 +5,7 @@ specification, which is what the model sees and what identity hashes, and an
 implementation, which runs when the model calls it. [design.md](design.md)
 defines the specification (`ToolSpec`), the declared effect, and how the
 registry checks effects against grants. This document specifies where tools
-come from, the contract for tools that are executables, the four built-in
+come from, the contract for tools that are executables, the five built-in
 coding tools, and the budget that bounds what one model turn's results
 show.
 
@@ -14,8 +14,9 @@ show.
 The `tools` list in the configuration names every tool the model may call.
 Each name resolves against three sources, checked in this order.
 
-1. **Built-in tools.** Implemented in the runtime. There are eleven: the
-   four coding tools `read`, `grep`, `edit`, and `bash` specified below;
+1. **Built-in tools.** Implemented in the runtime. There are twelve: the
+   five coding tools `read`, `grep`, `edit`, `bash`, and `session`
+   specified below;
    `block`, by which the model reports a blocking condition; `spawn`, which
    starts a child episode, and `wait`, which blocks until every child this
    episode started has ended; `steer`, which sends a message to a running
@@ -81,11 +82,11 @@ replaced binary at the same path changes identity.
 
 ## Built-in coding tools
 
-The four coding tools live in the `foe-code` crate, which exposes two
+The five coding tools live in the `foe-code` crate, which exposes two
 functions. `foe_code::all()` returns every coding tool; `foe_code::readonly()`
-returns only `read` and `grep`. The `bash` tool is compiled only when the
-crate's `exec` feature is enabled, which it is by default. A build without
-that feature contains no code path that starts a process.
+returns only `read` and `grep`. The `bash` and `session` tools are compiled
+only when the crate's `exec` feature is enabled, which they are by default.
+A build without that feature contains no code path that starts a process.
 
 Each tool reaches files and processes only through the capability handles
 the runtime passes at dispatch: a reader bounded to the directories the
@@ -101,6 +102,7 @@ the first `read` root, and paths in results are shown relative to it.
 | `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
 | `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original | `path`, `edits`, `added`, `removed`, `diff` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
+| `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule | `session`, `name`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`; `bytes`; `signal` |
 
 The limits in the table are constants in the crate, and every tool
 description sent to the model is formatted from the same constants.
@@ -118,6 +120,7 @@ model received.
 | `grep` | `3 match(es) in 2 file(s) under src`, with `; incomplete` when a collection bound or failed file stopped it | the error, which names the pattern or the root |
 | `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
 | `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
+| `session` | `session 2: postgres · alive, 41 lines` for a poll, `session 2: exit 0 after 84s` for a stop or for a poll after the end | the error, which names the session id or what refused the start |
 
 A tool reports what the call did rather than what it was asked for, because
 the arguments are already in the log: `grep` states how many matches it
@@ -248,6 +251,52 @@ that file.
 A non-zero exit is a result. The call is an error only when the arguments
 are invalid, the executor refuses the request, or the tool was dispatched
 without the handles it needs.
+
+### `session`
+
+One tool drives every process session, selected by `action`. A session is
+a process that outlives the call that started it and lives at most as long
+as the episode: the workspace already persists across calls, and a session
+extends that persistence to a server, a database, or a debugger.
+
+`start` takes `command` and runs `/bin/bash -c COMMAND` exactly as `bash`
+does: the first read root as the working directory, the same fixed
+environment, the network closed, and the sandbox narrowed to the shell.
+The process runs in its own process group with every standard stream a
+pipe. The result carries the session id, a small integer counted from 1.
+At most 8 sessions may be alive at once, a constant in the crate; a start
+beyond the bound is an error naming it. A session has no timeout: it lives
+until `stop`, its own exit, or episode settlement, and the episode's
+wall-clock budget bounds it only by ending the episode.
+
+`poll` takes `session` and returns what both streams produced since the
+last poll, with the process's state: `alive`, and once the process has
+ended, `exit_code` — null when a signal ended it — and `seconds` from the
+start to the end. The rendering opens with the status line and then shows
+the tail of the new output under the collection-and-spill rule of `bash`:
+the last 2,000 lines or 51,200 characters, the whole text saved to
+`CALL_ID-session.txt` under `spill/` when a cut happens. Between polls
+each stream keeps at most 1 MiB in memory; output beyond that is appended
+to a per-session file under `spill/`, and the poll that first sees it ends
+with a line naming that file.
+
+`write` takes `session` and `input` and writes the bytes to standard
+input. `signal` takes `session` and `signal`, a name such as `SIGINT`,
+where `INT` and `int` name the same signal, and sends it to the process
+group. `stop` takes `session`, sends SIGTERM to the group, waits two
+seconds, sends SIGKILL, and returns the final status; the grace bound is
+the constant the executable teardown uses.
+
+Settlement cleanup is unconditional. At episode settlement every surviving
+session's process group is killed through the same escalation, and each
+termination is recorded as an ordinary `tool/result` with `synthetic:
+true` whose subject states the final status: the result of the implicit
+stop. [log-format.md](log-format.md#open-obligations) specifies that
+result.
+
+Sessions have no terminal: a program that requires a PTY sees a pipe.
+Network access follows the policy a `bash` call runs under, which is
+closed, and no grant kind exists for sessions.
 
 ## The turn budget
 

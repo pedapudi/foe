@@ -22,6 +22,7 @@ use foe_core::loop_::{self, Log, Params};
 use foe_core::protocol::{stdout_mirror, Host};
 use foe_core::registry::{Handles, Registry};
 use foe_core::sandbox::{Policy, Sandbox};
+use foe_core::session::LocalSessions;
 use foe_core::spawn::{ProcessSpawner, Router, Uplink};
 use foe_core::team::{self, Team};
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
@@ -520,6 +521,12 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
     let (sandbox, policy) = confined.parts();
     let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel);
+    let sessions = Arc::new(LocalSessions::new(
+        sandbox.clone(),
+        policy.clone(),
+        log_dir.join("spill"),
+        foe_code::SESSION_MAX_ALIVE,
+    ));
     let host_tools = if host { protocol.tools(&program) } else { Vec::new() };
     let parent = start.parent_id.is_some().then_some(&protocol);
     let mut builtins: Vec<Box<dyn Tool>> = foe_code::all();
@@ -536,6 +543,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         writer,
         executor: Some(Arc::new(executor)),
         spawner: (!program.grants.spawn.is_empty()).then(|| spawner.clone()),
+        sessions: Some(sessions.clone()),
     };
     let server = match viewer {
         Some(bound) => Some(bound.serve(&log_dir).await.map_err(|e| e.to_string())?),
@@ -544,7 +552,19 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let workflow = program.workflow.clone();
     let registry = Arc::new(registry);
     let children = Some(router.clone());
-    let params = Params { log, start, program, registry, handles, transport, pool, stop, children, context };
+    let params = Params {
+        log,
+        start,
+        program,
+        registry,
+        handles,
+        transport,
+        pool,
+        stop,
+        children,
+        sessions: Some(sessions),
+        context,
+    };
     let outcome = match workflow {
         Some(workflow) => foe_workflow::run(WorkflowParams { episode: params, spawner, workflow }).await,
         None => loop_::run(params).await,

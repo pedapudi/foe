@@ -6,29 +6,14 @@
 //! kill, so a command that outlives its budget is reported as `timed_out`
 //! rather than as a tool error.
 
-use crate::{parse_args, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES};
+use crate::{parse_args, shell_environment, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES, SHELL};
 use foe_config::{Effect, ToolSpec};
 use foe_core::{fitting, CallCtx, ExecRequest, Tool, ToolValue, SUBJECT_MAX};
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
-
-const SHELL: &str = "/bin/bash";
-
-/// The complete environment of the shell. The executor sets exactly what it
-/// is given and inherits nothing, so the shell needs a search path to find
-/// programs; `HOME` is the working directory, since the tool has no other
-/// writable location.
-fn environment(cwd: &std::path::Path) -> BTreeMap<String, String> {
-    BTreeMap::from([
-        ("PATH".to_owned(), "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_owned()),
-        ("HOME".to_owned(), cwd.display().to_string()),
-        ("LANG".to_owned(), "C.UTF-8".to_owned()),
-    ])
-}
 
 pub struct Bash {
     spec: ToolSpec,
@@ -99,7 +84,7 @@ impl Tool for Bash {
         let req = ExecRequest {
             program: PathBuf::from(SHELL),
             args: vec!["-c".into(), a.command.clone()],
-            env: environment(&cwd),
+            env: shell_environment(&cwd),
             cwd,
             timeout,
             network: false,

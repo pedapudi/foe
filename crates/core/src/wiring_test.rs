@@ -203,7 +203,7 @@ async fn ending_an_episode_settles_a_child_that_is_still_running() {
     let expected = [foe_log::Obligation::Child, foe_log::Obligation::Reservation].into_iter().collect();
     assert_eq!(open, expected, "the child and its reservation are open");
 
-    crate::loop_::settle(&log, &pool, Some(&router)).await.unwrap();
+    crate::loop_::settle(&log, &pool, Some(&router), None).await.unwrap();
     log.append(EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::Value::Null } }).unwrap();
     assert_eq!(types(&log)[3..], ["spawn/end", "budget/release", "episode/end"]);
     assert_eq!(lock(&pool).active_children(), 0, "the reservation returned to the pool");

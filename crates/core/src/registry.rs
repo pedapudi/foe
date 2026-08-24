@@ -28,6 +28,7 @@ pub struct Handles {
     pub writer: Option<Arc<dyn crate::Writer>>,
     pub executor: Option<Arc<dyn Executor>>,
     pub spawner: Option<Arc<dyn crate::Spawner>>,
+    pub sessions: Option<Arc<dyn crate::Sessions>>,
 }
 
 struct Entry {
@@ -141,14 +142,14 @@ impl Registry {
         deadline: Option<Instant>,
     ) -> CallCtx {
         let h = handles;
-        let (reader, writer, executor, spawner) = match effect {
-            Effect::Pure => (None, None, None, None),
-            Effect::Reads => (h.reader.clone(), None, None, None),
-            Effect::Writes => (h.reader.clone(), h.writer.clone(), None, None),
-            Effect::Execs => (h.reader.clone(), None, h.executor.clone(), None),
-            Effect::Spawns => (h.reader.clone(), None, None, h.spawner.clone()),
+        let (reader, writer, executor, spawner, sessions) = match effect {
+            Effect::Pure => (None, None, None, None, None),
+            Effect::Reads => (h.reader.clone(), None, None, None, None),
+            Effect::Writes => (h.reader.clone(), h.writer.clone(), None, None, None),
+            Effect::Execs => (h.reader.clone(), None, h.executor.clone(), None, h.sessions.clone()),
+            Effect::Spawns => (h.reader.clone(), None, None, h.spawner.clone(), None),
         };
-        CallCtx { call_id, step, reader, writer, executor, spawner, spill_dir, deadline }
+        CallCtx { call_id, step, reader, writer, executor, spawner, sessions, spill_dir, deadline }
     }
 
     /// Runs one call with the handles its effect entitles it to. An unknown

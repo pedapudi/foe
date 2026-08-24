@@ -97,7 +97,7 @@ impl Executor for LocalExecutor {
 }
 
 /// SIGTERM to the group, [`TERM_GRACE`] for the leader to exit, then SIGKILL.
-fn end_group(group: Pid, child: &mut Child) -> std::io::Result<()> {
+pub(crate) fn end_group(group: Pid, child: &mut Child) -> std::io::Result<()> {
     let _ = killpg(group, Signal::SIGTERM);
     let until = Instant::now() + TERM_GRACE;
     while Instant::now() < until && child.try_wait()?.is_none() {

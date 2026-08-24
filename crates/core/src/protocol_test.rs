@@ -82,6 +82,7 @@ fn ctx(call_id: &str, dir: &std::path::Path) -> CallCtx {
         writer: None,
         executor: None,
         spawner: None,
+        sessions: None,
         spill_dir: dir.to_path_buf(),
         deadline: None,
     }

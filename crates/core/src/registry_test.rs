@@ -109,6 +109,7 @@ async fn dispatch_passes_only_the_handles_the_effect_entitles() {
         writer: Some(Arc::new(RootWriter::new(program.grants.write.clone()).unwrap())),
         executor: Some(Arc::new(FakeExecutor::default())),
         spawner: None,
+        sessions: None,
     };
     let received = |name: &str| {
         let (registry, handles, root) = (&registry, &handles, &root);

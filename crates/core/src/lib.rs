@@ -33,6 +33,7 @@ pub mod protocol;
 pub mod registry;
 pub mod result_budget;
 pub mod sandbox;
+pub mod session;
 pub mod spawn;
 pub mod team;
 #[cfg(test)]
@@ -108,6 +109,7 @@ pub struct CallCtx {
     pub writer: Option<Arc<dyn Writer>>,
     pub executor: Option<Arc<dyn Executor>>,
     pub spawner: Option<Arc<dyn Spawner>>,
+    pub sessions: Option<Arc<dyn Sessions>>,
     /// Directory for output too large to inline; always present.
     pub spill_dir: PathBuf,
     /// Remaining wall-clock budget, when the episode has one.
@@ -159,6 +161,62 @@ pub struct ExecResult {
     pub stderr: Vec<u8>,
     pub timed_out: bool,
     pub duration: std::time::Duration,
+}
+
+/// Supervises process sessions: processes that outlive the call that
+/// started them and end, at the latest, at episode settlement. The
+/// `session` tool reaches such processes only through this handle, as
+/// `bash` reaches processes only through [`Executor`].
+pub trait Sessions: Send + Sync {
+    /// Starts a session in its own process group. An implementation bounds
+    /// how many sessions may be alive at once.
+    fn start(&self, req: SessionRequest) -> Result<SessionStatus, CapError>;
+    /// The session's state, and every output byte captured since the last
+    /// take, both streams drained.
+    fn take_output(&self, id: u64) -> Result<(SessionStatus, SessionOutput), CapError>;
+    /// Writes bytes to the session's standard input.
+    fn write_stdin(&self, id: u64, bytes: &[u8]) -> Result<SessionStatus, CapError>;
+    /// Sends a signal named in the form `SIGINT` to the process group.
+    fn signal(&self, id: u64, signal: &str) -> Result<SessionStatus, CapError>;
+    /// Ends the session: SIGTERM to the group, a grace wait, then SIGKILL.
+    /// Returns the final status; stopping an ended session returns its
+    /// status again.
+    fn stop(&self, id: u64) -> Result<SessionStatus, CapError>;
+    /// Stops every alive session, for the settlement that ends the episode.
+    /// Returns the final status of each session that was alive.
+    fn stop_all(&self) -> Vec<SessionStatus>;
+}
+
+/// What starts a session: the program, arguments, environment, and working
+/// directory it runs with, and the short name results call it by. The
+/// network is closed, as for every executable.
+#[derive(Debug, Clone)]
+pub struct SessionRequest {
+    /// One word naming the process in subjects, such as `postgres`.
+    pub name: String,
+    pub program: PathBuf,
+    pub args: Vec<String>,
+    pub env: BTreeMap<String, String>,
+    pub cwd: PathBuf,
+}
+
+/// A session's state: whether the process group is alive, the exit code
+/// once it is not — `None` when a signal ended it — and the whole seconds
+/// from the start to now or to the end.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionStatus {
+    pub id: u64,
+    pub name: String,
+    pub alive: bool,
+    pub exit_code: Option<i32>,
+    pub seconds: u64,
+}
+
+/// Output taken from a session: each stream's bytes since the last take.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SessionOutput {
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
 }
 
 /// Starts child episodes bounded to the declared child programs.

@@ -113,6 +113,7 @@ pub fn ctx(fx: &Fixture) -> CallCtx {
         writer: Some(handle),
         executor: None,
         spawner: None,
+        sessions: None,
         spill_dir: fx.dir.path().join("spill"),
         deadline: None,
     }
@@ -122,6 +123,13 @@ pub fn ctx_with_executor(fx: &Fixture, executor: Arc<dyn Executor>) -> CallCtx {
     let mut c = ctx(fx);
     c.writer = None;
     c.executor = Some(executor);
+    c
+}
+
+pub fn ctx_with_sessions(fx: &Fixture, sessions: Arc<dyn foe_core::Sessions>) -> CallCtx {
+    let mut c = ctx(fx);
+    c.writer = None;
+    c.sessions = Some(sessions);
     c
 }
 
