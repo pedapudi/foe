@@ -646,14 +646,11 @@ impl Executor {
             verification_seq,
         }))?;
         self.sched.skip(name);
-        let label = carried
-            .value
-            .get("branch")
-            .and_then(Value::as_str)
-            .filter(|l| node.branches.contains_key(*l))
-            .map(str::to_string);
+        // Construction refuses a guard beside `branches`, so a skipped node
+        // is never a choice point and its value propagates plainly.
+        debug_assert!(node.branches.is_empty());
         let produced = Produced { value: carried.value, rendered: carried.rendered, seq: event.seq };
-        self.produce(name, 0, produced, label).await
+        self.produce(name, 0, produced, None).await
     }
 
     /// Propagates a value along the admitted edges and completes the

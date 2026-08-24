@@ -316,7 +316,10 @@ rules, each refused with an error naming the key: the named node appears
 in the declaring node's `follows`, and the named node can produce a
 verification — it declares a node-level `verify`, or it is a model node
 whose program declares `done_when.verify`. A guard outside those rules
-could never fire, or could never observe the acceptance it reads. The key
+could never fire, or could never observe the acceptance it reads. A third
+rule refuses the guard beside `branches`: a choice point is the node's own
+judgment over its result, and a skipped node exercises none, so no rule
+could say which branch a value the node never produced selects. The key
 is part of the node's serialization, so it participates in identity as
 every configured field does.
 

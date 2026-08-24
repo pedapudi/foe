@@ -248,6 +248,16 @@ pub fn check(
                 );
                 return Err(invalid(key("skip_when_verified"), rule));
             }
+            // A choice point is the node's own judgment over its result,
+            // and a skipped node exercises none: no rule could say which
+            // branch a value the node never produced selects. The two
+            // declarations are therefore refused together.
+            if !node.branches.is_empty() {
+                let rule = "is declared beside branches; a skipped node makes no choice, so a guarded node \
+                            cannot be a choice point"
+                    .to_string();
+                return Err(invalid(key("skip_when_verified"), rule));
+            }
         }
         node.verify.iter().try_for_each(|v| tool_in("verify", v))?;
         node.tool.iter().try_for_each(|t| tool_in("tool", t))?;
