@@ -1,0 +1,1 @@
+exports_files(["portable_binary.bzl"])

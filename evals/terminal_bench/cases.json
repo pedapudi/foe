@@ -1,0 +1,56 @@
+{
+  "dataset": "terminal-bench/terminal-bench-2-1@6",
+  "groups": {
+    "development": [
+      "cancel-async-tasks",
+      "git-multibranch",
+      "fix-git",
+      "sqlite-db-truncate"
+    ],
+    "holdout": [
+      "sanitize-git-repo",
+      "large-scale-text-editing"
+    ],
+    "smoke": [
+      "fix-git"
+    ]
+  },
+  "tasks": {
+    "cancel-async-tasks": {
+      "model_calls": 20,
+      "input_tokens": 240000,
+      "output_tokens": 32000,
+      "seconds": 900
+    },
+    "git-multibranch": {
+      "model_calls": 28,
+      "input_tokens": 360000,
+      "output_tokens": 48000,
+      "seconds": 900
+    },
+    "fix-git": {
+      "model_calls": 12,
+      "input_tokens": 120000,
+      "output_tokens": 20000,
+      "seconds": 600
+    },
+    "sqlite-db-truncate": {
+      "model_calls": 24,
+      "input_tokens": 300000,
+      "output_tokens": 40000,
+      "seconds": 900
+    },
+    "sanitize-git-repo": {
+      "model_calls": 24,
+      "input_tokens": 300000,
+      "output_tokens": 40000,
+      "seconds": 900
+    },
+    "large-scale-text-editing": {
+      "model_calls": 24,
+      "input_tokens": 300000,
+      "output_tokens": 40000,
+      "seconds": 1200
+    }
+  }
+}
