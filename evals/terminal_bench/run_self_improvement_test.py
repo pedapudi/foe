@@ -77,13 +77,23 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn("output_tokens", implementation["budget"])
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
         self.assertIn("higher-cost successful setting", diagnosis["instructions"]["controls"])
-        self.assertIn("explicit program", diagnosis["instructions"]["controls"])
+        self.assertIn("recorded program", diagnosis["instructions"]["controls"])
         returns = diagnosis["done_when"]["returns"]
-        self.assertIn("preserved_evaluation_controls", returns["required"])
-        self.assertIn("causal_discriminant", returns["required"])
+        self.assertEqual(
+            returns["required"],
+            [
+                "limitation",
+                "attribution",
+                "causal_contrast",
+                "intervention",
+                "activation_path",
+                "preserved_controls",
+                "falsification_condition",
+            ],
+        )
         self.assertIn("falsification_condition", returns["required"])
-        self.assertIn("required_paths", returns["required"])
-        self.assertIn("runtime_activation", returns["required"])
+        self.assertNotIn("required_paths", returns["properties"])
+        self.assertNotIn("runtime_activation", returns["properties"])
         self.assertNotIn("implementation_files", returns["properties"])
         self.assertNotIn("model", implementation)
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
@@ -95,6 +105,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertIn("four model requests as a planning target", diagnosis["instructions"]["result"])
         self.assertIn("loop backstop", diagnosis["instructions"]["result"])
+        self.assertIn("must not branch on", diagnosis["instructions"]["controls"])
         self.assertEqual(
             implementation["grants"]["write"],
             [str(root / directory) for directory in ("crates", "docs", "examples")],

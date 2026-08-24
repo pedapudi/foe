@@ -285,13 +285,17 @@ bazel run //evals/terminal_bench:self-improve -- \
   --confirm-spend
 ```
 
-Luna with `high` reasoning produces the bounded diagnosis from the supplied
+Luna with `low` reasoning produces the bounded diagnosis from the supplied
 digest. Its only ordinary tool is `block`, so it cannot inspect the candidate
-source or retained run directories. Terra with `high` reasoning receives that
-diagnosis and acts with `read`, `grep`, `edit`, and `bash`. The coding child
-locates the affected implementation, test, and specification files.
-Its write authority covers runtime crates, specifications, and examples. It
-cannot write evaluation code or benchmark material.
+source or retained run directories. Its typed result contains one causal
+contrast, one intervention, and the controls and falsification condition
+needed to evaluate that intervention.
+
+Terra with `high` reasoning receives the diagnosis and acts with `read`,
+`grep`, `edit`, and `bash`. The coding child locates the affected
+implementation, test, and specification files. Its write authority covers
+runtime crates, specifications, and examples. It cannot write evaluation code
+or benchmark material.
 
 The diagnosis prompt targets four requests and has a 20-call, 1,800-second
 loop backstop. The implementation has 28-call and 3,600-second safety

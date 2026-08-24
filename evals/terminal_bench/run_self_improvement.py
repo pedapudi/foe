@@ -275,9 +275,9 @@ def build_config(
         "instructions": {
             "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
-            "evidence": "Compare failed and successful model settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Tie claims to episode identifiers and log sequence numbers. Separate model limitations from harness limitations.",
-            "controls": "Improve the lower-cost evaluated configuration. Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat a higher-cost successful setting as diagnostic evidence rather than the candidate configuration. The intervention must change general product behavior under crates, docs, or examples and must be active for the explicit program recorded in the evidence. Evaluation configuration is outside candidate scope.",
-            "result": "Use four model requests as a planning target. Return one typed causal intervention as soon as the evidence supports it. Continue only while a named causal uncertainty prevents a supported intervention. The model-call allowance is a loop backstop. Name evidence that differs between failed and successful attempts, plus the observation that would falsify the intervention. The coding episode receives the diagnosis without the trajectory reports.",
+            "evidence": "Compare the failed and successful settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
+            "controls": "Improve the lower-cost evaluated configuration. Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat a higher-cost successful setting as diagnostic evidence rather than the candidate configuration. The intervention must apply through general Foe behavior or an existing general configuration mechanism used by the recorded program. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity. Evaluation configuration is outside candidate scope.",
+            "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports it. Continue only while a named causal uncertainty prevents a supported intervention. The model-call allowance is a loop backstop. Each string should contain no more than two sentences. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block"],
         "grants": {"read": diagnosis_read_roots},
@@ -291,57 +291,39 @@ def build_config(
             "returns": {
                 "type": "object",
                 "properties": {
-                    "harness_limitation": {"type": "string", "minLength": 1},
-                    "model_limitation": {"type": "string", "minLength": 1},
-                    "failed_attempt_evidence": {"type": "array", "items": {"type": "string"}, "minItems": 2},
-                    "successful_contrast_evidence": {"type": "array", "items": {"type": "string"}, "minItems": 2},
-                    "intervention": {"type": "string", "minLength": 1},
-                    "predicted_trace_change": {"type": "string", "minLength": 1},
-                    "causal_discriminant": {
+                    "limitation": {"type": "string", "minLength": 1},
+                    "attribution": {"type": "string", "minLength": 1},
+                    "causal_contrast": {
                         "type": "object",
                         "properties": {
-                            "failed_evidence": {
+                            "failed": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "minItems": 2,
+                                "minItems": 1,
                             },
-                            "successful_evidence": {
+                            "successful": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "minItems": 2,
+                                "minItems": 1,
                             },
                             "difference": {"type": "string", "minLength": 1},
                         },
-                        "required": [
-                            "failed_evidence",
-                            "successful_evidence",
-                            "difference",
-                        ],
+                        "required": ["failed", "successful", "difference"],
                         "additionalProperties": False,
                     },
+                    "intervention": {"type": "string", "minLength": 1},
+                    "activation_path": {"type": "string", "minLength": 1},
+                    "preserved_controls": {"type": "string", "minLength": 1},
                     "falsification_condition": {"type": "string", "minLength": 1},
-                    "required_paths": {
-                        "type": "array",
-                        "items": {"type": "string", "minLength": 1},
-                        "minItems": 1,
-                    },
-                    "runtime_activation": {"type": "string", "minLength": 1},
-                    "preserved_evaluation_controls": {"type": "string", "minLength": 1},
-                    "acceptance": {"type": "string", "minLength": 1},
                 },
                 "required": [
-                    "harness_limitation",
-                    "model_limitation",
-                    "failed_attempt_evidence",
-                    "successful_contrast_evidence",
+                    "limitation",
+                    "attribution",
+                    "causal_contrast",
                     "intervention",
-                    "predicted_trace_change",
-                    "causal_discriminant",
+                    "activation_path",
+                    "preserved_controls",
                     "falsification_condition",
-                    "required_paths",
-                    "runtime_activation",
-                    "preserved_evaluation_controls",
-                    "acceptance",
                 ],
                 "additionalProperties": False,
             }
@@ -497,7 +479,7 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument(
         "--diagnosis-reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
-        default="high",
+        default="low",
     )
     answer.add_argument(
         "--objective",
