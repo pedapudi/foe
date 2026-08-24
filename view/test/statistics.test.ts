@@ -88,7 +88,11 @@ test("a compaction's own call is marked and still counts against the budget", ()
 
 test("the cache hit rate keeps the two counts it came from", () => {
   const out = stats([["compact.jsonl", 0]]);
-  assert.deepEqual(out.cache, { read: 2300, input: 5540, rate: 2300 / 5540 });
+  // The per-request figure is the unweighted mean of each request's own
+  // fraction, so the two cold small requests count as much as the warm
+  // large ones.
+  const perRequest = (0 / 900 + 900 / 1400 + 1400 / 1900 + 0 / 700 + 0 / 640) / 5;
+  assert.deepEqual(out.cache, { read: 2300, input: 5540, rate: 2300 / 5540, perRequest, measuredRequests: 5 });
 });
 
 test("a run that measured no cache read has no hit rate", () => {

@@ -111,9 +111,12 @@ export interface Statistics {
   /**
    * Cache reads against total input tokens. Absent when no answer reported
    * a cache-read figure, which is a measurement that was not made rather
-   * than a hit rate of zero.
+   * than a hit rate of zero. `rate` weights each request by its input;
+   * `perRequest` is the unweighted mean over the `measuredRequests`
+   * requests that reported both figures, so one large request cannot hide
+   * many cold ones.
    */
-  cache: { read: number; input: number; rate: number } | null;
+  cache: { read: number; input: number; rate: number; perRequest: number | null; measuredRequests: number } | null;
   limits: Limit[];
   /** `request/retry` events in the scope. */
   retries: number;
@@ -270,10 +273,23 @@ export function computeStatistics(scope: StatisticsEpisode[], now: number): Stat
   };
 
   const tokens = { input, output, cacheRead };
+  let fractions = 0;
+  let measuredRequests = 0;
+  for (const step of steps) {
+    if (step.cacheRead === null || step.input === null || step.input === 0) continue;
+    fractions += step.cacheRead / step.input;
+    measuredRequests += 1;
+  }
   const cache =
     cacheRead === null || input === null || input === 0
       ? null
-      : { read: cacheRead, input, rate: cacheRead / input };
+      : {
+          read: cacheRead,
+          input,
+          rate: cacheRead / input,
+          perRequest: measuredRequests === 0 ? null : fractions / measuredRequests,
+          measuredRequests,
+        };
 
   const depth = Math.max(0, ...scope.map((e) => e.depth));
   const limits =
