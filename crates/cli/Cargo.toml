@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 foe-log = { path = "../log" }
 foe-config = { path = "../config" }
+foe-lineage = { path = "../lineage" }
 foe-telemetry = { path = "../telemetry" }
 foe-core = { path = "../core" }
 foe-code = { path = "../code" }

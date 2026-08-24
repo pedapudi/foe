@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+mod lineage;
 #[cfg(feature = "transport")]
 mod login;
 mod plan;
@@ -62,6 +63,7 @@ const FORMS: &[Form] = &[
     form("plan", "", "print a resolved program with its identity, its transport, and its effective tool authority"),
     form("tools", "", "list the tools, with the source each name resolves in"),
     form("schema", "", "print the JSON Schema of the configuration document"),
+    form("lineage", "STATE", "verify a state document's ancestry claim against retained evidence"),
     form("telemetry", "LOG...", "print, for finished episode logs, the payload telemetry emission writes"),
 ];
 
@@ -91,6 +93,15 @@ const OPTS: &[Opt] = &[
     opt("plan", "--config", "FILE", "required", "the configuration document to resolve"),
     opt("plan", "--json", "", "", "print one JSON object instead of the report"),
     opt("tools", "--config", "FILE", "the built-in tools alone", "resolve this document's tools instead"),
+    opt("lineage", "--states", "DIR", "required", "directory of state documents, one <hex>.json per lineage identity"),
+    opt(
+        "lineage",
+        "--evidence",
+        "DIR",
+        "required",
+        "directory of evidence bundles, one <hex> directory per content address",
+    ),
+    opt("lineage", "--json", "", "", "print the report as one JSON object"),
     opt("telemetry", "--json", "", "", "print that payload as JSON instead of a summary"),
 ];
 
@@ -207,6 +218,7 @@ enum Command {
     Plan { config: PathBuf, json: bool },
     Tools { config: Option<PathBuf> },
     Schema,
+    Lineage { state: PathBuf, states: PathBuf, evidence: PathBuf, json: bool },
     Telemetry { logs: Vec<String>, json: bool },
     Help(&'static Form),
 }
@@ -246,6 +258,12 @@ fn command(argv: &[String]) -> Result<Command, String> {
             json: args.switch("--json"),
         },
         "tools" => Command::Tools { config: args.value("--config").map(PathBuf::from) },
+        "lineage" => Command::Lineage {
+            state: PathBuf::from(&args.positional[0]),
+            states: PathBuf::from(args.value("--states").ok_or("`foe lineage` takes --states DIR")?),
+            evidence: PathBuf::from(args.value("--evidence").ok_or("`foe lineage` takes --evidence DIR")?),
+            json: args.switch("--json"),
+        },
         "login" => Command::Login {
             provider: args.positional.pop(),
             model: args.value("--model"),
@@ -295,6 +313,7 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
         Command::Schema => printed(SCHEMA),
         Command::Plan { config, json } => plan(&config, json),
         Command::Tools { config } => tools(config.as_deref()),
+        Command::Lineage { state, states, evidence, json } => lineage::check(&state, &states, &evidence, json),
         Command::View { dir, serve, port } => view(&dir, serve, port),
         Command::Login { provider, model, status } => login(provider, model, status),
         Command::Telemetry { logs, json } => telemetry::preview(&logs, json).map(|()| ExitCode::SUCCESS),

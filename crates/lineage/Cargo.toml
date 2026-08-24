@@ -1,0 +1,14 @@
+[package]
+name = "foe-lineage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Evidence about how program states relate: the lineage identity, the evidence-bundle manifest, and the ancestry checker"
+
+[dependencies]
+foe-config = { path = "../config" }
+foe-log = { path = "../log" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

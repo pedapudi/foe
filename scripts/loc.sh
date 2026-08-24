@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Eight budgets: 5,000 over the kernel, which is log and core together — the
+# Nine budgets: 5,000 over the kernel, which is log and core together — the
 # log format, the loop, budgets, sandbox, and spawn, whose smallness is the
 # product claim; 1,400 over config, the other contract, which is the
 # configuration document, its resolution into a program, and identity; 1,600
 # over tools, which is code — the tool surface, which grows a tool at a time
 # without touching the kernel; 1,000 over workflow; 500 over context; 600
-# over view; 1,300 over cli; 1,000 over telemetry. The kernel is budgeted apart
+# over view; 1,300 over cli; 1,000
+# over telemetry; 500 over lineage, which reads finished evidence about how
+# program states relate and is part of neither contract. The kernel is budgeted apart
 # from config because the kernel measures the machine and config measures the
 # data model; a document that gains a key must not buy room in the loop. The
 # viewer
@@ -42,5 +44,7 @@ cli=$(count cli)
 printf '%-8s %6d  (budget 1300)\n' cli "$cli"
 telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
+lineage=$(count lineage)
+printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
 [ "$kernel" -le 5000 ] && [ "$config" -le 1400 ] && [ "$tools" -le 1600 ] && [ "$workflow" -le 1000 ] \
-  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ]
+  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]

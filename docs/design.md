@@ -572,7 +572,7 @@ own.
 
 ## The command line
 
-The binary has one running form and five forms that run nothing.
+The binary has one running form and six forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
@@ -584,6 +584,7 @@ foe view DIR [--serve [--port N]]                        write a self-contained 
 foe plan --config FILE [--json]                          print the resolved program, its identity, its transport, and its effective authority
 foe tools [--config FILE]                                list tools, with sources when a config is given
 foe schema                                               print the JSON Schema for the configuration
+foe lineage STATE --states DIR --evidence DIR [--json]   verify a state document's ancestry claim against retained evidence
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
 
@@ -705,6 +706,8 @@ not finished.
                                         context seam └── crates/view ◄── view/ (browser bundle)
                                                           projection, HTTP, SSE, export
 
+                     crates/lineage ◄── config and log; the ancestry checker
+
                                           crates/cli ◄── all of the above; plan reports
 
    python/foe    a thin host: builds config, runs the binary, serves the protocol
@@ -767,6 +770,14 @@ write. The binary supplies only the path that file is found at, which is a
 convention `crates/transport` owns, so the telemetry crate still depends on
 `crates/log` alone.
 
+`crates/lineage` is evidence about how program states relate: the lineage
+identity, the evidence-bundle canonical manifest and its checker, and the
+ancestry checker [lineage-identity.md](lineage-identity.md) specifies. It
+depends on `crates/config` for the claim's shape and the canonical
+serialization, and on `crates/log` for the episode record, and is part of
+neither contract: nothing in the runtime depends on it. The binary
+supplies only the two directory-backed resolvers `foe lineage` builds.
+
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
@@ -812,6 +823,13 @@ and the preview `foe telemetry` prints. Nothing in the runtime depends on it,
 the crate depends on `log` alone, and an installation that never enables
 telemetry carries none of its behavior.
 See [docs/telemetry.md](telemetry.md).
+
+Lineage is budgeted apart on the same terms: `crates/lineage` under 500
+lines. It is separate because it reads finished evidence rather than
+producing any: it consumes the configuration contract and the log contract
+to verify how one program state descends from another, and nothing in the
+runtime depends on it. A claim that gains a check must not buy room inside
+either contract. See [lineage-identity.md](lineage-identity.md).
 
 Rust outside every line budget, in the built-in transport, is bounded by the
 size of the binary it compiles into. Continuous integration enforces every

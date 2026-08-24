@@ -1,8 +1,14 @@
 # Program lineage and transition evidence
 
-Status: design. The configuration key `program_lineage` and the log event
-`verification/result` are proposed here. The configuration parser does not
-accept the key, and the runtime does not emit the event.
+Status: implemented, except the candidate digest binding. The
+configuration parser accepts the `program_lineage` key, the identity
+computation omits it, and the `foe-lineage` crate derives the lineage
+identity, checks an evidence bundle against its canonical manifest, and
+verifies an ancestry claim through two resolvers. The runtime emits an
+authoritative `verification/result` event without the `candidate_sha256`
+member proposed here; the log format freezes an implemented type's data.
+"The candidate binding gap" states what the absence weakens and the ways
+to close it.
 
 ## Scope of the existing identity
 
@@ -146,11 +152,11 @@ digests.
 ## Authoritative verifier record
 
 The existing completion verifier runs authoritatively after an ordinary
-model call. Its authoritative invocation is not currently represented by a
-log event. Program lineage requires an additive `verification/result` event
-for that invocation.
+model call. The `verification/result` event records each authoritative
+invocation. The event this design requires carries one member the
+implemented event does not: `candidate_sha256`.
 
-The event records these fields:
+The complete event of this design records these fields:
 
 ```json
 {
@@ -247,6 +253,53 @@ steps:
 The check establishes a complete chain from the state to a chosen root. It
 does not establish that the verifier measured the right property. Evaluator
 quality remains part of the adoption policy and the evaluation record.
+
+The command line exposes the checker. `foe lineage STATE --states DIR
+--evidence DIR` reads a state document from STATE, resolves states from
+`DIR/<hex>.json` by lineage identity and bundles from `DIR/<hex>` by
+content address, and prints the chain with every check the retained
+evidence leaves open. `--json` prints the same report as one object.
+
+## The candidate binding gap
+
+The implemented `verification/result` event carries every member of the
+event above except `candidate_sha256`. The log format freezes an
+implemented type's data, so the member cannot be added to the existing
+event.
+
+The absence weakens the checker exactly at step 7. The checker still
+requires an accepted `verification/result` at `verification_seq`, and
+steps 8 and 9 still bind the retained envelope to the retained identity
+document, the retained artifact manifest, and the recomputed child
+identity. What no step can establish is that the envelope retained in the
+bundle equals the value the verifier judged. Transition rule 3, exact
+input binding, is therefore not enforced; the checker reports it as
+unverifiable rather than failing the claim.
+
+One further check is weakened by the shape of the identity document rather
+than by the event. Step 14 compares the recorded verifier identity with
+the executable hash the parent program declares. The parent identity
+document reduces a child program to its hash, so when the verifier episode
+runs a child program with a configured verifier, the declared executable
+hash is retained nowhere the checker can reach, and the comparison is
+reported as unverifiable. A built-in verifier is checked in every
+position, against the recorded runtime build.
+
+Three ways to close the event gap exist. Choosing among them is a design
+decision this document does not make.
+
+- A new additive event type that records the authoritative invocation with
+  the candidate digest. Adding an event type is compatible with the frozen
+  log format; the existing event would remain, and the checker would
+  require the new event where present.
+- A new log version that adds `candidate_sha256` to `verification/result`
+  itself. This is the design above, at the cost of a version bump for
+  every log reader.
+- An envelope record outside the log, retained in the bundle, pairing the
+  event coordinates with the candidate digest. This needs no log change,
+  but the record is written by the bundle builder rather than by the
+  runtime that invoked the verifier, so it attests the pairing only as
+  strongly as the bundle that carries it.
 
 ## Branches and repeated states
 

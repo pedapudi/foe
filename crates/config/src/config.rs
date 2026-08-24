@@ -36,6 +36,10 @@ pub struct Program {
     pub model: Option<ModelConfig>,
     /// Inherited by every child program.
     pub sandbox: SandboxConfig,
+    /// The root configuration's ancestry claim, kept so that
+    /// `episode/start.program` records it. Identity omits it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub program_lineage: Option<crate::ProgramLineage>,
     pub programs: BTreeMap<String, Program>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow: Option<WorkflowConfig>,
@@ -200,7 +204,8 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
 pub fn resolve(config: &Config) -> Result<Program, ConfigError> {
     validate(config)?;
     let inherited = (config.model.clone(), config.sandbox.clone());
-    resolve_section("", &ChildProgram::from(config), &inherited, None)
+    let lineage = config.program_lineage.clone();
+    Ok(Program { program_lineage: lineage, ..resolve_section("", &ChildProgram::from(config), &inherited, None)? })
 }
 
 fn resolve_section(
@@ -266,6 +271,7 @@ fn resolve_section(
         context: s.context.clone(),
         model,
         sandbox: inherited.1.clone(),
+        program_lineage: None,
         programs,
         workflow: s.workflow.clone(),
     };

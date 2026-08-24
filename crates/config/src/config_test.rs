@@ -404,3 +404,48 @@ fn an_ordinary_child_may_hold_tools_the_parent_does_not_use() {
     assert_eq!(program.tools, vec!["spawn"]);
     assert_eq!(program.programs["kid"].tools, vec!["block"]);
 }
+
+// ---- program_lineage ------------------------------------------------------
+
+fn lineage_claim() -> serde_json::Value {
+    serde_json::json!({
+        "parent": {
+            "program_identity": format!("sha256:{}", "a".repeat(64)),
+            "lineage_identity": format!("sha256:{}", "b".repeat(64)),
+        },
+        "evidence": format!("sha256:{}", "c".repeat(64)),
+        "verification_log": "children/ep_1/episode.jsonl",
+        "verification_seq": 7
+    })
+}
+
+#[test]
+fn program_lineage_is_recorded_and_outside_identity() {
+    let root = crate::test_util::tmp("config-lineage-omitted");
+    let runtime = foe_log::RuntimeInfo { version: "0.1.0".into(), build: "sha256:test".into() };
+    let bare = crate::test_util::program(&root);
+    let mut value = crate::test_util::config_value(&root);
+    value["program_lineage"] = lineage_claim();
+    let config: crate::Config = serde_json::from_value(value).unwrap();
+    let claimed = crate::config::resolve(&config).unwrap();
+    assert_eq!(claimed.to_value()["program_lineage"], lineage_claim());
+    assert_eq!(
+        crate::identity::compute(&claimed, &[], &runtime).unwrap().hash,
+        crate::identity::compute(&bare, &[], &runtime).unwrap().hash,
+        "the claim does not participate in identity"
+    );
+}
+
+#[test]
+fn program_lineage_is_root_only() {
+    let root = crate::test_util::tmp("config-lineage-root-only");
+    let mut value = crate::test_util::config_value(&root);
+    value["grants"]["spawn"] = serde_json::json!(["kid"]);
+    value["programs"] = serde_json::json!({ "kid": {
+        "name": "kid", "instructions": { "a": "b" }, "tools": ["block"],
+        "grants": { "read": [root] }, "budget": { "model_calls": 1 },
+        "program_lineage": lineage_claim(),
+    }});
+    let parsed: Result<crate::Config, _> = serde_json::from_value(value);
+    assert!(parsed.is_err(), "a nested program does not carry program_lineage");
+}
