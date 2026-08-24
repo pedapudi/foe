@@ -55,10 +55,15 @@ checks that distinguish plausible incorrect implementations. Repair every defect
 run the strongest available task-relevant checks. Complete with the workspace in the state the task requires. \
 Report every path changed by either episode, including valid implementation changes that required no audit edit.";
 const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
+    ("sh", "/bin/sh"),
+    ("bash", "/bin/bash"),
     ("git", "/usr/bin/git"),
     ("python3", "/usr/bin/python3"),
     ("file", "/usr/bin/file"),
     ("xxd", "/usr/bin/xxd"),
+    ("od", "/usr/bin/od"),
+    ("awk", "/usr/bin/awk"),
+    ("strings", "/usr/bin/strings"),
     ("gcc", "/usr/bin/gcc"),
     ("clang", "/usr/bin/clang"),
     ("make", "/usr/bin/make"),
