@@ -370,6 +370,7 @@ async fn identical_assistant_text_in_threshold_consecutive_steps_is_looping() {
         "loop-looping-text",
         |v| {
             v["tools"] = json!(["p"]);
+            v["budget"]["loop_threshold"] = json!(3);
         },
         vec![
             turn("same", vec![call("a", "p", r#"{"n": 1}"#)]),

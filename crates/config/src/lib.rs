@@ -184,7 +184,7 @@ pub struct Budget {
     pub max_episodes: u32,
     #[serde(default = "u32_default::<4>")]
     pub max_concurrent: u32,
-    #[serde(default = "u32_default::<3>")]
+    #[serde(default = "u32_default::<8>")]
     pub loop_threshold: u32,
 }
 
