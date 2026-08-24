@@ -572,7 +572,7 @@ The binary has one running form and five forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
-foe "task" [--model PROVIDER/MODEL] [--key-file PATH]    run the built-in coding configuration
+foe "task" [--model PROVIDER/MODEL] [--key-file PATH]    run the built-in coding workflow
 foe "task" --headless                                    run; no viewer; print the outcome
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
@@ -594,17 +594,34 @@ one seeded by a fork does, is continued. A `lineage.json` beside the log,
 which a parent writes for a child, supplies the child's id, its parent, and
 its team lead.
 
-A task given with `--config` replaces the document's own `task`. A task
-given without `--config` uses a built-in coding configuration: the tools
-`read`, `grep`, `edit`, and `bash`, read and write on the current
-directory, and a budget of 40 model calls. Its model is the one named by
-`--model`, or the default model when `--model` is absent. The default
-model is the `model` block in `~/.config/foe/default-model.json`, which
-`foe login` writes. This configuration supplies low reasoning effort for
-`gpt-5.6-sol` through `openai` or `openai-codex` when the model block omits
-the option. `--key-file` names the key file explicitly. Without it, the
-provider's credential file under `~/.config/foe/credentials/` is read. The
-home directory comes from the passwd database, never from the environment.
+A task given with `--config` replaces the document's own `task`. A task given
+without `--config` uses a built-in coding workflow. An implementation episode
+changes the current directory. A fresh audit episode then checks the task and
+implementation claim, repairs defects, and produces the outcome.
+
+Both episodes have `read`, `grep`, `edit`, and `bash`. Both may read and write
+the current directory. The implementation has a 40-call backstop. The audit
+has a 25-call backstop. The root holds their additive 65-call allowance.
+
+Before confinement, the CLI checks fixed standard paths for common compilers,
+interpreters, and repository tools. Both episodes receive the recorded result
+and its limited scope. The result does not claim that unexamined paths lack an
+executable.
+
+The implementation returns a typed handoff with its summary, changed paths,
+validation observations, and unresolved risks. The audit receives that value
+and the original task in a fresh context. The shared directory carries the
+artifacts themselves.
+
+The model is the one named by `--model`, or the default model when `--model`
+is absent. The default model is the `model` block in
+`~/.config/foe/default-model.json`, which `foe login` writes. When that block
+omits reasoning effort, GPT-5.6 Sol uses low effort for implementation and high
+effort for audit. An explicit reasoning effort applies to both episodes.
+
+`--key-file` names the key file explicitly. Without it, the provider's
+credential file under `~/.config/foe/credentials/` is read. The home directory
+comes from the passwd database, never from the environment.
 
 `foe login` configures one provider: it asks for the credential, proves it
 with one request, writes it under `~/.config/foe/credentials/` with mode

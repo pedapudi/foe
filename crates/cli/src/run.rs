@@ -37,11 +37,54 @@ use std::time::Duration;
 /// open page receives the final events.
 const VIEWER_GRACE: Duration = Duration::from_secs(3);
 
-/// The one instruction section of the built-in coding configuration. It
-/// names no path, so the identity is the same in every directory.
-const BUILTIN_INSTRUCTION: &str = "You are a coding agent working in the current directory, which is the root \
-of every relative path. Make the requested change, then verify it by running the relevant build or tests before \
-you finish.";
+const BUILTIN_IMPLEMENTATION_CALLS: u64 = 40;
+const BUILTIN_AUDIT_CALLS: u64 = 25;
+
+/// Runtime-owned instructions for the built-in coding workflow. They name no
+/// path, so the program identity is the same in every directory.
+const BUILTIN_INSTRUCTION: &str = "Run the declared coding workflow against the task.";
+const BUILTIN_IMPLEMENTATION_INSTRUCTION: &str = "Implement the task in the current directory, which is the root \
+of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the \
+final change. In the completion value, report changed artifacts, commands and observed results, and unresolved \
+risks for an independent audit.";
+const BUILTIN_AUDIT_INSTRUCTION: &str = "Independently determine whether the shared workspace satisfies the \
+original task. Treat the implementation episode's completion claim as unverified. Inspect the artifacts and run \
+checks that distinguish plausible incorrect implementations. Repair every defect you find. After the final edit, \
+run the strongest available task-relevant checks. Complete with the workspace in the state the task requires. \
+Report every path changed by either episode, including valid implementation changes that required no audit edit.";
+const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
+    ("git", "/usr/bin/git"),
+    ("python3", "/usr/bin/python3"),
+    ("file", "/usr/bin/file"),
+    ("xxd", "/usr/bin/xxd"),
+    ("gcc", "/usr/bin/gcc"),
+    ("clang", "/usr/bin/clang"),
+    ("make", "/usr/bin/make"),
+    ("cmake", "/usr/bin/cmake"),
+    ("cargo", "/usr/bin/cargo"),
+    ("node", "/usr/bin/node"),
+    ("go", "/usr/bin/go"),
+];
+
+fn builtin_environment(cwd: &Path, present: impl Fn(&Path) -> bool) -> String {
+    let availability =
+        BUILTIN_EXECUTABLE_PROBES
+            .iter()
+            .map(|(name, path)| {
+                if present(Path::new(path)) {
+                    format!("{name}={path}")
+                } else {
+                    format!("{name}=not found at {path}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+    format!(
+        "Working directory: {}. Fixed-path executable probe: {availability}. A not-found result covers only the \
+         listed standard locations; project-local tools may still exist.",
+        cwd.display()
+    )
+}
 
 #[derive(Debug, Default)]
 pub struct Options {
@@ -129,7 +172,7 @@ fn fresh_id() -> String {
 }
 
 /// The configuration to run: the document named by `--config`, with the
-/// command-line task replacing its own, or the built-in coding configuration
+/// command-line task replacing its own, or the built-in coding workflow
 /// for a bare task.
 fn load_config(options: &Options) -> Result<Config, String> {
     let Some(path) = &options.config else {
@@ -152,7 +195,7 @@ fn load_config(options: &Options) -> Result<Config, String> {
     Ok(config)
 }
 
-/// Applies model settings measured for the built-in coding configuration.
+/// Applies model settings measured for the built-in coding workflow.
 /// A value in the default model file remains authoritative.
 pub(crate) fn apply_builtin_model_defaults(model: &mut ModelConfig) {
     if matches!(model.provider.as_str(), "openai" | "openai-codex") && model.model == "gpt-5.6-sol" {
@@ -174,23 +217,91 @@ fn default_model() -> Result<Option<ModelConfig>, String> {
     Ok(None)
 }
 
-/// The built-in coding configuration. `--key-file` names the API key file
+/// The built-in coding workflow. `--key-file` names the API key file
 /// explicitly; without it the provider's convention path is read.
 fn builtin_config(task: String, mut model: ModelConfig, key_file: Option<&Path>) -> Result<Config, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
+    let explicit_reasoning = model.option("reasoning_effort").is_some();
     apply_builtin_model_defaults(&mut model);
     if let Some(key_file) = key_file {
         let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
         model.options.insert("api_key_file".to_string(), key_file.to_string_lossy().into_owned());
     }
+    let mut audit_model = model.clone();
+    if !explicit_reasoning
+        && matches!(audit_model.provider.as_str(), "openai" | "openai-codex")
+        && audit_model.model == "gpt-5.6-sol"
+    {
+        audit_model.options.insert("reasoning_effort".into(), "high".into());
+    }
+    let environment = builtin_environment(&cwd, Path::is_file);
+    let completion = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+            "changed_paths": {
+                "type": "array", "items": { "type": "string", "maxLength": 512 }, "maxItems": 64
+            },
+            "validation": {
+                "type": "array", "items": { "type": "string", "maxLength": 1000 },
+                "minItems": 1, "maxItems": 32
+            },
+            "unresolved_risks": {
+                "type": "array", "items": { "type": "string", "maxLength": 1000 }, "maxItems": 16
+            }
+        },
+        "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
+        "additionalProperties": false
+    });
+    let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });
+    let tools = serde_json::json!(["read", "grep", "edit", "bash"]);
     let document = serde_json::json!({
         "version": foe_core::config::CONFIG_VERSION,
         "name": "coding",
         "instructions": { "role": BUILTIN_INSTRUCTION },
-        "tools": ["read", "grep", "edit", "bash"],
-        "grants": { "read": [cwd], "write": [cwd] },
-        "budget": { "model_calls": 40 },
+        "tools": tools,
+        "grants": grants,
+        "budget": {
+            "model_calls": BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS,
+            "max_episodes": 3,
+            "max_concurrent": 1
+        },
         "model": model,
+        "workflow": {
+            "nodes": {
+                "implement-task": {
+                    "model": {
+                        "name": "implement-task",
+                        "instructions": {
+                            "environment": environment,
+                            "role": BUILTIN_IMPLEMENTATION_INSTRUCTION
+                        },
+                        "tools": tools,
+                        "grants": grants,
+                        "budget": { "model_calls": BUILTIN_IMPLEMENTATION_CALLS },
+                        "done_when": { "returns": completion }
+                    },
+                    "follows": ["task"]
+                },
+                "audit-and-repair-task": {
+                    "model": {
+                        "name": "audit-and-repair-task",
+                        "instructions": {
+                            "environment": environment,
+                            "role": BUILTIN_AUDIT_INSTRUCTION
+                        },
+                        "tools": tools,
+                        "grants": grants,
+                        "budget": { "model_calls": BUILTIN_AUDIT_CALLS },
+                        "done_when": { "returns": completion },
+                        "model": audit_model
+                    },
+                    "follows": ["task", "implement-task"],
+                    "terminal": true
+                }
+            },
+            "recovery": { "enabled": false }
+        },
         "task": task,
     });
     serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"))

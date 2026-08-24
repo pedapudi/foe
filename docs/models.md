@@ -24,10 +24,12 @@ because both were settled by the login.
 configured. `foe login --status` shows the default model and every
 credential path.
 
-The built-in coding configuration uses low reasoning effort with
+The built-in coding workflow uses low reasoning effort for its implementation
+episode and high reasoning effort for its independent audit episode with
 `gpt-5.6-sol` through `openai` or `openai-codex`. An explicit
-`reasoning_effort` in the default model file takes precedence. Programs
-given through `--config` use their model block without this coding default.
+`reasoning_effort` in the default model file applies to both episodes.
+Programs given through `--config` use their model block without this coding
+default.
 
 ## Providers
 
