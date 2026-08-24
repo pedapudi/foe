@@ -78,6 +78,8 @@ export interface NodeFiring {
   error: string;
   /** The child episode a model node's firing ran, which has a row of its own. */
   childId: string | null;
+  /** Seq of each event that produced a value this firing received. */
+  inputs: number[];
 }
 
 /**

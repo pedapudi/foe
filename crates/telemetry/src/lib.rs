@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 
 /// Changes whenever an emitted field is added, removed, renamed, or given a
 /// different meaning. Every payload carries it as a resource attribute.
-pub const SCHEMA_VERSION: &str = "1";
+pub const SCHEMA_VERSION: &str = "2";
 
 /// The one way deriving telemetry fails: the scrubber found something in
 /// its own output. Reading and writing errors belong to the caller that
@@ -114,28 +114,34 @@ pub fn emission(events: &[Event], log_dir: &str, key: Vec<u8>) -> Result<Emissio
     }
 
     let (kind, exit_class, detail) = extract::outcome_terms(facts.outcome.as_ref());
-    let episode = span(&trace, root, String::new(), "episode".into(), facts.start_ms, facts.end_ms).with(
-        vec![
-            text("foe.episode.id", facts.id.clone()),
-            text("foe.outcome.kind", kind),
-            text("foe.outcome.exit_class", exit_class),
-            text("foe.outcome.detail", clean("outcome.detail".into(), &detail)),
-            text("foe.model.provider", facts.provider.clone()),
-            text("foe.model.model", facts.model.clone()),
-            text("foe.category", classification.bucket.clone()),
-            text("foe.category.top_level", classification.top_level.clone()),
-            list("foe.evidence", classification.votes.iter().map(|v| format!("{}={}", v.token, v.bucket))),
-            list("foe.category.counts", classification.counts.iter().map(|(name, n)| format!("{name}={n}"))),
-            number("foe.tokens.input", facts.usage.input),
-            number("foe.tokens.output", facts.usage.output),
-            number("foe.tokens.cache_read", facts.usage.cache_read),
-            number("foe.model_calls", facts.model_calls),
-            number("foe.tool_calls", facts.calls.len() as u64),
-            number("foe.tool_errors", facts.calls.iter().filter(|c| c.is_error).count() as u64),
-            number("foe.duration_ms", (facts.end_ms - facts.start_ms).max(0) as u64),
-        ],
-        kind == "completed",
-    );
+    let mut episode_attributes = vec![
+        text("foe.episode.id", facts.id.clone()),
+        text("foe.outcome.kind", kind),
+        text("foe.outcome.exit_class", exit_class),
+        text("foe.outcome.detail", clean("outcome.detail".into(), &detail)),
+    ];
+    // Provenance exists only for a completed episode; an absent attribute
+    // is an outcome that established no completion, never a zero.
+    episode_attributes.extend(facts.provenance.map(|p| text("foe.completion.provenance", p)));
+    episode_attributes.extend(vec![
+        number("foe.verification.runs", facts.verification_runs),
+        number("foe.verification.findings", facts.verification_findings),
+        text("foe.model.provider", facts.provider.clone()),
+        text("foe.model.model", facts.model.clone()),
+        text("foe.category", classification.bucket.clone()),
+        text("foe.category.top_level", classification.top_level.clone()),
+        list("foe.evidence", classification.votes.iter().map(|v| format!("{}={}", v.token, v.bucket))),
+        list("foe.category.counts", classification.counts.iter().map(|(name, n)| format!("{name}={n}"))),
+        number("foe.tokens.input", facts.usage.input),
+        number("foe.tokens.output", facts.usage.output),
+        number("foe.tokens.cache_read", facts.usage.cache_read),
+        number("foe.model_calls", facts.model_calls),
+        number("foe.tool_calls", facts.calls.len() as u64),
+        number("foe.tool_errors", facts.calls.iter().filter(|c| c.is_error).count() as u64),
+        number("foe.duration_ms", (facts.end_ms - facts.start_ms).max(0) as u64),
+    ]);
+    let episode = span(&trace, root, String::new(), "episode".into(), facts.start_ms, facts.end_ms)
+        .with(episode_attributes, kind == "completed");
     spans.insert(0, episode);
 
     if !findings.is_empty() {

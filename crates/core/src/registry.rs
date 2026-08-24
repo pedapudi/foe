@@ -221,6 +221,21 @@ impl Registry {
             .and_then(|items| items.iter().map(|i| i.as_str().map(str::to_string)).collect())
             .ok_or_else(|| format!("verifier `{name}` returned a value that is not a list of strings"))
     }
+
+    /// The verifier identity a `verification/result` records: for a
+    /// `tool_defs` executable, the SHA-256 of its file content read at
+    /// invocation, so a binary replaced mid-episode is visible per
+    /// invocation; for a built-in or host tool, `runtime_build`, the hash
+    /// of the binary that implements it. `unknown` when the file cannot be
+    /// read, in which case the invocation itself fails as well.
+    pub fn verifier_identity(&self, name: &str, runtime_build: &str) -> String {
+        match self.entry(name).and_then(|e| e.exec.as_ref()) {
+            Some(exec) => std::fs::read(&exec.def.exec)
+                .map(|bytes| format!("sha256:{}", foe_config::identity::sha256_hex(&bytes)))
+                .unwrap_or_else(|_| "unknown".into()),
+            None => runtime_build.to_string(),
+        }
+    }
 }
 
 /// A tool declared in `tool_defs`: the model's `args` become the argument

@@ -89,7 +89,10 @@ export class App implements Sink {
       reveal: (id, seq) => this.reveal(id, seq),
       scope: (scope) => this.setScope(scope),
     });
-    this.workflow = new WorkflowView({ select: (id) => this.select(id) });
+    this.workflow = new WorkflowView({
+      select: (id) => this.select(id),
+      reveal: (id, seq) => this.reveal(id, seq),
+    });
     this.statistics = new StatisticsView({ reveal: (id, seq) => this.reveal(id, seq) });
     this.tabsBar = h(
       "div",

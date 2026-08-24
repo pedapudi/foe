@@ -19,8 +19,8 @@ use foe_config::harness_text as text;
 use foe_log::{
     fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
     Event, EventData, ExhaustedLimit, HeaderReason, InboxItem, InboxSource, LogError, Message, ModelRequest, Outcome,
-    RequestHeader, RetryCause, StopReason, ThinkingBlock, ToolCall, ToolResult, ToolSchema, Usage,
-    SUMMARY_REQUEST_PREFIX,
+    RequestHeader, RetryCause, StopReason, ThinkingBlock, ToolCall, ToolResult, ToolSchema, Usage, VerificationResult,
+    VerificationStatus, SUMMARY_REQUEST_PREFIX,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -194,6 +194,44 @@ pub async fn settled_children(pool: &Mutex<Pool>, deadline: Option<Instant>) -> 
         tokio::time::sleep(SETTLE_POLL).await;
     }
     lock(pool).active_children()
+}
+
+/// One authoritative verifier invocation, recorded. Runs the verifier
+/// through the registry and appends the one `verification/result` event
+/// the invocation owes: `accepted` for an empty finding list, `findings`
+/// otherwise, and `failed` when the verifier could not judge. The agent
+/// loop and the workflow executor both verify through this, so no
+/// authoritative invocation goes unrecorded. Returns the verifier's
+/// judgment and the appended event's `seq`.
+#[allow(clippy::too_many_arguments)]
+pub async fn verify_recorded(
+    log: &Log,
+    registry: &Registry,
+    handles: &Handles,
+    runtime_build: &str,
+    verifier: &str,
+    step: u32,
+    candidate: &Value,
+    spill_dir: PathBuf,
+    deadline: Option<Instant>,
+) -> Result<(Result<Vec<String>, String>, u64), RuntimeError> {
+    let started = Instant::now();
+    let judged = registry.verify_with(verifier, handles, candidate, step, spill_dir, deadline).await;
+    let (status, findings, error) = match &judged {
+        Ok(findings) if findings.is_empty() => (VerificationStatus::Accepted, Vec::new(), None),
+        Ok(findings) => (VerificationStatus::Findings, findings.clone(), None),
+        Err(error) => (VerificationStatus::Failed, Vec::new(), Some(error.clone())),
+    };
+    let event = log.append(EventData::VerificationResult(VerificationResult {
+        step,
+        tool: verifier.into(),
+        verifier_identity: registry.verifier_identity(verifier, runtime_build),
+        status,
+        findings,
+        error,
+        duration_ms: started.elapsed().as_millis() as u64,
+    }))?;
+    Ok((judged, event.seq))
 }
 
 /// Which request a step issues.
@@ -582,12 +620,19 @@ impl Episode {
             return Ok(Some(Outcome::Completed { value: candidate }));
         };
         let verifier = done.verify.clone().unwrap_or_default();
-        let findings = self
-            .p
-            .registry
-            .verify_with(&verifier, &self.p.handles, &candidate, self.step, self.spill_dir.clone(), self.deadline())
-            .await
-            .map_err(RuntimeError::Protocol)?;
+        let (judged, _) = verify_recorded(
+            &self.p.log,
+            &self.p.registry,
+            &self.p.handles,
+            &self.p.start.runtime.build,
+            &verifier,
+            self.step,
+            &candidate,
+            self.spill_dir.clone(),
+            self.deadline(),
+        )
+        .await?;
+        let findings = judged.map_err(RuntimeError::Protocol)?;
         if findings.is_empty() {
             return Ok(Some(Outcome::Completed { value: candidate }));
         }

@@ -166,6 +166,34 @@ export interface Summary {
    */
   firings: NodeFiring[];
   decisions: NodeDecision[];
+  /** `verification/result` events, in seq order (docs/log-format.md). */
+  verifications: Verification[];
+  /** `workflow/node-skipped` events: nodes a satisfied guard skipped. */
+  skips: NodeSkip[];
+}
+
+/** One authoritative verifier invocation, as its event records it. */
+export interface Verification {
+  seq: number;
+  tool: string;
+  /** One of accepted, findings, and failed. */
+  status: string;
+  /** How many finding strings the run returned. */
+  findings: number;
+  durationMs: number;
+}
+
+/** One node a satisfied `skip_when_verified` guard skipped. */
+export interface NodeSkip {
+  seq: number;
+  node: string;
+  verifiedBy: string;
+  /**
+   * Seq of the accepted `verification/result`: in this log when the named
+   * node declares a node-level verify, in its child episode's log when its
+   * program declares `done_when.verify`.
+   */
+  verificationSeq: number;
 }
 
 export function emptySummary(id: string): Summary {
@@ -193,6 +221,8 @@ export function emptySummary(id: string): Summary {
     marks: [],
     firings: [],
     decisions: [],
+    verifications: [],
+    skips: [],
   };
 }
 
@@ -469,6 +499,32 @@ export class EpisodeFold {
           : `step ${num(data.step)} · failed: ${str(data.error, "?")} · context unchanged`;
         return this.note(ev, "compaction end", detail, data.ok === true ? "info" : "error", data);
       }
+      case "verification/result": {
+        const status = str(data.status, "?");
+        const findings = arr(data.findings).length;
+        const ms = num(data.duration_ms);
+        s.verifications.push({ seq: ev.seq, tool: str(data.tool, "?"), status, findings, durationMs: ms });
+        const detail = `${str(data.tool, "?")} · ${status} · ${findings} finding${findings === 1 ? "" : "s"} · ${fmtInt(
+          ms,
+        )} ms`;
+        return this.note(ev, "verify", detail, status === "failed" ? "error" : "info", data);
+      }
+      case "workflow/node-skipped": {
+        const skip = {
+          seq: ev.seq,
+          node: str(data.node, "?"),
+          verifiedBy: str(data.verified_by, "?"),
+          verificationSeq: num(data.verification_seq),
+        };
+        s.skips.push(skip);
+        return this.note(
+          ev,
+          "node skipped",
+          `${skip.node} · verified by ${skip.verifiedBy} · verification seq ${skip.verificationSeq}`,
+          "info",
+          data,
+        );
+      }
       case "workflow/node-start":
       case "workflow/node-end":
       case "workflow/branch":
@@ -679,6 +735,7 @@ export class EpisodeFold {
         durationMs: null,
         error: "",
         childId: typeof data.child_id === "string" ? data.child_id : null,
+        inputs: arr(data.inputs).map((x) => num(x)),
       });
       return;
     }
@@ -769,6 +826,71 @@ export class EpisodeFold {
     this.byKey.set(row.key, row);
     return [{ op: "update", row }];
   }
+}
+
+/** How a completed episode's completion was established. */
+export interface Provenance {
+  kind: "verifier" | "reviewed" | "model-report";
+  /** The verifier tool's name, empty when no verifier accepted. */
+  verifier: string;
+}
+
+/**
+ * Derives completion provenance from the fold, mirroring the derivation
+ * documented in docs/telemetry.md "Completion provenance": `verifier` when
+ * an authoritative `verification/result` accepted the completing value or
+ * a terminal `workflow/node-skipped` stands on one, `reviewed` when the
+ * completing terminal node is a model node fed another model node's
+ * completion value, and `model-report` otherwise. Null unless the episode
+ * completed.
+ */
+export function completionProvenance(s: Summary): Provenance | null {
+  if (s.outcome?.kind !== "completed") return null;
+  const nodes = obj(obj(s.program.workflow).nodes);
+  const declared = (name: string) => obj(nodes[name]);
+  const accepted = s.verifications.filter((v) => v.status === "accepted");
+  if (Object.keys(nodes).length === 0) {
+    const last = s.verifications[s.verifications.length - 1];
+    if (last && last.status === "accepted") return { kind: "verifier", verifier: last.tool };
+    return { kind: "model-report", verifier: "" };
+  }
+  const terminal = (name: string) => declared(name).terminal === true;
+  const isModel = (name: string) => declared(name).model !== undefined && declared(name).model !== null;
+  // The verifier a node's acceptance came from is configured: the node's
+  // own `verify`, or its program's `done_when.verify`.
+  const verifierOf = (name: string) => str(declared(name).verify) || str(obj(obj(declared(name).model).done_when).verify);
+  let skip: NodeSkip | null = null;
+  for (const candidate of s.skips) if (terminal(candidate.node)) skip = candidate;
+  // The completing firing: the last errorless end of a terminal node, or
+  // of any node when the graph completed through a branch with no
+  // successors and flags no terminal.
+  let completing: NodeFiring | null = null;
+  let lastEnd: NodeFiring | null = null;
+  for (const f of s.firings) {
+    if (f.endSeq === null || f.error !== "") continue;
+    lastEnd = f;
+    if (terminal(f.node)) completing = f;
+  }
+  const end = completing ?? lastEnd;
+  if (skip !== null && (end === null || skip.seq > (end.endSeq ?? -1))) {
+    return { kind: "verifier", verifier: verifierOf(skip.verifiedBy) };
+  }
+  if (end === null) return { kind: "model-report", verifier: "" };
+  const judged =
+    accepted.find((v) => v.seq > (end.endSeq ?? -1)) ??
+    accepted.find((v) => v.seq > end.startSeq && v.seq < (end.endSeq ?? -1));
+  if (judged) return { kind: "verifier", verifier: judged.tool };
+  const fedByModel = end.inputs.some((seq) =>
+    s.firings.some((f) => f.endSeq === seq && f.error === "" && isModel(f.node)),
+  );
+  if (isModel(end.node) && fedByModel) return { kind: "reviewed", verifier: "" };
+  return { kind: "model-report", verifier: "" };
+}
+
+/** The faint text set after a completed outcome word. */
+export function provenanceText(p: Provenance): string {
+  if (p.kind === "verifier") return p.verifier === "" ? "verified" : `verified by ${p.verifier}`;
+  return p.kind === "reviewed" ? "independently reviewed" : "model report";
 }
 
 function levelFor(kind: string): NoteRow["level"] {

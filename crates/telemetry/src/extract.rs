@@ -4,7 +4,7 @@
 //! log fields telemetry can reach is exactly what this file names. Adding a
 //! field here is the decision to consider emitting it.
 
-use foe_log::{Event, EventData, Outcome, StopReason, Usage};
+use foe_log::{Event, EventData, Outcome, StopReason, Usage, VerificationStatus, WorkflowNodeEnd};
 use std::collections::BTreeMap;
 
 /// One model call and the response that closed it.
@@ -63,6 +63,12 @@ pub struct Facts {
     pub calls: Vec<Call>,
     pub evidence: Evidence,
     pub known: Vec<KnownValue>,
+    /// `verification/result` events, and the findings they returned in all.
+    pub verification_runs: u64,
+    pub verification_findings: u64,
+    /// How a completed episode's completion was established; `None` for an
+    /// episode that did not complete. See [`completion_provenance`].
+    pub provenance: Option<&'static str>,
 }
 
 /// A known value shorter than this is not substituted: a one- or two-
@@ -82,6 +88,7 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
     let mut facts = Facts { start_ms: time(events.first()), end_ms: time(events.last()), ..Facts::default() };
     push_known(&mut facts.known, 'p', log_dir);
     let mut open: BTreeMap<String, usize> = BTreeMap::new();
+    let mut program = serde_json::Value::Null;
     for event in events {
         match &event.data {
             EventData::EpisodeStart(start) => {
@@ -90,6 +97,7 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
                 facts.runtime_version = start.runtime.version.clone();
                 facts.runtime_build = start.runtime.build.clone();
                 program_known(&start.program, &mut facts.known);
+                program = start.program.clone();
             }
             EventData::EpisodeEnd { outcome } => facts.outcome = Some(outcome.clone()),
             EventData::RequestHeader(header) => {
@@ -127,12 +135,96 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
             }),
             EventData::SpawnStart { .. } => facts.evidence.spawns += 1,
             EventData::WorkflowNodeStart(_) => facts.evidence.workflow_nodes += 1,
+            EventData::VerificationResult(v) => {
+                facts.verification_runs += 1;
+                facts.verification_findings += v.findings.len() as u64;
+            }
             _ => {}
         }
     }
+    facts.provenance = completion_provenance(events, &program);
     facts.known.sort_by(|a, b| b.value.len().cmp(&a.value.len()).then(a.value.cmp(&b.value)));
     facts.known.dedup_by(|a, b| a.value == b.value);
     facts
+}
+
+/// How a completed episode's completion was established, derived from the
+/// log alone; `None` for an episode that did not complete.
+///
+/// `verifier`: the completing value was accepted by an authoritative
+/// `verification/result`. For a loop episode that is the log's last such
+/// event; for a workflow episode, an accepted event after the completing
+/// terminal `workflow/node-end` (the episode's `done_when.verify`), one
+/// between that firing's start and end (the node's own `verify`), or a
+/// terminal `workflow/node-skipped`, which stands on an acceptance by
+/// definition. `reviewed`: no verifier accepted the completing value, but
+/// the completing terminal node is a model node that received another
+/// model node's completion value — an independent review episode, as in
+/// the built-in coding workflow. `model-report`: neither. A workflow that
+/// completes through a branch label with no successors flags no terminal
+/// node, so the last errorless `workflow/node-end` stands in.
+pub fn completion_provenance(events: &[Event], program: &serde_json::Value) -> Option<&'static str> {
+    let completed = events.iter().rev().find_map(|e| match &e.data {
+        EventData::EpisodeEnd { outcome } => Some(matches!(outcome, Outcome::Completed { .. })),
+        _ => None,
+    });
+    if completed != Some(true) {
+        return None;
+    }
+    let nodes = &program["workflow"]["nodes"];
+    let accepted_at = |i: usize| matches!(&events[i].data, EventData::VerificationResult(v) if v.status == VerificationStatus::Accepted);
+    if !nodes.is_object() {
+        let last = events.iter().rev().find_map(|e| match &e.data {
+            EventData::VerificationResult(v) => Some(v.status == VerificationStatus::Accepted),
+            _ => None,
+        });
+        return Some(if last == Some(true) { "verifier" } else { "model-report" });
+    }
+    let terminal = |name: &str| nodes[name]["terminal"].as_bool() == Some(true);
+    let is_model = |name: &str| nodes[name].get("model").is_some_and(|m| !m.is_null());
+    let mut skipped = false;
+    let mut completing: Option<(usize, &WorkflowNodeEnd)> = None;
+    let mut last_end: Option<(usize, &WorkflowNodeEnd)> = None;
+    for (i, event) in events.iter().enumerate() {
+        match &event.data {
+            EventData::WorkflowNodeSkipped(skip) if terminal(&skip.node) => {
+                skipped = true;
+                completing = None;
+            }
+            EventData::WorkflowNodeEnd(end) if end.error.is_none() => {
+                last_end = Some((i, end));
+                if terminal(&end.node) {
+                    skipped = false;
+                    completing = Some((i, end));
+                }
+            }
+            _ => {}
+        }
+    }
+    if skipped {
+        return Some("verifier");
+    }
+    let Some((at, end)) = completing.or(last_end) else { return Some("model-report") };
+    let started = events
+        .iter()
+        .position(|e| matches!(&e.data, EventData::WorkflowNodeStart(s) if s.node == end.node && s.fire == end.fire));
+    let own_verify = started.is_some_and(|s| (s + 1..at).any(&accepted_at));
+    if (at + 1..events.len()).any(accepted_at) || own_verify {
+        return Some("verifier");
+    }
+    let fed_by_model = started.is_some_and(|s| match &events[s].data {
+        EventData::WorkflowNodeStart(start) => start.inputs.iter().any(|seq| {
+            events.get(*seq as usize).is_some_and(|e| match &e.data {
+                EventData::WorkflowNodeEnd(input) => input.error.is_none() && is_model(&input.node),
+                _ => false,
+            })
+        }),
+        _ => false,
+    });
+    if is_model(&end.node) && fed_by_model {
+        return Some("reviewed");
+    }
+    Some("model-report")
 }
 
 /// How an episode ended: its kind, the closed-vocabulary term qualifying

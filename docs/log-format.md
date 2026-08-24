@@ -264,6 +264,36 @@ emitted so that the host can execute it. The result arrives as an ordinary
 { "step": 3, "call_id": "tc_02", "name": "mutation_usage", "args": {} }
 ```
 
+### Verification
+
+`verification/result` — implemented. One authoritative verifier
+invocation, exactly one event per invocation: the accepted run that
+completes the work, a findings run that re-fires it, or a failed run.
+The episode's `done_when.verify` writes it in that episode's own log, and
+a workflow node's `verify` writes it in the workflow episode's log with
+the node's step context. The event contributes nothing to derived
+messages; the model sees findings only through the `verify` inbox item.
+
+```json
+{
+  "step": 3,
+  "tool": "check",
+  "verifier_identity": "sha256:…",
+  "status": "findings",
+  "findings": ["tests/parser_test.py::test_nested_brackets fails"],
+  "duration_ms": 412
+}
+```
+
+`status` is one of `accepted`, `findings`, and `failed`. `findings` holds
+the same strings the `verify` inbox item carries, and is empty for
+`accepted` and for `failed`. `error` is present only for `failed` and
+states why the verifier could not judge; the episode then ends as
+`failed`. `verifier_identity` is what ran: for a `tool_defs` executable,
+the SHA-256 of its file content read at invocation, so a binary replaced
+mid-episode is visible per invocation; for a built-in or host tool, the
+runtime build hash from `episode/start.runtime.build`.
+
 ### Inbox
 
 `inbox/item` — implemented. One message addressed to this episode. The task
@@ -421,6 +451,21 @@ episode from 1.
 
 ```json
 { "node": "derive", "fire": 1, "cause": "tool-error", "action": "retry", "target": "survey", "intervention": 1 }
+```
+
+`workflow/node-skipped` — implemented. A node's `skip_when_verified`
+guard was satisfied, so the node did not fire: it contributes the named
+node's value to its successors, and a terminal node completes the
+workflow with that value. `verified_by` names the node whose result an
+authoritative verifier accepted, and `verification_seq` is the `seq` of
+the accepted `verification/result`: in this log when the named node
+declares a node-level `verify`, and in the named node's child episode log
+when its program declares `done_when.verify`. Successors name this event
+among their `inputs`. [workflow.md](workflow.md#the-conditional-audit-guard)
+specifies the guard.
+
+```json
+{ "node": "audit-and-repair-task", "verified_by": "implement-task", "verification_seq": 41 }
 ```
 
 ### Compaction
