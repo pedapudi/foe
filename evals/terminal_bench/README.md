@@ -150,10 +150,9 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
 ```
 
 Equivalent targets end in `foe-verifier-fix-git` and
-`foe-verifier-large-scale-text-editing`. These targets use the default service
-tier, low reasoning for implementation, and high reasoning for an independent
-audit. The implementation retains 60 model calls. The audit receives 25
-additional calls. These values are loop backstops.
+`foe-verifier-large-scale-text-editing`. These targets use the `priority`
+service tier and low reasoning in one verifier-governed implementation
+episode. The implementation retains 60 model calls as a loop backstop.
 
 The configured executable's bytes participate in Foe's program identity. The
 adapter also downloads the checker after the episode and compares its digest
@@ -462,7 +461,6 @@ Apply a retained workflow candidate to any permitted task set with:
 ```sh
 bazel run //evals/terminal_bench:foe-development -- \
   --workflow-candidate /absolute/path/to/workflow-candidate.json \
-  --service-tier default \
   --confirm-spend
 ```
 

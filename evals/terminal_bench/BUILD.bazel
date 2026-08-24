@@ -105,8 +105,6 @@ sh_binary(
             task,
             "--completion-checker",
             "$(rootpath " + checker + ")",
-            "--service-tier",
-            "default",
         ],
         data = COMMON_DATA + [checker],
         visibility = ["//visibility:public"],
