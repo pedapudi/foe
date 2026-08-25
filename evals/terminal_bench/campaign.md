@@ -4,6 +4,10 @@ This record defines the evaluation campaign that prepares Foe for a Terminal-Ben
 
 Terminal-Bench 2.1 is pinned as `terminal-bench/terminal-bench-2-1@6`. The benchmark contains 89 container tasks and task-owned verifiers. Its maintainers require at least five trials per task for an official submission. [The Terminal-Bench 2.1 repository](https://github.com/harbor-framework/terminal-bench-2-1) specifies the submission protocol. [The release description](https://www.tbench.ai/news/terminal-bench-2-1) describes the task corrections and continuous validation.
 
+Results below from retired protected sets remain as historical evidence. They
+do not satisfy the confirmation, calibration, or holdout criteria defined in
+this record.
+
 ## Campaign objective
 
 The campaign must produce one frozen Foe release that converts at least three
@@ -77,7 +81,7 @@ usage without enforcing token ceilings during ordinary quality runs.
 
 ## Task sets
 
-The task membership is stored in [`cases.json`](cases.json). Task selection used only the pinned task metadata, including category, difficulty, and resource limits. The selection was frozen before task instructions or trajectories were opened.
+The task membership is stored in [`cases.json`](cases.json). Task selection used only the pinned task metadata, including category, difficulty, and resource limits. Every protected task was frozen before its instructions, workspace, or trajectory was opened. Tasks exposed by earlier campaign runs remain historical evidence and are excluded from the protected sets.
 
 ### Micro evaluation
 
@@ -123,14 +127,14 @@ extra activation evidence for a change proposed from the development set.
 
 Eight tasks remain closed until a candidate and its acceptance rule are frozen:
 
-- `build-cython-ext`;
-- `constraints-scheduling`;
-- `custom-memory-heap-crash`;
-- `path-tracing`;
-- `build-pmars`;
-- `headless-terminal`;
-- `kv-store-grpc`;
-- `qemu-startup`.
+- `build-pov-ray`;
+- `caffe-cifar-10`;
+- `configure-git-webserver`;
+- `count-dataset-tokens`;
+- `crack-7z-hash`;
+- `dna-insert`;
+- `log-summary-date-ranges`;
+- `overfull-hbox`.
 
 Each candidate receives two attempts per confirmation task. Raw confirmation trajectories remain outside self-improvement evidence until the candidate disposition is recorded.
 
@@ -149,41 +153,41 @@ score.
 
 The calibration set contains twenty tasks:
 
-- `adaptive-rejection-sampler`;
-- `break-filter-js-from-html`;
-- `compile-compcert`;
-- `db-wal-recovery`;
-- `distribution-search`;
-- `financial-document-processor`;
-- `git-leak-recovery`;
-- `make-mips-interpreter`;
-- `query-optimize`;
-- `reshard-c4-data`;
-- `schemelike-metacircular-eval`;
-- `train-fasttext`;
-- `bn-fit-modify`;
-- `filter-js-from-html`;
+- `chess-best-move`;
+- `code-from-image`;
+- `extract-moves-from-video`;
+- `feal-differential-cryptanalysis`;
+- `fix-code-vulnerability`;
+- `gcode-to-text`;
+- `install-windows-3.11`;
 - `largest-eigenval`;
 - `llm-inference-batching-scheduler`;
+- `mailman`;
+- `make-doom-for-mips`;
+- `merge-diff-arc-agi-task`;
+- `modernize-scientific-stack`;
+- `mteb-leaderboard`;
 - `multi-source-data-merger`;
 - `nginx-request-logging`;
-- `pytorch-model-cli`;
-- `sqlite-with-gcov`.
+- `openssl-selfsigned-cert`;
+- `polyglot-c-py`;
+- `portfolio-optimization`;
+- `pypi-server`.
 
 The sealed holdout contains eight tasks:
 
-- `circuit-fibsqrt`;
-- `cobol-modernization`;
-- `extract-elf`;
-- `hf-model-inference`;
-- `mcmc-sampling-stan`;
-- `sparql-university`;
-- `qemu-alpine-ssh`;
-- `torch-tensor-parallelism`.
+- `protein-assembly`;
+- `pytorch-model-recovery`;
+- `raman-fitting`;
+- `rstan-to-pystan`;
+- `sam-cell-seg`;
+- `torch-pipeline-parallelism`;
+- `tune-mjcf`;
+- `winning-avg-corewars`.
 
-The added tasks were selected using only descriptions, categories,
-difficulties, resource limits, and timeouts from the pinned metadata. Their
-instructions, workspaces, and trajectories remained unopened at selection.
+The protected tasks were selected using only names, categories, difficulties,
+resource limits, and timeouts from the pinned metadata. Their instructions,
+workspaces, and trajectories remained unopened at selection.
 [The pinned task metadata](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b/tasks)
 is the selection source.
 
