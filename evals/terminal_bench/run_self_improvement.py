@@ -914,6 +914,7 @@ def build_config(
     validator_tool = {
         "exec": str(validator),
         "description": "Validate the returned typed diagnosis: an identity-bound workflow, instruction, or tool candidate is checked against the retained evidence and the preserved run controls. The tool prints findings and prints nothing when the diagnosis is valid.",
+        "cwd": str(evidence.parent),
         "timeout_seconds": 60,
     }
     if requested_candidate_kind == "source-change":

@@ -98,9 +98,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
 
     def test_workflow_uses_typed_handoff_and_a_full_coding_surface(self):
         root = Path("/tmp/candidate")
+        evidence = Path("/tmp/evidence.json")
         config = build_config(
             root,
-            Path("/tmp/evidence.json"),
+            evidence,
             Path("/tmp/check"),
             Path("/tmp/diagnosis-validator"),
             model_config("openai-codex/gpt-5.6-terra", "high"),
@@ -142,6 +143,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(diagnosis["tools"], ["block", DIAGNOSIS_VALIDATOR_TOOL])
         self.assertEqual(diagnosis["done_when"]["verify"], DIAGNOSIS_VALIDATOR_TOOL)
         self.assertEqual(diagnosis["done_when"]["retries"], 2)
+        self.assertEqual(
+            diagnosis["tool_defs"][DIAGNOSIS_VALIDATOR_TOOL]["cwd"],
+            str(evidence.parent),
+        )
         self.assertEqual(
             diagnosis["tool_defs"][DIAGNOSIS_VALIDATOR_TOOL]["exec"], "/tmp/diagnosis-validator"
         )
