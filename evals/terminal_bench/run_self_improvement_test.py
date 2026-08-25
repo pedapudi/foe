@@ -405,7 +405,9 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(cargo_calls[1], "test --workspace")
         self.assertEqual(
             cargo_calls[7],
-            "test --workspace --exclude foe --exclude foe-transport --exclude foe-view -- --skip sandbox::tests::",
+            "test --workspace --exclude foe --exclude foe-transport --exclude foe-view "
+            "-- --skip sandbox::tests:: "
+            "--skip session::tests::a_session_serves_a_granted_bind_port_across_calls",
         )
 
     def test_episode_measurement_prices_each_model_route(self):

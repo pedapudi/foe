@@ -352,15 +352,16 @@ if not findings:
     test_command = [cargo, "test", "--workspace"]
     if not full_validation:
         # Executable tools cannot bind TCP listeners. The CLI unit tests use
-        # loopback servers, as do the transport and viewer tests. Nested
-        # sandbox tests cannot expand an existing Landlock domain. The
-        # post-episode check runs the omitted packages and skipped group.
+        # loopback servers, as do the transport, viewer, and session tests.
+        # Nested sandbox tests cannot expand an existing Landlock domain. The
+        # post-episode check runs the omitted packages and skipped groups.
         test_command.extend(
             [
                 "--exclude", "foe",
                 "--exclude", "foe-transport",
                 "--exclude", "foe-view",
                 "--", "--skip", "sandbox::tests::",
+                "--skip", "session::tests::a_session_serves_a_granted_bind_port_across_calls",
             ]
         )
     commands = [

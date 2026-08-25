@@ -536,8 +536,9 @@ Cargo, Rustc, Rustfmt, and Clippy.
 Executable tools cannot bind loopback listeners, so the
 in-episode check excludes the command-line, transport, and viewer packages
 whose tests bind loopback servers. It also skips nested sandbox tests that
-cannot expand the checker's existing Landlock domain. The runner repeats
-validation after the episode with the complete workspace test suite.
+cannot expand the checker's existing Landlock domain and the core session test
+that binds a loopback listener. The runner repeats validation after the episode
+with the complete workspace test suite.
 
 The no-spend form generates the complete workflow document. It runs that
 document through `foe plan`. A schema, authority, or construction error
