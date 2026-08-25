@@ -437,6 +437,7 @@ def build_config(
     write_roots = [
         *(str(candidate / directory) for directory in ALLOWED_DIRECTORIES),
         str(candidate / "target" / "foe-self-improvement-check"),
+        str(candidate / "target" / "test-scratch"),
     ]
     execute = [str(path) for path in execute_roots]
     check_tool = {
@@ -674,6 +675,24 @@ def measure_episode(root: Path, pricing: dict[str, Pricing]) -> dict[str, Any]:
     }
 
 
+def workflow_node_value(root: Path, node: str) -> dict[str, Any] | None:
+    """Return the last recorded object value produced by one workflow node."""
+    path = root / "episode.jsonl"
+    if not path.is_file():
+        return None
+    value = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        event = json.loads(line)
+        data = event.get("data", {})
+        if (
+            event.get("type") == "workflow/node-end"
+            and data.get("node") == node
+            and isinstance(data.get("value"), dict)
+        ):
+            value = data["value"]
+    return value
+
+
 def parser() -> argparse.ArgumentParser:
     answer = argparse.ArgumentParser(description=__doc__)
     answer.add_argument("--foe", type=Path, required=True)
@@ -859,6 +878,8 @@ def main(argv: list[str] | None = None) -> int:
     usage = measure_episode(episode, pricing)
     outcome = usage.get("outcome")
     outcome_value = outcome.get("value") if isinstance(outcome, dict) else None
+    if not isinstance(outcome_value, dict):
+        outcome_value = workflow_node_value(episode, "diagnose-runtime")
     branch = outcome_value.get("branch") if isinstance(outcome_value, dict) else None
     expected_branch = {
         "source-change": "implement-source",

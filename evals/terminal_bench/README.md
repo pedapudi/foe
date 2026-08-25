@@ -464,7 +464,8 @@ counts under the supplied Cargo cache. It rejects a line count above the
 recorded baseline ceiling. The coding child uses this checker as the line-count
 authority because the repository script reports only absolute limits. Its only
 generated-file write authority is the candidate's private
-`target/foe-self-improvement-check` directory. Read grants
+`target/foe-self-improvement-check` directory and the repository tests'
+declared `target/test-scratch` directory. Read grants
 cover Cargo and Rustup metadata and installed C headers. Execute grants cover
 the pinned toolchain and candidate build directory. They also cover Cargo's
 command shims for `fmt` and `clippy`. The result records content digests for
@@ -485,10 +486,13 @@ candidate checker operate when the candidate is a linked Git worktree.
 
 The runner validates the artifact after Foe exits. A valid artifact remains
 accepted when the episode exhausted its reporting budget after producing the
-files. A source candidate binds the base Git tree and every changed file
-digest. A workflow candidate binds the independent-audit setting and preserved
-controls. `direct_implementation_required` is true when deterministic
-validation finds an error or the workflow produces no candidate.
+files. The diagnosis node's recorded branch remains authoritative when a
+terminal coding child ends blocked, so the external full check still evaluates
+source files that the child produced. A source candidate binds the base Git
+tree and every changed file digest. A workflow candidate binds the
+independent-audit setting and preserved controls. `direct_implementation_required`
+is true when deterministic validation finds an error or the workflow produces
+no candidate.
 
 Apply a retained workflow candidate to any permitted task set with:
 

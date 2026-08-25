@@ -20,6 +20,7 @@ from run_self_improvement import (
     supported_independent_audits,
     validate_program,
     workflow_candidate_from_outcome,
+    workflow_node_value,
     write_candidate_check,
 )
 
@@ -134,6 +135,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             [
                 *(str(root / directory) for directory in ("crates", "docs", "examples")),
                 str(root / "target" / "foe-self-improvement-check"),
+                str(root / "target" / "test-scratch"),
             ],
         )
         self.assertEqual(
@@ -164,6 +166,40 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("objective identifies behavior owned by Foe source", sufficiency)
         self.assertIn("Choose `insufficient-evidence`", sufficiency)
         self.assertIn("Do not choose `configure-workflow`", sufficiency)
+
+    def test_diagnosis_value_survives_a_blocked_terminal_child(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            events = [
+                {
+                    "seq": 1,
+                    "type": "workflow/node-end",
+                    "data": {
+                        "node": "diagnose-runtime",
+                        "value": {"branch": "implement-source", "intervention": "change source"},
+                    },
+                },
+                {
+                    "seq": 2,
+                    "type": "workflow/node-end",
+                    "data": {
+                        "node": "implement-runtime-improvement",
+                        "value": None,
+                        "error": "verification failed",
+                    },
+                },
+                {
+                    "seq": 3,
+                    "type": "episode/end",
+                    "data": {"outcome": {"kind": "blocked", "code": "verification-unsatisfiable"}},
+                },
+            ]
+            (root / "episode.jsonl").write_text(
+                "".join(json.dumps(event) + "\n" for event in events), encoding="utf-8"
+            )
+            value = workflow_node_value(root, "diagnose-runtime")
+        self.assertEqual(value["branch"], "implement-source")
+        self.assertEqual(value["intervention"], "change source")
 
     def test_failed_base_configuration_excludes_the_successful_audit_setting(self):
         with tempfile.TemporaryDirectory() as directory:
