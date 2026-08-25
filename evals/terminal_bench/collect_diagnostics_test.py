@@ -18,10 +18,31 @@ from collect_diagnostics import (
 
 
 class CollectDiagnosticsTest(unittest.TestCase):
-    def test_diagnostic_outcome_keeps_failure_fields_and_drops_completion_prose(self):
+    def test_diagnostic_outcome_keeps_completion_claim_only_when_requested(self):
+        completion = {
+            "kind": "completed",
+            "value": {
+                "summary": "self-certified",
+                "changed_paths": ["artifact"],
+                "validation": ["checked a proxy"],
+                "unresolved_risks": ["public interface untested"],
+            },
+        }
         self.assertEqual(
-            diagnostic_outcome({"kind": "completed", "value": {"summary": "self-certified"}}),
+            diagnostic_outcome(completion),
             {"kind": "completed"},
+        )
+        self.assertEqual(
+            diagnostic_outcome(completion, True),
+            {
+                "kind": "completed",
+                "untrusted_completion_claim": {
+                    "summary": "self-certified",
+                    "changed_paths": ["artifact"],
+                    "validation": ["checked a proxy"],
+                    "unresolved_risks": ["public interface untested"],
+                },
+            },
         )
         self.assertEqual(
             diagnostic_outcome({"kind": "blocked", "code": "stuck", "message": "details"}),
@@ -182,6 +203,38 @@ class CollectDiagnosticsTest(unittest.TestCase):
             path.write_text(json.dumps(report), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "different runtime identity"):
                 collect(source, binary, [run], {"example"})
+
+    def test_collector_labels_failed_completion_evidence_as_untrusted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, binary, run, _ = self.fixture(Path(directory))
+            path = next(run.glob("*/*/agent/foe-diagnostics.json"))
+            diagnosis = json.loads(path.read_text(encoding="utf-8"))
+            diagnosis["artifact_outcome_mismatch"] = True
+            diagnosis["outcome"] = {
+                "kind": "completed",
+                "value": {
+                    "summary": "the task is complete",
+                    "changed_paths": ["answer.txt"],
+                    "validation": ["format is valid"],
+                    "unresolved_risks": ["behavior was not exercised"],
+                },
+            }
+            diagnosis["episodes"] = [
+                {
+                    "episode_id": "ep_child",
+                    "model_calls": 3,
+                    "outcome": diagnosis["outcome"],
+                }
+            ]
+            path.write_text(json.dumps(diagnosis), encoding="utf-8")
+            report = collect(source, binary, [run], {"example"})
+        compact = report["trajectory_diagnostics"][0]
+        self.assertEqual(compact["outcome"], {"kind": "completed"})
+        claim = compact["episodes"][0]["outcome"][
+            "untrusted_completion_claim"
+        ]
+        self.assertEqual(claim["validation"], ["format is valid"])
+        self.assertEqual(claim["unresolved_risks"], ["behavior was not exercised"])
 
     def test_input_growth_resets_when_a_second_child_starts_lower(self):
         rows = [

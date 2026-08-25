@@ -443,10 +443,13 @@ verified results by task and complete configuration so a diagnosis node can
 compare failed and successful mechanisms. The file keeps up to four
 input-growth landmarks and three entries from each ranked result list. Input
 growth resets at each episode boundary. The four-landmark limit applies to the
-complete episode tree. Completed outcomes retain their typed status and omit
-the model-authored completion value. Failed, blocked, and exhausted outcomes
-retain their actionable error, code, message, or limit. This avoids repeating
-the same completion prose at the report, episode, and verification levels.
+complete episode tree. Completed outcomes retain their typed status. An
+artifact/outcome mismatch also retains bounded summary, changed-path,
+validation, and unresolved-risk fields under `untrusted_completion_claim`.
+The label prevents a diagnosis from treating model-authored evidence as an
+observed fact. Successful completions omit those fields to avoid repeating the
+same prose at the report, episode, and verification levels. Failed, blocked,
+and exhausted outcomes retain their actionable error, code, message, or limit.
 The collector accepts at most 24 diagnoses and 64 KiB of encoded evidence. It
 accepts only development and opened capability-search tasks from `cases.json`.
 Confirmation, calibration, and calibration-holdout evidence remains

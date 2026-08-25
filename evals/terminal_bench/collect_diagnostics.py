@@ -17,6 +17,11 @@ MAX_DIAGNOSES = 24
 MAX_EVIDENCE_BYTES = 64 * 1024
 MAX_INPUT_GROWTH_LANDMARKS = 4
 MAX_OUTCOME_TEXT = 2_000
+MAX_COMPLETION_SUMMARY = 240
+MAX_COMPLETION_PATHS = 8
+MAX_COMPLETION_PATH = 160
+MAX_COMPLETION_OBSERVATIONS = 6
+MAX_COMPLETION_OBSERVATION = 240
 EVALUATION_FIELDS = (
     "dataset",
     "label",
@@ -53,8 +58,15 @@ def input_growth_landmarks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{**rows[index], "input_growth": deltas[index]} for index in selected]
 
 
-def diagnostic_outcome(outcome: Any) -> dict[str, Any] | None:
-    """Keep the typed result and actionable failure details, without model-authored completion prose."""
+def bounded_strings(value: Any, count: int, length: int) -> list[str]:
+    """Return a bounded list of strings from one completion field."""
+    if not isinstance(value, list):
+        return []
+    return [item[:length] for item in value if isinstance(item, str)][:count]
+
+
+def diagnostic_outcome(outcome: Any, include_completion_claim: bool = False) -> dict[str, Any] | None:
+    """Keep typed status, actionable failures, and selected untrusted completion evidence."""
     if not isinstance(outcome, dict):
         return None
     kind = outcome.get("kind")
@@ -65,6 +77,29 @@ def diagnostic_outcome(outcome: Any) -> dict[str, Any] | None:
         value = outcome.get(key)
         if isinstance(value, str):
             answer[key] = value[:MAX_OUTCOME_TEXT]
+    value = outcome.get("value")
+    if include_completion_claim and kind == "completed" and isinstance(value, dict):
+        claim = {
+            "summary": (
+                value.get("summary", "")[:MAX_COMPLETION_SUMMARY]
+                if isinstance(value.get("summary"), str)
+                else ""
+            ),
+            "changed_paths": bounded_strings(
+                value.get("changed_paths"), MAX_COMPLETION_PATHS, MAX_COMPLETION_PATH
+            ),
+            "validation": bounded_strings(
+                value.get("validation"),
+                MAX_COMPLETION_OBSERVATIONS,
+                MAX_COMPLETION_OBSERVATION,
+            ),
+            "unresolved_risks": bounded_strings(
+                value.get("unresolved_risks"),
+                MAX_COMPLETION_OBSERVATIONS,
+                MAX_COMPLETION_OBSERVATION,
+            ),
+        }
+        answer["untrusted_completion_claim"] = claim
     return answer
 
 
@@ -190,10 +225,17 @@ def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dic
             "repeated_calls": report.get("repeated_calls", [])[:3],
         }
     )
+    mismatch = report.get("artifact_outcome_mismatch") is True
     if "outcome" in answer:
         answer["outcome"] = diagnostic_outcome(answer["outcome"])
     answer["episodes"] = [
-        {**episode, "outcome": diagnostic_outcome(episode.get("outcome"))}
+        {
+            **episode,
+            "outcome": diagnostic_outcome(
+                episode.get("outcome"),
+                mismatch and isinstance(episode.get("model_calls"), int) and episode["model_calls"] > 0,
+            ),
+        }
         for episode in answer.get("episodes", [])
         if isinstance(episode, dict)
     ]
