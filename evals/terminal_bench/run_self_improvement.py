@@ -237,6 +237,14 @@ def rust_toolchain_identity(cargo: Path) -> dict[str, str]:
     return binaries
 
 
+def prepare_validation_directories(candidate: Path) -> Path:
+    """Create the generated and scratch directories used by candidate checks."""
+    cargo_target = candidate / "target" / "foe-self-improvement-check"
+    cargo_target.mkdir(parents=True, exist_ok=True)
+    (candidate / "target" / "test-scratch").mkdir(parents=True, exist_ok=True)
+    return cargo_target
+
+
 def validate_program(binary: Path, program: Path) -> None:
     """Construct the generated program without making a model request."""
     result = subprocess.run(
@@ -802,8 +810,7 @@ def main(argv: list[str] | None = None) -> int:
         root = Path(temporary.name)
     check = root / "candidate-check"
     assert cargo is not None and cargo_home is not None
-    cargo_target = candidate / "target" / "foe-self-improvement-check"
-    cargo_target.mkdir(parents=True, exist_ok=True)
+    cargo_target = prepare_validation_directories(candidate)
     source_metadata = git_metadata_root(candidate)
     write_candidate_check(check, candidate, cargo, cargo_home, cargo_target)
     episode_evidence = root / "trajectory-evidence.json"

@@ -16,6 +16,7 @@ from run_self_improvement import (
     line_budget_ceilings,
     measure_episode,
     model_config,
+    prepare_validation_directories,
     rust_toolchain_identity,
     supported_independent_audits,
     validate_program,
@@ -26,6 +27,13 @@ from run_self_improvement import (
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
+    def test_validation_directories_exist_before_program_construction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cargo_target = prepare_validation_directories(root)
+            self.assertTrue(cargo_target.is_dir())
+            self.assertTrue((root / "target" / "test-scratch").is_dir())
+
     def test_rust_toolchain_identity_hashes_every_validation_binary(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
