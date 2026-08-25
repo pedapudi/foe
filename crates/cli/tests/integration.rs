@@ -935,6 +935,9 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
         let identity = first["identity"].as_str().unwrap();
         assert!(identity.starts_with("sha256:") && identity.len() == 71, "{name}: {identity}");
         assert_eq!(first["identity"], second["identity"], "{name}: identity ignores task and paths");
+        let canonical = foe_config::identity::canonical(&first["identity_document"]);
+        let rehashed = format!("sha256:{}", foe_config::identity::sha256_hex(canonical.as_bytes()));
+        assert_eq!(rehashed, identity, "{name}: the emitted identity document rehashes to the reported identity");
         assert_eq!(first["program"]["name"], json!(serde_json::from_str::<Value>(&text).unwrap()["name"]));
         assert!(first["program"].get("task").is_none(), "{name}: the program omits the task");
         if name == "workflow" {
@@ -1001,7 +1004,7 @@ fn builtin_specs() -> Vec<foe_config::ToolSpec> {
         .collect()
 }
 
-/// `foe tools` with no configuration prints every built-in the binary
+/// `foe plan` with no configuration prints every built-in the binary
 /// carries. The recorded identities are computed over [`builtin_specs`], so a
 /// pack the binary gains or loses has to appear there too; without this check
 /// the recorded hashes would go on describing programs the binary no longer
@@ -1013,7 +1016,7 @@ fn the_recorded_builtins_are_the_ones_the_binary_links() {
         .chain(builtin_specs())
         .map(|spec| (spec.name.clone(), effect(&spec)))
         .collect();
-    let printed = Command::new(FOE).arg("tools").output().unwrap();
+    let printed = Command::new(FOE).arg("plan").output().unwrap();
     let rows: Vec<(String, String)> = String::from_utf8(printed.stdout)
         .unwrap()
         .lines()
@@ -1064,12 +1067,12 @@ fn inline(value: &Value, defs: &Value, depth: u32) -> Value {
     }
 }
 
-/// docs/config.md: `foe schema` describes the document; every example
-/// conforms to it and parses into the runtime's configuration type.
+/// docs/config.md: `foe plan --schema` describes the document; every
+/// example conforms to it and parses into the runtime's configuration type.
 #[test]
 fn every_example_conforms_to_the_schema_and_parses() {
     let schema: Value = serde_json::from_str(SCHEMA).unwrap();
-    let printed = Command::new(FOE).arg("schema").output().unwrap();
+    let printed = Command::new(FOE).args(["plan", "--schema"]).output().unwrap();
     assert_eq!(serde_json::from_slice::<Value>(&printed.stdout).unwrap(), schema, "the binary prints the schema");
     let inlined = inline(&schema, &schema["$defs"], 4);
     for (name, text) in examples() {
@@ -1093,8 +1096,6 @@ fn help_exits_zero_on_standard_output_for_every_form() {
         vec!["login", "--help"],
         vec!["view", "--help"],
         vec!["plan", "--help"],
-        vec!["tools", "--help"],
-        vec!["schema", "--help"],
         vec!["telemetry", "--help"],
     ] {
         let printed = Command::new(FOE).args(&args).output().unwrap();

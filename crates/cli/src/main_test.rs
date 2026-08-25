@@ -7,9 +7,9 @@ fn parse(line: &str) -> Result<Command, String> {
 
 #[test]
 fn every_form_parses_and_foreign_options_are_refused() {
-    assert!(matches!(parse("schema"), Ok(Command::Schema)));
+    assert!(matches!(parse("plan --schema"), Ok(Command::Schema)));
     assert!(matches!(parse("plan --config c.json --json"), Ok(Command::Plan { json: true, .. })));
-    assert!(matches!(parse("tools"), Ok(Command::Tools { config: None })));
+    assert!(matches!(parse("plan"), Ok(Command::Plan { config: None, json: false, .. })));
     assert!(matches!(parse("login"), Ok(Command::Login { provider: None, model: None, status: false })));
     assert!(matches!(parse("login --status"), Ok(Command::Login { provider: None, status: true, .. })));
     let Ok(Command::Login { provider, model, .. }) = parse("login anthropic --model m") else { panic!() };
@@ -21,8 +21,10 @@ fn every_form_parses_and_foreign_options_are_refused() {
         panic!()
     };
     assert_eq!((options.task.as_deref(), options.headless, options.no_open), (Some("fix"), true, true));
-    assert!(parse("plan").is_err(), "plan needs --config");
-    assert!(parse("schema --json").is_err(), "an option of another form is refused");
+    assert!(parse("plan --json").is_err(), "--json takes --config");
+    assert!(parse("plan --schema --json").is_err(), "--schema stands alone");
+    assert!(parse("plan --config c.json --evidence ev").is_err(), "verification takes --states and --evidence");
+    assert!(parse("view --json").is_err(), "an option of another form is refused");
     assert!(parse("fix --host").is_err(), "--host takes its task from the configuration");
     assert!(parse("view").is_err(), "view needs a directory");
     assert!(parse("").is_err());
@@ -68,10 +70,8 @@ fn golden(line: &str) -> String {
             format!("login provider={provider:?} model={model:?} status={status}")
         }
         Ok(Command::View { dir, serve, port }) => format!("view dir={dir:?} serve={serve} port={port}"),
-        Ok(Command::Plan { config, json }) => format!("plan config={config:?} json={json}"),
-        Ok(Command::Tools { config }) => format!("tools config={config:?}"),
-        Ok(Command::Lineage { state, states, evidence, json }) => {
-            format!("lineage state={state:?} states={states:?} evidence={evidence:?} json={json}")
+        Ok(Command::Plan { config, json, states, evidence }) => {
+            format!("plan config={config:?} json={json} states={states:?} evidence={evidence:?}")
         }
         Ok(Command::Schema) => "schema".to_string(),
         Ok(Command::Telemetry { logs, json }) => format!("telemetry logs={logs:?} json={json}"),
@@ -102,16 +102,18 @@ fn representative_invocations_parse_to_known_values() {
         ("login --status", "login provider=None model=None status=true"),
         ("view logs", "view dir=\"logs\" serve=false port=0"),
         ("view logs --serve --port 8080", "view dir=\"logs\" serve=true port=8080"),
-        ("plan --config c.json", "plan config=\"c.json\" json=false"),
-        ("plan --config c.json --json", "plan config=\"c.json\" json=true"),
-        ("tools", "tools config=None"),
-        ("tools --config c.json", "tools config=Some(\"c.json\")"),
-        ("schema", "schema"),
+        ("plan", "plan config=None json=false states=None evidence=None"),
+        ("plan --config c.json", "plan config=Some(\"c.json\") json=false states=None evidence=None"),
+        ("plan --config c.json --json", "plan config=Some(\"c.json\") json=true states=None evidence=None"),
         (
-            "lineage s.json --states st --evidence ev",
-            "lineage state=\"s.json\" states=\"st\" evidence=\"ev\" json=false",
+            "plan --config c.json --states st --evidence ev",
+            "plan config=Some(\"c.json\") json=false states=Some(\"st\") evidence=Some(\"ev\")",
         ),
-        ("lineage --states st --evidence ev", "error"),
+        ("plan --config c.json --states st", "error"),
+        ("plan --schema", "schema"),
+        ("plan --schema --json", "error"),
+        // A word that once selected a removed form is a task like any other.
+        ("tools", "run task=Some(\"tools\") config=None model=None key_file=None log_dir=None no_open=false headless=false host=false"),
         ("telemetry a.jsonl b.jsonl --json", "telemetry logs=[\"a.jsonl\", \"b.jsonl\"] json=true"),
         ("", "error"),
     ];
@@ -179,7 +181,7 @@ fn an_unknown_option_names_itself_and_the_command_help() {
     let cases = [
         ("plan --serve", "unknown option --serve for `foe plan`; run `foe plan --help` for the options it takes"),
         ("--serve", "unknown option --serve for `foe`; run `foe --help` for the options it takes"),
-        ("schema --json", "unknown option --json for `foe schema`; run `foe schema --help` for the options it takes"),
+        ("view --json", "unknown option --json for `foe view`; run `foe view --help` for the options it takes"),
     ];
     for (line, expected) in cases {
         assert_eq!(parse(line).err().as_deref(), Some(expected), "`foe {line}`");

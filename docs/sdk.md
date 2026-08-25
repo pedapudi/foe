@@ -465,7 +465,7 @@ so a log directory produced through the package replays and views the
 same way as one produced by the binary alone.
 
 A program that needs the binary's other commands invokes them directly;
-`foe schema` and `foe tools` have no wrapper in the package.
+the schema and tool listings of `foe plan` have no wrapper in the package.
 
 ## Testing without the binary
 

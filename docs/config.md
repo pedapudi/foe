@@ -14,13 +14,13 @@ Three rules shape the format.
 - No fact appears in two places. Anything derivable from another key is
   derived rather than declared.
 
-`foe schema` emits a JSON Schema for this format, so an editor can validate a
-document and offer completions. `foe plan --config FILE` prints the resolved
-program, its identity, and every tool definition the program's reachable
-tree can invoke, without running anything.
+`foe plan --schema` emits a JSON Schema for this format, so an editor can
+validate a document and offer completions. `foe plan --config FILE` prints
+the resolved program, its identity, and every tool definition the program's
+reachable tree can invoke, without running anything.
 
 `crates/config` implements this document: every rule stated here is a check
-there, it holds the JSON Schema `foe schema` prints, and it resolves a
+there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a
 document into the program `episode/start.program` records.
 
 ## JSON Schema subset
@@ -193,9 +193,9 @@ A name resolves against three sources, checked in this order:
 
 A name that resolves in two sources, or in none, is an error at construction.
 
-`foe tools` lists every built-in tool with its description. `foe tools
---config FILE` lists the resolved set for a document, with each tool's
-source.
+`foe plan` without `--config` lists every built-in tool with its
+description. `foe plan --config FILE` reports the resolved set for a
+document, with each tool's source.
 
 ### `tool_defs`
 

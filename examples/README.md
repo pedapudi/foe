@@ -89,11 +89,11 @@ A configuration carries visible absolute path markers such as
 edit when you point an example at a repository of your own, and nothing you
 have to fix before an example will run.
 
-`foe plan --config FILE` and `foe tools --config FILE` both resolve every
-grant and every executable path against the filesystem, so neither accepts
-a configuration that still holds its markers. Both report
-`grants.read[0]: names an existing path: /home/user/project` and exit 1.
-Run them against the materialized configuration a runner leaves in its run
+`foe plan --config FILE` resolves every grant and every executable path
+against the filesystem, so it does not accept a configuration that still
+holds its markers. It reports
+`grants.read[0]: names an existing path: /home/user/project` and exits 1.
+Run it against the materialized configuration a runner leaves in its run
 directory.
 
 [`embed-in-a-program`](embed-in-a-program/) carries no configuration file,

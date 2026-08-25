@@ -273,11 +273,17 @@ The check establishes a complete chain from the state to a chosen root. It
 does not establish that the verifier measured the right property. Evaluator
 quality remains part of the adoption policy and the evaluation record.
 
-The command line exposes the checker. `foe lineage STATE --states DIR
---evidence DIR` reads a state document from STATE, resolves states from
+The command line exposes the checker. `foe plan --config FILE --states DIR
+--evidence DIR` resolves the configuration, pairs its identity document
+with the `program_lineage` claim it carries, resolves states from
 `DIR/<hex>.json` by lineage identity and bundles from `DIR/<hex>` by
-content address, and prints the chain with every check the retained
-evidence leaves open. `--json` prints the same report as one object.
+content address, and prints, below the plan report, the chain of program
+identities from this program through its parents to the root with every
+check the retained evidence leaves open; with `--json`, the same chain and
+open checks are the plan object's `lineage` member. The report names
+program identities only; the derived lineage identity stays internal to
+the checker. Without `--states` and `--evidence`, a configuration that
+carries a claim is reported as carrying it, unverified.
 
 ## The candidate binding gap
 
