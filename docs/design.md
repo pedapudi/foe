@@ -401,6 +401,10 @@ an operation runs rather than when a pathname was last checked.
    spawn: []         ──►     spawn  effect=spawns  REFUSED
 ```
 
+A `bind` grant appears in neither column: it names TCP ports rather than a
+tool's effect, no tool requires it, and it reaches every process of the
+episode through the compiled sandbox alone ([sandbox.md](sandbox.md)).
+
 Tools come from three sources, resolved in this order at construction.
 A name that resolves in two sources is an error.
 

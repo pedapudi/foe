@@ -1,7 +1,8 @@
 # Sandbox
 
 An episode's grants name what it may reach: directories to read, directories
-to write, executables to run, and child programs to start. On Linux, the
+to write, executables to run, child programs to start, and TCP ports to
+bind. On Linux, the
 runtime compiles those grants into a Landlock ruleset and applies it to the
 episode process and to every process the episode starts. Landlock is a kernel
 security module that lets an unprivileged process restrict itself; once
@@ -32,6 +33,7 @@ declared.
 | the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |
 | the resolved target of `/etc/resolv.conf`, when the process may connect | read that file |
 | the device files `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty` | read and write |
+| each `grants.bind` port | bind TCP on that port, in the episode and in every process it starts |
 | TCP | bind: listed ports only; connect: all ports or none |
 
 The loader directories let a process start: the kernel executes the dynamic
@@ -49,6 +51,11 @@ address without gaining the target file's surrounding runtime directory. A
 process that may not connect receives no such grant: an episode that
 declares no `model` block, and an executable whose tool definition does not
 ask for the network, read no resolver file.
+
+A bind grant is inbound only. Outbound TCP is not a grant: it follows the
+model transport and each tool definition's `network` field, as stated under
+[What is not enforced](#what-is-not-enforced), and widening it is a
+separate design.
 
 A write root grants no read access. A configuration that writes to a
 directory it also reads lists that directory under both grants, or lists a
@@ -87,7 +94,8 @@ rulesets; an episode tree of depth sixteen is the practical limit.
 
 Because a ruleset only narrows, an episode reserves what the programs below
 it need before it restricts itself. A child's read, write, and execute roots
-lie inside its parent's corresponding roots. Configuration resolution checks
+lie inside its parent's corresponding roots, and its bind ports among its
+parent's bind ports. Configuration resolution checks
 that containment. An episode also reserves the `tool_defs` executables of
 every program below it. Each descendant still narrows itself to its own
 configured executables and explicit execute grants.
@@ -132,8 +140,9 @@ The episode keeps:
 - the loader, system, and device paths;
 - outbound TCP when the configuration has a `model` block, because the
   episode then calls the provider itself;
-- inbound TCP on the viewer's port alone, when the episode serves a viewer;
-  the command line adds that one port to the policy before applying it;
+- inbound TCP on the ports `grants.bind` lists and, when the episode serves
+  a viewer, on the viewer's port, which the command line adds to the policy
+  before applying it;
 - no outbound TCP when a host process holds the transport.
 
 ## Executables
@@ -142,8 +151,10 @@ A configured executable runs under the episode's ruleset narrowed once
 more. The narrowed policy keeps the read roots, write roots, explicit execute
 grants, loader paths, system paths, and device paths. It also keeps execute on
 the file named by the tool definition. It drops the log directory, key file,
-and execute access to other configured tools. It keeps TCP only when the tool
-definition sets `network: true`.
+and execute access to other configured tools. It keeps the episode's bind
+ports, so a server started by a shell or held by a session listens on a
+granted port, and outbound TCP only when the tool definition sets
+`network: true`.
 
 This crate forbids unsafe code, so the narrowing is applied by a short-lived
 thread rather than by a hook between fork and exec. The thread applies the
@@ -166,7 +177,8 @@ Two independent rules keep that policy inside the parent's policy.
 
 Resolving the configuration checks containment before any process starts:
 each child program's read, write, and execute roots must lie within its
-parent program's corresponding roots. The rule applies at every level of
+parent program's corresponding roots, and its bind ports among its parent's.
+The rule applies at every level of
 `programs`. A document that fails the check is refused with the dotted key of
 the offending root, and no episode begins.
 

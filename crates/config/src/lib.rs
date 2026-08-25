@@ -167,6 +167,10 @@ pub struct Grants {
     pub execute: Vec<PathBuf>,
     #[serde(default)]
     pub spawn: Vec<String>,
+    /// TCP ports a process of the episode may bind. Outbound reach is not
+    /// a grant; it follows the model transport and per-tool declarations.
+    #[serde(default)]
+    pub bind: Vec<u16>,
 }
 
 /// True when `path` equals one of `roots` or lies below it, compared by
