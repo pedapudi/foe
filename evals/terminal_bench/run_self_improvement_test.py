@@ -401,7 +401,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertTrue(baseline["accepted"], baseline)
         self.assertTrue(accepted["accepted"], accepted)
         self.assertEqual(sandboxed.stdout, "\n")
-        self.assertEqual(len(cargo_calls), 9)
+        self.assertEqual(len(cargo_calls), 10)
         self.assertEqual(cargo_calls[1], "test --workspace")
         self.assertEqual(
             cargo_calls[7],
@@ -409,6 +409,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             "-- --skip sandbox::tests:: "
             "--skip session::tests::a_session_serves_a_granted_bind_port_across_calls",
         )
+        self.assertEqual(cargo_calls[8], "test -p foe --bin foe -- --skip login::tests::")
 
     def test_episode_measurement_prices_each_model_route(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -538,12 +538,14 @@ cover Cargo and Rustup metadata and installed C headers. Execute grants cover
 the pinned toolchain and candidate build directory. They also cover Cargo's
 command shims for `fmt` and `clippy`. The result records content digests for
 Cargo, Rustc, Rustfmt, and Clippy.
-Executable tools cannot bind loopback listeners, so the
-in-episode check excludes the command-line, transport, and viewer packages
-whose tests bind loopback servers. It also skips nested sandbox tests that
-cannot expand the checker's existing Landlock domain and the core session test
-that binds a loopback listener. The runner repeats validation after the episode
-with the complete workspace test suite.
+Executable tools cannot bind loopback listeners, so the in-episode workspace
+check excludes the command-line, transport, and viewer packages whose test
+suites include loopback servers. A second command runs the command-line unit
+tests and skips only the login module, which owns the command-line loopback
+fixtures. The checker also skips nested sandbox tests that cannot expand its
+existing Landlock domain and the core session test that binds a loopback
+listener. The runner repeats validation after the episode with the complete
+workspace test suite.
 
 The no-spend form generates the complete workflow document. It runs that
 document through `foe plan`. A schema, authority, or construction error

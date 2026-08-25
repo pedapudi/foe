@@ -1074,9 +1074,23 @@ tokens. Its estimated cost was $0.722055.
 External validation rejected the autonomous candidate. Its Rust test did not
 compile, and its proposed `session` tool mechanism could not preserve services
 after episode settlement. The in-episode checker also ran a loopback listener
-test under Landlock, which produced an unrelated denial. The checker now omits
-that listener test during the confined candidate check. Full post-episode
+test under Landlock, which produced an unrelated denial. The checker omits
+listener tests during the confined candidate check. Full post-episode
 validation still runs the complete workspace suite.
+
+A second identity-bound attempt reached its in-episode completion gate after
+the listener exclusion. The coding child again added `session` to the built-in
+tool surface. The confined check accepted the candidate because it excluded
+the entire command-line package. External validation then failed the existing
+unit test that requires the four-tool built-in surface. The attempt used 10
+model calls and cost an estimated $0.820957. It produced no accepted
+self-improvement.
+
+The confined checker now runs the command-line unit tests separately and skips
+only the login module that binds loopback listeners. A source candidate that
+changes built-in workflow behavior must therefore preserve the remaining
+command-line invariants before its coding child can complete. Post-episode
+validation remains the final candidate authority.
 
 The direct source candidate adds one general rule to both built-in model roles.
 A task that requires a service or live machine state must apply its

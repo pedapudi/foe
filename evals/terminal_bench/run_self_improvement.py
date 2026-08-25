@@ -367,8 +367,16 @@ if not findings:
     commands = [
         [cargo, "fmt", "--all", "--", "--check"],
         test_command,
-        [cargo, "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
     ]
+    if not full_validation:
+        # The command-line unit tests cover the built-in workflow that source
+        # improvement most often changes. Only login tests need loopback
+        # listeners, so keep every other command-line invariant in the
+        # completion gate.
+        commands.append(
+            [cargo, "test", "-p", "foe", "--bin", "foe", "--", "--skip", "login::tests::"]
+        )
+    commands.append([cargo, "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"])
     for command in commands:
         try:
             result = subprocess.run(
