@@ -255,9 +255,15 @@ Object. Required. Names what the episode may reach.
 | `write` | list of strings | no | absolute directories the episode may write; default empty |
 | `execute` | list of strings | no | absolute files or directories that a tool subprocess may read and execute; default empty |
 | `spawn` | list of strings | no | names from `programs` the episode may start; default empty |
+| `bind` | list of integers | no | TCP ports, 1 to 65535, that a process of the episode may bind; default empty |
 
 Paths are prefixes. A grant on `/home/user/project` covers every path below
 it. There is no pattern syntax.
+
+A `bind` grant lets a server the episode starts listen on the named ports;
+[sandbox.md](sandbox.md) states how the kernel enforces it. It grants no
+outbound reach: connecting stays tied to the model transport and to each
+tool definition's `network` field.
 
 The runtime opens each granted directory once when the episode starts, and
 every read and write below it names a path relative to that open directory.

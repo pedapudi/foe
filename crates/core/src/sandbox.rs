@@ -82,10 +82,11 @@ pub struct Policy {
 impl Policy {
     /// The policy of an episode process: its grants, the configured
     /// executable of every program at or below it, the running binary when
-    /// it may start children, its log directory, and outbound TCP only when
-    /// the episode itself holds the model transport. The credential file the
-    /// transport reads is not known here; the binary appends it to
-    /// `read_files` after resolving the `model` block.
+    /// it may start children, its log directory, the bind ports its grants
+    /// list, and outbound TCP only when the episode itself holds the model
+    /// transport. The credential file the transport reads is not known
+    /// here; the binary appends it to `read_files` after resolving the
+    /// `model` block.
     pub fn for_episode(config: &Config, log_dir: &Path) -> Policy {
         let mut exec = Vec::new();
         configured_executables(&foe_config::ChildProgram::from(config), &mut exec);
@@ -101,14 +102,15 @@ impl Policy {
             delegated_exec: config.grants.execute.clone(),
             read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
             log_dir: Some(log_dir.to_path_buf()),
-            bind_tcp: Vec::new(),
+            bind_tcp: config.grants.bind.clone(),
             connect_tcp: network,
         }
     }
 
     /// The policy of one executable started by this episode: the same read
-    /// and write roots, execute access on that file alone, no log directory,
-    /// and TCP only when the tool definition asks for it.
+    /// and write roots, execute access on that file alone, no log
+    /// directory, the episode's bind ports, and outbound TCP only when the
+    /// tool definition asks for it.
     pub fn for_executable(&self, exec: &Path, network: bool) -> Policy {
         let mut allowed = vec![exec.to_path_buf()];
         allowed.extend(self.delegated_exec.iter().cloned());
@@ -119,7 +121,7 @@ impl Policy {
             delegated_exec: self.delegated_exec.clone(),
             read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
             log_dir: None,
-            bind_tcp: Vec::new(),
+            bind_tcp: self.bind_tcp.clone(),
             connect_tcp: network,
         }
     }
