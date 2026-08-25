@@ -1332,3 +1332,96 @@ It does not replace the required twelve-task closed-book development run.
 The retained job labels begin with
 `standard-frozen-candidate-validated-verifier-` under
 `/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/`.
+
+## Recorded twelve-task closed-book development result
+
+The same frozen source tree and binary ran every development task once without
+a public completion checker. Every request used GPT-5.6 Sol, low primary
+reasoning, the standard service tier, and measurement-only token accounting.
+The built-in workflow gave its independent audit the runtime-owned high
+reasoning default. The task-owned verifier remained unavailable until Foe
+exited.
+
+| Task | Score | Calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 9 | 23,365 | 4,096 | 4,150 | $0.161714 |
+| `dna-assembly` | 0.0 | 26 | 295,687 | 143,360 | 17,732 | $1.021292 |
+| `fix-git` | 1.0 | 17 | 94,202 | 22,016 | 5,523 | $0.408010 |
+| `fix-ocaml-gc` | 1.0 | 26 | 780,718 | 394,240 | 5,452 | $1.812648 |
+| `git-multibranch` | 1.0 | 25 | 191,425 | 64,000 | 13,519 | $0.805680 |
+| `gpt2-codegolf` | 1.0 | 26 | 292,566 | 91,136 | 18,113 | $1.204434 |
+| `large-scale-text-editing` | 1.0 | 12 | 51,161 | 8,192 | 6,733 | $0.309813 |
+| `model-extraction-relu-logits` | 1.0 | 10 | 41,922 | 7,680 | 4,876 | $0.237560 |
+| `path-tracing-reverse` | 1.0 | 26 | 897,884 | 483,328 | 10,806 | $2.067675 |
+| `regex-chess` | 1.0 | 44 | 855,321 | 500,736 | 22,431 | $2.067254 |
+| `sanitize-git-repo` | 1.0 | 19 | 337,300 | 124,928 | 9,028 | $1.080019 |
+| `sqlite-db-truncate` | 1.0 | 12 | 55,996 | 7,168 | 5,926 | $0.316699 |
+| **Total** | **11.0** | **252** | **3,917,547** | **1,850,880** | **124,289** | **$11.492800** |
+
+The result is 91.7 percent task quality. Every attempt produced a gradable
+artifact without an infrastructure exception. Every Foe trace conformed with
+zero violations. The unchanged `git-multibranch` success confirms that the
+live-environment completion rule transfers into the frozen integration
+candidate. The unchanged GPT-2 success confirms behavioral correction without
+the public checker.
+
+The DNA attempt completed, but the task-owned verifier rejected its artifact.
+The audit treated a fixed suffix of each primer as its annealing tract. The
+task semantics also count matching bases from the four-base assembly overhang.
+For the EGFP pair, the audit reported a 2.933593 degree difference. The
+task-owned verifier measured the complete tracts and found a 5.813507 degree
+difference, beyond the permitted five degrees. This attempt is an
+artifact-outcome mismatch and the only development quality failure.
+
+The retained jobs are the six directories whose names begin with
+`standard-frozen-candidate-closed-book-` under
+`/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/`.
+
+## Recorded task-derived audit source candidate
+
+An identity-bound evidence file combined the failed closed-book DNA attempt,
+the successful verifier-governed DNA attempt, and a successful closed-book
+GPT-2 control. It bound source tree
+`git-tree-sha1:2fbeddc6173fe764824960931884815a37dd443a` and runtime binary
+`sha256:f3d38553a3b3766bf928b1b4686cc802b532ab3691aff52459160427275d28cb`.
+The evidence file is
+`/home/sunil/git/foe-frozen-standard-quality-candidate/target/frozen-candidate-dna-verifier-contrast-evidence.json`.
+
+The first generated self-improvement program failed configuration validation
+before any provider request. Its diagnosis node declared the
+`validate-candidate` executable, while the containing program omitted that
+tool from its ceiling. Commit `b5124d7` declares the same tool and executable
+definition at both levels. The unit suite and a provider-free generated-program
+validation cover the corrected ceiling.
+
+The corrected workflow used Luna low for bounded diagnosis, Sol low for source
+implementation, and Sol xhigh for independent source audit. It used 26 model
+calls, 898,645 input tokens, 411,648 cached-input tokens, and 11,330 output
+tokens. Its estimated cost was $2.195093. The independent candidate checker
+accepted the source, adjacent Rust regression test, and design specification.
+The lineage evidence address is
+`sha256:00729319538df3534d75465255cc9de8ec6ea192fc1d03b2ac1d601289b74ad2`.
+
+The source candidate requires the terminal audit to derive and execute a
+task-based semantic checklist. Its commit is `26b4aae`, its source tree is
+`git-tree-sha1:ce059a3aa62a9d34293bacd385285be6c98276ff`, and its portable
+binary is
+`sha256:d85dcc6dbe6ce33b480bf114bbef0e2def0b0008ec5f36233735e5a7faac97ee`.
+The binary passed the provider-free Harbor installation check.
+
+The unchanged closed-book DNA activation attempt received zero task-owned
+credit. It used 30 model calls, 442,937 input tokens, 208,384 cached-input
+tokens, and 25,561 output tokens. Its estimated cost was $1.532786. Foe
+completed with a conforming trace and no infrastructure exception.
+
+The audit installed the exact `oligotm` executable and repaired all eight
+primers. Its validator still measured only the explicit binding arm. For the
+vector pair, the audit reported a 2.994163 degree difference. The task-owned
+verifier included matching overhang suffix bases in each complete annealed
+tract and measured a 6.169264 degree difference. The source candidate therefore
+does not improve task quality and is rejected from promotion.
+
+The self-improvement episode is retained at
+`/home/sunil/git/foe-dna-audit-instruction-improvement/target/dna-audit-source-improvement-standard-tier/`.
+The closed-book activation job is retained at
+`/home/sunil/git/foe-dna-audit-instruction-improvement/target/terminal-bench-jobs/standard-self-improved-dna-audit-closed-book-first-20260825T131533Z/`.
