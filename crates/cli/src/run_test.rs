@@ -49,6 +49,10 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
         serde_json::json!(["summary", "changed_paths", "validation", "unresolved_risks"])
     );
     assert!(implementation_program.instructions["environment"].contains("Fixed-path executable probe"));
+    let implementation_role = &implementation_program.instructions["role"];
+    assert!(implementation_role.contains("apply the configuration in the current environment"));
+    assert!(implementation_role.contains("leave required state available when returning"));
+    assert!(implementation_role.contains("An unbuilt image, unapplied configuration"));
     let audit = &workflow.nodes["audit-and-repair-task"];
     assert_eq!(audit.follows, ["task", "implement-task"]);
     assert!(audit.terminal);
@@ -64,6 +68,10 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
     assert_eq!(learned["items"]["additionalProperties"], serde_json::json!(false));
     assert!(!completion["required"].as_array().unwrap().contains(&serde_json::json!("learned")));
     assert!(audit_program.instructions["role"].contains("every path changed by either episode"));
+    let role = &audit_program.instructions["role"];
+    assert!(role.contains("apply the configuration in the current environment"));
+    assert!(role.contains("leave required state available when returning"));
+    assert!(role.contains("Do not substitute an unbuilt image, unapplied configuration"));
 }
 
 /// docs/design.md "The command line": `--verify` wires the built-in

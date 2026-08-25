@@ -637,6 +637,13 @@ Both episodes have `read`, `grep`, `edit`, and `bash`. Both may
 read and write the current directory. Each episode has a 60-call backstop.
 The root holds their additive 120-call allowance.
 
+Both episodes operate in the supplied execution environment. A task that
+requires a service or other live machine state requires the episodes to apply
+its configuration, validate its public interface, and leave the required state
+available when they return. An unbuilt image, unapplied configuration, or
+temporary probe does not establish live behavior. Repository-only tasks retain
+the same inspect, repair, and final-validation sequence.
+
 `--verify PATH` names an executable verifier for the built-in workflow.
 The path is canonicalized and becomes a `tool_defs` entry named `check`
 with execute authority on that file; the implementation episode declares

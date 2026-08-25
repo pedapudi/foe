@@ -47,14 +47,20 @@ const BUILTIN_AUDIT_CALLS: u64 = 60;
 /// path, so the program identity is the same in every directory.
 const BUILTIN_INSTRUCTION: &str = "Run the declared coding workflow against the task.";
 const BUILTIN_IMPLEMENTATION_INSTRUCTION: &str = "Implement the task in the current directory, which is the root \
-of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the \
-final change. In the completion value, report changed artifacts, commands and observed results, and unresolved \
-risks for an independent audit.";
+of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the final \
+change. When the task requires a service or other live machine state, apply the configuration in the current \
+environment, validate the requested public interface end to end, and leave required state available when returning. \
+An unbuilt image, unapplied configuration, or stopped temporary probe does not satisfy live behavior. In the \
+completion value, report changed artifacts, commands and observed results, and unresolved risks for an independent \
+audit.";
 const BUILTIN_AUDIT_INSTRUCTION: &str = "Independently determine whether the shared workspace satisfies the \
 original task. Treat the implementation episode's completion claim as unverified. Inspect the artifacts and run \
-checks that distinguish plausible incorrect implementations. Repair every defect you find. After the final edit, \
-run the strongest available task-relevant checks. Complete with the workspace in the state the task requires. \
-Report every path changed by either episode, including valid implementation changes that required no audit edit.";
+checks that distinguish plausible incorrect implementations. Repair every defect you find. When the task requires a \
+service or other live machine state, apply the configuration in the current environment, validate the requested public \
+interface end to end, and leave required state available when returning. Do not substitute an unbuilt image, unapplied \
+configuration, or temporary probe that removes required final state. After the final edit, run the strongest available \
+task-relevant checks. Complete with the workspace in the state the task requires. Report every path changed by either \
+episode, including valid implementation changes that required no audit edit.";
 const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
