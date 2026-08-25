@@ -181,6 +181,47 @@ def evidence_digest(evidence: Path) -> str:
     return "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest()
 
 
+def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
+    """Return repeated task-specific contrasts that may activate a candidate."""
+    report = json.loads(evidence.read_text(encoding="utf-8"))
+    contrasts = report.get("repeated_failure_contrasts")
+    if not isinstance(contrasts, list):
+        raise ValueError("self-improvement evidence has no repeated_failure_contrasts list")
+    answer = []
+    for index, contrast in enumerate(contrasts):
+        if not isinstance(contrast, dict):
+            raise ValueError(f"repeated failure contrast {index} is not an object")
+        if set(contrast) != {
+            "task",
+            "failure_profile",
+            "failed_episode_ids",
+            "successful_episode_ids",
+        }:
+            raise ValueError(f"repeated failure contrast {index} has an invalid shape")
+        task = contrast["task"]
+        profile = contrast["failure_profile"]
+        failed = contrast["failed_episode_ids"]
+        successful = contrast["successful_episode_ids"]
+        if not isinstance(task, str) or not task or not isinstance(profile, dict):
+            raise ValueError(f"repeated failure contrast {index} has no task or failure profile")
+        if (
+            not isinstance(failed, list)
+            or len(failed) < 2
+            or not all(isinstance(value, str) and value for value in failed)
+        ):
+            raise ValueError(f"repeated failure contrast {index} has fewer than two failed episodes")
+        if (
+            not isinstance(successful, list)
+            or not successful
+            or not all(isinstance(value, str) and value for value in successful)
+        ):
+            raise ValueError(f"repeated failure contrast {index} has no successful episode")
+        if len(set(failed)) != len(failed) or len(set(successful)) != len(successful):
+            raise ValueError(f"repeated failure contrast {index} repeats an episode identity")
+        answer.append(contrast)
+    return answer
+
+
 def digest_bytes(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
@@ -763,6 +804,7 @@ def write_diagnosis_validator(
     evidence_sha256: str,
     base_configuration: dict[str, str],
     supported_audits: list[dict[str, Any]],
+    failure_contrasts: list[dict[str, Any]],
 ) -> None:
     """Write the diagnosis node's completion verifier.
 
@@ -794,12 +836,18 @@ identity = {identity!r}
 evidence_sha256 = {evidence_sha256!r}
 base_configuration = {base_configuration!r}
 supported_audits = {supported_audits!r}
+failure_contrasts = {failure_contrasts!r}
 program = {str(program)!r}
 
 findings = []
 try:
     candidate = json.load(sys.stdin)
     branch = candidate.get("branch") if isinstance(candidate, dict) else None
+    if branch not in ("insufficient-evidence", None):
+        if candidate.get("failure_contrast") not in failure_contrasts:
+            raise ValueError(
+                "candidate does not select one supported repeated failure contrast"
+            )
     if branch == "configure-workflow":
         audit = validate_independent_audit(candidate.get("independent_audit"))
         if audit not in supported_audits:
@@ -912,9 +960,9 @@ def build_config(
         "instructions": {
             "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
-            "evidence": "Compare the failed and successful settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
+            "evidence": "Select one object from repeated_failure_contrasts and copy it unchanged into failure_contrast. Diagnose only that task-specific contrast. Do not combine failure profiles or tasks. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
-            "sufficiency": sufficiency,
+            "sufficiency": sufficiency + " Choose `insufficient-evidence` when repeated_failure_contrasts is empty.",
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block", DIAGNOSIS_VALIDATOR_TOOL],
@@ -956,6 +1004,61 @@ def build_config(
                     "activation_path": {"type": "string", "minLength": 1},
                     "preserved_controls": {"type": "string", "minLength": 1},
                     "falsification_condition": {"type": "string", "minLength": 1},
+                    "failure_contrast": {
+                        "type": "object",
+                        "properties": {
+                            "task": {"type": "string", "minLength": 1},
+                            "failure_profile": {
+                                "type": "object",
+                                "properties": {
+                                    "outcome": {
+                                        "type": "object",
+                                        "properties": {
+                                            "kind": {"type": "string"},
+                                            "code": {"type": "string"},
+                                            "limit": {"type": "string"},
+                                        },
+                                        "additionalProperties": False,
+                                    },
+                                    "artifact_outcome_mismatch": {"type": "boolean"},
+                                    "failed_verifier_checks": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {"type": "string"},
+                                                "failure_class": {"type": "string"},
+                                            },
+                                            "additionalProperties": False,
+                                        },
+                                    },
+                                },
+                                "required": [
+                                    "outcome",
+                                    "artifact_outcome_mismatch",
+                                    "failed_verifier_checks",
+                                ],
+                                "additionalProperties": False,
+                            },
+                            "failed_episode_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 2,
+                            },
+                            "successful_episode_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 1,
+                            },
+                        },
+                        "required": [
+                            "task",
+                            "failure_profile",
+                            "failed_episode_ids",
+                            "successful_episode_ids",
+                        ],
+                        "additionalProperties": False,
+                    },
                     "independent_audit": {
                         "type": "object",
                         "properties": {
@@ -1328,6 +1431,7 @@ def main(argv: list[str] | None = None) -> int:
         identity = verify_evidence_identity(candidate, binary, evidence)
         base_configuration = failed_base_configuration(evidence)
         supported_audits = supported_independent_audits(evidence, base_configuration)
+        failure_contrasts = supported_failure_contrasts(evidence)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"self-improvement: {error}", file=sys.stderr)
         return 2
@@ -1372,6 +1476,7 @@ def main(argv: list[str] | None = None) -> int:
         evidence_digest(evidence),
         base_configuration,
         supported_audits,
+        failure_contrasts,
     )
     toolchain = cargo.parent.parent
     rustup_home = toolchain.parent.parent if toolchain.parent.name == "toolchains" else None

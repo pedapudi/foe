@@ -59,6 +59,15 @@ campaign supplies that cross-trajectory view through a deterministic collector
 outside the runtime. The collector produces a bounded diagnostic digest and
 binds it to the source tree and runtime binary that produced the trajectories.
 
+The collector groups failures by task, typed outcome, outcome-to-grader
+mismatch, and failed verifier checks. A group becomes a candidate activation
+contrast after two episodes share the failure profile and at least one episode
+for the same task succeeds. Infrastructure exceptions cannot enter a contrast.
+A diagnosis that proposes a candidate must select one contrast without
+combining tasks or failure profiles. The diagnosis validator rejects every
+candidate that lacks this binding. A single stochastic failure can support
+further evidence collection, but it cannot activate an improvement candidate.
+
 A source-change generation contains a diagnosis child, an implementation
 child, and an independent source-audit child. The implementation receives the
 typed diagnosis without the raw trajectories. The source audit receives the

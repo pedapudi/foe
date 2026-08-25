@@ -28,6 +28,7 @@ from run_self_improvement import (
     revised_program_document,
     rust_toolchain_identity,
     supported_independent_audits,
+    supported_failure_contrasts,
     tool_candidate_from_outcome,
     validate_program,
     workflow_candidate_from_outcome,
@@ -171,6 +172,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             ],
         )
         self.assertIn("falsification_condition", returns["required"])
+        self.assertIn("failure_contrast", returns["properties"])
         self.assertNotIn("required_paths", returns["properties"])
         self.assertNotIn("runtime_activation", returns["properties"])
         self.assertNotIn("implementation_files", returns["properties"])
@@ -643,6 +645,18 @@ BASE_CONFIGURATION = {
 }
 EVIDENCE_SHA256 = "sha256:" + "3" * 64
 SUPPORTED_AUDIT = {"reasoning_effort": "high", "model_calls": 60}
+FAILURE_CONTRAST = {
+    "task": "terminal-bench/example",
+    "failure_profile": {
+        "outcome": {"kind": "completed"},
+        "artifact_outcome_mismatch": True,
+        "failed_verifier_checks": [
+            {"name": "test_public_interface", "failure_class": "AssertionError"}
+        ],
+    },
+    "failed_episode_ids": ["ep_failed_one", "ep_failed_two"],
+    "successful_episode_ids": ["ep_success"],
+}
 PROGRAM_DOCUMENT = {
     "instructions": {"role": "Run the declared workflow."},
     "workflow": {
@@ -675,6 +689,7 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 EVIDENCE_SHA256,
                 BASE_CONFIGURATION,
                 [SUPPORTED_AUDIT],
+                [FAILURE_CONTRAST],
             )
             results = []
             for value in values:
@@ -688,22 +703,52 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 results.append(result.stdout.strip())
         return results
 
+    def test_supported_failure_contrasts_require_repetition_and_a_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text(
+                json.dumps({"repeated_failure_contrasts": [FAILURE_CONTRAST]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(supported_failure_contrasts(evidence), [FAILURE_CONTRAST])
+            invalid = {
+                **FAILURE_CONTRAST,
+                "failed_episode_ids": ["ep_failed_one"],
+            }
+            evidence.write_text(
+                json.dumps({"repeated_failure_contrasts": [invalid]}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "fewer than two failed episodes"):
+                supported_failure_contrasts(evidence)
+
     def test_validator_accepts_each_valid_diagnosis_and_reports_findings(self):
         executable = "#!/bin/sh\nexit 0\n"
         judged = self.judgments(
             [
-                {"branch": "configure-workflow", "independent_audit": SUPPORTED_AUDIT},
                 {
                     "branch": "configure-workflow",
+                    "failure_contrast": FAILURE_CONTRAST,
+                    "independent_audit": SUPPORTED_AUDIT,
+                },
+                {
+                    "branch": "configure-workflow",
+                    "failure_contrast": FAILURE_CONTRAST,
                     "independent_audit": {"reasoning_effort": "xhigh", "model_calls": 120},
                 },
-                {"branch": "revise-instructions", "instruction_revision": REVISION},
                 {
                     "branch": "revise-instructions",
+                    "failure_contrast": FAILURE_CONTRAST,
+                    "instruction_revision": REVISION,
+                },
+                {
+                    "branch": "revise-instructions",
+                    "failure_contrast": FAILURE_CONTRAST,
                     "instruction_revision": {**REVISION, "old_text": "absent text"},
                 },
                 {
                     "branch": "define-tool",
+                    "failure_contrast": FAILURE_CONTRAST,
                     "tool_definition": {
                         "name": "check-layout",
                         "description": "Verify the workspace layout.",
@@ -713,6 +758,7 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 },
                 {
                     "branch": "define-tool",
+                    "failure_contrast": FAILURE_CONTRAST,
                     "tool_definition": {
                         "name": "check-layout",
                         "description": "Verify the workspace layout.",
@@ -720,9 +766,17 @@ class DiagnosisValidatorTest(unittest.TestCase):
                         "executable_sha256": "sha256:" + "0" * 64,
                     },
                 },
-                {"branch": "implement-source"},
+                {"branch": "implement-source", "failure_contrast": FAILURE_CONTRAST},
+                {
+                    "branch": "implement-source",
+                    "failure_contrast": {
+                        **FAILURE_CONTRAST,
+                        "task": "terminal-bench/different-task",
+                    },
+                },
                 {"branch": "insufficient-evidence"},
-                {"branch": "unknown"},
+                {"branch": "unknown", "failure_contrast": FAILURE_CONTRAST},
+                {"branch": "implement-source"},
             ]
         )
         self.assertEqual(judged[0], "")
@@ -732,8 +786,10 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertEqual(judged[4], "")
         self.assertIn("does not match the executable content", judged[5])
         self.assertEqual(judged[6], "")
-        self.assertEqual(judged[7], "")
-        self.assertIn("no supported candidate branch", judged[8])
+        self.assertIn("one supported repeated failure contrast", judged[7])
+        self.assertEqual(judged[8], "")
+        self.assertIn("no supported candidate branch", judged[9])
+        self.assertIn("one supported repeated failure contrast", judged[10])
 
 
 class LineageAdoptionTest(unittest.TestCase):

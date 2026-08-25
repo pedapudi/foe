@@ -285,6 +285,79 @@ def evaluation_summary(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [groups[key] for key in sorted(groups)]
 
 
+def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return task-specific failure profiles with repeated failures and a success."""
+    successes_by_task: dict[str, set[str]] = {}
+    failures: dict[tuple[str, str], dict[str, Any]] = {}
+    for report in reports:
+        task = report.get("task")
+        identity = report.get("evidence_identity")
+        episode_id = identity.get("episode_id") if isinstance(identity, dict) else None
+        reward = report.get("verifier_reward")
+        if not isinstance(task, str) or not isinstance(episode_id, str):
+            continue
+        if isinstance(reward, (int, float)) and reward > 0:
+            successes_by_task.setdefault(task, set()).add(episode_id)
+            continue
+        if report.get("trial_error") is not None:
+            continue
+        outcome = report.get("outcome")
+        outcome_profile = {
+            key: outcome[key]
+            for key in ("kind", "code", "limit")
+            if isinstance(outcome, dict) and isinstance(outcome.get(key), str)
+        }
+        feedback = report.get("verifier_feedback")
+        feedback = feedback if isinstance(feedback, dict) else {}
+        checks = []
+        for failure in feedback.get("failures", []):
+            if not isinstance(failure, dict):
+                continue
+            name = failure.get("name")
+            failure_class = failure.get("failure_class")
+            check = {}
+            if isinstance(name, str):
+                check["name"] = name
+            if isinstance(failure_class, str):
+                check["failure_class"] = failure_class
+            checks.append(check)
+        profile = {
+            "outcome": outcome_profile,
+            "artifact_outcome_mismatch": report.get("artifact_outcome_mismatch") is True,
+            "failed_verifier_checks": sorted(
+                checks,
+                key=lambda check: (check.get("name", ""), check.get("failure_class", "")),
+            ),
+        }
+        key = (task, json.dumps(profile, sort_keys=True, separators=(",", ":")))
+        group = failures.setdefault(
+            key,
+            {
+                "task": task,
+                "failure_profile": profile,
+                "failed_episode_ids": set(),
+            },
+        )
+        group["failed_episode_ids"].add(episode_id)
+
+    answer = []
+    for key in sorted(failures):
+        group = failures[key]
+        failed_episode_ids = sorted(group["failed_episode_ids"])
+        successful_episode_ids = sorted(successes_by_task.get(group["task"], set()))
+        if len(failed_episode_ids) < 2 or not successful_episode_ids:
+            continue
+        answer.append(
+            {
+                "task": group["task"],
+                "failure_profile": group["failure_profile"],
+                "failed_episode_ids": failed_episode_ids,
+                "successful_episode_ids": successful_episode_ids,
+            }
+        )
+    return answer
+
+
 def encoded_evidence(report: dict[str, Any]) -> str:
     """Serialize the exact compact bytes the evidence tool returns."""
     return json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
@@ -331,10 +404,11 @@ def collect(
                 raise ValueError(f"self-improvement evidence exceeds {MAX_DIAGNOSES} trajectory diagnoses")
         runs.append({**evaluation, "diagnoses": len(diagnostic_paths)})
     answer = {
-        "schema_version": 3,
+        "schema_version": 4,
         "evaluated_foe": identity,
         "runs": runs,
         "evaluation_summary": evaluation_summary(reports),
+        "repeated_failure_contrasts": repeated_failure_contrasts(reports),
         "trajectory_diagnostics": reports,
     }
     size = len(encoded_evidence(answer).encode("utf-8"))

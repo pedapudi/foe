@@ -221,6 +221,7 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
                             "summary": {"tests": 1, "passed": 0, "failed": 1},
                             "tests": [
                                 {
+                                    "name": "test_outputs.py::test_public_interface",
                                     "status": "failed",
                                     "raw_status": "call_failed",
                                     "message": "The semantic assertion failed",
@@ -243,6 +244,10 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
         feedback = report["verifier_feedback"]
         self.assertEqual(feedback["failure_classes"], ["AssertionError"])
         self.assertEqual(feedback["summary"]["failed"], 1)
+        self.assertEqual(
+            feedback["failures"][0]["name"],
+            "test_outputs.py::test_public_interface",
+        )
         self.assertNotIn("SECRET-VALUE", json.dumps(feedback))
 
 

@@ -440,7 +440,13 @@ identifies diagnosis, unresolved-diagnosis, implementation, independent-audit,
 and completion-verifier stages when present. It also records whether Foe's
 built-in workflow constructed the model episodes. The collector groups
 verified results by task and complete configuration so a diagnosis node can
-compare failed and successful mechanisms. The file keeps up to four
+compare failed and successful mechanisms. It also groups failures by task,
+typed outcome, outcome-to-grader mismatch, and failed verifier checks. A
+candidate may select a group after two episodes share its failure profile and
+one episode for the same task succeeds. The diagnosis validator requires one
+group unchanged. It rejects a candidate assembled from separate tasks or
+failure profiles. Infrastructure exceptions do not enter these groups. The
+file keeps up to four
 input-growth landmarks and three entries from each ranked result list. Input
 growth resets at each episode boundary. The four-landmark limit applies to the
 complete episode tree. Completed outcomes retain their typed status. An

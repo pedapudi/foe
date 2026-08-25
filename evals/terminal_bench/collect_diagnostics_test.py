@@ -15,6 +15,7 @@ from collect_diagnostics import (
     evaluation_metadata,
     evaluation_summary,
     input_growth_landmarks,
+    repeated_failure_contrasts,
 )
 
 
@@ -154,7 +155,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
             source, binary, run, identity = self.fixture(Path(directory))
             report = collect(source, binary, [run], {"example"})
         self.assertEqual(report["evaluated_foe"], identity)
-        self.assertEqual(report["schema_version"], 3)
+        self.assertEqual(report["schema_version"], 4)
         diagnosis = report["trajectory_diagnostics"][0]
         self.assertEqual(diagnosis["task"], "terminal-bench/example")
         self.assertEqual(diagnosis["evaluation"]["label"], "development")
@@ -197,6 +198,61 @@ class CollectDiagnosticsTest(unittest.TestCase):
         encoded = encoded_evidence(report)
         self.assertTrue(encoded.endswith("\n"))
         self.assertNotIn("\n  ", encoded)
+
+    def test_repeated_failure_contrast_requires_two_matching_failures_and_a_success(self):
+        def report(episode: str, reward: float, check: str) -> dict:
+            return {
+                "task": "terminal-bench/example",
+                "evidence_identity": {"episode_id": episode},
+                "verifier_reward": reward,
+                "trial_error": None,
+                "outcome": {"kind": "completed"},
+                "artifact_outcome_mismatch": reward == 0,
+                "verifier_feedback": {
+                    "failures": (
+                        [{"name": check, "failure_class": "AssertionError"}]
+                        if reward == 0
+                        else []
+                    )
+                },
+            }
+
+        reports = [
+            report("ep_failed_one", 0.0, "test_public_interface"),
+            report("ep_failed_two", 0.0, "test_public_interface"),
+            report("ep_different_failure", 0.0, "test_file_layout"),
+            report("ep_success", 1.0, ""),
+        ]
+        self.assertEqual(
+            repeated_failure_contrasts(reports),
+            [
+                {
+                    "task": "terminal-bench/example",
+                    "failure_profile": {
+                        "outcome": {"kind": "completed"},
+                        "artifact_outcome_mismatch": True,
+                        "failed_verifier_checks": [
+                            {
+                                "name": "test_public_interface",
+                                "failure_class": "AssertionError",
+                            }
+                        ],
+                    },
+                    "failed_episode_ids": ["ep_failed_one", "ep_failed_two"],
+                    "successful_episode_ids": ["ep_success"],
+                }
+            ],
+        )
+
+        reports = [
+            report("ep_failed_one", 0.0, "test_public_interface"),
+            {
+                **report("ep_infrastructure_error", 0.0, "test_public_interface"),
+                "trial_error": {"type": "DockerError"},
+            },
+            report("ep_success", 1.0, ""),
+        ]
+        self.assertEqual(repeated_failure_contrasts(reports), [])
 
     def test_collector_rejects_a_different_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
