@@ -195,13 +195,35 @@ Calibration trajectories remain closed until the development and confirmation
 criteria pass. Sealed-holdout trajectories remain closed until the calibration
 result and its decision rule are recorded.
 
-## Priority-service GPT-2 development result
+## Service-tier correction for the recorded 2026-08-25 results
+
+The GPT-2, regex-chess, initial DNA assembly, and source self-improvement runs
+below recorded `service_tier: priority` in their manifests. Their evaluated
+transport did not include that field in OpenAI Responses requests. The
+provider therefore selected the effective tier.
+
+[The OpenAI Responses reference](https://developers.openai.com/api/reference/resources/responses/methods/create)
+defines `service_tier` as a request field and reports the tier used in the
+response object.
+
+The task-owned quality scores, provider-reported token counts, and estimated
+API costs remain valid. These runs provide no evidence about Fast-mode
+latency or ChatGPT credit consumption. Their retained directory labels record
+the requested configuration and remain unchanged.
+
+Runtime binary
+`sha256:26f151b998d07438a5a21a14115a14aa5109030c98c5f0ca756d8d9c413ebd25`
+is the first evaluated candidate in this record that sends the configured
+service tier in the request body.
+
+## Verifier-governed GPT-2 development result
 
 On 2026-08-25, three verifier-governed development attempts used source tree
 `git-tree-sha1:81d736a1b13dc98863e566567240455fdb2b17ad` and runtime binary
 `sha256:effa80a6a824912c61aee119bd0f322805e864c415eabad63d6dd6b9df8cdabc`.
-Every model request used the `priority` service tier. The primary model was
-GPT-5.6 Sol with low reasoning.
+The manifests requested the `priority` service tier. The correction above
+governs the effective tier. The primary model was GPT-5.6 Sol with low
+reasoning.
 
 The low-only attempt received 60 model-call capacity and no token ceiling. It
 used 59 calls while testing many checkpoint layouts. The completion verifier
@@ -222,7 +244,7 @@ The identity-bound self-improvement workflow read the three retained
 diagnoses. Its first diagnosis selected the measured audit intervention but
 copied an unsupported six-call value into its typed setting. Commit `7a045e2`
 moved that factual binding into the deterministic evidence resolver. The
-repaired workflow then used one Luna-low priority request and produced the
+repaired workflow then used one Luna-low request and produced the
 accepted workflow candidate
 `sha256:d8ce2e7acbb626c18b552619d7c53bb7be0ad7eeff7496211395c05e10b23bbb`.
 The candidate binds the measured 60-call Sol `xhigh` audit to the evaluated
@@ -247,13 +269,14 @@ This result establishes one accepted self-improvement and one converted
 development failure. The `regex-chess` and `dna-assembly` results below test
 whether the same intervention transfers to other tasks.
 
-## Priority-service regex-chess development result
+## Verifier-governed regex-chess development result
 
 On 2026-08-25, three closed-book development attempts used source tree
 `git-tree-sha1:86b6c3c860c90842738167d0736985a762c22c93` and runtime binary
 `sha256:effa80a6a824912c61aee119bd0f322805e864c415eabad63d6dd6b9df8cdabc`.
-Every request used the `priority` service tier. The primary model was Sol
-`low` with 60 calls and no token ceiling.
+The manifests requested the `priority` service tier. The correction above
+governs the effective tier. The primary model was Sol `low` with 60 calls and
+no token ceiling.
 
 The low-only attempt completed after 30 calls. It passed the supplied game
 fixture and several targeted positions. The unchanged grader found malformed
@@ -268,7 +291,7 @@ The attempts used 35 and 45 calls. Together they used 1,648,448 input tokens,
 was $4.093090.
 
 The three trajectory diagnoses formed a 54,575-byte identity-bound evidence
-file. One Luna `low` priority request used 18,339 input tokens and 703 output
+file. One Luna `low` request used 18,339 input tokens and 703 output
 tokens to diagnose the repeated audit contrast. The self-improvement runner
 then produced the accepted workflow candidate
 `sha256:8237704f9221b80d7219a43d07eacacac9cc8d6753fb4a420cc993da771460b5`.
@@ -287,12 +310,12 @@ The retained local evidence is stored under these paths:
 - `target/priority-regex-chess-workflow-evidence.json`;
 - `target/priority-regex-chess-self-improvement`.
 
-## Priority-service DNA assembly development result
+## Verifier-governed DNA assembly development result
 
 On 2026-08-25, a Sol `low` baseline and two generated-candidate attempts used
-the same source tree and runtime binary as the regex-chess result. Every
-request used the `priority` service tier. All token allowances were
-measurement-only.
+the same source tree and runtime binary as the regex-chess result. The
+manifests requested the `priority` service tier. The correction above governs
+the effective tier. All token allowances were measurement-only.
 
 The low-only baseline completed after eight calls and received `0.0`. Its
 vector primer pair differed by 6.88 degrees Celsius, beyond the public
@@ -320,7 +343,7 @@ returns failures through `done_when.verify`. Its SHA-256 digest is
 An untouched workspace produced a finding. An independent oracle passed the
 checker and received `1.0` from the unchanged task-owned grader.
 
-Two priority-service convergence attempts used source tree
+Two convergence attempts used source tree
 `git-tree-sha1:edbf696b434b3027f6a55c5a21e18d81e2b30fea`. Each attempt gave
 Sol `low` and a fresh Sol `xhigh` audit 60 calls. Both received `1.0` from the
 unchanged task-owned grader. The first used 28 calls. One response lacked
@@ -344,6 +367,87 @@ The retained local evidence is stored under these paths:
 - `target/terminal-bench-jobs/priority-verifier-dna-low-xhigh-audit-20260825T030304Z`;
 - `target/terminal-bench-jobs/priority-verifier-dna-low-xhigh-audit-repeat-20260825T031056Z`;
 - `target/terminal-bench-verifier-controls/controls-20260825T025942Z`.
+
+## Source-level self-improvement result
+
+On 2026-08-25, identity-bound trajectory evidence asked the self-improvement
+workflow to change Foe source. The requested behavior made the built-in
+terminal audit authoritative whenever the command names a completion
+verifier.
+
+The first attempt changed the expected implementation, test, integration-test,
+and specification files. Its model child did not return the required typed
+branch value. The runner therefore rejected the result as `no-candidate` and
+set `direct_implementation_required` to true.
+
+The runner was repaired to validate a source artifact after a blocked or
+incomplete reporting outcome. A fresh source copy then repeated the
+self-improvement workflow. The repeated run used ten model calls, 226,145
+input tokens, 61,440 cached-input tokens, and 4,264 output tokens. It took
+122.686 seconds and cost an estimated $0.688019.
+
+The repeated run changed four files:
+
+- `crates/cli/src/run.rs`;
+- `crates/cli/src/run_test.rs`;
+- `crates/cli/tests/integration.rs`;
+- `docs/design.md`.
+
+The external candidate validator accepted artifact
+`sha256:e99aa7f2031b11a07703451cff34bbb8b58b1d1041b82519719a89946842c25c`
+with no finding. The result classified the candidate as `source-change` and
+set `direct_implementation_required` to false. The accepted source commit is
+`027236a4328ca706d966fe6e368e1b06187cbf10`.
+
+The retained results are stored under these paths:
+
+- `target/priority-verify-audit-source-self-improvement/result.json`;
+- `target/priority-verify-audit-source-self-improvement-repeat-fixed/result.json`;
+- `/home/sunil/git/foe-verify-audit-self-improvement-repeat`.
+
+This result establishes independent reproduction of the source artifact after
+a failure in the self-improvement reporting path. The Terminal-Bench
+validation below establishes task-quality activation and one transfer case
+for the resulting behavior.
+
+## Built-in terminal-audit candidate validation
+
+On 2026-08-25, the source-generated built-in workflow candidate ran in two
+fresh Terminal-Bench containers. The evaluated source tree was
+`git-tree-sha1:443b119a93324a59a8fd5338830c30bf01e742ab`. The runtime binary
+was
+`sha256:26f151b998d07438a5a21a14115a14aa5109030c98c5f0ca756d8d9c413ebd25`.
+
+The Harbor adapter invoked the binary with a bare task, `--verify`,
+`--sandbox off`, and `--service-tier priority`. The built-in workflow gave 60
+calls to a Sol-low implementation episode and 60 calls to a fresh Sol-high
+terminal audit. The terminal audit owned `done_when.verify`.
+
+| task | task score | model calls | input tokens | cached-input tokens | output tokens | estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fix-git` | 1.0 | 15 | 102,146 | 35,328 | 5,104 | $0.383483 |
+| `dna-assembly` | 1.0 | 38 | 456,532 | 210,432 | 18,279 | $1.434153 |
+
+The `fix-git` audit independently confirmed the implementation without
+editing it. The DNA implementation returned with exact melting-temperature
+validation unresolved because `oligotm` was unavailable. The audit installed
+`primer3`, repaired the primer design, and obtained an empty checker finding
+list before completing.
+
+Both unchanged task-owned graders awarded `1.0`. Both Foe outcomes were
+completed, both checker digests were unchanged, and both conformance reports
+contained no violation. Every model response reported usage. Harbor recorded
+no trial exception or infrastructure failure.
+
+The retained evidence is stored under these paths:
+
+- `/home/sunil/git/foe-gpt2-self-improvement-candidate/target/terminal-bench-jobs/priority-built-in-verifier-fix-git-20260825T045425Z`;
+- `/home/sunil/git/foe-gpt2-self-improvement-candidate/target/terminal-bench-jobs/priority-built-in-verifier-dna-assembly-20260825T045704Z`.
+
+These runs validate the source-generated built-in workflow on one
+independent-check case and one corrective-audit case. They do not satisfy the
+twelve-task development gate or establish a second transferable
+self-improvement.
 
 ## Cost accounting
 
