@@ -84,6 +84,12 @@ def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[s
             "reasoning_effort": answer["reasoning_effort"],
         }
     }
+    built_in_workflow = manifest.get("built_in_workflow")
+    if not isinstance(built_in_workflow, bool):
+        raise ValueError(
+            f"Terminal-Bench manifest {manifest_path} has no boolean `built_in_workflow`"
+        )
+    configuration["built_in_workflow"] = built_in_workflow
     optional_stages = {
         "diagnosis": (
             ("model", "diagnosis_model", str),

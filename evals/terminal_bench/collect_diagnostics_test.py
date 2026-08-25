@@ -75,6 +75,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     "reasoning_effort": "low",
                     "service_tier": "default",
                     "token_limits": "measurement_only",
+                    "built_in_workflow": False,
                     "diagnosis_model": None,
                     "diagnosis_reasoning_effort": None,
                     "diagnosis_model_calls": None,
@@ -155,6 +156,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     "model": "openai-codex/gpt-5.6-luna",
                     "reasoning_effort": "low",
                     "execution_configuration": {
+                        "built_in_workflow": False,
                         "service_tier": "default",
                         "token_policy": "measurement_only",
                         "implementation": {
@@ -213,6 +215,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
             "reasoning_effort": "low",
             "service_tier": "default",
             "token_limits": "measurement_only",
+            "built_in_workflow": False,
             "diagnosis_model": None,
             "diagnosis_reasoning_effort": None,
             "diagnosis_model_calls": None,
@@ -261,6 +264,48 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 "reasoning_effort": "high",
                 "model_calls": 60,
             },
+        )
+
+    def test_summary_keeps_a_built_in_workflow_separate_from_a_bare_episode(self):
+        manifest = {
+            "dataset": "terminal-bench/example@1",
+            "label": "bare",
+            "model": "openai-codex/gpt-5.6-sol",
+            "reasoning_effort": "low",
+            "service_tier": "default",
+            "token_limits": "measurement_only",
+            "built_in_workflow": False,
+            "diagnosis_model": None,
+            "diagnosis_reasoning_effort": None,
+            "diagnosis_model_calls": None,
+            "unresolved_diagnosis_reasoning_effort": None,
+            "unresolved_diagnosis_model_calls": None,
+            "escalation_reasoning_effort": None,
+            "escalation_model_calls": None,
+            "completion_checker": None,
+        }
+        bare = evaluation_metadata(manifest, Path("bare/campaign.json"))
+        manifest.update({"label": "built-in", "built_in_workflow": True})
+        built_in = evaluation_metadata(manifest, Path("built-in/campaign.json"))
+        reports = [
+            {
+                "task": "terminal-bench/example",
+                "evaluation": bare,
+                "verifier_reward": 0.0,
+                "usage": {"model_calls": 3, "estimated_cost_usd": 0.1},
+            },
+            {
+                "task": "terminal-bench/example",
+                "evaluation": built_in,
+                "verifier_reward": 1.0,
+                "usage": {"model_calls": 8, "estimated_cost_usd": 0.3},
+            },
+        ]
+        summary = evaluation_summary(reports)
+        self.assertEqual(len(summary), 2)
+        self.assertEqual(
+            sorted(row["execution_configuration"]["built_in_workflow"] for row in summary),
+            [False, True],
         )
 
     def test_collector_rejects_held_back_tasks(self):

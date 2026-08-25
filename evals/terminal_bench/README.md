@@ -432,8 +432,9 @@ bazel run //evals/terminal_bench:collect-diagnostics -- \
 The collector labels every diagnosis with its dataset, run label, token
 policy, service tier, and complete execution configuration. The configuration
 identifies diagnosis, unresolved-diagnosis, implementation, independent-audit,
-and completion-verifier stages when present. It groups verified results by
-task and complete configuration so a diagnosis node can
+and completion-verifier stages when present. It also records whether Foe's
+built-in workflow constructed the model episodes. The collector groups
+verified results by task and complete configuration so a diagnosis node can
 compare failed and successful mechanisms. The file keeps up to four
 input-growth landmarks and three entries from each ranked result list. Input
 growth resets at each episode boundary. The four-landmark limit applies to the
