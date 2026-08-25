@@ -441,7 +441,7 @@ fn lineage_claim() -> serde_json::Value {
     serde_json::json!({
         "parent": {
             "program_identity": format!("sha256:{}", "a".repeat(64)),
-            "lineage_identity": format!("sha256:{}", "b".repeat(64)),
+            "state_identity": format!("sha256:{}", "b".repeat(64)),
         },
         "evidence": format!("sha256:{}", "c".repeat(64)),
         "verification_log": "children/ep_1/episode.jsonl",

@@ -504,7 +504,7 @@ and the checker that verifies the claim.
 | field | type | meaning |
 |---|---|---|
 | `parent.program_identity` | string | the parent state's program identity |
-| `parent.lineage_identity` | string | the parent state's own ancestry claim |
+| `parent.state_identity` | string | the parent state's identity, selecting one ancestry claim among those that can accompany a single program identity |
 | `evidence` | string | SHA-256 digest of the evidence bundle's canonical manifest |
 | `verification_log` | string | bundle-relative path of the log holding the verifier result |
 | `verification_seq` | integer | `seq` of that result inside `verification_log` |

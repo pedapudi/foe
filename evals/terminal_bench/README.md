@@ -486,20 +486,23 @@ controls. `direct_implementation_required` is true when deterministic
 validation finds an error or the workflow produces no candidate.
 
 The runner records every accepted candidate as a lineage transition under
-the retained run directory's `lineage/` tree. It writes the evidence bundle
-— the episode tree, the adoption's state document as the candidate identity
-document, an artifact manifest over the retained candidate files, and the
-candidate envelope — and completes the bundle through the lineage crate's
+the retained run directory's `lineage/` tree. It writes the evidence
+bundle — the episode tree, the adoption's state document as the child
+identity document, and an artifact manifest over the retained candidate
+files — and completes the bundle through the lineage crate's
 `build-bundle` binary, invoked with the pinned toolchain, which writes the
-candidate binding record and canonical manifest and prints the bundle's
-content address. The binding record cites the accepted diagnosis-validator
-result for a workflow, instruction, or tool candidate, and the accepted
-candidate-check result for a source candidate. The parent and child state
-documents land in `lineage/states/` and the bundle in `lineage/evidence/`,
-the layout `foe lineage` reads. The result's `adoption` member records the
-addresses, identities, and verification coordinates.
+adoption record and canonical manifest and prints the bundle's content
+address. The record cites the accepted diagnosis-validator result for a
+workflow, instruction, or tool candidate, and the accepted candidate-check
+result for a source candidate. The parent state is the evaluated
+program's identity document, retained from the resolved plan. The parent
+and child state documents land in `lineage/states/` and the bundle in
+`lineage/evidence/`, the layout the checker's resolvers read. The result's
+`adoption` member records the addresses, identities, and verification
+coordinates.
 [`docs/lineage-identity.md`](../../docs/lineage-identity.md) "Harness
-adoptions" defines the state documents per candidate kind.
+adoptions" states the one state-document rule: every adoption materializes
+the program document that will run under it.
 
 Apply a retained workflow candidate to any permitted task set with:
 

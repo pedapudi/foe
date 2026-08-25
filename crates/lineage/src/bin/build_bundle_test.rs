@@ -1,5 +1,6 @@
-use super::{run, BINDING_FILE};
-use foe_lineage::{digest_of, verify_bundle, CandidateBinding, MANIFEST_FILE};
+use super::{run, RECORD_FILE};
+use foe_config::identity::canonical;
+use foe_lineage::{digest_of, verify_bundle, AdoptionRecord, MANIFEST_FILE};
 use std::path::{Path, PathBuf};
 
 fn tmp(name: &str) -> PathBuf {
@@ -9,36 +10,48 @@ fn tmp(name: &str) -> PathBuf {
     dir
 }
 
-/// A bundle directory holding a proposal log and a candidate envelope, the
-/// files a caller retains before invoking the binary.
+/// A bundle directory holding a proposal log, a candidate identity
+/// document, and an artifact manifest, the files a caller retains before
+/// invoking the binary.
 fn bundle(name: &str) -> PathBuf {
     let dir = tmp(name);
     std::fs::create_dir_all(dir.join("episode")).unwrap();
     std::fs::write(dir.join("episode/episode.jsonl"), b"{}\n").unwrap();
-    std::fs::write(dir.join("candidate-envelope.json"), b"{\"program_identity\":\"sha256:0\"}").unwrap();
+    std::fs::write(dir.join("child-identity.json"), b"{\"b\":2,\"a\":1}").unwrap();
+    std::fs::write(dir.join("artifact-manifest.json"), b"[]").unwrap();
     dir
 }
 
 fn args(dir: &Path, seq: &str) -> Vec<String> {
-    [dir.to_string_lossy().as_ref(), "episode/episode.jsonl", "candidate-envelope.json", "episode/episode.jsonl", seq]
-        .map(str::to_string)
-        .to_vec()
+    [
+        dir.to_string_lossy().as_ref(),
+        "episode/episode.jsonl",
+        "child-identity.json",
+        "artifact-manifest.json",
+        "episode/episode.jsonl",
+        seq,
+    ]
+    .map(str::to_string)
+    .to_vec()
 }
 
 #[test]
-fn writes_the_binding_record_and_canonical_manifest_and_prints_the_address() {
+fn writes_the_adoption_record_and_canonical_manifest_and_prints_the_address() {
     let dir = bundle("valid");
     let address = run(&args(&dir, "7")).unwrap();
     let (manifest, verified_address) = verify_bundle(&dir).unwrap();
     assert_eq!(address, verified_address);
     assert_eq!(manifest.proposal_log, "episode/episode.jsonl");
-    assert_eq!(manifest.candidate_envelope, "candidate-envelope.json");
-    assert_eq!(manifest.candidate_binding.as_deref(), Some(BINDING_FILE));
+    assert_eq!(manifest.adoption_record, RECORD_FILE);
     let bytes = std::fs::read(dir.join(MANIFEST_FILE)).unwrap();
     assert_eq!(address, digest_of(&bytes));
-    let record: CandidateBinding = serde_json::from_slice(&std::fs::read(dir.join(BINDING_FILE)).unwrap()).unwrap();
-    let envelope = std::fs::read(dir.join("candidate-envelope.json")).unwrap();
-    assert_eq!(record.candidate_sha256, digest_of(&envelope));
+    let record: AdoptionRecord = serde_json::from_slice(&std::fs::read(dir.join(RECORD_FILE)).unwrap()).unwrap();
+    let document_bytes = std::fs::read(dir.join("child-identity.json")).unwrap();
+    let document: serde_json::Value = serde_json::from_slice(&document_bytes).unwrap();
+    assert_eq!(record.program_identity, digest_of(canonical(&document).as_bytes()));
+    assert_ne!(record.program_identity, record.identity_document_sha256, "the retained file is not canonical");
+    assert_eq!(record.identity_document_sha256, digest_of(&document_bytes));
+    assert_eq!(record.artifact_manifest_sha256, digest_of(b"[]"));
     assert_eq!(record.verification_log, "episode/episode.jsonl");
     assert_eq!(record.verification_seq, 7);
 }
@@ -51,7 +64,7 @@ fn rebuilding_replaces_the_prior_record_and_manifest() {
     assert_ne!(first, second, "changed coordinates change the content address");
     let (manifest, verified_address) = verify_bundle(&dir).unwrap();
     assert_eq!(second, verified_address);
-    assert_eq!(manifest.files.iter().filter(|f| f.path == BINDING_FILE).count(), 1);
+    assert_eq!(manifest.files.iter().filter(|f| f.path == RECORD_FILE).count(), 1);
 }
 
 #[test]
@@ -60,9 +73,9 @@ fn refuses_bad_arguments() {
     assert!(run(&[]).unwrap_err().starts_with("usage:"));
     assert!(run(&args(&dir, "not-a-number")).unwrap_err().contains("VERIFICATION_SEQ"));
     let mut absolute = args(&dir, "1");
-    absolute[2] = "/etc/candidate-envelope.json".into();
-    assert!(run(&absolute).unwrap_err().contains("CANDIDATE_ENVELOPE"));
+    absolute[2] = "/etc/child-identity.json".into();
+    assert!(run(&absolute).unwrap_err().contains("IDENTITY_DOCUMENT"));
     let mut missing = args(&dir, "1");
-    missing[2] = "absent-envelope.json".into();
-    assert!(run(&missing).unwrap_err().contains("absent-envelope.json"));
+    missing[3] = "absent-manifest.json".into();
+    assert!(run(&missing).unwrap_err().contains("absent-manifest.json"));
 }

@@ -274,9 +274,10 @@ pub struct SandboxConfig {
 pub struct LineageParent {
     /// The parent state's program identity.
     pub program_identity: String,
-    /// The parent state's own ancestry claim, selecting one among the
-    /// claims that can accompany a single program identity.
-    pub lineage_identity: String,
+    /// The parent state's identity: derived from its program identity
+    /// and its own ancestry claim, selecting one among the claims that
+    /// can accompany a single program identity.
+    pub state_identity: String,
 }
 
 /// The `program_lineage` object of a root configuration: an ancestry claim

@@ -314,13 +314,14 @@ promotion remains an external evaluation decision. A failed artifact sets
 `direct_implementation_required`. The campaign then proceeds with a direct
 implementation.
 
-The runner records every accepted candidate as a harness lineage
-transition: the evidence bundle completed through the lineage crate's
-`build-bundle` binary, the candidate binding record citing the accepted
-verifier result, and the parent and adoption state documents in the layout
-`foe lineage` reads.
+The runner records every accepted candidate as a lineage transition: the
+evidence bundle completed through the lineage crate's `build-bundle`
+binary, whose adoption record cites the accepted verifier result, and the
+parent and adoption state documents in the layout the checker's resolvers
+read.
 [`docs/lineage-identity.md`](../../docs/lineage-identity.md) "Harness
-adoptions" defines the state documents per candidate kind.
+adoptions" states the one state-document rule: every adoption materializes
+the program document that will run under it.
 
 ## Recorded capability conversion and diagnosis sufficiency
 

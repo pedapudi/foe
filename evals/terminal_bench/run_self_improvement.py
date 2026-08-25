@@ -191,37 +191,14 @@ def canonical_json(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
-def lineage_identity(program_identity: str, program_lineage: dict[str, Any] | None) -> str:
-    """The identity docs/lineage-identity.md derives for one ancestry claim."""
+def state_identity(program_identity: str, program_lineage: dict[str, Any] | None) -> str:
+    """The state identity docs/lineage-identity.md derives for one claim."""
     document = {
         "schema_version": LINEAGE_SCHEMA_VERSION,
         "program_identity": program_identity,
         "program_lineage": program_lineage,
     }
     return digest_bytes(canonical_json(document))
-
-
-def parent_state_document(
-    program_document: dict[str, Any],
-    identity: dict[str, str],
-    base_configuration: dict[str, str],
-    verifier_tools: list[dict[str, str]],
-) -> dict[str, Any]:
-    """The harness state an adoption descends from, built from retained evidence.
-
-    docs/lineage-identity.md "Harness adoptions" defines the document: the
-    evaluated Foe identities, the preserved base configuration, the retained
-    self-improvement program document, and the admission verifiers the state
-    declares by executable content hash.
-    """
-    return {
-        "schema_version": LINEAGE_SCHEMA_VERSION,
-        "kind": "harness-state",
-        "evaluated_foe": dict(identity),
-        "base_configuration": dict(base_configuration),
-        "program_document": program_document,
-        "tools": sorted(verifier_tools, key=lambda tool: tool["name"]),
-    }
 
 
 def revised_program_document(document: Any, revision: dict[str, str]) -> Any:
@@ -254,52 +231,79 @@ def revised_program_document(document: Any, revision: dict[str, str]) -> Any:
     return revised
 
 
-def development_program_document(candidate: dict[str, Any]) -> dict[str, Any]:
-    """The development program a workflow adoption stands for.
+def development_program_document(
+    base_configuration: dict[str, str],
+    audit: dict[str, Any] | None = None,
+    tool: dict[str, str] | None = None,
+    runtime: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The development program document an adoption produces.
 
-    The document applies the candidate's independent-audit setting to its
-    preserved base configuration, with the run-supplied members fixed to
-    the declared values so the state identity is stable across launches.
+    The run-supplied members — task instruction, credential path, working
+    directory, and per-task allowances — are fixed to the declared values
+    so the document is stable across launches. `audit` adds the
+    independent-audit stage, `tool` adds a tool_defs entry carrying the
+    executable's content hash, and `runtime` names the produced runtime of
+    a source adoption.
     """
-    base = candidate["base_configuration"]
-    audit = candidate["independent_audit"]
-    return build_program(
+    document = build_program(
         DEVELOPMENT_TASK_INSTRUCTION,
-        base["model"],
+        base_configuration["model"],
         DEVELOPMENT_TASK_CREDENTIAL,
         DEVELOPMENT_TASK_DIRECTORY,
         model_calls=DEVELOPMENT_TASK_MODEL_CALLS,
         input_tokens=None,
         output_tokens=None,
         seconds=DEVELOPMENT_TASK_SECONDS,
-        reasoning_effort=base["reasoning_effort"],
-        service_tier=base["service_tier"],
-        escalation_reasoning_effort=audit["reasoning_effort"],
-        escalation_model_calls=audit["model_calls"],
+        reasoning_effort=base_configuration["reasoning_effort"],
+        service_tier=base_configuration["service_tier"],
+        escalation_reasoning_effort=audit["reasoning_effort"] if audit else None,
+        escalation_model_calls=audit["model_calls"] if audit else 0,
     )
-
-
-def candidate_body(candidate: dict[str, Any]) -> dict[str, Any]:
-    """The candidate without the digest that seals it."""
-    return {key: value for key, value in candidate.items() if key != "digest"}
+    if tool is not None:
+        document["tools"] = [*document["tools"], tool["name"]]
+        document["tool_defs"] = {
+            **document.get("tool_defs", {}),
+            tool["name"]: {
+                "description": tool["description"],
+                "exec": "/tools/" + tool["name"],
+                "exec_sha256": tool["executable_sha256"].removeprefix("sha256:"),
+            },
+        }
+    if runtime is not None:
+        document["runtime"] = runtime
+    return document
 
 
 def adoption_state_document(
-    candidate_kind: str, candidate: dict[str, Any], program_document: dict[str, Any]
+    candidate_kind: str,
+    candidate: dict[str, Any],
+    program_document: dict[str, Any],
+    base_configuration: dict[str, str],
 ) -> dict[str, Any]:
-    """The state document an adoption of `candidate` creates, per kind.
+    """The state document an adoption of `candidate` creates.
 
-    docs/lineage-identity.md "Harness adoptions" states the rule: the
-    revised program document for an instruction revision, the development
-    program document for a workflow candidate, and the candidate's
-    canonical body for a source or tool-definition candidate.
+    docs/lineage-identity.md "Harness adoptions" states the one rule: the
+    state document is the program document that will run under the
+    adoption. An instruction revision yields the revised self-improvement
+    program document; the other kinds yield the development program
+    document the adoption produces — with the audit stage applied, with
+    the defined tool declared, or with the changed source named as the
+    produced runtime until the rebuilt binary's hash attaches.
     """
     if candidate_kind == "instruction-revision":
         return revised_program_document(program_document, candidate["revision"])
     if candidate_kind == "workflow-configuration":
-        return development_program_document(candidate)
-    if candidate_kind in ("source-change", "tool-definition"):
-        return candidate_body(candidate)
+        return development_program_document(
+            candidate["base_configuration"], audit=candidate["independent_audit"]
+        )
+    if candidate_kind == "tool-definition":
+        return development_program_document(candidate["base_configuration"], tool=candidate["tool"])
+    if candidate_kind == "source-change":
+        return development_program_document(
+            base_configuration,
+            runtime={"source_tree": candidate["base_source_tree"], "files": candidate["files"]},
+        )
     raise ValueError(f"candidate kind {candidate_kind} has no adoption state document")
 
 
@@ -341,12 +345,13 @@ def record_adoption(
 ) -> dict[str, Any]:
     """Record one accepted candidate as a lineage transition under `root`.
 
-    Writes the evidence bundle (the episode tree, the child identity
-    document, the artifact manifest over the retained candidate files, and
-    the candidate envelope), completes it through the lineage crate's
-    `build-bundle` binary, and writes the parent and child state documents
-    where `foe lineage` resolves them: `root/lineage/states/<hex>.json` by
-    lineage identity and `root/lineage/evidence/<hex>` by content address.
+    Writes the evidence bundle — the episode tree, the state document as
+    the child identity document, and the artifact manifest over the
+    retained candidate files — completes it through the lineage crate's
+    `build-bundle` binary, which writes the adoption record and canonical
+    manifest, and writes the parent and child state documents where the
+    checker's resolvers read them: `root/lineage/states/<hex>.json` by
+    state identity and `root/lineage/evidence/<hex>` by content address.
     """
     build = root / "lineage" / "bundle-build"
     shutil.copytree(episode, build / "episode")
@@ -356,23 +361,15 @@ def record_adoption(
         (build / name).write_bytes(content)
     if artifacts is None:
         artifacts = [{"path": name, "sha256": digest_bytes(content)} for name, content in sorted(retained.items())]
-    artifact_manifest = canonical_json(artifacts)
-    (build / "artifact-manifest.json").write_bytes(artifact_manifest)
-    envelope = canonical_json(
-        {
-            "program_identity": digest_bytes(identity_bytes),
-            "identity_document_sha256": digest_bytes(identity_bytes),
-            "artifact_manifest_sha256": digest_bytes(artifact_manifest),
-        }
-    )
-    (build / "candidate-envelope.json").write_bytes(envelope)
+    (build / "artifact-manifest.json").write_bytes(canonical_json(artifacts))
     verification_log, verification_seq = find_accepted_verification(episode, verification_tool)
     result = subprocess.run(
         [
             *bundle_builder,
             str(build),
             "episode/episode.jsonl",
-            "candidate-envelope.json",
+            "child-identity.json",
+            "artifact-manifest.json",
             verification_log,
             str(verification_seq),
         ],
@@ -393,25 +390,25 @@ def record_adoption(
     states = root / "lineage" / "states"
     states.mkdir(parents=True, exist_ok=True)
     parent_identity = digest_bytes(canonical_json(parent_document))
-    parent_lineage = lineage_identity(parent_identity, None)
-    parent_state = states / (parent_lineage.removeprefix("sha256:") + ".json")
+    parent_state_identity = state_identity(parent_identity, None)
+    parent_state = states / (parent_state_identity.removeprefix("sha256:") + ".json")
     write_json(parent_state, {"identity_document": parent_document})
     claim = {
-        "parent": {"program_identity": parent_identity, "lineage_identity": parent_lineage},
+        "parent": {"program_identity": parent_identity, "state_identity": parent_state_identity},
         "evidence": address,
         "verification_log": verification_log,
         "verification_seq": verification_seq,
     }
     child_identity = digest_bytes(identity_bytes)
-    child_lineage = lineage_identity(child_identity, claim)
-    child_state = states / (child_lineage.removeprefix("sha256:") + ".json")
+    child_state_identity = state_identity(child_identity, claim)
+    child_state = states / (child_state_identity.removeprefix("sha256:") + ".json")
     write_json(child_state, {"identity_document": state_document, "program_lineage": claim})
     return {
         "evidence": address,
         "program_identity": child_identity,
-        "lineage_identity": child_lineage,
+        "state_identity": child_state_identity,
         "parent_program_identity": parent_identity,
-        "parent_lineage_identity": parent_lineage,
+        "parent_state_identity": parent_state_identity,
         "verification_log": verification_log,
         "verification_seq": verification_seq,
         "state": str(child_state),
@@ -543,8 +540,13 @@ def rust_toolchain_identity(cargo: Path) -> dict[str, str]:
     return binaries
 
 
-def validate_program(binary: Path, program: Path) -> None:
-    """Construct the generated program without making a model request."""
+def validate_program(binary: Path, program: Path) -> dict[str, Any]:
+    """Construct the generated program without making a model request.
+
+    Returns the resolved plan object. Its identity document is the parent
+    state an adoption descends from; the returned document is required to
+    rehash to the reported identity.
+    """
     result = subprocess.run(
         [str(binary), "plan", "--config", str(program), "--json"],
         text=True,
@@ -554,6 +556,14 @@ def validate_program(binary: Path, program: Path) -> None:
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
         raise ValueError(f"generated self-improvement program is invalid: {detail}")
+    try:
+        plan = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"the resolved plan is not one JSON object: {error}") from error
+    document = plan.get("identity_document") if isinstance(plan, dict) else None
+    if not isinstance(document, dict) or digest_bytes(canonical_json(document)) != plan.get("identity"):
+        raise ValueError("the resolved plan's identity document does not rehash to its identity")
+    return plan
 
 
 def git_metadata_root(candidate: Path) -> Path:
@@ -1223,7 +1233,7 @@ def main(argv: list[str] | None = None) -> int:
     program = root / "program.json"
     write_json(program, program_document)
     try:
-        validate_program(binary, program)
+        plan = validate_program(binary, program)
     except ValueError as error:
         print(f"self-improvement: {error}", file=sys.stderr)
         if temporary:
@@ -1385,13 +1395,6 @@ def main(argv: list[str] | None = None) -> int:
                 {"path": name, "sha256": value}
                 for name, value in sorted(artifact_identity["files"].items())
             ]
-        verifier_tools = [
-            {"name": "check", "exec_sha256": sha256_file(check).removeprefix("sha256:")},
-            {
-                "name": DIAGNOSIS_VALIDATOR_TOOL,
-                "exec_sha256": sha256_file(validator).removeprefix("sha256:"),
-            },
-        ]
         toolchain_environment = {
             "CARGO_HOME": str(cargo_home),
             "CARGO_TARGET_DIR": str(cargo_target),
@@ -1408,8 +1411,10 @@ def main(argv: list[str] | None = None) -> int:
             adoption = record_adoption(
                 root,
                 episode,
-                adoption_state_document(candidate_kind, artifact_identity, program_document),
-                parent_state_document(program_document, identity, base_configuration, verifier_tools),
+                adoption_state_document(
+                    candidate_kind, artifact_identity, program_document, base_configuration
+                ),
+                plan["identity_document"],
                 retained,
                 verification_tool,
                 [str(cargo), "run", "--quiet", "-p", "foe-lineage", "--bin", "build-bundle", "--"],

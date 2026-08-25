@@ -22,7 +22,6 @@ from run_self_improvement import (
     line_budget_ceilings,
     measure_episode,
     model_config,
-    parent_state_document,
     record_adoption,
     revised_program_document,
     rust_toolchain_identity,
@@ -591,9 +590,9 @@ class LineageAdoptionTest(unittest.TestCase):
     """Synthetic adoptions per candidate kind, checked end to end.
 
     Each test constructs a proposal episode log whose recorded program
-    identity is the harness parent state's, records the adoption through
-    the lineage crate's `build-bundle` binary, and verifies the resulting
-    ancestry claim with `foe lineage`.
+    identity is the parent state's, records the adoption through the
+    lineage crate's `build-bundle` binary, and verifies the resulting
+    ancestry claim with the crate's `check_ancestry` example.
     """
 
     repository = Path(__file__).resolve().parents[2]
@@ -603,23 +602,22 @@ class LineageAdoptionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         subprocess.run(
-            ["cargo", "build", "--quiet", "-p", "foe-lineage", "-p", "foe"],
+            ["cargo", "build", "--quiet", "-p", "foe-lineage", "--bins", "--examples"],
             cwd=cls.repository,
             check=True,
         )
         cls.build_bundle = cls.repository / "target" / "debug" / "build-bundle"
-        cls.foe = cls.repository / "target" / "debug" / "foe"
+        cls.check_ancestry_binary = cls.repository / "target" / "debug" / "examples" / "check_ancestry"
 
     def parent_document(self):
-        return parent_state_document(
-            PROGRAM_DOCUMENT,
-            EVALUATED_FOE,
-            BASE_CONFIGURATION,
-            [
+        """An identity document declaring the two admission verifiers."""
+        return {
+            "name": "identity-bound-trajectory-self-improvement",
+            "tools": [
                 {"name": "check", "exec_sha256": self.check_sha256},
                 {"name": DIAGNOSIS_VALIDATOR_TOOL, "exec_sha256": self.validator_sha256},
             ],
-        )
+        }
 
     def write_episode(self, episode: Path, identity: str, tool: str, exec_sha256: str):
         program = {
@@ -676,7 +674,7 @@ class LineageAdoptionTest(unittest.TestCase):
         return record_adoption(
             root,
             episode,
-            adoption_state_document(kind, candidate, PROGRAM_DOCUMENT),
+            adoption_state_document(kind, candidate, PROGRAM_DOCUMENT, BASE_CONFIGURATION),
             parent,
             retained,
             tool,
@@ -687,14 +685,10 @@ class LineageAdoptionTest(unittest.TestCase):
     def check_ancestry(self, root: Path, record):
         result = subprocess.run(
             [
-                str(self.foe),
-                "lineage",
+                str(self.check_ancestry_binary),
                 record["state"],
-                "--states",
                 str(root / "lineage" / "states"),
-                "--evidence",
                 str(root / "lineage" / "evidence"),
-                "--json",
             ],
             text=True,
             capture_output=True,
@@ -702,7 +696,7 @@ class LineageAdoptionTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         report = json.loads(result.stdout)
         self.assertEqual(
-            [entry["program_identity"] for entry in report["chain"]],
+            report["chain"],
             [record["program_identity"], record["parent_program_identity"]],
         )
         self.assertEqual(report["unverifiable"], [])
@@ -775,8 +769,12 @@ class LineageAdoptionTest(unittest.TestCase):
                 DIAGNOSIS_VALIDATOR_TOOL,
                 self.validator_sha256,
             )
-            body = {key: value for key, value in candidate.items() if key != "digest"}
-            self.assertEqual(record["program_identity"], digest_bytes(canonical_json(body)))
+            state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
+            declared = state["identity_document"]["tool_defs"]["check-layout"]
+            self.assertEqual(
+                "sha256:" + declared["exec_sha256"], executable_digest(executable.encode())
+            )
+            self.assertIn("check-layout", state["identity_document"]["tools"])
             self.check_ancestry(root, record)
 
     def test_source_change_adoption_cites_the_candidate_check(self):
@@ -801,8 +799,11 @@ class LineageAdoptionTest(unittest.TestCase):
                     for name, value in sorted(candidate["files"].items())
                 ],
             )
-            body = {key: value for key, value in candidate.items() if key != "digest"}
-            self.assertEqual(record["program_identity"], digest_bytes(canonical_json(body)))
+            state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
+            self.assertEqual(
+                state["identity_document"]["runtime"],
+                {"source_tree": EVALUATED_FOE["source_tree"], "files": candidate["files"]},
+            )
             self.assertEqual(record["verification_log"], "episode/episode.jsonl")
             self.assertEqual(record["verification_seq"], 1)
             self.check_ancestry(root, record)

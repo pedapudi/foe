@@ -2,13 +2,13 @@
 
 Status: implemented. The configuration parser accepts the
 `program_lineage` key, the identity computation omits it, and the
-`foe-lineage` crate derives the lineage identity, checks an evidence
+`foe-lineage` crate derives the state identity, checks an evidence
 bundle against its canonical manifest, and verifies an ancestry claim
 through two resolvers. The authoritative `verification/result` event
 carries no digest of the verifier's input, because the log format freezes
-an implemented type's data; the candidate binding record retained in the
-evidence bundle carries that digest instead. "The candidate binding gap"
-states the resolution and its attestation strength. The crate's
+an implemented type's data; the adoption record retained in the evidence
+bundle carries the candidate's identity members instead. "Exact input
+binding" states the resolution and its attestation strength. The crate's
 `build-bundle` binary completes a bundle assembled outside the runtime, and
 "Harness adoptions" defines the states the self-improvement runner records.
 
@@ -44,11 +44,11 @@ three parts:
 - the parent program identity;
 - a content-addressed evidence bundle from the episode that proposed the
   child;
-- an accepted verifier result bound to a candidate envelope that names the
-  child program identity.
+- an accepted verifier result that the retained adoption record binds to
+  the child program identity.
 
 A chain of valid transitions is a program lineage. The first state in the
-chain is its root. Each ancestry claim has a lineage identity derived from
+chain is its root. Each ancestry claim has a state identity derived from
 the current program identity and its transition record.
 
 Program lineage is distinct from episode lineage. Episode lineage connects a
@@ -67,7 +67,7 @@ identity.
   "program_lineage": {
     "parent": {
       "program_identity": "sha256:…",
-      "lineage_identity": "sha256:…"
+      "state_identity": "sha256:…"
     },
     "evidence": "sha256:…",
     "verification_log": "children/ep_9c21/episode.jsonl",
@@ -77,8 +77,9 @@ identity.
 ```
 
 `parent.program_identity` is the program identity of the immediate
-predecessor. `parent.lineage_identity` selects that predecessor's ancestry
-claim. `evidence` is the content address of the proposal episode's evidence
+predecessor. `parent.state_identity` selects that predecessor's own
+ancestry claim among those that can accompany one program identity.
+`evidence` is the content address of the proposal episode's evidence
 bundle. `verification_log` is the relative path of the episode log that
 contains the authoritative verifier result. `verification_seq` identifies
 the result inside that log.
@@ -91,7 +92,7 @@ Configuration resolution copies `program_lineage` into the program recorded
 by `episode/start`. The identity document omits it. The log therefore records
 the ancestry claim while program identity retains its existing input.
 
-The lineage identity is a SHA-256 digest over this canonical object:
+The state identity is a SHA-256 digest over this canonical object:
 
 ```json
 {
@@ -102,26 +103,25 @@ The lineage identity is a SHA-256 digest over this canonical object:
 ```
 
 For a descendant, `program_lineage` contains the four members shown above.
-The lineage identity therefore names program content and one ancestry claim.
+The state identity therefore names program content and one ancestry claim.
 It is derived and does not appear inside the object it hashes.
 
 A state document is the canonical identity document paired with the optional
 `program_lineage` object. A state resolver returns this pair for a requested
-lineage identity.
+state identity.
 
 Two state documents can contain the same resolved program and different
 `program_lineage` objects. They share a program identity and make different
-ancestry claims. Their lineage identities differ. A verified series groups
-state documents by the root lineage identity after validating each claim.
+ancestry claims. Their state identities differ. A verified series groups
+state documents by the root state identity after validating each claim.
 
 ## Evidence bundle
 
 The evidence bundle makes a transition verifiable after files move between
 machines. Its canonical manifest lists every retained file by relative path,
-byte length, and SHA-256 digest. The manifest identifies the proposal log,
-the verifier input, and the candidate binding record when the bundle
-retains one. The `evidence` value is the SHA-256 digest of the canonical
-manifest.
+byte length, and SHA-256 digest. The manifest identifies the proposal log
+and the adoption record. The `evidence` value is the SHA-256 digest of the
+canonical manifest.
 
 Manifest paths use forward slashes, contain no empty, `.` or `..` component,
 and appear in byte order without duplicates. A checker rejects a manifest
@@ -131,53 +131,43 @@ The bundle contains these files:
 
 - every log and referenced spill file in the proposal episode tree;
 - the canonical identity document for the proposed child program;
-- the complete verifier input, called the transition candidate envelope;
-- the candidate binding record, when the builder wrote one;
+- the adoption record;
 - every artifact manifest that the verifier assessed.
 
 The manifest contains no absolute path. A store may place the bundle
 anywhere, provided that a resolver can retrieve it by content address.
 
-The transition candidate envelope has this canonical form:
-
-```json
-{
-  "program_identity": "sha256:…",
-  "identity_document_sha256": "sha256:…",
-  "artifact_manifest_sha256": "sha256:…"
-}
-```
-
-The verifier accepts this envelope as its candidate. The child configuration
-is absent from the bundle because it contains the bundle address. An artifact
-manifest is a checker-defined list of candidate files and their content
-digests.
-
-The candidate binding record has this canonical form:
+The adoption record has this canonical form:
 
 ```json
 {
   "schema_version": 1,
-  "candidate_sha256": "sha256:…",
+  "program_identity": "sha256:…",
+  "identity_document_sha256": "sha256:…",
+  "artifact_manifest_sha256": "sha256:…",
   "verification_log": "children/ep_9c21/episode.jsonl",
   "verification_seq": 74
 }
 ```
 
-The bundle builder writes the record beside the envelope. `candidate_sha256`
-is the digest of the retained envelope's bytes; `verification_log` and
-`verification_seq` are the coordinates of the accepted verifier result. The
-manifest names the record in `candidate_binding` as it names the proposal
-log and the envelope. "The candidate binding gap" states what the record
-establishes.
+The bundle builder writes the record. `program_identity` is the hash of
+the canonical child identity document; the two digest members name the
+retained identity document and artifact manifest by content;
+`verification_log` and `verification_seq` are the coordinates of the
+accepted verifier result. The manifest names the record in
+`adoption_record` as it names the proposal log. The child configuration is
+absent from the bundle because it contains the bundle address. An artifact
+manifest is a checker-defined list of candidate files and their content
+digests. "Exact input binding" states what the record establishes.
 
 The `foe-lineage` crate carries a `build-bundle` binary so the canonical
 form has one implementation for builders outside the runtime. Given a
 bundle directory whose files are already retained, the relative paths of
-the proposal log and the candidate envelope, and the verification
-coordinates, it writes the candidate binding record and the canonical
-manifest through the crate's builder and prints the bundle's content
-address.
+the proposal log, the child identity document, and the artifact manifest,
+and the verification coordinates, it computes the record's identity
+members from the retained files, writes the adoption record and the
+canonical manifest through the crate's builder, and prints the bundle's
+content address.
 
 ## Authoritative verifier record
 
@@ -199,8 +189,8 @@ invocation with these fields:
 `status` is `accepted`, `findings`, or `failed`. A findings result carries
 the finding strings in `findings`. A failed result carries an `error`
 string. The other two statuses omit `error`. The event carries no digest of
-the verifier's input; the candidate binding record of the evidence bundle
-carries that digest.
+the verifier's input; the adoption record of the evidence bundle carries
+the candidate's identity members instead.
 
 `verifier_identity` binds the execution to the verifier that the parent
 program declared. It hashes the complete tool specification and its
@@ -219,12 +209,12 @@ Seven rules govern a valid transition.
 1. **One state per episode.** A transition affects only episodes launched
    from the child state. It never changes a running episode's program,
    sandbox policy, or budget.
-2. **Exact child binding.** The transition candidate envelope names the
-   program identity recomputed from the child state's canonical identity
-   document.
-3. **Exact input binding.** The candidate the verifier judged equals the
-   transition candidate envelope retained in the bundle. The candidate
-   binding record carries the pairing that a checker can test.
+2. **Exact child binding.** The adoption record names the program identity
+   recomputed from the child state's canonical identity document.
+3. **Exact input binding.** The candidate the verifier judged is the one
+   the bundle retains. The adoption record carries the pairing of the
+   candidate's identity members with the accepted verification's
+   coordinates that a checker can test.
 4. **Parent-owned admission.** The verifier is present in the parent
    program's reachable child-program and workflow tree. A verifier introduced
    by the candidate can admit only a later transition.
@@ -246,37 +236,35 @@ holds; the lineage record cannot create that authority.
 ## Verifying an ancestry claim
 
 An ancestry checker receives a state document and two resolvers. The state
-resolver retrieves a state record by lineage identity. The evidence resolver
+resolver retrieves a state record by state identity. The evidence resolver
 retrieves an evidence bundle by content address. The checker performs these
 steps:
 
 1. Hash the canonical identity document to recompute the program identity.
-2. Recompute the lineage identity from the program identity and
+2. Recompute the state identity from the program identity and
    `program_lineage`.
 3. Accept a state without `program_lineage` as a root.
 4. Resolve the evidence bundle and verify its canonical manifest and files.
 5. Validate the proposal log under [log-format.md](log-format.md).
 6. Resolve `verification_log` within the bundle and read its
    `verification/result` event at `verification_seq`.
-7. Require an accepted result. When the manifest names a candidate binding
-   record, require the record to pair the claimed verification coordinates
-   with the digest of the retained envelope; without the record, report
-   exact input binding as unverifiable.
-8. Require the envelope's identity-document and artifact-manifest digests to
-   equal the corresponding files in the bundle.
-9. Require the envelope's program identity to equal the hash of the canonical
-   child identity document.
+7. Require an accepted result, and require the adoption record to name the
+   claimed verification coordinates.
+8. Require the adoption record's identity-document and artifact-manifest
+   digests to equal the corresponding files in the bundle.
+9. Require the adoption record's program identity to equal the hash of the
+   canonical child identity document.
 10. Require the proposal tree's root log program identity to equal
    `parent.program_identity`.
 11. Require `verification_log` to be the root log or a descendant linked by
     valid spawn or workflow provenance.
-12. Resolve `parent.lineage_identity` and require its program identity to
+12. Resolve `parent.state_identity` and require its program identity to
     equal `parent.program_identity`.
 13. Require the verifier episode's program identity to be reachable in the
     parent state's program tree.
 14. Require the recorded verifier identity to match the verifier declared by
     the verifier episode's program.
-15. Repeat from the parent while rejecting a repeated lineage identity as a
+15. Repeat from the parent while rejecting a repeated state identity as a
     cycle.
 
 The check establishes a complete chain from the state to a chosen root. It
@@ -286,33 +274,29 @@ quality remains part of the adoption policy and the evaluation record.
 The command line exposes the checker. `foe plan --config FILE --states DIR
 --evidence DIR` resolves the configuration, pairs its identity document
 with the `program_lineage` claim it carries, resolves states from
-`DIR/<hex>.json` by lineage identity and bundles from `DIR/<hex>` by
+`DIR/<hex>.json` by state identity and bundles from `DIR/<hex>` by
 content address, and prints, below the plan report, the chain of program
 identities from this program through its parents to the root with every
 check the retained evidence leaves open; with `--json`, the same chain and
 open checks are the plan object's `lineage` member. The report names
-program identities only; the derived lineage identity stays internal to
+program identities only; the derived state identity stays internal to
 the checker. Without `--states` and `--evidence`, a configuration that
 carries a claim is reported as carrying it, unverified.
 
-## The candidate binding gap
+## Exact input binding
 
 The `verification/result` event carries no digest of the verifier's input.
 The log format freezes an implemented type's data, so such a member cannot
 be added to the existing event.
 
-The candidate binding record closes the resulting gap at step 7. The
-checker requires an accepted `verification/result` at `verification_seq`,
-and steps 8 and 9 bind the retained envelope to the retained identity
+The adoption record closes the resulting gap. The checker requires an
+accepted `verification/result` at the coordinates both the claim and the
+record name, and steps 8 and 9 bind the record to the retained identity
 document, the retained artifact manifest, and the recomputed child
-identity. When the bundle retains the record, the checker requires it to
-name the claimed verification coordinates and the retained envelope's
-digest, and exact input binding, transition rule 3, is verified. The
+identity, so exact input binding, transition rule 3, is verified. The
 record is written by the bundle builder rather than by the runtime that
 invoked the verifier, so it attests the pairing only as strongly as the
-bundle that carries it. A bundle without the record keeps the graded
-result: the checker reports exact input binding as unverifiable rather
-than failing the claim.
+bundle that carries it.
 
 One further check is weakened by the shape of the identity document rather
 than by the event. Step 14 compares the recorded verifier identity with
@@ -331,7 +315,7 @@ whose evidence is retained separately.
 
 The same program identity can occur with more than one ancestry claim. This
 happens when independent transitions produce identical resolved programs.
-Each claim has a distinct lineage identity and is verified through its own
+Each claim has a distinct state identity and is verified through its own
 evidence bundle.
 
 A state document names one parent. Merging several parent histories into one
@@ -352,54 +336,50 @@ can be admitted through a transition.
 
 The identity-bound self-improvement runner
 (`evals/terminal_bench/run_self_improvement.py`) records every accepted
-candidate as a transition between harness states. A harness state describes
-the evaluated harness rather than one runtime-resolved program, and the
-runner constructs its identity document from retained evidence. Nothing in
-this section changes how a runtime-constructed state derives its identity
-document; the two kinds of state share the lineage identity, the evidence
-bundle, and the checker.
+candidate as a transition between program states. Nothing in this section
+changes how a state derives its identity document; the states the runner
+records share the state identity, the evidence bundle, and the checker.
 
-The parent state's identity document carries the evaluated Foe identities
-(source-tree and runtime-binary digests), the preserved base configuration,
-the retained self-improvement program document, and a `tools` list naming
-the admission verifiers the state declares — the generated diagnosis
-validator and the candidate check — each by executable content hash. The
-declaration makes the checker's verifier-identity comparison apply to a
-harness state as it does to a runtime state.
+The parent state's identity document is the evaluated self-improvement
+program's own. The runner resolves the program it launches through
+`foe plan --json` and retains the emitted identity document, which
+rehashes to the program identity the proposal episode's root log records.
 
-An adoption's state document is defined per candidate kind:
+An adoption's state document follows one rule: it is the program document
+that will run under the adoption.
 
-- an instruction revision's state document is the revised program document;
-- a workflow candidate's state document is the development program document
-  the runner constructs when applying it: the candidate's independent-audit
-  setting applied to its preserved base configuration, with the
-  run-supplied members — task instruction, credential path, working
-  directory, and per-task allowances — fixed at the runner's declared
-  values so the identity is stable across launches;
-- a source or tool-definition candidate's state document is the candidate's
-  canonical body: the candidate without the digest that seals it, so the
-  state's program identity is a digest over exactly the sealed content. A
-  source adoption's runtime build hash attaches when the rebuilt binary
-  exists; until then the state binds the base source tree and every changed
-  file digest.
+- An instruction revision yields the revised self-improvement program
+  document.
+- A workflow candidate yields the development program document the runner
+  constructs when applying it: the candidate's independent-audit setting
+  applied to its preserved base configuration.
+- A tool-definition candidate yields the development program document with
+  the defined tool declared; the tool's entry carries the executable's
+  content hash.
+- A source candidate yields the development program document with the
+  changed source named as the produced runtime: the base source tree and
+  every changed file digest. The rebuilt binary's runtime build hash
+  attaches when that binary exists.
+
+A development program document fixes the run-supplied members — task
+instruction, credential path, working directory, and per-task allowances —
+at the runner's declared values, so the document is stable across
+launches.
 
 The runner retains the bundle — the proposal episode tree, the state
-document as the candidate identity document, an artifact manifest over the
-retained candidate files, and the candidate envelope — and completes it
-through the `build-bundle` binary. The binding record cites the accepted
-diagnosis-validator result for a workflow, instruction, or tool candidate
-and the accepted candidate-check result for a source candidate. The parent
-and child state documents and the bundle land in the layout `foe lineage`
-resolves.
+document as the child identity document, and an artifact manifest over the
+retained candidate files — and completes it through the `build-bundle`
+binary. The adoption record cites the accepted diagnosis-validator result
+for a workflow, instruction, or tool candidate and the accepted
+candidate-check result for a source candidate. The parent and child state
+documents and the bundle land in the layout the checker's resolvers read;
+the crate's `check_ancestry` example verifies a recorded adoption from
+that layout.
 
-A live proposal tree's root log records the runtime program identity of the
-self-improvement program. The runtime does not export the identity document
-behind that hash, so a harness parent state cannot reproduce it, and the
-checker's proposal-descent comparison reports the mismatch when it walks
-such a bundle. The runner's tests exercise the complete chain over
-synthetic proposal trees whose root log records the harness parent
-identity; a live adoption's bundle still authenticates every retained file,
-the accepted verifier result, and the envelope bindings by content address.
+A live adoption leaves one check open: the accepted verifier runs in a
+child episode of the proposal tree, and the parent identity document
+reduces a child program to its hash, so the verifier's executable hash is
+compared only when the verifier episode runs the parent program itself.
 
 ## Required implementation tests
 
@@ -407,10 +387,8 @@ The implementation must cover these cases before the configuration key is
 accepted:
 
 - a valid root and one valid descendant;
-- a bundle whose binding record contradicts the claimed coordinates or the
-  retained envelope;
-- a bundle without a binding record, whose claim verifies with exact input
-  binding reported open;
+- a bundle whose adoption record contradicts the claimed coordinates or
+  the retained candidate files;
 - a missing or modified evidence file;
 - a child identity that differs from the accepted candidate identity;
 - a verifier absent from the parent;
