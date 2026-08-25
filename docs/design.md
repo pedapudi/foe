@@ -170,8 +170,10 @@ Outcome =
 vocabulary so that a supervising episode can route on it. The vocabulary is
 listed in [log-format.md](log-format.md#blocked-codes).
 
-Episodes never resume. A later episode may be seeded from a prefix of an
-earlier log, which is how replay and forking work.
+A finished episode is never extended. An interrupted one — a log without
+`episode/end` — is continued by launching over its directory, under "The
+command line" below. A later episode may be seeded from a prefix of any
+log, which is how replay and forking work.
 
 The model's context is a projection of the log, and the projection is
 bounded. When a configuration enables compaction and the next request is
@@ -596,6 +598,7 @@ The binary has one running form and four forms that run nothing.
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
 foe "task" [--model PROVIDER/MODEL] [--key-file PATH] [--verify PATH]   run the built-in coding workflow
 foe "task" --headless                                    run; no viewer; print the outcome
+foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode seeded from a prefix of SOURCE_DIR's log
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
@@ -623,10 +626,34 @@ for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
 Progress goes to standard error. The log goes to the file.
 
 The log directory is `--log-dir` when given and `.foe/<episode-id>` under
-the current directory otherwise. A directory that already holds a log, as
-one seeded by a fork does, is continued. A `lineage.json` beside the log,
-which a parent writes for a child, supplies the child's id, its parent, and
-its team lead.
+the current directory otherwise. A directory that already holds a log is
+continued under the log's own episode id. One whose log ends at `seed/end`
+— a prepared fork — or at an event boundary with every binding obligation
+closed continues in place. An interrupted log, cut short mid-line or with
+an obligation open, is repaired by seeding a copy at its last clean
+boundary into a fresh directory beside it, named on standard error, which
+the run then continues. Resuming requires the program that ran: a
+configuration whose identity differs from the log's `episode/start.identity`
+is refused with both identities named. A log ending at `seed/end` is
+exempt from that comparison, because a seeded `episode/start` records its
+source's program rather than its own. A finished log — one with
+`episode/end` — accepts nothing and is forked instead. A `lineage.json`
+beside the log, which a parent writes for a child, supplies the child's
+id, its parent, and its team lead.
+
+`--fork SOURCE_DIR --at SEQ` runs a fresh episode seeded from the source
+log's events below SEQ under the seeding rules of
+[log-format.md](log-format.md): the new episode draws a fresh id, its
+`episode/start.fork_origin` names the source episode and the boundary, and
+the task the launch carries — the positional task, or the document's task
+under `--config` — is appended as a `system` inbox item after `seed/end`,
+since the one `task` item per log is the copied one. The boundary's
+validity is the seeding API's rule, surfaced as the seeding error states
+it. The fork's directory is `--log-dir` when given, refused when it
+already holds a log, and `.foe/<episode-id>` otherwise. A slate — several
+forks from one prefix — is a caller-side loop over this form;
+[deferred.md](deferred.md) states what first-class support would add and
+the evidence that would justify it.
 
 A task given with `--config` replaces the document's own `task`. A task given
 without `--config` uses a built-in coding workflow. An implementation episode
