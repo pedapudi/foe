@@ -505,6 +505,20 @@ restarts, and the member drops duplicates by `message_id`. The roster, the
 queue, and the delivery records are folded from the lead's log; no other team
 state exists.
 
+## Workspace notes
+
+A workspace's durable notes live at `.foe/notes.md` under the first read
+root. This is a convention over an ordinary file rather than a mechanism:
+no runtime behavior attaches to the path. An entry carries one claim and
+one citation, the episode id and the log sequence number of the event that
+evidences the claim, so a later reader can weigh the note against the
+record that produced it.
+
+A program whose instructions direct it reads the file when the file is
+present. Whether the notes enter an episode's context is the launching
+parent's judgment or the program's declared instructions; the runtime never
+injects them.
+
 ## Isolation
 
 An episode runs as its own process. Children and configured executables run
