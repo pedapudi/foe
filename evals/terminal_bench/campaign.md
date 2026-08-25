@@ -195,6 +195,58 @@ Calibration trajectories remain closed until the development and confirmation
 criteria pass. Sealed-holdout trajectories remain closed until the calibration
 result and its decision rule are recorded.
 
+## Priority-service GPT-2 development result
+
+On 2026-08-25, three verifier-governed development attempts used source tree
+`git-tree-sha1:81d736a1b13dc98863e566567240455fdb2b17ad` and runtime binary
+`sha256:effa80a6a824912c61aee119bd0f322805e864c415eabad63d6dd6b9df8cdabc`.
+Every model request used the `priority` service tier. The primary model was
+GPT-5.6 Sol with low reasoning.
+
+The low-only attempt received 60 model-call capacity and no token ceiling. It
+used 59 calls while testing many checkpoint layouts. The completion verifier
+continued to reject repeated incorrect tokens. Foe ended as exhausted, and
+the unchanged task-owned grader awarded `0.0`.
+
+Two matched attempts added a fresh Sol `xhigh` independent audit with 60
+calls. Both audits received the low-effort child value through a declared
+workflow edge. Both audits repaired the checkpoint layout, passed the public
+completion verifier, completed, and received `1.0` from the unchanged grader.
+
+The two successful attempts used 73 model calls, 1,442,052 input tokens,
+890,368 cached-input tokens, and 46,021 output tokens. Their combined
+estimated cost was $3.483303. The low-only attempt has one response without a
+usage record, so its complete resource total is unavailable.
+
+The identity-bound self-improvement workflow read the three retained
+diagnoses. Its first diagnosis selected the measured audit intervention but
+copied an unsupported six-call value into its typed setting. Commit `7a045e2`
+moved that factual binding into the deterministic evidence resolver. The
+repaired workflow then used one Luna-low priority request and produced the
+accepted workflow candidate
+`sha256:d8ce2e7acbb626c18b552619d7c53bb7be0ad7eeff7496211395c05e10b23bbb`.
+The candidate binds the measured 60-call Sol `xhigh` audit to the evaluated
+source, binary, evidence digest, and preserved low-effort controls.
+
+The generated candidate then ran on unchanged, closed-book Terminal-Bench
+without the public completion verifier. The low child used 14 calls, and the
+independent audit used 29 calls. The unchanged task-owned grader awarded
+`1.0`. The run used 1,328,448 input tokens, 899,072 cached-input tokens, and
+36,790 output tokens. Its estimated cost was $2.812933.
+
+The retained evidence is stored under these local paths:
+
+- `target/terminal-bench-jobs/priority-verifier-gpt2-sol-low-only-20260825T005757Z`;
+- `target/terminal-bench-jobs/priority-verifier-gpt2-low-xhigh-audit-20260825T002522Z`;
+- `target/terminal-bench-jobs/priority-verifier-gpt2-low-xhigh-audit-repeat-20260825T003908Z`;
+- `target/priority-gpt2-verifier-workflow-evidence.json`;
+- `target/priority-gpt2-workflow-self-improvement-fixed`;
+- `/home/sunil/git/foe-gpt2-self-improvement-candidate/target/terminal-bench-jobs/priority-self-improved-gpt2-vanilla-20260825T012154Z`.
+
+This result establishes one accepted self-improvement and one converted
+development failure. Transfer to another task remains required before this
+candidate satisfies the campaign transfer condition.
+
 ## Cost accounting
 
 Every provider response records input, cached-input, and output tokens. Estimated cost is calculated request by request. The calculation applies the model's uncached-input, cached-input, output, and long-context rates.
