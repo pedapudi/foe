@@ -449,6 +449,62 @@ independent-check case and one corrective-audit case. They do not satisfy the
 twelve-task development gate or establish a second transferable
 self-improvement.
 
+### Additional built-in workflow results
+
+Three later attempts used source tree
+`git-tree-sha1:4858f789438011592c80a7df2bad54aa4305886e` and the same runtime
+binary. The public completion checker remained available to both model
+episodes. Harbor applied the unchanged task-owned verifier only after Foe
+exited.
+
+| task | task score | model calls | input tokens | cached-input tokens | output tokens | estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 10 | 28,165 | 1,536 | 5,074 | $0.208610 |
+| `large-scale-text-editing` | 1.0 | 25 | 129,659 | 46,080 | 8,713 | $0.527008 |
+| `gpt2-codegolf` | 0.0 | 34 | 805,339 | 475,648 | 21,884 | $1.946703 |
+
+The concurrency audit confirmed cancellation cleanup without changing the
+implementation. The text-editing audit found that direct execution had
+changed the supplied input. It restored the input and repeated the full
+million-row validation before completing. Both task-owned verifiers awarded
+`1.0`.
+
+The GPT-2 attempt passed its public checker and reported an approximate
+non-ASCII tokenizer as an unresolved risk. The task-owned verifier exercised
+a different quoted uppercase prompt and awarded `0.0`. The public checker had
+not activated the tokenizer risk. This attempt is an artifact-to-outcome
+mismatch and evidence for conditional repair after an audit reports unresolved
+risks.
+
+The GPT-2 checker then gained a fourth public prompt in the same quoted
+uppercase and adjacent-punctuation category. Its exact text differs from the
+task-owned verifier input. A fresh untouched-workspace negative control and an
+oracle control passed. The retained control report is
+`target/terminal-bench-verifier-controls/controls-20260825T053601Z/verifier-controls.json`.
+
+A rerun with the strengthened checker produced no score. During the terminal
+audit, `bash` printed the trial credential into a model-visible tool result.
+The run was stopped and is invalid infrastructure evidence. The public checker
+source was also read, which is permitted in this open-book development lane.
+The task-owned verifier remained absent during the episode.
+
+The adapter now gives each trial an unpredictable credential path and checks
+retained episode events for exact access-token or refresh-token values. A
+detected value invalidates the trial without placing the value in a report.
+This detection protects evaluation claims from contaminated trajectories. A
+host-supplied transport remains necessary for running untrusted task content
+without placing a provider credential in the task container.
+
+The retained valid attempts are:
+
+- `/home/sunil/git/foe-built-in-terminal-audit/target/terminal-bench-jobs/priority-built-in-verifier-cancel-async-tasks-20260825T051223Z`;
+- `/home/sunil/git/foe-built-in-terminal-audit/target/terminal-bench-jobs/priority-built-in-verifier-large-scale-text-editing-20260825T051456Z`;
+- `/home/sunil/git/foe-built-in-terminal-audit/target/terminal-bench-jobs/priority-built-in-verifier-gpt2-codegolf-20260825T052123Z`.
+
+The stopped run is retained locally at
+`/home/sunil/git/foe-built-in-terminal-audit/target/terminal-bench-jobs/priority-built-in-verifier-gpt2-tokenization-check-20260825T053647Z`.
+It contains credential material and must remain private.
+
 ## Cost accounting
 
 Every provider response records input, cached-input, and output tokens. Estimated cost is calculated request by request. The calculation applies the model's uncached-input, cached-input, output, and long-context rates.
