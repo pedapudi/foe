@@ -334,10 +334,11 @@ credentials by placing the model transport in a separate process.
   Cursor CLI, and mini-SWE-agent publish Terminal-Bench 2.1 scores and costs.
   foe has no published SWE-bench Verified or Terminal-Bench result, so its
   success rate on broad autonomous tasks is unknown.
-- **No resume.** Episodes never resume; a later episode may be seeded from
-  a log prefix. The persistent products and harnesses in the survey offer a
-  follow-up message on a finished session. Exo also forks conversations from
-  an event. foe requires a new episode for every follow-up.
+- **Follow-ups fork rather than extend.** An interrupted episode resumes
+  through the running form, and `--fork` seeds a fresh episode from any log
+  prefix, but a finished episode is never extended. The persistent products
+  and harnesses in the survey offer a follow-up message on a finished
+  session; in foe such a follow-up is a forked new episode.
 - **No workspace checkpoint tied to a fork.** Log-prefix seeding preserves
   model-visible history, but foe does not capture or attest the corresponding
   filesystem state. Exo snapshots and rewinds sandbox state independently of
@@ -443,10 +444,10 @@ host tools because their authority is installation-specific.
 Exo's useful mechanisms fit foe when each mechanism preserves a fresh,
 bounded episode and a fixed program identity.
 
-1. **Forks tied to workspace state.** Expose log-prefix seeding through a
-   `foe fork` command. Record a caller-supplied workspace snapshot or baseline
-   identifier in the new episode. Refuse the fork when the restored workspace
-   does not match that identifier.
+1. **Forks tied to workspace state.** Log-prefix seeding is exposed through
+   the running form's `--fork`. Record a caller-supplied workspace snapshot
+   or baseline identifier in the new episode. Refuse the fork when the
+   restored workspace does not match that identifier.
 2. **Content-addressed spill values.** Add a content hash to every spill
    locator. Large canonical values then retain immutable identity without a
    general artifact database.
@@ -684,10 +685,9 @@ The five items below are in priority order. Each names the gap it closes.
    and explicit file lifecycle operations. Add a file-version guard to
    `read` and `edit`. Compare exact-text and hash-anchored editing on a paired
    model evaluation before changing the default edit representation.
-2. **Make forks reproduce workspace state.** Expose the implemented seeding
-   rules through `foe fork`. Bind each fork to a workspace snapshot or
-   baseline identifier, and hash every spilled value. This closes the largest
-   evidence gap revealed by Exo.
+2. **Make forks reproduce workspace state.** Bind each `--fork` launch to a
+   workspace snapshot or baseline identifier, and hash every spilled value.
+   This closes the largest evidence gap revealed by Exo.
 3. **Enforce structural resource limits.** Use root-held leases for
    whole-tree episode and concurrency caps. Apply cgroup limits for CPU,
    memory, and process count. Record observed limits separately when the host

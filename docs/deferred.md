@@ -8,18 +8,21 @@ so that a version 2 reader parses a later log; nothing in version 2 emits it.
 A feature with nothing reserved is listed so that a reader does not search
 for it.
 
-## Fork as a command and candidate slates
+## Candidate slates
 
-A fork seeds a new episode from a prefix of an existing log so that the new
-episode continues from a chosen point with a different task or program. A
-candidate slate runs several forks from the same prefix, so that the shared
-prefix is paid once and the branches are causally independent, and then
-selects among their outcomes. Seeding a log from a prefix is implemented and
-specified under "Seeding" in [log-format.md](log-format.md); a command-line
-`fork` subcommand and candidate slates are not implemented. Reserved field
-value: `"fork"` for `context` in `spawn/start`, which names a child seeded
-from the parent's log rather than started fresh. No configuration key is
-reserved.
+A candidate slate runs several forks from one prefix, so that the shared
+prefix is materialized once and the branches are causally independent, and
+then selects among their outcomes. Forking itself is implemented: the
+running form's `--fork SOURCE_DIR --at SEQ` seeds a new episode from a
+prefix of an existing log, under "Seeding" in
+[log-format.md](log-format.md). A slate today is a caller-side loop over
+that form: N launches from one source and boundary produce N independent
+episodes, each paying its own copy of the prefix. First-class support
+would add shared-prefix materialization paid once and selection among the
+outcomes. It waits for evidence that either is needed: a measured
+prefix-materialization cost that the per-launch copy makes significant,
+or a consumer that needs foe to witness the selection among outcomes. No
+event type or configuration key is reserved.
 
 ## Team task board
 
