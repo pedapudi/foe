@@ -247,10 +247,10 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// The built-in coding workflow. `--key-file` names the API key file
 /// explicitly; without it the provider's convention path is read.
 /// `verify` names an executable verifier: it becomes a `tool_defs` entry
-/// named `check` with execute authority on that file, the implementation
-/// episode declares `done_when.verify` on it, and the audit node gains
-/// `skip_when_verified`, so an accepted implementation skips the audit.
-/// Without it the workflow is unchanged: always audited.
+/// named `check` available to both episodes, and the terminal audit declares
+/// `done_when.verify` on it. The independent audit therefore always runs and
+/// its checked result alone can complete the workflow. Without a verifier the
+/// workflow remains an unconditional independent audit.
 fn builtin_config(
     task: String,
     mut model: ModelConfig,
@@ -345,14 +345,15 @@ fn builtin_config(
         let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
         let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": cwd });
         let mut document = document;
-        let implement = "implement-task";
         document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
-        let node_tools = &mut document["workflow"]["nodes"][implement]["model"]["tools"];
-        node_tools.as_array_mut().expect("a tool list").push(serde_json::json!("check"));
         document["tool_defs"] = serde_json::json!({ "check": def });
-        document["workflow"]["nodes"][implement]["model"]["tool_defs"] = serde_json::json!({ "check": def });
-        document["workflow"]["nodes"][implement]["model"]["done_when"]["verify"] = serde_json::json!("check");
-        document["workflow"]["nodes"]["audit-and-repair-task"]["skip_when_verified"] = serde_json::json!(implement);
+        for node in ["implement-task", "audit-and-repair-task"] {
+            let program = &mut document["workflow"]["nodes"][node]["model"];
+            program["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
+            program["tool_defs"] = serde_json::json!({ "check": def });
+        }
+        document["workflow"]["nodes"]["audit-and-repair-task"]["model"]["done_when"]["verify"] =
+            serde_json::json!("check");
         return serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"));
     }
     serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"))

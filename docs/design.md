@@ -622,15 +622,16 @@ The root holds their additive 120-call allowance.
 
 `--verify PATH` names an executable verifier for the built-in workflow.
 The path is canonicalized and becomes a `tool_defs` entry named `check`
-with execute authority on that file; the implementation episode declares
-`done_when: {"verify": "check"}`, and the audit node
-`skip_when_verified: "implement-task"`. The verifier runs in the working
-directory, receives the completion value as JSON on standard input, and
-prints one finding per line; exit 0 with empty output is acceptance.
-Findings return to the implementation episode until its retries are
-spent. Acceptance completes that episode and skips the audit, recorded
-as `workflow/node-skipped`. Without `--verify` the built-in workflow is
-unchanged: the audit always runs.
+with execute authority on that file. Both episodes may call `check` while
+working, but only the terminal audit episode declares
+`done_when: {"verify": "check"}`. The verifier runs in the working directory,
+receives the audit's completion value as JSON on standard input, and prints
+one finding per line; exit 0 with empty output is acceptance. Findings return
+to the audit episode for repair until its retries are spent. The audit always
+runs, including when implementation-side checks or claims indicate success,
+and only its accepted terminal verification can complete the workflow.
+Without `--verify`, the independent audit still always runs and completes
+under its typed return contract.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
 interpreters, and repository tools. Both episodes receive the recorded result

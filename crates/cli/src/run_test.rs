@@ -59,13 +59,11 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
     assert!(audit_program.instructions["role"].contains("every path changed by either episode"));
 }
 
-/// docs/design.md "The command line": `--verify` wires the built-in
-/// workflow's guard — a `check` tool_defs entry with the canonicalized
-/// path, `done_when.verify` on the implementation episode, and
-/// `skip_when_verified` on the audit node. Without it, the document is
-/// unchanged: always audited.
+/// docs/design.md "The command line": `--verify` makes `check` available
+/// to both built-in episodes and assigns `done_when.verify` to the terminal
+/// audit. The audit remains unconditional and owns checked completion.
 #[test]
-fn builtin_coding_with_verify_wires_the_guard() {
+fn builtin_coding_with_verify_makes_terminal_audit_authoritative() {
     use std::os::unix::fs::PermissionsExt;
     let dir = std::env::temp_dir().join(format!("foe-cli-verify-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -83,10 +81,15 @@ fn builtin_coding_with_verify_wires_the_guard() {
     let implement = workflow.nodes["implement-task"].model.as_ref().unwrap();
     assert!(implement.tools.iter().any(|t| t == "check"));
     assert_eq!(implement.tool_defs["check"].exec, canonical);
+    let audit_node = &workflow.nodes["audit-and-repair-task"];
+    assert!(audit_node.skip_when_verified.is_none(), "verified implementation cannot bypass the audit");
+    let audit = audit_node.model.as_ref().unwrap();
+    assert!(audit.tools.iter().any(|t| t == "check"));
+    assert_eq!(audit.tool_defs["check"].exec, canonical);
+    assert_eq!(audit.done_when.as_ref().unwrap().verify.as_deref(), Some("check"));
     let done = implement.done_when.as_ref().unwrap();
-    assert_eq!(done.verify.as_deref(), Some("check"));
+    assert!(done.verify.is_none(), "implementation claims are not authoritative");
     assert!(done.returns.is_some(), "the typed handoff remains declared");
-    assert_eq!(workflow.nodes["audit-and-repair-task"].skip_when_verified.as_deref(), Some("implement-task"));
 
     let plain = builtin_config("task".into(), model, None, None).unwrap();
     assert!(plain.tool_defs.is_empty(), "without --verify the document is unchanged");
