@@ -8,7 +8,9 @@ through two resolvers. The authoritative `verification/result` event
 carries no digest of the verifier's input, because the log format freezes
 an implemented type's data; the candidate binding record retained in the
 evidence bundle carries that digest instead. "The candidate binding gap"
-states the resolution and its attestation strength.
+states the resolution and its attestation strength. The crate's
+`build-bundle` binary completes a bundle assembled outside the runtime, and
+"Harness adoptions" defines the states the self-improvement runner records.
 
 ## Scope of the existing identity
 
@@ -168,6 +170,14 @@ is the digest of the retained envelope's bytes; `verification_log` and
 manifest names the record in `candidate_binding` as it names the proposal
 log and the envelope. "The candidate binding gap" states what the record
 establishes.
+
+The `foe-lineage` crate carries a `build-bundle` binary so the canonical
+form has one implementation for builders outside the runtime. Given a
+bundle directory whose files are already retained, the relative paths of
+the proposal log and the candidate envelope, and the verification
+coordinates, it writes the candidate binding record and the canonical
+manifest through the crate's builder and prints the bundle's content
+address.
 
 ## Authoritative verifier record
 
@@ -337,6 +347,59 @@ the program state or request header.
 Promoting a useful program into the configured tool surface changes what the
 model sees. The promoted tool therefore belongs in a child program state and
 can be admitted through a transition.
+
+## Harness adoptions
+
+The identity-bound self-improvement runner
+(`evals/terminal_bench/run_self_improvement.py`) records every accepted
+candidate as a transition between harness states. A harness state describes
+the evaluated harness rather than one runtime-resolved program, and the
+runner constructs its identity document from retained evidence. Nothing in
+this section changes how a runtime-constructed state derives its identity
+document; the two kinds of state share the lineage identity, the evidence
+bundle, and the checker.
+
+The parent state's identity document carries the evaluated Foe identities
+(source-tree and runtime-binary digests), the preserved base configuration,
+the retained self-improvement program document, and a `tools` list naming
+the admission verifiers the state declares — the generated diagnosis
+validator and the candidate check — each by executable content hash. The
+declaration makes the checker's verifier-identity comparison apply to a
+harness state as it does to a runtime state.
+
+An adoption's state document is defined per candidate kind:
+
+- an instruction revision's state document is the revised program document;
+- a workflow candidate's state document is the development program document
+  the runner constructs when applying it: the candidate's independent-audit
+  setting applied to its preserved base configuration, with the
+  run-supplied members — task instruction, credential path, working
+  directory, and per-task allowances — fixed at the runner's declared
+  values so the identity is stable across launches;
+- a source or tool-definition candidate's state document is the candidate's
+  canonical body: the candidate without the digest that seals it, so the
+  state's program identity is a digest over exactly the sealed content. A
+  source adoption's runtime build hash attaches when the rebuilt binary
+  exists; until then the state binds the base source tree and every changed
+  file digest.
+
+The runner retains the bundle — the proposal episode tree, the state
+document as the candidate identity document, an artifact manifest over the
+retained candidate files, and the candidate envelope — and completes it
+through the `build-bundle` binary. The binding record cites the accepted
+diagnosis-validator result for a workflow, instruction, or tool candidate
+and the accepted candidate-check result for a source candidate. The parent
+and child state documents and the bundle land in the layout `foe lineage`
+resolves.
+
+A live proposal tree's root log records the runtime program identity of the
+self-improvement program. The runtime does not export the identity document
+behind that hash, so a harness parent state cannot reproduce it, and the
+checker's proposal-descent comparison reports the mismatch when it walks
+such a bundle. The runner's tests exercise the complete chain over
+synthetic proposal trees whose root log records the harness parent
+identity; a live adoption's bundle still authenticates every retained file,
+the accepted verifier result, and the envelope bindings by content address.
 
 ## Required implementation tests
 
