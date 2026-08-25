@@ -84,6 +84,16 @@ pub fn call(id: &str) -> ToolCall {
     ToolCall { id: id.into(), name: "read".into(), args: serde_json::json!({ "path": "a" }) }
 }
 
+pub fn inner_call(outer: &str, index: u32) -> EventData {
+    EventData::ToolInnerCall(ToolInnerCall {
+        outer_call_id: outer.into(),
+        call_id: format!("{outer}_{index}"),
+        index,
+        name: "read".into(),
+        args: serde_json::json!({ "path": "a" }),
+    })
+}
+
 pub fn number(datas: Vec<EventData>) -> Vec<Event> {
     datas.into_iter().enumerate().map(|(i, data)| Event { seq: i as u64, time: 1000 + i as i64, data }).collect()
 }
@@ -534,6 +544,53 @@ fn missing_log_is_not_found() {
     }
 }
 
+/// docs/log-format.md "Open obligations": a `tool/inner-call` opens the
+/// tool-call obligation and its ordinary `tool/result` closes it.
+/// "Derived messages": that result contributes nothing; the outer result
+/// alone reaches the model.
+#[test]
+fn an_inner_call_opens_the_tool_call_obligation_and_its_result_is_excluded() {
+    let datas = vec![
+        EventData::EpisodeStart(start("ep")),
+        inbox(InboxSource::Task, "do it"),
+        header(),
+        request(1, 2, vec![1], vec![]),
+        assistant(1, "", vec![ToolCall { name: "python".into(), ..call("tc_p") }], false),
+        inner_call("tc_p", 0),
+        result(1, "tc_p_0", "inner rendered"),
+        result(1, "tc_p", "outer rendered"),
+        EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::json!("v") } },
+    ];
+    let events = number(datas);
+    fold(&events).unwrap();
+    let rendered: Vec<String> = derive_messages(&events, u64::MAX, &[])
+        .into_iter()
+        .filter_map(|m| match m {
+            Message::Tool { rendered, .. } => Some(rendered),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(rendered, ["outer rendered"], "the outer result alone enters derived messages");
+}
+
+/// docs/log-format.md "Open obligations": an inner call left open stands
+/// like any open tool call, so a log may not end while one is open.
+#[test]
+fn an_open_inner_call_blocks_episode_end() {
+    let datas = vec![
+        EventData::EpisodeStart(start("ep")),
+        inbox(InboxSource::Task, "do it"),
+        header(),
+        request(1, 2, vec![1], vec![]),
+        assistant(1, "", vec![call("tc_p")], false),
+        inner_call("tc_p", 0),
+        result(1, "tc_p", "outer rendered"),
+        EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::json!("v") } },
+    ];
+    let err = fold(&number(datas)).unwrap_err();
+    assert!(err.to_string().contains("closed before episode/end"), "{err}");
+}
+
 #[test]
 fn every_event_variant_round_trips() {
     let outcome = Outcome::Blocked { code: BlockedCode::LoopingToolCall, message: "m".into() };
@@ -582,6 +639,13 @@ fn every_event_variant_round_trips() {
             bytes: 1,
         }),
         EventData::HostToolCall { step: 1, call_id: "c".into(), name: "h".into(), args: reserved.clone() },
+        EventData::ToolInnerCall(ToolInnerCall {
+            outer_call_id: "c".into(),
+            call_id: "c_0".into(),
+            index: 0,
+            name: "read".into(),
+            args: reserved.clone(),
+        }),
         inbox(InboxSource::Request, "reserved source"),
         EventData::BudgetReserve {
             child_id: "k".into(),

@@ -13,6 +13,7 @@ filegroup(
 rust_library(
     name = "foe_code",
     srcs = glob(["src/**/*.rs"]),
+    compile_data = ["src/python_shim.py"],
     crate_features = ["exec"],
     crate_name = "foe_code",
     crate_root = "src/lib.rs",

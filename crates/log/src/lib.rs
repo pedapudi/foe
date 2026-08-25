@@ -76,6 +76,11 @@ pub enum EventData {
     /// `tool/result` line over the protocol.
     #[serde(rename = "host/tool-call")]
     HostToolCall { step: u32, call_id: String, name: String, args: serde_json::Value },
+    /// One inner dispatch a composing tool performed through the registry.
+    /// Opens the ordinary tool-call obligation; the inner `tool/result`
+    /// closes it and is excluded from derived messages.
+    #[serde(rename = "tool/inner-call")]
+    ToolInnerCall(ToolInnerCall),
 
     // ---- verification ----------------------------------------------------
     #[serde(rename = "verification/result")]
@@ -212,6 +217,7 @@ pub fn obligations(data: &EventData) -> Vec<(Obligation, String, bool)> {
             m.tool_calls.iter().map(|c| (Obligation::ToolCall, c.id.clone(), true)).collect()
         }
         EventData::ToolResult(r) => one(Obligation::ToolCall, r.call_id.clone(), false),
+        EventData::ToolInnerCall(c) => one(Obligation::ToolCall, c.call_id.clone(), true),
         // A retry announces the attempt after the one that failed.
         EventData::RequestRetry { step, attempt, .. } => one(Obligation::Retry, attempt_key(*step, attempt + 1), true),
         EventData::ModelRequest(r) if r.attempt > 1 => one(Obligation::Retry, attempt_key(r.step, r.attempt), false),
@@ -520,6 +526,20 @@ pub struct ToolResult {
     /// True when written by seeding or by request-failure recovery rather
     /// than by running the tool.
     pub synthetic: bool,
+}
+
+/// Payload of `tool/inner-call`: one tool call a composing tool, such as
+/// the built-in `python` tool, dispatched through the registry while its
+/// own model-issued call ran. `outer_call_id` names that model-issued call;
+/// `call_id` is the inner call's own id, which its `tool/result` names;
+/// `index` counts the outer call's inner dispatches from 0.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolInnerCall {
+    pub outer_call_id: String,
+    pub call_id: String,
+    pub index: u32,
+    pub name: String,
+    pub args: serde_json::Value,
 }
 
 // ---- verification payloads ---------------------------------------------------

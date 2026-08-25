@@ -12,9 +12,11 @@
 
 use crate::sandbox::{Policy, Sandbox};
 use crate::{CapError, ExecRequest, ExecResult, Executor};
+use command_fds::{CommandFdExt, FdMapping};
 use nix::sys::signal::{killpg, Signal};
 use nix::unistd::Pid;
 use std::io::{Read, Write};
+use std::os::fd::AsFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -60,7 +62,14 @@ impl Executor for LocalExecutor {
             .stdin(if req.stdin.is_some() { Stdio::piped() } else { Stdio::null() })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let narrowed = self.policy.for_executable(&req.program, req.network);
+        // Each mapped descriptor is duplicated here; the caller's copy in
+        // the request closes when the request drops, at the end of the run.
+        let mapped = |(child_fd, fd): &(i32, Arc<std::os::fd::OwnedFd>)| {
+            Some(FdMapping { parent_fd: fd.as_fd().try_clone_to_owned().ok()?, child_fd: *child_fd })
+        };
+        cmd.fd_mappings(req.pass_fds.iter().filter_map(mapped).collect())
+            .map_err(|e| CapError::Invalid(format!("fd mapping: {e:?}")))?;
+        let narrowed = req.policy.clone().unwrap_or_else(|| self.policy.for_executable(&req.program, req.network));
         let mut child = self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::Invalid(e.to_string()))?;
         let group = Pid::from_raw(child.id() as i32);
         if let (Some(bytes), Some(mut stdin)) = (req.stdin, child.stdin.take()) {

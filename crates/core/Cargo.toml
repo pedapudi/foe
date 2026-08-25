@@ -20,6 +20,10 @@ ignore.workspace = true
 cap-std.workspace = true
 landlock = "0.4"
 nix = { version = "0.31", features = ["signal", "process"] }
+# Maps a caller-supplied descriptor to a fixed number in a child, between
+# fork and exec. This crate forbids unsafe code, so the mapping cannot be a
+# `pre_exec` hook written here.
+command-fds = "0.3"
 
 # The tests of the retry backoff run on a virtual clock, which tokio offers
 # only under this feature.

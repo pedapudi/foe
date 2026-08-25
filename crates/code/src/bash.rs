@@ -89,6 +89,8 @@ impl Tool for Bash {
             timeout,
             network: false,
             stdin: None,
+            policy: None,
+            pass_fds: Vec::new(),
         };
         let res = match executor.run(req) {
             Ok(r) => r,

@@ -181,7 +181,7 @@ integration builds the bundle before measuring and fails a build over 8 MiB.
 | [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [docs/self-improvement.md](docs/self-improvement.md) | how foe evaluates and improves its own source, including measured results and operating guidance |
 | [docs/lineage-identity.md](docs/lineage-identity.md) | design: content-addressed evidence that relates immutable program states |
-| [docs/code-mode.md](docs/code-mode.md) | design: bounded model-written programs that compose granted tools through the registry |
+| [docs/code-mode.md](docs/code-mode.md) | the `python` tool: bounded model-written programs that compose granted tools through the registry |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |

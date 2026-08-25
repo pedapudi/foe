@@ -29,6 +29,8 @@ fn request(program: &str, args: &[&str], cwd: &Path) -> ExecRequest {
         timeout: Duration::from_secs(10),
         network: false,
         stdin: None,
+        policy: None,
+        pass_fds: Vec::new(),
     }
 }
 
@@ -123,4 +125,39 @@ fn reads_outside_the_roots_are_denied_under_landlock() {
     let b = ex.run(request("/bin/cat", &[outside.join("b").to_str().unwrap()], &dir)).unwrap();
     assert_ne!(b.exit_code, Some(0));
     assert!(String::from_utf8_lossy(&b.stderr).contains("Permission denied"));
+}
+
+/// A descriptor in `pass_fds` reaches the child at the number given, and
+/// the parent-held copy closes when the run ends, so a reader of the other
+/// end sees end-of-file rather than a hang.
+#[test]
+fn a_passed_descriptor_reaches_the_child_at_its_number() {
+    use std::io::Read;
+    let (ex, dir, _) = executor("passfd", vec![], vec!["/bin/sh".into()]);
+    let (mut parent, child) = std::os::unix::net::UnixStream::pair().unwrap();
+    let mut req = request("/bin/sh", &["-c", "echo over-three >&3"], &dir);
+    req.pass_fds = vec![(3, Arc::new(std::os::fd::OwnedFd::from(child)))];
+    let out = ex.run(req).unwrap();
+    assert_eq!(out.exit_code, Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let mut received = String::new();
+    parent.read_to_string(&mut received).unwrap();
+    assert_eq!(received, "over-three\n");
+}
+
+/// A request naming a policy of its own runs under that policy in place of
+/// the per-executable narrowing.
+#[test]
+fn a_request_policy_replaces_the_derived_narrowing() {
+    let (ex, dir, _) = executor("ownpolicy", vec![], vec![]);
+    if ex.sandbox.abi() == 0 {
+        eprintln!("skipped: the kernel offers no Landlock");
+        return;
+    }
+    std::fs::write(dir.join("secret"), b"s").unwrap();
+    let probe = format!("cat {}/secret", dir.display());
+    let mut req = request("/bin/sh", &["-c", &probe], &dir);
+    req.cwd = PathBuf::from("/");
+    req.policy = Some(Policy { read: vec!["/usr".into()], exec: vec!["/bin/sh".into()], ..Policy::default() });
+    let out = ex.run(req).unwrap();
+    assert_ne!(out.exit_code, Some(0), "a path outside the request's policy is denied");
 }

@@ -102,6 +102,27 @@ fn closing_events_names_every_unsettled_call() {
     assert_eq!((orphan.step, orphan.call_id.as_str()), (3, "a"));
 }
 
+/// docs/log-format.md "Seeding": an open inner call closes before the
+/// outer composing call it nests under.
+#[test]
+fn closing_events_close_open_inner_calls_before_their_outer_call() {
+    let events = fx::number(vec![
+        fx::assistant(2, "x", vec![fx::call("tc_p")], true),
+        fx::inner_call("tc_p", 0),
+        fx::result(2, "tc_p_0", "settled"),
+        fx::inner_call("tc_p", 1),
+    ]);
+    let closing = closing_events(&events);
+    let ids: Vec<(u32, &str)> = closing
+        .iter()
+        .map(|data| match data {
+            EventData::ToolResult(r) => (r.step, r.call_id.as_str()),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(ids, [(2, "tc_p_1"), (2, "tc_p")], "the open inner call closes first, at the outer call's step");
+}
+
 fn archived(dir: &std::path::Path, step: u32, call_id: &str, content: &str) -> RenderingArchive {
     let hex = digest::sha256_hex(content.as_bytes());
     let file = format!("renderings/{hex}.txt");
