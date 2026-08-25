@@ -10,6 +10,7 @@ from pathlib import Path
 from collect_diagnostics import (
     EVALUATION_FIELDS,
     collect,
+    diagnostic_outcome,
     evaluation_metadata,
     evaluation_summary,
     input_growth_landmarks,
@@ -17,6 +18,16 @@ from collect_diagnostics import (
 
 
 class CollectDiagnosticsTest(unittest.TestCase):
+    def test_diagnostic_outcome_keeps_failure_fields_and_drops_completion_prose(self):
+        self.assertEqual(
+            diagnostic_outcome({"kind": "completed", "value": {"summary": "self-certified"}}),
+            {"kind": "completed"},
+        )
+        self.assertEqual(
+            diagnostic_outcome({"kind": "blocked", "code": "stuck", "message": "details"}),
+            {"kind": "blocked", "code": "stuck", "message": "details"},
+        )
+
     def fixture(self, root: Path) -> tuple[Path, Path, Path, dict[str, str]]:
         source = root / "source"
         source.mkdir()

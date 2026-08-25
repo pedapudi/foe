@@ -16,6 +16,7 @@ from run import read_cases
 MAX_DIAGNOSES = 24
 MAX_EVIDENCE_BYTES = 64 * 1024
 MAX_INPUT_GROWTH_LANDMARKS = 4
+MAX_OUTCOME_TEXT = 2_000
 EVALUATION_FIELDS = (
     "dataset",
     "label",
@@ -50,6 +51,21 @@ def input_growth_landmarks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     }
     selected = sorted(indexes)[:MAX_INPUT_GROWTH_LANDMARKS]
     return [{**rows[index], "input_growth": deltas[index]} for index in selected]
+
+
+def diagnostic_outcome(outcome: Any) -> dict[str, Any] | None:
+    """Keep the typed result and actionable failure details, without model-authored completion prose."""
+    if not isinstance(outcome, dict):
+        return None
+    kind = outcome.get("kind")
+    if not isinstance(kind, str) or not kind:
+        return None
+    answer: dict[str, Any] = {"kind": kind}
+    for key in ("code", "limit", "message", "error"):
+        value = outcome.get(key)
+        if isinstance(value, str):
+            answer[key] = value[:MAX_OUTCOME_TEXT]
+    return answer
 
 
 def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[str, Any]:
@@ -168,6 +184,18 @@ def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dic
             "repeated_calls": report.get("repeated_calls", [])[:3],
         }
     )
+    if "outcome" in answer:
+        answer["outcome"] = diagnostic_outcome(answer["outcome"])
+    answer["episodes"] = [
+        {**episode, "outcome": diagnostic_outcome(episode.get("outcome"))}
+        for episode in answer.get("episodes", [])
+        if isinstance(episode, dict)
+    ]
+    answer["verification_timeline"] = [
+        {**entry, "outcome": diagnostic_outcome(entry.get("outcome"))}
+        for entry in answer.get("verification_timeline", [])
+        if isinstance(entry, dict)
+    ]
     return answer
 
 

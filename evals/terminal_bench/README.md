@@ -432,10 +432,14 @@ task and complete configuration so a diagnosis node can
 compare failed and successful mechanisms. The file keeps up to four
 input-growth landmarks and three entries from each ranked result list. Input
 growth resets at each episode boundary. The four-landmark limit applies to the
-complete episode tree. The collector accepts at most 24 diagnoses and 64 KiB
-of encoded evidence. It accepts only development and opened capability-search
-tasks from `cases.json`. Confirmation, calibration, and calibration-holdout
-evidence remains unavailable to self-improvement.
+complete episode tree. Completed outcomes retain their typed status and omit
+the model-authored completion value. Failed, blocked, and exhausted outcomes
+retain their actionable error, code, message, or limit. This avoids repeating
+the same completion prose at the report, episode, and verification levels.
+The collector accepts at most 24 diagnoses and 64 KiB of encoded evidence. It
+accepts only development and opened capability-search tasks from `cases.json`.
+Confirmation, calibration, and calibration-holdout evidence remains
+unavailable to self-improvement.
 
 Create a clean candidate worktree at the evaluated commit. Run the
 self-improvement workflow from that worktree:
