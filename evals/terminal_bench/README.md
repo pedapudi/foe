@@ -501,6 +501,13 @@ coding child locates the affected implementation, test, and specification
 files. Its write authority covers runtime crates, specifications, and examples.
 It cannot write evaluation code or benchmark material.
 
+The coding child returns a typed handoff that names its changed paths,
+validation observations, and unresolved risks. A fresh source-audit child
+receives the objective, diagnosis, and handoff. It inspects the shared candidate
+tree, repairs defects, and treats the checker as the completion authority. The
+audit traces proposed resources through node return, workflow settlement, and
+external evaluation before it accepts a lifecycle-dependent mechanism.
+
 When the diagnosis chooses `configure-workflow`, the runner requires the
 evidence to contain exactly one independent-audit setting with at least two
 successful attempts. The runner copies that setting directly from the
@@ -510,6 +517,7 @@ evidence file, and preserved execution controls.
 
 The diagnosis prompt targets four requests and has a 20-call, 1,800-second
 loop backstop. The implementation has 28-call and 3,600-second safety
+backstops. The independent source audit has 32-call and 3,600-second safety
 backstops. Each model child ends as blocked after eight consecutive identical
 tool calls or assistant turns.
 

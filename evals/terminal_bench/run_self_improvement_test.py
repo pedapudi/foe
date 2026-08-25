@@ -80,6 +80,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         nodes = config["workflow"]["nodes"]
         diagnosis = nodes["diagnose-runtime"]["model"]
         implementation = nodes["implement-runtime-improvement"]["model"]
+        audit = nodes["audit-runtime-improvement"]["model"]
         self.assertEqual(
             nodes["implement-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime"],
@@ -87,6 +88,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn(
             "collect-trajectory-diagnostics",
             nodes["implement-runtime-improvement"]["follows"],
+        )
+        self.assertEqual(
+            nodes["audit-runtime-improvement"]["follows"],
+            ["task", "diagnose-runtime", "implement-runtime-improvement"],
         )
         self.assertEqual(
             nodes["diagnose-runtime"]["branches"],
@@ -97,6 +102,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             },
         )
         self.assertEqual(implementation["tools"][:4], ["read", "grep", "edit", "bash"])
+        self.assertEqual(audit["tools"][:4], ["read", "grep", "edit", "bash"])
         self.assertEqual(diagnosis["tools"], ["block"])
         self.assertEqual(diagnosis["grants"]["read"], ["/tmp"])
         self.assertIn("block", config["tools"])
@@ -126,6 +132,14 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn("model", implementation)
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
         self.assertIn("baseline-relative line budgets", implementation["instructions"]["validation"])
+        self.assertIn("Treat the diagnosis as a hypothesis", implementation["instructions"]["validation"])
+        self.assertIn("source lifecycle", audit["instructions"]["evidence"])
+        self.assertIn("workflow settlement", audit["instructions"]["architecture"])
+        self.assertEqual(audit["done_when"], {"verify": "check", "retries": 4})
+        self.assertEqual(
+            implementation["done_when"]["returns"]["required"],
+            ["summary", "changed_paths", "validation", "unresolved_risks"],
+        )
         self.assertEqual(config["model"]["reasoning_effort"], "high")
         self.assertEqual(config["model"]["service_tier"], "default")
         self.assertEqual(
@@ -153,6 +167,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(implementation["grants"]["execute"], ["/opt/toolchain"])
         self.assertEqual(config["task"], "Raise verified completion.")
         self.assertEqual(config["budget"]["loop_threshold"], 8)
+        self.assertEqual(config["budget"]["model_calls"], 80)
+        self.assertEqual(config["budget"]["max_episodes"], 4)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
 
     def test_source_candidate_requires_evidence_for_source_owned_behavior(self):

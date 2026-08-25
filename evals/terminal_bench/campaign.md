@@ -625,17 +625,19 @@ quality benefit from a separate audit stage.
 
 ## Self-improvement contract
 
-The self-improvement workflow has at most two model nodes. A Luna diagnosis
+The self-improvement workflow has at most three model nodes. A Luna diagnosis
 node reads the bounded trajectory digest and returns a typed causal
 intervention. It has no source-tree inspection tool or access.
 
 The diagnosis selects `implement-source` when the evidence activates a source
 mechanism. Its branch edge controls whether a separate coding node fires. The
 coding node lists `task` and `diagnose-runtime` under `follows`, which carries
-both values into a clean context. The diagnosis selects `configure-workflow`
-when exactly one independent audit setting supplies the repeated quality
-gain. The runner copies that setting from the evidence without starting the
-coding node.
+both values into a clean context. The coding node returns changed paths,
+validation observations, and unresolved risks as a typed handoff. A fresh
+source-audit node inspects and repairs the shared candidate. Its checker owns
+completion. The diagnosis selects `configure-workflow` when exactly one
+independent audit setting supplies the repeated quality gain. The runner copies
+that setting from the evidence without starting either coding node.
 
 The diagnosis selects `insufficient-evidence` when the contrast isolates only
 model capability or requires semantic information absent from the log. Every
@@ -1091,6 +1093,22 @@ only the login module that binds loopback listeners. A source candidate that
 changes built-in workflow behavior must therefore preserve the remaining
 command-line invariants before its coding child can complete. Post-episode
 validation remains the final candidate authority.
+
+A third identity-bound attempt exercised the command-line completion gate. The
+gate returned compiler and workflow-ceiling findings to the coding child. Two
+correction requests repaired the compiler error but left the workflow ceiling
+invalid. Foe ended blocked with `verification-unsatisfiable`, and external
+validation agreed that the candidate was invalid. The attempt used 16 model
+calls, 515,272 input tokens, 283,648 cached-input tokens, and 3,778 output
+tokens. Its estimated cost was $1.019905. The retained episode is
+`/home/sunil/git/foe-live-state-source-candidate-cli-gate/target/live-state-source-candidate-cli-gate-run-2/episode`.
+
+Source self-improvement now separates implementation from acceptance. The
+implementation child returns a typed candidate handoff. A fresh source-audit
+child inspects the diff, source ownership, tests, specifications, and resource
+lifecycle. The audit checker owns completion and has four correction attempts.
+This structure prevents the implementation child from certifying its own
+architectural hypothesis.
 
 The direct source candidate adds one general rule to both built-in model roles.
 A task that requires a service or live machine state must apply its

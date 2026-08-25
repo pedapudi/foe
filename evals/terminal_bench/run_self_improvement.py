@@ -26,9 +26,11 @@ from workflow_candidate import validate_independent_audit
 
 DIAGNOSIS_CALLS = 20
 IMPLEMENTATION_CALLS = 28
+AUDIT_CALLS = 32
 DIAGNOSIS_SECONDS = 1_800
 IMPLEMENTATION_SECONDS = 3_600
-SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS
+AUDIT_SECONDS = 3_600
+SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + AUDIT_SECONDS
 LOOP_THRESHOLD = 8
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
 ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel.lock")
@@ -551,13 +553,36 @@ def build_config(
             }
         },
     }
+    implementation_handoff = {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string", "minLength": 1},
+            "changed_paths": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 24,
+            },
+            "validation": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 16,
+            },
+            "unresolved_risks": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 8,
+            },
+        },
+        "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
+        "additionalProperties": False,
+    }
     implementation = {
         "name": "implement-foe-improvement",
         "instructions": {
-            "role": "Act as a fully capable Foe coding agent and implement the supplied typed diagnosis.",
+            "role": "Implement the supplied typed diagnosis as a candidate for independent source audit.",
             "scope": "Inspect source before editing. Change runtime source, a regression test, and each affected specification. Preserve reconstructable logs, declared authority, typed outcomes, and explicit completion semantics.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Do not encode benchmark identifiers, fixture values, or grader rules. Refuse an intervention that changes only a built-in default overridden by the explicit evaluated program.",
-            "validation": "The candidate check runs formatting, the Rust workspace tests, Clippy, and baseline-relative line budgets under the declared toolchain. Run it after implementation and use its findings to correct the candidate. Use the check tool as the authority for line counts because scripts/loc.sh alone cannot distinguish an existing overage from candidate growth. State expected accuracy, cost, latency, and compatibility effects in the final result.",
+            "validation": "Treat the diagnosis as a hypothesis that source and tests must support. Run the candidate check after implementation and use its findings to correct the candidate. Return a typed handoff for a fresh audit, including unresolved architectural risks. Use the check tool as the authority for baseline-relative line budgets because scripts/loc.sh alone cannot distinguish an existing overage from candidate growth.",
         },
         "tools": [*CODING_TOOLS, "check"],
         "tool_defs": {"check": check_tool},
@@ -567,12 +592,31 @@ def build_config(
             "seconds": IMPLEMENTATION_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
         },
-        "done_when": {"verify": "check", "retries": 2},
+        "done_when": {"returns": implementation_handoff},
+    }
+    audit = {
+        "name": "audit-and-repair-foe-improvement",
+        "instructions": {
+            "role": "Independently audit the source candidate, repair every defect, and let the candidate checker decide completion.",
+            "evidence": "Treat the diagnosis and implementation handoff as unverified hypotheses. Inspect the current diff, the owning source, existing tests, and affected specifications. Reject a proposed mechanism whose source lifecycle cannot produce the claimed task-visible behavior.",
+            "architecture": "Trace every proposed tool, authority, process, and mutable resource from creation through model-node return, workflow settlement, and external evaluation. Preserve existing default interfaces unless the source design and general task-quality evidence require a change.",
+            "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Remove benchmark-specific behavior and refuse changes whose benefit depends on hidden evaluator knowledge.",
+            "validation": "Run the candidate check after the final repair. Use its findings to continue until formatting, relevant tests, Clippy, scope, and baseline-relative line budgets pass. Report remaining semantic risks before the authoritative check.",
+        },
+        "tools": [*CODING_TOOLS, "check"],
+        "tool_defs": {"check": check_tool},
+        "grants": {"read": implementation_read_roots, "write": write_roots, "execute": execute},
+        "budget": {
+            "model_calls": AUDIT_CALLS,
+            "seconds": AUDIT_SECONDS,
+            "loop_threshold": LOOP_THRESHOLD,
+        },
+        "done_when": {"verify": "check", "retries": 4},
     }
     return {
         "version": 2,
         "name": "identity-bound-trajectory-self-improvement",
-        "instructions": {"role": "Run the declared diagnosis and implementation workflow."},
+        "instructions": {"role": "Run the declared diagnosis, implementation, and independent source-audit workflow."},
         "tools": [*CODING_TOOLS, "block", "evidence", "check"],
         "tool_defs": {
             "evidence": {
@@ -583,10 +627,10 @@ def build_config(
         },
         "grants": {"read": root_read_roots, "write": write_roots, "execute": execute},
         "budget": {
-            "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS,
+            "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS + AUDIT_CALLS,
             "seconds": SECONDS,
             "max_depth": 1,
-            "max_episodes": 3,
+            "max_episodes": 4,
             "max_concurrent": 1,
             "loop_threshold": LOOP_THRESHOLD,
         },
@@ -608,6 +652,10 @@ def build_config(
                 "implement-runtime-improvement": {
                     "model": implementation,
                     "follows": ["task", "diagnose-runtime"],
+                },
+                "audit-runtime-improvement": {
+                    "model": audit,
+                    "follows": ["task", "diagnose-runtime", "implement-runtime-improvement"],
                     "terminal": True,
                 },
             },
@@ -807,7 +855,10 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "diagnosis_model": args.diagnosis_model,
         "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort,
-        "maximum": {"model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS, "seconds": SECONDS},
+        "maximum": {
+            "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS + AUDIT_CALLS,
+            "seconds": SECONDS,
+        },
         "token_limits": "measurement_only",
         "requested_candidate_kind": args.candidate_kind,
     }
