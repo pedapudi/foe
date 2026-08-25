@@ -372,7 +372,7 @@ that ends while a child runs ends that child.",
 const KINDS: [Kind; 6] = [Kind::Spawn, Kind::Wait, Kind::Steer, Kind::Notify, Kind::Send, Kind::Team];
 
 /// The specifications of the six team tools, in the order [`tools`] lists
-/// them. Identity and `foe tools` use this without a running team.
+/// them. Identity and `foe plan` use this without a running team.
 pub fn builtin_specs() -> Vec<ToolSpec> {
     KINDS.into_iter().map(Kind::spec).collect()
 }

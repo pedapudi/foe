@@ -293,6 +293,33 @@ emitted so that the host can execute it. The result arrives as an ordinary
 { "step": 3, "call_id": "tc_02", "name": "mutation_usage", "args": {} }
 ```
 
+`tool/inner-call` — implemented. One inner dispatch a composing tool
+performed through the registry while its own model-issued call ran. The
+built-in `python` tool is the one composing tool;
+[code-mode.md](code-mode.md) specifies it, and the generic event name is
+shared by design with any future composing tool.
+
+```json
+{
+  "outer_call_id": "tc_01",
+  "call_id": "tc_01_4",
+  "index": 4,
+  "name": "read",
+  "args": { "path": "src/parser.rs" }
+}
+```
+
+`outer_call_id` names the model-issued call being composed. `call_id` is
+the inner call's own id; `index` counts the outer call's inner dispatches
+from 0. The event opens the same tool-call obligation a call in an
+`assistant/message` opens, and the inner call's ordinary `tool/result`,
+which follows with the inner `call_id` and the outer call's step, closes
+it. That result never enters derived messages: the outer result alone
+reaches the model. A host tool dispatched this way also produces its
+`host/tool-call` event as usual. The event is additive; no frozen
+version 2 payload changed for it, and a reader compiled before the
+variant existed rejects a log that carries it.
+
 ### Verification
 
 `verification/result` — implemented. One authoritative verifier
@@ -565,7 +592,7 @@ obligation and a later event closes it, the two matched by a key.
 
 | opened by | closed by | key |
 |---|---|---|
-| a tool call in `assistant/message` | `tool/result` | the call id |
+| a tool call in `assistant/message`, or `tool/inner-call` | `tool/result` | the call id |
 | `request/retry` | the `model/request` of the attempt it announces | the step and that attempt's number |
 | `compaction/start` | `compaction/end` | the step |
 | `spawn/start` | `spawn/end` | the child id |
@@ -625,7 +652,10 @@ by the runtime, the viewer, and the Python package identically.
    message carrying its text and tool calls.
 5. An `assistant/message` with `interrupted: true` becomes an `assistant`
    message carrying its text, with `tool_calls` as recorded.
-6. Each `tool/result` becomes a `tool` message carrying `rendered`.
+6. Each `tool/result` becomes a `tool` message carrying `rendered`, except
+   one whose opening record is a `tool/inner-call`: an inner result
+   contributes nothing, because the outer composing call's result is the
+   only account of the program that reaches the model.
 7. Events of any other type contribute nothing.
 
 A `model/request` whose `request_id` starts with `cmp_`, and the
@@ -669,7 +699,10 @@ Given a source log and a boundary `seq` N:
 3. Drop a copied `request/retry` that the boundary separated from the
    attempt it announces, since no copied event can close it.
 4. Close every obligation the copied events left open, in the order the
-   opening events appear. A tool call receives a `tool/result` with
+   opening events appear, with one refinement: an open inner call closes
+   immediately before the outer composing call it nests under, so the
+   nested account balances before the outer synthetic result is read. A
+   tool call receives a `tool/result` with
    `is_error: true`, `synthetic: true`, and a rendered text stating that
    the result was not recorded. A `compaction/start` receives a
    `compaction/end` with `ok: false`. A `spawn/start` receives a

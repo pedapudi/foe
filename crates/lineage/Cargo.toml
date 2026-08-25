@@ -4,7 +4,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Evidence about how program states relate: the lineage identity, the evidence-bundle manifest, and the ancestry checker"
+description = "Evidence about how program states relate: the state identity, the evidence-bundle manifest, and the ancestry checker"
+
+# Declared explicitly: the sibling `*_test.rs` module file must not be
+# discovered as a second binary.
+autobins = false
+
+[[bin]]
+name = "build-bundle"
+path = "src/bin/build_bundle.rs"
 
 [dependencies]
 foe-config = { path = "../config" }

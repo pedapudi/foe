@@ -401,11 +401,15 @@ an operation runs rather than when a pathname was last checked.
    spawn: []         ──►     spawn  effect=spawns  REFUSED
 ```
 
+A `bind` grant appears in neither column: it names TCP ports rather than a
+tool's effect, no tool requires it, and it reaches every process of the
+episode through the compiled sandbox alone ([sandbox.md](sandbox.md)).
+
 Tools come from three sources, resolved in this order at construction.
 A name that resolves in two sources is an error.
 
-1. Built in, thirteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
-   `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
+1. Built in, fourteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
+   `python`, `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
 2. Configured executables, declared in `tool_defs` with a path and a
    description. The runtime passes the model's `args` array as argv, captures
    stdout and stderr, and reports the exit code as data. A non-zero exit is a
@@ -505,6 +509,20 @@ restarts, and the member drops duplicates by `message_id`. The roster, the
 queue, and the delivery records are folded from the lead's log; no other team
 state exists.
 
+## Workspace notes
+
+A workspace's durable notes live at `.foe/notes.md` under the first read
+root. This is a convention over an ordinary file rather than a mechanism:
+no runtime behavior attaches to the path. An entry carries one claim and
+one citation, the episode id and the log sequence number of the event that
+evidences the claim, so a later reader can weigh the note against the
+record that produced it.
+
+A program whose instructions direct it reads the file when the file is
+present. Whether the notes enter an episode's context is the launching
+parent's judgment or the program's declared instructions; the runtime never
+injects them.
+
 ## Isolation
 
 An episode runs as its own process. Children and configured executables run
@@ -572,7 +590,7 @@ own.
 
 ## The command line
 
-The binary has one running form and six forms that run nothing.
+The binary has one running form and four forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
@@ -581,10 +599,9 @@ foe "task" --headless                                    run; no viewer; print t
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan --config FILE [--json]                          print the resolved program, its identity, its transport, and its effective authority
-foe tools [--config FILE]                                list tools, with sources when a config is given
-foe schema                                               print the JSON Schema for the configuration
-foe lineage STATE --states DIR --evidence DIR [--json]   verify a state document's ancestry claim against retained evidence
+foe plan [--config FILE] [--json]                        print the resolved program, its identity, its transport, its tools with their sources, and its effective authority; without --config, list the built-in tools
+foe plan --schema                                        print the JSON Schema for the configuration
+foe plan --config FILE --states DIR --evidence DIR       verify the configuration's ancestry claim against retained evidence
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
 
@@ -641,6 +658,14 @@ The implementation returns a typed handoff with its summary, changed paths,
 validation observations, and unresolved risks. The audit receives that value
 and the original task in a fresh context. The shared directory carries the
 artifacts themselves.
+
+Both completion schemas accept one optional `learned` array of at most
+eight observations. Each observation is an object with a one-sentence
+`claim` and a `seq` citing the event in this episode's own log that is the
+claim's evidence. This is the standard exit through which an episode
+reports what it observed, for a launching parent to collect; foe itself
+acts on none of it. [config.md](config.md#done_when) states the convention
+for any program.
 
 The model is the one named by `--model`, or the default model when `--model`
 is absent. The default model is the `model` block in
@@ -776,7 +801,8 @@ ancestry checker [lineage-identity.md](lineage-identity.md) specifies. It
 depends on `crates/config` for the claim's shape and the canonical
 serialization, and on `crates/log` for the episode record, and is part of
 neither contract: nothing in the runtime depends on it. The binary
-supplies only the two directory-backed resolvers `foe lineage` builds.
+supplies only the two directory-backed resolvers `foe plan` builds for its
+`--states` and `--evidence` directories.
 
 ## Size
 

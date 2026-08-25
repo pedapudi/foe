@@ -136,6 +136,7 @@ fn every_rule_names_its_key() {
         ("grants.write[0]", Box::new(|v| v["grants"]["write"] = json!(["relative"]))),
         ("grants.execute[0]", Box::new(|v| v["grants"]["execute"] = json!(["relative"]))),
         ("grants.spawn[0]", Box::new(|v| v["grants"]["spawn"] = json!(["ghost"]))),
+        ("grants.bind[0]", Box::new(|v| v["grants"]["bind"] = json!([0]))),
         ("budget.model_calls", Box::new(|v| v["budget"]["model_calls"] = json!(0))),
         ("budget.input_tokens", Box::new(|v| v["budget"]["input_tokens"] = json!(0))),
         ("budget.output_tokens", Box::new(|v| v["budget"]["output_tokens"] = json!(0))),
@@ -199,6 +200,35 @@ fn a_childs_execute_grants_stay_within_its_parent() {
     .unwrap_err();
     let ConfigError::Invalid { key, rule } = error else { unreachable!() };
     assert_eq!(key, "programs.kid.grants.execute[0]");
+    assert!(rule.contains("parent program"));
+}
+
+/// docs/config.md `programs`: a child's bind ports are a subset of its
+/// parent's, like every other grant kind.
+#[test]
+fn a_childs_bind_ports_stay_within_its_parent() {
+    let root = tmp("config-child-bind");
+    let kid = |bind: Value, root: &std::path::Path| {
+        json!({ "kid": {
+            "name": "kid", "instructions": {"role": "work"}, "tools": ["block"],
+            "grants": {"read": [root], "bind": bind}, "budget": {"model_calls": 1}
+        }})
+    };
+    let subset = program_with(&root, |v| {
+        v["grants"]["bind"] = json!([8080, 8081]);
+        v["grants"]["spawn"] = json!(["kid"]);
+        v["programs"] = kid(json!([8081]), &root);
+    })
+    .unwrap();
+    assert_eq!(subset.programs["kid"].grants.bind, vec![8081]);
+    let error = program_with(&root, |v| {
+        v["grants"]["bind"] = json!([8080]);
+        v["grants"]["spawn"] = json!(["kid"]);
+        v["programs"] = kid(json!([8080, 9090]), &root);
+    })
+    .unwrap_err();
+    let ConfigError::Invalid { key, rule } = error else { unreachable!() };
+    assert_eq!(key, "programs.kid.grants.bind[1]");
     assert!(rule.contains("parent program"));
 }
 
@@ -411,7 +441,7 @@ fn lineage_claim() -> serde_json::Value {
     serde_json::json!({
         "parent": {
             "program_identity": format!("sha256:{}", "a".repeat(64)),
-            "lineage_identity": format!("sha256:{}", "b".repeat(64)),
+            "state_identity": format!("sha256:{}", "b".repeat(64)),
         },
         "evidence": format!("sha256:{}", "c".repeat(64)),
         "verification_log": "children/ep_1/episode.jsonl",

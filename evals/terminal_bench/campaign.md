@@ -23,8 +23,9 @@ tier. Token use, estimated cost, cache use, and
 latency are measurements. Task quality is the only candidate promotion metric
 until every quality gate passes.
 
-Candidate changes may affect any Foe source, built-in tool, or general workflow
-configuration. Task-specific instructions, benchmark identifiers, fixture
+Candidate changes may affect Foe source, a general workflow configuration, an
+instruction section of the retained self-improvement program, or a declared
+executable tool. Task-specific instructions, benchmark identifiers, fixture
 values, and grader rules are excluded from candidate changes.
 
 ## Success criteria
@@ -639,6 +640,15 @@ completion. The diagnosis selects `configure-workflow` when exactly one
 independent audit setting supplies the repeated quality gain. The runner copies
 that setting from the evidence without starting either coding node.
 
+The diagnosis selects `revise-instructions` when the repeated causal
+difference is procedural guidance that one instruction section of the
+retained program document can carry. The typed result names the target
+document, one section key, the exact old text, and the exact new text.
+The diagnosis selects `define-tool` when one missing executable tool
+explains the gap. The typed result names the tool, its description, its
+executable content, and that content's digest. Both paths end the workflow
+without starting the coding node.
+
 The diagnosis selects `insufficient-evidence` when the contrast isolates only
 model capability or requires semantic information absent from the log. Every
 candidate preserves the primary model route, reasoning effort, task
@@ -671,15 +681,39 @@ execution configuration that produced it. The workflow refuses a source or
 binary mismatch before making a model request. A source candidate requires a
 Rust implementation change, a Rust regression test, and an affected
 specification. A workflow candidate contains one independent-audit setting.
-Its digest binds the setting to the evaluated source, binary, evidence, and
-preserved execution controls.
+An instruction candidate contains one revision whose old text occurs exactly
+once in the named section of the named program document. A tool candidate
+contains one tool_defs entry with the executable's content digest, and the
+executable file is retained beside the candidate. Every candidate's digest
+binds its content to the evaluated source, binary, evidence, and preserved
+execution controls.
+
+The diagnosis node declares a runner-generated validator as its completion
+verifier through `done_when.verify`. The validator judges the returned typed
+diagnosis with the same identity-bound candidate validation the runner
+applies after the episode, so an accepted workflow, instruction, or tool
+candidate is an authoritative `verification/result` event in the diagnosis
+episode's log, and findings return to the same episode. A source diagnosis
+and a typed abstention pass the validator; a source candidate is judged by
+the coding node's candidate check.
 
 The workflow is one candidate generator. The runner validates source changes
-again after the episode. It validates workflow settings before a benchmark
-run. A validated artifact survives an exhausted reporting outcome. Candidate
+again after the episode. It validates workflow settings, instruction
+revisions, and tool definitions when the episode returns them, and validates
+a workflow setting again before a benchmark run applies it. A validated
+artifact survives an exhausted reporting outcome. Candidate
 promotion remains an external evaluation decision. A failed artifact sets
 `direct_implementation_required`. The campaign then proceeds with a direct
 implementation.
+
+The runner records every accepted candidate as a lineage transition: the
+evidence bundle completed through the lineage crate's `build-bundle`
+binary, whose adoption record cites the accepted verifier result, and the
+parent and adoption state documents in the layout the checker's resolvers
+read.
+[`docs/lineage-identity.md`](../../docs/lineage-identity.md) "Harness
+adoptions" states the one state-document rule: every adoption materializes
+the program document that will run under it.
 
 ## Recorded capability conversion and diagnosis sufficiency
 

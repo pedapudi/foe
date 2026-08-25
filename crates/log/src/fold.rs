@@ -167,6 +167,16 @@ pub fn derive_span(events: &[Event], from_seq: u64, upto_seq: u64, consumed_inbo
             _ => None,
         })
         .collect();
+    // A `tool/result` whose opening record is a `tool/inner-call` never
+    // enters derived messages: the outer composing call's result is the
+    // only account of the program that reaches the model.
+    let inner: BTreeSet<&str> = events
+        .iter()
+        .filter_map(|e| match &e.data {
+            EventData::ToolInnerCall(c) => Some(c.call_id.as_str()),
+            _ => None,
+        })
+        .collect();
     let user = |consumed: &[u64]| {
         let content: Vec<_> = consumed.iter().filter_map(|s| items.get(s)).flat_map(|c| c.iter().cloned()).collect();
         (!content.is_empty()).then_some(Message::User { content })
@@ -185,7 +195,7 @@ pub fn derive_span(events: &[Event], from_seq: u64, upto_seq: u64, consumed_inbo
                     thinking: message.thinking.clone(),
                 })
             }
-            EventData::ToolResult(result) => messages.push(Message::Tool {
+            EventData::ToolResult(result) if !inner.contains(result.call_id.as_str()) => messages.push(Message::Tool {
                 call_id: result.call_id.clone(),
                 name: result.name.clone(),
                 rendered: result.rendered.clone(),

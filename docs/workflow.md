@@ -133,7 +133,7 @@ key in this document is a fixed name.
 A `follows` entry and a `followed_by` entry that name the same edge are one
 edge. The graph is the union. Duplicate edges are not an error.
 
-`foe schema` prints the JSON Schema of the whole configuration, including
+`foe plan --schema` prints the JSON Schema of the whole configuration, including
 `workflow`, `workflow_node`, and the recovery blocks, with
 `additionalProperties` false throughout. It is the machine-readable form of
 this document and of [config.md](config.md), and an editor validates and

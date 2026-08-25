@@ -1,4 +1,5 @@
-//! Built-in coding tools: `read`, `grep`, `edit`, and `bash`.
+//! Built-in coding tools: `read`, `grep`, `edit`, `bash`, `session`, and
+//! `python`.
 //!
 //! Each tool implements `foe_core::Tool` and reaches files and processes
 //! only through the capability handles in `CallCtx`. docs/tools.md states
@@ -16,6 +17,8 @@ mod bash;
 mod diff;
 mod edit;
 mod grep;
+#[cfg(feature = "exec")]
+mod python;
 mod read;
 #[cfg(feature = "exec")]
 mod session;
@@ -47,6 +50,16 @@ pub const READ_BUFFER_BYTES: usize = 64 * 1024;
 pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
 /// Process sessions the `session` tool may hold alive at once.
 pub const SESSION_MAX_ALIVE: usize = 8;
+/// Absolute path of the interpreter the `python` tool starts.
+pub const PYTHON_BIN: &str = "/usr/bin/python3";
+/// Longest `python` program source, in bytes.
+pub const PYTHON_SOURCE_MAX_BYTES: usize = 64 * 1024;
+/// Inner tool calls one `python` program may dispatch.
+pub const PYTHON_INNER_CALL_MAX: u32 = 100;
+/// Address-space limit of the interpreter process, in bytes.
+pub const PYTHON_MEMORY_MAX_BYTES: u64 = 512 << 20;
+/// Characters kept of each of the interpreter's own output streams.
+pub const PYTHON_DIAGNOSTIC_MAX_CHARS: usize = 4_096;
 
 /// The shell that runs every `bash` and `session` command line.
 #[cfg(feature = "exec")]
@@ -65,7 +78,7 @@ pub(crate) fn shell_environment(cwd: &Path) -> std::collections::BTreeMap<String
     ])
 }
 
-/// Every built-in coding tool, in the order `foe tools` lists them.
+/// Every built-in coding tool, in the order `foe plan` lists them.
 pub fn all() -> Vec<Box<dyn Tool>> {
     let mut tools = readonly();
     tools.push(Box::new(edit::Edit::new()));
@@ -80,7 +93,7 @@ pub fn readonly() -> Vec<Box<dyn Tool>> {
 
 #[cfg(feature = "exec")]
 fn exec_tools() -> Vec<Box<dyn Tool>> {
-    vec![Box::new(bash::Bash::new()), Box::new(session::Session::new())]
+    vec![Box::new(bash::Bash::new()), Box::new(session::Session::new()), Box::new(python::Python::new())]
 }
 
 #[cfg(not(feature = "exec"))]

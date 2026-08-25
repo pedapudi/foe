@@ -54,6 +54,48 @@ fn a_session_outlives_calls_and_polls_return_only_new_output() {
     assert_eq!(subject(&status), format!("session 1: exit 7 after {}s", status.seconds));
 }
 
+/// docs/tools.md "session": a session may bind a TCP port the policy's
+/// `bind_tcp` lists — filled from `grants.bind` — and the bound listener
+/// answers across calls while the session stays alive. The sandbox tests
+/// cover what each ABI tier denies; this holds at every tier.
+#[test]
+fn a_session_serves_a_granted_bind_port_across_calls() {
+    if !Path::new("/usr/bin/python3").exists() {
+        eprintln!("skipped: /usr/bin/python3 is absent");
+        return;
+    }
+    let dir = scratch("session", "bind");
+    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+    let server = format!(
+        "import socket\ns = socket.socket()\ns.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n\
+         s.bind((\"127.0.0.1\", {port}))\ns.listen()\nprint(\"ready\", flush=True)\n\
+         while True:\n    c, _ = s.accept()\n    c.sendall(b\"pong\")\n    c.close()\n"
+    );
+    std::fs::write(dir.join("server.py"), server).unwrap();
+    let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
+    let policy =
+        Policy { read: vec![dir.clone()], exec: vec!["/bin/bash".into()], bind_tcp: vec![port], ..Policy::default() };
+    let s = LocalSessions::new(sandbox, policy, dir.join("spill"), 4);
+    s.start(shell(&dir, "/usr/bin/python3 server.py")).unwrap();
+    wait_for(|| {
+        let (_, output) = s.take_output(1).unwrap();
+        (!output.stdout.is_empty()).then_some(())
+    });
+    let ping = || {
+        let mut c = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let mut buf = Vec::new();
+        c.read_to_end(&mut buf).unwrap();
+        buf
+    };
+    assert_eq!(ping(), b"pong");
+    let (status, _) = s.take_output(1).unwrap();
+    assert!(status.alive, "the listener holds between calls");
+    assert_eq!(ping(), b"pong", "the bound listener answers again after a further call");
+    s.stop(1).unwrap();
+}
+
 /// docs/tools.md "session": at most the configured number of sessions are
 /// alive at once, and a stopped session frees its place.
 #[test]

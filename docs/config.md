@@ -14,13 +14,13 @@ Three rules shape the format.
 - No fact appears in two places. Anything derivable from another key is
   derived rather than declared.
 
-`foe schema` emits a JSON Schema for this format, so an editor can validate a
-document and offer completions. `foe plan --config FILE` prints the resolved
-program, its identity, and every tool definition the program's reachable
-tree can invoke, without running anything.
+`foe plan --schema` emits a JSON Schema for this format, so an editor can
+validate a document and offer completions. `foe plan --config FILE` prints
+the resolved program, its identity, and every tool definition the program's
+reachable tree can invoke, without running anything.
 
 `crates/config` implements this document: every rule stated here is a check
-there, it holds the JSON Schema `foe schema` prints, and it resolves a
+there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a
 document into the program `episode/start.program` records.
 
 ## JSON Schema subset
@@ -193,9 +193,9 @@ A name resolves against three sources, checked in this order:
 
 A name that resolves in two sources, or in none, is an error at construction.
 
-`foe tools` lists every built-in tool with its description. `foe tools
---config FILE` lists the resolved set for a document, with each tool's
-source.
+`foe plan` without `--config` lists every built-in tool with its
+description. `foe plan --config FILE` reports the resolved set for a
+document, with each tool's source.
 
 ### `tool_defs`
 
@@ -255,9 +255,15 @@ Object. Required. Names what the episode may reach.
 | `write` | list of strings | no | absolute directories the episode may write; default empty |
 | `execute` | list of strings | no | absolute files or directories that a tool subprocess may read and execute; default empty |
 | `spawn` | list of strings | no | names from `programs` the episode may start; default empty |
+| `bind` | list of integers | no | TCP ports, 1 to 65535, that a process of the episode may bind; default empty |
 
 Paths are prefixes. A grant on `/home/user/project` covers every path below
 it. There is no pattern syntax.
+
+A `bind` grant lets a server the episode starts listen on the named ports;
+[sandbox.md](sandbox.md) states how the kernel enforces it. It grants no
+outbound reach: connecting stays tied to the model transport and to each
+tool definition's `network` field.
 
 The runtime opens each granted directory once when the episode starts, and
 every read and write below it names a path relative to that open directory.
@@ -379,6 +385,14 @@ general-purpose linter is wrapped by a short script that reads the
 candidate, runs the linter, prints its findings, and exits with status zero
 whether or not it found any.
 
+A `returns` schema may declare an optional `learned` member: an array of at
+most eight objects, each pairing a one-sentence `claim` string with an
+integer `seq` that cites the event in this episode's own log evidencing the
+claim. The member is a convention rather than a mechanism: it is the
+standard exit through which an episode reports observations for a launching
+parent to collect, and the runtime reads nothing from it. The built-in
+coding workflow declares it on both of its episodes.
+
 Without `returns`, a non-error ordinary call to the declared verifier asks
 the runtime to verify the assistant text after the turn settles. Acceptance
 completes the episode without another model request. The ordinary call and
@@ -490,7 +504,7 @@ and the checker that verifies the claim.
 | field | type | meaning |
 |---|---|---|
 | `parent.program_identity` | string | the parent state's program identity |
-| `parent.lineage_identity` | string | the parent state's own ancestry claim |
+| `parent.state_identity` | string | the parent state's identity, selecting one ancestry claim among those that can accompany a single program identity |
 | `evidence` | string | SHA-256 digest of the evidence bundle's canonical manifest |
 | `verification_log` | string | bundle-relative path of the log holding the verifier result |
 | `verification_seq` | integer | `seq` of that result inside `verification_log` |

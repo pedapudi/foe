@@ -1,8 +1,11 @@
-# Code mode
+# The python tool
 
-Status: design. The built-in tool name `code` and the additive log event
-`code/inner-call` are proposed here. The registry does not expose the tool,
-and the log crate does not define the event.
+The built-in `python` tool runs one model-written program in an isolated
+interpreter process whose only capability is calling this episode's tools.
+The runtime records every inner call in the log and shows the model only
+the value the program returned. `crates/code/src/python.rs` implements the
+tool; `crates/core` implements inner dispatch and recording;
+[log-format.md](log-format.md) specifies the `tool/inner-call` event.
 
 ## Purpose
 
@@ -14,265 +17,234 @@ The `bash` tool can avoid some of that cost. A shell pipeline performs
 several operations and emits a narrow result. Its inner operations remain
 shell text, and it can use only the process authority granted to `bash`.
 
-Code mode lets the model submit one bounded program that calls the episode's
-tools as functions. The runtime records every inner call and exposes only the
-program's returned value as the outer tool result.
+The `python` tool lets the model submit one bounded program that calls the
+episode's tools as functions. The runtime records every inner call and
+exposes only the program's returned value as the outer tool result.
 
-The model's source program remains in the conversation as the `code` call's
-arguments. Code mode removes inner results from the conversation. It does
-not remove the source that produced them.
+The model's source program remains in the conversation as the `python`
+call's arguments. The tool removes inner results from the conversation. It
+does not remove the source that produced them.
 
-Programs opt in by listing `code` in `tools`. An episode that omits it pays
-no request-schema or instruction cost.
+Programs opt in by listing `python` in `tools`. An episode that omits it
+pays no request-schema or instruction cost. The built-in coding workflow
+does not list it; [the adoption evidence below](#adoption-evidence) states
+what would change that.
 
 ## Outer call contract
 
-The `code` tool has one argument:
+The `python` tool has two arguments:
 
 ```json
-{ "program": "def main():\n    ..." }
+{ "program": "def main():\n    ...", "timeout_seconds": 60 }
 ```
 
-The source defines a zero-argument `main` function. Inner dispatch is
-unavailable while the evaluator loads the source. The runtime enables it only
-while invoking `main`. A parse or load error therefore produces an outer
-error result before any effect occurs.
+The source defines a zero-argument `main` function returning a
+JSON-serializable value. `timeout_seconds` defaults to 120, the `bash`
+default, and is reduced to the episode's remaining wall-clock budget when
+that is smaller.
 
-The source uses a constrained Starlark dialect. The evaluator selection gate
-below must pass before the runtime accepts this syntax.
+The runtime starts `/usr/bin/python3 -I -`. Isolated mode ignores every
+`PYTHON*` environment variable and the user site directory, and the
+environment is empty besides. The process receives on standard input a
+foe-owned shim followed by the program, so a syntax error anywhere produces
+an outer error result before any statement runs. The shim exposes exactly
+two functions and holds inner dispatch closed until it invokes `main`, so
+top-level statements in the program cannot call tools while the source
+loads.
 
-The evaluator exposes one function for inner dispatch:
+- `call_tool(name, args)` performs one inner dispatch and returns
+  `{"value": ..., "is_error": bool}`. `name` is an ordinary episode tool
+  name, which keeps configured tools callable when their names are not
+  valid identifiers. `args` is the same JSON object the model would send
+  in a top-level call.
+- `fail(message)` ends the outer call as an error carrying the message.
 
-```text
-call_tool(name, args)
-```
+Three control tools are excluded from inner dispatch, refused with an
+error result before any event is written:
 
-`name` is an ordinary episode tool name. `args` is the same JSON object that
-the model would send in a top-level call. A string name keeps configured
-tools callable when their names are not valid language identifiers. Three
-control tools are excluded:
-
-- `code`, which prevents evaluator recursion;
+- `python`, which prevents interpreter recursion;
 - `block`, whose meaning depends on a model-issued top-level call;
 - the synthesized `return` tool, whose meaning depends on the episode's
   completion contract.
 
 Calling the configured completion verifier inside a program performs an
 ordinary inner tool call. It does not signal episode completion. The model
-must call that verifier at the top level when it wants the call to act as a
-completion candidate.
+must call that verifier at the top level when it wants the call to act as
+a completion candidate.
 
-`call_tool` returns a value with two fields:
-
-```text
-struct(value = <canonical JSON value>, is_error = <boolean>)
-```
-
-The program can inspect an error and continue, or call the evaluator's
-`fail(message)` function to end the outer call with an error. Tool arguments pass
-through the existing JSON Schema check before the tool receives a capability
-handle.
-
-The current tool contract has no result schema. Code mode therefore treats
-canonical results as dynamic JSON values and makes no static type claim. A
-future result-schema design can add validation without changing the outer
-call contract.
-
-This program counts matches without returning every match line:
+The tool contract has no result schema, so a program treats every `value`
+as a dynamic JSON value. This program counts matches without returning
+every match line:
 
 ```python
 def main():
-    result = call_tool("grep", {
-        "pattern": "TODO",
-        "path": ".",
-        "limit": 100,
-    })
-    if result.is_error:
-        fail(result.value["error"])
-    return {
-        "matches": result.value["matches"],
-        "files": result.value["files"],
-        "complete": result.value["complete"],
-    }
+    result = call_tool("grep", {"pattern": "TODO", "path": ".", "limit": 100})
+    if result["is_error"]:
+        fail(result["value"]["error"])
+    return {"matches": result["value"]["matches"], "files": result["value"]["files"]}
 ```
 
-`main` must return a JSON value. The outer canonical result contains that
-value and a derivation summary:
+The outer canonical result contains the returned value, a derivation
+summary, and a bounded capture of the process's own standard output and
+standard error as diagnostics:
 
 ```json
 {
   "returned": { "matches": 17 },
-  "derivation": {
-    "complete": true,
-    "inner_calls": 6,
-    "errors": 0,
-    "by_tool": { "grep": 2, "read": 4 }
-  }
+  "derivation": { "complete": true, "inner_calls": 2, "errors": 0, "by_tool": { "grep": 2 } },
+  "stdout": "",
+  "stderr": ""
 }
 ```
 
-The rendered result shows the returned value and the derivation summary. It
-uses the ordinary result budget and spill rules. Its subject states the call
-count, error count, and returned byte count. The subject contains no text
-supplied solely for display by the model.
+The rendered result opens with the call and error counts, shows the
+returned value, and appends each non-empty diagnostic stream. Its subject
+states the call count, error count, and returned byte count. The subject
+contains no text supplied by the model. The ordinary result budget and
+spill rules apply.
 
-An evaluator error or a call to `fail` sets `complete` to false, adds an
-`error` string, and marks the outer tool result as an error. The derivation
-still reports every inner call that completed before the error.
+A call to `fail`, an uncaught exception, an exhausted bound, or an
+interpreter that exits before `main` returns marks the outer result as an
+error. The canonical value is then
+`{"error": {"message", "derivation", "stdout", "stderr"}}`: the derivation
+still reports every inner call that completed, with `complete` false, and
+an uncaught exception's message carries the traceback. A missing
+interpreter is an ordinary error result naming the expected path.
 
-## Evaluation environment
+## Confinement
 
-The evaluator supplies a closed set of language features. It provides JSON
-values, local variables, functions, conditionals, bounded loops, collection
-operations, sorting, `call_tool`, and `fail`. It provides no filesystem,
-process, network, environment, clock, randomness, module loading, or dynamic
-code loading.
+The interpreter runs through the ordinary executor with a policy of its
+own in place of the per-executable narrowing: read on `/usr` alone — the
+interpreter's installation prefix, world-readable system files — execute
+on the interpreter, write on nothing, and no network. No workspace root,
+home directory, or credential file is granted. The sandbox's baseline
+loader, system, and device paths apply as they do to every process.
+Landlock enforces the policy where the kernel offers it; as everywhere in
+[sandbox.md](sandbox.md), `best-effort` mode applies what the kernel
+offers and applies nothing when Landlock is absent. The program's one door
+to the world is the dispatch socket the shim holds on file descriptor 3.
 
-Evaluation is deterministic given the source and the sequence of inner tool
-results. An inner tool can observe changing external state. The log records
-that observed result, so replay does not repeat the observation.
+Five bounds hold, each a constant in `crates/code` beside the other tool
+bounds, and the tool description states their values:
 
-The evaluator enforces four independent bounds:
-
-- source bytes;
-- evaluator steps;
-- live evaluator memory;
-- inner tool calls.
-
-The episode's remaining `seconds` budget also bounds the outer call. Every
-inner tool retains its own timeout and output limit. Exhausting any evaluator
-bound returns an error that names the bound and reports the completed inner
-call count.
-
-The implementation must choose fixed defaults with generous headroom over
-successful tasks that exercise several inner calls. The tool description states the values, so a
-change to them changes program identity through the ordinary tool
-specification and runtime build.
-
-The evaluator spike must demonstrate fuel accounting, memory accounting,
-cancellation, a disabled module loader, and the absence of ambient imports.
-The runtime must not take an evaluator dependency before those properties are
-tested.
+- **Source size**: 64 KiB, checked before the interpreter starts.
+- **Memory**: RLIMIT_AS at 512 MiB, set by the shim's first statement as
+  both the soft and the hard limit, which a process without privilege
+  cannot raise. The shim rather than the spawner sets it because the
+  runtime forbids unsafe code and therefore installs no between-fork-and-
+  exec hook.
+- **Inner calls**: 100 per program. The call past the bound is not
+  dispatched; the outer call ends as an error naming the bound.
+- **Timeout**: `timeout_seconds`, bounded by the episode's remaining
+  `seconds` budget. Every inner tool retains its own timeout and output
+  limit.
+- **Cancellation**: the executor owns the process group and kills the
+  whole group on timeout or cancellation, so nothing the program started
+  survives the call. Episode settlement closes an inner call left open
+  before the outer call, as [log-format.md](log-format.md#seeding)
+  specifies.
 
 ## Dispatch and authority
 
-The model sees `code` as a built-in tool. The runtime handles it as a
-composite call because an ordinary tool receives capability handles for one
-declared effect, while a code program can invoke tools with several effects.
+The model sees `python` as a built-in tool. The runtime handles it as a
+composite call because an ordinary tool receives capability handles for
+one declared effect, while a program can invoke tools with several
+effects.
 
-The composite executor holds no direct filesystem or process API. For each
-inner call, it asks the ordinary registry to resolve the name, validate the
-arguments, select capability handles, and dispatch the implementation. The
-registry remains the only path from source code to an effect.
+The tool holds no direct filesystem API and dispatches nothing itself. The
+agent loop builds a composer for the one call it recognizes by the tool's
+name, and for each inner call the composer asks the ordinary registry to
+resolve the name, validate the arguments against the tool's parameter
+schema, select capability handles, and dispatch the implementation — the
+same path a model-issued call takes. The registry remains the only path
+from source code to an effect. A dispatch outside the agent loop, such as
+a workflow node's direct tool call, carries no composer, and the tool then
+returns an error.
 
-Every inner call is synchronous and runs in source order. The outer `code`
-call runs exclusively with respect to other top-level calls in the same
-model turn. These rules preserve the existing effect order even when the
-source selects tool names or arguments dynamically.
+Every inner call is synchronous and runs in program order. The outer
+`python` call declares the `execs` effect and therefore runs exclusively
+with respect to other top-level calls in the same model turn. These rules
+preserve the existing effect order even when the program selects tool
+names or arguments dynamically.
 
-Code mode is not transactional. Effects completed before a later error
+The tool is not transactional. Effects completed before a later error
 remain in the world and the log. The outer error result reports how many
 inner calls completed, which gives the model enough information to inspect
 the partial state.
 
-Cancellation prevents further evaluator steps and begins ordinary tool
-teardown for the current inner call. The implementation must prove that no
-process started by that call survives teardown. The runtime closes the inner
-call before it closes the outer call.
-
-Stuck detection compares model-issued outer calls and results. It does not
-treat repeated inner calls inside one program as consecutive model turns. A
-model that submits the same failing source in consecutive turns still
-reaches the ordinary looping threshold.
+Stuck detection compares model-issued outer calls and results. Inner calls
+never enter it, because looping detection matches results to the calls an
+`assistant/message` issued. A model that submits the same failing source
+in consecutive turns still reaches the ordinary looping threshold.
 
 ## Log representation
 
-The model-issued `code` call remains in its `assistant/message`. Its ordinary
-`tool/result` closes the outer call and is the only result from the program
-that enters derived messages.
+The model-issued `python` call remains in its `assistant/message`. Before
+each inner dispatch the runtime appends one `tool/inner-call` event, and
+the inner call's ordinary `tool/result` follows; the generic event name is
+shared by design with any future composing tool.
+[log-format.md](log-format.md) specifies the event, the obligation it
+opens, its exclusion from derived messages, and the nested closing order
+at settlement and seeding. The event is additive: no frozen version 2
+payload changed.
 
-Before each inner dispatch, the runtime appends one additive event:
-
-```json
-{
-  "type": "code/inner-call",
-  "data": {
-    "outer_call_id": "tc_code_1",
-    "call_id": "tc_code_1_4",
-    "index": 4,
-    "name": "read",
-    "args": { "path": "src/parser.rs" }
-  }
-}
-```
-
-The inner call produces an ordinary `tool/result` with the inner `call_id`.
-A host tool also produces the existing `host/tool-call` event while it waits
-for its host result. The new event records the nesting relationship without
-changing any frozen version 2 event payload.
-
-`code/inner-call` opens the same tool-call obligation that a call in an
-`assistant/message` opens. Its ordinary `tool/result` closes that obligation.
-The enclosing code call remains open until every inner call has closed.
-
-The derived-message fold excludes a `tool/result` whose opening record was a
-`code/inner-call`. Every other `tool/result` retains its existing behavior.
-The full `model/request.messages` snapshot remains the final reconstruction
-check.
-
-Teardown and seeding close an open inner call before synthesizing the outer
-code result. This nested closing order is required even though ordinary
-sibling obligations retain their opening order.
-
-Replay reads the outer result from the log and never evaluates the source.
-The viewer nests inner calls below the outer code call. Statistics report
-the outer duration as inclusive and each inner duration separately, so a
-consumer can avoid adding both into one total.
-
-The event uses the version 2 envelope and adds no field to a frozen payload.
-A reader compiled before the new variant exists will reject the event. The
-log crate must therefore define the variant before any runtime emits it.
+Replay reads the outer result from the log and never runs the program.
+Statistics that add durations must treat the outer duration as inclusive
+of the inner ones.
 
 ## Program identity and promotion
 
-The `code` tool specification, evaluator instructions, bounds, and runtime
-build participate in the existing program identity. One source program is a
-tool argument and therefore belongs to an episode log rather than the
-program identity.
+The `python` tool specification, its bounds, and the runtime build
+participate in the existing program identity, as every built-in tool's
+specification does. One source program is a tool argument and therefore
+belongs to an episode log rather than the program identity.
 
 Registering a new named tool during an episode would change the request
-header and model-visible vocabulary. That operation would violate the rule
-that an episode uses one immutable program state. Episode-local tool
-definition is outside this design.
+header and model-visible vocabulary, violating the rule that an episode
+uses one immutable program state. Episode-local tool definition is outside
+this design. A useful source program can become a configured tool in a
+later program state, packaged behind a `tool_defs` executable with a
+declared schema and verifier;
+[lineage-identity.md](lineage-identity.md) can record the transition and
+its admission evidence.
 
-A useful source program can become a configured tool in a later program
-state. Promotion can package the source behind a configured executable, with
-a declared schema and verifier. Those fields then participate in the child
-state's identity. [Program lineage](lineage-identity.md) can record the
-transition and its admission evidence.
+## Adoption evidence
 
-## Evaluation requirements
-
-Code mode should remain opt-in until five forms of evidence are available.
+The tool stays out of the built-in coding workflow until five forms of
+evidence exist.
 
 1. **Runtime conformance.** Tests cover argument validation, capability
-   selection, effect ordering, host tools, partial effects, cancellation,
-   nested obligation repair, replay, and execution with the filesystem
-   removed.
-2. **Evaluator confinement.** Tests attempt filesystem, process, network,
-   clock, randomness, module loading, memory exhaustion, and non-termination.
-3. **Quality on tasks that exercise code mode.** A development set contains tasks where programs
-   issue several inner calls and return a smaller derived value. A holdout
-   set measures whether the mechanism preserves or improves task score.
-4. **Mixed-workload cost.** Tasks that benefit and tasks that do not benefit
-   run together. Reports separate the fixed request cost of the `code` schema,
-   source replay, inner canonical bytes, suppressed rendered bytes, model
-   calls, latency, and estimated cost.
-5. **Simpler alternative.** The same activation tasks run with instructions
-   that tell the model to end shell pipelines with a narrowing operation.
-   Code mode earns adoption only when it adds quality or efficiency beyond
+   selection, effect ordering, partial effects, cancellation, nested
+   obligation repair, and replay. The runtime test suite carries these.
+2. **Interpreter confinement.** Tests attempt filesystem reads outside the
+   policy, environment access, memory exhaustion, and non-termination. The
+   runtime test suite carries these; network and clock isolation follow
+   from the policy and are exercised by the sandbox tests.
+3. **Quality on tasks that exercise composition.** A development set
+   contains tasks where programs issue several inner calls and return a
+   smaller derived value. A holdout set measures whether the mechanism
+   preserves or improves task score.
+4. **Mixed-workload cost.** Tasks that benefit and tasks that do not run
+   together. Reports separate the fixed request cost of the `python`
+   schema, source replay, inner canonical bytes, suppressed rendered
+   bytes, model calls, latency, and estimated cost.
+5. **Simpler alternative.** The same tasks run with instructions that tell
+   the model to end shell pipelines with a narrowing operation. The tool
+   earns default adoption only when it adds quality or efficiency beyond
    that instruction.
 
-Any task-quality regression blocks adoption for the affected program. Token,
-latency, and cost measurements rank quality-equivalent configurations. They
-do not compensate for a lower task score.
+Any task-quality regression blocks adoption for the affected program.
+Token, latency, and cost measurements rank quality-equivalent
+configurations; they do not compensate for a lower task score.
+
+## The Starlark alternative
+
+An earlier form of this design evaluated programs in an embedded Starlark
+interpreter rather than a subprocess; `spikes/starlark-confinement`
+demonstrates its fuel accounting, memory accounting, cancellation, and
+closed module loader. The subprocess form ships because it adds no
+evaluator dependency to the runtime and confines with the same kernel
+mechanism as every other process. The spike becomes relevant again if a
+deployment needs this composition where no interpreter binary or Landlock
+is available, or needs deterministic step accounting that a wall-clock
+timeout cannot give.

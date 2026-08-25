@@ -1,6 +1,6 @@
 use super::{
-    build_manifest, check_ancestry, digest_of, lineage_identity, manifest_bytes, validate, AncestryReport,
-    CandidateEnvelope, LineageParent, ProgramLineage, StateDocument, MANIFEST_FILE,
+    build_manifest, check_ancestry, digest_of, manifest_bytes, record_bytes, state_identity, validate, AdoptionRecord,
+    AncestryReport, LineageParent, ProgramLineage, StateDocument, MANIFEST_FILE,
 };
 use foe_config::config::{resolve, Program};
 use foe_config::identity::{canonical, compute, sha256_hex, Identity};
@@ -51,7 +51,7 @@ pub fn digest(fill: char) -> String {
 
 pub fn claim_value() -> Value {
     json!({
-        "parent": { "program_identity": digest('a'), "lineage_identity": digest('b') },
+        "parent": { "program_identity": digest('a'), "state_identity": digest('b') },
         "evidence": digest('c'),
         "verification_log": "children/ep_1/episode.jsonl",
         "verification_seq": 7
@@ -74,14 +74,14 @@ fn validation_names_the_key_and_the_rule() {
 }
 
 #[test]
-fn lineage_identity_hashes_the_canonical_object() {
+fn state_identity_hashes_the_canonical_object() {
     let program_identity = digest('d');
-    let root = lineage_identity(&program_identity, None);
+    let root = state_identity(&program_identity, None);
     let text = format!(r#"{{"program_identity":"{program_identity}","program_lineage":null,"schema_version":1}}"#);
     assert_eq!(root, format!("sha256:{}", sha256_hex(text.as_bytes())));
     let claim: ProgramLineage = serde_json::from_value(claim_value()).unwrap();
-    let descendant = lineage_identity(&program_identity, Some(&claim));
-    assert_ne!(descendant, root, "an ancestry claim changes the lineage identity");
+    let descendant = state_identity(&program_identity, Some(&claim));
+    assert_ne!(descendant, root, "an ancestry claim changes the state identity");
 }
 
 #[test]
@@ -91,10 +91,29 @@ fn one_program_identity_carries_distinct_claims_distinctly() {
     let mut second = first.clone();
     second.verification_seq = 8;
     assert_ne!(
-        lineage_identity(&program_identity, Some(&first)),
-        lineage_identity(&program_identity, Some(&second)),
-        "two claims over one program identity have two lineage identities"
+        state_identity(&program_identity, Some(&first)),
+        state_identity(&program_identity, Some(&second)),
+        "two claims over one program identity have two state identities"
     );
+}
+
+/// The runtime never reads lineage, so this crate's complexity cannot
+/// reach the machine: no crate except the command line may depend on
+/// `foe-lineage`.
+#[test]
+fn only_the_command_line_depends_on_this_crate() {
+    let crates = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    for entry in std::fs::read_dir(crates).unwrap() {
+        let dir = entry.unwrap().path();
+        let manifest = dir.join("Cargo.toml");
+        if !manifest.is_file() {
+            continue;
+        }
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        let text = std::fs::read_to_string(&manifest).unwrap();
+        let depends = text.lines().any(|line| line.trim_start().starts_with("foe-lineage"));
+        assert!(!depends || name == "cli", "crates/{name} must not depend on foe-lineage");
+    }
 }
 
 // ---- ancestry fixtures --------------------------------------------------
@@ -172,30 +191,40 @@ fn write_log(dir: &Path, events: Vec<EventData>) {
     }
 }
 
-/// Writes the candidate files of a bundle; `seal` completes the bundle
-/// with its manifest.
-fn write_candidate_files(dir: &Path, child: &Identity) {
+/// Writes the child identity document and artifact manifest and returns
+/// the adoption record binding them to the verification at `log`/`seq`.
+fn write_candidate_files(dir: &Path, child: &Identity, log: &str, seq: u64) -> AdoptionRecord {
     let document = canonical(&child.document);
     std::fs::write(dir.join("child-identity.json"), &document).unwrap();
     let artifacts = canonical(&json!([{ "path": "out.txt", "sha256": digest('9') }]));
     std::fs::write(dir.join("artifact-manifest.json"), &artifacts).unwrap();
-    let envelope = CandidateEnvelope {
+    AdoptionRecord {
+        schema_version: 1,
         program_identity: child.hash.clone(),
         identity_document_sha256: digest_of(document.as_bytes()),
         artifact_manifest_sha256: digest_of(artifacts.as_bytes()),
-    };
-    let envelope = canonical(&serde_json::to_value(envelope).unwrap());
-    std::fs::write(dir.join("candidate-envelope.json"), envelope).unwrap();
+        verification_log: log.into(),
+        verification_seq: seq,
+    }
 }
 
-fn seal(dir: &Path, log: &str, seq: u64, f: &Fixture) -> ProgramLineage {
-    let manifest = build_manifest(dir, log, "candidate-envelope.json").unwrap();
+/// Completes the bundle with the candidate files, the adoption record for
+/// the verification at `log`/`seq`, and the canonical manifest, and
+/// returns the ancestry claim naming that verification.
+fn seal(dir: &Path, proposal: &str, log: &str, seq: u64, f: &Fixture, child: &Identity) -> ProgramLineage {
+    let record = write_candidate_files(dir, child, log, seq);
+    std::fs::write(dir.join("adoption-record.json"), record_bytes(&record).unwrap()).unwrap();
+    let manifest = build_manifest(dir, proposal, "adoption-record.json").unwrap();
+    seal_manifest(dir, manifest, log, seq, f)
+}
+
+fn seal_manifest(dir: &Path, manifest: super::Manifest, log: &str, seq: u64, f: &Fixture) -> ProgramLineage {
     let bytes = manifest_bytes(&manifest).unwrap();
     std::fs::write(dir.join(MANIFEST_FILE), &bytes).unwrap();
     ProgramLineage {
         parent: LineageParent {
             program_identity: f.parent.hash.clone(),
-            lineage_identity: lineage_identity(&f.parent.hash, None),
+            state_identity: state_identity(&f.parent.hash, None),
         },
         evidence: digest_of(&bytes),
         verification_log: log.into(),
@@ -204,7 +233,8 @@ fn seal(dir: &Path, log: &str, seq: u64, f: &Fixture) -> ProgramLineage {
 }
 
 /// One proposal bundle under `dir`: the parent episode's log with an
-/// accepted verifier result at seq 1, and the candidate files for `child`.
+/// accepted verifier result at seq 1, the candidate files for `child`, and
+/// the adoption record.
 fn bundle(dir: &Path, f: &Fixture, child: &Identity, tool: &str, verifier_identity: &str) -> ProgramLineage {
     write_log(
         &dir.join("episode"),
@@ -214,8 +244,7 @@ fn bundle(dir: &Path, f: &Fixture, child: &Identity, tool: &str, verifier_identi
             ended(),
         ],
     );
-    write_candidate_files(dir, child);
-    seal(dir, "episode/episode.jsonl", 1, f)
+    seal(dir, "episode/episode.jsonl", "episode/episode.jsonl", 1, f, child)
 }
 
 fn check(
@@ -231,7 +260,7 @@ fn check(
 
 fn root_state(f: &Fixture) -> (String, StateDocument) {
     let state = StateDocument { identity_document: f.parent.document.clone(), program_lineage: None };
-    (lineage_identity(&f.parent.hash, None), state)
+    (state_identity(&f.parent.hash, None), state)
 }
 
 // ---- the required implementation tests -----------------------------------
@@ -249,7 +278,42 @@ fn a_valid_root_and_one_valid_descendant() {
     assert_eq!(report.chain.len(), 2);
     assert_eq!(report.chain[0].program_identity, child.hash);
     assert_eq!(report.chain[1].program_identity, f.parent.hash);
-    assert!(report.unverifiable.iter().any(|n| n.contains("candidate_sha256")), "{:?}", report.unverifiable);
+    // The adoption record closes exact input binding, and the configured
+    // verifier runs in the parent program itself, so every step holds.
+    assert!(report.unverifiable.is_empty(), "{:?}", report.unverifiable);
+}
+
+#[test]
+fn an_adoption_record_that_contradicts_the_claim_or_the_candidate_is_rejected() {
+    let f = fixture("wrong-adoption-record");
+    let child = child_of(&f, "descendant");
+    let (root_id, root) = root_state(&f);
+    for (marker, edit) in [
+        ("coordinates", (|record: &mut AdoptionRecord| record.verification_seq = 2) as fn(&mut AdoptionRecord)),
+        ("digest", |record| record.identity_document_sha256 = digest_of(b"another candidate")),
+    ] {
+        let dir = f.root.join(format!("bundle-{marker}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_log(
+            &dir.join("episode"),
+            vec![
+                start("ep_root", None, &f.parent.hash, f.parent_program.to_value()),
+                accepted("check", &f.exec_identity),
+                ended(),
+            ],
+        );
+        let mut record = write_candidate_files(&dir, &child, "episode/episode.jsonl", 1);
+        edit(&mut record);
+        std::fs::write(dir.join("adoption-record.json"), record_bytes(&record).unwrap()).unwrap();
+        let manifest = build_manifest(&dir, "episode/episode.jsonl", "adoption-record.json").unwrap();
+        let claim = seal_manifest(&dir, manifest, "episode/episode.jsonl", 1, &f);
+        let state = StateDocument { identity_document: child.document.clone(), program_lineage: Some(claim.clone()) };
+        let error =
+            check(&state, BTreeMap::from([(root_id.clone(), root.clone())]), BTreeMap::from([(claim.evidence, dir)]))
+                .unwrap_err()
+                .to_string();
+        assert!(error.contains("adoption_record"), "{marker}: {error}");
+    }
 }
 
 #[test]
@@ -331,7 +395,7 @@ fn an_ancestry_cycle_is_rejected() {
     // The proposal admits the parent program itself, so a state can claim
     // its own program as its parent through a resolver that loops.
     let mut claim = bundle(&dir, &f, &f.parent, "check", &f.exec_identity);
-    claim.parent.lineage_identity = digest('f');
+    claim.parent.state_identity = digest('f');
     let state = StateDocument { identity_document: f.parent.document.clone(), program_lineage: Some(claim.clone()) };
     let error = check(&state, BTreeMap::from([(digest('f'), state.clone())]), BTreeMap::from([(claim.evidence, dir)]))
         .unwrap_err()
@@ -361,7 +425,7 @@ fn one_program_identity_with_two_valid_ancestry_claims() {
     let f = fixture("two-claims");
     let child = child_of(&f, "descendant");
     let (root_id, root) = root_state(&f);
-    let mut lineage_ids = Vec::new();
+    let mut state_ids = Vec::new();
     for marker in ["first", "second"] {
         let dir = f.root.join(format!("bundle-{marker}"));
         std::fs::create_dir_all(&dir).unwrap();
@@ -374,9 +438,9 @@ fn one_program_identity_with_two_valid_ancestry_claims() {
             check(&state, BTreeMap::from([(root_id.clone(), root.clone())]), BTreeMap::from([(claim.evidence, dir)]))
                 .unwrap();
         assert_eq!(report.chain[0].program_identity, child.hash);
-        lineage_ids.push(report.chain[0].lineage_identity.clone());
+        state_ids.push(report.chain[0].state_identity.clone());
     }
-    assert_ne!(lineage_ids[0], lineage_ids[1], "two claims, two lineage identities");
+    assert_ne!(state_ids[0], state_ids[1], "two claims, two state identities");
 }
 
 #[test]
@@ -443,13 +507,7 @@ fn a_verifier_result_in_a_spawned_child_log_is_reached_by_provenance() {
             ended(),
         ],
     );
-    write_candidate_files(&dir, &child);
-    let claim = seal(&dir, "episode/episode.jsonl", 1, &f);
-    let claim = ProgramLineage {
-        verification_log: "episode/children/ep_kid/episode.jsonl".into(),
-        verification_seq: 1,
-        ..claim
-    };
+    let claim = seal(&dir, "episode/episode.jsonl", "episode/children/ep_kid/episode.jsonl", 1, &f, &child);
     let state = StateDocument { identity_document: child.document.clone(), program_lineage: Some(claim.clone()) };
     let (root_id, root_doc) = root_state(&f);
     let report = check(&state, BTreeMap::from([(root_id, root_doc)]), BTreeMap::from([(claim.evidence, dir)])).unwrap();

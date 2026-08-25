@@ -83,27 +83,27 @@ definitions in a file or find the definition of a name without reading whole
 files. Tree-sitter symbols are not implemented. No event type or
 configuration key is reserved.
 
-## Code mode
+## Default adoption of the python tool
 
-Code mode lets the model write a short program that calls several tools and
-combines their results. The model sees the source and returned value while
-inner results remain in the log. [code-mode.md](code-mode.md) specifies the
-`code` built-in tool, evaluator confinement, registry dispatch, and the
-proposed `code/inner-call` event. Code mode is not implemented. The tool name
-is reserved by the design; no event variant is present in `crates/log`.
+The built-in `python` tool lets the model write a short program that calls
+several tools and returns a combined value; inner results remain in the
+log and never re-enter the conversation. [code-mode.md](code-mode.md)
+specifies the implemented tool and the `tool/inner-call` event. What is
+deferred is default adoption: the built-in coding workflow does not list
+the tool until the task-quality, cost, and simpler-alternative evidence
+that document names exists.
 
 ## Program lineage
 
 Program lineage relates immutable program states through content-addressed
 proposal evidence and a verifier declared by the parent state.
 [lineage-identity.md](lineage-identity.md) specifies it. The configuration
-key `program_lineage`, the lineage identity, the evidence-bundle checker,
+key `program_lineage`, the state identity, the evidence-bundle checker,
 and the ancestry checker are implemented: the key's shape in `foe-config`,
-the rest in `foe-lineage`. What
-remains open is the candidate digest binding: the implemented
-`verification/result` event does not carry `candidate_sha256`, and
-lineage-identity.md "The candidate binding gap" states the ways to close
-it without choosing one.
+the rest in `foe-lineage`. The implemented `verification/result` event
+carries no digest of the verifier's input; the bundle's adoption record
+closes that gap with the attestation strength lineage-identity.md "Exact
+input binding" states.
 
 ## Bazel targets for the browser bundle and the Python package
 

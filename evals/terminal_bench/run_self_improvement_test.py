@@ -8,22 +8,36 @@ from pathlib import Path
 
 from run import Pricing
 from run_self_improvement import (
+    DIAGNOSIS_VALIDATOR_TOOL,
+    adoption_state_document,
     build_config,
     candidate_artifact_identity,
+    canonical_json,
     check_baseline,
     check_candidate,
+    digest_bytes,
     failed_base_configuration,
+    find_accepted_verification,
+    instruction_candidate_from_outcome,
     line_budget_ceilings,
     measure_episode,
     model_config,
     prepare_validation_directories,
+    record_adoption,
+    revised_program_document,
     rust_toolchain_identity,
     supported_independent_audits,
+    tool_candidate_from_outcome,
     validate_program,
     workflow_candidate_from_outcome,
     workflow_node_value,
     write_candidate_check,
+    write_diagnosis_validator,
 )
+from instruction_candidate import create as create_instruction_candidate
+from tool_candidate import create as create_tool_candidate
+from tool_candidate import executable_digest
+from workflow_candidate import create as create_workflow_candidate
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
@@ -69,6 +83,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             root,
             Path("/tmp/evidence.json"),
             Path("/tmp/check"),
+            Path("/tmp/diagnosis-validator"),
             model_config("openai-codex/gpt-5.6-terra", "high"),
             model_config("openai-codex/gpt-5.6-luna", "high"),
             [Path("/opt/toolchain")],
@@ -98,12 +113,19 @@ class SelfImprovementConfigTest(unittest.TestCase):
             {
                 "implement-source": ["implement-runtime-improvement"],
                 "configure-workflow": [],
+                "revise-instructions": [],
+                "define-tool": [],
                 "insufficient-evidence": [],
             },
         )
         self.assertEqual(implementation["tools"][:4], ["read", "grep", "edit", "bash"])
         self.assertEqual(audit["tools"][:4], ["read", "grep", "edit", "bash"])
-        self.assertEqual(diagnosis["tools"], ["block"])
+        self.assertEqual(diagnosis["tools"], ["block", DIAGNOSIS_VALIDATOR_TOOL])
+        self.assertEqual(diagnosis["done_when"]["verify"], DIAGNOSIS_VALIDATOR_TOOL)
+        self.assertEqual(diagnosis["done_when"]["retries"], 2)
+        self.assertEqual(
+            diagnosis["tool_defs"][DIAGNOSIS_VALIDATOR_TOOL]["exec"], "/tmp/diagnosis-validator"
+        )
         self.assertEqual(diagnosis["grants"]["read"], ["/tmp"])
         self.assertIn("block", config["tools"])
         self.assertNotIn("input_tokens", config["budget"])
@@ -152,7 +174,13 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("loop backstop", diagnosis["instructions"]["result"])
         self.assertIn("model capability", diagnosis["instructions"]["sufficiency"])
         self.assertIn("configure-workflow", diagnosis["instructions"]["sufficiency"])
-        self.assertNotIn("independent_audit", returns["properties"])
+        self.assertIn("independent_audit", returns["properties"])
+        self.assertIn("instruction_revision", returns["properties"])
+        self.assertIn("tool_definition", returns["properties"])
+        self.assertNotIn("instruction_revision", returns["required"])
+        self.assertNotIn("tool_definition", returns["required"])
+        self.assertIn("revise-instructions", diagnosis["instructions"]["sufficiency"])
+        self.assertIn("define-tool", diagnosis["instructions"]["sufficiency"])
         self.assertIn("must not branch on", diagnosis["instructions"]["controls"])
         self.assertEqual(
             implementation["grants"]["write"],
@@ -178,6 +206,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             Path("/tmp/candidate"),
             Path("/tmp/evidence.json"),
             Path("/tmp/check"),
+            Path("/tmp/diagnosis-validator"),
             model_config("openai-codex/gpt-5.6-sol", "low"),
             model_config("openai-codex/gpt-5.6-luna", "low"),
             [Path("/opt/toolchain")],
@@ -354,6 +383,105 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 )
         self.assertEqual(candidate["independent_audit"], supported[0])
 
+    def test_instruction_candidate_binds_a_unique_revision_of_the_program_document(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text("{}\n", encoding="utf-8")
+            identity = {
+                "source_tree": "git-tree-sha1:" + "1" * 40,
+                "runtime_binary": "sha256:" + "2" * 64,
+            }
+            base = {
+                "model": "openai-codex/gpt-5.6-sol",
+                "reasoning_effort": "low",
+                "service_tier": "default",
+                "token_policy": "measurement_only",
+            }
+            documents = {
+                "program.json": {
+                    "instructions": {"role": "Run the workflow."},
+                    "workflow": {
+                        "nodes": {
+                            "diagnose": {
+                                "model": {"instructions": {"sufficiency": "Prefer bounded evidence."}}
+                            }
+                        }
+                    },
+                }
+            }
+            revision = {
+                "document": "program.json",
+                "section": "sufficiency",
+                "old_text": "bounded evidence",
+                "new_text": "bounded, labeled evidence",
+            }
+            candidate = instruction_candidate_from_outcome(
+                {"branch": "revise-instructions", "instruction_revision": revision},
+                documents,
+                identity,
+                evidence,
+                base,
+            )
+            with self.assertRaisesRegex(ValueError, "exactly once"):
+                instruction_candidate_from_outcome(
+                    {
+                        "branch": "revise-instructions",
+                        "instruction_revision": {**revision, "old_text": "absent text"},
+                    },
+                    documents,
+                    identity,
+                    evidence,
+                    base,
+                )
+            with self.assertRaisesRegex(ValueError, "did not select"):
+                instruction_candidate_from_outcome(
+                    {"branch": "configure-workflow"}, documents, identity, evidence, base
+                )
+        self.assertEqual(candidate["candidate_kind"], "instruction-revision")
+        self.assertEqual(candidate["revision"]["new_text"], "bounded, labeled evidence")
+
+    def test_tool_candidate_binds_the_executable_content_by_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text("{}\n", encoding="utf-8")
+            identity = {
+                "source_tree": "git-tree-sha1:" + "1" * 40,
+                "runtime_binary": "sha256:" + "2" * 64,
+            }
+            base = {
+                "model": "openai-codex/gpt-5.6-sol",
+                "reasoning_effort": "low",
+                "service_tier": "default",
+                "token_policy": "measurement_only",
+            }
+            executable = "#!/bin/sh\nexit 0\n"
+            definition = {
+                "name": "check-layout",
+                "description": "Verify the workspace layout.",
+                "executable": executable,
+                "executable_sha256": executable_digest(executable.encode()),
+            }
+            candidate, content = tool_candidate_from_outcome(
+                {"branch": "define-tool", "tool_definition": definition},
+                identity,
+                evidence,
+                base,
+            )
+            with self.assertRaisesRegex(ValueError, "does not match the executable content"):
+                tool_candidate_from_outcome(
+                    {
+                        "branch": "define-tool",
+                        "tool_definition": {**definition, "executable_sha256": "sha256:" + "0" * 64},
+                    },
+                    identity,
+                    evidence,
+                    base,
+                )
+        self.assertEqual(content, executable)
+        self.assertEqual(candidate["candidate_kind"], "tool-definition")
+        self.assertNotIn("executable", candidate["tool"])
+        self.assertEqual(candidate["tool"]["executable_sha256"], executable_digest(executable.encode()))
+
     def test_program_validation_reports_construction_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             program = Path(directory) / "program.json"
@@ -476,6 +604,356 @@ class SelfImprovementConfigTest(unittest.TestCase):
             measured = measure_episode(root, pricing)
         self.assertEqual(measured["model_calls"], 1)
         self.assertAlmostEqual(measured["estimated_cost_usd"], 0.00023)
+
+
+EVALUATED_FOE = {
+    "source_tree": "git-tree-sha1:" + "1" * 40,
+    "runtime_binary": "sha256:" + "2" * 64,
+}
+BASE_CONFIGURATION = {
+    "model": "openai-codex/gpt-5.6-sol",
+    "reasoning_effort": "low",
+    "service_tier": "default",
+    "token_policy": "measurement_only",
+}
+EVIDENCE_SHA256 = "sha256:" + "3" * 64
+SUPPORTED_AUDIT = {"reasoning_effort": "high", "model_calls": 60}
+PROGRAM_DOCUMENT = {
+    "instructions": {"role": "Run the declared workflow."},
+    "workflow": {
+        "nodes": {
+            "diagnose-runtime": {
+                "model": {"instructions": {"sufficiency": "Prefer bounded evidence."}}
+            }
+        }
+    },
+}
+REVISION = {
+    "document": "program.json",
+    "section": "sufficiency",
+    "old_text": "bounded evidence",
+    "new_text": "bounded, labeled evidence",
+}
+
+
+class DiagnosisValidatorTest(unittest.TestCase):
+    def judgments(self, values):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            program = root / "program.json"
+            program.write_text(json.dumps(PROGRAM_DOCUMENT), encoding="utf-8")
+            validator = root / "diagnosis-validator"
+            write_diagnosis_validator(
+                validator,
+                program,
+                EVALUATED_FOE,
+                EVIDENCE_SHA256,
+                BASE_CONFIGURATION,
+                [SUPPORTED_AUDIT],
+            )
+            results = []
+            for value in values:
+                result = subprocess.run(
+                    [str(validator)],
+                    input=json.dumps(value),
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                results.append(result.stdout.strip())
+        return results
+
+    def test_validator_accepts_each_valid_diagnosis_and_reports_findings(self):
+        executable = "#!/bin/sh\nexit 0\n"
+        judged = self.judgments(
+            [
+                {"branch": "configure-workflow", "independent_audit": SUPPORTED_AUDIT},
+                {
+                    "branch": "configure-workflow",
+                    "independent_audit": {"reasoning_effort": "xhigh", "model_calls": 120},
+                },
+                {"branch": "revise-instructions", "instruction_revision": REVISION},
+                {
+                    "branch": "revise-instructions",
+                    "instruction_revision": {**REVISION, "old_text": "absent text"},
+                },
+                {
+                    "branch": "define-tool",
+                    "tool_definition": {
+                        "name": "check-layout",
+                        "description": "Verify the workspace layout.",
+                        "executable": executable,
+                        "executable_sha256": executable_digest(executable.encode()),
+                    },
+                },
+                {
+                    "branch": "define-tool",
+                    "tool_definition": {
+                        "name": "check-layout",
+                        "description": "Verify the workspace layout.",
+                        "executable": executable,
+                        "executable_sha256": "sha256:" + "0" * 64,
+                    },
+                },
+                {"branch": "implement-source"},
+                {"branch": "insufficient-evidence"},
+                {"branch": "unknown"},
+            ]
+        )
+        self.assertEqual(judged[0], "")
+        self.assertIn("repeated successful", judged[1])
+        self.assertEqual(judged[2], "")
+        self.assertIn("exactly once", judged[3])
+        self.assertEqual(judged[4], "")
+        self.assertIn("does not match the executable content", judged[5])
+        self.assertEqual(judged[6], "")
+        self.assertEqual(judged[7], "")
+        self.assertIn("no supported candidate branch", judged[8])
+
+
+class LineageAdoptionTest(unittest.TestCase):
+    """Synthetic adoptions per candidate kind, checked end to end.
+
+    Each test constructs a proposal episode log whose recorded program
+    identity is the parent state's, records the adoption through the
+    lineage crate's `build-bundle` binary, and verifies the resulting
+    ancestry claim with the crate's `check_ancestry` example.
+    """
+
+    # Preserve the Bazel runfiles path so the declared Rust binaries remain
+    # reachable through their runfile symlinks.
+    repository = Path(__file__).absolute().parents[2]
+    validator_sha256 = "a" * 64
+    check_sha256 = "b" * 64
+
+    @classmethod
+    def setUpClass(cls):
+        bazel_build_bundle = cls.repository / "crates" / "lineage" / "build-bundle"
+        bazel_check_ancestry = cls.repository / "crates" / "lineage" / "check-ancestry"
+        if bazel_build_bundle.is_file() and bazel_check_ancestry.is_file():
+            cls.build_bundle = bazel_build_bundle
+            cls.check_ancestry_binary = bazel_check_ancestry
+            return
+        subprocess.run(
+            ["cargo", "build", "--quiet", "-p", "foe-lineage", "--bins", "--examples"],
+            cwd=cls.repository,
+            check=True,
+        )
+        cls.build_bundle = cls.repository / "target" / "debug" / "build-bundle"
+        cls.check_ancestry_binary = cls.repository / "target" / "debug" / "examples" / "check_ancestry"
+
+    def parent_document(self):
+        """An identity document declaring the two admission verifiers."""
+        return {
+            "name": "identity-bound-trajectory-self-improvement",
+            "tools": [
+                {"name": "check", "exec_sha256": self.check_sha256},
+                {"name": DIAGNOSIS_VALIDATOR_TOOL, "exec_sha256": self.validator_sha256},
+            ],
+        }
+
+    def write_episode(self, episode: Path, identity: str, tool: str, exec_sha256: str):
+        program = {
+            "tools": ["block", tool],
+            "tool_defs": {tool: {"exec": "/verifier", "description": "judges the candidate"}},
+            "done_when": {"verify": tool},
+        }
+        events = [
+            {
+                "seq": 0,
+                "time": 0,
+                "type": "episode/start",
+                "data": {
+                    "id": "ep_root",
+                    "parent_id": None,
+                    "fork_origin": None,
+                    "team_id": None,
+                    "program": program,
+                    "identity": identity,
+                    "task": "propose a candidate",
+                    "runtime": {"version": "0.1.0", "build": "sha256:test"},
+                    "sandbox": {"mode": "off", "landlock_abi": 0},
+                },
+            },
+            {
+                "seq": 1,
+                "time": 1,
+                "type": "verification/result",
+                "data": {
+                    "step": 1,
+                    "tool": tool,
+                    "verifier_identity": "sha256:" + exec_sha256,
+                    "status": "accepted",
+                    "findings": [],
+                    "duration_ms": 1,
+                },
+            },
+            {
+                "seq": 2,
+                "time": 2,
+                "type": "episode/end",
+                "data": {"outcome": {"kind": "completed", "value": {}}},
+            },
+        ]
+        episode.mkdir(parents=True)
+        (episode / "episode.jsonl").write_text(
+            "\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8"
+        )
+
+    def record(self, root: Path, kind, candidate, retained, tool, exec_sha256, artifacts=None):
+        parent = self.parent_document()
+        episode = root / "episode"
+        self.write_episode(episode, digest_bytes(canonical_json(parent)), tool, exec_sha256)
+        return record_adoption(
+            root,
+            episode,
+            adoption_state_document(kind, candidate, PROGRAM_DOCUMENT, BASE_CONFIGURATION),
+            parent,
+            retained,
+            tool,
+            [str(self.build_bundle)],
+            artifacts=artifacts,
+        )
+
+    def check_ancestry(self, root: Path, record):
+        result = subprocess.run(
+            [
+                str(self.check_ancestry_binary),
+                record["state"],
+                str(root / "lineage" / "states"),
+                str(root / "lineage" / "evidence"),
+            ],
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(
+            report["chain"],
+            [record["program_identity"], record["parent_program_identity"]],
+        )
+        self.assertEqual(report["unverifiable"], [])
+
+    def test_instruction_revision_adoption_verifies_end_to_end(self):
+        candidate = create_instruction_candidate(
+            EVALUATED_FOE,
+            EVIDENCE_SHA256,
+            BASE_CONFIGURATION,
+            REVISION,
+            {"program.json": PROGRAM_DOCUMENT},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record = self.record(
+                root,
+                "instruction-revision",
+                candidate,
+                {"instruction-candidate.json": json.dumps(candidate).encode()},
+                DIAGNOSIS_VALIDATOR_TOOL,
+                self.validator_sha256,
+            )
+            revised = revised_program_document(PROGRAM_DOCUMENT, REVISION)
+            self.assertEqual(record["program_identity"], digest_bytes(canonical_json(revised)))
+            self.check_ancestry(root, record)
+
+    def test_workflow_adoption_verifies_end_to_end(self):
+        candidate = create_workflow_candidate(
+            EVALUATED_FOE, EVIDENCE_SHA256, BASE_CONFIGURATION, SUPPORTED_AUDIT
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record = self.record(
+                root,
+                "workflow-configuration",
+                candidate,
+                {"workflow-candidate.json": json.dumps(candidate).encode()},
+                DIAGNOSIS_VALIDATOR_TOOL,
+                self.validator_sha256,
+            )
+            state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
+            audit = state["identity_document"]["workflow"]["nodes"]["audit-and-repair-task"]
+            self.assertEqual(
+                audit["model"]["model"]["reasoning_effort"], SUPPORTED_AUDIT["reasoning_effort"]
+            )
+            self.check_ancestry(root, record)
+
+    def test_tool_definition_adoption_verifies_end_to_end(self):
+        executable = "#!/bin/sh\nexit 0\n"
+        candidate = create_tool_candidate(
+            EVALUATED_FOE,
+            EVIDENCE_SHA256,
+            BASE_CONFIGURATION,
+            {
+                "name": "check-layout",
+                "description": "Verify the workspace layout.",
+                "executable_sha256": executable_digest(executable.encode()),
+            },
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record = self.record(
+                root,
+                "tool-definition",
+                candidate,
+                {
+                    "tool-candidate.json": json.dumps(candidate).encode(),
+                    "tool-candidate-executable": executable.encode(),
+                },
+                DIAGNOSIS_VALIDATOR_TOOL,
+                self.validator_sha256,
+            )
+            state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
+            declared = state["identity_document"]["tool_defs"]["check-layout"]
+            self.assertEqual(
+                "sha256:" + declared["exec_sha256"], executable_digest(executable.encode())
+            )
+            self.assertIn("check-layout", state["identity_document"]["tools"])
+            self.check_ancestry(root, record)
+
+    def test_source_change_adoption_cites_the_candidate_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tree = root / "tree"
+            changed = tree / "crates/core/src/lib.rs"
+            changed.parent.mkdir(parents=True)
+            changed.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
+            candidate = candidate_artifact_identity(
+                tree, EVALUATED_FOE["source_tree"], ["crates/core/src/lib.rs"]
+            )
+            record = self.record(
+                root,
+                "source-change",
+                candidate,
+                {},
+                "check",
+                self.check_sha256,
+                artifacts=[
+                    {"path": name, "sha256": value}
+                    for name, value in sorted(candidate["files"].items())
+                ],
+            )
+            state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
+            self.assertEqual(
+                state["identity_document"]["runtime"],
+                {"source_tree": EVALUATED_FOE["source_tree"], "files": candidate["files"]},
+            )
+            self.assertEqual(record["verification_log"], "episode/episode.jsonl")
+            self.assertEqual(record["verification_seq"], 1)
+            self.check_ancestry(root, record)
+
+    def test_missing_verification_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode = root / "episode"
+            parent = self.parent_document()
+            self.write_episode(
+                episode,
+                digest_bytes(canonical_json(parent)),
+                DIAGNOSIS_VALIDATOR_TOOL,
+                self.validator_sha256,
+            )
+            with self.assertRaisesRegex(ValueError, "no accepted verification/result"):
+                find_accepted_verification(episode, "check")
 
 
 if __name__ == "__main__":

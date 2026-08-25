@@ -114,6 +114,7 @@ pub fn ctx(fx: &Fixture) -> CallCtx {
         executor: None,
         spawner: None,
         sessions: None,
+        composer: None,
         spill_dir: fx.dir.path().join("spill"),
         deadline: None,
     }

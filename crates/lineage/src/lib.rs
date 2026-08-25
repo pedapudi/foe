@@ -1,5 +1,5 @@
 //! Evidence about how program states relate. Implements
-//! docs/lineage-identity.md: the lineage identity derived from a program
+//! docs/lineage-identity.md: the state identity derived from a program
 //! identity and its ancestry claim, the evidence bundle that makes a
 //! transition verifiable after files move between machines, and the
 //! checker that verifies a claim through two resolvers.
@@ -60,16 +60,16 @@ pub fn require_manifest_path(key: &str, path: &str) -> Result<(), LineageError> 
 /// parser does at construction.
 pub fn validate(lineage: &ProgramLineage) -> Result<(), LineageError> {
     require_digest("program_lineage.parent.program_identity", &lineage.parent.program_identity)?;
-    require_digest("program_lineage.parent.lineage_identity", &lineage.parent.lineage_identity)?;
+    require_digest("program_lineage.parent.state_identity", &lineage.parent.state_identity)?;
     require_digest("program_lineage.evidence", &lineage.evidence)?;
     require_manifest_path("program_lineage.verification_log", &lineage.verification_log)
 }
 
-/// The lineage identity of a state: a SHA-256 digest over the canonical
-/// object docs/lineage-identity.md "Configuration representation"
-/// specifies. The claim of a root state is `null`. The identity is derived
-/// and appears nowhere inside the object it hashes.
-pub fn lineage_identity(program_identity: &str, lineage: Option<&ProgramLineage>) -> String {
+/// The state identity: a SHA-256 digest over the canonical object
+/// docs/lineage-identity.md "Configuration representation" specifies. The
+/// claim of a root state is `null`. The identity is derived and appears
+/// nowhere inside the object it hashes.
+pub fn state_identity(program_identity: &str, lineage: Option<&ProgramLineage>) -> String {
     let document = json!({
         "schema_version": 1,
         "program_identity": program_identity,
@@ -110,13 +110,13 @@ pub struct Manifest {
     pub files: Vec<ManifestFile>,
     /// The proposal episode tree's root log, listed in `files`.
     pub proposal_log: String,
-    /// The transition candidate envelope, listed in `files`.
-    pub candidate_envelope: String,
+    /// The adoption record, listed in `files`.
+    pub adoption_record: String,
 }
 
 /// Parses and checks a manifest without opening any listed file: canonical
 /// serialization, path form, byte order without duplicates, and that the
-/// proposal log and the candidate envelope are listed.
+/// proposal log and the adoption record are listed.
 pub fn check_manifest(bytes: &[u8]) -> Result<Manifest, LineageError> {
     let manifest: Manifest = serde_json::from_slice(bytes)?;
     let key = "evidence.manifest";
@@ -133,8 +133,8 @@ pub fn check_manifest(bytes: &[u8]) -> Result<Manifest, LineageError> {
             return Err(invalid(format!("{key}.files[{i}].path"), "follows the prior path in byte order"));
         }
     }
-    for (name, path) in [("proposal_log", &manifest.proposal_log), ("candidate_envelope", &manifest.candidate_envelope)]
-    {
+    let named = [("proposal_log", &manifest.proposal_log), ("adoption_record", &manifest.adoption_record)];
+    for (name, path) in named {
         if !manifest.files.iter().any(|f| &f.path == path) {
             return Err(invalid(format!("{key}.{name}"), "names a listed file"));
         }
@@ -162,7 +162,7 @@ pub fn verify_bundle(dir: &Path) -> Result<(Manifest, String), LineageError> {
 /// Builds the manifest of `dir`: every file below it except the manifest
 /// itself, in byte order. The caller writes [`manifest_bytes`] to
 /// [`MANIFEST_FILE`]; the digest of those bytes is the bundle's address.
-pub fn build_manifest(dir: &Path, proposal_log: &str, candidate_envelope: &str) -> Result<Manifest, LineageError> {
+pub fn build_manifest(dir: &Path, proposal_log: &str, adoption_record: &str) -> Result<Manifest, LineageError> {
     let mut files = Vec::new();
     let mut pending = vec![dir.to_path_buf()];
     while let Some(next) = pending.pop() {
@@ -191,7 +191,7 @@ pub fn build_manifest(dir: &Path, proposal_log: &str, candidate_envelope: &str) 
         schema_version: 1,
         files,
         proposal_log: proposal_log.into(),
-        candidate_envelope: candidate_envelope.into(),
+        adoption_record: adoption_record.into(),
     };
     check_manifest(&manifest_bytes(&manifest)?)
 }
@@ -201,15 +201,34 @@ pub fn manifest_bytes(manifest: &Manifest) -> Result<Vec<u8>, LineageError> {
     Ok(canonical(&serde_json::to_value(manifest)?).into_bytes())
 }
 
-/// The transition candidate envelope: the complete verifier input, binding
-/// the proposed child by digest to the identity document and the artifact
-/// manifest retained in the bundle.
+/// The adoption record: written into the bundle by its builder, binding
+/// the proposed child — by its program identity and the digests of the
+/// retained identity document and artifact manifest — to the coordinates
+/// of the verification that accepted it. The record closes the
+/// exact-input-binding step, and attests the pairing only as strongly as
+/// the bundle does, because the frozen `verification/result` event carries
+/// no digest of its input. See docs/lineage-identity.md "Exact input
+/// binding".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CandidateEnvelope {
+pub struct AdoptionRecord {
+    pub schema_version: u32,
+    /// The hash of the canonical child identity document.
     pub program_identity: String,
+    /// The digests of the retained identity document and artifact
+    /// manifest, as files of the bundle.
     pub identity_document_sha256: String,
     pub artifact_manifest_sha256: String,
+    /// The coordinates of the accepted `verification/result`, as the
+    /// ancestry claim names them.
+    pub verification_log: String,
+    pub verification_seq: u64,
+}
+
+/// The canonical bytes of an adoption record: what the file named by
+/// `Manifest::adoption_record` holds.
+pub fn record_bytes(record: &AdoptionRecord) -> Result<Vec<u8>, LineageError> {
+    Ok(canonical(&serde_json::to_value(record)?).into_bytes())
 }
 
 // ---- ancestry ---------------------------------------------------------------
@@ -223,7 +242,7 @@ pub struct StateDocument {
     pub program_lineage: Option<ProgramLineage>,
 }
 
-/// Retrieves a state document by lineage identity.
+/// Retrieves a state document by state identity.
 pub type StateResolver<'a> = &'a dyn Fn(&str) -> Result<StateDocument, String>;
 /// Retrieves an evidence bundle directory by content address.
 pub type EvidenceResolver<'a> = &'a dyn Fn(&str) -> Result<PathBuf, String>;
@@ -231,16 +250,16 @@ pub type EvidenceResolver<'a> = &'a dyn Fn(&str) -> Result<PathBuf, String>;
 /// One state of a verified chain.
 #[derive(Debug, Clone, Serialize)]
 pub struct ChainEntry {
-    pub lineage_identity: String,
+    pub state_identity: String,
     pub program_identity: String,
 }
 
 /// What [`check_ancestry`] establishes: the chain from the requested state
 /// to its root, first entry the requested state, and every check the
-/// retained evidence leaves open. Open checks exist because the implemented
-/// `verification/result` event carries no candidate digest and because the
-/// identity document reduces a child program to its hash; see
-/// docs/lineage-identity.md "The candidate binding gap".
+/// retained evidence leaves open. Open checks exist because the identity
+/// document reduces a child program to its hash, so a configured verifier
+/// run by a child program is not comparable with a declared executable
+/// hash; see docs/lineage-identity.md "Exact input binding".
 #[derive(Debug, Clone, Serialize)]
 pub struct AncestryReport {
     pub chain: Vec<ChainEntry>,
@@ -249,7 +268,7 @@ pub struct AncestryReport {
 
 /// Verifies an ancestry claim per docs/lineage-identity.md "Verifying an
 /// ancestry claim", repeating toward the root and rejecting a repeated
-/// lineage identity as a cycle. A check the retained evidence cannot decide
+/// state identity as a cycle. A check the retained evidence cannot decide
 /// is reported in `unverifiable` rather than failed.
 pub fn check_ancestry(
     state: &StateDocument,
@@ -261,15 +280,15 @@ pub fn check_ancestry(
     let mut report = AncestryReport { chain: Vec::new(), unverifiable: Vec::new() };
     loop {
         let program_identity = digest_of(canonical(&current.identity_document).as_bytes());
-        let lineage = lineage_identity(&program_identity, current.program_lineage.as_ref());
-        if !seen.insert(lineage.clone()) {
-            return Err(invalid("ancestry", format!("{lineage} repeats: the claim chain is a cycle")));
+        let state = state_identity(&program_identity, current.program_lineage.as_ref());
+        if !seen.insert(state.clone()) {
+            return Err(invalid("ancestry", format!("{state} repeats: the claim chain is a cycle")));
         }
-        report.chain.push(ChainEntry { lineage_identity: lineage, program_identity: program_identity.clone() });
+        report.chain.push(ChainEntry { state_identity: state, program_identity: program_identity.clone() });
         let Some(claim) = current.program_lineage.clone() else { return Ok(report) };
         validate(&claim)?;
-        let parent = states(&claim.parent.lineage_identity)
-            .map_err(|e| invalid("program_lineage.parent.lineage_identity", format!("resolves to a state: {e}")))?;
+        let parent = states(&claim.parent.state_identity)
+            .map_err(|e| invalid("program_lineage.parent.state_identity", format!("resolves to a state: {e}")))?;
         let parent_identity = digest_of(canonical(&parent.identity_document).as_bytes());
         if parent_identity != claim.parent.program_identity {
             return Err(invalid(
@@ -283,7 +302,7 @@ pub fn check_ancestry(
 }
 
 /// Verifies one transition: the bundle and its files, every retained
-/// episode log, the accepted verifier result, the envelope bindings, the
+/// episode log, the accepted verifier result, the adoption record, the
 /// descent of the proposal tree from the named parent, and the verifier's
 /// place in the parent program.
 fn check_transition(
@@ -324,33 +343,38 @@ fn check_transition(
     if result.status != VerificationStatus::Accepted {
         return Err(invalid("program_lineage.verification_seq", "names an accepted verification/result"));
     }
-    // The implemented event carries no candidate digest, so the equality of
-    // the event's candidate and the retained envelope is not checkable.
-    report.unverifiable.push(format!(
-        "transition {}: verification/result at seq {} carries no candidate_sha256, so the retained \
-         envelope is not bound to the verifier's input",
-        claim.evidence, claim.verification_seq
-    ));
-    // The envelope names the retained child identity document and artifact
+    // Exact input binding: the adoption record, written by the bundle
+    // builder, pairs the candidate's identity members with the accepted
+    // event's coordinates. The frozen event carries no digest of its
+    // input, so the pairing is attested as strongly as the bundle itself.
+    let bytes = std::fs::read(dir.join(&manifest.adoption_record))?;
+    let record: AdoptionRecord = serde_json::from_slice(&bytes)?;
+    if record_bytes(&record)? != bytes {
+        return Err(invalid("adoption_record", "is the canonical serialization of its object"));
+    }
+    if record.schema_version != 1 {
+        return Err(invalid("adoption_record.schema_version", "is 1"));
+    }
+    if record.verification_log != claim.verification_log || record.verification_seq != claim.verification_seq {
+        return Err(invalid("adoption_record", "names the verification the ancestry claim names"));
+    }
+    // The record names the retained child identity document and artifact
     // manifest by digest, and the child by its recomputed identity.
-    let envelope_bytes = std::fs::read(dir.join(&manifest.candidate_envelope))?;
-    let envelope: CandidateEnvelope = serde_json::from_slice(&envelope_bytes)?;
     let listed = |digest: &str| manifest.files.iter().find(|f| f.sha256 == digest);
-    let identity_file = listed(&envelope.identity_document_sha256).ok_or_else(|| {
-        invalid("candidate_envelope.identity_document_sha256", "equals the digest of a retained file")
-    })?;
-    if listed(&envelope.artifact_manifest_sha256).is_none() {
-        return Err(invalid("candidate_envelope.artifact_manifest_sha256", "equals the digest of a retained file"));
+    let identity_file = listed(&record.identity_document_sha256)
+        .ok_or_else(|| invalid("adoption_record.identity_document_sha256", "equals the digest of a retained file"))?;
+    if listed(&record.artifact_manifest_sha256).is_none() {
+        return Err(invalid("adoption_record.artifact_manifest_sha256", "equals the digest of a retained file"));
     }
     let document: Value = serde_json::from_slice(&std::fs::read(dir.join(&identity_file.path))?)?;
-    if digest_of(canonical(&document).as_bytes()) != envelope.program_identity {
+    if digest_of(canonical(&document).as_bytes()) != record.program_identity {
         return Err(invalid(
-            "candidate_envelope.program_identity",
+            "adoption_record.program_identity",
             "equals the hash of the canonical child identity document",
         ));
     }
-    if envelope.program_identity != child_identity {
-        return Err(invalid("candidate_envelope.program_identity", "equals the descendant state's program identity"));
+    if record.program_identity != child_identity {
+        return Err(invalid("adoption_record.program_identity", "equals the descendant state's program identity"));
     }
     // The proposal tree descends from the named parent.
     let (_, root_state) = logs

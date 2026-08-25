@@ -169,12 +169,42 @@ fn tcp_bind_is_limited_to_listed_ports_from_abi_4() {
     assert!(!other);
 }
 
+/// docs/sandbox.md "Executables": the ports of `grants.bind` survive
+/// executable narrowing, so a server started by a shell binds a granted
+/// port, and an ungranted port is refused where the ABI enforces TCP.
+#[test]
+fn a_bind_grant_reaches_a_narrowed_executable() {
+    let Some(s) = sandbox() else { return };
+    let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = probe.local_addr().unwrap().port();
+    drop(probe);
+    let config: Config = serde_json::from_value(serde_json::json!({
+        "version": 2, "name": "server", "instructions": {"role": "x"}, "tools": [],
+        "grants": {"read": [], "bind": [port]}, "budget": {"model_calls": 1}, "task": "t"
+    }))
+    .unwrap();
+    let tool = Policy::for_episode(&config, Path::new("/logs/ep")).for_executable(Path::new("/bin/sh"), false);
+    assert_eq!(tool.bind_tcp, vec![port]);
+    let (granted, other) = s
+        .run_narrowed(&tool, || {
+            (
+                std::net::TcpListener::bind(("127.0.0.1", port)).is_ok(),
+                std::net::TcpListener::bind(("127.0.0.1", port.wrapping_add(1).max(1024))).is_ok(),
+            )
+        })
+        .unwrap();
+    assert!(granted, "a granted port binds under the narrowed policy");
+    if s.abi() >= 4 {
+        assert!(!other, "an ungranted port is refused from ABI 4");
+    }
+}
+
 #[test]
 fn episode_policy_follows_grants_and_tool_defs() {
     let config: Config = serde_json::from_value(serde_json::json!({
         "version": 2, "name": "p", "instructions": {"r": "x"}, "tools": ["ruff"],
         "tool_defs": {"ruff": {"exec": "/usr/bin/ruff", "description": "d"}},
-        "grants": {"read": ["/src"], "write": ["/src/out"], "execute": ["/opt/toolchain"]},
+        "grants": {"read": ["/src"], "write": ["/src/out"], "execute": ["/opt/toolchain"], "bind": [8080]},
         "budget": {"model_calls": 1}, "task": "t"
     }))
     .unwrap();
@@ -188,6 +218,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
         "the configured tool and explicit subprocess grant; no child program to start"
     );
     assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
+    assert_eq!(p.bind_tcp, vec![8080], "the episode may bind the granted port");
     assert!(!p.connect_tcp, "an episode without a model block holds no transport");
     let resolver: Vec<PathBuf> = std::fs::canonicalize("/etc/resolv.conf").into_iter().collect();
     assert!(p.read_files.is_empty(), "an episode that opens no connection reads no resolver file");
@@ -206,6 +237,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
     let online = p.for_executable(Path::new("/bin/sh"), true);
     assert_eq!(online.read_files, resolver, "an executable with network keeps the resolver file");
     assert!(!online.read_files.contains(&PathBuf::from("/keys/anthropic")), "and never the credential file");
+    assert_eq!(online.bind_tcp, vec![8080], "the episode's bind ports survive executable narrowing");
 }
 
 /// docs/sandbox.md "What is compiled": a ruleset only narrows, so an episode
