@@ -24,9 +24,12 @@ assertion, and specify the field in `docs/tools.md`. The
 source copy and never grants the episode write access to the repository
 checkout.
 
-The two-node workflow is implemented. The three-run result supports
-repeatability for the stated task. Automatic selection of an improvement,
-invention of an evaluator, promotion into the checkout, and general
+The two-node example is implemented. The three-run result supports
+repeatability for the stated task. The
+[Terminal-Bench campaign runner](../evals/terminal_bench/) also selects source,
+workflow, instruction, or executable-tool candidates from trajectory evidence
+bound to its recorded source tree and runtime binary. Evaluator invention,
+automatic benchmark execution, promotion into the checkout, and general
 reliability across unrelated tasks remain unsupported.
 
 ## Workflow structure
@@ -48,6 +51,34 @@ have settled. The workflow then completes with the terminal node's value.
 This structure keeps the interactive surface small. The author supplies a
 task, a checker, and a two-node workflow. The runtime reuses the ordinary
 program, tool, budget, episode, and workflow concepts.
+
+## Cross-trajectory quality feedback
+
+The foe runtime does not aggregate separate episode trees. The Terminal-Bench
+campaign supplies that cross-trajectory view through a deterministic collector
+outside the runtime. The collector produces a bounded diagnostic digest and
+binds it to the source tree and runtime binary that produced the trajectories.
+
+A source-change generation contains a diagnosis child, an implementation
+child, and an independent source-audit child. The implementation receives the
+typed diagnosis without the raw trajectories. The source audit receives the
+diagnosis and implementation handoff, inspects the shared candidate tree, and
+uses a repository checker as its completion authority.
+
+Repository validation establishes source integrity. Unchanged task-owned
+graders establish task quality on the task that exposed the limitation and on
+an unrelated transfer task. A failed task run can become evidence for another
+generation when the failure and a successful run governed by a declared
+completion verifier share the candidate's source and binary identity. The
+subsequent generation starts from that candidate source.
+
+The [campaign record](../evals/terminal_bench/campaign.md) contains one measured
+source improvement produced through this feedback cycle. The generated
+candidate passed the unchanged task that exposed the limitation twice and
+passed one unrelated transfer task. Task execution, evidence collection, and
+promotion still run as separate harness operations. The declared workflow
+therefore demonstrates candidate generation and correction, while autonomous
+cross-run promotion remains unsupported.
 
 ## Acceptance conditions
 

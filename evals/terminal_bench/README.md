@@ -497,9 +497,11 @@ intervention should become behavior owned by Foe source. The objective must
 name that source-owned behavior. The diagnosis returns
 `insufficient-evidence` when either the intervention or its ownership is not
 supported. `--candidate-kind workflow-configuration` restricts the result to
-an independently audited workflow setting. The default `auto` retains the
-evidence-driven choice between source, workflow configuration, and no
-candidate.
+an independently audited workflow setting. `--candidate-kind
+instruction-revision` restricts the result to one instruction section of the
+retained program. `--candidate-kind tool-definition` restricts the result to
+one declared executable tool. The default `auto` lets the evidence select any
+supported candidate kind or report insufficient evidence.
 
 Source diagnosis does not require a successful independent-audit setting.
 That setting is required only when the diagnosis selects
@@ -522,6 +524,26 @@ audit traces proposed resources through node return, workflow settlement, and
 external evaluation before it accepts a lifecycle-dependent mechanism. Source
 audit is a conditional Sol xhigh escalation. Task execution and source
 implementation remain Sol low by default.
+
+Repository validation admits a source candidate to task evaluation. It does
+not establish task quality. Run the unchanged task that exposed the limitation
+at least twice, then run an unrelated transfer task. The task-owned graders
+remain the quality authority for those runs.
+
+A failed task run can inform another source generation. Collect the failed
+closed-book run and any successful run governed by a declared completion
+verifier from the candidate's source tree and binary. Then run self-improvement
+from a clean worktree at that source identity. The collector and runner reject
+evidence from a different source tree or binary. This preserves the causal
+contrast while preventing a later candidate from treating an earlier
+candidate's behavior as its own.
+
+The campaign runner currently launches task evaluation, evidence collection,
+and the subsequent source generation as separate commands. The declared Foe
+workflow performs diagnosis, implementation, correction, and source audit
+inside each generation. Promotion remains a separate review operation after
+repeated success on the task that exposed the limitation and success on an
+unrelated transfer task.
 
 When the diagnosis chooses `configure-workflow`, the runner requires the
 evidence to contain exactly one independent-audit setting with at least two
