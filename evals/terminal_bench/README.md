@@ -421,12 +421,12 @@ coding child locates the affected implementation, test, and specification
 files. Its write authority covers runtime crates, specifications, and examples.
 It cannot write evaluation code or benchmark material.
 
-When the diagnosis chooses `configure-workflow`, the runner validates the
-typed independent-audit setting. It writes `workflow-candidate.json` beside
-the retained result. The candidate digest binds the setting to the evaluated
-source tree, binary, evidence file, and preserved execution controls. The
-setting must appear in at least two successful attempts in the supplied
-evidence.
+When the diagnosis chooses `configure-workflow`, the runner requires the
+evidence to contain exactly one independent-audit setting with at least two
+successful attempts. The runner copies that setting directly from the
+evidence and writes `workflow-candidate.json` beside the retained result. The
+candidate digest binds the setting to the evaluated source tree, binary,
+evidence file, and preserved execution controls.
 
 The diagnosis prompt targets four requests and has a 20-call, 1,800-second
 loop backstop. The implementation has 28-call and 3,600-second safety

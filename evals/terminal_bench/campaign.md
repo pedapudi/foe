@@ -318,8 +318,9 @@ The diagnosis selects `implement-source` when the evidence activates a source
 mechanism. Its branch edge controls whether a separate coding node fires. The
 coding node lists `task` and `diagnose-runtime` under `follows`, which carries
 both values into a clean context. The diagnosis selects `configure-workflow`
-when an independent audit stage supplies the repeated quality gain. This path
-returns a typed workflow setting without starting the coding node.
+when exactly one independent audit setting supplies the repeated quality
+gain. The runner copies that setting from the evidence without starting the
+coding node.
 
 The diagnosis selects `insufficient-evidence` when the contrast isolates only
 model capability or requires semantic information absent from the log. Every

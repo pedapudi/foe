@@ -126,7 +126,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("loop backstop", diagnosis["instructions"]["result"])
         self.assertIn("model capability", diagnosis["instructions"]["sufficiency"])
         self.assertIn("configure-workflow", diagnosis["instructions"]["sufficiency"])
-        self.assertIn("independent_audit", returns["properties"])
+        self.assertNotIn("independent_audit", returns["properties"])
         self.assertIn("must not branch on", diagnosis["instructions"]["controls"])
         self.assertEqual(
             implementation["grants"]["write"],
@@ -239,7 +239,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(configuration["reasoning_effort"], "low")
         self.assertEqual(audits, [])
 
-    def test_workflow_candidate_accepts_only_an_observed_successful_setting(self):
+    def test_workflow_candidate_uses_the_only_observed_successful_setting(self):
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "evidence.json"
             evidence.write_text("{}\n", encoding="utf-8")
@@ -255,25 +255,16 @@ class SelfImprovementConfigTest(unittest.TestCase):
             }
             supported = [{"reasoning_effort": "high", "model_calls": 60}]
             candidate = workflow_candidate_from_outcome(
-                {
-                    "branch": "configure-workflow",
-                    "independent_audit": supported[0],
-                },
+                {"branch": "configure-workflow"},
                 supported,
                 identity,
                 evidence,
                 base,
             )
-            with self.assertRaisesRegex(ValueError, "not a repeated successful"):
+            with self.assertRaisesRegex(ValueError, "exactly one repeated successful"):
                 workflow_candidate_from_outcome(
-                    {
-                        "branch": "configure-workflow",
-                        "independent_audit": {
-                            "reasoning_effort": "xhigh",
-                            "model_calls": 120,
-                        },
-                    },
-                    supported,
+                    {"branch": "configure-workflow"},
+                    [*supported, {"reasoning_effort": "xhigh", "model_calls": 120}],
                     identity,
                     evidence,
                     base,

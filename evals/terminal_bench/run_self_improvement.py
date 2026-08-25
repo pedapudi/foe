@@ -162,14 +162,15 @@ def workflow_candidate_from_outcome(
     evidence: Path,
     base_configuration: dict[str, str],
 ) -> dict[str, Any]:
-    """Validate a diagnosis result and bind its observed audit setting."""
+    """Bind a workflow diagnosis to the sole supported audit setting."""
     if not isinstance(outcome_value, dict) or outcome_value.get("branch") != "configure-workflow":
         raise ValueError("self-improvement outcome did not select configure-workflow")
-    audit = validate_independent_audit(outcome_value.get("independent_audit"))
-    if audit not in supported_audits:
+    if len(supported_audits) != 1:
         raise ValueError(
-            "workflow candidate independent_audit was not a repeated successful evidence setting"
+            "workflow candidate evidence must contain exactly one repeated successful "
+            "independent-audit setting"
         )
+    audit = supported_audits[0]
     return create_workflow_candidate(
         identity,
         "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest(),
@@ -450,7 +451,7 @@ def build_config(
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
             "evidence": "Compare the failed and successful settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
-            "sufficiency": "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. Choose `configure-workflow` when a repeated quality gain is caused by an independent audit stage, and return the observed successful audit setting. Choose `insufficient-evidence` when the intervention requires semantic knowledge absent from the log, an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort difference without a workflow contrast establishes model capability rather than a Foe defect.",
+            "sufficiency": "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. Choose `configure-workflow` when a repeated quality gain is caused by exactly one independent audit setting; the runner binds that setting directly from the evidence. Choose `insufficient-evidence` when the intervention requires semantic knowledge absent from the log, an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort difference without a workflow contrast establishes model capability rather than a Foe defect.",
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block"],
@@ -489,22 +490,6 @@ def build_config(
                     "activation_path": {"type": "string", "minLength": 1},
                     "preserved_controls": {"type": "string", "minLength": 1},
                     "falsification_condition": {"type": "string", "minLength": 1},
-                    "independent_audit": {
-                        "type": "object",
-                        "properties": {
-                            "reasoning_effort": {
-                                "type": "string",
-                                "enum": ["low", "medium", "high", "xhigh"],
-                            },
-                            "model_calls": {
-                                "type": "integer",
-                                "minimum": 6,
-                                "maximum": 120,
-                            },
-                        },
-                        "required": ["reasoning_effort", "model_calls"],
-                        "additionalProperties": False,
-                    },
                 },
                 "required": [
                     "limitation",
