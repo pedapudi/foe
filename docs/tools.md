@@ -36,10 +36,10 @@ Each name resolves against three sources, checked in this order.
    `host/tool-call` event and records the host's answer as the result.
 
 A name that resolves in two sources is an error at construction, and so is
-a name that resolves in none. `foe tools` lists the built-in tools; `foe
-tools --config FILE` lists the resolved set for a document with each tool's
-source. The second form resolves every path the document names, as
-`foe plan` does, so a document whose grants or `tool_defs` name a path that
+a name that resolves in none. `foe plan` without a configuration lists the
+built-in tools; `foe plan --config FILE` reports the resolved set for a
+document with each tool's source. The second form resolves every path the
+document names, so a document whose grants or `tool_defs` name a path that
 does not exist is refused with the key and the path.
 
 Every tool returns a canonical value, which is JSON, and may return a
@@ -296,8 +296,10 @@ produced; an emitted rendering is never rewritten.
 The tool runs `/bin/bash -c COMMAND` through the executor with the first
 read root as the working directory and a fixed environment: `PATH` is
 `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, `HOME` is
-the working directory, and `LANG` is `C.UTF-8`. Standard input is `/dev/null`,
-and the network is closed.
+the working directory, and `LANG` is `C.UTF-8`. Standard input is `/dev/null`.
+Outbound network access is closed; a process the command starts may bind
+the TCP ports `grants.bind` lists, and no others where the kernel enforces
+it ([sandbox.md](sandbox.md)).
 `timeout_seconds` defaults to 120 and is reduced to the episode's remaining
 wall-clock budget when that is smaller.
 
@@ -328,7 +330,7 @@ extends that persistence to a server, a database, or a debugger.
 
 `start` takes `command` and runs `/bin/bash -c COMMAND` exactly as `bash`
 does: the first read root as the working directory, the same fixed
-environment, the network closed, and the sandbox narrowed to the shell.
+environment, the same network policy, and the sandbox narrowed to the shell.
 The process runs in its own process group with every standard stream a
 pipe. The result carries the session id, a small integer counted from 1.
 At most 8 sessions may be alive at once, a constant in the crate; a start
@@ -362,8 +364,11 @@ stop. [log-format.md](log-format.md#open-obligations) specifies that
 result.
 
 Sessions have no terminal: a program that requires a PTY sees a pipe.
-Network access follows the policy a `bash` call runs under, which is
-closed, and no grant kind exists for sessions.
+Network access follows the policy a `bash` call runs under: outbound
+closed, binding limited to the TCP ports `grants.bind` lists. A session is
+how a granted port is served across calls — a server it holds keeps its
+listener until the session ends. Widening outbound access is a separate
+design; no grant kind opens it.
 
 ## The turn budget
 

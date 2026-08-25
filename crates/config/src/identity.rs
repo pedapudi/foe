@@ -67,6 +67,7 @@ pub fn compute(program: &Program, extra_builtins: &[ToolSpec], runtime: &Runtime
             "write": program.grants.write.len(),
             "execute": program.grants.execute.len(),
             "spawn": program.grants.spawn.len(),
+            "bind": program.grants.bind.len(),
         },
         "budget": program.budget,
         "done_when": program.done_when,

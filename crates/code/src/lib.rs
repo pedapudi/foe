@@ -65,7 +65,7 @@ pub(crate) fn shell_environment(cwd: &Path) -> std::collections::BTreeMap<String
     ])
 }
 
-/// Every built-in coding tool, in the order `foe tools` lists them.
+/// Every built-in coding tool, in the order `foe plan` lists them.
 pub fn all() -> Vec<Box<dyn Tool>> {
     let mut tools = readonly();
     tools.push(Box::new(edit::Edit::new()));

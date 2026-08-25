@@ -151,14 +151,13 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
         crate::schema::check(k("params"), &def.params)?;
     }
     require(!s.grants.read.is_empty(), key("grants.read"), "has at least one entry")?;
-    for (i, path) in s.grants.read.iter().enumerate() {
-        require_absolute(&key(&format!("grants.read[{i}]")), path)?;
+    for (field, paths) in [("read", &s.grants.read), ("write", &s.grants.write), ("execute", &s.grants.execute)] {
+        for (i, path) in paths.iter().enumerate() {
+            require_absolute(&key(&format!("grants.{field}[{i}]")), path)?;
+        }
     }
-    for (i, path) in s.grants.write.iter().enumerate() {
-        require_absolute(&key(&format!("grants.write[{i}]")), path)?;
-    }
-    for (i, path) in s.grants.execute.iter().enumerate() {
-        require_absolute(&key(&format!("grants.execute[{i}]")), path)?;
+    for (i, port) in s.grants.bind.iter().enumerate() {
+        require(*port > 0, key(&format!("grants.bind[{i}]")), "is between 1 and 65535")?;
     }
     for (i, name) in s.grants.spawn.iter().enumerate() {
         let rule = format!("names an entry in programs; `{name}` is absent");
@@ -228,6 +227,7 @@ fn resolve_section(
         write: roots("grants.write", &s.grants.write)?,
         execute: roots("grants.execute", &s.grants.execute)?,
         spawn: s.grants.spawn.clone(),
+        bind: s.grants.bind.clone(),
     };
     if let Some(parent) = parent {
         for (field, own, theirs) in [
@@ -241,6 +241,9 @@ fn resolve_section(
                     format!("lies within a {field} root of the parent program"),
                 ));
             }
+        }
+        if let Some(i) = grants.bind.iter().position(|port| !parent.bind.contains(port)) {
+            return Err(invalid(key(&format!("grants.bind[{i}]")), "is a bind port of the parent program"));
         }
     }
     let mut tool_defs = BTreeMap::new();

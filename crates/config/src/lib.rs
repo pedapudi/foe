@@ -33,7 +33,7 @@ pub mod workflow;
 
 /// The JSON Schema of the configuration document, maintained by hand to
 /// mirror docs/config.md. It describes what this crate parses, so it ships
-/// with the types it describes; `foe schema` prints it.
+/// with the types it describes; `foe plan --schema` prints it.
 pub const SCHEMA: &str = include_str!("schema.json");
 
 // ---- tools --------------------------------------------------------------------
@@ -167,6 +167,10 @@ pub struct Grants {
     pub execute: Vec<PathBuf>,
     #[serde(default)]
     pub spawn: Vec<String>,
+    /// TCP ports a process of the episode may bind. Outbound reach is not
+    /// a grant; it follows the model transport and per-tool declarations.
+    #[serde(default)]
+    pub bind: Vec<u16>,
 }
 
 /// True when `path` equals one of `roots` or lies below it, compared by

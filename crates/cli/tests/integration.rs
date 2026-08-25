@@ -934,6 +934,9 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
         let identity = first["identity"].as_str().unwrap();
         assert!(identity.starts_with("sha256:") && identity.len() == 71, "{name}: {identity}");
         assert_eq!(first["identity"], second["identity"], "{name}: identity ignores task and paths");
+        let canonical = foe_config::identity::canonical(&first["identity_document"]);
+        let rehashed = format!("sha256:{}", foe_config::identity::sha256_hex(canonical.as_bytes()));
+        assert_eq!(rehashed, identity, "{name}: the emitted identity document rehashes to the reported identity");
         assert_eq!(first["program"]["name"], json!(serde_json::from_str::<Value>(&text).unwrap()["name"]));
         assert!(first["program"].get("task").is_none(), "{name}: the program omits the task");
         if name == "workflow" {
@@ -962,18 +965,18 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
 /// model sees, never a side effect of moving code between crates.
 #[rustfmt::skip]
 const RECORDED_IDENTITIES: [(&str, &str); 12] = [
-    ("budget-exhausted", "sha256:55673ae9e11b695dd314c575c5998f9a0dc4ada8bb20b9d78ed58dc793ee6c2f"),
-    ("exec-transport", "sha256:259ab6bf89a6c9998ec8f46d44cc39d5bf8a9dab7bacc83d56e3ab47f8a983da"),
-    ("host-transport", "sha256:21613b123d5d3416b2755bb0b439baeb043adf4b2881183918d64d2be7bf0c88"),
-    ("minimal", "sha256:ec0c546a85556f50c58dcd21ecc6f0b224a894fcfdfdad0a6425254d841ac54b"),
-    ("recovery-exhausted", "sha256:6f7a7be9fb2ea78715562e4104ec4671563cad7bf6a3bf032bb1c63b3698e272"),
-    ("sandbox", "sha256:02f8b3cbeffe5b23f5c48b88068460fb62f39d9668a3023fc484ec7bfed8c224"),
-    ("self-extension", "sha256:aa6b59452c5c0d2a8ce72915bfec872660ab63b9ce301d9a0b70a6eb3770b6f0"),
-    ("subagents", "sha256:c1cc3bca83079f62683ff70d99644822e90337729bda9c21d9c8762476559748"),
-    ("team", "sha256:2f88dc41d9dc8addabfb8ce07e08529e881a959bd961cbbcc3b35c7f0fa8f953"),
-    ("verification-unsatisfiable", "sha256:5cf6fd076b6b2214214c478375fb0842fec1c2f9450d1d635ae6ac9cd70f0054"),
-    ("workflow", "sha256:b6224f3561a821954c22bf582bc871914753ba3386fb3a2462587b9338cc17a7"),
-    ("wrap-a-binary", "sha256:4f3c17f298fb85edb7873ebf5950ab5dce52e5092c16113ca50a6d524b5dc663"),
+    ("budget-exhausted", "sha256:09d3262e730cad87270bd0d50efb69c5e862677604fd1666468bee373afd90f4"),
+    ("exec-transport", "sha256:38c385026ef43198405bddb0b8d92a1dbfecbad65e6b302e2122ab7b047fdd16"),
+    ("host-transport", "sha256:28d50b6be0462c4abded81ffdd5fe7937a162cbede5fa198bae2da2b1093924e"),
+    ("minimal", "sha256:5f5f0e6d72f42320acdd50814b395c0672bd505bdbe3ca1bfceb284a325536ca"),
+    ("recovery-exhausted", "sha256:c2c96477349effbf628e8fbd42c83de2abedb5846ebd01f32fb096289ad93da3"),
+    ("sandbox", "sha256:af9e111ff74c666f5c6cfd607567bd03202db18bb752c179b562a32665bf79dd"),
+    ("self-extension", "sha256:187f7525d2c2908e309f18646ec9679dd516e1be36dc7fc1b3f866ef91e42b0f"),
+    ("subagents", "sha256:69d460922866458372b476f97039d360e4ae193c5fa40ba942b5487000cf3718"),
+    ("team", "sha256:a8441bb99a25e334347a2739e2f760af3bfb2dda41caa16ab1e4d9e648a68f0d"),
+    ("verification-unsatisfiable", "sha256:e7f5a0646672ab3ec54669014465465950d535bb08e95a69687b4a11dc63c4ca"),
+    ("workflow", "sha256:168714a517d59babdf94af002802bbe709befc94f91b9c76772073f3216e56f4"),
+    ("wrap-a-binary", "sha256:06a6b353d728ef3c55ab30eed2fbc61863149aa9066f3d051805381af4251b4b"),
 ];
 
 /// The runtime the recorded identities were computed under. The real one
@@ -1000,7 +1003,7 @@ fn builtin_specs() -> Vec<foe_config::ToolSpec> {
         .collect()
 }
 
-/// `foe tools` with no configuration prints every built-in the binary
+/// `foe plan` with no configuration prints every built-in the binary
 /// carries. The recorded identities are computed over [`builtin_specs`], so a
 /// pack the binary gains or loses has to appear there too; without this check
 /// the recorded hashes would go on describing programs the binary no longer
@@ -1012,7 +1015,7 @@ fn the_recorded_builtins_are_the_ones_the_binary_links() {
         .chain(builtin_specs())
         .map(|spec| (spec.name.clone(), effect(&spec)))
         .collect();
-    let printed = Command::new(FOE).arg("tools").output().unwrap();
+    let printed = Command::new(FOE).arg("plan").output().unwrap();
     let rows: Vec<(String, String)> = String::from_utf8(printed.stdout)
         .unwrap()
         .lines()
@@ -1063,12 +1066,12 @@ fn inline(value: &Value, defs: &Value, depth: u32) -> Value {
     }
 }
 
-/// docs/config.md: `foe schema` describes the document; every example
-/// conforms to it and parses into the runtime's configuration type.
+/// docs/config.md: `foe plan --schema` describes the document; every
+/// example conforms to it and parses into the runtime's configuration type.
 #[test]
 fn every_example_conforms_to_the_schema_and_parses() {
     let schema: Value = serde_json::from_str(SCHEMA).unwrap();
-    let printed = Command::new(FOE).arg("schema").output().unwrap();
+    let printed = Command::new(FOE).args(["plan", "--schema"]).output().unwrap();
     assert_eq!(serde_json::from_slice::<Value>(&printed.stdout).unwrap(), schema, "the binary prints the schema");
     let inlined = inline(&schema, &schema["$defs"], 4);
     for (name, text) in examples() {
@@ -1092,8 +1095,6 @@ fn help_exits_zero_on_standard_output_for_every_form() {
         vec!["login", "--help"],
         vec!["view", "--help"],
         vec!["plan", "--help"],
-        vec!["tools", "--help"],
-        vec!["schema", "--help"],
         vec!["telemetry", "--help"],
     ] {
         let printed = Command::new(FOE).args(&args).output().unwrap();
