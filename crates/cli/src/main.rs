@@ -74,6 +74,7 @@ const FORMS: &[Form] = &[
 const OPTS: &[Opt] = &[
     opt("", "--config", "FILE", "a built-in coding configuration", "the configuration document to run"),
     opt("", "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
+    opt("", "--service-tier", "TIER", "the model configuration's value", "request service tier: default or priority"),
     opt("", "--key-file", "PATH", "the provider's file under ~/.config/foe/credentials/", "the API key to send"),
     opt(
         "",
@@ -275,6 +276,7 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 task: args.positional.pop(),
                 config: args.value("--config").map(PathBuf::from),
                 model: args.value("--model"),
+                service_tier: args.value("--service-tier"),
                 key_file: args.value("--key-file").map(PathBuf::from),
                 verify: args.value("--verify").map(PathBuf::from),
                 sandbox: args.value("--sandbox"),

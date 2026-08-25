@@ -576,7 +576,7 @@ The binary has one running form and six forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
-foe "task" [--model PROVIDER/MODEL] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
+foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
 foe "task" --headless                                    run; no viewer; print the outcome
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
@@ -652,6 +652,11 @@ is absent. The default model is the `model` block in
 `~/.config/foe/default-model.json`, which `foe login` writes. When that block
 omits reasoning effort, GPT-5.6 Sol uses low effort for implementation and high
 effort for audit. An explicit reasoning effort applies to both episodes.
+
+`--service-tier TIER` sets the model request's `service_tier` field to
+`default` or `priority` for both episodes. When the option is absent, a value
+from the default model file remains in effect. Otherwise the provider applies
+its own default.
 
 `--key-file` names the key file explicitly. Without it, the provider's
 credential file under `~/.config/foe/credentials/` is read. The home directory

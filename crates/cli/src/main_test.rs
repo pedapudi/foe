@@ -17,12 +17,14 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert!(parse("login a b").is_err(), "login takes one provider");
     assert!(matches!(parse("view logs --serve --port 8080"), Ok(Command::View { serve: true, port: 8080, .. })));
     assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(run::Options { host: true, .. }))));
-    let Ok(Command::Run(options)) = parse("fix --model anthropic/m --key-file k --sandbox off --headless --no-open")
+    let Ok(Command::Run(options)) =
+        parse("fix --model anthropic/m --service-tier priority --key-file k --sandbox off --headless --no-open")
     else {
         panic!()
     };
     assert_eq!((options.task.as_deref(), options.headless, options.no_open), (Some("fix"), true, true));
     assert_eq!(options.sandbox.as_deref(), Some("off"));
+    assert_eq!(options.service_tier.as_deref(), Some("priority"));
     assert!(parse("plan").is_err(), "plan needs --config");
     assert!(parse("schema --json").is_err(), "an option of another form is refused");
     assert!(parse("fix --host").is_err(), "--host takes its task from the configuration");
@@ -172,6 +174,14 @@ fn verifier_help_names_terminal_audit_completion() {
 fn sandbox_help_names_every_supported_mode() {
     let text = help_of(&FORMS[0]);
     assert!(text.contains("kernel confinement mode: best-effort, required, or off"));
+}
+
+/// docs/design.md "The command line": a built-in run may request either
+/// service tier that the command-line vocabulary defines.
+#[test]
+fn service_tier_help_names_every_supported_value() {
+    let text = help_of(&FORMS[0]);
+    assert!(text.contains("request service tier: default or priority"));
 }
 
 /// `foe --help` and `foe help` are the same screen, and it names every

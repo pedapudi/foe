@@ -110,6 +110,23 @@ fn builtin_coding_selects_an_explicit_sandbox_mode() {
 }
 
 #[test]
+fn builtin_coding_selects_an_explicit_service_tier() {
+    let options = Options {
+        task: Some("task".into()),
+        model: Some("openai-codex/gpt-5.6-sol".into()),
+        service_tier: Some("priority".into()),
+        ..Options::default()
+    };
+    let config = load_config(&options).unwrap();
+    assert_eq!(config.model.as_ref().unwrap().option("service_tier"), Some("priority"));
+    let audit = config.workflow.as_ref().unwrap().nodes["audit-and-repair-task"].model.as_ref().unwrap();
+    assert_eq!(audit.model.as_ref().unwrap().option("service_tier"), Some("priority"));
+
+    let invalid = Options { service_tier: Some("fastest".into()), ..options };
+    assert_eq!(load_config(&invalid).unwrap_err(), "--service-tier fastest: expected default or priority");
+}
+
+#[test]
 fn explicit_config_owns_its_sandbox_mode() {
     let options =
         Options { config: Some(PathBuf::from("unused.json")), sandbox: Some("off".into()), ..Options::default() };
@@ -117,6 +134,20 @@ fn explicit_config_owns_its_sandbox_mode() {
     assert_eq!(
         error,
         "--sandbox applies to the built-in coding workflow; a configuration document declares its own behavior"
+    );
+}
+
+#[test]
+fn explicit_config_owns_its_service_tier() {
+    let options = Options {
+        config: Some(PathBuf::from("unused.json")),
+        service_tier: Some("priority".into()),
+        ..Options::default()
+    };
+    let error = load_config(&options).unwrap_err();
+    assert_eq!(
+        error,
+        "--service-tier applies to the built-in coding workflow; a configuration document declares its own behavior"
     );
 }
 

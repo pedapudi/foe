@@ -99,6 +99,8 @@ pub struct Options {
     pub task: Option<String>,
     pub config: Option<PathBuf>,
     pub model: Option<String>,
+    /// Provider service tier for the built-in coding workflow.
+    pub service_tier: Option<String>,
     pub key_file: Option<PathBuf>,
     /// An executable verifier for the built-in coding workflow.
     pub verify: Option<PathBuf>,
@@ -194,7 +196,7 @@ fn fresh_id() -> String {
 fn load_config(options: &Options) -> Result<Config, String> {
     let Some(path) = &options.config else {
         let task = options.task.clone().ok_or(USAGE_BARE)?;
-        let model = match &options.model {
+        let mut model = match &options.model {
             Some(spec) => {
                 let (provider, model) =
                     spec.split_once('/').ok_or("--model takes PROVIDER/MODEL, for example anthropic/claude-opus-5")?;
@@ -202,6 +204,12 @@ fn load_config(options: &Options) -> Result<Config, String> {
             }
             None => default_model()?.ok_or(NO_DEFAULT_MODEL)?,
         };
+        if let Some(tier) = &options.service_tier {
+            if !matches!(tier.as_str(), "default" | "priority") {
+                return Err(format!("--service-tier {tier}: expected default or priority"));
+            }
+            model.options.insert("service_tier".into(), tier.clone());
+        }
         return builtin_config(
             task,
             model,
@@ -210,8 +218,14 @@ fn load_config(options: &Options) -> Result<Config, String> {
             options.sandbox.as_deref(),
         );
     };
-    if options.verify.is_some() || options.sandbox.is_some() {
-        let option = if options.verify.is_some() { "--verify" } else { "--sandbox" };
+    if options.verify.is_some() || options.sandbox.is_some() || options.service_tier.is_some() {
+        let option = if options.verify.is_some() {
+            "--verify"
+        } else if options.sandbox.is_some() {
+            "--sandbox"
+        } else {
+            "--service-tier"
+        };
         return Err(format!(
             "{option} applies to the built-in coding workflow; a configuration document declares its own behavior"
         ));
