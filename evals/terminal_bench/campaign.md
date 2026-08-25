@@ -1300,3 +1300,35 @@ inside the task container as required by the campaign configuration.
 
 The retained assessed job is
 `/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/standard-frozen-candidate-validated-verifier-cancel-async-tasks-20260825T105954Z`.
+
+The same frozen binary then ran all six verifier-governed development cases.
+Every case used GPT-5.6 Sol with low reasoning and the standard service tier.
+Every unchanged task-owned verifier awarded full credit.
+
+| Task | Score | Calls | Implementation calls | Audit calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 13 | 7 | 6 | 39,832 | 3,072 | 4,779 | $0.243849 |
+| `dna-assembly` | 1.0 | 40 | 11 | 29 | 619,123 | 387,072 | 21,001 | $1.503053 |
+| `fix-git` | 1.0 | 18 | 12 | 6 | 114,712 | 28,160 | 4,597 | $0.449412 |
+| `git-multibranch` | 1.0 | 30 | 12 | 18 | 331,114 | 174,592 | 17,219 | $1.040305 |
+| `gpt2-codegolf` | 1.0 | 35 | 15 | 20 | at least 599,164 | at least 319,488 | at least 19,649 | incomplete |
+| `large-scale-text-editing` | 1.0 | 12 | 8 | 4 | 42,736 | 11,776 | 3,847 | $0.205490 |
+
+One `gpt2-codegolf` provider response omitted usage. The retained diagnostics
+contain the measured totals from the other 34 calls. The task score, outcome,
+and trace remain complete.
+
+Every Foe outcome was completed. Every conformance report was valid with zero
+violations. The `git-multibranch` trace records five denied capability calls
+that the workflow recovered from. The denials did not prevent task completion,
+but cross-trajectory analysis must classify them before the protected sets are
+opened.
+
+The modified development subset therefore preserves all six previously
+established successes for the exact frozen candidate. The result also repeats
+the live-environment activation success and the behavioral GPT-2 correction.
+It does not replace the required twelve-task closed-book development run.
+
+The retained job labels begin with
+`standard-frozen-candidate-validated-verifier-` under
+`/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/`.
