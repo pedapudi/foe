@@ -256,7 +256,7 @@ def harbor_command(
     credential_state: Path,
     model: str,
     reasoning_effort: str,
-    service_tier: str = "priority",
+    service_tier: str = "default",
     diagnosis_model: str | None,
     diagnosis_reasoning_effort: str,
     diagnosis_model_calls: int,
@@ -473,7 +473,7 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--task", action="append", default=[])
     answer.add_argument("--attempts", type=int, default=1)
     answer.add_argument("--model", default=DEFAULT_MODEL)
-    answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
+    answer.add_argument("--service-tier", choices=("default", "priority"), default="default")
     answer.add_argument(
         "--reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),

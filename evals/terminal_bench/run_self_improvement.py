@@ -42,7 +42,7 @@ def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def model_config(route: str, reasoning_effort: str, service_tier: str = "priority") -> dict[str, str]:
+def model_config(route: str, reasoning_effort: str, service_tier: str = "default") -> dict[str, str]:
     provider, slash, model = route.partition("/")
     if not slash or not provider or not model:
         raise ValueError("model routes must have the form provider/model")
@@ -708,7 +708,7 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--evidence", type=Path, required=True)
     answer.add_argument("--cases", type=Path, required=True)
     answer.add_argument("--model", default="openai-codex/gpt-5.6-terra")
-    answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
+    answer.add_argument("--service-tier", choices=("default", "priority"), default="default")
     answer.add_argument(
         "--reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),

@@ -54,7 +54,7 @@ class FoeAgent(BaseInstalledAgent):
         long_context_input_multiplier: float | str,
         long_context_output_multiplier: float | str,
         reasoning_effort: str = "low",
-        service_tier: str = "priority",
+        service_tier: str = "default",
         diagnosis_model: str | None = None,
         diagnosis_reasoning_effort: str = "high",
         diagnosis_model_calls: int | str = 20,

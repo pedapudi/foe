@@ -127,7 +127,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
         self.assertIn("baseline-relative line budgets", implementation["instructions"]["validation"])
         self.assertEqual(config["model"]["reasoning_effort"], "high")
-        self.assertEqual(config["model"]["service_tier"], "priority")
+        self.assertEqual(config["model"]["service_tier"], "default")
         self.assertEqual(
             diagnosis["budget"],
             {"model_calls": 20, "seconds": 1800, "loop_threshold": 8},

@@ -167,8 +167,8 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
 Equivalent targets end in `foe-verifier-fix-git`,
 `foe-verifier-gpt2-codegolf`, and
 `foe-verifier-large-scale-text-editing`. The DNA target is
-`foe-verifier-dna-assembly`. These targets use the `priority`
-service tier and low reasoning in one verifier-governed implementation
+`foe-verifier-dna-assembly`. These targets use the standard service tier and
+low reasoning in one verifier-governed implementation
 episode. The implementation retains 60 model calls as a loop backstop.
 
 Targets beginning with `foe-built-in-verifier-` exercise the workflow that
@@ -250,11 +250,11 @@ time allowance ends. [`cases.json`](cases.json) records each multiplier's
 base timeout from the pinned task metadata.
 
 The default route is `openai-codex/gpt-5.6-sol` with low reasoning effort.
-Every model node requests the `priority` service tier by default. OpenAI calls
-this setting Fast mode. The documented target is 1.5 times Standard speed, and
-GPT-5.6 consumes 2.5 times the Standard ChatGPT credits. The runner records
-the requested tier and credit multiplier beside its token-derived cost
-estimate. Use `--service-tier default` for a Standard run. See the
+Every model node requests the standard service tier by default. The runner
+records the requested tier and credit multiplier beside its token-derived
+cost estimate. Use `--service-tier priority` to request OpenAI Fast mode. Its
+documented target is 1.5 times Standard speed, and GPT-5.6 consumes 2.5 times
+the Standard ChatGPT credits. See the
 [OpenAI speed documentation](https://developers.openai.com/codex/speed).
 
 Luna and Terra are available for inexpensive development diagnosis:

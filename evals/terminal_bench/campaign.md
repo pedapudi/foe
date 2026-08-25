@@ -17,8 +17,9 @@ demonstrate repeatable self-improvement that transfers beyond each activation
 case.
 
 GPT-5.6 Sol with low reasoning is the primary coding model. Conditional
-escalation may use Sol with at most `xhigh` reasoning. Every provider request
-uses the `priority` service tier. Token use, estimated cost, cache use, and
+escalation may use Sol with at most `xhigh` reasoning. Provider requests use
+the standard service tier unless a recorded run explicitly selects another
+tier. Token use, estimated cost, cache use, and
 latency are measurements. Task quality is the only candidate promotion metric
 until every quality gate passes.
 
@@ -76,7 +77,7 @@ preserve task quality.
 
 Planning estimates bound campaign exposure before each confirmed command.
 They do not reject a candidate that improves task quality. Development runs
-use the `priority` service tier and record it in the manifest. Foe records
+use the standard service tier and record it in the manifest. Foe records
 usage without enforcing token ceilings during ordinary quality runs.
 
 ## Task sets
