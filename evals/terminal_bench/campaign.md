@@ -1487,3 +1487,54 @@ disposition are recorded.
 
 The retained jobs are under
 `/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/standard-frozen-candidate-confirmation-first-pass-20260825T133543Z/`.
+
+## Recorded frozen-candidate confirmation disposition
+
+The second confirmation attempt began on the standard service tier. The
+unchanged `build-pov-ray` task awarded zero credit. The attempt completed with
+a conforming trace and no infrastructure exception.
+
+An operator then selected the priority service tier for the remaining work.
+Service tier is fixed at episode construction, so the active standard-tier
+Caffe attempt was stopped without a score. The partial episode used eleven
+model calls, 273,079 input tokens, 97,792 cached-input tokens, and 1,143 output
+tokens. Its estimated cost was $1.154293. These resources remain campaign
+spend and do not contribute to assessed quality.
+
+The priority-tier Caffe attempt restarted from an empty task container. Its
+initial dataset download reached the 1,200-second tool timeout. Foe preserved
+the partial archive, resumed the download with `wget -c`, built Caffe, trained
+for 500 iterations, and completed its independent audit. The untouched grader
+awarded full credit.
+
+The next priority-tier `configure-git-webserver` attempt completed with a live
+Nginx service and a conforming trace. The untouched grader awarded zero
+credit. Harbor recorded no infrastructure exception.
+
+| Task | Service tier | Score | Calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `build-pov-ray` | standard | 0.0 | 22 | 475,780 | 208,896 | 8,329 | $1.317674 |
+| `caffe-cifar-10` | priority | 1.0 | 36 | 1,950,295 | 1,363,456 | 9,218 | $3.077098 |
+| `configure-git-webserver` | priority | 0.0 | 26 | 242,690 | 108,544 | 17,143 | $0.922862 |
+
+The two passes produced eight successes from eleven scored attempts. Five
+second attempts remained. Their maximum possible contribution was five
+successes, which limited the candidate to thirteen successes from sixteen
+attempts. The acceptance rule requires fourteen. Sequential stopping
+therefore rejected the frozen candidate without spending the remaining five
+complete attempts.
+
+The stopped `count-dataset-tokens` setup completed six model responses and had
+a seventh request in flight. The recorded responses used at least 22,310 input
+tokens, 4,608 cached-input tokens, and 1,092 output tokens. Their estimated
+cost was at least $0.112923. The run received no task score.
+
+This disposition opens the confirmation trajectories for failure diagnosis
+and self-improvement evidence. The calibration and sealed-holdout tasks remain
+closed. A revised candidate must begin confirmation again after its activation
+and transfer cases pass.
+
+The standard-tier second-pass jobs are under
+`/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/standard-frozen-candidate-confirmation-second-pass-20260825T151936Z/`.
+The priority-tier jobs are under
+`/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/frozen-candidate-confirmation-second-attempt-priority-20260825T154345Z/`.
