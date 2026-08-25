@@ -1280,6 +1280,21 @@ def parser() -> argparse.ArgumentParser:
     return answer
 
 
+def prepare_output_root(
+    keep: Path | None,
+    workspace: str | None,
+    confirmed: bool,
+) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+    """Create a retained root only for a confirmed run."""
+    if confirmed and keep:
+        root = keep if keep.is_absolute() or not workspace else Path(workspace) / keep
+        root = root.resolve()
+        root.mkdir(parents=True, exist_ok=False)
+        return root, None
+    temporary = tempfile.TemporaryDirectory(prefix="foe-trajectory-self-improvement-")
+    return Path(temporary.name), temporary
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
@@ -1337,15 +1352,11 @@ def main(argv: list[str] | None = None) -> int:
     }
     if validator_identity is not None:
         preview["candidate_validator"] = {"rust_toolchain": validator_identity}
-    temporary: tempfile.TemporaryDirectory[str] | None = None
-    if args.keep:
-        workspace = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
-        root = args.keep if args.keep.is_absolute() or not workspace else Path(workspace) / args.keep
-        root = root.resolve()
-        root.mkdir(parents=True, exist_ok=False)
-    else:
-        temporary = tempfile.TemporaryDirectory(prefix="foe-trajectory-self-improvement-")
-        root = Path(temporary.name)
+    root, temporary = prepare_output_root(
+        args.keep,
+        os.environ.get("BUILD_WORKSPACE_DIRECTORY"),
+        args.confirm_spend,
+    )
     check = root / "candidate-check"
     assert cargo is not None and cargo_home is not None
     cargo_target = prepare_validation_directories(candidate)

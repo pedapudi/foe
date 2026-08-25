@@ -22,6 +22,7 @@ from run_self_improvement import (
     line_budget_ceilings,
     measure_episode,
     model_config,
+    prepare_output_root,
     prepare_validation_directories,
     record_adoption,
     revised_program_document,
@@ -41,6 +42,23 @@ from workflow_candidate import create as create_workflow_candidate
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
+    def test_preview_does_not_create_the_requested_retained_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            requested = Path(directory) / "retained"
+            root, temporary = prepare_output_root(requested, None, False)
+            self.assertNotEqual(root, requested)
+            self.assertFalse(requested.exists())
+            self.assertIsNotNone(temporary)
+            temporary.cleanup()
+
+    def test_confirmed_run_creates_the_requested_retained_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            requested = Path(directory) / "retained"
+            root, temporary = prepare_output_root(requested, None, True)
+            self.assertEqual(root, requested)
+            self.assertTrue(requested.is_dir())
+            self.assertIsNone(temporary)
+
     def test_validation_directories_exist_before_program_construction(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
