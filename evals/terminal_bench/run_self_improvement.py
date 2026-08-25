@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,7 +19,7 @@ from typing import Any
 sys.path.append(str(Path(__file__).resolve().parent.parent / "harness_bench"))
 from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256_file
 
-from foe_agent_support import estimate_usage_cost
+from foe_agent_support import build_program, estimate_usage_cost
 from instruction_candidate import create as create_instruction_candidate
 from run import Pricing, read_cases
 from tool_candidate import create as create_tool_candidate
@@ -39,6 +40,21 @@ CODING_TOOLS = ["read", "grep", "edit", "bash"]
 SYSTEM_DEVELOPMENT_READ_DIRS = (Path("/usr/include"), Path("/usr/local/include"))
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
 LINE_BUDGET_ROW = re.compile(r"^(\w+)\s+(\d+)\s+\(budget (\d+)\)$")
+DIAGNOSIS_VALIDATOR_TOOL = "validate-candidate"
+DIAGNOSIS_VALIDATOR_MODULES = (
+    "instruction_candidate.py",
+    "tool_candidate.py",
+    "workflow_candidate.py",
+)
+LINEAGE_SCHEMA_VERSION = 1
+# The campaign's per-task floor allowances; docs/lineage-identity.md
+# "Harness adoptions" declares them as the fixed members of a workflow
+# adoption's development program document.
+DEVELOPMENT_TASK_MODEL_CALLS = 60
+DEVELOPMENT_TASK_SECONDS = 1_800
+DEVELOPMENT_TASK_INSTRUCTION = "The development run supplies the task instruction at launch."
+DEVELOPMENT_TASK_CREDENTIAL = "/credentials/model-token"
+DEVELOPMENT_TASK_DIRECTORY = "/app"
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -166,6 +182,241 @@ def evidence_digest(evidence: Path) -> str:
     return "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest()
 
 
+def digest_bytes(data: bytes) -> str:
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def canonical_json(value: Any) -> bytes:
+    """The lineage crate's canonical form: compact, sorted keys, raw UTF-8."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def state_identity(program_identity: str, program_lineage: dict[str, Any] | None) -> str:
+    """The state identity docs/lineage-identity.md derives for one claim."""
+    document = {
+        "schema_version": LINEAGE_SCHEMA_VERSION,
+        "program_identity": program_identity,
+        "program_lineage": program_lineage,
+    }
+    return digest_bytes(canonical_json(document))
+
+
+def revised_program_document(document: Any, revision: dict[str, str]) -> Any:
+    """The program document with an accepted instruction revision applied."""
+    revised = json.loads(json.dumps(document))
+    section, old_text, new_text = revision["section"], revision["old_text"], revision["new_text"]
+    holders: list[dict[str, Any]] = []
+
+    def walk(value: Any) -> None:
+        if not isinstance(value, dict):
+            return
+        instructions = value.get("instructions")
+        if isinstance(instructions, dict) and isinstance(instructions.get(section), str):
+            holders.append(instructions)
+        children = value.get("programs")
+        if isinstance(children, dict):
+            for child in children.values():
+                walk(child)
+        workflow = value.get("workflow")
+        nodes = workflow.get("nodes") if isinstance(workflow, dict) else None
+        if isinstance(nodes, dict):
+            for node in nodes.values():
+                if isinstance(node, dict):
+                    walk(node.get("model"))
+
+    walk(revised)
+    if len(holders) != 1 or holders[0][section].count(old_text) != 1:
+        raise ValueError("instruction revision does not apply to exactly one section occurrence")
+    holders[0][section] = holders[0][section].replace(old_text, new_text)
+    return revised
+
+
+def development_program_document(
+    base_configuration: dict[str, str],
+    audit: dict[str, Any] | None = None,
+    tool: dict[str, str] | None = None,
+    runtime: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The development program document an adoption produces.
+
+    The run-supplied members — task instruction, credential path, working
+    directory, and per-task allowances — are fixed to the declared values
+    so the document is stable across launches. `audit` adds the
+    independent-audit stage, `tool` adds a tool_defs entry carrying the
+    executable's content hash, and `runtime` names the produced runtime of
+    a source adoption.
+    """
+    document = build_program(
+        DEVELOPMENT_TASK_INSTRUCTION,
+        base_configuration["model"],
+        DEVELOPMENT_TASK_CREDENTIAL,
+        DEVELOPMENT_TASK_DIRECTORY,
+        model_calls=DEVELOPMENT_TASK_MODEL_CALLS,
+        input_tokens=None,
+        output_tokens=None,
+        seconds=DEVELOPMENT_TASK_SECONDS,
+        reasoning_effort=base_configuration["reasoning_effort"],
+        service_tier=base_configuration["service_tier"],
+        escalation_reasoning_effort=audit["reasoning_effort"] if audit else None,
+        escalation_model_calls=audit["model_calls"] if audit else 0,
+    )
+    if tool is not None:
+        document["tools"] = [*document["tools"], tool["name"]]
+        document["tool_defs"] = {
+            **document.get("tool_defs", {}),
+            tool["name"]: {
+                "description": tool["description"],
+                "exec": "/tools/" + tool["name"],
+                "exec_sha256": tool["executable_sha256"].removeprefix("sha256:"),
+            },
+        }
+    if runtime is not None:
+        document["runtime"] = runtime
+    return document
+
+
+def adoption_state_document(
+    candidate_kind: str,
+    candidate: dict[str, Any],
+    program_document: dict[str, Any],
+    base_configuration: dict[str, str],
+) -> dict[str, Any]:
+    """The state document an adoption of `candidate` creates.
+
+    docs/lineage-identity.md "Harness adoptions" states the one rule: the
+    state document is the program document that will run under the
+    adoption. An instruction revision yields the revised self-improvement
+    program document; the other kinds yield the development program
+    document the adoption produces — with the audit stage applied, with
+    the defined tool declared, or with the changed source named as the
+    produced runtime until the rebuilt binary's hash attaches.
+    """
+    if candidate_kind == "instruction-revision":
+        return revised_program_document(program_document, candidate["revision"])
+    if candidate_kind == "workflow-configuration":
+        return development_program_document(
+            candidate["base_configuration"], audit=candidate["independent_audit"]
+        )
+    if candidate_kind == "tool-definition":
+        return development_program_document(candidate["base_configuration"], tool=candidate["tool"])
+    if candidate_kind == "source-change":
+        return development_program_document(
+            base_configuration,
+            runtime={"source_tree": candidate["base_source_tree"], "files": candidate["files"]},
+        )
+    raise ValueError(f"candidate kind {candidate_kind} has no adoption state document")
+
+
+def find_accepted_verification(episode: Path, tool: str) -> tuple[str, int]:
+    """Locate the last accepted `verification/result` of `tool` in the episode tree.
+
+    Returns the log path in bundle coordinates (under `episode/`) and the
+    event's `seq`, the pairing the candidate binding record cites.
+    """
+    found: tuple[str, int] | None = None
+    for path in sorted(episode.rglob("episode.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line:
+                continue
+            event = json.loads(line)
+            data = event.get("data", {})
+            if (
+                event.get("type") == "verification/result"
+                and data.get("tool") == tool
+                and data.get("status") == "accepted"
+            ):
+                found = ("episode/" + path.relative_to(episode).as_posix(), event["seq"])
+    if found is None:
+        raise ValueError(f"the episode tree records no accepted verification/result for {tool}")
+    return found
+
+
+def record_adoption(
+    root: Path,
+    episode: Path,
+    state_document: dict[str, Any],
+    parent_document: dict[str, Any],
+    retained: dict[str, bytes],
+    verification_tool: str,
+    bundle_builder: list[str],
+    builder_cwd: Path | None = None,
+    builder_env: dict[str, str] | None = None,
+    artifacts: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Record one accepted candidate as a lineage transition under `root`.
+
+    Writes the evidence bundle — the episode tree, the state document as
+    the child identity document, and the artifact manifest over the
+    retained candidate files — completes it through the lineage crate's
+    `build-bundle` binary, which writes the adoption record and canonical
+    manifest, and writes the parent and child state documents where the
+    checker's resolvers read them: `root/lineage/states/<hex>.json` by
+    state identity and `root/lineage/evidence/<hex>` by content address.
+    """
+    build = root / "lineage" / "bundle-build"
+    shutil.copytree(episode, build / "episode")
+    identity_bytes = canonical_json(state_document)
+    (build / "child-identity.json").write_bytes(identity_bytes)
+    for name, content in sorted(retained.items()):
+        (build / name).write_bytes(content)
+    if artifacts is None:
+        artifacts = [{"path": name, "sha256": digest_bytes(content)} for name, content in sorted(retained.items())]
+    (build / "artifact-manifest.json").write_bytes(canonical_json(artifacts))
+    verification_log, verification_seq = find_accepted_verification(episode, verification_tool)
+    result = subprocess.run(
+        [
+            *bundle_builder,
+            str(build),
+            "episode/episode.jsonl",
+            "child-identity.json",
+            "artifact-manifest.json",
+            verification_log,
+            str(verification_seq),
+        ],
+        cwd=builder_cwd,
+        env=builder_env,
+        text=True,
+        capture_output=True,
+        timeout=1_800,
+        check=False,
+    )
+    address = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    if result.returncode != 0 or not re.fullmatch(r"sha256:[0-9a-f]{64}", address):
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
+        raise ValueError(f"bundle builder failed: {detail}")
+    evidence_dir = root / "lineage" / "evidence" / address.removeprefix("sha256:")
+    evidence_dir.parent.mkdir(parents=True, exist_ok=True)
+    build.rename(evidence_dir)
+    states = root / "lineage" / "states"
+    states.mkdir(parents=True, exist_ok=True)
+    parent_identity = digest_bytes(canonical_json(parent_document))
+    parent_state_identity = state_identity(parent_identity, None)
+    parent_state = states / (parent_state_identity.removeprefix("sha256:") + ".json")
+    write_json(parent_state, {"identity_document": parent_document})
+    claim = {
+        "parent": {"program_identity": parent_identity, "state_identity": parent_state_identity},
+        "evidence": address,
+        "verification_log": verification_log,
+        "verification_seq": verification_seq,
+    }
+    child_identity = digest_bytes(identity_bytes)
+    child_state_identity = state_identity(child_identity, claim)
+    child_state = states / (child_state_identity.removeprefix("sha256:") + ".json")
+    write_json(child_state, {"identity_document": state_document, "program_lineage": claim})
+    return {
+        "evidence": address,
+        "program_identity": child_identity,
+        "state_identity": child_state_identity,
+        "parent_program_identity": parent_identity,
+        "parent_state_identity": parent_state_identity,
+        "verification_log": verification_log,
+        "verification_seq": verification_seq,
+        "state": str(child_state),
+        "parent_state": str(parent_state),
+        "evidence_directory": str(evidence_dir),
+    }
+
+
 def instruction_candidate_from_outcome(
     outcome_value: Any,
     documents: dict[str, Any],
@@ -289,8 +540,13 @@ def rust_toolchain_identity(cargo: Path) -> dict[str, str]:
     return binaries
 
 
-def validate_program(binary: Path, program: Path) -> None:
-    """Construct the generated program without making a model request."""
+def validate_program(binary: Path, program: Path) -> dict[str, Any]:
+    """Construct the generated program without making a model request.
+
+    Returns the resolved plan object. Its identity document is the parent
+    state an adoption descends from; the returned document is required to
+    rehash to the reported identity.
+    """
     result = subprocess.run(
         [str(binary), "plan", "--config", str(program), "--json"],
         text=True,
@@ -300,6 +556,14 @@ def validate_program(binary: Path, program: Path) -> None:
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
         raise ValueError(f"generated self-improvement program is invalid: {detail}")
+    try:
+        plan = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"the resolved plan is not one JSON object: {error}") from error
+    document = plan.get("identity_document") if isinstance(plan, dict) else None
+    if not isinstance(document, dict) or digest_bytes(canonical_json(document)) != plan.get("identity"):
+        raise ValueError("the resolved plan's identity document does not rehash to its identity")
+    return plan
 
 
 def git_metadata_root(candidate: Path) -> Path:
@@ -470,10 +734,89 @@ print("\\n".join(findings))
     path.chmod(0o755)
 
 
+def write_diagnosis_validator(
+    path: Path,
+    program: Path,
+    identity: dict[str, str],
+    evidence_sha256: str,
+    base_configuration: dict[str, str],
+    supported_audits: list[dict[str, Any]],
+) -> None:
+    """Write the diagnosis node's completion verifier.
+
+    The runtime invokes it with the returned typed diagnosis as JSON on
+    standard input. It applies the same identity-bound candidate validation
+    the runner applies after the episode, importing the candidate modules
+    copied beside it, so an accepted workflow, instruction, or tool
+    candidate has an authoritative `verification/result` event in the
+    diagnosis episode's log. A source diagnosis and a typed abstention are
+    accepted here: a source candidate is judged by the implementation
+    node's candidate check, and an abstention proposes nothing.
+    """
+    for name in DIAGNOSIS_VALIDATOR_MODULES:
+        (path.parent / name).write_bytes((Path(__file__).resolve().parent / name).read_bytes())
+    script = f'''#!/usr/bin/python3
+import json
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from instruction_candidate import create as create_instruction_candidate
+from tool_candidate import create as create_tool_candidate
+from tool_candidate import validate_definition
+from workflow_candidate import create as create_workflow_candidate
+from workflow_candidate import validate_independent_audit
+
+identity = {identity!r}
+evidence_sha256 = {evidence_sha256!r}
+base_configuration = {base_configuration!r}
+supported_audits = {supported_audits!r}
+program = {str(program)!r}
+
+findings = []
+try:
+    candidate = json.load(sys.stdin)
+    branch = candidate.get("branch") if isinstance(candidate, dict) else None
+    if branch == "configure-workflow":
+        audit = validate_independent_audit(candidate.get("independent_audit"))
+        if audit not in supported_audits:
+            raise ValueError(
+                "workflow candidate independent_audit was not a repeated successful evidence setting"
+            )
+        create_workflow_candidate(identity, evidence_sha256, base_configuration, audit)
+    elif branch == "revise-instructions":
+        documents = {{"program.json": json.loads(pathlib.Path(program).read_text(encoding="utf-8"))}}
+        create_instruction_candidate(
+            identity,
+            evidence_sha256,
+            base_configuration,
+            candidate.get("instruction_revision"),
+            documents,
+        )
+    elif branch == "define-tool":
+        definition = validate_definition(candidate.get("tool_definition"))
+        create_tool_candidate(
+            identity,
+            evidence_sha256,
+            base_configuration,
+            {{field: definition[field] for field in ("name", "description", "executable_sha256")}},
+        )
+    elif branch not in ("implement-source", "insufficient-evidence"):
+        findings.append("the diagnosis selected no supported candidate branch")
+except (OSError, ValueError, json.JSONDecodeError) as error:
+    findings.append(str(error))
+print("\\n".join(findings))
+'''
+    path.write_text(script, encoding="utf-8")
+    path.chmod(0o755)
+
+
 def build_config(
     candidate: Path,
     evidence: Path,
     check: Path,
+    validator: Path,
     implementation_model: dict[str, str],
     diagnosis_model: dict[str, str],
     execute_roots: list[Path],
@@ -496,6 +839,11 @@ def build_config(
         "cwd": str(candidate),
         "timeout_seconds": 900,
     }
+    validator_tool = {
+        "exec": str(validator),
+        "description": "Validate the returned typed diagnosis: an identity-bound workflow, instruction, or tool candidate is checked against the retained evidence and the preserved run controls. The tool prints findings and prints nothing when the diagnosis is valid.",
+        "timeout_seconds": 60,
+    }
     diagnosis = {
         "name": "diagnose-foe-from-trajectory-measurements",
         "instructions": {
@@ -506,7 +854,8 @@ def build_config(
             "sufficiency": "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. Choose `configure-workflow` when a repeated quality gain is caused by an independent audit stage, and return the observed successful audit setting. Choose `revise-instructions` when the repeated causal difference is procedural guidance that one instruction section of the retained program document `program.json` can carry, and return the exact revision. Choose `define-tool` when one missing executable tool explains the gap, and return its complete definition. Choose `insufficient-evidence` when the intervention requires semantic knowledge absent from the log, an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort difference without a workflow contrast establishes model capability rather than a Foe defect.",
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
         },
-        "tools": ["block"],
+        "tools": ["block", DIAGNOSIS_VALIDATOR_TOOL],
+        "tool_defs": {DIAGNOSIS_VALIDATOR_TOOL: validator_tool},
         "grants": {"read": diagnosis_read_roots},
         "budget": {
             "model_calls": DIAGNOSIS_CALLS,
@@ -515,6 +864,8 @@ def build_config(
         },
         "model": diagnosis_model,
         "done_when": {
+            "verify": DIAGNOSIS_VALIDATOR_TOOL,
+            "retries": 2,
             "returns": {
                 "type": "object",
                 "properties": {
@@ -850,6 +1201,15 @@ def main(argv: list[str] | None = None) -> int:
     write_candidate_check(check, candidate, cargo, cargo_home, cargo_target)
     episode_evidence = root / "trajectory-evidence.json"
     episode_evidence.write_bytes(evidence.read_bytes())
+    validator = root / "diagnosis-validator"
+    write_diagnosis_validator(
+        validator,
+        root / "program.json",
+        identity,
+        evidence_digest(evidence),
+        base_configuration,
+        supported_audits,
+    )
     toolchain = cargo.parent.parent
     rustup_home = toolchain.parent.parent if toolchain.parent.name == "toolchains" else None
     execute_roots = [toolchain, cargo_home / "bin", cargo_target]
@@ -862,6 +1222,7 @@ def main(argv: list[str] | None = None) -> int:
         candidate,
         episode_evidence,
         check,
+        validator,
         model,
         diagnosis_model,
         execute_roots,
@@ -872,7 +1233,7 @@ def main(argv: list[str] | None = None) -> int:
     program = root / "program.json"
     write_json(program, program_document)
     try:
-        validate_program(binary, program)
+        plan = validate_program(binary, program)
     except ValueError as error:
         print(f"self-improvement: {error}", file=sys.stderr)
         if temporary:
@@ -1016,6 +1377,53 @@ def main(argv: list[str] | None = None) -> int:
         )
         acceptance = {"accepted": False, "findings": [finding], "exit_code": None}
         candidate_kind = "no-candidate"
+    adoption = None
+    if acceptance["accepted"] and candidate_kind != "no-candidate":
+        retained: dict[str, bytes] = {}
+        artifacts = None
+        verification_tool = DIAGNOSIS_VALIDATOR_TOOL
+        if candidate_kind == "workflow-configuration":
+            retained["workflow-candidate.json"] = workflow_candidate_path.read_bytes()
+        elif candidate_kind == "instruction-revision":
+            retained["instruction-candidate.json"] = instruction_candidate_path.read_bytes()
+        elif candidate_kind == "tool-definition":
+            retained["tool-candidate.json"] = tool_candidate_path.read_bytes()
+            retained["tool-candidate-executable"] = tool_executable_path.read_bytes()
+        else:
+            verification_tool = "check"
+            artifacts = [
+                {"path": name, "sha256": value}
+                for name, value in sorted(artifact_identity["files"].items())
+            ]
+        toolchain_environment = {
+            "CARGO_HOME": str(cargo_home),
+            "CARGO_TARGET_DIR": str(cargo_target),
+            "HOME": str(candidate),
+            "LANG": "C.UTF-8",
+            "PATH": f"{cargo.parent}:/usr/local/bin:/usr/bin:/bin",
+            "TMPDIR": str(cargo_target / "tmp"),
+        }
+        if rustup_home is not None:
+            toolchain_environment["RUSTUP_HOME"] = str(rustup_home)
+            toolchain_environment["RUSTUP_TOOLCHAIN"] = toolchain.name
+        (cargo_target / "tmp").mkdir(parents=True, exist_ok=True)
+        try:
+            adoption = record_adoption(
+                root,
+                episode,
+                adoption_state_document(
+                    candidate_kind, artifact_identity, program_document, base_configuration
+                ),
+                plan["identity_document"],
+                retained,
+                verification_tool,
+                [str(cargo), "run", "--quiet", "-p", "foe-lineage", "--bin", "build-bundle", "--"],
+                builder_cwd=candidate,
+                builder_env=toolchain_environment,
+                artifacts=artifacts,
+            )
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            adoption = {"error": str(error)}
     record = {
         **preview,
         "evaluated_foe": identity,
@@ -1035,6 +1443,7 @@ def main(argv: list[str] | None = None) -> int:
         "tool_candidate": str(tool_candidate_path) if tool_candidate_path else None,
         "tool_candidate_executable": str(tool_executable_path) if tool_executable_path else None,
         "candidate_acceptance": acceptance,
+        "adoption": adoption,
         "artifact_outcome_mismatch": acceptance["accepted"] and result.returncode != 0,
         "direct_implementation_required": not acceptance["accepted"],
     }

@@ -14,8 +14,8 @@ fn digest(fill: char) -> String {
 fn the_page_lists_the_chain_and_the_open_checks() {
     let report = AncestryReport {
         chain: vec![
-            ChainEntry { lineage_identity: digest('a'), program_identity: digest('b') },
-            ChainEntry { lineage_identity: digest('c'), program_identity: digest('d') },
+            ChainEntry { state_identity: digest('a'), program_identity: digest('b') },
+            ChainEntry { state_identity: digest('c'), program_identity: digest('d') },
         ],
         unverifiable: vec!["transition x: no candidate_sha256".into()],
     };
@@ -35,7 +35,7 @@ fn the_page_lists_the_chain_and_the_open_checks() {
 #[test]
 fn an_unresolvable_parent_state_names_the_path_it_was_sought_at() {
     let claim = ProgramLineage {
-        parent: LineageParent { program_identity: digest('a'), lineage_identity: digest('b') },
+        parent: LineageParent { program_identity: digest('a'), state_identity: digest('b') },
         evidence: digest('c'),
         verification_log: "episode.jsonl".into(),
         verification_seq: 0,

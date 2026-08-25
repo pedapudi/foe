@@ -164,10 +164,10 @@
         "parent": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["program_identity", "lineage_identity"],
+          "required": ["program_identity", "state_identity"],
           "properties": {
             "program_identity": { "description": "The parent state's program identity.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-            "lineage_identity": { "description": "The parent state's own ancestry claim.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+            "state_identity": { "description": "The parent state's identity, selecting one ancestry claim among those that can accompany a single program identity.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
           }
         },
         "evidence": { "description": "SHA-256 digest of the evidence bundle's canonical manifest.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },

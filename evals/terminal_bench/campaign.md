@@ -296,6 +296,15 @@ executable file is retained beside the candidate. Every candidate's digest
 binds its content to the evaluated source, binary, evidence, and preserved
 execution controls.
 
+The diagnosis node declares a runner-generated validator as its completion
+verifier through `done_when.verify`. The validator judges the returned typed
+diagnosis with the same identity-bound candidate validation the runner
+applies after the episode, so an accepted workflow, instruction, or tool
+candidate is an authoritative `verification/result` event in the diagnosis
+episode's log, and findings return to the same episode. A source diagnosis
+and a typed abstention pass the validator; a source candidate is judged by
+the coding node's candidate check.
+
 The workflow is one candidate generator. The runner validates source changes
 again after the episode. It validates workflow settings, instruction
 revisions, and tool definitions when the episode returns them, and validates
@@ -304,6 +313,15 @@ artifact survives an exhausted reporting outcome. Candidate
 promotion remains an external evaluation decision. A failed artifact sets
 `direct_implementation_required`. The campaign then proceeds with a direct
 implementation.
+
+The runner records every accepted candidate as a lineage transition: the
+evidence bundle completed through the lineage crate's `build-bundle`
+binary, whose adoption record cites the accepted verifier result, and the
+parent and adoption state documents in the layout the checker's resolvers
+read.
+[`docs/lineage-identity.md`](../../docs/lineage-identity.md) "Harness
+adoptions" states the one state-document rule: every adoption materializes
+the program document that will run under it.
 
 ## Recorded capability conversion and diagnosis sufficiency
 
