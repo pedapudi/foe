@@ -14,7 +14,10 @@ from foe_source_identity import evaluated_foe, require_evaluated_foe
 from run import read_cases
 
 MAX_DIAGNOSES = 24
-MAX_EVIDENCE_BYTES = 64 * 1024
+# The evidence enters a diagnosis child through one root workflow result.
+# Core exposes at most 50,000 rendered characters from that result, including
+# its status framing, and a child cannot retrieve bytes from its parent log.
+MAX_EVIDENCE_BYTES = 48 * 1024
 MAX_INPUT_GROWTH_LANDMARKS = 4
 MAX_OUTCOME_TEXT = 2_000
 MAX_COMPLETION_SUMMARY = 240
@@ -282,6 +285,11 @@ def evaluation_summary(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [groups[key] for key in sorted(groups)]
 
 
+def encoded_evidence(report: dict[str, Any]) -> str:
+    """Serialize the exact compact bytes the evidence tool returns."""
+    return json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
+
+
 def collect(
     source_root: Path,
     binary: Path,
@@ -329,7 +337,7 @@ def collect(
         "evaluation_summary": evaluation_summary(reports),
         "trajectory_diagnostics": reports,
     }
-    size = len(json.dumps(answer, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    size = len(encoded_evidence(answer).encode("utf-8"))
     if size > MAX_EVIDENCE_BYTES:
         raise ValueError(
             f"self-improvement evidence is {size} bytes; select fewer runs to stay within {MAX_EVIDENCE_BYTES} bytes"
@@ -359,10 +367,7 @@ def main(argv: list[str] | None = None) -> int:
             eligible_tasks,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(report, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        args.output.write_text(encoded_evidence(report), encoding="utf-8")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"collect diagnostics: {error}", file=sys.stderr)
         return 2

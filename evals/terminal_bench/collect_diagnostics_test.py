@@ -11,6 +11,7 @@ from collect_diagnostics import (
     EVALUATION_FIELDS,
     collect,
     diagnostic_outcome,
+    encoded_evidence,
     evaluation_metadata,
     evaluation_summary,
     input_growth_landmarks,
@@ -193,6 +194,9 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 }
             ],
         )
+        encoded = encoded_evidence(report)
+        self.assertTrue(encoded.endswith("\n"))
+        self.assertNotIn("\n  ", encoded)
 
     def test_collector_rejects_a_different_runtime(self):
         with tempfile.TemporaryDirectory() as directory:

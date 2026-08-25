@@ -450,10 +450,13 @@ The label prevents a diagnosis from treating model-authored evidence as an
 observed fact. Successful completions omit those fields to avoid repeating the
 same prose at the report, episode, and verification levels. Failed, blocked,
 and exhausted outcomes retain their actionable error, code, message, or limit.
-The collector accepts at most 24 diagnoses and 64 KiB of encoded evidence. It
-accepts only development and opened capability-search tasks from `cases.json`.
-Confirmation, calibration, and calibration-holdout evidence remains
-unavailable to self-improvement.
+The collector accepts at most 24 diagnoses and 48 KiB of compact encoded
+evidence. The bound leaves room for the workflow result framing inside core's
+50,000-character turn-result allowance. A diagnosis child cannot retrieve
+bytes archived in its parent episode, so the collector refuses evidence that
+would be shortened at the handoff. It accepts only development and opened
+capability-search tasks from `cases.json`. Confirmation, calibration, and
+calibration-holdout evidence remains unavailable to self-improvement.
 
 Create a clean candidate worktree at the evaluated commit. Run the
 self-improvement workflow from that worktree:
