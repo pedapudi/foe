@@ -271,6 +271,10 @@ def git_metadata_root(candidate: Path) -> Path:
 
 def write_candidate_check(path: Path, candidate: Path, cargo: Path, cargo_home: Path, cargo_target: Path) -> None:
     baseline = source_hashes(candidate)
+    baseline_benchmark_identifiers = {
+        name: (candidate / name).read_text(encoding="utf-8", errors="replace").count("terminal-bench/")
+        for name in baseline
+    }
     line_ceilings = line_budget_ceilings(candidate)
     toolchain = cargo.parent.parent
     rustup_home = toolchain.parent.parent if toolchain.parent.name == "toolchains" else None
@@ -284,6 +288,7 @@ import sys
 
 root = pathlib.Path({str(candidate)!r})
 baseline = {baseline!r}
+baseline_benchmark_identifiers = {baseline_benchmark_identifiers!r}
 allowed_directories = {ALLOWED_DIRECTORIES!r}
 allowed_root_files = {ALLOWED_ROOT_FILES!r}
 cargo = {str(cargo)!r}
@@ -331,8 +336,8 @@ for name in changed:
     if not item.is_file():
         continue
     text = item.read_text(encoding="utf-8", errors="replace")
-    if "terminal-bench/" in text:
-        findings.append(f"{{name}} contains a benchmark task identifier")
+    if text.count("terminal-bench/") > baseline_benchmark_identifiers.get(name, 0):
+        findings.append(f"{{name}} adds a benchmark task identifier")
     if any(line.endswith((" ", "\\t")) for line in text.splitlines()):
         findings.append(f"{{name}} contains trailing whitespace")
 if not findings:

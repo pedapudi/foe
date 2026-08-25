@@ -354,7 +354,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
             specification = candidate / "docs/design.md"
             implementation.write_text("pub fn value() -> u8 { 1 }\n", encoding="utf-8")
             regression.write_text("#[test]\nfn value_is_one() {}\n", encoding="utf-8")
-            specification.write_text("The value is one.\n", encoding="utf-8")
+            specification.write_text(
+                "The value is one. Existing terminal-bench/reference.\n",
+                encoding="utf-8",
+            )
             loc = candidate / "scripts/loc.sh"
             loc.write_text("#!/bin/sh\nprintf 'cli 2 (budget 1)\\n'\nexit 1\n", encoding="utf-8")
             subprocess.run(["git", "init", "--quiet", str(candidate)], check=True)
@@ -391,7 +394,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
             baseline = check_baseline(check, candidate)
             implementation.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
             regression.write_text("#[test]\nfn value_is_two() {}\n", encoding="utf-8")
-            specification.write_text("The value is two.\n", encoding="utf-8")
+            specification.write_text(
+                "The value is two. Existing terminal-bench/reference.\n",
+                encoding="utf-8",
+            )
             accepted = check_candidate(check, candidate)
             sandboxed = subprocess.run(
                 [str(check)], text=True, capture_output=True, check=True

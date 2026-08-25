@@ -529,9 +529,11 @@ cannot consume the self-improvement episode.
 
 The candidate checker repeats formatting, workspace tests, Clippy, and line
 counts under the supplied Cargo cache. It rejects a line count above the
-recorded baseline ceiling. The coding child uses this checker as the line-count
-authority because the repository script reports only absolute limits. Its only
-generated-file write authority is the candidate's private
+recorded baseline ceiling. It also rejects benchmark identifiers added by the
+candidate. An existing identifier in an edited document remains part of the
+baseline and does not create a false finding. The coding child uses this
+checker as the line-count authority because the repository script reports only
+absolute limits. Its only generated-file write authority is the candidate's private
 `target/foe-self-improvement-check` directory and the repository tests'
 declared `target/test-scratch` directory. Read grants
 cover Cargo and Rustup metadata and installed C headers. Execute grants cover
