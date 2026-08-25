@@ -33,7 +33,7 @@ pub mod workflow;
 
 /// The JSON Schema of the configuration document, maintained by hand to
 /// mirror docs/config.md. It describes what this crate parses, so it ships
-/// with the types it describes; `foe schema` prints it.
+/// with the types it describes; `foe plan --schema` prints it.
 pub const SCHEMA: &str = include_str!("schema.json");
 
 // ---- tools --------------------------------------------------------------------

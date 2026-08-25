@@ -16,8 +16,8 @@
 use crate::ConfigError;
 use serde_json::{Map, Value};
 
-/// The dialect every embedded schema is read under. `foe schema` declares it
-/// for the configuration document itself.
+/// The dialect every embedded schema is read under. `foe plan --schema`
+/// declares it for the configuration document itself.
 pub const DIALECT: &str = "https://json-schema.org/draft/2020-12/schema";
 
 /// The assertions [`conforms`] evaluates. The set covers what the Python

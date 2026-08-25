@@ -36,10 +36,10 @@ Each name resolves against three sources, checked in this order.
    `host/tool-call` event and records the host's answer as the result.
 
 A name that resolves in two sources is an error at construction, and so is
-a name that resolves in none. `foe tools` lists the built-in tools; `foe
-tools --config FILE` lists the resolved set for a document with each tool's
-source. The second form resolves every path the document names, as
-`foe plan` does, so a document whose grants or `tool_defs` name a path that
+a name that resolves in none. `foe plan` without a configuration lists the
+built-in tools; `foe plan --config FILE` reports the resolved set for a
+document with each tool's source. The second form resolves every path the
+document names, so a document whose grants or `tool_defs` name a path that
 does not exist is refused with the key and the path.
 
 Every tool returns a canonical value, which is JSON, and may return a

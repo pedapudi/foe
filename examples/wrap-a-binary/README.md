@@ -72,13 +72,13 @@ Each run creates `target/foe-wrap-a-binary-demo.XXXXXX/`, holding the
 materialized configuration, the disposable project, and the episode log. The
 runner prints a command that serves the viewer for that log.
 
-`foe tools --config FILE` lists the resolved tools with each one's source, and
-lists `style` as a configured executable. It resolves every path in the
+`foe plan --config FILE` reports the resolved tools with each one's source,
+and lists `style` as a configured executable. It resolves every path in the
 document, so it is run against the configuration inside a run directory rather
 than the checked-in one, whose `/home/user/project` exists on no machine:
 
 ```sh
-target/release/foe tools --config target/foe-wrap-a-binary-demo.XXXXXX/config.json
+target/release/foe plan --config target/foe-wrap-a-binary-demo.XXXXXX/config.json
 ```
 
 ## The project the runner builds

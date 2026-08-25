@@ -590,7 +590,7 @@ own.
 
 ## The command line
 
-The binary has one running form and six forms that run nothing.
+The binary has one running form and four forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
@@ -599,10 +599,9 @@ foe "task" --headless                                    run; no viewer; print t
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan --config FILE [--json]                          print the resolved program, its identity, its transport, and its effective authority
-foe tools [--config FILE]                                list tools, with sources when a config is given
-foe schema                                               print the JSON Schema for the configuration
-foe lineage STATE --states DIR --evidence DIR [--json]   verify a state document's ancestry claim against retained evidence
+foe plan [--config FILE] [--json]                        print the resolved program, its identity, its transport, its tools with their sources, and its effective authority; without --config, list the built-in tools
+foe plan --schema                                        print the JSON Schema for the configuration
+foe plan --config FILE --states DIR --evidence DIR       verify the configuration's ancestry claim against retained evidence
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
 
@@ -802,7 +801,8 @@ ancestry checker [lineage-identity.md](lineage-identity.md) specifies. It
 depends on `crates/config` for the claim's shape and the canonical
 serialization, and on `crates/log` for the episode record, and is part of
 neither contract: nothing in the runtime depends on it. The binary
-supplies only the two directory-backed resolvers `foe lineage` builds.
+supplies only the two directory-backed resolvers `foe plan` builds for its
+`--states` and `--evidence` directories.
 
 ## Size
 
