@@ -8,18 +8,21 @@ so that a version 2 reader parses a later log; nothing in version 2 emits it.
 A feature with nothing reserved is listed so that a reader does not search
 for it.
 
-## Fork as a command and candidate slates
+## Candidate slates
 
-A fork seeds a new episode from a prefix of an existing log so that the new
-episode continues from a chosen point with a different task or program. A
-candidate slate runs several forks from the same prefix, so that the shared
-prefix is paid once and the branches are causally independent, and then
-selects among their outcomes. Seeding a log from a prefix is implemented and
-specified under "Seeding" in [log-format.md](log-format.md); a command-line
-`fork` subcommand and candidate slates are not implemented. Reserved field
-value: `"fork"` for `context` in `spawn/start`, which names a child seeded
-from the parent's log rather than started fresh. No configuration key is
-reserved.
+A candidate slate runs several forks from one prefix, so that the shared
+prefix is materialized once and the branches are causally independent, and
+then selects among their outcomes. Forking itself is implemented: the
+running form's `--fork SOURCE_DIR --at SEQ` seeds a new episode from a
+prefix of an existing log, under "Seeding" in
+[log-format.md](log-format.md). A slate today is a caller-side loop over
+that form: N launches from one source and boundary produce N independent
+episodes, each paying its own copy of the prefix. First-class support
+would add shared-prefix materialization paid once and selection among the
+outcomes. It waits for evidence that either is needed: a measured
+prefix-materialization cost that the per-launch copy makes significant,
+or a consumer that needs foe to witness the selection among outcomes. No
+event type or configuration key is reserved.
 
 ## Team task board
 
@@ -38,6 +41,43 @@ question with one source value and the answer with another, both holding the
 same correlation identifier in `message_id`. Correlated exchanges are not
 implemented. Reserved field values: `"request"` and `"response"` for `source`
 in `inbox/item`.
+
+## Cancellation of a running child
+
+Cancellation would let a parent end a child episode it no longer needs —
+the tool that would sit beside `spawn` and `wait` — and with it a
+first-completion-wins composition: wait until any child completes, cancel
+the rest, which is what select and race are. The teardown already ends
+surviving children when the episode ends; what is absent is ending one
+child mid-episode by the model's choice. Cancellation is not implemented.
+No event type or configuration key is reserved. The evidence that would
+justify building it is a consumer needing first-completion-wins — a
+trajectory that waits on `any`, then pays for children whose results it
+discards.
+
+## Event-conditioned workflow edges
+
+An event-conditioned edge would fire a workflow node on an inbox arrival —
+a session exit, a child's report — rather than on a predecessor's value,
+so that a mechanical reaction to an event costs no model turn. Workflows
+condition firing on two things today: a branch label a node chose and the
+`skip_when_verified` guard. Event-conditioned edges are not implemented.
+No event type or configuration key is reserved. The evidence that would
+justify building them is trajectories showing model turns spent on
+mechanical reactions — a turn whose whole content is reading an arrival
+and issuing the one call it always issues.
+
+## Session output watermarks into the inbox
+
+An output watermark would post a `session`-source inbox item when a
+session's accumulated output crosses a threshold or matches a pattern, so
+a model could wait on a server's readiness line instead of polling for it.
+The inbox carries a session's exit and nothing else of its lifetime;
+output reaches the model only through `poll`. Watermarks are not
+implemented. No event type or configuration key is reserved; the `session`
+source value carries exit items only. The evidence that would justify
+building them is measured turns wasted on sleep-then-poll cycles against
+a session that has not yet produced what the model is waiting for.
 
 ## Sandbox backends beyond Landlock
 

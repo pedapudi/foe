@@ -79,6 +79,8 @@ const OPTS: &[Opt] = &[
         "an executable verifier for the built-in coding workflow; its acceptance skips the audit episode",
     ),
     opt("", "--log-dir", "DIR", ".foe/<episode-id>", "where the episode log is written"),
+    opt("", "--fork", "SOURCE_DIR", "", "seed the log from a prefix of SOURCE_DIR's log; the task is the fork's task"),
+    opt("", "--at", "SEQ", "", "the --fork boundary: source events with seq below SEQ are copied"),
     opt("", "--no-open", "", "", "serve the viewer without opening a browser on it"),
     opt("", "--headless", "", "", "run with no viewer at all"),
     opt("", "--host", "", "", "answer model requests over the protocol on standard input; --config carries the task"),
@@ -279,7 +281,12 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 no_open: args.switch("--no-open"),
                 headless: args.switch("--headless"),
                 host: args.switch("--host"),
+                fork: args.value("--fork").map(PathBuf::from),
+                at: args.value("--at").map(|t| t.parse().map_err(|_| format!("--at: {t} is not a seq"))).transpose()?,
             };
+            if options.fork.is_some() != options.at.is_some() {
+                return Err("--fork SOURCE_DIR and --at SEQ come together; run `foe --help`".into());
+            }
             if options.task.is_none() && options.config.is_none() {
                 return Err("give a task or --config FILE; run `foe --help`".into());
             }

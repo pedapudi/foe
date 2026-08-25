@@ -41,8 +41,8 @@ const BACKOFF_CAP_MS: u64 = 8_000;
 /// How long the teardown waits for children it asked to end before it
 /// records their settlement itself.
 const SETTLE_GRACE: Duration = Duration::from_secs(10);
-/// How often a wait on children rereads the pool.
-const SETTLE_POLL: Duration = Duration::from_millis(20);
+/// How often a wait on children or on arrivals rereads its evidence.
+pub(crate) const SETTLE_POLL: Duration = Duration::from_millis(20);
 
 pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -146,6 +146,20 @@ pub fn append_inbox_item(log: &Log, item: InboxItem) -> Result<Option<Event>, Lo
     log.append(EventData::InboxItem(item)).map(Some)
 }
 
+/// Appends one `session`-source item per session exit not yet reported:
+/// the session subject line, with `from` naming the session id. The loop
+/// posts before each request, while a turn's calls run so that a `wait`
+/// sees the arrival, and at settlement.
+fn post_session_exits(log: &Log, sessions: Option<&Arc<dyn crate::Sessions>>) -> Result<(), LogError> {
+    for status in sessions.iter().flat_map(|s| s.take_exited()) {
+        let content = vec![ContentBlock::Text { text: crate::session::subject(&status) }];
+        let item =
+            InboxItem { source: InboxSource::Session, content, from: Some(status.id.to_string()), message_id: None };
+        log.append(EventData::InboxItem(item))?;
+    }
+    Ok(())
+}
+
 /// Runs the episode to its end, closes what its log left open through
 /// [`settle`], and writes `episode/end`.
 pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
@@ -172,7 +186,9 @@ pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
 /// A process session still alive when the episode ends is stopped, and the
 /// termination is recorded as the ordinary result of that implicit stop: a
 /// `tool/result` with `synthetic: true` whose subject states the final
-/// status. A child still running is asked to end, and the `spawn/end` and
+/// status. Every session exit not yet reported is then posted as a
+/// `session`-source inbox item, so the one-item-per-lifetime rule holds to
+/// the end of the log. A child still running is asked to end, and the `spawn/end` and
 /// `budget/release` its reservation owes are awaited for [`SETTLE_GRACE`].
 /// Whatever is still open after that, including every tool call left
 /// without a result, is closed by the synthetic events the log crate
@@ -184,7 +200,8 @@ pub async fn settle(
     sessions: Option<Arc<dyn crate::Sessions>>,
 ) -> Result<(), RuntimeError> {
     if let Some(sessions) = sessions {
-        let stopped = tokio::task::spawn_blocking(move || sessions.stop_all())
+        let stopper = sessions.clone();
+        let stopped = tokio::task::spawn_blocking(move || stopper.stop_all())
             .await
             .map_err(|e| RuntimeError::Protocol(format!("session settlement task failed: {e}")))?;
         let step = log.with_events(|events| {
@@ -215,6 +232,7 @@ pub async fn settle(
                 synthetic: true,
             }))?;
         }
+        post_session_exits(log, Some(&sessions))?;
     }
     if lock(pool).active_children() > 0 {
         if let Some(children) = children {
@@ -343,6 +361,7 @@ impl Episode {
             if final_request {
                 self.append_inbox(InboxSource::System, text::FINAL_REQUEST)?;
             }
+            post_session_exits(&self.p.log, self.p.sessions.as_ref())?;
             self.write_header(self.p.registry.system_prompt(&self.p.program.instructions), self.p.registry.schemas())?;
             let message = match self.request(Request::Step).await? {
                 Answer::Message { message, .. } => message,
@@ -566,8 +585,19 @@ impl Episode {
             self.spill_dir.clone(),
             deadline,
         );
+        // Session exits are posted while the calls run, so a blocking call
+        // such as `wait` observes the arrival rather than outwaiting it.
+        let posting = async {
+            loop {
+                tokio::time::sleep(SETTLE_POLL).await;
+                if let Err(e) = post_session_exits(&self.p.log, self.p.sessions.as_ref()) {
+                    break e;
+                }
+            }
+        };
         let values = tokio::select! {
             values = run => values,
+            e = posting => return Err(e.into()),
             reason = wait_stop(self.p.stop.clone()) => return Ok(Err(Outcome::Failed { error: reason })),
             _ = until(deadline) => return Ok(Err(Outcome::Exhausted { limit: ExhaustedLimit::Seconds })),
         };

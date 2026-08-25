@@ -213,6 +213,12 @@ pub trait Sessions: Send + Sync {
     /// Stops every alive session, for the settlement that ends the episode.
     /// Returns the final status of each session that was alive.
     fn stop_all(&self) -> Vec<SessionStatus>;
+    /// The final status of every session whose end no earlier call
+    /// reported, each session's once per lifetime. The agent loop turns
+    /// these into `session`-source inbox items. Default: no exit reports.
+    fn take_exited(&self) -> Vec<SessionStatus> {
+        Vec::new()
+    }
 }
 
 /// What starts a session: the program, arguments, environment, and working

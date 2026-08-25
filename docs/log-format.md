@@ -374,12 +374,22 @@ itself is the first inbox item.
 | `peer` | a team member, via the lead's queue; `from` and `message_id` are set |
 | `verify` | the runtime, carrying findings from a `done_when` verifier |
 | `system` | the runtime, for text it must show the model, such as a budget warning |
+| `session` | the runtime, when it observes that a process session's process has ended |
 
 When the current pool has one model call left for an ordinary request, the
 runtime appends one `system` item before deriving that request. The content
 directs the model toward the highest-priority unfinished work and the
 configured completion signal. The request records the item's sequence in
 `consumed`. The item changes no budget and completes no episode.
+
+A `session` item is written once per session lifetime, on exit only: its
+text is the session subject line — the id, the exit status, and the
+lifetime — and `from` is the session id. The runtime observes exits before
+deriving a request, while a turn's tool calls run, and at settlement; a
+session's output never enters the inbox. The value is additive to the
+frozen format: the `inbox/item` payload is unchanged, and a reader compiled
+before the value existed rejects a log that carries it, as for an added
+event type.
 
 The values `request` and `response` are reserved for correlated exchanges.
 
@@ -728,6 +738,22 @@ event and violated rule named.
 Copied `team/*` events belong to the source episode and are excluded from the
 new episode's team fold. A fold reads team events only when the log's own
 `episode/start.team_id` matches or the log is itself the lead.
+
+The command line reaches seeding in two ways. The running form's
+`--fork SOURCE_DIR --at SEQ` seeds a fresh directory from the source's
+prefix at N equal to SEQ and runs it: the new `episode/start` draws a
+fresh id, its `fork_origin` names the source, and the task the launch
+carries is appended as a live `system` inbox item after `seed/end`,
+because rule 1 copies the `task` item and the format admits one per log.
+Launching with `--log-dir DIR` where DIR holds a log without `episode/end`
+resumes that episode under the program that ran it — refused, with both
+identities named, when the given configuration's identity differs from
+`episode/start.identity`, except for a log ending at `seed/end`, whose
+`episode/start` records its source's program. A log that ends at an event
+boundary with every binding obligation closed, including one ending at
+`seed/end`, is appended to as it stands; one cut short mid-line or with a
+binding obligation open is seeded at N equal to its count of complete
+events into a fresh directory beside it, which the run then continues.
 
 A replay is a seed at N equal to the source log's length, with the model
 responses replayed from `assistant/chunk` events rather than requested.

@@ -973,8 +973,8 @@ const RECORDED_IDENTITIES: [(&str, &str); 12] = [
     ("recovery-exhausted", "sha256:c2c96477349effbf628e8fbd42c83de2abedb5846ebd01f32fb096289ad93da3"),
     ("sandbox", "sha256:af9e111ff74c666f5c6cfd607567bd03202db18bb752c179b562a32665bf79dd"),
     ("self-extension", "sha256:187f7525d2c2908e309f18646ec9679dd516e1be36dc7fc1b3f866ef91e42b0f"),
-    ("subagents", "sha256:69d460922866458372b476f97039d360e4ae193c5fa40ba942b5487000cf3718"),
-    ("team", "sha256:a8441bb99a25e334347a2739e2f760af3bfb2dda41caa16ab1e4d9e648a68f0d"),
+    ("subagents", "sha256:963dc10b4925e013a2301804cbb4fcb3bbaa7494bcc9e753d9037f88300e949c"),
+    ("team", "sha256:21b0f67315c6c700024b47d760185fef14960e6178907e05a4ecd1cc225c2a31"),
     ("verification-unsatisfiable", "sha256:e7f5a0646672ab3ec54669014465465950d535bb08e95a69687b4a11dc63c4ca"),
     ("workflow", "sha256:168714a517d59babdf94af002802bbe709befc94f91b9c76772073f3216e56f4"),
     ("wrap-a-binary", "sha256:06a6b353d728ef3c55ab30eed2fbc61863149aa9066f3d051805381af4251b4b"),
@@ -1110,4 +1110,247 @@ fn help_exits_zero_on_standard_output_for_every_form() {
     assert!(String::from_utf8(refused.stderr).unwrap().contains("run `foe --help`"), "the refusal points at help");
     let bare = Command::new(FOE).output().unwrap();
     assert_eq!(bare.status.code(), Some(1), "a bare `foe` still refuses");
+}
+
+/// Starts the binary under `--host` with the given running-form arguments
+/// and drives the protocol: each `model/request` is answered with the next
+/// scripted response. A launch over a seeded log first mirrors the seeded
+/// prefix, whose copied requests want no answer, so answering begins after
+/// the mirrored `seed/end` when `live_after_seed` is set. With `kill_at`
+/// set, the process is killed the moment an event of that type appears,
+/// leaving the log cut short. Returns the events read from standard
+/// output, the exit code when the process ended itself, and everything it
+/// wrote to standard error.
+fn drive(
+    config_path: &Path,
+    extra: &[&str],
+    mut responses: Vec<Vec<Value>>,
+    kill_at: Option<&str>,
+    live_after_seed: bool,
+) -> (Vec<Value>, Option<i32>, String) {
+    let mut child = Command::new(FOE)
+        .arg("--config")
+        .arg(config_path)
+        .arg("--host")
+        .args(extra)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut stderr = child.stderr.take().unwrap();
+    let (mut events, mut killed) = (Vec::new(), false);
+    let mut live = !live_after_seed;
+    for line in stdout.lines() {
+        let Ok(line) = line else { break };
+        let event: Value = serde_json::from_str(&line).unwrap();
+        let kind = event["type"].as_str().unwrap().to_string();
+        if kill_at == Some(kind.as_str()) {
+            child.kill().unwrap();
+            killed = true;
+            break;
+        }
+        live = live || kind == "seed/end";
+        if live && kind == "model/request" {
+            let id = event["data"]["request_id"].clone();
+            for chunk in responses.remove(0) {
+                writeln!(stdin, "{}", json!({ "type": "model/chunk", "request_id": id, "chunk": chunk })).unwrap();
+            }
+        }
+        events.push(event);
+        if kind == "episode/end" {
+            break;
+        }
+    }
+    drop(stdin);
+    let status = child.wait().unwrap();
+    let mut err = String::new();
+    std::io::Read::read_to_string(&mut stderr, &mut err).unwrap();
+    (events, (!killed).then(|| status.code().unwrap()), err)
+}
+
+/// A configuration whose model calls one host tool, and a first launch
+/// killed at that call: the log stops with the call open, the shape of an
+/// interruption. The torn JSON fragment appended afterwards is what a
+/// crash mid-write leaves.
+fn interrupted_log(dir: &Path) -> (PathBuf, PathBuf, String, u64) {
+    let config = config(dir, |c| {
+        c["tools"] = json!(["ask_host"]);
+        c["host_tools"] = json!({ "ask_host": {
+            "description": "Ask the host.", "params": { "type": "object" }, "effect": "pure"
+        }});
+    });
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let log_dir = dir.join("log");
+    let mut first = vec![text("I will ask.")];
+    first.extend(call("tc_1", "ask_host", "{}"));
+    first.push(done("tool"));
+    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
+    let (events, code, _) = drive(&config_path, &extra, vec![first], Some("host/tool-call"), false);
+    assert_eq!(code, None, "the launch was killed, not ended");
+    assert_eq!(types(&events).last(), Some(&"assistant/message"), "the tool call is open in the log");
+    let written = std::fs::read_to_string(log_dir.join("episode.jsonl")).unwrap().lines().count() as u64;
+    let mut file = std::fs::OpenOptions::new().append(true).open(log_dir.join("episode.jsonl")).unwrap();
+    file.write_all(b"{\"seq\":99,\"time\":").unwrap();
+    let episode_id = events[0]["data"]["id"].as_str().unwrap().to_string();
+    (config_path, log_dir, episode_id, written)
+}
+
+/// docs/log-format.md "Seeding": launching over an interrupted log
+/// continues the episode from a repaired copy seeded beside it at the last
+/// clean boundary, with the torn tail line ignored, the open call closed
+/// by a synthetic result, and the continuation's requests reconstructing
+/// across the boundary.
+#[test]
+fn an_interrupted_episode_resumes_and_completes() {
+    let dir = scratch("resume");
+    let (config_path, log_dir, source_id, written) = interrupted_log(&dir);
+    let responses = vec![vec![text("resumed and finished"), done("end")]];
+    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
+    let (events, code, err) = drive(&config_path, &extra, responses, None, true);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(err.contains("continues it in"), "the continuation directory is announced: {err}");
+    let start = &events[0]["data"];
+    let new_id = start["id"].as_str().unwrap();
+    assert_ne!(new_id, source_id, "the continuation is a fresh episode");
+    assert_eq!(start["fork_origin"], json!({ "episode_id": source_id, "seq": written }));
+    assert!(dir.join(new_id).join("episode.jsonl").is_file(), "the copy lives beside the interrupted log");
+    let kinds = types(&events);
+    assert!(kinds.contains(&"seed/end"), "the continuation is seeded: {kinds:?}");
+    let orphan = events.iter().find(|e| e["type"] == "tool/result").unwrap()["data"].clone();
+    assert_eq!((&orphan["synthetic"], &orphan["is_error"]), (&json!(true), &json!(true)));
+    let request = events.iter().rev().find(|e| e["type"] == "model/request").unwrap();
+    let messages = request["data"]["messages"].as_array().unwrap();
+    let roles: Vec<&str> = messages.iter().map(|m| m["role"].as_str().unwrap()).collect();
+    assert_eq!(roles, ["user", "assistant", "tool"], "the request reconstructs across the boundary");
+    assert!(messages[2]["rendered"].as_str().unwrap().contains("was not recorded"));
+    assert_eq!(
+        events.last().unwrap()["data"]["outcome"],
+        json!({ "kind": "completed", "value": "resumed and finished" })
+    );
+}
+
+/// docs/design.md "The command line": an interrupted log resumes only
+/// under the program that ran it; a differing configuration is refused
+/// with both identities named.
+#[test]
+fn resuming_under_a_different_program_is_refused_with_both_identities() {
+    let dir = scratch("resume-mismatch");
+    let (_, log_dir, _, _) = interrupted_log(&dir);
+    let differing = config(&dir, |c| {
+        c["instructions"] = json!({ "role": "You are under different instructions." });
+        c["tools"] = json!(["ask_host"]);
+        c["host_tools"] = json!({ "ask_host": {
+            "description": "Ask the host.", "params": { "type": "object" }, "effect": "pure"
+        }});
+    });
+    let differing_path = dir.join("differing.json");
+    std::fs::write(&differing_path, serde_json::to_vec_pretty(&differing).unwrap()).unwrap();
+    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
+    let (events, code, err) = drive(&differing_path, &extra, vec![], None, false);
+    assert_eq!((events.len(), code), (0, Some(1)));
+    assert!(err.contains("resuming requires the program that ran"), "{err}");
+    assert_eq!(err.matches("sha256:").count(), 2, "both identities are named: {err}");
+}
+
+/// docs/log-format.md "Seeding": a log that stopped at an event boundary
+/// with every binding obligation closed is continued in place, keeping its
+/// episode id, with no seeded copy.
+#[test]
+fn a_cleanly_stopped_log_continues_in_place() {
+    let dir = scratch("resume-in-place");
+    let config = config(&dir, |_| {});
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let planned = plan(&config_path);
+    let log_dir = dir.join("log");
+    std::fs::create_dir_all(&log_dir).unwrap();
+    let start = json!({ "seq": 0, "time": 1, "type": "episode/start", "data": {
+        "id": "ep_prior", "parent_id": null, "fork_origin": null, "team_id": null,
+        "program": planned["program"], "identity": planned["identity"], "task": "do the thing",
+        "runtime": { "version": "0", "build": "unknown" },
+        "sandbox": { "mode": "best-effort", "landlock_abi": 0 } } });
+    let item = json!({ "seq": 1, "time": 1, "type": "inbox/item", "data": {
+        "source": "task", "content": [ { "type": "text", "text": "do the thing" } ],
+        "from": null, "message_id": null } });
+    std::fs::write(log_dir.join("episode.jsonl"), format!("{start}\n{item}\n")).unwrap();
+    let responses = vec![vec![text("continued to the end"), done("end")]];
+    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
+    let (events, code, err) = drive(&config_path, &extra, responses, None, false);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(events[0]["data"]["id"], "ep_prior", "the same episode continues");
+    assert!(!types(&events).contains(&"seed/end"), "no copy is seeded");
+    let file = std::fs::read_to_string(log_dir.join("episode.jsonl")).unwrap();
+    let last: Value = serde_json::from_str(file.lines().last().unwrap()).unwrap();
+    assert_eq!(last["type"], "episode/end", "the episode ended in the original directory");
+}
+
+/// docs/design.md "The command line": `--fork SOURCE_DIR --at SEQ` seeds a
+/// fresh episode from the source's prefix and runs it under the task the
+/// launch carries, delivered as a `system` inbox item after `seed/end`.
+#[test]
+fn a_fork_runs_a_new_task_over_the_prior_context() {
+    let dir = scratch("fork");
+    let config = config(&dir, |_| {});
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let log_dir = dir.join("log");
+    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
+    let (events, code, _) =
+        drive(&config_path, &extra, vec![vec![text("the first outcome"), done("end")]], None, false);
+    assert_eq!(code, Some(0));
+    let source_id = events[0]["data"]["id"].as_str().unwrap().to_string();
+    let boundary = events.iter().find(|e| e["type"] == "assistant/message").unwrap()["seq"].as_u64().unwrap() + 1;
+    let mut forked = config.clone();
+    forked["task"] = json!("assess the first outcome");
+    let forked_path = dir.join("forked.json");
+    std::fs::write(&forked_path, serde_json::to_vec_pretty(&forked).unwrap()).unwrap();
+    let fork_dir = dir.join("fork");
+    let at = boundary.to_string();
+    let extra = ["--fork", log_dir.to_str().unwrap(), "--at", &at, "--log-dir", fork_dir.to_str().unwrap()];
+    let responses = vec![vec![text("the fork's outcome"), done("end")]];
+    let (events, code, err) = drive(&forked_path, &extra, responses, None, true);
+    assert_eq!(code, Some(0), "{err}");
+    let start = &events[0]["data"];
+    assert_ne!(start["id"].as_str().unwrap(), source_id, "the fork is a fresh episode");
+    assert_eq!(start["fork_origin"], json!({ "episode_id": source_id, "seq": boundary }));
+    let kinds = types(&events);
+    let seeded = kinds.iter().position(|k| *k == "seed/end").expect("the fork is seeded");
+    let task_item = &events[seeded + 1];
+    assert_eq!(task_item["type"], "inbox/item", "the new task follows seed/end");
+    assert_eq!(task_item["data"]["source"], "system");
+    assert_eq!(task_item["data"]["content"][0]["text"], "assess the first outcome");
+    let request = events.iter().rev().find(|e| e["type"] == "model/request").unwrap();
+    let messages = request["data"]["messages"].as_array().unwrap();
+    let text_of = |m: &Value| m["content"][0]["text"].as_str().unwrap_or_default().to_string();
+    assert_eq!(messages.len(), 3, "prior context and the new task: {messages:?}");
+    assert!(text_of(&messages[0]).contains("do the thing"), "the copied task opens the conversation");
+    assert_eq!(messages[1]["role"], "assistant");
+    assert_eq!(text_of(&messages[2]), "assess the first outcome");
+    assert_eq!(
+        events.last().unwrap()["data"]["outcome"],
+        json!({ "kind": "completed", "value": "the fork's outcome" })
+    );
+}
+
+/// The seeding API's boundary rule is surfaced verbatim when `--at` names
+/// a cut outside the source log.
+#[test]
+fn a_fork_boundary_outside_the_source_log_is_refused() {
+    let dir = scratch("fork-bad-seq");
+    let config = config(&dir, |_| {});
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let log_dir = dir.join("log");
+    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
+    let (_, code, _) = drive(&config_path, &extra, vec![vec![text("done"), done("end")]], None, false);
+    assert_eq!(code, Some(0));
+    let fork_dir = dir.join("fork");
+    let extra = ["--fork", log_dir.to_str().unwrap(), "--at", "999", "--log-dir", fork_dir.to_str().unwrap()];
+    let (events, code, err) = drive(&config_path, &extra, vec![], None, false);
+    assert_eq!((events.len(), code), (0, Some(1)));
+    assert!(err.contains("seed boundary lies within the source log"), "{err}");
 }

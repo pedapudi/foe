@@ -170,8 +170,10 @@ Outcome =
 vocabulary so that a supervising episode can route on it. The vocabulary is
 listed in [log-format.md](log-format.md#blocked-codes).
 
-Episodes never resume. A later episode may be seeded from a prefix of an
-earlier log, which is how replay and forking work.
+A finished episode is never extended. An interrupted one — a log without
+`episode/end` — is continued by launching over its directory, under "The
+command line" below. A later episode may be seeded from a prefix of any
+log, which is how replay and forking work.
 
 The model's context is a projection of the log, and the projection is
 bounded. When a configuration enables compaction and the next request is
@@ -239,6 +241,42 @@ Three rules hold in every step. Each exists because its absence loses data.
   Calls that write, execute, or spawn run one at a time in issue order. Results
   are appended in issue order regardless of completion order.
 
+### The event model
+
+Everything that happens to an episode from outside its own turns reaches
+the model one way: as an `inbox/item` in the log. The inbox is the single
+event queue and its `source` is the event's type — the task, a parent's
+steer, a child's report or ending, a peer message, verifier findings,
+runtime notices, and session exits. Items are appended the moment they
+arrive and delivered only at request boundaries: the next `model/request`
+names every newly delivered item in `consumed`, so nothing interrupts a
+request in flight, and the `consumed` lists are a reconstructable account
+of the event loop: what the model saw, and when, is derivable from the
+log alone.
+
+The cost model behind the loop is that model turns are the expensive
+resource and wall-clock time the cheap one. `wait` is the sanctioned
+trade between them: it spends wall-clock time so that no model turn is
+spent polling. Bare, it blocks until every child has ended. With `until`,
+it blocks until an arrival matches one of the named conditions, each in
+outcome vocabulary: a child (by id, or `any`) reaching any outcome or a
+named outcome kind, a session (by id, or `any`) exiting, or an inbox
+arrival by source; `timeout_seconds` returns the call after that long
+even if nothing matched. The result names only the condition met, or
+`timeout`. The arrival itself reaches the model through the ordinary
+inbox drain of the next request, so the `consumed` lists remain the
+complete record. Blocking counts against the `seconds` budget like any
+elapsed time, and `wait` is itself a tool call, so all blocking happens
+where blocking already happens.
+
+The same pieces form the verified-future pattern foe implements: `spawn`
+returns the handle, `done_when.returns` is the future's type,
+`done_when.verify` is the resolution predicate, and `wait` is the join.
+The predicate self-repairs: findings return to the model for another
+attempt, and retries spent reject the future into a typed `Blocked`. A
+parent that spawns, continues its own work, and then waits is composing
+futures whose resolution the log evidences end to end.
+
 ### Termination
 
 An episode ends by writing `episode/end`, and before that it closes every
@@ -256,6 +294,8 @@ children are still running, and the episode ends as exhausted at its next
 step. A program that declares no `seconds` gives `wait` no bound of its
 own; the wait then lasts as long as the children do. A model that means to
 abandon its children ends its turn as usual, and the teardown settles them.
+With `until` conditions or `timeout_seconds`, `wait` returns as "The
+event model" above specifies.
 
 `seconds` is the one bound that every episode in the tree shares as a
 single deadline rather than dividing between children. A child's
@@ -596,6 +636,7 @@ The binary has one running form and four forms that run nothing.
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
 foe "task" [--model PROVIDER/MODEL] [--key-file PATH] [--verify PATH]   run the built-in coding workflow
 foe "task" --headless                                    run; no viewer; print the outcome
+foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode seeded from a prefix of SOURCE_DIR's log
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
@@ -623,10 +664,34 @@ for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
 Progress goes to standard error. The log goes to the file.
 
 The log directory is `--log-dir` when given and `.foe/<episode-id>` under
-the current directory otherwise. A directory that already holds a log, as
-one seeded by a fork does, is continued. A `lineage.json` beside the log,
-which a parent writes for a child, supplies the child's id, its parent, and
-its team lead.
+the current directory otherwise. A directory that already holds a log is
+continued under the log's own episode id. One whose log ends at `seed/end`
+— a prepared fork — or at an event boundary with every binding obligation
+closed continues in place. An interrupted log, cut short mid-line or with
+an obligation open, is repaired by seeding a copy at its last clean
+boundary into a fresh directory beside it, named on standard error, which
+the run then continues. Resuming requires the program that ran: a
+configuration whose identity differs from the log's `episode/start.identity`
+is refused with both identities named. A log ending at `seed/end` is
+exempt from that comparison, because a seeded `episode/start` records its
+source's program rather than its own. A finished log — one with
+`episode/end` — accepts nothing and is forked instead. A `lineage.json`
+beside the log, which a parent writes for a child, supplies the child's
+id, its parent, and its team lead.
+
+`--fork SOURCE_DIR --at SEQ` runs a fresh episode seeded from the source
+log's events below SEQ under the seeding rules of
+[log-format.md](log-format.md): the new episode draws a fresh id, its
+`episode/start.fork_origin` names the source episode and the boundary, and
+the task the launch carries — the positional task, or the document's task
+under `--config` — is appended as a `system` inbox item after `seed/end`,
+since the one `task` item per log is the copied one. The boundary's
+validity is the seeding API's rule, surfaced as the seeding error states
+it. The fork's directory is `--log-dir` when given, refused when it
+already holds a log, and `.foe/<episode-id>` otherwise. A slate — several
+forks from one prefix — is a caller-side loop over this form;
+[deferred.md](deferred.md) states what first-class support would add and
+the evidence that would justify it.
 
 A task given with `--config` replaces the document's own `task`. A task given
 without `--config` uses a built-in coding workflow. An implementation episode
@@ -807,7 +872,7 @@ supplies only the two directory-backed resolvers `foe plan` builds for its
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 5,000 lines,
+sandbox, and spawning — and its Rust source stays under 5,200 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/config`, which is budgeted
