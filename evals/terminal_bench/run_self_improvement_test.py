@@ -128,6 +128,11 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertEqual(diagnosis["grants"]["read"], ["/tmp"])
         self.assertIn("block", config["tools"])
+        self.assertIn(DIAGNOSIS_VALIDATOR_TOOL, config["tools"])
+        self.assertEqual(
+            config["tool_defs"][DIAGNOSIS_VALIDATOR_TOOL]["exec"],
+            "/tmp/diagnosis-validator",
+        )
         self.assertNotIn("input_tokens", config["budget"])
         self.assertNotIn("output_tokens", implementation["budget"])
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")

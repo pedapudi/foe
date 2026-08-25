@@ -1074,13 +1074,20 @@ def build_config(
         "version": 2,
         "name": "identity-bound-trajectory-self-improvement",
         "instructions": {"role": "Run the declared diagnosis, implementation, and independent source-audit workflow."},
-        "tools": [*CODING_TOOLS, "block", "evidence", "check"],
+        "tools": [
+            *CODING_TOOLS,
+            "block",
+            "evidence",
+            "check",
+            DIAGNOSIS_VALIDATOR_TOOL,
+        ],
         "tool_defs": {
             "evidence": {
                 "exec": "/usr/bin/cat",
                 "description": "Return identity-bound trajectory diagnoses without modifying them.",
             },
             "check": check_tool,
+            DIAGNOSIS_VALIDATOR_TOOL: validator_tool,
         },
         "grants": {"read": root_read_roots, "write": write_roots, "execute": execute},
         "budget": {
