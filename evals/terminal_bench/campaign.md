@@ -318,8 +318,22 @@ The public completion checker now validates the complete annealed tract and
 returns failures through `done_when.verify`. Its SHA-256 digest is
 `a93cc0ff4964ef3a9e0096288f06f0d991ef5a4b80fd25f7723374c4b0a59450`.
 An untouched workspace produced a finding. An independent oracle passed the
-checker and received `1.0` from the unchanged task-owned grader. A
-provider-backed convergence run remains required.
+checker and received `1.0` from the unchanged task-owned grader.
+
+Two priority-service convergence attempts used source tree
+`git-tree-sha1:edbf696b434b3027f6a55c5a21e18d81e2b30fea`. Each attempt gave
+Sol `low` and a fresh Sol `xhigh` audit 60 calls. Both received `1.0` from the
+unchanged task-owned grader. The first used 28 calls. One response lacked
+provider usage, so its recorded 275,518 input tokens, 144,896 cached-input
+tokens, and 14,385 output tokens are incomplete. The repeat used 30 calls,
+372,011 input tokens, 128,000 cached-input tokens, and 23,912 output tokens.
+Its estimated cost was $1.505484.
+
+The verifier-governed workflow is reproducible at two successes from two
+attempts. Together with the GPT-2 and regex-chess results, this establishes
+three development failures converted into repeated successes by changes to
+Foe's execution contract. The DNA result also shows transfer of the generated
+audit intervention beyond its GPT-2 and regex-chess activation tasks.
 
 The retained local evidence is stored under these paths:
 
@@ -327,6 +341,8 @@ The retained local evidence is stored under these paths:
 - `target/terminal-bench-jobs/priority-dna-assembly-sol-low-baseline-20260825T022447Z`;
 - `target/terminal-bench-jobs/priority-self-improved-dna-assembly-20260825T022725Z`;
 - `target/terminal-bench-jobs/priority-self-improved-dna-assembly-repeat-20260825T024247Z`;
+- `target/terminal-bench-jobs/priority-verifier-dna-low-xhigh-audit-20260825T030304Z`;
+- `target/terminal-bench-jobs/priority-verifier-dna-low-xhigh-audit-repeat-20260825T031056Z`;
 - `target/terminal-bench-verifier-controls/controls-20260825T025942Z`.
 
 ## Cost accounting
