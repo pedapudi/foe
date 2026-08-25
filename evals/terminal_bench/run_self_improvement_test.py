@@ -198,6 +198,47 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertEqual(audits, [{"reasoning_effort": "high", "model_calls": 60}])
 
+    def test_source_diagnosis_does_not_require_an_independent_audit_setting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text(
+                json.dumps(
+                    {
+                        "evaluation_summary": [
+                            {
+                                "attempts": 1,
+                                "verified_successes": 0,
+                                "execution_configuration": {
+                                    "implementation": {
+                                        "model": "openai-codex/gpt-5.6-sol",
+                                        "reasoning_effort": "low",
+                                    },
+                                    "service_tier": "priority",
+                                    "token_policy": "measurement_only",
+                                },
+                            },
+                            {
+                                "attempts": 1,
+                                "verified_successes": 1,
+                                "execution_configuration": {
+                                    "implementation": {
+                                        "model": "openai-codex/gpt-5.6-sol",
+                                        "reasoning_effort": "xhigh",
+                                    },
+                                    "service_tier": "priority",
+                                    "token_policy": "measurement_only",
+                                },
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            configuration = failed_base_configuration(evidence)
+            audits = supported_independent_audits(evidence, configuration)
+        self.assertEqual(configuration["reasoning_effort"], "low")
+        self.assertEqual(audits, [])
+
     def test_workflow_candidate_accepts_only_an_observed_successful_setting(self):
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "evidence.json"

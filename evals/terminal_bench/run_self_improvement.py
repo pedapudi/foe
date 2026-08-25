@@ -152,10 +152,6 @@ def supported_independent_audits(
             }
         )
         supported[json.dumps(setting, sort_keys=True)] = setting
-    if not supported:
-        raise ValueError(
-            "self-improvement evidence has no repeated successful independent-audit setting"
-        )
     return [supported[key] for key in sorted(supported)]
 
 

@@ -398,6 +398,10 @@ only model capability or requires semantic task knowledge absent from the
 log. That choice ends the workflow before a coding episode and sets
 `direct_implementation_required`.
 
+Source diagnosis does not require a successful independent-audit setting.
+That setting is required only when the diagnosis selects
+`configure-workflow`.
+
 When the diagnosis chooses `implement-source`, the configured coding model
 acts with `read`, `grep`, `edit`, and `bash`. The diagnosis node's branch edge
 controls whether the coding node fires. The coding node lists `task` and
