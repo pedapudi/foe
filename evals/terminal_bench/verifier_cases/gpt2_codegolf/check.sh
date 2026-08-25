@@ -59,3 +59,8 @@ if ! check_continuation 3 \
     'Once upon a time, the world was a place of great beauty and great danger. The world was a place of great'; then
     exit 0
 fi
+if ! check_continuation 4 \
+    'THE PACKAGE IS MARKED "EXPERIMENTAL", WITHOUT' \
+    'THE PACKAGE IS MARKED "EXPERIMENTAL", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE'; then
+    exit 0
+fi

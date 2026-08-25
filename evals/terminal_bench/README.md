@@ -122,8 +122,9 @@ The selected scenarios cover four forms of completion:
   exact `oligotm` temperatures, and compatible assembly overhangs.
 - `fix-git` checks that the lost commit reaches `master` in a clean worktree.
 - `gpt2-codegolf` enforces the source-size and compilation requirements. It
-  checks three public arg-max continuations that differ from the task-owned
-  verifier input.
+  checks four public arg-max continuations that differ from the task-owned
+  verifier input. One prompt exercises quoted uppercase text and adjacent
+  punctuation.
 - `large-scale-text-editing` checks the allowed Vim grammar and a temporary
   10,000-row sample. The task-owned verifier applies the script to all one
   million rows.
