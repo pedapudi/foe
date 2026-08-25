@@ -506,7 +506,9 @@ validation observations, and unresolved risks. A fresh source-audit child
 receives the objective, diagnosis, and handoff. It inspects the shared candidate
 tree, repairs defects, and treats the checker as the completion authority. The
 audit traces proposed resources through node return, workflow settlement, and
-external evaluation before it accepts a lifecycle-dependent mechanism.
+external evaluation before it accepts a lifecycle-dependent mechanism. Source
+audit is a conditional Sol xhigh escalation. Task execution and source
+implementation remain Sol low by default.
 
 When the diagnosis chooses `configure-workflow`, the runner requires the
 evidence to contain exactly one independent-audit setting with at least two

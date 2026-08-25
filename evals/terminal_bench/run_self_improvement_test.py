@@ -135,6 +135,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("Treat the diagnosis as a hypothesis", implementation["instructions"]["validation"])
         self.assertIn("source lifecycle", audit["instructions"]["evidence"])
         self.assertIn("workflow settlement", audit["instructions"]["architecture"])
+        self.assertEqual(audit["model"]["reasoning_effort"], "xhigh")
+        self.assertEqual(audit["model"]["service_tier"], "default")
         self.assertEqual(audit["done_when"], {"verify": "check", "retries": 4})
         self.assertEqual(
             implementation["done_when"]["returns"]["required"],

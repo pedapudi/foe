@@ -1106,9 +1106,29 @@ tokens. Its estimated cost was $1.019905. The retained episode is
 Source self-improvement now separates implementation from acceptance. The
 implementation child returns a typed candidate handoff. A fresh source-audit
 child inspects the diff, source ownership, tests, specifications, and resource
-lifecycle. The audit checker owns completion and has four correction attempts.
-This structure prevents the implementation child from certifying its own
-architectural hypothesis.
+lifecycle. The audit uses Sol with xhigh reasoning because source modification
+activates the campaign's conditional escalation rule. Its checker owns
+completion and has four correction attempts. This structure prevents the
+implementation child from certifying its own architectural hypothesis.
+
+The first independently audited source candidate passed repository validation.
+It gave the built-in audit a `session` tool and promised to retain services
+through in-episode verification. The implementation handoff identified cleanup
+and external environment teardown as unresolved risks, but the low-reasoning
+source audit accepted the candidate without repair. The source workflow used
+24 model calls and cost an estimated $1.164434.
+
+The unchanged closed-book `git-multibranch` task rejected that candidate. The
+audit started SSH and HTTPS services, validated them successfully, and stopped
+both sessions before returning. The task-owned grader then failed
+`test_multi_branch_https_deploy`. The attempt used 21 model calls and cost an
+estimated $0.596874. Its Foe outcome was completed and its trace conformed. The
+retained task run is
+`/home/sunil/git/foe-live-state-source-candidate-independent-audit/target/terminal-bench-jobs/standard-autonomous-source-audit-live-state-git-multibranch-20260825T095536Z`.
+
+Repository validity therefore did not establish task-quality improvement. The
+candidate remains rejected. The source-audit stage now uses the allowed xhigh
+reasoning escalation when a diagnosis selects a source change.
 
 The direct source candidate adds one general rule to both built-in model roles.
 A task that requires a service or live machine state must apply its

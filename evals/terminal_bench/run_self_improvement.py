@@ -27,6 +27,7 @@ from workflow_candidate import validate_independent_audit
 DIAGNOSIS_CALLS = 20
 IMPLEMENTATION_CALLS = 28
 AUDIT_CALLS = 32
+AUDIT_REASONING_EFFORT = "xhigh"
 DIAGNOSIS_SECONDS = 1_800
 IMPLEMENTATION_SECONDS = 3_600
 AUDIT_SECONDS = 3_600
@@ -594,6 +595,7 @@ def build_config(
         },
         "done_when": {"returns": implementation_handoff},
     }
+    audit_model = {**implementation_model, "reasoning_effort": AUDIT_REASONING_EFFORT}
     audit = {
         "name": "audit-and-repair-foe-improvement",
         "instructions": {
@@ -611,6 +613,7 @@ def build_config(
             "seconds": AUDIT_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
         },
+        "model": audit_model,
         "done_when": {"verify": "check", "retries": 4},
     }
     return {
@@ -849,6 +852,7 @@ def main(argv: list[str] | None = None) -> int:
         "evaluation": "identity-bound-trajectory-self-improvement",
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "source_audit_reasoning_effort": AUDIT_REASONING_EFFORT,
         "service_tier": args.service_tier,
         "chatgpt_credit_multiplier": (
             FAST_SERVICE_CREDIT_MULTIPLIER if args.service_tier == "priority" else 1.0
