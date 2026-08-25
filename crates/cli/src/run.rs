@@ -102,6 +102,8 @@ pub struct Options {
     pub key_file: Option<PathBuf>,
     /// An executable verifier for the built-in coding workflow.
     pub verify: Option<PathBuf>,
+    /// Kernel confinement mode for the built-in coding workflow.
+    pub sandbox: Option<String>,
     pub log_dir: Option<PathBuf>,
     pub no_open: bool,
     pub headless: bool,
@@ -200,12 +202,19 @@ fn load_config(options: &Options) -> Result<Config, String> {
             }
             None => default_model()?.ok_or(NO_DEFAULT_MODEL)?,
         };
-        return builtin_config(task, model, options.key_file.as_deref(), options.verify.as_deref());
+        return builtin_config(
+            task,
+            model,
+            options.key_file.as_deref(),
+            options.verify.as_deref(),
+            options.sandbox.as_deref(),
+        );
     };
-    if options.verify.is_some() {
-        return Err("--verify applies to the built-in coding workflow; a configuration document declares its own \
-                    done_when and skip_when_verified"
-            .into());
+    if options.verify.is_some() || options.sandbox.is_some() {
+        let option = if options.verify.is_some() { "--verify" } else { "--sandbox" };
+        return Err(format!(
+            "{option} applies to the built-in coding workflow; a configuration document declares its own behavior"
+        ));
     }
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut config = foe_config::config::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -256,6 +265,7 @@ fn builtin_config(
     mut model: ModelConfig,
     key_file: Option<&Path>,
     verify: Option<&Path>,
+    sandbox: Option<&str>,
 ) -> Result<Config, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
     let explicit_reasoning = model.option("reasoning_effort").is_some();
@@ -292,7 +302,7 @@ fn builtin_config(
     });
     let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });
     let tools = serde_json::json!(["read", "grep", "edit", "bash"]);
-    let document = serde_json::json!({
+    let mut document = serde_json::json!({
         "version": foe_config::config::CONFIG_VERSION,
         "name": "coding",
         "instructions": { "role": BUILTIN_INSTRUCTION },
@@ -341,10 +351,15 @@ fn builtin_config(
         },
         "task": task,
     });
+    if let Some(mode) = sandbox {
+        if !matches!(mode, "best-effort" | "required" | "off") {
+            return Err(format!("--sandbox {mode}: expected best-effort, required, or off"));
+        }
+        document["sandbox"] = serde_json::json!({ "mode": mode });
+    }
     if let Some(check) = verify {
         let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
         let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": cwd });
-        let mut document = document;
         document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
         document["tool_defs"] = serde_json::json!({ "check": def });
         for node in ["implement-task", "audit-and-repair-task"] {

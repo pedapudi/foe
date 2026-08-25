@@ -576,7 +576,7 @@ The binary has one running form and six forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
-foe "task" [--model PROVIDER/MODEL] [--key-file PATH] [--verify PATH]   run the built-in coding workflow
+foe "task" [--model PROVIDER/MODEL] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
 foe "task" --headless                                    run; no viewer; print the outcome
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
@@ -632,6 +632,10 @@ runs, including when implementation-side checks or claims indicate success,
 and only its accepted terminal verification can complete the workflow.
 Without `--verify`, the independent audit still always runs and completes
 under its typed return contract.
+
+`--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
+workflow. The default is `best-effort`. A configuration document declares
+its own `sandbox.mode`, so `--sandbox` cannot accompany `--config`.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
 interpreters, and repository tools. Both episodes receive the recorded result

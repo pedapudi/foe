@@ -17,10 +17,12 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert!(parse("login a b").is_err(), "login takes one provider");
     assert!(matches!(parse("view logs --serve --port 8080"), Ok(Command::View { serve: true, port: 8080, .. })));
     assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(run::Options { host: true, .. }))));
-    let Ok(Command::Run(options)) = parse("fix --model anthropic/m --key-file k --headless --no-open") else {
+    let Ok(Command::Run(options)) = parse("fix --model anthropic/m --key-file k --sandbox off --headless --no-open")
+    else {
         panic!()
     };
     assert_eq!((options.task.as_deref(), options.headless, options.no_open), (Some("fix"), true, true));
+    assert_eq!(options.sandbox.as_deref(), Some("off"));
     assert!(parse("plan").is_err(), "plan needs --config");
     assert!(parse("schema --json").is_err(), "an option of another form is refused");
     assert!(parse("fix --host").is_err(), "--host takes its task from the configuration");
@@ -162,6 +164,14 @@ fn verifier_help_names_terminal_audit_completion() {
     let text = help_of(&FORMS[0]);
     assert!(text.contains("acceptance completes the built-in terminal audit"));
     assert!(!text.contains("acceptance skips the audit episode"));
+}
+
+/// docs/design.md "The command line": a built-in run may select any
+/// sandbox mode that the configuration vocabulary defines.
+#[test]
+fn sandbox_help_names_every_supported_mode() {
+    let text = help_of(&FORMS[0]);
+    assert!(text.contains("kernel confinement mode: best-effort, required, or off"));
 }
 
 /// `foe --help` and `foe help` are the same screen, and it names every
