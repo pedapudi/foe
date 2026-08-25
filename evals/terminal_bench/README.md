@@ -80,6 +80,11 @@ model request:
 bazel run //evals/terminal_bench:foe-install-check
 ```
 
+The installation check validates the schema command and every command-line
+option that the built-in workflow invocation uses. An incompatible binary
+fails during setup before a model request. When Foe exits before creating an
+episode log, the adapter reports the retained exit status and standard error.
+
 ## Probe each task container without model spend
 
 The deterministic capability target runs Foe in the pinned `fix-git` task

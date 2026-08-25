@@ -19,6 +19,14 @@ CODING_INSTRUCTION = (
 EVALUATION_LOOP_THRESHOLD = 8
 MIN_AUXILIARY_MODEL_CALLS = 6
 COMPLETION_CHECK_RETRIES = 12
+BUILTIN_WORKFLOW_REQUIRED_OPTIONS = (
+    "--model",
+    "--service-tier",
+    "--key-file",
+    "--sandbox",
+    "--headless",
+    "--log-dir",
+)
 FIXED_EXECUTABLE_PATHS = (
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
@@ -73,6 +81,16 @@ def parse_boolean(value: bool | str, name: str) -> bool:
     if normalized in ("false", "0"):
         return False
     raise ValueError(f"{name} must be true or false")
+
+
+def missing_builtin_workflow_options(help_text: str) -> list[str]:
+    """Return invocation options absent from an installed Foe help page."""
+    declared = {
+        fields[0]
+        for line in help_text.splitlines()
+        if (fields := line.split()) and fields[0].startswith("--")
+    }
+    return [option for option in BUILTIN_WORKFLOW_REQUIRED_OPTIONS if option not in declared]
 
 
 def builtin_workflow_arguments(

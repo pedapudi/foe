@@ -23,6 +23,7 @@ from foe_agent_support import (
     describe_container_environment,
     episode_contains_credential,
     fixed_executable_probe_command,
+    missing_builtin_workflow_options,
     parse_boolean,
     read_episode_summary,
     replace_credential_state,
@@ -192,6 +193,17 @@ class FoeAgent(BaseInstalledAgent):
                 f"{shlex.quote(REMOTE_BINARY)} plan --schema >/dev/null"
             ),
         )
+        if self._built_in_workflow:
+            help_result = await self.exec_as_root(
+                environment,
+                command=f"{shlex.quote(REMOTE_BINARY)} --help",
+            )
+            missing = missing_builtin_workflow_options(help_result.stdout or "")
+            if missing:
+                raise RuntimeError(
+                    "installed Foe binary lacks built-in workflow options: "
+                    + ", ".join(missing)
+                )
 
     async def _retain_credential(self, environment: BaseEnvironment) -> None:
         state = self._credential_file
@@ -347,6 +359,17 @@ class FoeAgent(BaseInstalledAgent):
     @override
     def populate_context_post_run(self, context: AgentContext) -> None:
         episode_dir = self.logs_dir / "foe-episode"
+        if not (episode_dir / "episode.jsonl").is_file():
+            stderr_path = self.logs_dir / "foe.stderr"
+            detail = (
+                stderr_path.read_text(encoding="utf-8", errors="replace").strip()
+                if stderr_path.is_file()
+                else "standard error was not retained"
+            )
+            raise RuntimeError(
+                f"Foe exited with status {self._exit_code} before creating an episode log: "
+                f"{detail[-2000:]}"
+            )
         prices = {self.model_name: self._pricing}
         if self._diagnosis_model is not None and self._diagnosis_pricing is not None:
             prices[self._diagnosis_model] = self._diagnosis_pricing

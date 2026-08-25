@@ -14,12 +14,27 @@ from foe_agent_support import (
     episode_contains_credential,
     estimate_usage_cost,
     fixed_executable_probe_command,
+    missing_builtin_workflow_options,
     parse_boolean,
     read_episode_summary,
 )
 
 
 class ProgramTest(unittest.TestCase):
+    def test_builtin_workflow_install_probe_names_every_missing_option(self):
+        help_text = """options:
+  --model PROVIDER/MODEL
+  --key-file PATH       use this instead of --service-tier configuration
+  --headless
+  --log-dir DIR
+"""
+        self.assertEqual(
+            missing_builtin_workflow_options(help_text),
+            ["--service-tier", "--sandbox"],
+        )
+        complete = help_text + "  --service-tier TIER\n  --sandbox MODE\n"
+        self.assertEqual(missing_builtin_workflow_options(complete), [])
+
     def test_builtin_workflow_invocation_is_explicit_and_has_no_program_file(self):
         arguments = builtin_workflow_arguments(
             "repair it",
