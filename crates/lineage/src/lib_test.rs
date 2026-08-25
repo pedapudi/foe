@@ -1,6 +1,6 @@
 use super::{
-    build_manifest, check_ancestry, digest_of, lineage_identity, manifest_bytes, validate, AncestryReport,
-    CandidateEnvelope, LineageParent, ProgramLineage, StateDocument, MANIFEST_FILE,
+    binding_bytes, build_manifest, check_ancestry, digest_of, lineage_identity, manifest_bytes, validate,
+    AncestryReport, CandidateBinding, CandidateEnvelope, LineageParent, ProgramLineage, StateDocument, MANIFEST_FILE,
 };
 use foe_config::config::{resolve, Program};
 use foe_config::identity::{canonical, compute, sha256_hex, Identity};
@@ -188,8 +188,30 @@ fn write_candidate_files(dir: &Path, child: &Identity) {
     std::fs::write(dir.join("candidate-envelope.json"), envelope).unwrap();
 }
 
-fn seal(dir: &Path, log: &str, seq: u64, f: &Fixture) -> ProgramLineage {
-    let manifest = build_manifest(dir, log, "candidate-envelope.json").unwrap();
+/// Completes the bundle with the candidate binding record for the
+/// verification at `log`/`seq` and the canonical manifest, and returns the
+/// ancestry claim naming that verification.
+fn seal(dir: &Path, proposal: &str, log: &str, seq: u64, f: &Fixture) -> ProgramLineage {
+    let envelope = std::fs::read(dir.join("candidate-envelope.json")).unwrap();
+    let record = CandidateBinding {
+        schema_version: 1,
+        candidate_sha256: digest_of(&envelope),
+        verification_log: log.into(),
+        verification_seq: seq,
+    };
+    std::fs::write(dir.join("candidate-binding.json"), binding_bytes(&record).unwrap()).unwrap();
+    let manifest = build_manifest(dir, proposal, "candidate-envelope.json", Some("candidate-binding.json")).unwrap();
+    seal_manifest(dir, manifest, log, seq, f)
+}
+
+/// Completes a bundle without the candidate binding record, as a bundle
+/// built before the record existed.
+fn seal_without_binding(dir: &Path, log: &str, seq: u64, f: &Fixture) -> ProgramLineage {
+    let manifest = build_manifest(dir, log, "candidate-envelope.json", None).unwrap();
+    seal_manifest(dir, manifest, log, seq, f)
+}
+
+fn seal_manifest(dir: &Path, manifest: super::Manifest, log: &str, seq: u64, f: &Fixture) -> ProgramLineage {
     let bytes = manifest_bytes(&manifest).unwrap();
     std::fs::write(dir.join(MANIFEST_FILE), &bytes).unwrap();
     ProgramLineage {
@@ -204,7 +226,8 @@ fn seal(dir: &Path, log: &str, seq: u64, f: &Fixture) -> ProgramLineage {
 }
 
 /// One proposal bundle under `dir`: the parent episode's log with an
-/// accepted verifier result at seq 1, and the candidate files for `child`.
+/// accepted verifier result at seq 1, the candidate files for `child`, and
+/// the candidate binding record.
 fn bundle(dir: &Path, f: &Fixture, child: &Identity, tool: &str, verifier_identity: &str) -> ProgramLineage {
     write_log(
         &dir.join("episode"),
@@ -215,7 +238,7 @@ fn bundle(dir: &Path, f: &Fixture, child: &Identity, tool: &str, verifier_identi
         ],
     );
     write_candidate_files(dir, child);
-    seal(dir, "episode/episode.jsonl", 1, f)
+    seal(dir, "episode/episode.jsonl", "episode/episode.jsonl", 1, f)
 }
 
 fn check(
@@ -249,7 +272,86 @@ fn a_valid_root_and_one_valid_descendant() {
     assert_eq!(report.chain.len(), 2);
     assert_eq!(report.chain[0].program_identity, child.hash);
     assert_eq!(report.chain[1].program_identity, f.parent.hash);
+    // The binding record closes exact input binding, and the configured
+    // verifier runs in the parent program itself, so every step holds.
+    assert!(report.unverifiable.is_empty(), "{:?}", report.unverifiable);
+}
+
+#[test]
+fn a_bundle_without_the_binding_record_keeps_the_graded_result() {
+    let f = fixture("no-binding-record");
+    let child = child_of(&f, "descendant");
+    let dir = f.root.join("bundle");
+    std::fs::create_dir_all(&dir).unwrap();
+    write_log(
+        &dir.join("episode"),
+        vec![
+            start("ep_root", None, &f.parent.hash, f.parent_program.to_value()),
+            accepted("check", &f.exec_identity),
+            ended(),
+        ],
+    );
+    write_candidate_files(&dir, &child);
+    let claim = seal_without_binding(&dir, "episode/episode.jsonl", 1, &f);
+    let state = StateDocument { identity_document: child.document.clone(), program_lineage: Some(claim.clone()) };
+    let (root_id, root) = root_state(&f);
+    let report = check(&state, BTreeMap::from([(root_id, root)]), BTreeMap::from([(claim.evidence, dir)])).unwrap();
+    assert_eq!(report.chain.len(), 2);
     assert!(report.unverifiable.iter().any(|n| n.contains("candidate_sha256")), "{:?}", report.unverifiable);
+}
+
+#[test]
+fn a_binding_record_that_contradicts_the_claim_or_the_envelope_is_rejected() {
+    let f = fixture("wrong-binding-record");
+    let child = child_of(&f, "descendant");
+    let (root_id, root) = root_state(&f);
+    for (marker, record) in [
+        (
+            "coordinates",
+            CandidateBinding {
+                schema_version: 1,
+                candidate_sha256: String::new(),
+                verification_log: "episode/episode.jsonl".into(),
+                verification_seq: 2,
+            },
+        ),
+        (
+            "digest",
+            CandidateBinding {
+                schema_version: 1,
+                candidate_sha256: digest_of(b"another candidate"),
+                verification_log: "episode/episode.jsonl".into(),
+                verification_seq: 1,
+            },
+        ),
+    ] {
+        let dir = f.root.join(format!("bundle-{marker}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_log(
+            &dir.join("episode"),
+            vec![
+                start("ep_root", None, &f.parent.hash, f.parent_program.to_value()),
+                accepted("check", &f.exec_identity),
+                ended(),
+            ],
+        );
+        write_candidate_files(&dir, &child);
+        let mut record = record;
+        if record.candidate_sha256.is_empty() {
+            record.candidate_sha256 = digest_of(&std::fs::read(dir.join("candidate-envelope.json")).unwrap());
+        }
+        std::fs::write(dir.join("candidate-binding.json"), binding_bytes(&record).unwrap()).unwrap();
+        let manifest =
+            build_manifest(&dir, "episode/episode.jsonl", "candidate-envelope.json", Some("candidate-binding.json"))
+                .unwrap();
+        let claim = seal_manifest(&dir, manifest, "episode/episode.jsonl", 1, &f);
+        let state = StateDocument { identity_document: child.document.clone(), program_lineage: Some(claim.clone()) };
+        let error =
+            check(&state, BTreeMap::from([(root_id.clone(), root.clone())]), BTreeMap::from([(claim.evidence, dir)]))
+                .unwrap_err()
+                .to_string();
+        assert!(error.contains("candidate_binding"), "{marker}: {error}");
+    }
 }
 
 #[test]
@@ -444,12 +546,7 @@ fn a_verifier_result_in_a_spawned_child_log_is_reached_by_provenance() {
         ],
     );
     write_candidate_files(&dir, &child);
-    let claim = seal(&dir, "episode/episode.jsonl", 1, &f);
-    let claim = ProgramLineage {
-        verification_log: "episode/children/ep_kid/episode.jsonl".into(),
-        verification_seq: 1,
-        ..claim
-    };
+    let claim = seal(&dir, "episode/episode.jsonl", "episode/children/ep_kid/episode.jsonl", 1, &f);
     let state = StateDocument { identity_document: child.document.clone(), program_lineage: Some(claim.clone()) };
     let (root_id, root_doc) = root_state(&f);
     let report = check(&state, BTreeMap::from([(root_id, root_doc)]), BTreeMap::from([(claim.evidence, dir)])).unwrap();
