@@ -493,7 +493,7 @@ impl Executor {
                     let configured = sh.registry.source(tool) == Some(Source::Configured);
                     Box::pin(async move {
                         let _permit = permit;
-                        let value = sh.registry.dispatch(&sh.handles, &call, step, spill, deadline).await;
+                        let value = sh.registry.dispatch(&sh.handles, &call, step, spill, deadline, None).await;
                         classify_tool(value, configured)
                     })
                 }

@@ -153,14 +153,15 @@ impl Registry {
             Effect::Execs => (h.reader.clone(), None, h.executor.clone(), None, h.sessions.clone()),
             Effect::Spawns => (h.reader.clone(), None, None, h.spawner.clone(), None),
         };
-        CallCtx { call_id, step, reader, writer, executor, spawner, sessions, spill_dir, deadline }
+        CallCtx { call_id, step, reader, writer, executor, spawner, sessions, composer: None, spill_dir, deadline }
     }
 
     /// Runs one call with the handles its effect entitles it to. An unknown
     /// name, or arguments outside the tool's declared parameter schema, yield
     /// an error result before the tool receives any capability handle. This is
     /// the one place a tool call's arguments are checked, for built-in,
-    /// configured, and host tools alike.
+    /// configured, and host tools alike. `composer` is `Some` only when the
+    /// agent loop dispatches the [`crate::COMPOSING_TOOL`].
     pub async fn dispatch(
         &self,
         handles: &Handles,
@@ -168,6 +169,7 @@ impl Registry {
         step: u32,
         spill_dir: PathBuf,
         deadline: Option<Instant>,
+        composer: Option<Arc<dyn crate::Composer>>,
     ) -> ToolValue {
         let Some(entry) = self.entry(&call.name) else {
             return ToolValue::error(text::fill(text::UNKNOWN_TOOL, &[("name", &call.name)]));
@@ -179,7 +181,8 @@ impl Registry {
         if let Some(reason) = reason {
             return ToolValue::error(text::fill(text::INVALID_ARGS, &[("name", &call.name), ("reason", &reason)]));
         }
-        let ctx = self.ctx(entry.spec.effect, handles, call.id.clone(), step, spill_dir, deadline);
+        let mut ctx = self.ctx(entry.spec.effect, handles, call.id.clone(), step, spill_dir, deadline);
+        ctx.composer = composer;
         entry.tool.call(call.args.clone(), &ctx).await
     }
 
@@ -261,6 +264,8 @@ impl ExecTool {
             timeout: Duration::from_secs(self.def.timeout_seconds),
             network: self.def.network,
             stdin: None,
+            policy: None,
+            pass_fds: Vec::new(),
         }
     }
 

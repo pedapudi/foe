@@ -774,3 +774,104 @@ fn tolerant_parsing_closes_what_a_truncated_stream_left_open() {
     assert_eq!(parse_tolerant(""), json!({}));
     assert_eq!(parse_tolerant("not json"), json!({}));
 }
+
+/// A tool named `python` that drives the composer it receives: one ordinary
+/// inner call, one whose arguments are not an object, and one naming an
+/// excluded control tool.
+struct ComposeProbe {
+    spec: foe_config::ToolSpec,
+}
+
+#[async_trait::async_trait]
+impl Tool for ComposeProbe {
+    fn spec(&self) -> &foe_config::ToolSpec {
+        &self.spec
+    }
+
+    async fn call(&self, _args: serde_json::Value, ctx: &crate::CallCtx) -> crate::ToolValue {
+        let Some(composer) = ctx.composer.clone() else {
+            return crate::ToolValue::error("no composer");
+        };
+        let (first, first_err) = composer.call("probe", json!({ "n": 1 })).await.unwrap();
+        let (_, violation) = composer.call("probe", json!([])).await.unwrap();
+        let (refused_value, refused) = composer.call("block", json!({})).await.unwrap();
+        crate::ToolValue::ok(
+            json!({
+                "first": first, "first_err": first_err, "violation": violation,
+                "refused": refused, "refused_message": refused_value["error"],
+            }),
+            "composed",
+        )
+    }
+}
+
+/// docs/code-mode.md and docs/log-format.md: the loop hands a composer to
+/// the call named `python` alone; every inner dispatch is recorded as
+/// `tool/inner-call` and its ordinary `tool/result`, an inner argument
+/// violation is an error result, derived messages carry the outer result
+/// alone, and the obligations balance through fold validation.
+#[tokio::test]
+async fn a_composing_call_records_inner_calls_and_excludes_them_from_derived_messages() {
+    let spec = crate::test_util::spec(crate::COMPOSING_TOOL, Effect::Pure);
+    let mut probe = crate::test_util::spec("probe", Effect::Pure);
+    probe.params = json!({
+        "type": "object", "properties": { "n": { "type": "integer" } },
+        "required": ["n"], "additionalProperties": false
+    });
+    let (outcome, events) = Fixture::new(
+        "compose",
+        |v| v["tools"] = json!([crate::COMPOSING_TOOL, "probe"]),
+        vec![turn("", vec![call("tc_p", crate::COMPOSING_TOOL, "{}")]), turn("done", vec![])],
+    )
+    .tool(ComposeProbe { spec })
+    .tool(Probe { spec: probe, ..Probe::new("probe", Effect::Pure) })
+    .run()
+    .await;
+    assert!(matches!(outcome, Outcome::Completed { .. }), "{outcome:?}");
+    let inner: Vec<(&str, u32)> = events
+        .iter()
+        .filter_map(|e| match &e.data {
+            EventData::ToolInnerCall(c) => Some((c.call_id.as_str(), c.index)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(inner, [("tc_p_0", 0), ("tc_p_1", 1)], "the refused control tool is never recorded");
+    let results: Vec<(&str, bool)> = events
+        .iter()
+        .filter_map(|e| match &e.data {
+            EventData::ToolResult(r) => Some((r.call_id.as_str(), r.is_error)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        results,
+        [("tc_p_0", false), ("tc_p_1", true), ("tc_p", false)],
+        "each inner result precedes the outer result; the argument violation is an error"
+    );
+    let outer = events
+        .iter()
+        .find_map(|e| match &e.data {
+            EventData::ToolResult(r) if r.call_id == "tc_p" => Some(r.value.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(outer["first_err"], json!(false));
+    assert_eq!(outer["first"]["args"]["n"], json!(1));
+    assert_eq!(outer["violation"], json!(true));
+    assert_eq!(outer["refused"], json!(true));
+    assert!(outer["refused_message"].as_str().unwrap().contains("block"), "{outer}");
+    let EventData::ModelRequest(last) =
+        &events.iter().rev().find(|e| matches!(e.data, EventData::ModelRequest(_))).unwrap().data
+    else {
+        panic!()
+    };
+    let tools: Vec<&str> = last
+        .messages
+        .iter()
+        .filter_map(|m| match m {
+            foe_log::Message::Tool { call_id, .. } => Some(call_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tools, ["tc_p"], "the outer result alone reaches the model");
+}

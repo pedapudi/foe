@@ -558,6 +558,7 @@ impl Episode {
         }
         let deadline = self.deadline();
         let run = run_calls(
+            self.p.log.clone(),
             self.p.registry.clone(),
             self.p.handles.clone(),
             message.tool_calls.clone(),
@@ -586,7 +587,6 @@ impl Episode {
         Ok(Ok(results))
     }
 
-    /// Appends one `tool/result`, spilling a large value first.
     fn append_result(
         &self,
         call: &ToolCall,
@@ -595,27 +595,7 @@ impl Episode {
         duration_ms: u64,
         synthetic: bool,
     ) -> Result<ToolResult, RuntimeError> {
-        let subject = value.subject.clone();
-        if let Some(archive) = archive {
-            let archive = crate::retrieval::retain(&self.spill_dir, self.step, &call.id, &archive)?;
-            self.p.log.append(EventData::ToolRenderingArchive(archive))?;
-        }
-        let (value, rendered, spill) = spill(&self.spill_dir, &call.id, value)?;
-        let is_error = value.get("error").is_some() && value.as_object().is_some_and(|o| o.len() == 1);
-        let result = ToolResult {
-            step: self.step,
-            call_id: call.id.clone(),
-            name: call.name.clone(),
-            value,
-            rendered,
-            is_error,
-            spill,
-            subject,
-            duration_ms,
-            synthetic,
-        };
-        self.p.log.append(EventData::ToolResult(result.clone()))?;
-        Ok(result)
+        append_result(&self.p.log, &self.spill_dir, self.step, call, value, archive, duration_ms, synthetic)
     }
 
     /// Block, looping, `done_when`, then budget. A turn that completes the
@@ -734,9 +714,92 @@ pub async fn until(deadline: Option<Instant>) {
     }
 }
 
+/// Appends one `tool/result`, spilling a large canonical value first. The
+/// loop writes every model-issued result through this, and [`InnerCalls`]
+/// writes every inner result through it.
+#[allow(clippy::too_many_arguments)]
+fn append_result(
+    log: &Log,
+    spill_dir: &Path,
+    step: u32,
+    call: &ToolCall,
+    value: ToolValue,
+    archive: Option<crate::retrieval::ArchivedRendering>,
+    duration_ms: u64,
+    synthetic: bool,
+) -> Result<ToolResult, RuntimeError> {
+    let subject = value.subject.clone();
+    if let Some(archive) = archive {
+        let archive = crate::retrieval::retain(spill_dir, step, &call.id, &archive)?;
+        log.append(EventData::ToolRenderingArchive(archive))?;
+    }
+    let (value, rendered, spill) = spill(spill_dir, &call.id, value)?;
+    let is_error = value.get("error").is_some() && value.as_object().is_some_and(|o| o.len() == 1);
+    let result = ToolResult {
+        step,
+        call_id: call.id.clone(),
+        name: call.name.clone(),
+        value,
+        rendered,
+        is_error,
+        spill,
+        subject,
+        duration_ms,
+        synthetic,
+    };
+    log.append(EventData::ToolResult(result.clone()))?;
+    Ok(result)
+}
+
+/// The composer the loop hands the composing tool for one outer call: each
+/// inner call appends a `tool/inner-call` event, dispatches through the
+/// ordinary registry with the episode's handles, and appends the inner
+/// `tool/result`, which derived messages exclude. The composing tool
+/// itself, `block`, and the synthesized `return` are refused before any
+/// event is written: the first would recurse, and the other two have
+/// meaning only in a model-issued top-level call.
+struct InnerCalls {
+    log: Arc<Log>,
+    registry: Arc<Registry>,
+    handles: Handles,
+    outer_call_id: String,
+    step: u32,
+    spill_dir: PathBuf,
+    deadline: Option<Instant>,
+    index: std::sync::atomic::AtomicU32,
+}
+
+#[async_trait::async_trait]
+impl crate::Composer for InnerCalls {
+    async fn call(&self, name: &str, args: Value) -> Result<(Value, bool), RuntimeError> {
+        if [crate::COMPOSING_TOOL, text::BLOCK_NAME, text::RETURN_NAME].contains(&name) {
+            let message = format!("`{name}` is not callable from a `{}` program", crate::COMPOSING_TOOL);
+            return Ok((serde_json::json!({ "error": message }), true));
+        }
+        let index = self.index.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let call = ToolCall { id: format!("{}_{index}", self.outer_call_id), name: name.into(), args };
+        self.log.append(EventData::ToolInnerCall(foe_log::ToolInnerCall {
+            outer_call_id: self.outer_call_id.clone(),
+            call_id: call.id.clone(),
+            index,
+            name: call.name.clone(),
+            args: call.args.clone(),
+        }))?;
+        let started = Instant::now();
+        let value =
+            self.registry.dispatch(&self.handles, &call, self.step, self.spill_dir.clone(), self.deadline, None).await;
+        // The program receives the canonical value even when the log holds
+        // a spill locator in its place.
+        let canonical = value.value.clone();
+        let ms = started.elapsed().as_millis() as u64;
+        Ok((canonical, append_result(&self.log, &self.spill_dir, self.step, &call, value, None, ms, false)?.is_error))
+    }
+}
+
 /// Pure and read-only calls run concurrently; every other call waits for
 /// the calls before it and runs alone. Results come back in issue order.
 async fn run_calls(
+    log: Arc<Log>,
     registry: Arc<Registry>,
     handles: Handles,
     calls: Vec<ToolCall>,
@@ -756,9 +819,21 @@ async fn run_calls(
     for (i, call) in calls.into_iter().enumerate() {
         let concurrent = registry.effect(&call.name).is_none_or(|e| e.concurrent());
         let (registry, handles, spill_dir) = (registry.clone(), handles.clone(), spill_dir.clone());
+        let composer: Option<Arc<dyn crate::Composer>> = (call.name == crate::COMPOSING_TOOL).then(|| {
+            Arc::new(InnerCalls {
+                log: log.clone(),
+                registry: registry.clone(),
+                handles: handles.clone(),
+                outer_call_id: call.id.clone(),
+                step,
+                spill_dir: spill_dir.clone(),
+                deadline,
+                index: 0.into(),
+            }) as Arc<dyn crate::Composer>
+        });
         let task = async move {
             let started = Instant::now();
-            let value = registry.dispatch(&handles, &call, step, spill_dir, deadline).await;
+            let value = registry.dispatch(&handles, &call, step, spill_dir, deadline, composer).await;
             (i, value, started.elapsed().as_millis() as u64)
         };
         if concurrent {

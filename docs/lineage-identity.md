@@ -322,9 +322,9 @@ A state document names one parent. Merging several parent histories into one
 claim requires a separate design because one successful verifier result does
 not establish compatibility with every parent.
 
-## Interaction with code mode
+## Interaction with the python tool
 
-A [code-mode](code-mode.md) call is ordinary behavior inside one episode.
+A [python](code-mode.md) call is ordinary behavior inside one episode.
 Its source is a tool argument recorded in the episode log. It does not alter
 the program state or request header.
 

@@ -110,6 +110,8 @@ impl Transport for ExecTransport {
             timeout: TIMEOUT,
             network: true,
             stdin: Some(self.request_line(&req).into_bytes()),
+            policy: None,
+            pass_fds: Vec::new(),
         };
         let executor = self.executor.clone();
         let joined = tokio::task::spawn_blocking(move || executor.run(request)).await;

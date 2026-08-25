@@ -5,7 +5,7 @@ specification, which is what the model sees and what identity hashes, and an
 implementation, which runs when the model calls it. [design.md](design.md)
 defines the specification (`ToolSpec`), the declared effect, and how the
 registry checks effects against grants. This document specifies where tools
-come from, the contract for tools that are executables, the five built-in
+come from, the contract for tools that are executables, the six built-in
 coding tools, archived result retrieval, and the budget that bounds what one
 model turn's results show.
 
@@ -14,9 +14,9 @@ model turn's results show.
 The `tools` list in the configuration names every tool the model may call.
 Each name resolves against three sources, checked in this order.
 
-1. **Built-in tools.** Implemented in the runtime. There are twelve: the
-   five coding tools `read`, `grep`, `edit`, `bash`, and `session`
-   specified below;
+1. **Built-in tools.** Implemented in the runtime. There are fourteen: the
+   six coding tools `read`, `grep`, `edit`, `bash`, `session`, and
+   `python` specified below;
    `retrieve`, which reads a bounded segment of a prior tool rendering;
    `block`, by which the model reports a blocking condition; `spawn`, which
    starts a child episode, and `wait`, which blocks until every child this
@@ -133,9 +133,10 @@ replaced binary at the same path changes identity.
 
 ## Built-in coding tools
 
-The five coding tools live in the `foe-code` crate, which exposes two
+The six coding tools live in the `foe-code` crate, which exposes two
 functions. `foe_code::all()` returns every coding tool; `foe_code::readonly()`
-returns only `read` and `grep`. The `bash` and `session` tools are compiled
+returns only `read` and `grep`. The `bash`, `session`, and `python` tools
+are compiled
 only when the crate's `exec` feature is enabled, which they are by default.
 A build without that feature contains no code path that starts a process.
 
@@ -154,6 +155,7 @@ the first `read` root, and paths in results are shown relative to it.
 | `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
 | `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule | `session`, `name`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`; `bytes`; `signal` |
+| `python` | execs | `program`, source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
 
 The limits in the table are constants in the crate, and every tool
 description sent to the model is formatted from the same constants.
@@ -172,6 +174,7 @@ model received.
 | `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
 | `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
 | `session` | `session 2: postgres · alive, 41 lines` for a poll, `session 2: exit 0 after 84s` for a stop or for a poll after the end | the error, which names the session id or what refused the start |
+| `python` | `python: 6 call(s), 0 error(s), 123 bytes returned`, the derivation and the returned size | the first line of what ended the program, after the call count |
 
 A tool reports what the call did rather than what it was asked for, because
 the arguments are already in the log: `grep` states how many matches it
@@ -369,6 +372,20 @@ closed, binding limited to the TCP ports `grants.bind` lists. A session is
 how a granted port is served across calls — a server it holds keeps its
 listener until the session ends. Widening outbound access is a separate
 design; no grant kind opens it.
+
+### `python`
+
+The tool runs one model-written program in an isolated interpreter whose
+only capability is calling this episode's tools, and returns the value the
+program's zero-argument `main` computed. The runtime records every inner
+call in the log; the model sees the returned value, a derivation summary,
+and the process's own output as diagnostics. [code-mode.md](code-mode.md)
+specifies the contract, the confinement, the bounds, and the log
+representation; [log-format.md](log-format.md) specifies the
+`tool/inner-call` event. The interpreter is `/usr/bin/python3`, named by
+absolute path; a machine without it returns an ordinary error naming the
+path. The tool is inert for every program that does not list it, and the
+built-in coding workflow does not list it.
 
 ## The turn budget
 

@@ -100,6 +100,22 @@ impl ToolValue {
     }
 }
 
+/// Name of the one composing tool, implemented in `foe-code`. The agent
+/// loop builds a [`Composer`] for a call with this name and for no other,
+/// so no further tool can reach inner dispatch.
+pub const COMPOSING_TOOL: &str = "python";
+
+/// Dispatches inner tool calls on behalf of the composing tool, recording
+/// each as a `tool/inner-call` event and its ordinary `tool/result`. The
+/// registry remains the only path from an inner call to an effect.
+#[async_trait::async_trait]
+pub trait Composer: Send + Sync {
+    /// One inner dispatch. Returns the canonical value and whether it is
+    /// an error. `Err` means the log refused an append; the outer call
+    /// then ends as an error.
+    async fn call(&self, name: &str, args: serde_json::Value) -> Result<(serde_json::Value, bool), RuntimeError>;
+}
+
 /// Capability handles a tool may receive. Each is `Some` only when the
 /// tool's declared effect entitles it and the grants cover it. A tool has
 /// no other route to the filesystem, to processes, or to child episodes.
@@ -111,6 +127,9 @@ pub struct CallCtx {
     pub executor: Option<Arc<dyn Executor>>,
     pub spawner: Option<Arc<dyn Spawner>>,
     pub sessions: Option<Arc<dyn Sessions>>,
+    /// Present only for the call the agent loop recognizes as the
+    /// [`COMPOSING_TOOL`].
+    pub composer: Option<Arc<dyn Composer>>,
     /// Directory for output too large to inline; always present.
     pub spill_dir: PathBuf,
     /// Remaining wall-clock budget, when the episode has one.
@@ -152,6 +171,14 @@ pub struct ExecRequest {
     pub network: bool,
     /// Bytes for standard input; `None` means `/dev/null`.
     pub stdin: Option<Vec<u8>>,
+    /// Replaces the narrowing the executor would derive from `program`.
+    /// The `python` tool confines its interpreter with a policy of its
+    /// own; every other request leaves this unset.
+    pub policy: Option<sandbox::Policy>,
+    /// File descriptors the child receives, each at the number given. The
+    /// executor duplicates each descriptor for the child; the caller's
+    /// copy closes when the request is dropped, at the end of the run.
+    pub pass_fds: Vec<(i32, Arc<std::os::fd::OwnedFd>)>,
 }
 
 #[derive(Debug, Clone)]

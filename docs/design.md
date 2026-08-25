@@ -408,8 +408,8 @@ episode through the compiled sandbox alone ([sandbox.md](sandbox.md)).
 Tools come from three sources, resolved in this order at construction.
 A name that resolves in two sources is an error.
 
-1. Built in, thirteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
-   `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
+1. Built in, fourteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
+   `python`, `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
 2. Configured executables, declared in `tool_defs` with a path and a
    description. The runtime passes the model's `args` array as argv, captures
    stdout and stderr, and reports the exit code as data. A non-zero exit is a

@@ -161,6 +161,7 @@ fn ctx(spawner: Option<Arc<dyn Spawner>>) -> CallCtx {
         executor: None,
         spawner,
         sessions: None,
+        composer: None,
         spill_dir: PathBuf::new(),
         deadline: None,
     }

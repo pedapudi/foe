@@ -162,6 +162,12 @@ narrowed ruleset to itself, starts the process, hands the process handle
 back, and ends. The process inherits the thread's ruleset before it
 executes anything, which is the same point at which a hook would act.
 
+One request may replace the derived narrowing with a policy of its own.
+The built-in `python` tool is the one caller: its interpreter runs with
+read on `/usr` alone, execute on the interpreter, write on nothing, and no
+network, in place of the episode's roots. [code-mode.md](code-mode.md)
+specifies that confinement.
+
 Each executable also runs in its own process group. When its timeout
 elapses, or the episode is cancelled, the whole group receives `SIGTERM`
 and, two seconds later, `SIGKILL`. When the executable exits on its own,
