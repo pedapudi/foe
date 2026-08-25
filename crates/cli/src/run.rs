@@ -27,7 +27,7 @@ use foe_core::spawn::{ProcessSpawner, Router, Uplink};
 use foe_core::team::{self, Team};
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
-use foe_log::{EpisodeStart, Outcome};
+use foe_log::{seed::SeedHeader, ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
 use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -75,18 +75,11 @@ const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
 ];
 
 fn builtin_environment(cwd: &Path, present: impl Fn(&Path) -> bool) -> String {
-    let availability =
-        BUILTIN_EXECUTABLE_PROBES
-            .iter()
-            .map(|(name, path)| {
-                if present(Path::new(path)) {
-                    format!("{name}={path}")
-                } else {
-                    format!("{name}=not found at {path}")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
+    let probe = |(name, path): &(&str, &str)| match present(Path::new(path)) {
+        true => format!("{name}={path}"),
+        false => format!("{name}=not found at {path}"),
+    };
+    let availability = BUILTIN_EXECUTABLE_PROBES.iter().map(probe).collect::<Vec<_>>().join(", ");
     format!(
         "Working directory: {}. Fixed-path executable probe: {availability}. A not-found result covers only the \
          listed standard locations; project-local tools may still exist.",
@@ -106,6 +99,10 @@ pub struct Options {
     pub no_open: bool,
     pub headless: bool,
     pub host: bool,
+    /// Source log directory to seed the new episode from, with the
+    /// boundary: source events with `seq` in `[1, at)` are copied.
+    pub fork: Option<PathBuf>,
+    pub at: Option<u64>,
 }
 
 /// The built-in tools implemented outside the registry: the coding tools
@@ -170,13 +167,9 @@ struct Lineage {
 impl Lineage {
     fn read(log_dir: Option<&Path>) -> Result<Lineage, String> {
         let file = log_dir.map(|d| d.join("lineage.json")).filter(|f| f.is_file());
-        match file {
-            Some(file) => {
-                serde_json::from_slice(&std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?)
-                    .map_err(|e| format!("{}: {e}", file.display()))
-            }
-            None => Ok(Lineage { episode_id: fresh_id(), parent_id: None, team_id: None }),
-        }
+        let Some(file) = file else { return Ok(Lineage { episode_id: fresh_id(), parent_id: None, team_id: None }) };
+        let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+        serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", file.display()))
     }
 }
 
@@ -184,6 +177,87 @@ fn fresh_id() -> String {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let digest = Sha256::digest(format!("{now}:{}", std::process::id()));
     format!("ep_{}", hex::encode(&digest[..4]))
+}
+
+/// Where the episode's log lives and who the episode is: a fresh directory
+/// seeded from `--fork`, an existing log continued or repaired, or a new
+/// log. docs/log-format.md "Seeding" states the fork and resume flows.
+fn episode_directory(options: &Options, identity: &str, task: &str) -> Result<(PathBuf, Lineage), String> {
+    if let Some(source) = &options.fork {
+        let at = options.at.expect("the parser pairs --fork with --at");
+        return fork(source, at, options.log_dir.clone(), task);
+    }
+    if let Some(dir) = options.log_dir.as_deref().filter(|dir| dir.join(foe_log::fold::LOG_FILE).is_file()) {
+        return resume(dir, identity);
+    }
+    let lineage = Lineage::read(options.log_dir.as_deref())?;
+    let dir = options.log_dir.clone().unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
+    Ok((dir, lineage))
+}
+
+/// Seeds a fresh episode from a prefix of the log in `source` and appends
+/// the running form's task as a `system` inbox item: the one `task` item
+/// per log is the copied one at seq 1, and `system` is the runtime's
+/// channel for text the model must see.
+fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(PathBuf, Lineage), String> {
+    let lineage = Lineage { episode_id: fresh_id(), parent_id: None, team_id: None };
+    let dest = dest.unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
+    let in_dest = |e: LogError| format!("{}: {e}", dest.display());
+    if dest.join(foe_log::fold::LOG_FILE).is_file() {
+        return Err(format!("{} already holds a log; a fork starts a fresh one", dest.display()));
+    }
+    std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    let header = SeedHeader { new_id: lineage.episode_id.clone(), parent_id: None, team_id: None };
+    foe_log::seed::seed(source, at, &dest, header).map_err(|e| format!("--fork {}: {e}", source.display()))?;
+    let mut writer = foe_log::append::Writer::open(&dest, None).map_err(in_dest)?;
+    let content = vec![ContentBlock::Text { text: task.to_string() }];
+    let item = InboxItem { source: InboxSource::System, content, from: None, message_id: None };
+    writer.append(EventData::InboxItem(item)).map_err(in_dest)?;
+    writer.sync().map_err(in_dest)?;
+    Ok((dest, lineage))
+}
+
+/// Continues the episode whose log is in `dir` under the same program. A
+/// log ending at an event boundary with every binding obligation closed is
+/// continued in place; one cut short mid-line or with an obligation open
+/// is seeded at its last clean boundary into a fresh directory beside it,
+/// which the run then continues. A prepared seeded log, ending at
+/// `seed/end`, is continued as it stands with no identity comparison,
+/// because a seeded `episode/start` records its source's program.
+fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
+    let dir = dir.canonicalize().map_err(|e| format!("{}: {e}", dir.display()))?;
+    let in_dir = |e: LogError| format!("{}: {e}", dir.display());
+    let (events, consumed) = foe_log::fold::read_from(&dir, 0).map_err(in_dir)?;
+    let state = foe_log::fold::fold(&events).map_err(in_dir)?;
+    let start = state.start.ok_or_else(|| format!("{}: the log has no episode/start", dir.display()))?;
+    if state.outcome.is_some() {
+        let (dir, id) = (dir.display(), &start.id);
+        return Err(format!("{dir}: episode {id} already ended; a finished log is forked, not resumed: foe \"task\" --fork {dir} --at SEQ"));
+    }
+    let lineage = Lineage { episode_id: start.id, parent_id: start.parent_id, team_id: start.team_id };
+    let torn = std::fs::metadata(dir.join(foe_log::fold::LOG_FILE)).is_ok_and(|m| m.len() > consumed);
+    if !torn && events.last().is_some_and(|e| matches!(e.data, EventData::SeedEnd {})) {
+        return Ok((dir, lineage));
+    }
+    if start.identity != identity {
+        let (dir, recorded) = (dir.display(), &start.identity);
+        return Err(format!("{dir}: resuming requires the program that ran: the log records identity {recorded}; the given configuration resolves to {identity}"));
+    }
+    if !torn && foe_log::fold::open_obligations(&events).is_empty() {
+        return Ok((dir, lineage));
+    }
+    let new_id = fresh_id();
+    let dest = dir.parent().unwrap_or(Path::new(".")).join(&new_id);
+    std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    let header =
+        SeedHeader { new_id: new_id.clone(), parent_id: lineage.parent_id.clone(), team_id: lineage.team_id.clone() };
+    foe_log::seed::seed(&dir, events.len() as u64, &dest, header).map_err(in_dir)?;
+    eprintln!(
+        "foe: {} stopped mid-line or mid-obligation; episode {new_id} continues it in {}",
+        dir.display(),
+        dest.display()
+    );
+    Ok((dest, Lineage { episode_id: new_id, ..lineage }))
 }
 
 /// The configuration to run: the document named by `--config`, with the
@@ -422,8 +496,8 @@ fn built_in_transport(
 pub fn run(options: Options) -> Result<ExitCode, String> {
     let config = load_config(&options)?;
     let mut program = resolve(&config).map_err(|e| format!("config: {e}"))?;
-    let lineage = Lineage::read(options.log_dir.as_deref())?;
-    let log_dir = options.log_dir.clone().unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
+    let identity = identity(&program)?;
+    let (log_dir, lineage) = episode_directory(&options, &identity.hash, &config.task)?;
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let sandbox = Arc::new(Sandbox::new(program.sandbox.mode).map_err(|e| e.to_string())?);
@@ -454,7 +528,6 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
             crate::open_browser(&bound.url());
         }
     }
-    let identity = identity(&program)?;
     let context = context_policy(&program)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
     let runtime_info = runtime_info();
     let transport = match &mut program.model {
