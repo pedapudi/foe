@@ -557,7 +557,8 @@ and repair allowances are added to the implementation allowance.
 10. Re-run all twelve development tasks. Preserve every baseline success and
     record cost, wall time, outcome accuracy, and trace integrity.
 11. Freeze the candidate source tree, binary digest, model settings, and
-    acceptance rule.
+    acceptance rule. Run the provider-free installation check against the
+    exact binary before its first assessed task.
 12. Run two attempts on each of the eight confirmation tasks. Require fourteen
     successes and at least one success per task.
 13. Record the confirmation decision before opening calibration trajectories.
@@ -1252,3 +1253,50 @@ The autonomous quality-confirmation runs are under
 `/home/sunil/git/foe-live-state-generation-feedback-candidate/target/terminal-bench-jobs/`.
 The current-main integration run is under
 `/home/sunil/git/foe-live-state-evaluation/target/terminal-bench-jobs/standard-current-main-integration-live-state-git-multibranch-20260825T092540Z`.
+
+## Recorded frozen-candidate validation
+
+On 2026-08-25, a local integration candidate combined the campaign branch
+with the live-environment completion rule and its open runtime dependencies.
+The source tree identity was
+`git-tree-sha1:2fbeddc6173fe764824960931884815a37dd443a`. The portable binary
+was
+`sha256:f3d38553a3b3766bf928b1b4686cc802b532ab3691aff52459160427275d28cb`.
+The dependency set provided the built-in terminal-audit workflow, selected
+sandbox mode, selected service tier, provider-specific credentials, and
+bounded retry for unavailable provider responses.
+
+An earlier local candidate omitted the built-in terminal-audit dependency.
+Its assessed `cancel-async-tasks` invocation failed during installation because
+the binary lacked the required `--service-tier` and `--sandbox` options. The
+failure occurred before any provider request. It is excluded from task-quality
+counts and recorded as an avoidable campaign-process failure.
+
+The provider-free installation check had existed as a separate target. The
+failed invocation showed that an optional check could be skipped while
+assembling a local candidate from open changes. The execution sequence now
+requires the exact frozen binary to pass that check before any assessed task.
+
+The corrected binary passed the installation check in the pinned `fix-git`
+container. The check made no provider request. Its retained job is
+`/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/standard-frozen-candidate-install-check-20260825T105934Z`.
+
+The corrected binary then received full task-owned credit on the
+verifier-governed `cancel-async-tasks` case. GPT-5.6 Sol used low reasoning and
+the standard service tier. The attempt used 13 model calls, 39,832 input
+tokens, 3,072 cached-input tokens, and 4,779 output tokens. Its estimated cost
+was $0.243849.
+
+The implementation child used seven calls. The independent terminal-audit
+child used six calls and ran the public completion checker. The unchanged
+task-owned verifier awarded 1.0 after Foe exited. The Foe outcome was completed,
+the credential scan passed, and every provider response reported usage.
+
+Trace conformance passed with zero violations. The report contains 27 passing
+declared-authority assertions, 29 passing hierarchical-budget assertions,
+7,793 passing reconstructable-evidence assertions, 11 passing typed-outcome
+assertions, and 12 passing workflow-provenance assertions. Landlock was off
+inside the task container as required by the campaign configuration.
+
+The retained assessed job is
+`/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/standard-frozen-candidate-validated-verifier-cancel-async-tasks-20260825T105954Z`.
