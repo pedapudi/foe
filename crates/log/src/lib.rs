@@ -609,6 +609,9 @@ pub enum InboxSource {
     Peer,
     Verify,
     System,
+    /// A process session of this episode ended; one item per session
+    /// lifetime, written when the runtime observes the exit.
+    Session,
     /// Reserved for correlated exchanges.
     Request,
     /// Reserved for correlated exchanges.

@@ -42,6 +42,43 @@ same correlation identifier in `message_id`. Correlated exchanges are not
 implemented. Reserved field values: `"request"` and `"response"` for `source`
 in `inbox/item`.
 
+## Cancellation of a running child
+
+Cancellation would let a parent end a child episode it no longer needs —
+the tool that would sit beside `spawn` and `wait` — and with it a
+first-completion-wins composition: wait until any child completes, cancel
+the rest, which is what select and race are. The teardown already ends
+surviving children when the episode ends; what is absent is ending one
+child mid-episode by the model's choice. Cancellation is not implemented.
+No event type or configuration key is reserved. The evidence that would
+justify building it is a consumer needing first-completion-wins — a
+trajectory that waits on `any`, then pays for children whose results it
+discards.
+
+## Event-conditioned workflow edges
+
+An event-conditioned edge would fire a workflow node on an inbox arrival —
+a session exit, a child's report — rather than on a predecessor's value,
+so that a mechanical reaction to an event costs no model turn. Workflows
+condition firing on two things today: a branch label a node chose and the
+`skip_when_verified` guard. Event-conditioned edges are not implemented.
+No event type or configuration key is reserved. The evidence that would
+justify building them is trajectories showing model turns spent on
+mechanical reactions — a turn whose whole content is reading an arrival
+and issuing the one call it always issues.
+
+## Session output watermarks into the inbox
+
+An output watermark would post a `session`-source inbox item when a
+session's accumulated output crosses a threshold or matches a pattern, so
+a model could wait on a server's readiness line instead of polling for it.
+The inbox carries a session's exit and nothing else of its lifetime;
+output reaches the model only through `poll`. Watermarks are not
+implemented. No event type or configuration key is reserved; the `session`
+source value carries exit items only. The evidence that would justify
+building them is measured turns wasted on sleep-then-poll cycles against
+a session that has not yet produced what the model is waiting for.
+
 ## Sandbox backends beyond Landlock
 
 Landlock is the Linux kernel facility that foe compiles grants into. Other

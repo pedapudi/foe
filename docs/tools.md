@@ -20,7 +20,10 @@ Each name resolves against three sources, checked in this order.
    `retrieve`, which reads a bounded segment of a prior tool rendering;
    `block`, by which the model reports a blocking condition; `spawn`, which
    starts a child episode, and `wait`, which blocks until every child this
-   episode started has ended; `steer`, which sends a message to a running
+   episode started has ended or, with `until`, until an arrival matches one
+   of its conditions — a child reaching an outcome, a session exiting, or
+   an inbox arrival by source — bounded by
+   `timeout_seconds`; `steer`, which sends a message to a running
    child, and `notify`, which sends one to the episode that started this
    one; and `send` and `team`, which address a teammate through the lead
    and list the team's roster. [design.md](design.md) and
@@ -358,6 +361,16 @@ where `INT` and `int` name the same signal, and sends it to the process
 group. `stop` takes `session`, sends SIGTERM to the group, waits two
 seconds, sends SIGKILL, and returns the final status; the grace bound is
 the constant the executable teardown uses.
+
+A session's end is also posted to the episode's inbox: when the runtime
+observes that the process has ended — before it derives a request, while a
+turn's tool calls run, or at settlement — it appends one `inbox/item` with
+source `session` whose text is the subject line: the id, the exit status,
+and the lifetime. One item per session lifetime, on exit only; output
+reaches the model through `poll` alone. The item lets a `wait` on a
+session condition return when the process ends, and it enters the next
+request like any inbox item. [log-format.md](log-format.md#inbox)
+specifies the item.
 
 Settlement cleanup is unconditional. At episode settlement every surviving
 session's process group is killed through the same escalation, and each

@@ -226,6 +226,111 @@ async fn spawn_tool_runs_a_child_whose_notify_and_end_reach_the_lead() {
     assert!(uplink.0.lock().unwrap().len() == 2, "notify was never forwarded upward");
 }
 
+fn wait_tool(team: Arc<Team>) -> Box<dyn Tool> {
+    tools(team, None).into_iter().find(|t| t.spec().name == "wait").unwrap()
+}
+
+fn ctx_deadline(deadline: std::time::Instant) -> CallCtx {
+    CallCtx { deadline: Some(deadline), ..ctx(None) }
+}
+
+fn soon() -> std::time::Instant {
+    std::time::Instant::now() + Duration::from_millis(60)
+}
+
+fn inbox_event(source: InboxSource, from: Option<&str>) -> EventData {
+    EventData::InboxItem(InboxItem { source, content: vec![], from: from.map(str::to_string), message_id: None })
+}
+
+/// docs/tools.md "wait": the bare form blocks until every child has ended
+/// and returns at once when no child is running; when the seconds budget
+/// runs out first, the result is an error naming the children still running.
+#[tokio::test]
+async fn bare_wait_keeps_its_all_children_meaning() {
+    let (team, _, _, _) = team();
+    let value = wait_tool(team.clone()).call(serde_json::json!({}), &ctx(None)).await;
+    assert_eq!((value.is_error, value.rendered.as_deref()), (false, Some("every child has ended")));
+    assert_eq!(value.value, serde_json::json!({ "running": 0 }));
+    team.pool.lock().unwrap().reserve("ep_a", BudgetAmount::default()).unwrap();
+    let out = wait_tool(team.clone()).call(serde_json::json!({}), &ctx_deadline(soon())).await;
+    assert!(out.is_error);
+    assert!(out.rendered.unwrap_or_default().contains("seconds budget"), "the budget bound keeps its error");
+    let timed = wait_tool(team).call(serde_json::json!({ "timeout_seconds": 1 }), &ctx(None)).await;
+    assert_eq!((timed.is_error, timed.value), (false, serde_json::json!({ "matched": "timeout" })));
+}
+
+/// docs/tools.md "wait": an `until` wait returns when an unconsumed inbox
+/// item matches a condition, naming the condition met; an item an earlier
+/// request consumed is not news, and nothing matching is a timeout.
+#[tokio::test]
+async fn wait_until_matches_unconsumed_arrivals_by_source_child_and_session() {
+    let (team, log, _, _) = team();
+    let wait = |args: serde_json::Value, deadline: Option<std::time::Instant>| {
+        let team = team.clone();
+        async move {
+            let ctx = deadline.map_or_else(|| ctx(None), ctx_deadline);
+            wait_tool(team).call(args, &ctx).await
+        }
+    };
+    let until = |c: serde_json::Value| serde_json::json!({ "until": [c] });
+    // An arrival by source, landing while the wait blocks.
+    let appender = log.clone();
+    let landed = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        appender.append(inbox_event(InboxSource::Child, Some("ep_a")));
+    });
+    let value = wait(until(serde_json::json!({ "inbox": "child" })), None).await;
+    landed.await.unwrap();
+    assert_eq!(value.value, serde_json::json!({ "matched": { "inbox": "child" } }), "{:?}", value.rendered);
+    // A child reaching an outcome: the ended report plus its spawn/end.
+    assert_eq!(
+        wait(until(serde_json::json!({ "child": "ep_a" })), Some(soon())).await.value["matched"],
+        serde_json::json!("timeout"),
+        "a child item without a recorded outcome is not an outcome"
+    );
+    log.append(EventData::SpawnEnd {
+        child_id: "ep_a".into(),
+        outcome: Outcome::Completed { value: serde_json::Value::Null },
+    });
+    let by_id = wait(until(serde_json::json!({ "child": "ep_a" })), None).await;
+    assert_eq!(by_id.value["matched"], serde_json::json!({ "child": "ep_a" }));
+    let by_kind = wait(until(serde_json::json!({ "child": "any", "outcome": "completed" })), None).await;
+    assert_eq!(by_kind.value["matched"], serde_json::json!({ "child": "any", "outcome": "completed" }));
+    let wrong_kind = wait(until(serde_json::json!({ "child": "ep_a", "outcome": "failed" })), Some(soon())).await;
+    assert_eq!(wrong_kind.value["matched"], serde_json::json!("timeout"));
+    // A session exit, matched by id or by `any` through the session item.
+    log.append(inbox_event(InboxSource::Session, Some("3")));
+    assert_eq!(
+        wait(until(serde_json::json!({ "session": 3 })), None).await.value["matched"],
+        serde_json::json!({ "session": 3 })
+    );
+    assert_eq!(
+        wait(until(serde_json::json!({ "session": "any" })), None).await.value["matched"],
+        serde_json::json!({ "session": "any" })
+    );
+    assert_eq!(
+        wait(until(serde_json::json!({ "session": 7 })), Some(soon())).await.value["matched"],
+        serde_json::json!("timeout")
+    );
+    let invalid = wait(until(serde_json::json!({ "session": "x" })), None).await;
+    assert!(invalid.is_error, "{:?}", invalid.rendered);
+    // Consumption ends an arrival's news: the same conditions time out once
+    // a request lists every item in `consumed`.
+    let consumed: Vec<u64> =
+        log.events().iter().filter(|e| matches!(e.data, EventData::InboxItem(_))).map(|e| e.seq).collect();
+    log.append(EventData::ModelRequest(foe_log::ModelRequest {
+        step: 1,
+        attempt: 1,
+        request_id: "rq_01".into(),
+        header_seq: 0,
+        consumed,
+        messages: vec![],
+        max_output_tokens: None,
+    }));
+    let stale = wait(until(serde_json::json!({ "child": "ep_a" })), Some(soon())).await;
+    assert_eq!(stale.value["matched"], serde_json::json!("timeout"), "a consumed arrival is not news");
+}
+
 /// docs/config.md "JSON Schema subset": dispatch checks a call against the
 /// tool's parameter schema, so a schema the runtime writes stays inside the
 /// subset the runtime evaluates.
