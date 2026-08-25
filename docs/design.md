@@ -642,6 +642,14 @@ validation observations, and unresolved risks. The audit receives that value
 and the original task in a fresh context. The shared directory carries the
 artifacts themselves.
 
+Both completion schemas accept one optional `learned` array of at most
+eight observations. Each observation is an object with a one-sentence
+`claim` and a `seq` citing the event in this episode's own log that is the
+claim's evidence. This is the standard exit through which an episode
+reports what it observed, for a launching parent to collect; foe itself
+acts on none of it. [config.md](config.md#done_when) states the convention
+for any program.
+
 The model is the one named by `--model`, or the default model when `--model`
 is absent. The default model is the `model` block in
 `~/.config/foe/default-model.json`, which `foe login` writes. When that block
