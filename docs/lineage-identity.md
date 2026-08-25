@@ -277,11 +277,13 @@ The command line exposes the checker. `foe plan --config FILE --states DIR
 --evidence DIR` resolves the configuration, pairs its identity document
 with the `program_lineage` claim it carries, resolves states from
 `DIR/<hex>.json` by lineage identity and bundles from `DIR/<hex>` by
-content address, and prints the chain with every check the retained
-evidence leaves open below the plan report; with `--json`, the same report
-is the plan object's `lineage` member. Without `--states` and `--evidence`,
-a configuration that carries a claim is reported as carrying it,
-unverified.
+content address, and prints, below the plan report, the chain of program
+identities from this program through its parents to the root with every
+check the retained evidence leaves open; with `--json`, the same chain and
+open checks are the plan object's `lineage` member. The report names
+program identities only; the derived lineage identity stays internal to
+the checker. Without `--states` and `--evidence`, a configuration that
+carries a claim is reported as carrying it, unverified.
 
 ## The candidate binding gap
 

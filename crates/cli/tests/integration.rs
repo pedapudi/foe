@@ -935,6 +935,9 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
         let identity = first["identity"].as_str().unwrap();
         assert!(identity.starts_with("sha256:") && identity.len() == 71, "{name}: {identity}");
         assert_eq!(first["identity"], second["identity"], "{name}: identity ignores task and paths");
+        let canonical = foe_config::identity::canonical(&first["identity_document"]);
+        let rehashed = format!("sha256:{}", foe_config::identity::sha256_hex(canonical.as_bytes()));
+        assert_eq!(rehashed, identity, "{name}: the emitted identity document rehashes to the reported identity");
         assert_eq!(first["program"]["name"], json!(serde_json::from_str::<Value>(&text).unwrap()["name"]));
         assert!(first["program"].get("task").is_none(), "{name}: the program omits the task");
         if name == "workflow" {

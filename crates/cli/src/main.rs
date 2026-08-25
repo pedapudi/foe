@@ -13,7 +13,6 @@ mod run;
 mod telemetry;
 
 use foe_config::tools::{block_spec, resolve_specs, Source};
-use foe_config::ToolSpec;
 use foe_config::SCHEMA;
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -90,7 +89,7 @@ const OPTS: &[Opt] = &[
     opt("plan", "--config", "FILE", "the built-in tools alone", "the configuration document to resolve"),
     opt("plan", "--json", "", "", "print one JSON object instead of the report"),
     opt("plan", "--schema", "", "", "print the JSON Schema of the configuration document and nothing else"),
-    opt("plan", "--states", "DIR", "", "directory of state documents, one <hex>.json per lineage identity"),
+    opt("plan", "--states", "DIR", "", "directory of ancestor state documents, one <hex>.json each"),
     opt(
         "plan",
         "--evidence",
@@ -346,8 +345,10 @@ fn load(config: &Path) -> Result<foe_config::config::Program, String> {
 
 /// Resolves the program and prints it with its identity. Without `--config`,
 /// lists the built-in tools the binary carries instead, one row per tool.
-/// `--json` prints one object with `identity` and `program`, which the
-/// Python package parses, `context` with the compaction policy in one line
+/// `--json` prints one object with `identity`, `identity_document` — the
+/// canonical serialized form the identity hash is computed over — and
+/// `program`, which the Python package parses, `context` with the
+/// compaction policy in one line
 /// when the program compacts, and `workflow` when the program declares one:
 /// its cycles, the nodes sharing write roots, its terminal nodes, and how
 /// many firings it can perform against the bound the runtime enforces. Both
@@ -384,8 +385,9 @@ fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>)
             })
         });
         let report = serde_json::json!({
-            "identity": identity.hash, "program": value, "transport": transport, "workflow": workflow,
-            "context": context, "authority": authority, "lineage": checked,
+            "identity": identity.hash, "identity_document": identity.document, "program": value,
+            "transport": transport, "workflow": workflow, "context": context, "authority": authority,
+            "lineage": checked.as_ref().map(lineage::value),
         });
         println!("{report}");
     } else {
@@ -412,7 +414,7 @@ fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>)
 
 /// One tool row: the name, the source its name resolved in, the effect, and
 /// the first sentence of the description.
-fn tool_row(spec: &ToolSpec, source: &str) -> String {
+fn tool_row(spec: &foe_config::ToolSpec, source: &str) -> String {
     let effect = serde_json::to_value(spec.effect).ok().and_then(|v| v.as_str().map(str::to_string));
     let text = &spec.description;
     let first = text[..text.find(". ").map_or(text.len(), |i| i + 1)].trim_end();

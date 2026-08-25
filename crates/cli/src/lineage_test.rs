@@ -8,6 +8,8 @@ fn digest(fill: char) -> String {
     format!("sha256:{}", fill.to_string().repeat(64))
 }
 
+/// The report speaks of program identities and parents alone; the derived
+/// per-state identity the checker computes stays internal.
 #[test]
 fn the_page_lists_the_chain_and_the_open_checks() {
     let report = AncestryReport {
@@ -18,13 +20,16 @@ fn the_page_lists_the_chain_and_the_open_checks() {
         unverifiable: vec!["transition x: no candidate_sha256".into()],
     };
     let page = rendered(&report);
-    assert!(page.starts_with("chain, state first\n"), "{page}");
-    assert!(page.contains(&digest('a')) && page.contains(&format!("program {}", digest('d'))), "{page}");
+    assert!(page.starts_with("ancestry, this program first\n"), "{page}");
+    assert!(page.contains(&format!("program  {}", digest('b'))), "{page}");
+    assert!(page.contains(&format!("parent   {}", digest('d'))), "{page}");
     assert!(page.contains("root reached after 2 states"), "{page}");
     assert!(page.contains("open checks\n  transition x: no candidate_sha256"), "{page}");
-    let value = serde_json::to_value(&report).unwrap();
-    assert_eq!(value["chain"][1]["program_identity"], digest('d'));
+    assert!(!page.contains(&digest('a')) && !page.contains(&digest('c')), "{page}");
+    let value = super::value(&report);
+    assert_eq!(value["chain"], serde_json::json!([digest('b'), digest('d')]));
     assert_eq!(value["unverifiable"][0], "transition x: no candidate_sha256");
+    assert!(!value.to_string().contains(&digest('a')), "{value}");
 }
 
 #[test]
