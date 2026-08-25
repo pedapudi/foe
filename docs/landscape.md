@@ -606,6 +606,76 @@ under version control. Each run records the identity reported by `foe plan
 --config PROGRAM.json --json`. Two runs with the same hash differ only in
 their task and model responses.
 
+## Sandboxing options for the executor
+
+foe confines each episode and each tool process with Landlock, compiled
+from the configuration's grants ([sandbox.md](sandbox.md)). Landlock is
+one point in a field of isolation mechanisms that differ in what enforces
+the boundary, what a breach requires, what confinement costs at start and
+at runtime, and what privileges setup demands. This section surveys the
+options along those dimensions. The comparison matters twice: once for
+foe's own backend (the deferred entry "Sandbox backends beyond Landlock"
+names the extension point), and once for deployment, because these
+boundaries compose — Harbor already runs foe inside Docker containers,
+and an operator can put any outer boundary around a foe process.
+
+| System | Enforced by | Boundary | Start cost | Runtime overhead | Privileges needed | Policy granularity |
+|---|---|---|---|---|---|---|
+| [Landlock](https://docs.kernel.org/userspace-api/landlock.html) | kernel LSM | shared kernel; scoped filesystem, TCP ports, signals | a few system calls at spawn | none measurable | none | per-path access rights, per-port |
+| [seccomp-BPF](https://man7.org/linux/man-pages/man2/seccomp.2.html) | kernel syscall filter | shared kernel; reduced syscall surface | a few system calls at spawn | one filter evaluation per syscall | none (with `no_new_privs`) | per-syscall, limited argument checks |
+| [bubblewrap](https://github.com/containers/bubblewrap) | user namespaces and mounts | shared kernel; private mount, PID, and network views | milliseconds per sandbox | none measurable | unprivileged user namespaces enabled | mount-tree construction |
+| [gVisor](https://gvisor.dev/docs/) | user-space kernel (Sentry) | application syscalls terminate in the Sentry; the host kernel sees a narrow remainder | container start, tens to hundreds of milliseconds | low for compute; substantial for syscall-heavy work ([performance guide](https://gvisor.dev/docs/architecture_guide/performance/)) | a runtime install; KVM platform wants `/dev/kvm` | OCI container |
+| [Firecracker](https://firecracker-microvm.github.io/) | hardware virtualization (KVM), minimal device model | separate guest kernel | under 125 ms to guest userspace, under 5 MiB per microVM ([NSDI 2020 paper](https://www.usenix.org/conference/nsdi20/presentation/agache)) | near native for compute; virtio for I/O | `/dev/kvm`, plus its jailer | per-VM devices |
+| [Kata Containers](https://katacontainers.io/) | hardware virtualization behind an OCI runtime | separate guest kernel with container tooling | VM boot per container, hundreds of milliseconds | as Firecracker plus agent plumbing | `/dev/kvm`, runtime install | OCI container backed by a VM |
+| [Docker default (runc)](https://docs.docker.com/engine/security/) | namespaces, cgroups, capabilities, a default seccomp profile | shared kernel; broad permitted syscall set | container start, sub-second | none measurable | a daemon, or rootless setup | OCI container |
+| Full VM (QEMU/KVM) | hardware virtualization, full device model | separate guest kernel, broadest device surface | seconds, less with trimmed machine types | device emulation where used | `/dev/kvm` or root | per-VM |
+
+Three readings of the table:
+
+- **What a breach requires.** Every shared-kernel mechanism (Landlock,
+  seccomp, namespaces, runc) falls to a kernel bug reachable through the
+  syscalls it still permits; they differ in how many syscalls that is.
+  gVisor interposes its own kernel in user space, so most application
+  syscalls never reach the host. The virtualization tier requires a guest
+  escape through hardware-assisted isolation, historically the rarest
+  class. These are different answers to different threats: Landlock
+  bounds what a well-formed process may touch; a microVM bounds what a
+  hostile one can attempt.
+- **What confinement costs per process.** foe spawns one process per
+  tool call and per session, so per-spawn cost multiplies. Landlock and
+  seccomp add system calls; bubblewrap adds milliseconds; the container
+  and VM tiers add enough that they fit naturally at the episode or
+  deployment boundary rather than the tool boundary.
+- **What setup demands.** Landlock and seccomp work unprivileged on a
+  stock modern kernel, which is why an unattended runtime can apply them
+  to itself with no operator preparation. Everything below them in the
+  table needs an installed runtime, a daemon, device access, or a
+  distribution that enables unprivileged user namespaces.
+
+The compositional reading is the practical one. The mechanisms nest:
+Flatpak pairs bubblewrap with seccomp; Kata puts containers inside VMs;
+Harbor runs foe inside Docker, where foe's own Landlock layer is
+currently disabled and the container is the boundary. foe's design
+assumes this layering — its per-episode, per-executable sealing is the
+innermost ring, cheap enough to apply always, and whatever outer ring a
+deployment chooses adds its guarantees independently.
+
+For foe's own backend the trade is concrete. Landlock matches the grant
+model one to one (paths and ports in, kernel rules out), costs nothing
+per spawn, and needs no privilege — the properties an autonomous runtime
+needs to confine itself. What it does not do: shrink the kernel's
+syscall surface (a seccomp filter alongside the Landlock rules is the
+natural first backend extension), isolate resources (budgets bound
+model spend, while a tool process's memory and CPU run unbounded), or contain a truly hostile
+payload against kernel exploits. A deployment that runs untrusted code —
+evaluating third-party candidates, executing adversarial tests — should
+put a virtualization-tier boundary outside the episode: today by
+launching foe inside a microVM or container it provisions itself; in a
+possible future, through a Firecracker-backed executor as a configured
+sandbox backend, which the deferred entry reserves conceptually. The
+macOS path (the `sandbox-exec` profile language) is likewise recorded in
+[deferred.md](deferred.md) and unimplemented.
+
 ## Recommendations
 
 The five items below are in priority order. Each names the gap it closes.
