@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -91,6 +92,13 @@ def missing_builtin_workflow_options(help_text: str) -> list[str]:
         if (fields := line.split()) and fields[0].startswith("--")
     }
     return [option for option in BUILTIN_WORKFLOW_REQUIRED_OPTIONS if option not in declared]
+
+
+def schema_probe_command(binary: str = "/usr/local/bin/foe") -> str:
+    """Return the provider-free command that validates an installed Foe binary."""
+    if not PurePosixPath(binary).is_absolute():
+        raise ValueError("binary path must be absolute")
+    return f"{shlex.quote(binary)} plan --schema >/dev/null"
 
 
 def builtin_workflow_arguments(

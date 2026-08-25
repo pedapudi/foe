@@ -27,6 +27,7 @@ from foe_agent_support import (
     parse_boolean,
     read_episode_summary,
     replace_credential_state,
+    schema_probe_command,
 )
 
 
@@ -190,7 +191,7 @@ class FoeAgent(BaseInstalledAgent):
             command=(
                 f"{ownership}{checker_setup}chmod 755 {shlex.quote(REMOTE_BINARY)} && "
                 f"chmod 600 {shlex.quote(self._remote_credential)} && "
-                f"{shlex.quote(REMOTE_BINARY)} plan --schema >/dev/null"
+                f"{schema_probe_command(REMOTE_BINARY)}"
             ),
         )
         if self._built_in_workflow:

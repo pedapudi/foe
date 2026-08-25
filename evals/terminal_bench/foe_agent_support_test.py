@@ -17,10 +17,19 @@ from foe_agent_support import (
     missing_builtin_workflow_options,
     parse_boolean,
     read_episode_summary,
+    schema_probe_command,
 )
 
 
 class ProgramTest(unittest.TestCase):
+    def test_installers_share_the_supported_schema_probe(self):
+        self.assertEqual(
+            schema_probe_command("/opt/Foe Binary"),
+            "'/opt/Foe Binary' plan --schema >/dev/null",
+        )
+        with self.assertRaisesRegex(ValueError, "binary path must be absolute"):
+            schema_probe_command("foe")
+
     def test_builtin_workflow_install_probe_names_every_missing_option(self):
         help_text = """options:
   --model PROVIDER/MODEL
