@@ -977,3 +977,62 @@ The adapter now queries the container's effective working directory before it wr
 The retained local report is under `target/terminal-bench-capability-probes/`. Raw jobs and credentials remain outside Git.
 
 On 2026-08-24, the same probe ran in the pinned `gpt2-codegolf` image. The working directory, workspace writes, package authority, large-file operations, and timeouts passed. The standard executable-path check failed because the image did not provide both `git` and `sh` through its path. This contrast proves that a capability report cannot be generalized across task images.
+
+## Recorded built-in verifier workflow result
+
+On 2026-08-25, five modified development scenarios evaluated one source tree
+and portable binary. The source tree identity was
+`git-tree-sha1:0f7c20a852a691ff21bcd368e2052a519e39ae8c`. The binary digest was
+`sha256:08a685d0528b531afff71b752c502dbffe8f0e74488ad9304c5da8afa72464a6`.
+Every model request used GPT-5.6 Sol and the standard service tier.
+
+The built-in workflow gave the task to a low-reasoning implementation child.
+A fresh high-reasoning audit child then owned `done_when.verify`. Both children
+could read the public completion checker. The unchanged task-owned grader ran
+after Foe exited and remained unavailable to both children.
+
+| Task | Task-owned score | Model calls | Input tokens | Cached-input tokens | Output tokens | Harbor time | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 9 | 22,947 | 3,584 | 3,517 | 119 seconds | $0.149226 |
+| `dna-assembly` | 1.0 | 46 | 957,734 | 668,160 | 25,022 | 721 seconds | $1.926000 |
+| `fix-git` | 1.0 | 15 | 77,558 | 7,168 | 4,146 | 133 seconds | $0.367347 |
+| `gpt2-codegolf` | 1.0 | 27 | 315,756 | 100,864 | 14,354 | 495 seconds | $1.186994 |
+| `large-scale-text-editing` | 1.0 | 13 | 43,453 | 4,096 | 3,952 | 205 seconds | $0.238106 |
+| **Total** | **5.0** | **110** | **1,417,448** | **783,872** | **50,991** | **1,673 seconds** | **$3.867673** |
+
+Every Foe outcome was completed. Every trace conformed with zero violations.
+Every public checker retained its recorded digest. The credential scanner
+found no provider credential in an episode log. Every model call reported
+usage.
+
+The `gpt2-codegolf` checker included quoted uppercase-token cases and tensor
+layout probes. A prior low-reasoning implementation passed a weaker public
+checker and received zero task-owned credit. The workflow result therefore
+establishes one reproducible harness-limited failure conversion. The other
+four cases establish transfer across process cleanup, Git recovery, sequence
+design, and bulk editing. Evidence for three converted baseline failures
+remains an open campaign criterion.
+
+Three attempts were excluded from quality counts. Two reached a provider
+response whose code was `service_unavailable_error`. The OpenAI response
+decoder treated that code as permanent, so each episode ended before a usable
+quality observation. The decoder now classifies that code as transient under
+the existing bounded retry mechanism. Its exact wire event is a regression
+fixture.
+
+The third excluded attempt made no model request. The Harbor installer called
+the removed `foe schema` command after the command-line interface consolidated
+schema output under `foe plan --schema`. The installer now uses the supported
+form. A provider-free installation trial passed in the pinned task container
+before the five scored runs.
+
+The identity-bound evidence file is
+`/home/sunil/git/foe-terminal-audit-transient-retry/target/standard-built-in-verifier-five-case-evidence.json`.
+It contains five typed trajectory diagnoses. Completed outcomes retain their
+typed status and omit repeated model-authored completion prose. This keeps the
+complete evidence set inside the 64 KiB canonical encoding limit.
+
+The retained scored runs are under
+`/home/sunil/git/foe-terminal-audit-transient-retry/target/terminal-bench-jobs/`.
+Their labels begin with `standard-built-in-verifier-` and end with
+`transient-retry`. Raw jobs, logs, and credentials remain outside Git.
