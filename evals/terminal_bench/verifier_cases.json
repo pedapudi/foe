@@ -11,6 +11,11 @@
       "oracle": "verifier_cases/fix_git/oracle.sh",
       "contract": "The public checker requires the lost commit to be reachable from master in a clean worktree without testing hidden file hashes."
     },
+    "gpt2-codegolf": {
+      "checker": "verifier_cases/gpt2_codegolf/check.sh",
+      "oracle": "verifier_cases/gpt2_codegolf/oracle.sh",
+      "contract": "The public checker enforces the source-size and compilation requirements and checks three arg-max continuations that differ from the task-owned verifier input."
+    },
     "large-scale-text-editing": {
       "checker": "verifier_cases/large_scale_text_editing/check.py",
       "oracle": "verifier_cases/large_scale_text_editing/oracle.sh",

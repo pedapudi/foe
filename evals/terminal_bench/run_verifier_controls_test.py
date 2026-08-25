@@ -27,10 +27,19 @@ class VerifierControlTest(unittest.TestCase):
         )
         self.assertEqual(
             set(cases),
-            {"cancel-async-tasks", "fix-git", "large-scale-text-editing"},
+            {
+                "cancel-async-tasks",
+                "fix-git",
+                "gpt2-codegolf",
+                "large-scale-text-editing",
+            },
         )
         self.assertTrue(cases["cancel-async-tasks"].checker.is_file())
         self.assertTrue(cases["cancel-async-tasks"].oracle.is_file())
+        self.assertIn(
+            "differ from the task-owned verifier input",
+            cases["gpt2-codegolf"].contract,
+        )
         self.assertEqual(
             cases["cancel-async-tasks"].checker.read_text(encoding="utf-8").splitlines()[0],
             "#!/usr/local/bin/python3",

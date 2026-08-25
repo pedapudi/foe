@@ -31,6 +31,8 @@ VERIFIER_CASE_DATA = [
     "verifier_cases/cancel_async_tasks/oracle.sh",
     "verifier_cases/fix_git/check.py",
     "verifier_cases/fix_git/oracle.sh",
+    "verifier_cases/gpt2_codegolf/check.sh",
+    "verifier_cases/gpt2_codegolf/oracle.sh",
     "verifier_cases/large_scale_text_editing/check.py",
     "verifier_cases/large_scale_text_editing/oracle.sh",
 ]
@@ -116,6 +118,7 @@ sh_binary(
             "verifier_cases/cancel_async_tasks/check.py",
         ),
         ("fix-git", "fix-git", "verifier_cases/fix_git/check.py"),
+        ("gpt2-codegolf", "gpt2-codegolf", "verifier_cases/gpt2_codegolf/check.sh"),
         (
             "large-scale-text-editing",
             "large-scale-text-editing",
