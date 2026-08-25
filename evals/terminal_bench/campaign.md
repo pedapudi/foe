@@ -8,7 +8,7 @@ Terminal-Bench 2.1 is pinned as `terminal-bench/terminal-bench-2-1@6`. The bench
 
 The campaign must convert model capability into reliable Foe performance. The central test is a task that GPT-5.6 Sol can solve with `xhigh` reasoning through Foe, while the same Foe runtime usually fails with `low` reasoning.
 
-The target improvement makes Sol with `low` reasoning solve that task reliably. The change may affect Foe source or a general workflow configuration. Task-specific instructions, benchmark identifiers, fixture values, and grader rules are excluded from candidate changes.
+The target improvement makes Sol with `low` reasoning solve that task reliably. The change may affect Foe source, a general workflow configuration, an instruction section of the retained self-improvement program, or a declared executable tool. Task-specific instructions, benchmark identifiers, fixture values, and grader rules are excluded from candidate changes.
 
 The reasoning ceiling is `xhigh`. The campaign does not run any model with `max` reasoning.
 
@@ -22,7 +22,7 @@ The capability conversion succeeds when all of these conditions hold:
 4. The four confirmation tasks produce at least seven successful attempts across two attempts per task. Every confirmation task must succeed at least once.
 5. The six development tasks retain six task-owned verifier successes on the frozen candidate.
 6. Every assessed trial retains its task verifier result, available Foe episode, source identity, runtime identity, and conformance report.
-7. Foe self-improvement produces and evaluates at least one identity-bound source or workflow candidate. A direct implementation follows when the workflow produces no valid change.
+7. Foe self-improvement produces and evaluates at least one identity-bound candidate: a source change, a workflow configuration, an instruction revision, or a tool definition. A direct implementation follows when the workflow produces no valid change.
 
 Task quality is the only candidate promotion metric. Provider-reported tokens,
 estimated cost, wall time, cache use, outcome accuracy, and trace conformance
@@ -248,6 +248,15 @@ both values into a clean context. The diagnosis selects `configure-workflow`
 when an independent audit stage supplies the repeated quality gain. This path
 returns a typed workflow setting without starting the coding node.
 
+The diagnosis selects `revise-instructions` when the repeated causal
+difference is procedural guidance that one instruction section of the
+retained program document can carry. The typed result names the target
+document, one section key, the exact old text, and the exact new text.
+The diagnosis selects `define-tool` when one missing executable tool
+explains the gap. The typed result names the tool, its description, its
+executable content, and that content's digest. Both paths end the workflow
+without starting the coding node.
+
 The diagnosis selects `insufficient-evidence` when the contrast isolates only
 model capability or requires semantic information absent from the log. Every
 candidate preserves the primary model route, reasoning effort, task
@@ -280,12 +289,18 @@ execution configuration that produced it. The workflow refuses a source or
 binary mismatch before making a model request. A source candidate requires a
 Rust implementation change, a Rust regression test, and an affected
 specification. A workflow candidate contains one independent-audit setting.
-Its digest binds the setting to the evaluated source, binary, evidence, and
-preserved execution controls.
+An instruction candidate contains one revision whose old text occurs exactly
+once in the named section of the named program document. A tool candidate
+contains one tool_defs entry with the executable's content digest, and the
+executable file is retained beside the candidate. Every candidate's digest
+binds its content to the evaluated source, binary, evidence, and preserved
+execution controls.
 
 The workflow is one candidate generator. The runner validates source changes
-again after the episode. It validates workflow settings before a benchmark
-run. A validated artifact survives an exhausted reporting outcome. Candidate
+again after the episode. It validates workflow settings, instruction
+revisions, and tool definitions when the episode returns them, and validates
+a workflow setting again before a benchmark run applies it. A validated
+artifact survives an exhausted reporting outcome. Candidate
 promotion remains an external evaluation decision. A failed artifact sets
 `direct_implementation_required`. The campaign then proceeds with a direct
 implementation.

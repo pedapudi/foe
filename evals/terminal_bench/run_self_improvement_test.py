@@ -13,15 +13,18 @@ from run_self_improvement import (
     check_baseline,
     check_candidate,
     failed_base_configuration,
+    instruction_candidate_from_outcome,
     line_budget_ceilings,
     measure_episode,
     model_config,
     rust_toolchain_identity,
     supported_independent_audits,
+    tool_candidate_from_outcome,
     validate_program,
     workflow_candidate_from_outcome,
     write_candidate_check,
 )
+from tool_candidate import executable_digest
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
@@ -83,6 +86,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
             {
                 "implement-source": ["implement-runtime-improvement"],
                 "configure-workflow": [],
+                "revise-instructions": [],
+                "define-tool": [],
                 "insufficient-evidence": [],
             },
         )
@@ -127,6 +132,12 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("model capability", diagnosis["instructions"]["sufficiency"])
         self.assertIn("configure-workflow", diagnosis["instructions"]["sufficiency"])
         self.assertIn("independent_audit", returns["properties"])
+        self.assertIn("instruction_revision", returns["properties"])
+        self.assertIn("tool_definition", returns["properties"])
+        self.assertNotIn("instruction_revision", returns["required"])
+        self.assertNotIn("tool_definition", returns["required"])
+        self.assertIn("revise-instructions", diagnosis["instructions"]["sufficiency"])
+        self.assertIn("define-tool", diagnosis["instructions"]["sufficiency"])
         self.assertIn("must not branch on", diagnosis["instructions"]["controls"])
         self.assertEqual(
             implementation["grants"]["write"],
@@ -238,6 +249,105 @@ class SelfImprovementConfigTest(unittest.TestCase):
                     base,
                 )
         self.assertEqual(candidate["independent_audit"], supported[0])
+
+    def test_instruction_candidate_binds_a_unique_revision_of_the_program_document(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text("{}\n", encoding="utf-8")
+            identity = {
+                "source_tree": "git-tree-sha1:" + "1" * 40,
+                "runtime_binary": "sha256:" + "2" * 64,
+            }
+            base = {
+                "model": "openai-codex/gpt-5.6-sol",
+                "reasoning_effort": "low",
+                "service_tier": "default",
+                "token_policy": "measurement_only",
+            }
+            documents = {
+                "program.json": {
+                    "instructions": {"role": "Run the workflow."},
+                    "workflow": {
+                        "nodes": {
+                            "diagnose": {
+                                "model": {"instructions": {"sufficiency": "Prefer bounded evidence."}}
+                            }
+                        }
+                    },
+                }
+            }
+            revision = {
+                "document": "program.json",
+                "section": "sufficiency",
+                "old_text": "bounded evidence",
+                "new_text": "bounded, labeled evidence",
+            }
+            candidate = instruction_candidate_from_outcome(
+                {"branch": "revise-instructions", "instruction_revision": revision},
+                documents,
+                identity,
+                evidence,
+                base,
+            )
+            with self.assertRaisesRegex(ValueError, "exactly once"):
+                instruction_candidate_from_outcome(
+                    {
+                        "branch": "revise-instructions",
+                        "instruction_revision": {**revision, "old_text": "absent text"},
+                    },
+                    documents,
+                    identity,
+                    evidence,
+                    base,
+                )
+            with self.assertRaisesRegex(ValueError, "did not select"):
+                instruction_candidate_from_outcome(
+                    {"branch": "configure-workflow"}, documents, identity, evidence, base
+                )
+        self.assertEqual(candidate["candidate_kind"], "instruction-revision")
+        self.assertEqual(candidate["revision"]["new_text"], "bounded, labeled evidence")
+
+    def test_tool_candidate_binds_the_executable_content_by_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text("{}\n", encoding="utf-8")
+            identity = {
+                "source_tree": "git-tree-sha1:" + "1" * 40,
+                "runtime_binary": "sha256:" + "2" * 64,
+            }
+            base = {
+                "model": "openai-codex/gpt-5.6-sol",
+                "reasoning_effort": "low",
+                "service_tier": "default",
+                "token_policy": "measurement_only",
+            }
+            executable = "#!/bin/sh\nexit 0\n"
+            definition = {
+                "name": "check-layout",
+                "description": "Verify the workspace layout.",
+                "executable": executable,
+                "executable_sha256": executable_digest(executable.encode()),
+            }
+            candidate, content = tool_candidate_from_outcome(
+                {"branch": "define-tool", "tool_definition": definition},
+                identity,
+                evidence,
+                base,
+            )
+            with self.assertRaisesRegex(ValueError, "does not match the executable content"):
+                tool_candidate_from_outcome(
+                    {
+                        "branch": "define-tool",
+                        "tool_definition": {**definition, "executable_sha256": "sha256:" + "0" * 64},
+                    },
+                    identity,
+                    evidence,
+                    base,
+                )
+        self.assertEqual(content, executable)
+        self.assertEqual(candidate["candidate_kind"], "tool-definition")
+        self.assertNotIn("executable", candidate["tool"])
+        self.assertEqual(candidate["tool"]["executable_sha256"], executable_digest(executable.encode()))
 
     def test_program_validation_reports_construction_failure(self):
         with tempfile.TemporaryDirectory() as directory:

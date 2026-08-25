@@ -386,10 +386,13 @@ that intervention.
 The diagnosis chooses `implement-source` when failed and successful
 trajectories isolate an activated source mechanism. It chooses
 `configure-workflow` when an independent audit stage supplies a repeated
-quality gain. It chooses `insufficient-evidence` when the contrast identifies
-only model capability or requires semantic task knowledge absent from the
-log. That choice ends the workflow before a coding episode and sets
-`direct_implementation_required`.
+quality gain. It chooses `revise-instructions` when the repeated causal
+difference is procedural guidance that one instruction section of the
+retained program document can carry. It chooses `define-tool` when one
+missing executable tool explains the gap. It chooses `insufficient-evidence`
+when the contrast identifies only model capability or requires semantic task
+knowledge absent from the log. That choice ends the workflow before a coding
+episode and sets `direct_implementation_required`.
 
 When the diagnosis chooses `implement-source`, the configured coding model
 acts with `read`, `grep`, `edit`, and `bash`. The diagnosis node's branch edge
@@ -406,6 +409,21 @@ the retained result. The candidate digest binds the setting to the evaluated
 source tree, binary, evidence file, and preserved execution controls. The
 setting must appear in at least two successful attempts in the supplied
 evidence.
+
+When the diagnosis chooses `revise-instructions`, the runner validates the
+typed revision against the retained `program.json`: the named section key
+resolves to exactly one instruction section, and the old text occurs exactly
+once in it. It writes `instruction-candidate.json` beside the retained
+result, with the same identity and evidence bindings a workflow candidate
+carries.
+
+When the diagnosis chooses `define-tool`, the typed result carries the tool's
+name, description, executable content, and that content's digest, because the
+diagnosis episode holds no write authority. The runner checks that the digest
+matches the content and the description is nonempty, writes
+`tool-candidate.json`, and retains the executable beside it as
+`tool-candidate-executable`. The candidate records the name, description, and
+digest under the same identity and evidence bindings.
 
 The diagnosis prompt targets four requests and has a 20-call, 1,800-second
 loop backstop. The implementation has 28-call and 3,600-second safety
