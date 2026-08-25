@@ -1538,3 +1538,75 @@ The standard-tier second-pass jobs are under
 `/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/standard-frozen-candidate-confirmation-second-pass-20260825T151936Z/`.
 The priority-tier jobs are under
 `/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/frozen-candidate-confirmation-second-attempt-priority-20260825T154345Z/`.
+
+## Recorded DNA completion-evidence experiments
+
+Three closed-book DNA attempts evaluated source tree
+`git-tree-sha1:9963c76c70f0cd1cc37bee2e37e02cff364bb4dd` and portable binary
+`sha256:95cdb872165ec8f405e3ce8c6589ab6e37c8f7ff0c53cf3ad9c33e6d49cb120b`.
+Every request used the priority service tier. One attempt received full
+task-owned credit. Two attempts completed with conforming traces while their
+artifacts failed the task-owned grader.
+
+Two modified attempts used the same source tree and binary with the public DNA
+checker declared through `done_when.verify`. Both attempts received full
+task-owned credit. The checker remained unchanged, and the private grader
+remained unavailable until Foe exited. This result measures convergence under
+an author-supplied public checker. It does not establish closed-book quality.
+
+The closed-book evidence is retained in these directories:
+
+- `/home/sunil/git/foe-dna-self-improvement-candidate/target/terminal-bench-jobs/conditional-repair-reaudit-dna-activation-20260825T210938Z`;
+- `/home/sunil/git/foe-dna-self-improvement-candidate/target/terminal-bench-jobs/conditional-reaudit-dna-third-sample-20260825T220952Z`.
+
+The verifier-governed evidence is retained at
+`/home/sunil/git/foe-dna-self-improvement-candidate/target/terminal-bench-jobs/verifier-governed-conditional-reaudit-dna-20260825T213729Z`.
+
+An identity-bound self-improvement run then considered a general workflow
+change from this contrast. The Luna diagnosis used four model calls and cost an
+estimated $0.0143. It returned `insufficient-evidence` because one task family
+did not support a general rule for deriving executable acceptance checks. No
+candidate was produced. This abstention preserved the evidence gate, but it did
+not satisfy the campaign requirement for an accepted transferable
+self-improvement.
+
+A separate closed-book attempt added a Terra-high requirement diagnosis before
+Sol-low implementation and a Sol-xhigh terminal audit. The attempt used 48
+model calls, 646,640 input tokens, 393,216 cached-input tokens, and 33,491
+output tokens. Its estimated cost was $1.671825. Foe completed with a conforming
+trace and no infrastructure exception, while the unchanged task-owned grader
+awarded zero credit.
+
+The terminal audit repaired the public BsaI flank requirement and simulated the
+assembly. It reported primer melting temperatures from explicit binding arms.
+The task-owned grader included a matching assembly-overhang suffix in the
+complete annealed tract. The `snap_rev` tract reached 72.76066 degrees C, beyond
+the public 72 degree maximum. Additional model review therefore did not correct
+the repeated semantic omission.
+
+The failed requirement-diagnosis attempt is retained at
+`/home/sunil/git/foe-dna-self-improvement-candidate/target/terminal-bench-jobs/typed-requirement-diagnosis-dna-activation-20260825T222335Z`.
+
+## Task-derived acceptance-checker evaluation
+
+The evaluation runner can now ask a model to translate public task requirements
+into an executable checker before implementation. A fixed runner installs the
+generated source and requires it to reject a copy of the untouched workspace.
+A Sol-low implementation child and a Sol-xhigh terminal audit each complete
+through that checker under `done_when.verify`. The generated checker and fixed
+runner are retained with content digests.
+
+This lane addresses the observed gap between validation prose and executable
+evidence. The model that writes the checker receives no task-owned grader. The
+unchanged grader remains the quality authority after Foe exits. An activation
+success requires repeated full credit on DNA. Transfer requires full credit on
+an unrelated task selected before its trajectory is inspected.
+
+The workflow constructor, runner negative control, pre-implementation workspace
+digest, Harbor argument propagation, and evidence-integrity checks pass
+locally. The installed checker is bound to its typed value in the root episode
+log. A portable runner completed a provider-free installation check in the DNA
+task container, which lacked `/usr/bin/python3`. Foe's configuration
+constructor accepts the four-node program. No assessed result is recorded yet,
+so the mechanism remains an evaluation candidate and no Foe behavior has been
+promoted from it.

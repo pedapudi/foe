@@ -29,5 +29,6 @@ python3 -m unittest -v \
   tool_candidate_test.py \
   run_test.py \
   run_verifier_controls_test.py \
+  task_derived_checker_test.py \
   trajectory_diagnostics_test.py \
   workflow_candidate_test.py

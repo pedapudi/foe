@@ -235,6 +235,71 @@ owns `done_when.verify`. Both episodes retain the checker tool, so the
 implementation may use it before handoff. A failed implementation check cannot
 prevent the audit from receiving the task and inspecting the shared workspace.
 
+## Evaluate a checker derived from public requirements
+
+The task-derived checker lane tests whether Foe can create its own completion
+evidence before implementation. This lane is research-only. Its results do not
+contribute to a standard Terminal-Bench score.
+
+The declared workflow has four nodes:
+
+1. A Sol-xhigh child reads the public task and untouched workspace. It returns
+   typed requirements and Bash checker source.
+2. A fixed executable installs the checker. Installation requires the checker
+   to compile and report at least one finding on a copy of the untouched
+   workspace.
+3. A Sol-low child implements the task. Its `done_when.verify` runs the
+   generated checker and returns findings to the same child.
+4. A fresh Sol-xhigh child audits and repairs the result. The same checker owns
+   its completion condition.
+
+The fixed runner is a portable binary, so the task container does not need a
+Python interpreter. Generated checkers use Bash, which is already required by
+Foe's coding tools. The runner executes each checker against a temporary
+workspace copy. It converts checker crashes and timeouts into verifier
+findings.
+
+The fixed runner and generated checker are retained with content digests. The
+root episode log contains the typed checker source that the workflow installed.
+Post-run integrity validation requires the retained checker to match that
+source. A changed runner or checker invalidates the trial as infrastructure
+evidence.
+
+Before the episode starts, the fixed executable records a digest over the task
+workspace. Checker installation requires the workspace to retain that digest.
+This check prevents the checker-authoring child from implementing or modifying
+the task through its analysis tools before the declared implementation node.
+
+The checker author receives the public task and task workspace. It does not
+receive the task-owned Terminal-Bench grader. Harbor runs that unchanged grader
+after Foe exits, and its result remains the task-quality authority. A generated
+checker can omit or misimplement a public requirement, so success in this lane
+requires both checker acceptance and full task-owned credit.
+
+Preview one task without a provider request:
+
+```sh
+bazel run //evals/terminal_bench:foe-task-derived-checker -- \
+  --task dna-assembly \
+  --service-tier priority \
+  --label task-derived-checker-dna
+```
+
+Run it after reviewing the maximum:
+
+```sh
+bazel run //evals/terminal_bench:foe-task-derived-checker -- \
+  --task dna-assembly \
+  --service-tier priority \
+  --label task-derived-checker-dna \
+  --confirm-spend
+```
+
+Use this lane on a repeated closed-book failure. Repeat an activated success
+before inspecting unrelated transfer-task trajectories. A source or workflow
+change earns promotion only after unchanged closed-book tasks confirm that the
+quality gain transfers beyond the generated checker.
+
 ## Preview and run one assessed task
 
 Every model-backed target prints planning token estimates and an estimated

@@ -1,5 +1,25 @@
+load("//bazel:portable_binary.bzl", "portable_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+rust_binary(
+    name = "task-derived-checker-runner",
+    srcs = ["task_derived_checker.rs"],
+    crate_root = "task_derived_checker.rs",
+    edition = "2021",
+    deps = [
+        "@crates//:hex",
+        "@crates//:sha2",
+    ],
+)
+
+portable_binary(
+    name = "task-derived-checker-runner-portable",
+    binary = ":task-derived-checker-runner",
+    platform = "//:linux_x86_64_musl",
+    toolchain = "@rust_toolchains//:rust_linux_x86_64_musl__x86_64-unknown-linux-musl__stable",
+)
 
 COMMON_ARGS = [
     "--foe",
@@ -21,6 +41,7 @@ COMMON_DATA = [
     "cases.json",
     "foe_agent.py",
     "foe_agent_support.py",
+    ":task-derived-checker-runner-portable",
     "trajectory_diagnostics.py",
     "workflow_candidate.py",
 ]
@@ -201,6 +222,27 @@ sh_binary(
 )
 
 sh_binary(
+    name = "foe-task-derived-checker",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + [
+        "--group",
+        "development",
+        "--task-derived-checker",
+        "$(rootpath :task-derived-checker-runner-portable)",
+        "--task-derived-checker-reasoning-effort",
+        "xhigh",
+        "--task-derived-checker-model-calls",
+        "30",
+        "--escalation-reasoning-effort",
+        "xhigh",
+        "--escalation-model-calls",
+        "60",
+    ],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
     name = "foe-capability-search",
     srcs = ["run.py"],
     args = COMMON_ARGS + ["--group", "capability_search"],
@@ -302,6 +344,9 @@ sh_test(
         "run_self_improvement_test.py",
         "run_verifier_controls.py",
         "run_verifier_controls_test.py",
+        ":task-derived-checker-runner-portable",
+        "task_derived_checker.rs",
+        "task_derived_checker_test.py",
         "tool_candidate.py",
         "tool_candidate_test.py",
         "trajectory_diagnostics.py",

@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -18,6 +19,7 @@ from foe_agent_support import (
     parse_boolean,
     read_episode_summary,
     schema_probe_command,
+    task_derived_checker_digest,
 )
 
 
@@ -191,6 +193,94 @@ class ProgramTest(unittest.TestCase):
         for node in (implementation, audit):
             self.assertEqual(node["tool_defs"], program["tool_defs"])
             self.assertIn("check", node["tools"])
+
+    def test_task_derived_checker_is_installed_before_verified_coding(self):
+        program = build_program(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            "/workspace",
+            model_calls=60,
+            input_tokens=None,
+            output_tokens=None,
+            seconds=900,
+            reasoning_effort="low",
+            service_tier="priority",
+            escalation_reasoning_effort="xhigh",
+            escalation_model_calls=40,
+            task_derived_checker="/tmp/task-derived-checker",
+            task_derived_checker_reasoning_effort="xhigh",
+            task_derived_checker_model_calls=30,
+        )
+        nodes = program["workflow"]["nodes"]
+        derived = nodes["derive-task-acceptance"]
+        installed = nodes["install-task-acceptance"]
+        implementation = nodes["implement-task"]
+        audit = nodes["audit-and-repair-task"]
+        self.assertEqual(program["budget"]["model_calls"], 130)
+        self.assertEqual(program["budget"]["seconds"], 2700)
+        self.assertEqual(program["budget"]["max_episodes"], 4)
+        self.assertEqual(
+            derived["model"]["model"],
+            {
+                "provider": "openai-codex",
+                "model": "gpt-5.6-sol",
+                "reasoning_effort": "xhigh",
+                "service_tier": "priority",
+                "token_file": "/tmp/private.json",
+            },
+        )
+        self.assertIn("checker_source", derived["model"]["done_when"]["returns"]["required"])
+        self.assertEqual(installed["tool"], "task_acceptance")
+        self.assertEqual(
+            installed["args"],
+            {
+                "args": [
+                    {
+                        "$node": "derive-task-acceptance",
+                        "pointer": "/checker_source",
+                    }
+                ]
+            },
+        )
+        self.assertEqual(
+            implementation["follows"],
+            ["task", "derive-task-acceptance", "install-task-acceptance"],
+        )
+        self.assertEqual(
+            implementation["model"]["done_when"]["verify"],
+            "task_acceptance",
+        )
+        self.assertEqual(audit["model"]["done_when"]["verify"], "task_acceptance")
+        self.assertEqual(audit["model"]["model"]["reasoning_effort"], "xhigh")
+        self.assertTrue(audit["terminal"])
+        self.assertEqual(
+            program["tool_defs"]["task_acceptance"]["exec"],
+            "/tmp/task-derived-checker",
+        )
+
+    def test_task_derived_checker_requires_an_audit_and_excludes_other_analysis(self):
+        arguments = {
+            "instruction": "repair it",
+            "model_name": "openai-codex/gpt-5.6-sol",
+            "credential_path": "/tmp/private.json",
+            "working_directory": "/workspace",
+            "model_calls": 60,
+            "input_tokens": None,
+            "output_tokens": None,
+            "seconds": 900,
+            "reasoning_effort": "low",
+            "task_derived_checker": "/tmp/task-derived-checker",
+        }
+        with self.assertRaisesRegex(ValueError, "requires a terminal audit"):
+            build_program(**arguments)
+        with self.assertRaisesRegex(ValueError, "owns the pre-implementation analysis"):
+            build_program(
+                **arguments,
+                diagnosis_model_name="openai-codex/gpt-5.6-luna",
+                escalation_reasoning_effort="xhigh",
+                escalation_model_calls=20,
+            )
 
     def test_completion_checker_requires_an_absolute_path(self):
         with self.assertRaisesRegex(ValueError, "completion checker must be an absolute path"):
@@ -490,6 +580,30 @@ class ProgramTest(unittest.TestCase):
 
 
 class EpisodeSummaryTest(unittest.TestCase):
+    def test_task_derived_checker_digest_comes_from_one_typed_root_value(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = "#!/bin/bash\necho unfinished\n"
+            event = {
+                "type": "workflow/node-end",
+                "data": {
+                    "node": "derive-task-acceptance",
+                    "value": {"checker_source": source},
+                },
+            }
+            log = root / "episode.jsonl"
+            log.write_text(json.dumps(event) + "\n", encoding="utf-8")
+            self.assertEqual(
+                task_derived_checker_digest(root),
+                hashlib.sha256(source.encode("utf-8")).hexdigest(),
+            )
+            log.write_text(
+                json.dumps(event) + "\n" + json.dumps(event) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "one typed"):
+                task_derived_checker_digest(root)
+
     def test_credential_exposure_detection_reports_no_secret_value(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

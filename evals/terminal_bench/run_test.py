@@ -187,6 +187,43 @@ class CasesTest(unittest.TestCase):
         )
         self.assertIn("completion_checker=/tmp/completion-check", command)
 
+    def test_harbor_command_records_task_derived_checker_generation(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        command = harbor_command(
+            harbor=Path("/tools/harbor"),
+            dataset="terminal-bench/terminal-bench-2-1@6",
+            task=tasks["dna-assembly"],
+            attempts=1,
+            jobs_dir=Path("/tmp/jobs"),
+            agent_module=Path("/tmp/foe_agent.py"),
+            trace_evaluator=Path("/tmp/score-trace"),
+            foe=Path("/tmp/foe"),
+            credential_state=Path("/tmp/private.json"),
+            model="openai-codex/gpt-5.6-sol",
+            reasoning_effort="low",
+            diagnosis_model=None,
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            diagnosis_pricing=None,
+            unresolved_diagnosis_reasoning_effort=None,
+            unresolved_diagnosis_model_calls=6,
+            escalation_reasoning_effort="xhigh",
+            escalation_model_calls=40,
+            runtime_digest="abc123",
+            pricing=pricing["openai-codex/gpt-5.6-sol"],
+            task_derived_checker=Path("/tmp/task-derived-checker"),
+            task_derived_checker_reasoning_effort="xhigh",
+            task_derived_checker_model_calls=30,
+        )
+        self.assertIn("task_derived_checker=/tmp/task-derived-checker", command)
+        self.assertIn("task_derived_checker_reasoning_effort=xhigh", command)
+        self.assertIn("task_derived_checker_model_calls=30", command)
+        self.assertAlmostEqual(
+            float(command[command.index("--agent-timeout-multiplier") + 1]),
+            (tasks["dna-assembly"].seconds * 3 + 300)
+            / tasks["dna-assembly"].harbor_agent_seconds,
+        )
+
     def test_harbor_command_runs_the_built_in_two_episode_workflow(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
         command = harbor_command(
@@ -387,6 +424,41 @@ class CasesTest(unittest.TestCase):
         self.assertEqual(
             integrity["infrastructure_failures"],
             ["task__attempt: the completion checker changed during the trial"],
+        )
+
+    def test_job_integrity_requires_retained_task_derived_checker_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            job = Path(directory)
+            trial = job / "task__attempt"
+            trial.mkdir()
+            (trial / "result.json").write_text(
+                json.dumps(
+                    {
+                        "trial_name": "task__attempt",
+                        "exception_info": None,
+                        "agent_result": {
+                            "metadata": {
+                                "foe_outcome": {"kind": "completed", "value": "done"},
+                                "foe_trace_conformant": True,
+                                "foe_usage_reported": True,
+                                "foe_task_derived_checker": True,
+                                "foe_task_derived_checker_runner_unchanged": False,
+                                "foe_generated_checker_sha256": None,
+                                "foe_generated_checker_unchanged": False,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            integrity = read_job_integrity(job)
+        self.assertEqual(
+            integrity["infrastructure_failures"],
+            [
+                "task__attempt: the task-derived checker runner changed during the trial",
+                "task__attempt: no generated task-derived checker was retained",
+                "task__attempt: the installed checker differs from its typed workflow value",
+            ],
         )
 
     def test_job_integrity_rejects_model_visible_credentials(self):

@@ -433,6 +433,15 @@ run follows only when calibration supports its accuracy and cost target.
 Terminal-Bench completion alone does not establish Foe's trace or authority
 guarantees, so every trial also receives the local conformance evaluation.
 
+Development uses two modified lanes before an unchanged closed-book run. An
+author-supplied public checker measures correction through `done_when.verify`.
+A task-derived checker lane asks a model to translate public requirements into
+an executable checker before a separate child implements the task. Each
+generated checker must reject the untouched workspace. The task-owned grader
+remains unavailable until Foe exits and remains the quality authority. Results
+from either modified lane measure Foe-specific convergence and do not count as
+a standard Terminal-Bench score.
+
 ### CompactBench
 
 Status: recommended provisional compaction regression.

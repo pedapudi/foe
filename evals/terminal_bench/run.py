@@ -268,6 +268,9 @@ def harbor_command(
     runtime_digest: str,
     pricing: Pricing,
     completion_checker: Path | None = None,
+    task_derived_checker: Path | None = None,
+    task_derived_checker_reasoning_effort: str = "xhigh",
+    task_derived_checker_model_calls: int = 30,
     built_in_workflow: bool = False,
     hard_token_limits: bool = False,
     install_only: bool = False,
@@ -281,6 +284,7 @@ def harbor_command(
                 diagnosis_model is not None,
                 unresolved_diagnosis_reasoning_effort is not None,
                 escalation_reasoning_effort is not None,
+                task_derived_checker is not None,
             )
         ):
             raise ValueError("the built-in workflow owns its implementation and audit stages")
@@ -296,6 +300,7 @@ def harbor_command(
                 diagnosis_model is not None,
                 unresolved_diagnosis_reasoning_effort is not None,
                 escalation_reasoning_effort is not None,
+                task_derived_checker is not None,
             )
         )
     )
@@ -332,6 +337,22 @@ def harbor_command(
         kwargs["escalation_model_calls"] = escalation_model_calls
     if completion_checker is not None:
         kwargs["completion_checker"] = completion_checker
+    if task_derived_checker is not None:
+        if completion_checker is not None:
+            raise ValueError(
+                "task-derived checker generation cannot use an external completion checker"
+            )
+        if diagnosis_model is not None or unresolved_diagnosis_reasoning_effort is not None:
+            raise ValueError(
+                "task-derived checker generation owns the pre-implementation analysis"
+            )
+        if escalation_reasoning_effort is None:
+            raise ValueError("task-derived checker generation requires a terminal audit")
+        kwargs["task_derived_checker"] = task_derived_checker
+        kwargs["task_derived_checker_reasoning_effort"] = (
+            task_derived_checker_reasoning_effort
+        )
+        kwargs["task_derived_checker_model_calls"] = task_derived_checker_model_calls
     if built_in_workflow:
         kwargs["built_in_workflow"] = "true"
     command = [
@@ -423,6 +444,29 @@ def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
         ):
             infrastructure_failures.append(
                 f"{trial}: the completion checker changed during the trial"
+            )
+        if (
+            "foe_task_derived_checker_runner_unchanged" in metadata
+            and metadata.get("foe_task_derived_checker_runner_unchanged") is not True
+        ):
+            infrastructure_failures.append(
+                f"{trial}: the task-derived checker runner changed during the trial"
+            )
+        if (
+            metadata.get("foe_task_derived_checker") is True
+            and not isinstance(metadata.get("foe_generated_checker_sha256"), str)
+        ):
+            infrastructure_failures.append(
+                f"{trial}: no generated task-derived checker was retained"
+            )
+        if (
+            metadata.get("foe_task_derived_checker") is True
+            and metadata.get("foe_generated_checker_unchanged") is not True
+        ):
+            detail = metadata.get("foe_generated_checker_evidence_error")
+            suffix = f": {detail}" if isinstance(detail, str) else ""
+            infrastructure_failures.append(
+                f"{trial}: the installed checker differs from its typed workflow value{suffix}"
             )
         if metadata.get("foe_credential_exposed") is True:
             infrastructure_failures.append(
@@ -517,6 +561,24 @@ def parser() -> argparse.ArgumentParser:
         help="read-only checker used by done_when.verify; requires one selected task",
     )
     answer.add_argument(
+        "--task-derived-checker",
+        type=Path,
+        help=(
+            "fixed runner for a checker derived from public task requirements before "
+            "implementation"
+        ),
+    )
+    answer.add_argument(
+        "--task-derived-checker-reasoning-effort",
+        choices=("low", "medium", "high", "xhigh"),
+        default="xhigh",
+    )
+    answer.add_argument(
+        "--task-derived-checker-model-calls",
+        type=int,
+        default=30,
+    )
+    answer.add_argument(
         "--built-in-workflow",
         action="store_true",
         help="exercise Foe's built-in implementation and terminal-audit workflow",
@@ -544,6 +606,32 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("a task may be selected only once")
         if args.completion_checker is not None and len(selected_names) != 1:
             raise ValueError("--completion-checker requires exactly one selected task")
+        if args.task_derived_checker is not None:
+            if args.completion_checker is not None:
+                raise ValueError(
+                    "--task-derived-checker cannot be combined with --completion-checker"
+                )
+            if args.diagnosis_model is not None:
+                raise ValueError(
+                    "--task-derived-checker cannot be combined with --diagnosis-model"
+                )
+            if args.unresolved_diagnosis_reasoning_effort is not None:
+                raise ValueError(
+                    "--task-derived-checker cannot be combined with unresolved diagnosis"
+                )
+            if args.escalation_reasoning_effort is None:
+                raise ValueError(
+                    "--task-derived-checker requires --escalation-reasoning-effort"
+                )
+            if args.task_derived_checker_model_calls < MIN_AUXILIARY_MODEL_CALLS:
+                raise ValueError(
+                    "--task-derived-checker-model-calls must be at least "
+                    f"{MIN_AUXILIARY_MODEL_CALLS}"
+                )
+            if args.workflow_candidate is not None:
+                raise ValueError(
+                    "--task-derived-checker cannot be combined with --workflow-candidate"
+                )
         if args.built_in_workflow:
             if args.reasoning_effort != "low":
                 raise ValueError("--built-in-workflow requires --reasoning-effort low")
@@ -554,6 +642,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.unresolved_diagnosis_reasoning_effort is not None,
                     args.escalation_reasoning_effort is not None,
                     args.workflow_candidate is not None,
+                    args.task_derived_checker is not None,
                 )
             ):
                 raise ValueError(
@@ -626,6 +715,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.completion_checker is not None
             else None
         )
+        task_derived_checker = (
+            args.task_derived_checker.resolve(strict=True)
+            if args.task_derived_checker is not None
+            else None
+        )
         harbor = args.harbor.resolve(strict=True)
         credential = args.credential_file.resolve()
         workspace = source_root.parent
@@ -685,7 +779,11 @@ def main(argv: list[str] | None = None) -> int:
         args.unresolved_diagnosis_model_calls
         if args.unresolved_diagnosis_reasoning_effort is not None
         else 0
-    ) + args.escalation_model_calls
+    ) + args.escalation_model_calls + (
+        args.task_derived_checker_model_calls
+        if task_derived_checker is not None
+        else 0
+    )
     selected_pricing = pricing[args.model]
     diagnosis_pricing = pricing[args.diagnosis_model] if args.diagnosis_model else None
     plans = []
@@ -704,6 +802,11 @@ def main(argv: list[str] | None = None) -> int:
             else 0.0
         )
         escalation_fraction = args.escalation_model_calls / task.model_calls
+        task_checker_fraction = (
+            args.task_derived_checker_model_calls / task.model_calls
+            if task_derived_checker is not None
+            else 0.0
+        )
         unresolved_diagnosis_fraction = (
             args.unresolved_diagnosis_model_calls / task.model_calls
             if args.unresolved_diagnosis_reasoning_effort is not None
@@ -713,6 +816,8 @@ def main(argv: list[str] | None = None) -> int:
         diagnosis_output = round(task.expected_output_tokens * diagnosis_fraction)
         escalation_input = round(task.expected_input_tokens * escalation_fraction)
         escalation_output = round(task.expected_output_tokens * escalation_fraction)
+        task_checker_input = round(task.expected_input_tokens * task_checker_fraction)
+        task_checker_output = round(task.expected_output_tokens * task_checker_fraction)
         unresolved_diagnosis_input = round(
             task.expected_input_tokens * unresolved_diagnosis_fraction
         )
@@ -724,16 +829,24 @@ def main(argv: list[str] | None = None) -> int:
             + diagnosis_input
             + unresolved_diagnosis_input
             + escalation_input
+            + task_checker_input
         )
         expected_output = (
             primary_output
             + diagnosis_output
             + unresolved_diagnosis_output
             + escalation_output
+            + task_checker_output
         )
         expected_cost = selected_pricing.expected_cost(
-            primary_input + unresolved_diagnosis_input + escalation_input,
-            primary_output + unresolved_diagnosis_output + escalation_output,
+            primary_input
+            + unresolved_diagnosis_input
+            + escalation_input
+            + task_checker_input,
+            primary_output
+            + unresolved_diagnosis_output
+            + escalation_output
+            + task_checker_output,
         )
         if diagnosis_pricing is not None:
             expected_cost += diagnosis_pricing.expected_cost(
@@ -742,6 +855,7 @@ def main(argv: list[str] | None = None) -> int:
         primary_seconds = task.seconds * (2 if args.built_in_workflow else 1)
         diagnosis_seconds = task.seconds if args.diagnosis_model is not None else 0
         escalation_seconds = task.seconds if args.escalation_reasoning_effort is not None else 0
+        task_checker_seconds = task.seconds if task_derived_checker is not None else 0
         unresolved_diagnosis_seconds = (
             task.seconds if args.unresolved_diagnosis_reasoning_effort is not None else 0
         )
@@ -755,7 +869,8 @@ def main(argv: list[str] | None = None) -> int:
                 primary_seconds
                 + diagnosis_seconds
                 + unresolved_diagnosis_seconds
-                + escalation_seconds,
+                + escalation_seconds
+                + task_checker_seconds,
             )
         )
     total_calls = sum(plan[1] for plan in plans) * args.attempts
@@ -783,6 +898,12 @@ def main(argv: list[str] | None = None) -> int:
             f"reasoning_effort={args.escalation_reasoning_effort} "
             f"calls={args.escalation_model_calls}"
         )
+    if task_derived_checker is not None:
+        print(
+            f"acceptance    {args.model} "
+            f"reasoning_effort={args.task_derived_checker_reasoning_effort} "
+            f"calls={args.task_derived_checker_model_calls}; derived before implementation"
+        )
     if workflow_candidate is not None:
         print(f"workflow      {workflow_candidate['digest']}")
     elif args.built_in_workflow:
@@ -808,6 +929,11 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "completion    done_when.verify "
             f"sha256:{digest(completion_checker)}"
+        )
+    if task_derived_checker is not None:
+        print(
+            "completion    task-derived done_when.verify runner "
+            f"sha256:{digest(task_derived_checker)}"
         )
     if args.service_tier == "priority":
         print(f"Fast credits  {FAST_SERVICE_CREDIT_MULTIPLIER:g}x Standard ChatGPT credits")
@@ -892,6 +1018,13 @@ def main(argv: list[str] | None = None) -> int:
             runtime_digest=runtime_digest,
             pricing=selected_pricing,
             completion_checker=completion_checker,
+            task_derived_checker=task_derived_checker,
+            task_derived_checker_reasoning_effort=(
+                args.task_derived_checker_reasoning_effort
+            ),
+            task_derived_checker_model_calls=(
+                args.task_derived_checker_model_calls
+            ),
             built_in_workflow=args.built_in_workflow,
             hard_token_limits=args.hard_token_limits,
             install_only=args.install_only,
@@ -951,6 +1084,17 @@ def main(argv: list[str] | None = None) -> int:
                 "sha256": digest(completion_checker),
             }
             if completion_checker is not None
+            else None
+        ),
+        "task_derived_checker": (
+            {
+                "runner_path": str(task_derived_checker),
+                "runner_sha256": digest(task_derived_checker),
+                "model": args.model,
+                "reasoning_effort": args.task_derived_checker_reasoning_effort,
+                "model_calls": args.task_derived_checker_model_calls,
+            }
+            if task_derived_checker is not None
             else None
         ),
         "built_in_workflow": args.built_in_workflow,

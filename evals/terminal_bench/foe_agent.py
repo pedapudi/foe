@@ -28,12 +28,15 @@ from foe_agent_support import (
     read_episode_summary,
     replace_credential_state,
     schema_probe_command,
+    task_derived_checker_digest,
 )
 
 
 REMOTE_BINARY = "/usr/local/bin/foe"
 REMOTE_PROGRAM = "/tmp/foe-terminal-bench-program.json"
 REMOTE_COMPLETION_CHECKER = "/tmp/foe-completion-check"
+REMOTE_TASK_DERIVED_CHECKER = "/tmp/foe-task-derived-checker"
+REMOTE_GENERATED_CHECKER = REMOTE_TASK_DERIVED_CHECKER + ".generated.sh"
 
 
 class FoeAgent(BaseInstalledAgent):
@@ -71,6 +74,9 @@ class FoeAgent(BaseInstalledAgent):
         escalation_reasoning_effort: str | None = None,
         escalation_model_calls: int | str = 0,
         completion_checker: str | None = None,
+        task_derived_checker: str | None = None,
+        task_derived_checker_reasoning_effort: str = "xhigh",
+        task_derived_checker_model_calls: int | str = 30,
         built_in_workflow: bool | str = False,
         **kwargs: Any,
     ) -> None:
@@ -102,12 +108,24 @@ class FoeAgent(BaseInstalledAgent):
         self._completion_checker = (
             Path(completion_checker) if completion_checker is not None else None
         )
+        self._task_derived_checker = (
+            Path(task_derived_checker) if task_derived_checker is not None else None
+        )
+        self._task_derived_checker_reasoning_effort = (
+            task_derived_checker_reasoning_effort
+        )
+        self._task_derived_checker_model_calls = int(task_derived_checker_model_calls)
         self._built_in_workflow = parse_boolean(
             built_in_workflow,
             "built_in_workflow",
         )
         self._completion_checker_digest: str | None = None
         self._observed_completion_checker_digest: str | None = None
+        self._task_derived_checker_digest: str | None = None
+        self._observed_task_derived_checker_digest: str | None = None
+        self._generated_checker_digest: str | None = None
+        self._expected_generated_checker_digest: str | None = None
+        self._generated_checker_evidence_error: str | None = None
         self._credential_values = credential_values(self._credential_file)
         self._credential_exposed = False
         diagnosis_prices = (
@@ -149,6 +167,15 @@ class FoeAgent(BaseInstalledAgent):
             self._completion_checker_digest = hashlib.sha256(
                 self._completion_checker.read_bytes()
             ).hexdigest()
+        if self._task_derived_checker is not None:
+            if not self._task_derived_checker.is_file():
+                raise FileNotFoundError(
+                    "task-derived checker runner does not exist: "
+                    f"{self._task_derived_checker}"
+                )
+            self._task_derived_checker_digest = hashlib.sha256(
+                self._task_derived_checker.read_bytes()
+            ).hexdigest()
         if self._built_in_workflow:
             if any(
                 value is not None
@@ -156,6 +183,7 @@ class FoeAgent(BaseInstalledAgent):
                     self._diagnosis_model,
                     self._unresolved_diagnosis_reasoning_effort,
                     self._escalation_reasoning_effort,
+                    self._task_derived_checker,
                 )
             ):
                 raise ValueError("the built-in workflow owns its implementation and audit stages")
@@ -179,6 +207,14 @@ class FoeAgent(BaseInstalledAgent):
                 REMOTE_COMPLETION_CHECKER,
             )
             checker_setup = f"chmod 755 {shlex.quote(REMOTE_COMPLETION_CHECKER)} && "
+        if self._task_derived_checker is not None:
+            await environment.upload_file(
+                self._task_derived_checker,
+                REMOTE_TASK_DERIVED_CHECKER,
+            )
+            checker_setup += (
+                f"chmod 755 {shlex.quote(REMOTE_TASK_DERIVED_CHECKER)} && "
+            )
         owner = environment.default_user
         ownership = ""
         if owner is not None:
@@ -194,6 +230,18 @@ class FoeAgent(BaseInstalledAgent):
                 f"{schema_probe_command(REMOTE_BINARY)}"
             ),
         )
+        if self._task_derived_checker is not None:
+            captured = await environment.exec(
+                command=(
+                    f"{shlex.quote(REMOTE_TASK_DERIVED_CHECKER)} "
+                    "--capture-initial-state"
+                ),
+                cwd=environment.task_env_config.workdir,
+                user="root",
+            )
+            if captured.return_code != 0:
+                detail = (captured.stderr or captured.stdout or "no diagnostic output").strip()
+                raise RuntimeError(f"cannot capture initial task workspace state: {detail}")
         if self._built_in_workflow:
             help_result = await self.exec_as_root(
                 environment,
@@ -299,6 +347,17 @@ class FoeAgent(BaseInstalledAgent):
                 unresolved_diagnosis_model_calls=self._unresolved_diagnosis_model_calls,
                 escalation_reasoning_effort=self._escalation_reasoning_effort,
                 escalation_model_calls=self._escalation_model_calls,
+                task_derived_checker=(
+                    REMOTE_TASK_DERIVED_CHECKER
+                    if self._task_derived_checker is not None
+                    else None
+                ),
+                task_derived_checker_reasoning_effort=(
+                    self._task_derived_checker_reasoning_effort
+                ),
+                task_derived_checker_model_calls=(
+                    self._task_derived_checker_model_calls
+                ),
             )
             local_program = self.logs_dir / "foe-program.json"
             local_program.write_text(
@@ -347,6 +406,36 @@ class FoeAgent(BaseInstalledAgent):
                     self._observed_completion_checker_digest = hashlib.sha256(
                         retained_checker.read_bytes()
                     ).hexdigest()
+                if self._task_derived_checker is not None:
+                    retained_runner = self.logs_dir / "foe-task-derived-checker-runner.after"
+                    await environment.download_file(
+                        REMOTE_TASK_DERIVED_CHECKER,
+                        retained_runner,
+                    )
+                    self._observed_task_derived_checker_digest = hashlib.sha256(
+                        retained_runner.read_bytes()
+                    ).hexdigest()
+                    generated_exists = await environment.exec(
+                        command=f"test -f {shlex.quote(REMOTE_GENERATED_CHECKER)}",
+                        user="root",
+                    )
+                    if generated_exists.return_code == 0:
+                        retained_generated = self.logs_dir / "foe-task-derived-checker.sh"
+                        await environment.download_file(
+                            REMOTE_GENERATED_CHECKER,
+                            retained_generated,
+                        )
+                        self._generated_checker_digest = hashlib.sha256(
+                            retained_generated.read_bytes()
+                        ).hexdigest()
+                    try:
+                        self._expected_generated_checker_digest = (
+                            task_derived_checker_digest(
+                                self.logs_dir / "foe-episode"
+                            )
+                        )
+                    except (OSError, ValueError, json.JSONDecodeError) as error:
+                        self._generated_checker_evidence_error = str(error)
             finally:
                 await self._retain_credential(environment)
                 values = self._credential_values | credential_values(
@@ -424,6 +513,34 @@ class FoeAgent(BaseInstalledAgent):
                     "foe_completion_checker_unchanged": (
                         self._observed_completion_checker_digest
                         == self._completion_checker_digest
+                    ),
+                }
+            )
+        if self._task_derived_checker_digest is not None:
+            metadata.update(
+                {
+                    "foe_task_derived_checker": True,
+                    "foe_task_derived_checker_runner_sha256": (
+                        self._task_derived_checker_digest
+                    ),
+                    "foe_task_derived_checker_runner_observed_sha256": (
+                        self._observed_task_derived_checker_digest
+                    ),
+                    "foe_task_derived_checker_runner_unchanged": (
+                        self._observed_task_derived_checker_digest
+                        == self._task_derived_checker_digest
+                    ),
+                    "foe_generated_checker_sha256": self._generated_checker_digest,
+                    "foe_generated_checker_expected_sha256": (
+                        self._expected_generated_checker_digest
+                    ),
+                    "foe_generated_checker_unchanged": (
+                        self._generated_checker_digest
+                        == self._expected_generated_checker_digest
+                        and self._generated_checker_digest is not None
+                    ),
+                    "foe_generated_checker_evidence_error": (
+                        self._generated_checker_evidence_error
                     ),
                 }
             )

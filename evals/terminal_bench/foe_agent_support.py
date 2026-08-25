@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shlex
@@ -199,6 +200,9 @@ def build_program(
     unresolved_diagnosis_model_calls: int = 20,
     escalation_reasoning_effort: str | None = None,
     escalation_model_calls: int = 0,
+    task_derived_checker: str | None = None,
+    task_derived_checker_reasoning_effort: str = "xhigh",
+    task_derived_checker_model_calls: int = 30,
 ) -> dict[str, Any]:
     """Build the recorded Foe program used for one Terminal-Bench trial."""
     if "/" not in model_name:
@@ -226,6 +230,8 @@ def build_program(
         raise ValueError("working directory must be an absolute path")
     if completion_checker is not None and not completion_checker.startswith("/"):
         raise ValueError("completion checker must be an absolute path")
+    if task_derived_checker is not None and not task_derived_checker.startswith("/"):
+        raise ValueError("task-derived checker runner must be an absolute path")
     environment_facts = environment_facts or (
         f"Working directory: {working_directory}. Fixed-path executable availability "
         "was not observed."
@@ -271,6 +277,211 @@ def build_program(
     }
     if completion_checker is not None:
         program["done_when"] = completion_contract
+    if task_derived_checker is not None:
+        if completion_checker is not None:
+            raise ValueError(
+                "task-derived checker generation cannot use an external completion checker"
+            )
+        if diagnosis_model_name is not None or unresolved_diagnosis_reasoning_effort is not None:
+            raise ValueError(
+                "task-derived checker generation owns the pre-implementation analysis"
+            )
+        if task_derived_checker_model_calls < MIN_AUXILIARY_MODEL_CALLS:
+            raise ValueError(
+                "task-derived checker model calls must be at least "
+                f"{MIN_AUXILIARY_MODEL_CALLS}"
+            )
+        if escalation_reasoning_effort is None:
+            raise ValueError("task-derived checker generation requires a terminal audit")
+        if escalation_model_calls < MIN_AUXILIARY_MODEL_CALLS:
+            raise ValueError(
+                f"escalation model calls must be at least {MIN_AUXILIARY_MODEL_CALLS}"
+            )
+        checker_name = "task_acceptance"
+        coding_tools.append(checker_name)
+        check_tool_defs[checker_name] = {
+            "exec": task_derived_checker,
+            "cwd": working_directory,
+            "description": (
+                "Installs or runs the task-derived acceptance checker. Pass one Bash "
+                "source string in the `args` list only when installing it. Pass an empty "
+                "list to run the installed checker. Empty standard output means that its "
+                "public acceptance conditions passed; each output line is a finding."
+            ),
+            "timeout_seconds": 360,
+        }
+        checker_contract = {
+            **typed_completion,
+            "verify": checker_name,
+            "retries": COMPLETION_CHECK_RETRIES,
+        }
+        checker_schema = {
+            "type": "object",
+            "properties": {
+                "requirements": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 1000},
+                    "minItems": 1,
+                    "maxItems": 64,
+                },
+                "checker_source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65536,
+                },
+                "unverified_requirements": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 1000},
+                    "maxItems": 32,
+                },
+            },
+            "required": [
+                "requirements",
+                "checker_source",
+                "unverified_requirements",
+            ],
+            "additionalProperties": False,
+        }
+        child_model = lambda effort: {
+            "provider": provider,
+            "model": model,
+            "reasoning_effort": effort,
+            "service_tier": service_tier,
+            "token_file": credential_path,
+        }
+        shared_grants = {"read": [working_directory, "/"], "write": ["/"]}
+        program["name"] = "terminal-bench-task-derived-acceptance"
+        program["budget"].update(
+            {
+                "model_calls": (
+                    model_calls
+                    + task_derived_checker_model_calls
+                    + escalation_model_calls
+                ),
+                "seconds": seconds * 3,
+                "max_episodes": 4,
+                "max_concurrent": 1,
+            }
+        )
+        implementation_role = (
+            "Implement the public task using the acceptance requirements and checker that were "
+            "derived before implementation. Confirm their claims against the task and workspace. "
+            "Run the task_acceptance tool during development and repair every finding. Do not edit "
+            "the checker or its runner. Validate the final artifact directly and exercise boundary "
+            "interactions that combine fields, prefixes, suffixes, lengths, or state. In the "
+            "completion value, report changed artifacts, observed validation results, and "
+            "unresolved risks."
+        )
+        audit_role = (
+            "Independently audit the shared workspace against the original public task and the "
+            "pre-implementation acceptance requirements. Treat every earlier completion claim as "
+            "unverified. Inspect final artifacts and run checks that compute observable behavior. "
+            "Pay special attention to composition and boundary interactions. Repair every defect "
+            "you find. Do not edit the task-derived checker or its runner. Run task_acceptance after "
+            "the final change. Report every path changed by either coding episode."
+        )
+        program["workflow"] = {
+            "nodes": {
+                "derive-task-acceptance": {
+                    "model": {
+                        "name": "derive-task-acceptance",
+                        "instructions": {
+                            "environment": environment_facts,
+                            "role": (
+                                "Derive an executable acceptance checker from the public task and "
+                                "the untouched workspace before implementation begins. Do not "
+                                "implement the task. Return a Bash program that accepts the copied "
+                                "workspace root as its first argument, prints one concise finding per unmet "
+                                "condition, prints nothing when every checked condition passes, and "
+                                "exits zero after ordinary checking. Cover every objectively "
+                                "testable public requirement. Compute behavior from final artifacts "
+                                "rather than trusting reports, comments, or command history. Invoke "
+                                "reference tools with task-specified arguments when required. Check "
+                                "interactions at field, prefix, suffix, length, and state boundaries. "
+                                "Report requirements that cannot be checked under "
+                                "unverified_requirements. Do not access benchmark graders, hidden "
+                                "tests, solution data, or the network. Do not modify the workspace. "
+                                "The checker must report at least one finding on the untouched "
+                                "workspace or installation will fail."
+                            ),
+                        },
+                        "tools": ["read", "grep", "bash"],
+                        "grants": {"read": [working_directory, "/"]},
+                        "budget": {
+                            "model_calls": task_derived_checker_model_calls,
+                            "seconds": seconds,
+                            "loop_threshold": EVALUATION_LOOP_THRESHOLD,
+                        },
+                        "done_when": {"returns": checker_schema},
+                        "model": child_model(task_derived_checker_reasoning_effort),
+                    },
+                    "follows": ["task"],
+                },
+                "install-task-acceptance": {
+                    "tool": checker_name,
+                    "args": {
+                        "args": [
+                            {
+                                "$node": "derive-task-acceptance",
+                                "pointer": "/checker_source",
+                            }
+                        ]
+                    },
+                    "follows": ["derive-task-acceptance"],
+                },
+                "implement-task": {
+                    "model": {
+                        "name": "implement-with-task-acceptance",
+                        "instructions": {
+                            "environment": environment_facts,
+                            "role": implementation_role,
+                        },
+                        "tools": coding_tools,
+                        "tool_defs": check_tool_defs,
+                        "grants": shared_grants,
+                        "budget": {
+                            "model_calls": model_calls,
+                            "seconds": seconds,
+                            "loop_threshold": EVALUATION_LOOP_THRESHOLD,
+                        },
+                        "done_when": checker_contract,
+                        "model": child_model(reasoning_effort),
+                    },
+                    "follows": [
+                        "task",
+                        "derive-task-acceptance",
+                        "install-task-acceptance",
+                    ],
+                },
+                "audit-and-repair-task": {
+                    "model": {
+                        "name": "audit-task-acceptance",
+                        "instructions": {
+                            "environment": environment_facts,
+                            "role": audit_role,
+                        },
+                        "tools": coding_tools,
+                        "tool_defs": check_tool_defs,
+                        "grants": shared_grants,
+                        "budget": {
+                            "model_calls": escalation_model_calls,
+                            "seconds": seconds,
+                            "loop_threshold": EVALUATION_LOOP_THRESHOLD,
+                        },
+                        "done_when": checker_contract,
+                        "model": child_model(escalation_reasoning_effort),
+                    },
+                    "follows": [
+                        "task",
+                        "derive-task-acceptance",
+                        "implement-task",
+                    ],
+                    "terminal": True,
+                },
+            },
+            "recovery": {"enabled": False},
+        }
+        return program
     if (
         diagnosis_model_name is None
         and unresolved_diagnosis_reasoning_effort is None
@@ -608,6 +819,31 @@ def episode_contains_credential(log_dir: Path, values: frozenset[str]) -> bool:
         if any(value in contents for value in encoded):
             return True
     return False
+
+
+def task_derived_checker_digest(log_dir: Path) -> str:
+    """Bind the installed checker to the typed workflow value in the root log."""
+    root_path = log_dir / "episode.jsonl"
+    if not root_path.is_file():
+        raise FileNotFoundError(f"Foe episode log does not exist: {root_path}")
+    sources = []
+    for line in root_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        value = data.get("value") if isinstance(data.get("value"), dict) else {}
+        if (
+            event.get("type") == "workflow/node-end"
+            and data.get("node") == "derive-task-acceptance"
+            and isinstance(value.get("checker_source"), str)
+        ):
+            sources.append(value["checker_source"])
+    if len(sources) != 1:
+        raise ValueError(
+            "root episode must contain one typed derive-task-acceptance value"
+        )
+    return hashlib.sha256(sources[0].encode("utf-8")).hexdigest()
 
 
 def read_episode_summary(
