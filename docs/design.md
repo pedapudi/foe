@@ -241,6 +241,42 @@ Three rules hold in every step. Each exists because its absence loses data.
   Calls that write, execute, or spawn run one at a time in issue order. Results
   are appended in issue order regardless of completion order.
 
+### The event model
+
+Everything that happens to an episode from outside its own turns reaches
+the model one way: as an `inbox/item` in the log. The inbox is the single
+event queue and its `source` is the event's type — the task, a parent's
+steer, a child's report or ending, a peer message, verifier findings,
+runtime notices, and session exits. Items are appended the moment they
+arrive and delivered only at request boundaries: the next `model/request`
+names every newly delivered item in `consumed`, so nothing interrupts a
+request in flight, and the `consumed` lists are a reconstructable account
+of the event loop: what the model saw, and when, is derivable from the
+log alone.
+
+The cost model behind the loop is that model turns are the expensive
+resource and wall-clock time the cheap one. `wait` is the sanctioned
+trade between them: it spends wall-clock time so that no model turn is
+spent polling. Bare, it blocks until every child has ended. With `until`,
+it blocks until an arrival matches one of the named conditions, each in
+outcome vocabulary: a child (by id, or `any`) reaching any outcome or a
+named outcome kind, a session (by id, or `any`) exiting, or an inbox
+arrival by source; `timeout_seconds` returns the call after that long
+even if nothing matched. The result names only the condition met, or
+`timeout`. The arrival itself reaches the model through the ordinary
+inbox drain of the next request, so the `consumed` lists remain the
+complete record. Blocking counts against the `seconds` budget like any
+elapsed time, and `wait` is itself a tool call, so all blocking happens
+where blocking already happens.
+
+The same pieces form the verified-future pattern foe implements: `spawn`
+returns the handle, `done_when.returns` is the future's type,
+`done_when.verify` is the resolution predicate, and `wait` is the join.
+The predicate self-repairs: findings return to the model for another
+attempt, and retries spent reject the future into a typed `Blocked`. A
+parent that spawns, continues its own work, and then waits is composing
+futures whose resolution the log evidences end to end.
+
 ### Termination
 
 An episode ends by writing `episode/end`, and before that it closes every
@@ -258,6 +294,8 @@ children are still running, and the episode ends as exhausted at its next
 step. A program that declares no `seconds` gives `wait` no bound of its
 own; the wait then lasts as long as the children do. A model that means to
 abandon its children ends its turn as usual, and the teardown settles them.
+With `until` conditions or `timeout_seconds`, `wait` returns as "The
+event model" above specifies.
 
 `seconds` is the one bound that every episode in the tree shares as a
 single deadline rather than dividing between children. A child's
@@ -834,7 +872,7 @@ supplies only the two directory-backed resolvers `foe plan` builds for its
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 5,000 lines,
+sandbox, and spawning — and its Rust source stays under 5,200 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/config`, which is budgeted

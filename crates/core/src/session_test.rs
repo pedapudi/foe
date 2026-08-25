@@ -169,6 +169,24 @@ fn no_process_survives_stop_all() {
     assert!(s.stop_all().is_empty(), "a second settlement finds no survivor");
 }
 
+/// `Sessions::take_exited` reports each session's end exactly once, whether
+/// the process exited on its own or a stop ended it, and never a live one.
+#[test]
+fn take_exited_reports_each_end_once() {
+    let (s, dir) = sessions("exited", 4);
+    s.start(shell(&dir, "exit 5")).unwrap();
+    let status = wait_for(|| s.take_exited().pop());
+    assert_eq!((status.id, status.exit_code), (1, Some(5)));
+    assert!(s.take_exited().is_empty(), "an exit is reported once per lifetime");
+    s.start(shell(&dir, "sleep 30")).unwrap();
+    assert!(s.take_exited().is_empty(), "a live session is not an exit");
+    s.stop(2).unwrap();
+    let stopped = s.take_exited();
+    assert_eq!(stopped.len(), 1, "a stopped session is an exit");
+    assert_eq!(stopped[0].id, 2);
+    assert!(s.take_exited().is_empty());
+}
+
 fn start() -> EpisodeStart {
     EpisodeStart {
         id: "ep_root".into(),
@@ -210,6 +228,17 @@ async fn settlement_records_the_implicit_stop_and_the_log_stays_valid() {
     assert_eq!(result.name, SESSION_TOOL);
     assert_eq!(result.call_id, "session-1-settle");
     assert!(result.subject.as_deref().unwrap_or_default().starts_with("session 1: killed after"), "{result:?}");
+    let item = events
+        .iter()
+        .find_map(|e| match &e.data {
+            EventData::InboxItem(i) => Some(i.clone()),
+            _ => None,
+        })
+        .expect("settlement posted the exit as a session inbox item");
+    assert_eq!(item.source, foe_log::InboxSource::Session);
+    assert_eq!(item.from.as_deref(), Some("1"));
+    let foe_log::ContentBlock::Text { text } = &item.content[0] else { panic!() };
+    assert!(text.starts_with("session 1: killed after"), "{text}");
     foe_log::fold::fold(&events).expect("the log is well-formed");
     assert!(sessions.stop_all().is_empty(), "settlement left nothing alive");
 }

@@ -39,6 +39,7 @@ struct Fixture {
     stop: watch::Sender<Option<String>>,
     stop_rx: watch::Receiver<Option<String>>,
     parent_id: Option<String>,
+    sessions: Option<Arc<dyn crate::Sessions>>,
 }
 
 impl Fixture {
@@ -59,6 +60,7 @@ impl Fixture {
             stop,
             stop_rx,
             parent_id: None,
+            sessions: None,
         }
     }
 
@@ -94,7 +96,7 @@ impl Fixture {
             pool: Arc::new(Mutex::new(Pool::new(self.program.budget.clone()))),
             stop: self.stop_rx,
             children: None,
-            sessions: None,
+            sessions: self.sessions,
             context: self.context,
         };
         let outcome = run(params).await.unwrap();
@@ -763,6 +765,131 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
     };
     assert_eq!(request.step, 2);
     assert!(request.messages.len() >= 3, "the copied prefix is part of the derived history");
+}
+
+/// A `Sessions` fake whose exits become observable at a chosen instant,
+/// each reported once, the way `LocalSessions` reports real ones.
+#[derive(Default)]
+struct FakeSessions {
+    exits: Mutex<Vec<(std::time::Instant, crate::SessionStatus)>>,
+}
+
+fn exited(id: u64) -> crate::SessionStatus {
+    crate::SessionStatus { id, name: "server".into(), alive: false, exit_code: Some(0), seconds: 3 }
+}
+
+impl crate::Sessions for FakeSessions {
+    fn start(&self, _req: crate::SessionRequest) -> Result<crate::SessionStatus, crate::CapError> {
+        Err(crate::CapError::Invalid("unused".into()))
+    }
+    fn take_output(&self, _id: u64) -> Result<(crate::SessionStatus, crate::SessionOutput), crate::CapError> {
+        Err(crate::CapError::Invalid("unused".into()))
+    }
+    fn write_stdin(&self, _id: u64, _bytes: &[u8]) -> Result<crate::SessionStatus, crate::CapError> {
+        Err(crate::CapError::Invalid("unused".into()))
+    }
+    fn signal(&self, _id: u64, _signal: &str) -> Result<crate::SessionStatus, crate::CapError> {
+        Err(crate::CapError::Invalid("unused".into()))
+    }
+    fn stop(&self, _id: u64) -> Result<crate::SessionStatus, crate::CapError> {
+        Err(crate::CapError::Invalid("unused".into()))
+    }
+    fn stop_all(&self) -> Vec<crate::SessionStatus> {
+        Vec::new()
+    }
+    fn take_exited(&self) -> Vec<crate::SessionStatus> {
+        let now = std::time::Instant::now();
+        let mut exits = self.exits.lock().unwrap();
+        let later: Vec<_> = exits.iter().filter(|(at, _)| *at > now).cloned().collect();
+        let ready = exits.iter().filter(|(at, _)| *at <= now).map(|(_, s)| s.clone()).collect();
+        *exits = later;
+        ready
+    }
+}
+
+/// docs/log-format.md "Inbox": a session exit reaches the log as one
+/// `session`-source item, posted before the next request, consumed by it,
+/// and derived into that request's messages; the settlement drain finds
+/// nothing further to report.
+#[tokio::test]
+async fn a_session_exit_is_posted_once_and_consumed_by_the_next_request() {
+    let fake = FakeSessions::default();
+    fake.exits.lock().unwrap().push((std::time::Instant::now(), exited(1)));
+    let mut fx = Fixture::new("loop-session-exit", |_| {}, vec![turn("done", vec![])]);
+    fx.sessions = Some(Arc::new(fake));
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("done") });
+    let items: Vec<_> = events
+        .iter()
+        .filter_map(|e| match &e.data {
+            EventData::InboxItem(i) if i.source == InboxSource::Session => Some((e.seq, i.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(items.len(), 1, "one item per session lifetime");
+    let (seq, item) = &items[0];
+    assert_eq!(item.from.as_deref(), Some("1"));
+    let foe_log::ContentBlock::Text { text } = &item.content[0] else { panic!() };
+    assert_eq!(text, "session 1: exit 0 after 3s");
+    let request_event = events.iter().find(|e| matches!(e.data, EventData::ModelRequest(_))).unwrap();
+    let EventData::ModelRequest(request) = &request_event.data else { panic!() };
+    assert!(request.consumed.contains(seq), "the item entered the next request");
+    assert_eq!(
+        request.messages,
+        foe_log::fold::derive_messages(&events, request_event.seq, &request.consumed),
+        "recorded messages equal the derivation"
+    );
+    assert!(serde_json::to_string(&request.messages).unwrap().contains("session 1: exit 0 after 3s"));
+}
+
+/// docs/tools.md "wait": exits are posted while a turn's calls run, so a
+/// `wait` on a session condition observes the arrival mid-block, returns
+/// naming the condition, and the arrival is consumed by the next request.
+#[tokio::test]
+async fn wait_until_observes_a_session_exit_while_it_blocks() {
+    let fake = FakeSessions::default();
+    fake.exits.lock().unwrap().push((std::time::Instant::now() + std::time::Duration::from_millis(100), exited(2)));
+    let mut fx = Fixture::new(
+        "loop-wait-session",
+        |v| v["tools"] = json!(["wait"]),
+        vec![turn("waiting", vec![call("w", "wait", r#"{"until": [{"session": "any"}]}"#)]), turn("done", vec![])],
+    );
+    fx.sessions = Some(Arc::new(fake));
+    let team = Arc::new(crate::team::Team::new(
+        "ep_test".into(),
+        fx.log.clone(),
+        Arc::new(NoSink),
+        Arc::new(crate::spawn::Router::new()),
+        Arc::new(Mutex::new(crate::budget::Pool::new(fx.program.budget.clone()))),
+    ));
+    fx.tools.extend(crate::team::tools(team, None));
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("done") });
+    let waited = results(&events).into_iter().find(|r| r.name == "wait").unwrap();
+    assert!(!waited.is_error, "{:?}", waited.rendered);
+    assert_eq!(waited.value, json!({ "matched": { "session": "any" } }));
+    let item_seq = events
+        .iter()
+        .find(|e| matches!(&e.data, EventData::InboxItem(i) if i.source == InboxSource::Session))
+        .map(|e| e.seq)
+        .expect("the exit was posted while the wait blocked");
+    assert!(item_seq < waited_result_seq(&events), "the arrival preceded the wait's result");
+    let EventData::ModelRequest(second) =
+        &events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).nth(1).unwrap().data
+    else {
+        panic!()
+    };
+    assert!(second.consumed.contains(&item_seq), "the arrival entered the request after the wait");
+}
+
+fn waited_result_seq(events: &[Event]) -> u64 {
+    events.iter().find(|e| matches!(&e.data, EventData::ToolResult(r) if r.name == "wait")).map(|e| e.seq).unwrap()
+}
+
+struct NoSink;
+
+impl crate::protocol::InboxSink for NoSink {
+    fn append(&self, _item: foe_log::InboxItem) {}
 }
 
 #[test]

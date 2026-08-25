@@ -374,12 +374,22 @@ itself is the first inbox item.
 | `peer` | a team member, via the lead's queue; `from` and `message_id` are set |
 | `verify` | the runtime, carrying findings from a `done_when` verifier |
 | `system` | the runtime, for text it must show the model, such as a budget warning |
+| `session` | the runtime, when it observes that a process session's process has ended |
 
 When the current pool has one model call left for an ordinary request, the
 runtime appends one `system` item before deriving that request. The content
 directs the model toward the highest-priority unfinished work and the
 configured completion signal. The request records the item's sequence in
 `consumed`. The item changes no budget and completes no episode.
+
+A `session` item is written once per session lifetime, on exit only: its
+text is the session subject line — the id, the exit status, and the
+lifetime — and `from` is the session id. The runtime observes exits before
+deriving a request, while a turn's tool calls run, and at settlement; a
+session's output never enters the inbox. The value is additive to the
+frozen format: the `inbox/item` payload is unchanged, and a reader compiled
+before the value existed rejects a log that carries it, as for an added
+event type.
 
 The values `request` and `response` are reserved for correlated exchanges.
 

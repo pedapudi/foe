@@ -20,7 +20,7 @@ use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -139,6 +139,9 @@ struct Session {
     /// The exit code and the elapsed whole seconds, recorded once when the
     /// process is reaped. The code is `None` for a process a signal ended.
     ended: Mutex<Option<(Option<i32>, u64)>>,
+    /// Set when `take_exited` has reported the end, so each session's exit
+    /// is reported once per lifetime.
+    reported: AtomicBool,
 }
 
 impl Session {
@@ -199,6 +202,10 @@ impl LocalSessions {
             .cloned()
             .ok_or_else(|| CapError::Invalid(format!("session {id}: no session has this id")))
     }
+
+    fn snapshot(&self) -> Vec<(u64, Arc<Session>)> {
+        self.inner.lock().unwrap().iter().map(|(id, s)| (*id, s.clone())).collect()
+    }
 }
 
 impl Sessions for LocalSessions {
@@ -236,6 +243,7 @@ impl Sessions for LocalSessions {
             stderr,
             started: Instant::now(),
             ended: Mutex::new(None),
+            reported: AtomicBool::new(false),
         });
         let status = session.status(id);
         inner.insert(id, session);
@@ -281,9 +289,20 @@ impl Sessions for LocalSessions {
     }
 
     fn stop_all(&self) -> Vec<SessionStatus> {
-        let sessions: Vec<(u64, Arc<Session>)> =
-            self.inner.lock().unwrap().iter().map(|(id, s)| (*id, s.clone())).collect();
-        sessions.into_iter().filter(|(id, s)| s.status(*id).alive).filter_map(|(id, s)| s.stop(id).ok()).collect()
+        self.snapshot()
+            .into_iter()
+            .filter(|(id, s)| s.status(*id).alive)
+            .filter_map(|(id, s)| s.stop(id).ok())
+            .collect()
+    }
+
+    fn take_exited(&self) -> Vec<SessionStatus> {
+        self.snapshot()
+            .into_iter()
+            .map(|(id, s)| (s.status(id), s))
+            .filter(|(status, s)| !status.alive && !s.reported.swap(true, Ordering::SeqCst))
+            .map(|(status, _)| status)
+            .collect()
     }
 }
 
