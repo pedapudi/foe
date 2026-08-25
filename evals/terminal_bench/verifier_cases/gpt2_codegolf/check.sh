@@ -32,22 +32,30 @@ check_continuation() {
     if test "$status" -ne 0; then
         detail=$(/bin/cat "$directory/run.stderr")
         echo "public continuation $index exited $status: ${detail:-no diagnostics}"
-        return
+        return 1
     fi
     observed=$(/bin/cat "$directory/observed")
     if test "$observed" != "$expected"; then
         echo "public continuation $index differed from the expected arg-max output: observed $observed"
+        return 1
     fi
+    return 0
 }
 
-check_continuation 1 \
+if ! check_continuation 1 \
     'Hello, I am a language model' \
-    'Hello, I am a language modeler. I am a programmer. I am a writer. I am a writer. I am a'
-check_continuation 2 \
+    'Hello, I am a language modeler. I am a programmer. I am a writer. I am a writer. I am a'; then
+    exit 0
+fi
+if ! check_continuation 2 \
     'The meaning of life is' \
     'The meaning of life is not the same as the meaning of death.
 
-The meaning of life is not the same as'
-check_continuation 3 \
+The meaning of life is not the same as'; then
+    exit 0
+fi
+if ! check_continuation 3 \
     'Once upon a time' \
-    'Once upon a time, the world was a place of great beauty and great danger. The world was a place of great'
+    'Once upon a time, the world was a place of great beauty and great danger. The world was a place of great'; then
+    exit 0
+fi
