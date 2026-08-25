@@ -27,6 +27,7 @@ HARBOR_VERSION = "0.22.0"
 DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 MIN_AUXILIARY_MODEL_CALLS = 6
+BUILTIN_WORKFLOW_MODEL_CALLS = 120
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
 AGENT_TIMEOUT_GRACE_SECONDS = 300
 
@@ -267,15 +268,37 @@ def harbor_command(
     runtime_digest: str,
     pricing: Pricing,
     completion_checker: Path | None = None,
+    built_in_workflow: bool = False,
     hard_token_limits: bool = False,
     install_only: bool = False,
 ) -> list[str]:
-    model_stages = 1 + sum(
-        stage_enabled
-        for stage_enabled in (
-            diagnosis_model is not None,
-            unresolved_diagnosis_reasoning_effort is not None,
-            escalation_reasoning_effort is not None,
+    if built_in_workflow:
+        if completion_checker is None:
+            raise ValueError("the built-in workflow requires a completion checker")
+        if reasoning_effort != "low":
+            raise ValueError("the built-in workflow requires low primary reasoning")
+        if any(
+            stage_enabled
+            for stage_enabled in (
+                diagnosis_model is not None,
+                unresolved_diagnosis_reasoning_effort is not None,
+                escalation_reasoning_effort is not None,
+            )
+        ):
+            raise ValueError("the built-in workflow owns its implementation and audit stages")
+        if hard_token_limits:
+            raise ValueError("the built-in workflow does not accept runner token allowances")
+    model_stages = (
+        2
+        if built_in_workflow
+        else 1
+        + sum(
+            stage_enabled
+            for stage_enabled in (
+                diagnosis_model is not None,
+                unresolved_diagnosis_reasoning_effort is not None,
+                escalation_reasoning_effort is not None,
+            )
         )
     )
     agent_timeout_seconds = task.seconds * model_stages + AGENT_TIMEOUT_GRACE_SECONDS
@@ -284,7 +307,9 @@ def harbor_command(
         "foe_binary": foe,
         "credential_file": credential_state,
         "trace_evaluator": trace_evaluator,
-        "model_calls": task.model_calls,
+        "model_calls": (
+            BUILTIN_WORKFLOW_MODEL_CALLS if built_in_workflow else task.model_calls
+        ),
         "seconds": task.seconds,
         "reasoning_effort": reasoning_effort,
         "service_tier": service_tier,
@@ -309,6 +334,8 @@ def harbor_command(
         kwargs["escalation_model_calls"] = escalation_model_calls
     if completion_checker is not None:
         kwargs["completion_checker"] = completion_checker
+    if built_in_workflow:
+        kwargs["built_in_workflow"] = "true"
     command = [
         "/usr/bin/env",
         f"PYTHONPATH={agent_module.parent}",
@@ -488,6 +515,11 @@ def parser() -> argparse.ArgumentParser:
         help="read-only checker used by done_when.verify; requires one selected task",
     )
     answer.add_argument(
+        "--built-in-workflow",
+        action="store_true",
+        help="exercise Foe's built-in implementation and terminal-audit workflow",
+    )
+    answer.add_argument(
         "--hard-token-limits",
         action="store_true",
         help="enforce the planning token estimates as Foe allowances",
@@ -510,6 +542,27 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("a task may be selected only once")
         if args.completion_checker is not None and len(selected_names) != 1:
             raise ValueError("--completion-checker requires exactly one selected task")
+        if args.built_in_workflow:
+            if args.completion_checker is None:
+                raise ValueError("--built-in-workflow requires --completion-checker")
+            if args.reasoning_effort != "low":
+                raise ValueError("--built-in-workflow requires --reasoning-effort low")
+            if any(
+                stage_enabled
+                for stage_enabled in (
+                    args.diagnosis_model is not None,
+                    args.unresolved_diagnosis_reasoning_effort is not None,
+                    args.escalation_reasoning_effort is not None,
+                    args.workflow_candidate is not None,
+                )
+            ):
+                raise ValueError(
+                    "--built-in-workflow cannot be combined with runner-defined model stages"
+                )
+            if args.hard_token_limits:
+                raise ValueError(
+                    "--built-in-workflow cannot be combined with --hard-token-limits"
+                )
         if not 1 <= args.attempts <= 3:
             raise ValueError("--attempts must be between 1 and 3")
         if not SAFE_LABEL.fullmatch(args.label):
@@ -637,6 +690,14 @@ def main(argv: list[str] | None = None) -> int:
     diagnosis_pricing = pricing[args.diagnosis_model] if args.diagnosis_model else None
     plans = []
     for task in selected:
+        primary_calls = (
+            BUILTIN_WORKFLOW_MODEL_CALLS
+            if args.built_in_workflow
+            else task.model_calls
+        )
+        primary_fraction = primary_calls / task.model_calls
+        primary_input = round(task.expected_input_tokens * primary_fraction)
+        primary_output = round(task.expected_output_tokens * primary_fraction)
         diagnosis_fraction = (
             args.diagnosis_model_calls / task.model_calls
             if args.diagnosis_model is not None
@@ -659,25 +720,26 @@ def main(argv: list[str] | None = None) -> int:
             task.expected_output_tokens * unresolved_diagnosis_fraction
         )
         expected_input = (
-            task.expected_input_tokens
+            primary_input
             + diagnosis_input
             + unresolved_diagnosis_input
             + escalation_input
         )
         expected_output = (
-            task.expected_output_tokens
+            primary_output
             + diagnosis_output
             + unresolved_diagnosis_output
             + escalation_output
         )
         expected_cost = selected_pricing.expected_cost(
-            task.expected_input_tokens + unresolved_diagnosis_input + escalation_input,
-            task.expected_output_tokens + unresolved_diagnosis_output + escalation_output,
+            primary_input + unresolved_diagnosis_input + escalation_input,
+            primary_output + unresolved_diagnosis_output + escalation_output,
         )
         if diagnosis_pricing is not None:
             expected_cost += diagnosis_pricing.expected_cost(
                 diagnosis_input, diagnosis_output
             )
+        primary_seconds = task.seconds * (2 if args.built_in_workflow else 1)
         diagnosis_seconds = task.seconds if args.diagnosis_model is not None else 0
         escalation_seconds = task.seconds if args.escalation_reasoning_effort is not None else 0
         unresolved_diagnosis_seconds = (
@@ -686,11 +748,11 @@ def main(argv: list[str] | None = None) -> int:
         plans.append(
             (
                 task,
-                task.model_calls + auxiliary_calls,
+                primary_calls + auxiliary_calls,
                 expected_input,
                 expected_output,
                 expected_cost,
-                task.seconds
+                primary_seconds
                 + diagnosis_seconds
                 + unresolved_diagnosis_seconds
                 + escalation_seconds,
@@ -723,6 +785,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if workflow_candidate is not None:
         print(f"workflow      {workflow_candidate['digest']}")
+    elif args.built_in_workflow:
+        print("workflow      built-in implementation and terminal audit")
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; concurrency 1")
     print("planning      calls      input     output  est. cost  seconds  task")
@@ -828,6 +892,7 @@ def main(argv: list[str] | None = None) -> int:
             runtime_digest=runtime_digest,
             pricing=selected_pricing,
             completion_checker=completion_checker,
+            built_in_workflow=args.built_in_workflow,
             hard_token_limits=args.hard_token_limits,
             install_only=args.install_only,
         )
@@ -888,6 +953,7 @@ def main(argv: list[str] | None = None) -> int:
             if completion_checker is not None
             else None
         ),
+        "built_in_workflow": args.built_in_workflow,
         "workflow_candidate": workflow_candidate,
         "foe_sha256": runtime_digest,
         "evaluated_foe": (

@@ -39,6 +39,22 @@ VERIFIER_CASE_DATA = [
     "verifier_cases/large_scale_text_editing/oracle.sh",
 ]
 
+VERIFIER_CASES = [
+    (
+        "cancel-async-tasks",
+        "cancel-async-tasks",
+        "verifier_cases/cancel_async_tasks/check.py",
+    ),
+    ("dna-assembly", "dna-assembly", "verifier_cases/dna_assembly/check.pl"),
+    ("fix-git", "fix-git", "verifier_cases/fix_git/check.py"),
+    ("gpt2-codegolf", "gpt2-codegolf", "verifier_cases/gpt2_codegolf/check.sh"),
+    (
+        "large-scale-text-editing",
+        "large-scale-text-editing",
+        "verifier_cases/large_scale_text_editing/check.py",
+    ),
+]
+
 sh_binary(
     name = "foe-trajectory-diagnostics",
     srcs = ["trajectory_diagnostics.py"],
@@ -113,21 +129,26 @@ sh_binary(
         data = COMMON_DATA + [checker],
         visibility = ["//visibility:public"],
     )
-    for name, task, checker in [
-        (
-            "cancel-async-tasks",
-            "cancel-async-tasks",
-            "verifier_cases/cancel_async_tasks/check.py",
-        ),
-        ("dna-assembly", "dna-assembly", "verifier_cases/dna_assembly/check.pl"),
-        ("fix-git", "fix-git", "verifier_cases/fix_git/check.py"),
-        ("gpt2-codegolf", "gpt2-codegolf", "verifier_cases/gpt2_codegolf/check.sh"),
-        (
-            "large-scale-text-editing",
-            "large-scale-text-editing",
-            "verifier_cases/large_scale_text_editing/check.py",
-        ),
-    ]
+    for name, task, checker in VERIFIER_CASES
+]
+
+[
+    sh_binary(
+        name = "foe-built-in-verifier-" + name,
+        srcs = ["run.py"],
+        args = COMMON_ARGS + [
+            "--group",
+            "development",
+            "--task",
+            task,
+            "--completion-checker",
+            "$(rootpath " + checker + ")",
+            "--built-in-workflow",
+        ],
+        data = COMMON_DATA + [checker],
+        visibility = ["//visibility:public"],
+    )
+    for name, task, checker in VERIFIER_CASES
 ]
 
 sh_binary(

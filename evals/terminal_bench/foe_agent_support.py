@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -61,6 +61,60 @@ COMPLETION_SCHEMA = {
     "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
     "additionalProperties": False,
 }
+
+
+def parse_boolean(value: bool | str, name: str) -> bool:
+    """Parse one Harbor agent keyword without accepting ambiguous values."""
+    if isinstance(value, bool):
+        return value
+    normalized = value.strip().lower()
+    if normalized in ("true", "1"):
+        return True
+    if normalized in ("false", "0"):
+        return False
+    raise ValueError(f"{name} must be true or false")
+
+
+def builtin_workflow_arguments(
+    instruction: str,
+    model_name: str,
+    credential_path: str,
+    completion_checker: str,
+    episode_directory: str,
+    service_tier: str,
+    binary: str = "/usr/local/bin/foe",
+) -> tuple[str, ...]:
+    """Return the direct built-in workflow invocation for a Harbor trial."""
+    if "/" not in model_name or model_name.startswith("/") or model_name.endswith("/"):
+        raise ValueError("model must have the form provider/model")
+    if service_tier not in ("default", "priority"):
+        raise ValueError("service tier must be default or priority")
+    paths = {
+        "binary": binary,
+        "credential": credential_path,
+        "completion checker": completion_checker,
+        "episode directory": episode_directory,
+    }
+    for name, value in paths.items():
+        if not PurePosixPath(value).is_absolute():
+            raise ValueError(f"{name} path must be absolute")
+    return (
+        binary,
+        instruction,
+        "--model",
+        model_name,
+        "--service-tier",
+        service_tier,
+        "--key-file",
+        credential_path,
+        "--verify",
+        completion_checker,
+        "--sandbox",
+        "off",
+        "--headless",
+        "--log-dir",
+        episode_directory,
+    )
 
 
 def fixed_executable_probe_command() -> str:

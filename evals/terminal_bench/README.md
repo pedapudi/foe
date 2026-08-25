@@ -161,6 +161,33 @@ Equivalent targets end in `foe-verifier-fix-git`,
 service tier and low reasoning in one verifier-governed implementation
 episode. The implementation retains 60 model calls as a loop backstop.
 
+Targets beginning with `foe-built-in-verifier-` exercise the workflow that
+the Foe binary constructs for a bare task. That workflow gives 60 calls to a
+Sol-low implementation episode and 60 calls to a fresh Sol-high terminal
+audit. The terminal audit owns `done_when.verify`. The adapter disables
+Landlock because each Terminal-Bench task already runs in its Docker
+container.
+
+Preview the built-in workflow on one modified scenario:
+
+```sh
+bazel run //evals/terminal_bench:foe-built-in-verifier-fix-git
+```
+
+Run it after reviewing the maximum:
+
+```sh
+bazel run //evals/terminal_bench:foe-built-in-verifier-fix-git -- \
+  --label built-in-verifier-fix-git \
+  --confirm-spend
+```
+
+The same suffixes supported by `foe-verifier-` are supported by
+`foe-built-in-verifier-`. The built-in targets retain the exact command-line
+arguments used in `foe-invocation.json`. They reject runner-defined diagnosis,
+escalation, workflow candidates, and hard token allowances because the binary
+owns both model stages and their call backstops.
+
 The configured executable's bytes participate in Foe's program identity. The
 adapter also downloads the checker after the episode and compares its digest
 with the source digest. A changed checker invalidates the trial as

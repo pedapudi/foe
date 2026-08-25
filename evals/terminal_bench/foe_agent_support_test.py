@@ -7,15 +7,54 @@ from pathlib import Path
 
 from foe_agent_support import (
     FIXED_EXECUTABLE_PATHS,
+    builtin_workflow_arguments,
     build_program,
     describe_container_environment,
     estimate_usage_cost,
     fixed_executable_probe_command,
+    parse_boolean,
     read_episode_summary,
 )
 
 
 class ProgramTest(unittest.TestCase):
+    def test_builtin_workflow_invocation_is_explicit_and_has_no_program_file(self):
+        arguments = builtin_workflow_arguments(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            "/tmp/completion-check",
+            "/logs/episode",
+            "priority",
+        )
+        self.assertEqual(
+            arguments,
+            (
+                "/usr/local/bin/foe",
+                "repair it",
+                "--model",
+                "openai-codex/gpt-5.6-sol",
+                "--service-tier",
+                "priority",
+                "--key-file",
+                "/tmp/private.json",
+                "--verify",
+                "/tmp/completion-check",
+                "--sandbox",
+                "off",
+                "--headless",
+                "--log-dir",
+                "/logs/episode",
+            ),
+        )
+
+    def test_harbor_boolean_parser_rejects_ambiguous_values(self):
+        self.assertTrue(parse_boolean(True, "built_in_workflow"))
+        self.assertTrue(parse_boolean("true", "built_in_workflow"))
+        self.assertFalse(parse_boolean("0", "built_in_workflow"))
+        with self.assertRaisesRegex(ValueError, "must be true or false"):
+            parse_boolean("enabled", "built_in_workflow")
+
     def test_fixed_path_probe_produces_validated_environment_facts(self):
         command = fixed_executable_probe_command()
         self.assertIn("test -x /usr/bin/python3", command)
