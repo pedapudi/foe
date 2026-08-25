@@ -220,8 +220,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(implementation["grants"]["execute"], ["/opt/toolchain"])
         self.assertEqual(config["task"], "Raise verified completion.")
         self.assertEqual(config["budget"]["loop_threshold"], 8)
-        self.assertEqual(config["budget"]["model_calls"], 80)
+        self.assertEqual(config["budget"]["model_calls"], 140)
         self.assertEqual(config["budget"]["max_episodes"], 4)
+        self.assertEqual(implementation["budget"]["model_calls"], 60)
+        self.assertEqual(audit["budget"]["model_calls"], 60)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
 
     def test_source_candidate_requires_evidence_for_source_owned_behavior(self):

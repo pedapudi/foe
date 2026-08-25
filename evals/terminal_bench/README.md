@@ -574,10 +574,12 @@ matches the content and the description is nonempty, writes
 digest under the same identity and evidence bindings.
 
 The diagnosis prompt targets four requests and has a 20-call, 1,800-second
-loop backstop. The implementation has 28-call and 3,600-second safety
-backstops. The independent source audit has 32-call and 3,600-second safety
-backstops. Each model child ends as blocked after eight consecutive identical
-tool calls or assistant turns.
+loop backstop. The implementation and independent source audit each have a
+60-call and 3,600-second safety backstop. These allowances match the built-in
+coding workflow. A candidate that is still making distinct source changes and
+checker-directed repairs does not lose its independent audit to a smaller
+self-improvement allowance. Each model child ends as blocked after eight
+consecutive identical tool calls or assistant turns.
 
 The diagnosis preserves the primary model route, reasoning effort, task
 allowances, token policy, service tier, and task set. Verified task quality is
