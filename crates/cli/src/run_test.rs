@@ -28,6 +28,25 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
     assert_eq!(audit.model.as_ref().unwrap().option("reasoning_effort"), None);
 }
 
+#[test]
+fn builtin_key_file_uses_the_providers_credential_option() {
+    let credential = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/test-scratch/builtin-credential.json");
+    std::fs::create_dir_all(credential.parent().unwrap()).unwrap();
+    std::fs::write(&credential, "{}\n").unwrap();
+    let canonical = credential.canonicalize().unwrap().to_string_lossy().into_owned();
+
+    let codex =
+        builtin_config("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), Some(&credential), None, None)
+            .unwrap();
+    assert_eq!(codex.model.as_ref().unwrap().option("token_file"), Some(canonical.as_str()));
+    assert_eq!(codex.model.as_ref().unwrap().option("api_key_file"), None);
+
+    let openai =
+        builtin_config("task".into(), ModelConfig::new("openai", "gpt-5.6-sol"), Some(&credential), None, None)
+            .unwrap();
+    assert_eq!(openai.model.as_ref().unwrap().option("api_key_file"), Some(canonical.as_str()));
+}
+
 /// docs/design.md "The command line": a bare task reserves independent
 /// implementation and audit episodes, and the audit receives the task and
 /// implementation claim in a fresh context.

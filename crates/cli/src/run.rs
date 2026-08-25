@@ -286,7 +286,8 @@ fn builtin_config(
     apply_builtin_model_defaults(&mut model);
     if let Some(key_file) = key_file {
         let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
-        model.options.insert("api_key_file".to_string(), key_file.to_string_lossy().into_owned());
+        let option = credential_option(&model.provider);
+        model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
     }
     let mut audit_model = model.clone();
     if !explicit_reasoning
@@ -386,6 +387,16 @@ fn builtin_config(
         return serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"));
     }
     serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"))
+}
+
+#[cfg(feature = "transport")]
+fn credential_option(provider: &str) -> &'static str {
+    foe_transport::provider_info(provider).and_then(|value| value.auth.option_key()).unwrap_or("api_key_file")
+}
+
+#[cfg(not(feature = "transport"))]
+fn credential_option(_provider: &str) -> &'static str {
+    "api_key_file"
 }
 
 #[cfg(test)]

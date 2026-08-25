@@ -75,7 +75,13 @@ const OPTS: &[Opt] = &[
     opt("", "--config", "FILE", "a built-in coding configuration", "the configuration document to run"),
     opt("", "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
     opt("", "--service-tier", "TIER", "the model configuration's value", "request service tier: default or priority"),
-    opt("", "--key-file", "PATH", "the provider's file under ~/.config/foe/credentials/", "the API key to send"),
+    opt(
+        "",
+        "--key-file",
+        "PATH",
+        "the provider's file under ~/.config/foe/credentials/",
+        "the provider credential file to use",
+    ),
     opt(
         "",
         "--verify",

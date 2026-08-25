@@ -658,9 +658,11 @@ effort for audit. An explicit reasoning effort applies to both episodes.
 from the default model file remains in effect. Otherwise the provider applies
 its own default.
 
-`--key-file` names the key file explicitly. Without it, the provider's
-credential file under `~/.config/foe/credentials/` is read. The home directory
-comes from the passwd database, never from the environment.
+`--key-file` names the provider credential file explicitly. It supplies an API
+key file, OAuth token state, or Google credential according to the selected
+provider. Without it, the provider's credential file under
+`~/.config/foe/credentials/` is read. The home directory comes from the passwd
+database, never from the environment.
 
 `foe login` configures one provider: it asks for the credential, proves it
 with one request, writes it under `~/.config/foe/credentials/` with mode
