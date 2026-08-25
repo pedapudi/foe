@@ -222,6 +222,35 @@ class CasesTest(unittest.TestCase):
             / tasks["fix-git"].harbor_agent_seconds,
         )
 
+    def test_harbor_command_runs_the_built_in_workflow_without_a_checker(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        command = harbor_command(
+            harbor=Path("/tools/harbor"),
+            dataset="terminal-bench/terminal-bench-2-1@6",
+            task=tasks["fix-git"],
+            attempts=1,
+            jobs_dir=Path("/tmp/jobs"),
+            agent_module=Path("/tmp/foe_agent.py"),
+            trace_evaluator=Path("/tmp/score-trace"),
+            foe=Path("/tmp/foe"),
+            credential_state=Path("/tmp/private.json"),
+            model="openai-codex/gpt-5.6-sol",
+            reasoning_effort="low",
+            diagnosis_model=None,
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            diagnosis_pricing=None,
+            unresolved_diagnosis_reasoning_effort=None,
+            unresolved_diagnosis_model_calls=6,
+            escalation_reasoning_effort=None,
+            escalation_model_calls=0,
+            runtime_digest="abc123",
+            pricing=pricing["openai-codex/gpt-5.6-sol"],
+            built_in_workflow=True,
+        )
+        self.assertIn("built_in_workflow=true", command)
+        self.assertFalse(any(value.startswith("completion_checker=") for value in command))
+
     def test_harbor_command_rejects_external_stages_for_the_built_in_workflow(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
         with self.assertRaisesRegex(ValueError, "owns its implementation and audit"):

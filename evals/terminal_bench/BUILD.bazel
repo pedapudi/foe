@@ -160,6 +160,18 @@ sh_binary(
 )
 
 sh_binary(
+    name = "foe-built-in-development",
+    srcs = ["run.py"],
+    args = COMMON_ARGS + [
+        "--group",
+        "development",
+        "--built-in-workflow",
+    ],
+    data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
     name = "foe-install-check",
     srcs = ["run.py"],
     args = COMMON_ARGS + [

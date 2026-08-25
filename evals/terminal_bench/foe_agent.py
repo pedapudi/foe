@@ -144,8 +144,6 @@ class FoeAgent(BaseInstalledAgent):
                 self._completion_checker.read_bytes()
             ).hexdigest()
         if self._built_in_workflow:
-            if self._completion_checker is None:
-                raise ValueError("the built-in workflow requires a completion checker")
             if any(
                 value is not None
                 for value in (
@@ -228,7 +226,11 @@ class FoeAgent(BaseInstalledAgent):
                 instruction,
                 self.model_name,
                 REMOTE_CREDENTIAL,
-                REMOTE_COMPLETION_CHECKER,
+                (
+                    REMOTE_COMPLETION_CHECKER
+                    if self._completion_checker is not None
+                    else None
+                ),
                 episode,
                 self._service_tier,
                 REMOTE_BINARY,

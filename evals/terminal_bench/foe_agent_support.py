@@ -79,7 +79,7 @@ def builtin_workflow_arguments(
     instruction: str,
     model_name: str,
     credential_path: str,
-    completion_checker: str,
+    completion_checker: str | None,
     episode_directory: str,
     service_tier: str,
     binary: str = "/usr/local/bin/foe",
@@ -92,13 +92,14 @@ def builtin_workflow_arguments(
     paths = {
         "binary": binary,
         "credential": credential_path,
-        "completion checker": completion_checker,
         "episode directory": episode_directory,
     }
+    if completion_checker is not None:
+        paths["completion checker"] = completion_checker
     for name, value in paths.items():
         if not PurePosixPath(value).is_absolute():
             raise ValueError(f"{name} path must be absolute")
-    return (
+    arguments = [
         binary,
         instruction,
         "--model",
@@ -107,14 +108,19 @@ def builtin_workflow_arguments(
         service_tier,
         "--key-file",
         credential_path,
-        "--verify",
-        completion_checker,
-        "--sandbox",
-        "off",
-        "--headless",
-        "--log-dir",
-        episode_directory,
+    ]
+    if completion_checker is not None:
+        arguments.extend(("--verify", completion_checker))
+    arguments.extend(
+        (
+            "--sandbox",
+            "off",
+            "--headless",
+            "--log-dir",
+            episode_directory,
+        )
     )
+    return tuple(arguments)
 
 
 def fixed_executable_probe_command() -> str:

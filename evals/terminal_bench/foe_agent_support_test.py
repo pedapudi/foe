@@ -48,6 +48,19 @@ class ProgramTest(unittest.TestCase):
             ),
         )
 
+    def test_builtin_workflow_can_run_without_a_completion_checker(self):
+        arguments = builtin_workflow_arguments(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            None,
+            "/logs/episode",
+            "priority",
+        )
+        self.assertNotIn("--verify", arguments)
+        self.assertEqual(arguments[0:2], ("/usr/local/bin/foe", "repair it"))
+        self.assertEqual(arguments[-2:], ("--log-dir", "/logs/episode"))
+
     def test_harbor_boolean_parser_rejects_ambiguous_values(self):
         self.assertTrue(parse_boolean(True, "built_in_workflow"))
         self.assertTrue(parse_boolean("true", "built_in_workflow"))

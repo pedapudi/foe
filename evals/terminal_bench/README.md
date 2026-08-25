@@ -188,6 +188,22 @@ arguments used in `foe-invocation.json`. They reject runner-defined diagnosis,
 escalation, workflow candidates, and hard token allowances because the binary
 owns both model stages and their call backstops.
 
+Run the built-in workflow on the frozen, unchanged twelve-task development
+set with:
+
+```sh
+bazel run //evals/terminal_bench:foe-built-in-development
+bazel run //evals/terminal_bench:foe-built-in-development -- \
+  --label built-in-development \
+  --confirm-spend
+```
+
+The preview reports the maximum estimated spend without making a model
+request. These closed-book tasks do not expose the development checkers. The
+implementation and terminal-audit episodes must select and run their own
+task-relevant checks. Harbor runs the unchanged task-owned verifier after Foe
+exits.
+
 The configured executable's bytes participate in Foe's program identity. The
 adapter also downloads the checker after the episode and compares its digest
 with the source digest. A changed checker invalidates the trial as

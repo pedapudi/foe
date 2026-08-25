@@ -273,8 +273,6 @@ def harbor_command(
     install_only: bool = False,
 ) -> list[str]:
     if built_in_workflow:
-        if completion_checker is None:
-            raise ValueError("the built-in workflow requires a completion checker")
         if reasoning_effort != "low":
             raise ValueError("the built-in workflow requires low primary reasoning")
         if any(
@@ -543,8 +541,6 @@ def main(argv: list[str] | None = None) -> int:
         if args.completion_checker is not None and len(selected_names) != 1:
             raise ValueError("--completion-checker requires exactly one selected task")
         if args.built_in_workflow:
-            if args.completion_checker is None:
-                raise ValueError("--built-in-workflow requires --completion-checker")
             if args.reasoning_effort != "low":
                 raise ValueError("--built-in-workflow requires --reasoning-effort low")
             if any(
