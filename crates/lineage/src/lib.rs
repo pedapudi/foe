@@ -112,6 +112,11 @@ pub struct Manifest {
     pub proposal_log: String,
     /// The transition candidate envelope, listed in `files`.
     pub candidate_envelope: String,
+    /// The candidate binding record, listed in `files`. Absent from a
+    /// bundle built before the record existed; the checker then reports
+    /// exact input binding as unverifiable rather than failing the claim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_binding: Option<String>,
 }
 
 /// Parses and checks a manifest without opening any listed file: canonical
@@ -133,8 +138,12 @@ pub fn check_manifest(bytes: &[u8]) -> Result<Manifest, LineageError> {
             return Err(invalid(format!("{key}.files[{i}].path"), "follows the prior path in byte order"));
         }
     }
-    for (name, path) in [("proposal_log", &manifest.proposal_log), ("candidate_envelope", &manifest.candidate_envelope)]
-    {
+    let named = [
+        ("proposal_log", Some(&manifest.proposal_log)),
+        ("candidate_envelope", Some(&manifest.candidate_envelope)),
+        ("candidate_binding", manifest.candidate_binding.as_ref()),
+    ];
+    for (name, path) in named.into_iter().filter_map(|(name, path)| path.map(|p| (name, p))) {
         if !manifest.files.iter().any(|f| &f.path == path) {
             return Err(invalid(format!("{key}.{name}"), "names a listed file"));
         }
@@ -162,7 +171,12 @@ pub fn verify_bundle(dir: &Path) -> Result<(Manifest, String), LineageError> {
 /// Builds the manifest of `dir`: every file below it except the manifest
 /// itself, in byte order. The caller writes [`manifest_bytes`] to
 /// [`MANIFEST_FILE`]; the digest of those bytes is the bundle's address.
-pub fn build_manifest(dir: &Path, proposal_log: &str, candidate_envelope: &str) -> Result<Manifest, LineageError> {
+pub fn build_manifest(
+    dir: &Path,
+    proposal_log: &str,
+    candidate_envelope: &str,
+    candidate_binding: Option<&str>,
+) -> Result<Manifest, LineageError> {
     let mut files = Vec::new();
     let mut pending = vec![dir.to_path_buf()];
     while let Some(next) = pending.pop() {
@@ -192,6 +206,7 @@ pub fn build_manifest(dir: &Path, proposal_log: &str, candidate_envelope: &str) 
         files,
         proposal_log: proposal_log.into(),
         candidate_envelope: candidate_envelope.into(),
+        candidate_binding: candidate_binding.map(str::to_string),
     };
     check_manifest(&manifest_bytes(&manifest)?)
 }
@@ -199,6 +214,25 @@ pub fn build_manifest(dir: &Path, proposal_log: &str, candidate_envelope: &str) 
 /// The canonical bytes of a manifest: what [`MANIFEST_FILE`] holds.
 pub fn manifest_bytes(manifest: &Manifest) -> Result<Vec<u8>, LineageError> {
     Ok(canonical(&serde_json::to_value(manifest)?).into_bytes())
+}
+
+/// The candidate binding record: written into the bundle by its builder,
+/// pairing the candidate envelope's digest with the coordinates of the
+/// verification that accepted it. The record closes the exact-input-binding
+/// step for bundles that carry it, and attests the pairing only as strongly
+/// as the bundle does, because the frozen `verification/result` event
+/// carries no candidate digest. See docs/lineage-identity.md "The candidate
+/// binding gap".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CandidateBinding {
+    pub schema_version: u32,
+    /// The digest of the retained candidate envelope's bytes.
+    pub candidate_sha256: String,
+    /// The coordinates of the accepted `verification/result`, as the
+    /// ancestry claim names them.
+    pub verification_log: String,
+    pub verification_seq: u64,
 }
 
 /// The transition candidate envelope: the complete verifier input, binding
@@ -210,6 +244,12 @@ pub struct CandidateEnvelope {
     pub program_identity: String,
     pub identity_document_sha256: String,
     pub artifact_manifest_sha256: String,
+}
+
+/// The canonical bytes of a candidate binding record: what the file named
+/// by `Manifest::candidate_binding` holds.
+pub fn binding_bytes(record: &CandidateBinding) -> Result<Vec<u8>, LineageError> {
+    Ok(canonical(&serde_json::to_value(record)?).into_bytes())
 }
 
 // ---- ancestry ---------------------------------------------------------------
@@ -237,10 +277,11 @@ pub struct ChainEntry {
 
 /// What [`check_ancestry`] establishes: the chain from the requested state
 /// to its root, first entry the requested state, and every check the
-/// retained evidence leaves open. Open checks exist because the implemented
-/// `verification/result` event carries no candidate digest and because the
-/// identity document reduces a child program to its hash; see
-/// docs/lineage-identity.md "The candidate binding gap".
+/// retained evidence leaves open. Open checks exist when a bundle retains
+/// no candidate binding record, because the frozen `verification/result`
+/// event carries no candidate digest, and because the identity document
+/// reduces a child program to its hash; see docs/lineage-identity.md
+/// "The candidate binding gap".
 #[derive(Debug, Clone, Serialize)]
 pub struct AncestryReport {
     pub chain: Vec<ChainEntry>,
@@ -324,16 +365,39 @@ fn check_transition(
     if result.status != VerificationStatus::Accepted {
         return Err(invalid("program_lineage.verification_seq", "names an accepted verification/result"));
     }
-    // The implemented event carries no candidate digest, so the equality of
-    // the event's candidate and the retained envelope is not checkable.
-    report.unverifiable.push(format!(
-        "transition {}: verification/result at seq {} carries no candidate_sha256, so the retained \
-         envelope is not bound to the verifier's input",
-        claim.evidence, claim.verification_seq
-    ));
+    // Exact input binding. The frozen event carries no candidate digest;
+    // a bundle that retains the binding record binds the retained envelope
+    // to the accepted event's coordinates, attested by the bundle itself.
+    // Without the record the equality is not checkable.
+    let envelope_bytes = std::fs::read(dir.join(&manifest.candidate_envelope))?;
+    match &manifest.candidate_binding {
+        None => report.unverifiable.push(format!(
+            "transition {}: the bundle retains no candidate binding record and verification/result at seq {} \
+             carries no candidate_sha256, so the retained envelope is not bound to the verifier's input",
+            claim.evidence, claim.verification_seq
+        )),
+        Some(path) => {
+            let bytes = std::fs::read(dir.join(path))?;
+            let record: CandidateBinding = serde_json::from_slice(&bytes)?;
+            if binding_bytes(&record)? != bytes {
+                return Err(invalid("candidate_binding", "is the canonical serialization of its object"));
+            }
+            if record.schema_version != 1 {
+                return Err(invalid("candidate_binding.schema_version", "is 1"));
+            }
+            if record.verification_log != claim.verification_log || record.verification_seq != claim.verification_seq {
+                return Err(invalid("candidate_binding", "names the verification the ancestry claim names"));
+            }
+            if record.candidate_sha256 != digest_of(&envelope_bytes) {
+                return Err(invalid(
+                    "candidate_binding.candidate_sha256",
+                    "equals the digest of the retained candidate envelope",
+                ));
+            }
+        }
+    }
     // The envelope names the retained child identity document and artifact
     // manifest by digest, and the child by its recomputed identity.
-    let envelope_bytes = std::fs::read(dir.join(&manifest.candidate_envelope))?;
     let envelope: CandidateEnvelope = serde_json::from_slice(&envelope_bytes)?;
     let listed = |digest: &str| manifest.files.iter().find(|f| f.sha256 == digest);
     let identity_file = listed(&envelope.identity_document_sha256).ok_or_else(|| {

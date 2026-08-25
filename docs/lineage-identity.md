@@ -1,14 +1,14 @@
 # Program lineage and transition evidence
 
-Status: implemented, except the candidate digest binding. The
-configuration parser accepts the `program_lineage` key, the identity
-computation omits it, and the `foe-lineage` crate derives the lineage
-identity, checks an evidence bundle against its canonical manifest, and
-verifies an ancestry claim through two resolvers. The runtime emits an
-authoritative `verification/result` event without the `candidate_sha256`
-member proposed here; the log format freezes an implemented type's data.
-"The candidate binding gap" states what the absence weakens and the ways
-to close it.
+Status: implemented. The configuration parser accepts the
+`program_lineage` key, the identity computation omits it, and the
+`foe-lineage` crate derives the lineage identity, checks an evidence
+bundle against its canonical manifest, and verifies an ancestry claim
+through two resolvers. The authoritative `verification/result` event
+carries no digest of the verifier's input, because the log format freezes
+an implemented type's data; the candidate binding record retained in the
+evidence bundle carries that digest instead. "The candidate binding gap"
+states the resolution and its attestation strength.
 
 ## Scope of the existing identity
 
@@ -116,9 +116,10 @@ state documents by the root lineage identity after validating each claim.
 
 The evidence bundle makes a transition verifiable after files move between
 machines. Its canonical manifest lists every retained file by relative path,
-byte length, and SHA-256 digest. The manifest identifies the proposal log and
-the verifier input. The `evidence` value is the SHA-256 digest of the
-canonical manifest.
+byte length, and SHA-256 digest. The manifest identifies the proposal log,
+the verifier input, and the candidate binding record when the bundle
+retains one. The `evidence` value is the SHA-256 digest of the canonical
+manifest.
 
 Manifest paths use forward slashes, contain no empty, `.` or `..` component,
 and appear in byte order without duplicates. A checker rejects a manifest
@@ -129,6 +130,7 @@ The bundle contains these files:
 - every log and referenced spill file in the proposal episode tree;
 - the canonical identity document for the proposed child program;
 - the complete verifier input, called the transition candidate envelope;
+- the candidate binding record, when the builder wrote one;
 - every artifact manifest that the verifier assessed.
 
 The manifest contains no absolute path. A store may place the bundle
@@ -149,32 +151,46 @@ is absent from the bundle because it contains the bundle address. An artifact
 manifest is a checker-defined list of candidate files and their content
 digests.
 
+The candidate binding record has this canonical form:
+
+```json
+{
+  "schema_version": 1,
+  "candidate_sha256": "sha256:…",
+  "verification_log": "children/ep_9c21/episode.jsonl",
+  "verification_seq": 74
+}
+```
+
+The bundle builder writes the record beside the envelope. `candidate_sha256`
+is the digest of the retained envelope's bytes; `verification_log` and
+`verification_seq` are the coordinates of the accepted verifier result. The
+manifest names the record in `candidate_binding` as it names the proposal
+log and the envelope. "The candidate binding gap" states what the record
+establishes.
+
 ## Authoritative verifier record
 
 The existing completion verifier runs authoritatively after an ordinary
 model call. The `verification/result` event records each authoritative
-invocation. The event this design requires carries one member the
-implemented event does not: `candidate_sha256`.
-
-The complete event of this design records these fields:
+invocation with these fields:
 
 ```json
 {
   "step": 8,
   "tool": "check-candidate",
   "verifier_identity": "sha256:…",
-  "candidate_sha256": "sha256:…",
   "status": "accepted",
   "findings": [],
   "duration_ms": 1834
 }
 ```
 
-`candidate_sha256` is the SHA-256 digest of the candidate's canonical JSON.
-It binds the event to the exact value given to the verifier. `status` is
-`accepted`, `findings`, or `failed`. A findings result carries the finding
-strings in `findings`. A failed result carries an `error` string. The other
-two statuses omit `error`.
+`status` is `accepted`, `findings`, or `failed`. A findings result carries
+the finding strings in `findings`. A failed result carries an `error`
+string. The other two statuses omit `error`. The event carries no digest of
+the verifier's input; the candidate binding record of the evidence bundle
+carries that digest.
 
 `verifier_identity` binds the execution to the verifier that the parent
 program declared. It hashes the complete tool specification and its
@@ -196,8 +212,9 @@ Seven rules govern a valid transition.
 2. **Exact child binding.** The transition candidate envelope names the
    program identity recomputed from the child state's canonical identity
    document.
-3. **Exact input binding.** The event's `candidate_sha256` equals the digest
-   of the transition candidate envelope retained in the bundle.
+3. **Exact input binding.** The candidate the verifier judged equals the
+   transition candidate envelope retained in the bundle. The candidate
+   binding record carries the pairing that a checker can test.
 4. **Parent-owned admission.** The verifier is present in the parent
    program's reachable child-program and workflow tree. A verifier introduced
    by the candidate can admit only a later transition.
@@ -231,8 +248,10 @@ steps:
 5. Validate the proposal log under [log-format.md](log-format.md).
 6. Resolve `verification_log` within the bundle and read its
    `verification/result` event at `verification_seq`.
-7. Require an accepted result whose candidate digest equals the transition
-   candidate envelope.
+7. Require an accepted result. When the manifest names a candidate binding
+   record, require the record to pair the claimed verification coordinates
+   with the digest of the retained envelope; without the record, report
+   exact input binding as unverifiable.
 8. Require the envelope's identity-document and artifact-manifest digests to
    equal the corresponding files in the bundle.
 9. Require the envelope's program identity to equal the hash of the canonical
@@ -262,19 +281,22 @@ evidence leaves open. `--json` prints the same report as one object.
 
 ## The candidate binding gap
 
-The implemented `verification/result` event carries every member of the
-event above except `candidate_sha256`. The log format freezes an
-implemented type's data, so the member cannot be added to the existing
-event.
+The `verification/result` event carries no digest of the verifier's input.
+The log format freezes an implemented type's data, so such a member cannot
+be added to the existing event.
 
-The absence weakens the checker exactly at step 7. The checker still
-requires an accepted `verification/result` at `verification_seq`, and
-steps 8 and 9 still bind the retained envelope to the retained identity
+The candidate binding record closes the resulting gap at step 7. The
+checker requires an accepted `verification/result` at `verification_seq`,
+and steps 8 and 9 bind the retained envelope to the retained identity
 document, the retained artifact manifest, and the recomputed child
-identity. What no step can establish is that the envelope retained in the
-bundle equals the value the verifier judged. Transition rule 3, exact
-input binding, is therefore not enforced; the checker reports it as
-unverifiable rather than failing the claim.
+identity. When the bundle retains the record, the checker requires it to
+name the claimed verification coordinates and the retained envelope's
+digest, and exact input binding, transition rule 3, is verified. The
+record is written by the bundle builder rather than by the runtime that
+invoked the verifier, so it attests the pairing only as strongly as the
+bundle that carries it. A bundle without the record keeps the graded
+result: the checker reports exact input binding as unverifiable rather
+than failing the claim.
 
 One further check is weakened by the shape of the identity document rather
 than by the event. Step 14 compares the recorded verifier identity with
@@ -284,22 +306,6 @@ runs a child program with a configured verifier, the declared executable
 hash is retained nowhere the checker can reach, and the comparison is
 reported as unverifiable. A built-in verifier is checked in every
 position, against the recorded runtime build.
-
-Three ways to close the event gap exist. Choosing among them is a design
-decision this document does not make.
-
-- A new additive event type that records the authoritative invocation with
-  the candidate digest. Adding an event type is compatible with the frozen
-  log format; the existing event would remain, and the checker would
-  require the new event where present.
-- A new log version that adds `candidate_sha256` to `verification/result`
-  itself. This is the design above, at the cost of a version bump for
-  every log reader.
-- An envelope record outside the log, retained in the bundle, pairing the
-  event coordinates with the candidate digest. This needs no log change,
-  but the record is written by the bundle builder rather than by the
-  runtime that invoked the verifier, so it attests the pairing only as
-  strongly as the bundle that carries it.
 
 ## Branches and repeated states
 
@@ -332,6 +338,10 @@ The implementation must cover these cases before the configuration key is
 accepted:
 
 - a valid root and one valid descendant;
+- a bundle whose binding record contradicts the claimed coordinates or the
+  retained envelope;
+- a bundle without a binding record, whose claim verifies with exact input
+  binding reported open;
 - a missing or modified evidence file;
 - a child identity that differs from the accepted candidate identity;
 - a verifier absent from the parent;
