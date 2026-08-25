@@ -189,7 +189,7 @@ class FoeAgent(BaseInstalledAgent):
             command=(
                 f"{ownership}{checker_setup}chmod 755 {shlex.quote(REMOTE_BINARY)} && "
                 f"chmod 600 {shlex.quote(self._remote_credential)} && "
-                f"{shlex.quote(REMOTE_BINARY)} schema >/dev/null"
+                f"{shlex.quote(REMOTE_BINARY)} plan --schema >/dev/null"
             ),
         )
 
