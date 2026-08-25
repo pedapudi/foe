@@ -1425,3 +1425,65 @@ The self-improvement episode is retained at
 `/home/sunil/git/foe-dna-audit-instruction-improvement/target/dna-audit-source-improvement-standard-tier/`.
 The closed-book activation job is retained at
 `/home/sunil/git/foe-dna-audit-instruction-improvement/target/terminal-bench-jobs/standard-self-improved-dna-audit-closed-book-first-20260825T131533Z/`.
+
+## Recorded confirmation capability probes
+
+The exact frozen binary ran deterministic capability probes in each of the
+eight confirmation containers before the first assessed attempt. The probes
+made no provider request. All eight reports completed successfully.
+
+Every container permitted package installation, workspace writes, a
+one-million-line file write, a bounded large-file read, and a large-file grep.
+Every container started in the task working directory. Each container enforced
+the requested tool timeout. Five minimal containers lacked the usual standard
+path entries, so the adapter continued to provide absolute executable paths.
+
+No container supplied an interactive terminal. A background process started
+by one `bash` call did not survive that call. The probe image lacked the
+executable needed for a loopback connection test, so loopback support remains
+unmeasured. These results describe the task environment and Foe executor. They
+do not expose any task instruction or verifier rule.
+
+The first probe invocation used `foe schema`, which the current command line
+interpreted as a task. It failed before any provider request because no model
+was configured. The capability adapter and assessed adapter had duplicated the
+schema command. Commit `7be3e64` gives both adapters one tested helper that
+uses `foe plan --schema`. All eight successful probes used the corrected
+helper against the unchanged frozen binary.
+
+The retained reports are the directories dated from `20260825T133141Z` through
+`20260825T133452Z` under
+`/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-capability-probes/`.
+
+## Recorded confirmation first pass
+
+The frozen source tree and binary ran once on each confirmation task. Every
+request used GPT-5.6 Sol, low primary reasoning, the standard service tier,
+and measurement-only token accounting. The built-in workflow gave its fresh
+terminal audit the runtime-owned high reasoning setting. The task-owned
+verifier remained unavailable until Foe exited.
+
+| Task | Score | Calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `build-pov-ray` | 1.0 | 24 | 389,438 | 165,376 | 8,586 | $1.134118 |
+| `caffe-cifar-10` | 1.0 | 38 | 1,846,823 | 1,288,192 | 9,312 | $2.936041 |
+| `configure-git-webserver` | 1.0 | 21 | 251,437 | 82,432 | 11,541 | $0.939813 |
+| `count-dataset-tokens` | 1.0 | 17 | 110,888 | 20,992 | 5,504 | $0.478061 |
+| `crack-7z-hash` | 1.0 | 27 | 348,474 | 171,520 | 5,591 | $0.888244 |
+| `dna-insert` | 0.0 | 17 | 134,525 | 39,424 | 7,049 | $0.537154 |
+| `log-summary-date-ranges` | 1.0 | 9 | 117,995 | 63,488 | 4,060 | $0.324623 |
+| `overfull-hbox` | 1.0 | 12 | 87,858 | 15,872 | 4,092 | $0.376133 |
+| **Total** | **7.0** | **165** | **3,287,438** | **1,847,296** | **55,735** | **$7.614186** |
+
+Every attempt completed without an infrastructure exception. Every Foe
+outcome was completed, and every trace conformed with zero violations. The
+first pass therefore records seven successes from eight protected tasks.
+
+The candidate remains unchanged for the second confirmation attempt. Its
+acceptance rule requires at least fourteen successes from sixteen attempts,
+with every task succeeding at least once. First-pass trajectories remain
+excluded from self-improvement evidence until the second pass and candidate
+disposition are recorded.
+
+The retained jobs are under
+`/home/sunil/git/foe-frozen-standard-quality-candidate/target/terminal-bench-jobs/standard-frozen-candidate-confirmation-first-pass-20260825T133543Z/`.
