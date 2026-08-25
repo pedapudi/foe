@@ -411,6 +411,15 @@ only model capability or requires semantic task knowledge absent from the
 log. That choice ends the workflow before a coding episode and sets
 `direct_implementation_required`.
 
+`--candidate-kind source-change` asks whether an evidence-supported general
+intervention should become behavior owned by Foe source. The objective must
+name that source-owned behavior. The diagnosis returns
+`insufficient-evidence` when either the intervention or its ownership is not
+supported. `--candidate-kind workflow-configuration` restricts the result to
+an independently audited workflow setting. The default `auto` retains the
+evidence-driven choice between source, workflow configuration, and no
+candidate.
+
 Source diagnosis does not require a successful independent-audit setting.
 That setting is required only when the diagnosis selects
 `configure-workflow`.

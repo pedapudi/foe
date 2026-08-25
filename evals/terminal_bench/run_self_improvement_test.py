@@ -66,6 +66,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             [Path("/repo/.git")],
             [Path("/opt/cargo-cache")],
             "Raise verified completion.",
+            "auto",
         )
         nodes = config["workflow"]["nodes"]
         diagnosis = nodes["diagnose-runtime"]["model"]
@@ -143,6 +144,26 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(config["task"], "Raise verified completion.")
         self.assertEqual(config["budget"]["loop_threshold"], 8)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
+
+    def test_source_candidate_requires_evidence_for_source_owned_behavior(self):
+        config = build_config(
+            Path("/tmp/candidate"),
+            Path("/tmp/evidence.json"),
+            Path("/tmp/check"),
+            model_config("openai-codex/gpt-5.6-sol", "low"),
+            model_config("openai-codex/gpt-5.6-luna", "low"),
+            [Path("/opt/toolchain")],
+            [Path("/repo/.git")],
+            [Path("/opt/cargo-cache")],
+            "Promote a verified intervention into built-in behavior.",
+            "source-change",
+        )
+        sufficiency = config["workflow"]["nodes"]["diagnose-runtime"]["model"][
+            "instructions"
+        ]["sufficiency"]
+        self.assertIn("objective identifies behavior owned by Foe source", sufficiency)
+        self.assertIn("Choose `insufficient-evidence`", sufficiency)
+        self.assertIn("Do not choose `configure-workflow`", sufficiency)
 
     def test_failed_base_configuration_excludes_the_successful_audit_setting(self):
         with tempfile.TemporaryDirectory() as directory:

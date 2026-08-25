@@ -428,6 +428,7 @@ def build_config(
     source_metadata_roots: list[Path],
     development_read_roots: list[Path],
     objective: str,
+    requested_candidate_kind: str,
 ) -> dict[str, Any]:
     diagnosis_read_roots = [str(evidence.parent)]
     development_reads = [str(path) for path in [*source_metadata_roots, *development_read_roots]]
@@ -444,6 +445,29 @@ def build_config(
         "cwd": str(candidate),
         "timeout_seconds": 900,
     }
+    if requested_candidate_kind == "source-change":
+        sufficiency = (
+            "Choose `implement-source` when the trajectories support the general intervention named "
+            "by the objective and the objective identifies behavior owned by Foe source. Choose "
+            "`insufficient-evidence` when the evidence does not support that intervention, the source "
+            "ownership claim is absent, or the change requires semantic task knowledge. Do not choose "
+            "`configure-workflow`; this run evaluates whether a proven intervention can become source-owned behavior."
+        )
+    elif requested_candidate_kind == "workflow-configuration":
+        sufficiency = (
+            "Choose `configure-workflow` when a repeated quality gain is caused by exactly one independent "
+            "audit setting. Choose `insufficient-evidence` when the evidence does not isolate that setting. "
+            "Do not choose `implement-source`; this run evaluates a configuration candidate."
+        )
+    else:
+        sufficiency = (
+            "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. "
+            "Choose `configure-workflow` when a repeated quality gain is caused by exactly one independent "
+            "audit setting; the runner binds that setting directly from the evidence. Choose "
+            "`insufficient-evidence` when the intervention requires semantic knowledge absent from the log, "
+            "an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort "
+            "difference without a workflow contrast establishes model capability rather than a Foe defect."
+        )
     diagnosis = {
         "name": "diagnose-foe-from-trajectory-measurements",
         "instructions": {
@@ -451,7 +475,7 @@ def build_config(
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
             "evidence": "Compare the failed and successful settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
-            "sufficiency": "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. Choose `configure-workflow` when a repeated quality gain is caused by exactly one independent audit setting; the runner binds that setting directly from the evidence. Choose `insufficient-evidence` when the intervention requires semantic knowledge absent from the log, an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort difference without a workflow contrast establishes model capability rather than a Foe defect.",
+            "sufficiency": sufficiency,
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block"],
@@ -679,6 +703,12 @@ def parser() -> argparse.ArgumentParser:
         ),
     )
     answer.add_argument(
+        "--candidate-kind",
+        choices=("auto", "source-change", "workflow-configuration"),
+        default="auto",
+        help="kind of improvement the evidence must support",
+    )
+    answer.add_argument(
         "--cargo",
         type=Path,
         help="absolute path to the pinned toolchain's cargo binary, rather than a rustup proxy",
@@ -738,6 +768,7 @@ def main(argv: list[str] | None = None) -> int:
         "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort,
         "maximum": {"model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS, "seconds": SECONDS},
         "token_limits": "measurement_only",
+        "requested_candidate_kind": args.candidate_kind,
     }
     if validator_identity is not None:
         preview["candidate_validator"] = {"rust_toolchain": validator_identity}
@@ -779,6 +810,7 @@ def main(argv: list[str] | None = None) -> int:
             [source_metadata],
             development_read_roots,
             args.objective,
+            args.candidate_kind,
         ),
     )
     try:
@@ -828,9 +860,23 @@ def main(argv: list[str] | None = None) -> int:
     outcome = usage.get("outcome")
     outcome_value = outcome.get("value") if isinstance(outcome, dict) else None
     branch = outcome_value.get("branch") if isinstance(outcome_value, dict) else None
+    expected_branch = {
+        "source-change": "implement-source",
+        "workflow-configuration": "configure-workflow",
+    }.get(args.candidate_kind)
     workflow_candidate = None
     workflow_candidate_path = None
-    if branch == "configure-workflow":
+    if expected_branch is not None and branch != expected_branch:
+        artifact_identity = candidate_artifact_identity(candidate, identity["source_tree"], changed)
+        acceptance = {
+            "accepted": False,
+            "findings": [
+                f"requested candidate kind {args.candidate_kind} produced branch {branch or 'absent'}"
+            ],
+            "exit_code": None,
+        }
+        candidate_kind = "no-candidate"
+    elif branch == "configure-workflow":
         findings = []
         if changed:
             findings.append("workflow configuration candidate also changed source files")
