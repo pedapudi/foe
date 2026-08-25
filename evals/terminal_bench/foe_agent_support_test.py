@@ -9,7 +9,9 @@ from foe_agent_support import (
     FIXED_EXECUTABLE_PATHS,
     builtin_workflow_arguments,
     build_program,
+    credential_values,
     describe_container_environment,
+    episode_contains_credential,
     estimate_usage_cost,
     fixed_executable_probe_command,
     parse_boolean,
@@ -464,6 +466,36 @@ class ProgramTest(unittest.TestCase):
 
 
 class EpisodeSummaryTest(unittest.TestCase):
+    def test_credential_exposure_detection_reports_no_secret_value(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            credential = root / "credential.json"
+            credential.write_text(
+                json.dumps({"access": "access-secret", "refresh": "refresh-secret"}),
+                encoding="utf-8",
+            )
+            episode = root / "episode"
+            episode.mkdir()
+            log = episode / "episode.jsonl"
+            log.write_text(
+                json.dumps(
+                    {
+                        "type": "tool/result",
+                        "data": {"rendered": "access-secret"},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            values = credential_values(credential)
+            self.assertTrue(episode_contains_credential(episode, values))
+            log.write_text(
+                json.dumps({"type": "tool/result", "data": {"rendered": "safe"}})
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(episode_contains_credential(episode, values))
+
     def test_summary_requires_a_root_episode_log(self):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(FileNotFoundError, "episode log does not exist"):

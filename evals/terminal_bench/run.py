@@ -424,6 +424,10 @@ def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
             infrastructure_failures.append(
                 f"{trial}: the completion checker changed during the trial"
             )
+        if metadata.get("foe_credential_exposed") is True:
+            infrastructure_failures.append(
+                f"{trial}: model-visible episode events contain a provider credential"
+            )
         if metadata.get("foe_usage_reported") is not True:
             missing = metadata.get("foe_unreported_model_calls")
             count = missing if isinstance(missing, int) else "unknown"

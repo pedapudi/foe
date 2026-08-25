@@ -560,6 +560,30 @@ def estimate_usage_cost(
     return total
 
 
+def credential_values(path: Path) -> frozenset[str]:
+    """Return secret token values for exact-match exposure detection."""
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"credential file must contain a JSON object: {path}")
+    return frozenset(
+        item
+        for key in ("access", "refresh", "api_key")
+        if isinstance((item := value.get(key)), str) and item
+    )
+
+
+def episode_contains_credential(log_dir: Path, values: frozenset[str]) -> bool:
+    """Detect an exact credential value in retained model-visible events."""
+    encoded = tuple(value.encode("utf-8") for value in values)
+    if not encoded:
+        return False
+    for path in log_dir.rglob("episode.jsonl"):
+        contents = path.read_bytes()
+        if any(value in contents for value in encoded):
+            return True
+    return False
+
+
 def read_episode_summary(
     log_dir: Path,
     pricing: dict[str, float | int] | dict[str, dict[str, float | int]] | None = None,

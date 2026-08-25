@@ -56,9 +56,16 @@ holds a file lock so two local campaigns cannot race a token refresh. The
 private copy stays outside Harbor job directories and Foe episode directories.
 
 The task container must receive the provider credential because Foe calls the
-model from that container. Use the pinned Terminal-Bench dataset for these
-runs. A task with untrusted provenance could read or transmit credentials
-available to an installed coding agent.
+model from that container. Each trial uses a fresh, unpredictable remote path.
+The adapter scans retained episode events for the access token and refresh
+token without reporting either value. A detected value invalidates the trial
+as infrastructure evidence. This check detects accidental disclosure; it does
+not isolate the credential from a malicious process with root access.
+
+Use the pinned Terminal-Bench dataset for these runs. A task with untrusted
+provenance could locate, read, or transmit credentials available to an
+installed coding agent. A host-supplied transport is required when the task
+itself is outside the trust boundary.
 
 ## Check installation without model spend
 
@@ -109,10 +116,12 @@ tool. One Sol-low coding episode combines a typed return with
 findings. The model receives those findings and can continue within the
 episode's remaining allowance.
 
-The public checker provides development feedback. Harbor still runs the
-unaltered task-owned Terminal-Bench verifier after Foe exits. Only the
-task-owned verifier determines task quality. Results from this modified lane
-are Foe-specific convergence evidence and do not contribute to a standard
+The public checker provides development feedback. Its executable and source
+are present in the task container, so the modified lane is an open-book
+evaluation. Harbor still runs the unaltered task-owned Terminal-Bench verifier
+after Foe exits. That verifier is absent during the Foe episode. Only its
+post-run result determines task quality. Results from this modified lane are
+Foe-specific convergence evidence and do not contribute to a standard
 Terminal-Bench score.
 
 The selected scenarios cover four forms of completion:
