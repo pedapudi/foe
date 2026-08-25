@@ -1130,6 +1130,50 @@ Repository validity therefore did not establish task-quality improvement. The
 candidate remains rejected. The source-audit stage now uses the allowed xhigh
 reasoning escalation when a diagnosis selects a source change.
 
+The source candidate audited with xhigh reasoning preserved the four-tool
+built-in surface and strengthened the terminal-audit instruction. Its source
+workflow used 20 model calls and cost an estimated $1.414493. Repository
+validation accepted the artifact. The unchanged closed-book task awarded zero
+credit because the audit validated temporary substituted paths and left no
+task-visible service running. That task attempt used 15 model calls and cost an
+estimated $0.514239.
+
+The same candidate then ran once with the public completion checker. That
+attempt launched the actual task entrypoint, observed SSH and Nginx processes
+reparented to PID 1, and received full task-owned credit. It used 28 model calls
+and cost an estimated $0.685828. The collector combined the failed closed-book
+and successful verifier-governed trajectories under source tree
+`git-tree-sha1:f59396ab8951576779a2d004b8581614c1c89178` and runtime binary
+`sha256:f1acce966eeef2b489578ee33833e86255333911cf8e48cfae16d426fa80404d`.
+The identity-bound feedback is
+`/home/sunil/git/foe-live-state-source-candidate-xhigh-audit/target/live-state-generation-feedback.json`.
+
+A source generation informed by those trajectories identified the executor
+invariant that a completed `bash` call kills its process group. The candidate
+therefore requires a task-provided or environment-owned lifecycle that survives
+the call. It also requires task-visible state to remain available at workflow
+completion for an external observer. The source workflow used 37 model calls,
+2,857,018 input tokens, 1,889,792 cached-input tokens, and 17,581 output tokens.
+It cost an estimated $4.929350.
+
+The generated source artifact was
+`sha256:000bf2c72fa1f21ea226e2bc7c4bf414d0a49f84a494f2a6a017d5c11374b94c`.
+Its frozen source tree was
+`git-tree-sha1:002999637ff48568b130f33ef353af9898c3486f`, and its portable
+binary was
+`sha256:b0d89609b3072cd8a0d01c51694f0b3a4a077b02544c82043eba8c89a3de776b`.
+The unchanged closed-book `git-multibranch` task awarded full credit in two
+attempts. The attempts used 98,868 and 141,122 input tokens. Their estimated
+costs were $0.524993 and $0.658365. The unrelated `fix-git` transfer case also
+awarded full credit. It used 89,962 input tokens and cost an estimated
+$0.400402. Every attempt completed without an exception.
+
+This evidence establishes one transferable autonomous source improvement. The
+feedback loop needed two source generations because repository validation
+could not observe post-settlement task quality. The generated source patch
+overlaps the smaller direct candidate, so source review should select one
+implementation rather than merge both.
+
 The direct source candidate adds one general rule to both built-in model roles.
 A task that requires a service or live machine state must apply its
 configuration, exercise the public interface, and leave the required state
@@ -1162,13 +1206,15 @@ one attempt. The attempt used 22 model calls, 133,676 input tokens, 26,624
 cached-input tokens, and 9,965 output tokens. Its estimated cost was $0.638158,
 and its trace conformed with zero violations.
 
-The live-environment source candidate therefore converts one reproducible
-harness-limited failure and transfers across two unrelated task families. The
-autonomous candidate remains rejected. A repaired self-improvement run must
-produce an externally valid candidate before this result contributes an
-accepted autonomous improvement to the campaign criteria.
+The live-environment source change therefore converts one reproducible
+harness-limited failure and transfers across unrelated task families. Both the
+direct implementation and the artifact produced from identity-bound feedback
+satisfy the task-quality criterion. The smaller direct implementation remains
+the preferred source-review candidate.
 
 The retained candidate runs are under
 `/home/sunil/git/foe-live-environment-self-improvement/target/terminal-bench-jobs/`.
+The autonomous quality-confirmation runs are under
+`/home/sunil/git/foe-live-state-generation-feedback-candidate/target/terminal-bench-jobs/`.
 The current-main integration run is under
 `/home/sunil/git/foe-live-state-evaluation/target/terminal-bench-jobs/standard-current-main-integration-live-state-git-multibranch-20260825T092540Z`.
