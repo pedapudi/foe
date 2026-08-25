@@ -33,6 +33,8 @@ VERIFIER_CASE_DATA = [
     "verifier_cases/dna_assembly/oracle.sh",
     "verifier_cases/fix_git/check.py",
     "verifier_cases/fix_git/oracle.sh",
+    "verifier_cases/git_multibranch/check.py",
+    "verifier_cases/git_multibranch/oracle.sh",
     "verifier_cases/gpt2_codegolf/check.sh",
     "verifier_cases/gpt2_codegolf/oracle.sh",
     "verifier_cases/large_scale_text_editing/check.py",
@@ -47,6 +49,11 @@ VERIFIER_CASES = [
     ),
     ("dna-assembly", "dna-assembly", "verifier_cases/dna_assembly/check.pl"),
     ("fix-git", "fix-git", "verifier_cases/fix_git/check.py"),
+    (
+        "git-multibranch",
+        "git-multibranch",
+        "verifier_cases/git_multibranch/check.py",
+    ),
     ("gpt2-codegolf", "gpt2-codegolf", "verifier_cases/gpt2_codegolf/check.sh"),
     (
         "large-scale-text-editing",

@@ -214,7 +214,7 @@ def build_program(
         check_tool_defs["check"] = {
             "exec": completion_checker,
             "description": (
-                "Runs the task's read-only completion checker. An empty standard output "
+                "Runs the task's public completion checker. An empty standard output "
                 "means the public completion conditions passed. Each output line is a "
                 "finding to repair."
             ),

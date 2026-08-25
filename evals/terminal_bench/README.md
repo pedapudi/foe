@@ -110,7 +110,7 @@ infrastructure failure and must not contribute a quality score.
 
 ## Validate verifier-governed completion without model spend
 
-Five modified scenarios expose a public, read-only checker as a configured
+Six modified scenarios expose a public completion checker as a configured
 tool. One Sol-low coding episode combines a typed return with
 `done_when.verify`. Foe rejects a completion claim when the checker reports
 findings. The model receives those findings and can continue within the
@@ -124,12 +124,16 @@ post-run result determines task quality. Results from this modified lane are
 Foe-specific convergence evidence and do not contribute to a standard
 Terminal-Bench score.
 
-The selected scenarios cover four forms of completion:
+The selected scenarios cover six distinct completion conditions:
 
 - `cancel-async-tasks` executes concurrency and cancellation-cleanup probes.
 - `dna-assembly` checks physical template binding, complete annealed tracts,
   exact `oligotm` temperatures, and compatible assembly overhangs.
 - `fix-git` checks that the lost commit reaches `master` in a clean worktree.
+- `git-multibranch` pushes distinct public content through password-authenticated
+  Git and requires the live HTTPS endpoints to serve both branches within three
+  seconds. The public probe branches share history, which lets the external
+  evaluator add its own main and development commits with ordinary pushes.
 - `gpt2-codegolf` enforces the source-size and compilation requirements. It
   checks four public arg-max continuations that differ from the task-owned
   verifier input. One prompt exercises quoted uppercase text and adjacent
@@ -165,6 +169,7 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
 ```
 
 Equivalent targets end in `foe-verifier-fix-git`,
+`foe-verifier-git-multibranch`,
 `foe-verifier-gpt2-codegolf`, and
 `foe-verifier-large-scale-text-editing`. The DNA target is
 `foe-verifier-dna-assembly`. These targets use the standard service tier and
