@@ -1036,3 +1036,87 @@ The retained scored runs are under
 `/home/sunil/git/foe-terminal-audit-transient-retry/target/terminal-bench-jobs/`.
 Their labels begin with `standard-built-in-verifier-` and end with
 `transient-retry`. Raw jobs, logs, and credentials remain outside Git.
+
+## Recorded live-environment completion conversion
+
+On 2026-08-25, the built-in workflow failed `git-multibranch` in two
+closed-book attempts. Both Foe outcomes were completed, both traces conformed,
+and the unchanged task-owned grader awarded zero credit.
+
+The evaluated source tree was
+`git-tree-sha1:0f7c20a852a691ff21bcd368e2052a519e39ae8c`. The portable binary
+was `sha256:08a685d0528b531afff71b752c502dbffe8f0e74488ad9304c5da8afa72464a6`.
+Every provider request used the standard service tier.
+
+The first attempt used 29 model calls and cost an estimated $1.067835. The
+second used 21 model calls and cost an estimated $0.613216. Both workflows
+authored container configuration and exercised temporary SSH, Git, and HTTPS
+probes. Neither workflow left the required services and repositories available
+to the post-run grader.
+
+The public `git-multibranch` completion checker ran against the same binary.
+That open-book attempt received full task-owned credit, used 23 model calls,
+and cost an estimated $0.749144. The result isolated live machine state as the
+quality mechanism. It did not reveal the task-owned grader to either model
+episode.
+
+An identity-bound evidence digest combined the two closed-book failures, the
+public-checker success, and successful `fix-git` and
+`path-tracing-reverse` trajectories. The file is
+`/home/sunil/git/foe-terminal-audit-transient-retry/target/git-multibranch-verifier-contrast-evidence.json`.
+
+The source self-improvement workflow used Luna with low reasoning for diagnosis
+and Sol with low reasoning for implementation. It selected a source change and
+produced implementation, Rust test, and specification edits. The run used 17
+model calls, 387,183 input tokens, 221,696 cached-input tokens, and 3,429 output
+tokens. Its estimated cost was $0.722055.
+
+External validation rejected the autonomous candidate. Its Rust test did not
+compile, and its proposed `session` tool mechanism could not preserve services
+after episode settlement. The in-episode checker also ran a loopback listener
+test under Landlock, which produced an unrelated denial. The checker now omits
+that listener test during the confined candidate check. Full post-episode
+validation still runs the complete workspace suite.
+
+The direct source candidate adds one general rule to both built-in model roles.
+A task that requires a service or live machine state must apply its
+configuration, exercise the public interface, and leave the required state
+available at completion. An image definition, unapplied configuration, or
+stopped temporary probe does not satisfy that contract.
+
+The corrected candidate used source tree
+`git-tree-sha1:a9e148bd22e43566b392f9f3099a7e2a91b4e13b` and portable binary
+`sha256:76205f53b18ac2e07018fa3f092790159f917470d8e39334bf953313609cdca8`.
+It received full task-owned credit in two closed-book `git-multibranch`
+attempts. The attempts used 22 and 23 model calls and cost an estimated
+$0.747664 and $0.760219.
+
+The same candidate preserved full task-owned credit on `fix-git` and
+`path-tracing-reverse`. The `fix-git` attempt used 18 model calls and cost an
+estimated $0.491566. One `path-tracing-reverse` request lacked provider usage,
+so its exact token and cost totals are unavailable. Every candidate outcome
+completed, every trace conformed, and no credential appeared in a retained
+episode.
+
+Current `main` then received unrelated Python-tool and lineage changes. A local
+integration tree combined those changes, the direct source candidate, and the
+open built-in workflow dependencies. Its source identity was
+`git-tree-sha1:427c272e2994a726128e1580e76caae801f497fc`. Its portable binary
+was `sha256:3ac9fdf8dd20c67a0ee913df63db0fd6bacaccc154907cfea4159d194f50d077`.
+
+The integration binary passed an installation-only compatibility check without
+a model request. It then received full closed-book `git-multibranch` credit in
+one attempt. The attempt used 22 model calls, 133,676 input tokens, 26,624
+cached-input tokens, and 9,965 output tokens. Its estimated cost was $0.638158,
+and its trace conformed with zero violations.
+
+The live-environment source candidate therefore converts one reproducible
+harness-limited failure and transfers across two unrelated task families. The
+autonomous candidate remains rejected. A repaired self-improvement run must
+produce an externally valid candidate before this result contributes an
+accepted autonomous improvement to the campaign criteria.
+
+The retained candidate runs are under
+`/home/sunil/git/foe-live-environment-self-improvement/target/terminal-bench-jobs/`.
+The current-main integration run is under
+`/home/sunil/git/foe-live-state-evaluation/target/terminal-bench-jobs/standard-current-main-integration-live-state-git-multibranch-20260825T092540Z`.
