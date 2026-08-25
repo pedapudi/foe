@@ -29,6 +29,8 @@ VERIFIER_CASE_DATA = [
     "verifier_cases.json",
     "verifier_cases/cancel_async_tasks/check.py",
     "verifier_cases/cancel_async_tasks/oracle.sh",
+    "verifier_cases/dna_assembly/check.pl",
+    "verifier_cases/dna_assembly/oracle.sh",
     "verifier_cases/fix_git/check.py",
     "verifier_cases/fix_git/oracle.sh",
     "verifier_cases/gpt2_codegolf/check.sh",
@@ -117,6 +119,7 @@ sh_binary(
             "cancel-async-tasks",
             "verifier_cases/cancel_async_tasks/check.py",
         ),
+        ("dna-assembly", "dna-assembly", "verifier_cases/dna_assembly/check.pl"),
         ("fix-git", "fix-git", "verifier_cases/fix_git/check.py"),
         ("gpt2-codegolf", "gpt2-codegolf", "verifier_cases/gpt2_codegolf/check.sh"),
         (

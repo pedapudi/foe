@@ -29,6 +29,7 @@ class VerifierControlTest(unittest.TestCase):
             set(cases),
             {
                 "cancel-async-tasks",
+                "dna-assembly",
                 "fix-git",
                 "gpt2-codegolf",
                 "large-scale-text-editing",

@@ -244,8 +244,90 @@ The retained evidence is stored under these local paths:
 - `/home/sunil/git/foe-gpt2-self-improvement-candidate/target/terminal-bench-jobs/priority-self-improved-gpt2-vanilla-20260825T012154Z`.
 
 This result establishes one accepted self-improvement and one converted
-development failure. Transfer to another task remains required before this
-candidate satisfies the campaign transfer condition.
+development failure. The `regex-chess` and `dna-assembly` results below test
+whether the same intervention transfers to other tasks.
+
+## Priority-service regex-chess development result
+
+On 2026-08-25, three closed-book development attempts used source tree
+`git-tree-sha1:86b6c3c860c90842738167d0736985a762c22c93` and runtime binary
+`sha256:effa80a6a824912c61aee119bd0f322805e864c415eabad63d6dd6b9df8cdabc`.
+Every request used the `priority` service tier. The primary model was Sol
+`low` with 60 calls and no token ceiling.
+
+The low-only attempt completed after 30 calls. It passed the supplied game
+fixture and several targeted positions. The unchanged grader found malformed
+FEN output and incorrect castling state in three other games, so it awarded
+`0.0`.
+
+Two matched attempts added a fresh Sol `xhigh` independent audit with 60
+calls. Both audits generated broader legal-position probes, found semantic
+defects, repaired the generator, and received `1.0` from the unchanged grader.
+The attempts used 35 and 45 calls. Together they used 1,648,448 input tokens,
+1,005,056 cached-input tokens, and 55,875 output tokens. Their estimated cost
+was $4.093090.
+
+The three trajectory diagnoses formed a 54,575-byte identity-bound evidence
+file. One Luna `low` priority request used 18,339 input tokens and 703 output
+tokens to diagnose the repeated audit contrast. The self-improvement runner
+then produced the accepted workflow candidate
+`sha256:8237704f9221b80d7219a43d07eacacac9cc8d6753fb4a420cc993da771460b5`.
+The candidate binds the 60-call Sol `xhigh` audit to the evaluated source,
+binary, evidence digest, and low-effort execution controls.
+
+This result repeats the GPT-2 self-improvement mechanism on a different task.
+It remains one general workflow improvement because both generated candidates
+encode the same intervention.
+
+The retained local evidence is stored under these paths:
+
+- `target/terminal-bench-jobs/priority-regex-chess-sol-low-baseline-20260825T014203Z`;
+- `target/terminal-bench-jobs/priority-regex-chess-low-xhigh-audit-20260825T014812Z`;
+- `target/terminal-bench-jobs/priority-regex-chess-low-xhigh-audit-repeat-20260825T020145Z`;
+- `target/priority-regex-chess-workflow-evidence.json`;
+- `target/priority-regex-chess-self-improvement`.
+
+## Priority-service DNA assembly development result
+
+On 2026-08-25, a Sol `low` baseline and two generated-candidate attempts used
+the same source tree and runtime binary as the regex-chess result. Every
+request used the `priority` service tier. All token allowances were
+measurement-only.
+
+The low-only baseline completed after eight calls and received `0.0`. Its
+vector primer pair differed by 6.88 degrees Celsius, beyond the public
+five-degree limit. The run used 50,157 input tokens, 12,288 cached-input
+tokens, and 3,437 output tokens. Its estimated cost was $0.225131.
+
+The regex-derived workflow candidate passed its first transfer attempt. The
+low child used eight calls and explicitly reported that `oligotm` validation
+remained unresolved. The audit installed `primer3`, measured every annealing
+tract, repaired all eight primers, and received `1.0` from the unchanged
+grader. The attempt used 43 calls and cost an estimated $2.192926.
+
+The repeated candidate attempt received `0.0`. Its audit selected a 45-base
+reverse binding sequence whose preceding four overhang bases also matched the
+template. The actual annealed tract was 49 bases, beyond the public 45-base
+limit. The audit's reconstruction omitted this overlap and therefore accepted
+an invalid artifact.
+
+The candidate has transferred once beyond its activation task. Its one success
+from two DNA attempts does not establish a reproducible third conversion.
+
+The public completion checker now validates the complete annealed tract and
+returns failures through `done_when.verify`. Its SHA-256 digest is
+`a93cc0ff4964ef3a9e0096288f06f0d991ef5a4b80fd25f7723374c4b0a59450`.
+An untouched workspace produced a finding. An independent oracle passed the
+checker and received `1.0` from the unchanged task-owned grader. A
+provider-backed convergence run remains required.
+
+The retained local evidence is stored under these paths:
+
+- `target/terminal-bench-capability-probes/dna-assembly-20260825T022413Z`;
+- `target/terminal-bench-jobs/priority-dna-assembly-sol-low-baseline-20260825T022447Z`;
+- `target/terminal-bench-jobs/priority-self-improved-dna-assembly-20260825T022725Z`;
+- `target/terminal-bench-jobs/priority-self-improved-dna-assembly-repeat-20260825T024247Z`;
+- `target/terminal-bench-verifier-controls/controls-20260825T025942Z`.
 
 ## Cost accounting
 
