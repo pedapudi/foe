@@ -19,7 +19,10 @@ sys.path.append(str(Path(__file__).resolve().parent.parent / "harness_bench"))
 from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256_file
 
 from foe_agent_support import estimate_usage_cost
+from instruction_candidate import create as create_instruction_candidate
 from run import Pricing, read_cases
+from tool_candidate import create as create_tool_candidate
+from tool_candidate import validate_definition as validate_tool_definition
 from workflow_candidate import create as create_workflow_candidate
 from workflow_candidate import validate_independent_audit
 
@@ -159,6 +162,52 @@ def supported_independent_audits(
     return [supported[key] for key in sorted(supported)]
 
 
+def evidence_digest(evidence: Path) -> str:
+    return "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest()
+
+
+def instruction_candidate_from_outcome(
+    outcome_value: Any,
+    documents: dict[str, Any],
+    identity: dict[str, str],
+    evidence: Path,
+    base_configuration: dict[str, str],
+) -> dict[str, Any]:
+    """Validate a diagnosis result and bind its instruction revision."""
+    if not isinstance(outcome_value, dict) or outcome_value.get("branch") != "revise-instructions":
+        raise ValueError("self-improvement outcome did not select revise-instructions")
+    return create_instruction_candidate(
+        identity,
+        evidence_digest(evidence),
+        base_configuration,
+        outcome_value.get("instruction_revision"),
+        documents,
+    )
+
+
+def tool_candidate_from_outcome(
+    outcome_value: Any,
+    identity: dict[str, str],
+    evidence: Path,
+    base_configuration: dict[str, str],
+) -> tuple[dict[str, Any], str]:
+    """Validate a diagnosis result and bind its tool definition.
+
+    Returns the candidate and the executable content the runner retains
+    as a file beside it.
+    """
+    if not isinstance(outcome_value, dict) or outcome_value.get("branch") != "define-tool":
+        raise ValueError("self-improvement outcome did not select define-tool")
+    definition = validate_tool_definition(outcome_value.get("tool_definition"))
+    candidate = create_tool_candidate(
+        identity,
+        evidence_digest(evidence),
+        base_configuration,
+        {field: definition[field] for field in ("name", "description", "executable_sha256")},
+    )
+    return candidate, definition["executable"]
+
+
 def workflow_candidate_from_outcome(
     outcome_value: Any,
     supported_audits: list[dict[str, Any]],
@@ -176,7 +225,7 @@ def workflow_candidate_from_outcome(
         )
     return create_workflow_candidate(
         identity,
-        "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest(),
+        evidence_digest(evidence),
         base_configuration,
         audit,
     )
@@ -454,8 +503,8 @@ def build_config(
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
             "evidence": "Compare the failed and successful settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
-            "sufficiency": "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. Choose `configure-workflow` when a repeated quality gain is caused by an independent audit stage, and return the observed successful audit setting. Choose `insufficient-evidence` when the intervention requires semantic knowledge absent from the log, an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort difference without a workflow contrast establishes model capability rather than a Foe defect.",
-            "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences. The coding episode receives the diagnosis without the trajectory reports.",
+            "sufficiency": "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. Choose `configure-workflow` when a repeated quality gain is caused by an independent audit stage, and return the observed successful audit setting. Choose `revise-instructions` when the repeated causal difference is procedural guidance that one instruction section of the retained program document `program.json` can carry, and return the exact revision. Choose `define-tool` when one missing executable tool explains the gap, and return its complete definition. Choose `insufficient-evidence` when the intervention requires semantic knowledge absent from the log, an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort difference without a workflow contrast establishes model capability rather than a Foe defect.",
+            "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block"],
         "grants": {"read": diagnosis_read_roots},
@@ -507,6 +556,28 @@ def build_config(
                             },
                         },
                         "required": ["reasoning_effort", "model_calls"],
+                        "additionalProperties": False,
+                    },
+                    "instruction_revision": {
+                        "type": "object",
+                        "properties": {
+                            "document": {"type": "string", "minLength": 1},
+                            "section": {"type": "string", "minLength": 1},
+                            "old_text": {"type": "string", "minLength": 1},
+                            "new_text": {"type": "string", "minLength": 1},
+                        },
+                        "required": ["document", "section", "old_text", "new_text"],
+                        "additionalProperties": False,
+                    },
+                    "tool_definition": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "minLength": 1, "maxLength": 64},
+                            "description": {"type": "string", "minLength": 1, "maxLength": 1000},
+                            "executable": {"type": "string", "minLength": 1, "maxLength": 16384},
+                            "executable_sha256": {"type": "string", "minLength": 1},
+                        },
+                        "required": ["name", "description", "executable", "executable_sha256"],
                         "additionalProperties": False,
                     },
                 },
@@ -574,6 +645,8 @@ def build_config(
                     "branches": {
                         "implement-source": ["implement-runtime-improvement"],
                         "configure-workflow": [],
+                        "revise-instructions": [],
+                        "define-tool": [],
                         "insufficient-evidence": [],
                     },
                 },
@@ -785,21 +858,19 @@ def main(argv: list[str] | None = None) -> int:
         *(path for path in [rustup_home] if path is not None),
         *(path.resolve() for path in SYSTEM_DEVELOPMENT_READ_DIRS if path.is_dir()),
     ]
-    program = root / "program.json"
-    write_json(
-        program,
-        build_config(
-            candidate,
-            episode_evidence,
-            check,
-            model,
-            diagnosis_model,
-            execute_roots,
-            [source_metadata],
-            development_read_roots,
-            args.objective,
-        ),
+    program_document = build_config(
+        candidate,
+        episode_evidence,
+        check,
+        model,
+        diagnosis_model,
+        execute_roots,
+        [source_metadata],
+        development_read_roots,
+        args.objective,
     )
+    program = root / "program.json"
+    write_json(program, program_document)
     try:
         validate_program(binary, program)
     except ValueError as error:
@@ -849,6 +920,9 @@ def main(argv: list[str] | None = None) -> int:
     branch = outcome_value.get("branch") if isinstance(outcome_value, dict) else None
     workflow_candidate = None
     workflow_candidate_path = None
+    instruction_candidate_path = None
+    tool_candidate_path = None
+    tool_executable_path = None
     if branch == "configure-workflow":
         findings = []
         if changed:
@@ -873,6 +947,58 @@ def main(argv: list[str] | None = None) -> int:
         }
         artifact_identity = workflow_candidate
         candidate_kind = "workflow-configuration"
+    elif branch == "revise-instructions":
+        findings = []
+        instruction_candidate = None
+        if changed:
+            findings.append("instruction revision candidate also changed source files")
+        try:
+            instruction_candidate = instruction_candidate_from_outcome(
+                outcome_value,
+                {"program.json": program_document},
+                identity,
+                evidence,
+                base_configuration,
+            )
+        except ValueError as error:
+            findings.append(str(error))
+        if not findings:
+            instruction_candidate_path = root / "instruction-candidate.json"
+            write_json(instruction_candidate_path, instruction_candidate)
+        acceptance = {
+            "accepted": not findings,
+            "findings": findings,
+            "exit_code": 0 if not findings else None,
+        }
+        artifact_identity = instruction_candidate
+        candidate_kind = "instruction-revision"
+    elif branch == "define-tool":
+        findings = []
+        tool_candidate = None
+        if changed:
+            findings.append("tool definition candidate also changed source files")
+        try:
+            tool_candidate, tool_executable = tool_candidate_from_outcome(
+                outcome_value,
+                identity,
+                evidence,
+                base_configuration,
+            )
+        except ValueError as error:
+            findings.append(str(error))
+        if not findings:
+            tool_candidate_path = root / "tool-candidate.json"
+            write_json(tool_candidate_path, tool_candidate)
+            tool_executable_path = root / "tool-candidate-executable"
+            tool_executable_path.write_text(tool_executable, encoding="utf-8")
+            tool_executable_path.chmod(0o755)
+        acceptance = {
+            "accepted": not findings,
+            "findings": findings,
+            "exit_code": 0 if not findings else None,
+        }
+        artifact_identity = tool_candidate
+        candidate_kind = "tool-definition"
     elif branch == "implement-source":
         artifact_identity = candidate_artifact_identity(candidate, identity["source_tree"], changed)
         acceptance = check_candidate(check, candidate) if changed else {
@@ -905,6 +1031,9 @@ def main(argv: list[str] | None = None) -> int:
         "candidate_kind": candidate_kind,
         "candidate_artifact": artifact_identity,
         "workflow_candidate": str(workflow_candidate_path) if workflow_candidate_path else None,
+        "instruction_candidate": str(instruction_candidate_path) if instruction_candidate_path else None,
+        "tool_candidate": str(tool_candidate_path) if tool_candidate_path else None,
+        "tool_candidate_executable": str(tool_executable_path) if tool_executable_path else None,
         "candidate_acceptance": acceptance,
         "artifact_outcome_mismatch": acceptance["accepted"] and result.returncode != 0,
         "direct_implementation_required": not acceptance["accepted"],

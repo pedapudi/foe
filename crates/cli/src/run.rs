@@ -310,6 +310,18 @@ fn builtin_config(
             },
             "unresolved_risks": {
                 "type": "array", "items": { "type": "string", "maxLength": 1000 }, "maxItems": 16
+            },
+            "learned": {
+                "type": "array", "maxItems": 8,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "claim": { "type": "string", "minLength": 1, "maxLength": 300 },
+                        "seq": { "type": "integer", "minimum": 0 }
+                    },
+                    "required": ["claim", "seq"],
+                    "additionalProperties": false
+                }
             }
         },
         "required": ["summary", "changed_paths", "validation", "unresolved_risks"],

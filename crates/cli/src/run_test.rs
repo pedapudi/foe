@@ -78,6 +78,13 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
     assert_eq!(audit_program.budget.model_calls, BUILTIN_AUDIT_CALLS);
     assert_eq!(audit_program.done_when.as_ref().unwrap().returns.as_ref().unwrap(), completion);
     assert_eq!(completion["properties"]["validation"]["minItems"], 1);
+    // The `learned` observation channel is optional and bounded: at most
+    // eight claims, each citing the log event that evidences it.
+    let learned = &completion["properties"]["learned"];
+    assert_eq!(learned["maxItems"], 8);
+    assert_eq!(learned["items"]["required"], serde_json::json!(["claim", "seq"]));
+    assert_eq!(learned["items"]["additionalProperties"], serde_json::json!(false));
+    assert!(!completion["required"].as_array().unwrap().contains(&serde_json::json!("learned")));
     assert!(audit_program.instructions["role"].contains("every path changed by either episode"));
 }
 

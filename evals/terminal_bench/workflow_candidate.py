@@ -24,9 +24,36 @@ def _hash_identity(value: Any, prefix: str, digits: int) -> bool:
     )
 
 
-def _digest(value: dict[str, Any]) -> str:
+def candidate_digest(value: dict[str, Any]) -> str:
+    """Return the digest that seals a candidate body."""
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def require_sha256(label: str, value: Any) -> str:
+    """Return `value` when it is a `sha256:` digest string."""
+    if not _hash_identity(value, "sha256:", 64):
+        raise ValueError(f"{label} is invalid")
+    return value
+
+
+def validate_evaluated_foe(
+    value: Any, evaluated_foe: dict[str, str] | None = None, label: str = "candidate"
+) -> dict[str, str]:
+    """Return one validated Foe source and binary identity."""
+    if not isinstance(value, dict) or set(value) != {"source_tree", "runtime_binary"}:
+        raise ValueError(f"{label} evaluated_foe is invalid")
+    source_tree = value.get("source_tree")
+    if not (
+        _hash_identity(source_tree, "git-tree-sha1:", 40)
+        or _hash_identity(source_tree, "git-tree-sha256:", 64)
+    ):
+        raise ValueError(f"{label} evaluated_foe.source_tree is invalid")
+    if not _hash_identity(value.get("runtime_binary"), "sha256:", 64):
+        raise ValueError(f"{label} evaluated_foe.runtime_binary is invalid")
+    if evaluated_foe is not None and value != evaluated_foe:
+        raise ValueError(f"{label} evaluates a different Foe source or binary")
+    return {key: value[key] for key in ("runtime_binary", "source_tree")}
 
 
 def validate_independent_audit(value: Any) -> dict[str, Any]:
@@ -81,7 +108,7 @@ def create(
         "base_configuration": validate_base_configuration(base_configuration),
         "independent_audit": validate_independent_audit(independent_audit),
     }
-    return {**body, "digest": _digest(body)}
+    return {**body, "digest": candidate_digest(body)}
 
 
 def validate(value: Any, evaluated_foe: dict[str, str] | None = None) -> dict[str, Any]:
@@ -102,23 +129,10 @@ def validate(value: Any, evaluated_foe: dict[str, str] | None = None) -> dict[st
     if value.get("candidate_kind") != KIND:
         raise ValueError(f"workflow candidate candidate_kind must be {KIND}")
     identity = value.get("evaluated_foe")
-    if not isinstance(identity, dict) or set(identity) != {"source_tree", "runtime_binary"}:
-        raise ValueError("workflow candidate evaluated_foe is invalid")
-    source_tree = identity.get("source_tree")
-    if not (
-        _hash_identity(source_tree, "git-tree-sha1:", 40)
-        or _hash_identity(source_tree, "git-tree-sha256:", 64)
-    ):
-        raise ValueError("workflow candidate evaluated_foe.source_tree is invalid")
-    if not _hash_identity(identity.get("runtime_binary"), "sha256:", 64):
-        raise ValueError("workflow candidate evaluated_foe.runtime_binary is invalid")
-    if evaluated_foe is not None and identity != evaluated_foe:
-        raise ValueError("workflow candidate evaluates a different Foe source or binary")
-    evidence_sha256 = value.get("evidence_sha256")
-    if not _hash_identity(evidence_sha256, "sha256:", 64):
-        raise ValueError("workflow candidate evidence_sha256 is invalid")
+    validate_evaluated_foe(identity, evaluated_foe, label="workflow candidate")
+    evidence_sha256 = require_sha256("workflow candidate evidence_sha256", value.get("evidence_sha256"))
     body = {key: value[key] for key in required - {"digest"}}
-    if value.get("digest") != _digest(body):
+    if value.get("digest") != candidate_digest(body):
         raise ValueError("workflow candidate digest does not match its contents")
     return create(
         identity,

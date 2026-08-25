@@ -10,7 +10,9 @@ python3 -m py_compile \
   foe_agent_support.py \
   run.py \
   run_capability_probes.py \
+  instruction_candidate.py \
   run_self_improvement.py \
+  tool_candidate.py \
   run_verifier_controls.py \
   verifier_control_agent.py \
   verifier_cases/cancel_async_tasks/check.py \
@@ -22,7 +24,9 @@ python3 -m unittest -v \
   capability_probe_support_test.py \
   collect_diagnostics_test.py \
   foe_agent_support_test.py \
+  instruction_candidate_test.py \
   run_self_improvement_test.py \
+  tool_candidate_test.py \
   run_test.py \
   run_verifier_controls_test.py \
   trajectory_diagnostics_test.py \

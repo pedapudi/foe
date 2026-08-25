@@ -505,6 +505,20 @@ restarts, and the member drops duplicates by `message_id`. The roster, the
 queue, and the delivery records are folded from the lead's log; no other team
 state exists.
 
+## Workspace notes
+
+A workspace's durable notes live at `.foe/notes.md` under the first read
+root. This is a convention over an ordinary file rather than a mechanism:
+no runtime behavior attaches to the path. An entry carries one claim and
+one citation, the episode id and the log sequence number of the event that
+evidences the claim, so a later reader can weigh the note against the
+record that produced it.
+
+A program whose instructions direct it reads the file when the file is
+present. Whether the notes enter an episode's context is the launching
+parent's judgment or the program's declared instructions; the runtime never
+injects them.
+
 ## Isolation
 
 An episode runs as its own process. Children and configured executables run
@@ -646,6 +660,14 @@ The implementation returns a typed handoff with its summary, changed paths,
 validation observations, and unresolved risks. The audit receives that value
 and the original task in a fresh context. The shared directory carries the
 artifacts themselves.
+
+Both completion schemas accept one optional `learned` array of at most
+eight observations. Each observation is an object with a one-sentence
+`claim` and a `seq` citing the event in this episode's own log that is the
+claim's evidence. This is the standard exit through which an episode
+reports what it observed, for a launching parent to collect; foe itself
+acts on none of it. [config.md](config.md#done_when) states the convention
+for any program.
 
 The model is the one named by `--model`, or the default model when `--model`
 is absent. The default model is the `model` block in
