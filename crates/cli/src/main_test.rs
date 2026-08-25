@@ -155,6 +155,15 @@ fn every_form_documents_every_option_it_accepts() {
     }
 }
 
+/// docs/design.md "The command line": `--verify` gates completion of the
+/// terminal audit, which remains unconditional.
+#[test]
+fn verifier_help_names_terminal_audit_completion() {
+    let text = help_of(&FORMS[0]);
+    assert!(text.contains("acceptance completes the built-in terminal audit"));
+    assert!(!text.contains("acceptance skips the audit episode"));
+}
+
 /// `foe --help` and `foe help` are the same screen, and it names every
 /// command word, so a form added to the table is announced.
 #[test]
