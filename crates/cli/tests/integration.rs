@@ -623,7 +623,6 @@ fn accepted_verification_belongs_to_the_terminal_audit() {
         [("implement-task".into(), 1), ("audit-and-repair-task".into(), 1)],
         "verification never bypasses the audit"
     );
-    assert!(!types(&events).contains(&"workflow/node-skipped"));
     let starts: Vec<_> = events.iter().filter(|e| e["type"] == "workflow/node-start").collect();
     let child = child_events(&dir, starts[1]["data"]["child_id"].as_str().unwrap());
     let evidence = child.iter().find(|e| e["type"] == "verification/result").expect("audit verification is logged");
@@ -650,7 +649,6 @@ fn without_a_verifier_the_audit_runs() {
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "completed", "value": "audited" }));
     assert_eq!(node_starts(&events), [("implement-task".into(), 1), ("audit-and-repair-task".into(), 1)]);
-    assert!(!types(&events).contains(&"workflow/node-skipped"));
     assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2, "both episodes ran");
 }
 

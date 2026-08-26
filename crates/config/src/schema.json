@@ -233,7 +233,6 @@
         "followed_by": { "description": "The same edges written from the other end.", "type": "array", "items": { "type": "string", "minLength": 1 } },
         "verify": { "description": "A tool in tools run on the node's output; findings re-fire the node.", "type": "string", "minLength": 1 },
         "retries": { "description": "How many times verify findings re-fire the node.", "type": "integer", "minimum": 0, "default": 2 },
-        "skip_when_verified": { "description": "A node in this node's follows. When that node's result was accepted by an authoritative verifier, this node does not fire and contributes that node's value instead. The named node must declare verify, or a model program whose done_when.verify is declared.", "type": "string", "minLength": 1 },
         "branches": {
           "description": "Label to the successors that fire when the node's value names that label in its branch field.",
           "type": "object",

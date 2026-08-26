@@ -119,7 +119,6 @@ The ten remaining fields apply to a node of any kind.
 | `followed_by` | list of node names | the same edges written from the other end; the union of both forms is the edge set |
 | `verify` | tool name | a verifier run on the node's output; non-empty findings re-fire the node with the findings attached |
 | `retries` | integer | how many times `verify` findings re-fire the node; default 2 |
-| `skip_when_verified` | node name | a node in this node's `follows`; when an authoritative verifier accepted that node's result, this node does not fire and contributes that node's value. See "The conditional audit guard" |
 | `branches` | object | a choice point; see below |
 | `max_fires` | integer | how many times this node may fire in one episode; default 1 for an acyclic position, required for a node on a cycle |
 | `terminal` | boolean | completing this node completes the workflow; at least one node is terminal |
@@ -307,40 +306,6 @@ node's inputs gate its firing; the inner graph's source nodes start from
 nothing. The inner graph's completing value is the node's value; an inner
 episode-level `done_when` does not apply.
 
-### The conditional audit guard
-
-`"skip_when_verified": "<node-name>"` declares that this node exists to
-re-check the named node's work, and is redundant when an authoritative
-verifier already accepted that work. Construction holds the guard to two
-rules, each refused with an error naming the key: the named node appears
-in the declaring node's `follows`, and the named node can produce a
-verification — it declares a node-level `verify`, or it is a model node
-whose program declares `done_when.verify`. A guard outside those rules
-could never fire, or could never observe the acceptance it reads. A third
-rule refuses the guard beside `branches`: a choice point is the node's own
-judgment over its result, and a skipped node exercises none, so no rule
-could say which branch a value the node never produced selects. The key
-is part of the node's serialization, so it participates in identity as
-every configured field does.
-
-The guard reads the log's evidence alone: an accepted
-`verification/result` for the named node's latest value — in the workflow
-episode's own log for a node-level `verify`, in the named node's child
-episode log for a program-level `done_when.verify`, where completion
-itself requires the acceptance. The model makes no choice here and never
-sees the guard.
-
-When the executor would fire the guarded node and the evidence is
-present, the node does not fire. The executor appends
-`workflow/node-skipped` and the node contributes the named node's value
-to its successors, which name that event among their `inputs`. A skipped
-terminal node completes the workflow with the named node's value, through
-the ordinary completion path, so the episode's own `done_when`, when
-declared, still applies to it. When the verifier did not run, did not
-accept, or the named node fired again after the acceptance, the node
-fires exactly as it would without the guard: every path except the skip
-is unchanged.
-
 ## The flow guarantee, stated exactly
 
 A model node's child episode receives, and only receives: its own
@@ -480,7 +445,6 @@ gives each event's fields.
 | `workflow/node-end` | `{ node, fire, value, rendered, error?, duration_ms }` |
 | `workflow/branch` | `{ node, fire, label, successors }` |
 | `workflow/recovery` | `{ node, fire, cause, action, target?, note?, intervention }` |
-| `workflow/node-skipped` | `{ node, verified_by, verification_seq }` |
 | `verification/result` | `{ step, tool, verifier_identity, status, findings, error?, duration_ms }` |
 
 A node's `verify` and the episode's `done_when.verify` each record every
@@ -498,9 +462,8 @@ a child episode and nothing else.
 The following participate in identity: every node's name and kind, the
 edge set, every `branches` declaration, every tool node's `args` with
 bindings, every model node's program identity, `verify`, `retries`,
-`skip_when_verified`, `max_fires`, `terminal`, `empty`, every
-`recovery.follows` widening, `recovery.max_interventions`, and the
-runtime's recovery instruction.
+`max_fires`, `terminal`, `empty`, every `recovery.follows` widening,
+`recovery.max_interventions`, and the runtime's recovery instruction.
 
 ## Relationship to the rest of foe
 

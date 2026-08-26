@@ -110,9 +110,7 @@ fn builtin_coding_with_verify_makes_terminal_audit_authoritative() {
     let implement = workflow.nodes["implement-task"].model.as_ref().unwrap();
     assert!(implement.tools.iter().any(|t| t == "check"));
     assert_eq!(implement.tool_defs["check"].exec, canonical);
-    let audit_node = &workflow.nodes["audit-and-repair-task"];
-    assert!(audit_node.skip_when_verified.is_none(), "verified implementation cannot bypass the audit");
-    let audit = audit_node.model.as_ref().unwrap();
+    let audit = workflow.nodes["audit-and-repair-task"].model.as_ref().unwrap();
     assert!(audit.tools.iter().any(|t| t == "check"));
     assert_eq!(audit.tool_defs["check"].exec, canonical);
     assert_eq!(audit.done_when.as_ref().unwrap().verify.as_deref(), Some("check"));
@@ -122,7 +120,6 @@ fn builtin_coding_with_verify_makes_terminal_audit_authoritative() {
 
     let plain = builtin_config("task".into(), model, None, None, None).unwrap();
     assert!(plain.tool_defs.is_empty(), "without --verify the document is unchanged");
-    assert!(plain.workflow.as_ref().unwrap().nodes["audit-and-repair-task"].skip_when_verified.is_none());
 }
 
 #[test]

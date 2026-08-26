@@ -96,7 +96,7 @@ export class WorkflowView {
       workflow.chosen.join(","),
       workflow.recoveries.length,
       workflow.nodes
-        .map((n) => `${n.name}:${n.direction}:${n.running ? 1 : 0}:${n.firings.length}:${n.skipped ? 1 : 0}`)
+        .map((n) => `${n.name}:${n.direction}:${n.running ? 1 : 0}:${n.firings.length}`)
         .join("|"),
       workflow.edges.map((e) => (e.traversed ? 1 : 0)).join(""),
     ].join("~");
@@ -110,49 +110,11 @@ export class WorkflowView {
     this.card.hide();
     this.figure.appendChild(this.build(workflow, layout));
     const fired = workflow.nodes.filter((n) => n.firings.length > 0).length;
-    // The skip summary names each guard that fired, because a node absent
-    // from the run for a reason is different from one that never became
-    // ready.
-    const skips = workflow.nodes
-      .filter((n) => n.skipped !== null)
-      .map((n) => ` ${n.name}: skipped, verifier accepted.`)
-      .join("");
     clear(this.caption);
     this.caption.textContent =
       `${workflow.nodes.length} declared node${workflow.nodes.length === 1 ? "" : "s"}, ${fired} of which fired.` +
-      skips +
       " A solid edge carried a value and a faint one was declared and never traversed; " +
       "the accented label is the one a firing chose.";
-  }
-
-  /**
-   * The sentence that explains a guard skip, set in the figure's detail
-   * line when the skipped node is selected: which node's verifier
-   * accepted, at which log sequence, with a link that scrolls the
-   * conversation to that event. The event lives in the named node's child
-   * episode log when its program declared the verifier, and in this log
-   * when the node itself did.
-   */
-  private explainSkip(node: WorkflowNode): void {
-    const skipped = node.skipped;
-    if (!skipped || !this.workflow) return;
-    const named = this.workflow.nodes.find((n) => n.name === skipped.verifiedBy);
-    const lastFiring = named?.firings[named.firings.length - 1];
-    const child = named && named.verify === "" && lastFiring?.childId ? lastFiring.childId : null;
-    const target = child ?? this.selected;
-    clear(this.caption);
-    this.caption.append(
-      `${node.name} did not fire: an authoritative verifier accepted ${skipped.verifiedBy}'s result at `,
-    );
-    const label = `seq ${skipped.verificationSeq}${child ? ` of ${child}` : ""}`;
-    if (target) {
-      this.caption.appendChild(
-        h("button", { class: "link", onclick: () => this.handlers.reveal(target, skipped.verificationSeq) }, label),
-      );
-    } else {
-      this.caption.append(label);
-    }
-    this.caption.append(".");
   }
 
   private build(workflow: Workflow, layout: WorkflowLayout): SVGSVGElement {
@@ -296,34 +258,27 @@ export class WorkflowView {
     if (node.direction) classes.push(node.direction);
     if (node.running) classes.push("running");
     if (node.firings.length === 0) classes.push("unfired");
-    if (node.skipped) classes.push("skipped");
     if (node.terminal) classes.push("terminal");
     const group = svg("g", { class: classes.join(" "), "data-node": node.name });
     group.appendChild(
       svg("rect", { class: "box", x: placed.x, y: placed.y, width: placed.width, height: placed.height, rx: 4 }),
     );
     group.appendChild(text("name", placed.x + 10, placed.y + 20, node.name));
-    // A skipped node's second line states why it is absent from the run,
-    // in place of what it would have run.
-    const kind = node.skipped ? "skipped · verifier accepted" : kindLine(node);
-    group.appendChild(text("kind", placed.x + 10, placed.y + 34, kind));
+    group.appendChild(text("kind", placed.x + 10, placed.y + 34, kindLine(node)));
     if (node.firings.length > 1) {
       group.appendChild(
         text("fires", placed.x + placed.width - 8, placed.y + 15, `×${node.firings.length}`, "end"),
       );
     }
     const bound = node.maxFires === null ? "" : ` of at most ${node.maxFires}`;
-    if (node.skipped) group.addEventListener("click", () => this.explainSkip(node));
     this.card.attach(
       group,
       () => node.name,
       () => `${kindLine(node)}${node.terminal ? " · terminal" : ""}`,
       () =>
-        node.skipped
-          ? `skipped: ${node.skipped.verifiedBy}'s verifier accepted (verification seq ${node.skipped.verificationSeq})`
-          : node.firings.length === 0
-            ? "declared; never fired"
-            : `${node.firings.length} firing${node.firings.length === 1 ? "" : "s"}${bound}`,
+        node.firings.length === 0
+          ? "declared; never fired"
+          : `${node.firings.length} firing${node.firings.length === 1 ? "" : "s"}${bound}`,
     );
 
     // One mark per firing along the bottom edge. A model node's firing is a

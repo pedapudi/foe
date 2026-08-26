@@ -92,6 +92,14 @@ inner results remain in the log. [code-mode.md](code-mode.md) specifies the
 proposed `code/inner-call` event. Code mode is not implemented. The tool name
 is reserved by the design; no event variant is present in `crates/log`.
 
+## Conditional workflow audit skipping
+
+Conditional audit skipping would omit a review node after an earlier verifier
+accepted the implementation. Foe runs every declared review node. No event
+type or configuration key is reserved. A cost-sensitive deployment may
+propose this behavior after Foe passes its quality gates and paired held-out
+evaluation shows that skipping the review preserves task quality.
+
 ## Program lineage
 
 Program lineage relates immutable program states through content-addressed
