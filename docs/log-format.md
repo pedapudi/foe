@@ -497,7 +497,10 @@ names the child episode of a model node and is absent otherwise.
 
 `workflow/node-end` — implemented. The firing ended. `value` is the node's
 canonical output and `rendered` the text its successors receive. When the
-firing failed, `error` states why and `value` is null.
+firing failed, `error` states why and `value` is null. An optional model
+node whose child ended blocked or exhausted is the one exception: `error`
+states the child outcome, and `value` and `rendered` carry the node's
+declared `empty` output.
 
 ```json
 { "node": "survey", "fire": 1, "value": {}, "rendered": "…", "duration_ms": 1200 }

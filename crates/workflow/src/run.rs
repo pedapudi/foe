@@ -169,6 +169,15 @@ fn output_of(outcome: Outcome, nested: bool) -> Output {
     }
 }
 
+/// The value an explicitly optional model node contributes when its child
+/// spent its allowance or reported that it could not proceed.
+fn empty_after_child(node: &Node, trouble: &Trouble) -> Option<Value> {
+    let ends_partial =
+        !trouble.settled && matches!(trouble.outcome, Outcome::Blocked { .. } | Outcome::Exhausted { .. });
+    node.model.as_ref()?;
+    ends_partial.then(|| node.empty.clone()).flatten()
+}
+
 /// The wire name of a limit or a blocked code.
 fn limit_or_code(value: impl serde::Serialize) -> String {
     serde_json::to_value(value).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
@@ -551,7 +560,13 @@ impl Executor {
         let (name, fire, started) = (fired.node.clone(), fired.fire, fired.started);
         self.sched.finish(&name);
         let node = self.sched.nodes[&name].clone();
-        if fired.result.is_err() {
+        if let Err(trouble) = &fired.result {
+            if let Some(empty) = empty_after_child(&node, trouble) {
+                let result = Ok((empty.clone(), render(&empty)));
+                let error = format!("{}: {}", trouble.cause, trouble.detail);
+                let event = self.node_end(&name, fire, started, &result, Some(error))?;
+                return self.contribute_empty(&name, fire, event.seq, empty).await;
+            }
             self.node_end(&name, fire, started, &fired.result, None)?;
         }
         let (value, rendered) = match fired.result {
@@ -587,6 +602,21 @@ impl Executor {
         let label = label.map(str::to_string);
         let event = self.node_end(&name, fire, started, &result, None)?;
         self.produce(&name, fire, Produced { value, rendered, seq: event.seq }, label).await
+    }
+
+    /// Contributes a node's declared `empty` value through the ordinary
+    /// branch and completion path.
+    async fn contribute_empty(
+        &mut self,
+        name: &str,
+        fire: u32,
+        seq: u64,
+        empty: Value,
+    ) -> Result<Option<Outcome>, RuntimeError> {
+        let node = &self.sched.nodes[name];
+        let label = empty.get("branch").and_then(Value::as_str).filter(|l| node.branches.contains_key(*l));
+        let produced = Produced { value: empty.clone(), rendered: render(&empty), seq };
+        self.produce(name, fire, produced, label.map(str::to_string)).await
     }
 
     /// Propagates a value along the admitted edges and completes the
@@ -707,9 +737,7 @@ impl Executor {
             }
             Action::Skip => {
                 let empty = node.empty.clone().expect("skip was offered");
-                let label = empty.get("branch").and_then(Value::as_str).filter(|l| node.branches.contains_key(*l));
-                let produced = Produced { value: empty.clone(), rendered: render(&empty), seq: event.seq };
-                return self.produce(name, fire, produced, label.map(str::to_string)).await;
+                return self.contribute_empty(name, fire, event.seq, empty).await;
             }
             Action::Abort(code, message) => return Ok(Some(Outcome::Blocked { code, message })),
         }
