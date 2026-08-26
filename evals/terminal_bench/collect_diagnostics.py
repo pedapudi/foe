@@ -467,6 +467,7 @@ def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, 
                                 "locus_sha256",
                                 "location",
                                 "assertion",
+                                "observed_assertion",
                                 "message",
                             )
                             if isinstance(locus.get(key), str)

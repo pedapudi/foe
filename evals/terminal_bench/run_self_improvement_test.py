@@ -250,6 +250,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("verified task quality", diagnosis["instructions"]["controls"])
         self.assertIn("resource changes", diagnosis["instructions"]["controls"])
         self.assertIn("general workflow setting", diagnosis["instructions"]["controls"])
+        self.assertIn("observed_assertion", diagnosis["instructions"]["evidence"])
+        self.assertIn("exercised by every failed configuration", diagnosis["instructions"]["evidence"])
         returns = diagnosis["done_when"]["returns"]
         self.assertEqual(
             returns["required"],

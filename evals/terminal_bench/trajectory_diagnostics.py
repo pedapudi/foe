@@ -140,6 +140,18 @@ def assertion_expression(trace: str) -> tuple[str | None, bool]:
     return normalized[0], False
 
 
+def observed_assertion_expression(trace: str) -> str | None:
+    """Extract pytest's concrete rewritten assertion without changing locus identity."""
+    observed = []
+    for line in trace.splitlines():
+        match = re.match(r"^\s*E\s+assert\s+(.+?)\s*$", line)
+        if match:
+            value = stable_verifier_text(match.group(1), MAX_FAILURE_ASSERTION)
+            if value is not None and value not in observed:
+                observed.append(value)
+    return observed[0] if len(observed) == 1 else None
+
+
 def assertion_location(trace: str) -> str | None:
     """Extract the final Python source coordinate from a pytest traceback."""
     locations = []
@@ -182,6 +194,7 @@ def failure_locus_evidence(
         for key, value in (
             ("location", assertion_location(trace)),
             ("assertion", assertion),
+            ("observed_assertion", observed_assertion_expression(trace)),
             ("message", assertion_message(trace, test.get("message"))),
         )
         if value is not None
@@ -191,7 +204,7 @@ def failure_locus_evidence(
     identity = {
         "test": stable_test_name(test.get("name")),
         "failure_class": failure_class,
-        **fields,
+        **{key: value for key, value in fields.items() if key != "observed_assertion"},
     }
     encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
     return (

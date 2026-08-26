@@ -537,10 +537,12 @@ failures cannot enter a contrast.
 
 The coarse profile remains the grouping key. Each failed attempt also carries
 its verifier-report digest and bounded failure loci. A locus contains the
-pytest assertion expression, normalized source location, and concise assertion
-message when those fields are available. The collector removes host paths,
-memory addresses, timestamps, terminal formatting, parameter values, and the
-remaining traceback. A digest identifies the bounded locus.
+pytest assertion expression, its concrete rewritten assertion, normalized
+source location, and concise assertion message when those fields are
+available. The collector removes host paths, memory addresses, timestamps,
+terminal formatting, parameter values, and the remaining traceback. The
+concrete rewritten assertion supplies failure operands. A digest identifies
+the stable source locus without including those operands.
 
 Every attempt records total, retained, omitted, unlocated, and ambiguous
 failure counts. A repeated contrast requires one unique locus for every failed

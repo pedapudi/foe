@@ -38,6 +38,7 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
                 "locus_sha256": temperature_failure["locus"]["locus_sha256"],
                 "location": "tests/test_outputs.py:116",
                 "assertion": "abs(fwd_tm - rev_tm) <= 5",
+                "observed_assertion": "5.813507000000001 <= 5",
                 "message": (
                     "Tm of forward and reverse primers must be within 5 degrees C "
                     "of each other."
@@ -50,6 +51,7 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
                 "locus_sha256": annealing_failure["locus"]["locus_sha256"],
                 "location": "tests/test_outputs.py:99",
                 "assertion": "15 <= len(extra_r) <= 45",
+                "observed_assertion": "46 <= 45",
                 "message": (
                     "Reverse primer annealing (incl. overhang match) must be "
                     "15–45 nt."
@@ -90,6 +92,33 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
         self.assertEqual(locus["assertion"], "result == <address>")
         self.assertNotIn("pytest-391", encoded)
         self.assertNotIn("7ff01234", encoded)
+
+    def test_observed_assertion_does_not_change_failure_locus_identity(self):
+        first = failure_locus(
+            {
+                "name": "tests/test_worker.py::test_limit",
+                "trace": (
+                    "> assert measured <= limit\n"
+                    "E assert 5.25 <= 5\n"
+                    "tests/test_worker.py:47: AssertionError\n"
+                ),
+            },
+            "AssertionError",
+        )
+        second = failure_locus(
+            {
+                "name": "tests/test_worker.py::test_limit",
+                "trace": (
+                    "> assert measured <= limit\n"
+                    "E assert 6.0 <= 5\n"
+                    "tests/test_worker.py:47: AssertionError\n"
+                ),
+            },
+            "AssertionError",
+        )
+        self.assertEqual(first["locus_sha256"], second["locus_sha256"])
+        self.assertEqual(first["observed_assertion"], "5.25 <= 5")
+        self.assertEqual(second["observed_assertion"], "6.0 <= 5")
 
     def test_failure_locus_stabilizes_host_state_and_parameterized_names(self):
         first = failure_locus(

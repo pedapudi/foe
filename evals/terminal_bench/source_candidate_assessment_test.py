@@ -115,6 +115,7 @@ def diagnostics(episode_id: str, runtime: str, success: bool):
                     "locus_sha256": SHA_THREE,
                     "location": "tests/behavior.rs:19",
                     "assertion": "observed == expected",
+                    "observed_assertion": "5.263745 <= 5",
                     "message": "values differ",
                 },
                 "locus_ambiguous": False,
@@ -230,6 +231,7 @@ def write_campaign(
                             "trace": (
                                 "tests/behavior_test.py:19: failure\n"
                                 "> assert observed == expected\n"
+                                "E assert 5.263745 <= 5\n"
                                 "E AssertionError: values differ\n"
                             ),
                         }
@@ -783,43 +785,45 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         contrast = projection["assessment_contrast"]
         failure = contrast["failed_attempts"][0]
         locus = failure["failed_verifiers"][0]["failure_loci"][0]
-        diagnosis = {
-            "branch": "implement-source",
-            "intervention": locus["assertion"],
-            "assessment_revision": {
-                "assessment_contrast_sha256": projection[
-                    "assessment_contrast_sha256"
-                ],
-                "rejected_source_candidate_identity": rejected_identity,
-                "prior_diagnosis_sha256": projection["prior_diagnosis_sha256"],
-                "disposition": "replace",
-                "failed_attempts": [
-                    {
-                        "episode_id": failure["episode_id"],
-                        "verifier_report_sha256s": [
-                            row["verifier_report_sha256"]
-                            for row in failure["failed_verifiers"]
-                        ],
-                        "locus_sha256s": [
-                            item["locus_sha256"]
-                            for row in failure["failed_verifiers"]
-                            for item in row["failure_loci"]
-                        ],
-                    }
-                ],
-                "parent_success_episode_ids": [
-                    row["episode_id"]
-                    for row in contrast["success_references"]["parent"]
-                ],
-                "candidate_success_episode_ids": [
-                    row["episode_id"]
-                    for row in contrast["success_references"]["candidate"]
-                ],
-                "explanation": "The assessment supports a general source change.",
-            },
-        }
-        with self.assertRaisesRegex(ValueError, "task-specific assessment detail"):
-            validate_revised_diagnosis(diagnosis, projection)
+        for field in ("assertion", "observed_assertion"):
+            diagnosis = {
+                "branch": "implement-source",
+                "intervention": locus[field],
+                "assessment_revision": {
+                    "assessment_contrast_sha256": projection[
+                        "assessment_contrast_sha256"
+                    ],
+                    "rejected_source_candidate_identity": rejected_identity,
+                    "prior_diagnosis_sha256": projection["prior_diagnosis_sha256"],
+                    "disposition": "replace",
+                    "failed_attempts": [
+                        {
+                            "episode_id": failure["episode_id"],
+                            "verifier_report_sha256s": [
+                                row["verifier_report_sha256"]
+                                for row in failure["failed_verifiers"]
+                            ],
+                            "locus_sha256s": [
+                                item["locus_sha256"]
+                                for row in failure["failed_verifiers"]
+                                for item in row["failure_loci"]
+                            ],
+                        }
+                    ],
+                    "parent_success_episode_ids": [
+                        row["episode_id"]
+                        for row in contrast["success_references"]["parent"]
+                    ],
+                    "candidate_success_episode_ids": [
+                        row["episode_id"]
+                        for row in contrast["success_references"]["candidate"]
+                    ],
+                    "explanation": "The assessment supports a general source change.",
+                },
+            }
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(ValueError, "task-specific assessment detail"):
+                    validate_revised_diagnosis(diagnosis, projection)
 
     def test_source_candidate_cannot_embed_assessment_details(self):
         with tempfile.TemporaryDirectory() as directory:

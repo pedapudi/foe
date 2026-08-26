@@ -173,8 +173,9 @@ context lines, and the digest of the private full-content patch. Complete file
 contents remain in the private assessment.
 It contains no raw task text, task name, task checksum, numeric reward,
 campaign label, absolute artifact path, or unstructured grader prose. A
-normalized failure locus may carry its bounded location, assertion, and
-concise message.
+normalized failure locus may carry its bounded location, source assertion,
+concrete rewritten assertion, and concise message. The rewritten assertion
+does not participate in the stable locus identity.
 
 The projection is limited to 48 KiB. Construction rejects symbolic links,
 escaped paths, incomplete campaigns, errored or nonconformant trials, Boolean
@@ -202,11 +203,12 @@ before source implementation can start.
 
 The diagnosis verifier also confines task-specific assessment details to the
 diagnosis episode. It rejects a typed handoff that copies a retained failure
-location, assertion, or message into its explanatory fields. Source acceptance
-then scans every changed file for assessment identities, verifier identities,
-failure-locus identities, and retained failure text. A match rejects the
-candidate before source evidence capture. The implementation child receives
-the generalized diagnosis and its opaque citations.
+location, source assertion, rewritten assertion, or message into its
+explanatory fields. Source acceptance then scans every changed file for
+assessment identities, verifier identities, failure-locus identities, and
+retained failure text. A match rejects the candidate before source evidence
+capture. The implementation child receives the generalized diagnosis and its
+opaque citations.
 
 Source evidence for a later generation contains the bounded diagnostics and
 a canonical generation-context record. The context binds the revised

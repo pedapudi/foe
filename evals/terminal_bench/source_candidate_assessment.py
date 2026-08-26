@@ -1076,13 +1076,20 @@ def complete_failure(trial: dict[str, Any]) -> dict[str, Any]:
         locus = failure.get("locus") if isinstance(failure, dict) else None
         if not isinstance(locus, dict) or failure.get("locus_ambiguous") is not False:
             raise ValueError("candidate trial has a missing or ambiguous failure locus")
-        allowed = {"locus_sha256", "location", "assertion", "message"}
+        allowed = {
+            "locus_sha256",
+            "location",
+            "assertion",
+            "observed_assertion",
+            "message",
+        }
         if not {"locus_sha256"}.issubset(locus) or not set(locus).issubset(allowed):
             raise ValueError("candidate trial has an invalid failure locus")
         require_digest(locus["locus_sha256"], "failure locus")
         limits = {
             "location": MAX_FAILURE_LOCATION,
             "assertion": MAX_FAILURE_ASSERTION,
+            "observed_assertion": MAX_FAILURE_ASSERTION,
             "message": MAX_FAILURE_MESSAGE,
         }
         if not any(key in locus for key in ("location", "assertion")):
@@ -1545,6 +1552,7 @@ def validate_failure_reference(value: Any, index: int) -> dict[str, Any]:
                 "locus_sha256",
                 "location",
                 "assertion",
+                "observed_assertion",
                 "message",
             }
             if (
@@ -1569,6 +1577,7 @@ def validate_failure_reference(value: Any, index: int) -> dict[str, Any]:
             for field, limit in (
                 ("location", MAX_FAILURE_LOCATION),
                 ("assertion", MAX_FAILURE_ASSERTION),
+                ("observed_assertion", MAX_FAILURE_ASSERTION),
                 ("message", MAX_FAILURE_MESSAGE),
             ):
                 if field in locus_value and (
@@ -1865,7 +1874,12 @@ def assessment_failure_literals(diagnostics: dict[str, Any]) -> set[str]:
     for failure in diagnostics["assessment_contrast"]["failed_attempts"]:
         for verifier in failure["failed_verifiers"]:
             for locus in verifier["failure_loci"]:
-                for field in ("location", "assertion", "message"):
+                for field in (
+                    "location",
+                    "assertion",
+                    "observed_assertion",
+                    "message",
+                ):
                     value = locus.get(field)
                     if isinstance(value, str) and len(value.strip()) >= 12:
                         literals.add(" ".join(value.split()).casefold())
