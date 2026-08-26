@@ -2031,3 +2031,270 @@ The job directories beside each manifest retain the task-owned verifier
 result, Foe episode tree, conformance report, invocation, diagnostics, and
 credential-integrity fields. Raw jobs and temporary credentials remain
 outside Git.
+
+## Frozen development release
+
+The development cohort uses source tree
+`git-tree-sha1:8c5e2b72580507cc49881ed11d83209bc0c26c0e` and portable
+binary
+`sha256:ff7d062a57acf865e22d7781fb7e9c05ac95863e5a255fc3145d4479e0eebb59`.
+The source tree is the Git tree at commit `9a42f32`. The implementation child
+uses GPT-5.6 Sol with low reasoning. The terminal audit uses GPT-5.6 Sol with
+high reasoning. Every model request uses the `priority` service tier.
+
+The development cohort contains twelve tasks. Four assessed concurrency tasks
+had already earned full credit under the frozen release:
+`cancel-async-tasks`, `fix-git`, `sqlite-db-truncate`, and
+`large-scale-text-editing`. The following sections record the remaining
+development results and the mechanisms found in their retained trajectories.
+
+## GPT-2 code-generation result
+
+The frozen release earned full task-owned credit on `gpt2-codegolf` with an
+author-supplied completion checker and on the unchanged closed-book task. Both
+runs completed without an infrastructure error and retained conforming Foe
+traces.
+
+| Evaluation condition | Score | Model calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Author-supplied completion checker | 1.0 | 41 | 668,576 | 391,680 | 23,250 | $1.729256 |
+| Unchanged task | 1.0 | 50 | 1,850,795 | 1,380,864 | 27,472 | $2.981510 |
+
+The implementation child compiled and ran a program that produced repetitive,
+incorrect text. It still returned a completed result. The terminal audit did
+not rely on that completion claim. It traced the output defect to the final
+layer-normalization parameter order, repaired the program, reran the sample,
+and returned the successful account that the external grader accepted.
+
+This run supplies one activation success for an always-run terminal audit that
+owns completion. It does not establish repeatability by itself. The campaign
+requires two successful unchanged attempts among three attempts before it
+classifies the original failure as converted.
+
+The retained manifests are:
+
+- author-supplied completion checker:
+  `target/terminal-bench-jobs/built-in-verifier-development-gpt2-codegolf-20260826T091501Z/campaign.json`,
+  SHA-256
+  `b5f35eb5024ce2d44c6509b9b445d0d234cde8f5fae311e5e0c3375fe67722c5`;
+- unchanged task:
+  `target/terminal-bench-jobs/built-in-closed-book-development-gpt2-codegolf-20260826T092927Z/campaign.json`,
+  SHA-256
+  `553a4fd62707a7213a23c4709773b272d6868e60cbf5e199242ab1075fce6dae`.
+
+## Git service evaluator contradiction
+
+The unchanged `git-multibranch` task earned full task-owned credit. Its
+completion-checker variant received zero credit because the checker changed
+the state that the unchanged grader later evaluated.
+
+The public checker pushed probe commits to the required `main` and `dev`
+branches. It did not restore the repositories after its checks. The unchanged
+grader then cloned repositories containing those probe histories. Its own
+pushes were rejected as non-fast-forward updates, and its final endpoints
+contained the checker data. The generated SSH configuration also enabled
+keyboard-interactive authentication. A case-sensitive prompt detector in the
+grader missed the resulting password prompt and created independent root
+commits after a failed clone.
+
+The failure therefore measures state left by the checker and an authentication
+assumption in the grader. It does not measure Foe task quality. The development
+record quarantines the checker-governed result. The retained negative control
+was insufficient because it proved only that the checker rejected an untouched
+workspace. It did not prove that successful checker execution preserved the
+workspace for a later grader.
+
+A repaired checker now snapshots and restores `/git/project` and `/var/www` on
+success and failure. Its provider-free controls cover populated and unborn
+refs, repeated checks, failure restoration, effective SSH authentication, and
+task-shaped clone and push operations. The repair is retained on branch
+`fix/git-multibranch-checker-restoration` at commit `8a86f118` and remains
+outside the frozen release.
+
+The retained manifests are:
+
+- checker-governed result:
+  `target/terminal-bench-jobs/built-in-verifier-development-git-multibranch-20260826T094440Z/campaign.json`,
+  SHA-256
+  `7926c5b2feb54502bbf3f107d08d4149789432d0774fc77617ea89c14960c8d2`;
+- unchanged task:
+  `target/terminal-bench-jobs/built-in-closed-book-development-git-multibranch-20260826T095334Z/campaign.json`,
+  SHA-256
+  `4cec8650c6b299c414b3012c9d01655e4a77f7eb24cf3468aea2991b25a56648`.
+
+## DNA assembly repeatability result
+
+The completion-checker variant of `dna-assembly` earned full task-owned
+credit. Three unchanged attempts under the same frozen release earned one full
+score and two zero scores. Every attempt completed without an infrastructure
+error and retained a conforming trace.
+
+| Evaluation condition | Score | Model calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Author-supplied completion checker | 1.0 | 46 | 896,269 | 615,424 | 23,967 | $1.848890 |
+| Unchanged attempt 1 | 0.0 | 43 | 738,920 | 465,920 | 21,949 | $1.717348 |
+| Unchanged attempt 2 | 1.0 | 29 | 386,086 | 184,832 | 20,413 | $1.287209 |
+| Unchanged attempt 3 | 0.0 | 29 | 352,893 | 191,488 | 14,172 | $1.005655 |
+
+Both unchanged failures came from the same physical interpretation. An
+annealing tract can include a suffix of a Golden Gate overhang when that
+suffix also matches the template beside the selected binding site. The first
+failed artifact ignored those adjacent bases when balancing melting
+temperatures. Its effective primer-pair temperature difference was 5.813507
+degrees C, above the permitted five degrees. The third failed artifact used a
+45-base reverse binding sequence whose adjacent matching overhang base made
+the effective annealing tract 46 bases, above the permitted maximum.
+
+The terminal audit found and repaired this interpretation in the successful
+unchanged attempt. It failed to apply the same rule in the other two attempts.
+The frozen release therefore fails the repeatability gate on this task. These
+three attempts provide a same-task contrast for cross-trajectory diagnosis:
+two failures with distinct assertion locations and one success under the same
+release and execution configuration.
+
+The retained manifests and their SHA-256 digests are:
+
+- completion-checker variant:
+  `target/terminal-bench-jobs/built-in-verifier-development-dna-assembly-20260826T100152Z/campaign.json`,
+  `355dae75a6ba2da3c2604dbe6e97c70a834f0d0184e2e5f2694930def8ff54c1`;
+- unchanged attempt 1:
+  `target/terminal-bench-jobs/built-in-closed-book-development-dna-assembly-20260826T101346Z/campaign.json`,
+  `0d1d5842ec8f7c724b2711c6139a5a6ea437ba44d7f73048f720ce539f257430`;
+- unchanged attempt 2:
+  `target/terminal-bench-jobs/built-in-closed-book-development-dna-assembly-repeat-20260826T102503Z/campaign.json`,
+  `ebcebd26b4be1d1e2f995b32a269a8877156e7a4ba1e1bf509f2465dd1593466`;
+- unchanged attempt 3:
+  `target/terminal-bench-jobs/built-in-closed-book-development-dna-assembly-third-20260826T103457Z/campaign.json`,
+  `2366e8d518c8d27f44994ecb335237afa748680c645bfe83174c9eb53f3c70ad`.
+
+## Repository sanitization evaluator contradiction
+
+The frozen release received zero task-owned credit on `sanitize-git-repo`.
+The implementation child changed the three files that the grader expected.
+The terminal audit then found a temporary AWS access identifier, session
+token, and signed-request signature inside three members of an encrypted ZIP
+archive. It replaced those credential-shaped values and retained the archive
+password and member structure.
+
+The unchanged grader passed its secret-removal and replacement checks. Its
+third check rejected the encrypted archive because the grader permits changes
+only to three predetermined paths. The task asks the agent to remove all API
+keys and warns against changing files that contain no sensitive information.
+The additional archive matched the credential forms named by the task. The
+task instruction and the path allowlist therefore disagree for this artifact.
+
+The campaign quarantines the zero score as an evaluator contradiction. A Foe
+change that leaves discovered credential material in place would reduce task
+quality as stated by the user instruction. The result does show that an
+unconditional terminal audit can expand the changed-path set. Future verifier
+controls must test successful-checker state preservation and agreement between
+the task instruction and any path allowlist.
+
+The same two-worker cohort ran `fix-ocaml-gc`, which earned full task-owned
+credit. Its terminal audit inspected the shared-heap traversal, performed a
+clean compiler rebuild, and ran all 40 required basic tests. It found no defect
+in the implementation child's fixed-sizeclass traversal change.
+
+| Task | Score | Model calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sanitize-git-repo` | 0.0 | 35 | 1,540,851 | 1,033,728 | 28,646 | $3.014903 |
+| `fix-ocaml-gc` | 1.0 | 29 | 777,964 | 378,880 | 5,741 | $1.862708 |
+
+The cohort manifest is retained at
+`target/terminal-bench-jobs/built-in-development-sanitize-and-ocaml-20260826T104330Z/campaign.json`.
+Its SHA-256 digest is
+`a0cd5fcb3416c4bbac28cdc68e4093c28261067ae14fa959fe84a200e1f0b8ba`.
+
+## Reverse-engineering development results
+
+The frozen release earned full task-owned credit on
+`model-extraction-relu-logits` and `path-tracing-reverse`. Both trials
+completed without an infrastructure error. Their traces conformed, their
+access-only credentials retained their pre-run digests, and the external
+grader accepted each final artifact.
+
+| Task | Score | Model calls | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `model-extraction-relu-logits` | 1.0 | 10 | 39,056 | 3,584 | 6,414 | $0.271602 |
+| `path-tracing-reverse` | 1.0 | 52 | 3,003,749 | 2,318,336 | 22,288 | $4.114746 |
+
+The model-extraction implementation recovered all 20 hidden row directions.
+The terminal audit regenerated the artifact and matched every supplied row up
+to permutation, sign, and scale. It made no repair.
+
+The path-tracing implementation was initially approximate. Its image hash and
+size differed from the reference executable. The terminal audit reconstructed
+the camera arithmetic, color conversion, lighting, checkerboard shading,
+shadows, precision-edge pixels, and output-error behavior. The final program
+matched the original image and normal standard error byte for byte. Its source
+compressed to 1,095 bytes.
+
+The path-tracing trajectory also identifies two avoidable harness costs. Four
+large disassembly results were replayed between 29 and 31 times. Their combined
+replayed rendering exceeded 2.9 million characters. Five `edit` calls supplied
+the current file's correct 64-digit digest but omitted the `sha256:` prefix.
+The frozen `edit` tool rejected all five calls even though the digest bytes
+matched.
+
+Candidate pull request 110 accepts the canonical version or the same bare
+digest. It retains the complete-byte stale-file guard and adds no production
+line beyond the tools budget. This direct Foe change removes the five observed
+tool failures. It has not contributed to any score in this frozen cohort.
+
+The cohort manifest is retained at
+`target/terminal-bench-jobs/built-in-development-path-tracing-and-model-extraction-20260826T110626Z/campaign.json`.
+Its SHA-256 digest is
+`a1746dc817cdb0f930be7894df3937f1dd4d09842f6a214bc28a66d0be572a84`.
+
+## Regex chess audit result
+
+The frozen release earned full task-owned credit on `regex-chess`. The trial
+completed without an infrastructure error, and its trace conformed. It used
+61 model calls, 2,313,532 input tokens, 1,712,640 cached-input tokens, and
+42,536 output tokens. Its estimated cost was $3.939344.
+
+The implementation child built a 5,114-pair regular-expression move generator.
+It passed all 18 positions in the supplied checker. It also reported a specific
+unresolved risk: the generator did not separately reject every castling move
+that begins in check or crosses an attacked square.
+
+The terminal audit repaired that disclosed castling defect and four additional
+semantic defects. The repaired generator handles en passant in both capture
+directions, escapes expanded en-passant metadata, checks castling start and
+transit safety, represents empty castling rights correctly, and prevents
+source and destination tags from colliding with move metadata.
+
+The audit regenerated `re.json` byte for byte from `gen.awk`. The resulting
+file contained 5,118 pairs and occupied 444,901 bytes. The supplied checker
+passed all 18 positions. A targeted suite passed 17 special-rule and collision
+positions plus the supplied sample. A differential test matched Python Chess
+on 400 randomly generated legal positions with White to move. The unchanged
+external grader then awarded a score of 1.0.
+
+This result is evidence for an unconditional terminal audit. The supplied
+checker accepted the implementation before the audit repaired behaviors that
+the task required. The result does not isolate the audit's aggregate score
+effect because the pre-audit artifact was not submitted to the external
+grader. A future comparison must retain both artifacts and grade them under
+the same unchanged evaluator.
+
+The run manifest is retained at
+`target/terminal-bench-jobs/built-in-development-regex-chess-20260826T111655Z/campaign.json`.
+Its SHA-256 digest is
+`0c692786a8d73a002a1238382f8d66d1ef0c879dec9ec5662c200bb83b680676`.
+
+## Development-set assessment
+
+The frozen release has now attempted all twelve development tasks. Eleven
+tasks earned a full task-owned score in at least one unchanged attempt. The
+remaining task, `sanitize-git-repo`, is quarantined because the evaluator's
+changed-path allowlist conflicts with credential material named by the task
+instruction.
+
+This coverage result satisfies the campaign's eleven-task quality threshold.
+It does not qualify the frozen release for confirmation. `dna-assembly`
+succeeded once and failed twice under the same release. The campaign therefore
+uses its two failure loci and one success locus as the first identity-bound
+cross-trajectory source-improvement corpus. The candidate must convert the
+repeatable failure mechanism and transfer to another development task before
+the improved release can be frozen.
