@@ -16,6 +16,19 @@ COMMON_ARGS = [
     "$(rootpath :cases.json)",
 ]
 
+SOURCE_CONTROLLER_ARGS = [
+    "--controller-root",
+    "$(rootpath //:Cargo.toml)",
+    "--source-checker",
+    "$(rootpath //crates/lineage:source-adoption)",
+    "--agent-module",
+    "$(rootpath :foe_agent.py)",
+    "--trace-evaluator",
+    "$(rootpath //evals:score-trace)",
+    "--cases",
+    "$(rootpath :cases.json)",
+]
+
 COMMON_DATA = [
     "//:foe-portable",
     "//:Cargo.toml",
@@ -246,6 +259,26 @@ sh_binary(
     srcs = ["run.py"],
     args = COMMON_ARGS + ["--group", "confirmation"],
     data = COMMON_DATA,
+    visibility = ["//visibility:public"],
+)
+
+# Run this controller target from an immutable checkout. The caller supplies
+# --foe, --source-root, and --source-adoption from a separate candidate tree.
+sh_binary(
+    name = "foe-source-candidate",
+    srcs = ["run.py"],
+    args = SOURCE_CONTROLLER_ARGS,
+    data = [
+        "//:Cargo.toml",
+        "//crates/lineage:source-adoption",
+        "//evals:score-trace",
+        "cases.json",
+        "foe_agent.py",
+        "foe_agent_support.py",
+        "source_adoption.py",
+        "trajectory_diagnostics.py",
+        "workflow_candidate.py",
+    ],
     visibility = ["//visibility:public"],
 )
 

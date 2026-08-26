@@ -19,6 +19,11 @@ validate a document and offer completions. `foe plan --config FILE` prints
 the resolved program, its identity, and every tool definition the program's
 reachable tree can invoke, without running anything.
 
+`foe plan TASK --json` resolves the built-in coding workflow. It accepts the
+same model, credential, verifier, service-tier, and sandbox options as the
+running form. The emitted object uses the configured-program plan shape and
+can be retained before an episode starts.
+
 `crates/program` implements this document: every rule stated here is a check
 there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a
 document into the program `episode/start.program` records.
@@ -193,9 +198,9 @@ A name resolves against three sources, checked in this order:
 
 A name that resolves in two sources, or in none, is an error at construction.
 
-`foe plan` without `--config` lists every built-in tool with its
-description. `foe plan --config FILE` reports the resolved set for a
-document, with each tool's source.
+`foe plan` without a task or configuration lists every built-in tool with its
+description. `foe plan --config FILE` reports the resolved set for a document,
+with each tool's source.
 
 ### `tool_defs`
 

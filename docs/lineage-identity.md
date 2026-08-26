@@ -460,11 +460,25 @@ source manifest and every retained file. It compares the manifest with the
 clean candidate tree and computes the source-tree and rebuilt-binary digest
 pair. This pair is a recorded computation. It is not a build attestation.
 
+The evaluation command runs from an immutable controller checkout. Its
+runner and source checker are separate from the writable candidate checkout.
+The command records both executable paths and content digests. Candidate
+changes to lineage, log, program, Cargo, or Bazel files cannot alter the
+controller's judgment.
+
+When source evidence comes from a retained self-improvement result, preflight
+requires its source-bundle, source-candidate, base-tree, parent-program, and
+capture-checker identities to match the bundle. A confirmed campaign copies
+the validated bundle into its run directory before provider spend. It
+validates the copy and uses only that copy during adoption.
+
 The adapter retains `foe plan --json` immediately before the first provider
-request. After the episode, the trusted checker recomputes the reported
-program identity. It requires the root `episode/start` to carry the planned
-program and identity. It also requires the runtime build digest to equal the
-evaluated binary digest.
+request. For the built-in workflow it supplies the same task, model,
+credential, verifier, service tier, and sandbox mode to the plan and run
+forms. After the episode, the trusted checker recomputes the reported program
+identity. It requires the root `episode/start` to carry the planned program
+and identity. It also requires the runtime build digest to equal the evaluated
+binary digest.
 
 The checker then creates the child state from the actual plan identity
 document. It places the exact source manifest in the lineage evidence bundle
@@ -478,10 +492,11 @@ evaluation checker digests and the evaluated source and binary pair. Each
 task-specific program may have a distinct program identity. Transfer-task
 identity remains variable.
 
-A live adoption leaves one check open: the accepted verifier runs in a
-child episode of the proposal tree, and the parent identity document
-reduces a child program to its hash, so the verifier's executable hash is
-compared only when the verifier episode runs the parent program itself.
+Source preflight uses the canonical proposal checker before provider spend.
+The checker requires the verification episode to descend from the retained
+proposal root through recorded spawn events. It also requires the parent
+identity document to authorize the verifier. A source candidate with an open
+verifier-authorization check cannot enter external evaluation.
 
 ## Required implementation tests
 
@@ -505,4 +520,8 @@ accepted:
 - verification with the evidence directory removed from its original
   machine path;
 - a candidate that passes artifact checks but whose lineage adoption fails;
-- an actual plan or launched program that differs from the adopted state.
+- an actual plan or launched program that differs from the adopted state;
+- a retained result whose recorded source identities differ from its bundle;
+- an unrelated proposal or verifier episode rejected before provider spend;
+- replacement of the external source bundle after the campaign freezes it;
+- candidate changes to the controller's lineage and build sources.

@@ -9,6 +9,7 @@ from pathlib import Path
 from foe_agent_support import (
     FIXED_EXECUTABLE_PATHS,
     builtin_workflow_arguments,
+    builtin_workflow_plan_arguments,
     build_program,
     credential_values,
     describe_container_environment,
@@ -66,6 +67,17 @@ class ProgramTest(unittest.TestCase):
         self.assertNotIn("--verify", arguments)
         self.assertEqual(arguments[0:2], ("/usr/local/bin/foe", "repair it"))
         self.assertEqual(arguments[-2:], ("--log-dir", "/logs/episode"))
+
+    def test_builtin_workflow_plan_uses_the_run_configuration(self):
+        run = builtin_workflow_arguments(
+            "repair it", "openai-codex/gpt-5.6-sol", "/tmp/private.json",
+            "/tmp/check", "/logs/episode", "priority",
+        )
+        plan = builtin_workflow_plan_arguments(
+            "repair it", "openai-codex/gpt-5.6-sol", "/tmp/private.json",
+            "/tmp/check", "/logs/episode", "priority",
+        )
+        self.assertEqual(plan, (run[0], "plan", *run[1:-3], "--json"))
 
     def test_builtin_workflow_arguments_survive_shell_quoting(self):
         instruction = "line one\n'$(touch /tmp/forbidden)' \"$HOME\""

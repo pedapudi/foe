@@ -9,7 +9,7 @@ fn parse(line: &str) -> Result<Command, String> {
 fn every_form_parses_and_foreign_options_are_refused() {
     assert!(matches!(parse("plan --schema"), Ok(Command::Schema)));
     assert!(matches!(parse("plan --config c.json --json"), Ok(Command::Plan { json: true, .. })));
-    assert!(matches!(parse("plan"), Ok(Command::Plan { config: None, json: false, .. })));
+    assert!(matches!(parse("plan"), Ok(Command::Plan { json: false, .. })));
     assert!(matches!(parse("login"), Ok(Command::Login { provider: None, model: None, status: false })));
     assert!(matches!(parse("login --status"), Ok(Command::Login { provider: None, status: true, .. })));
     let Ok(Command::Login { provider, model, .. }) = parse("login anthropic --model m") else { panic!() };
@@ -27,6 +27,8 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert_eq!(options.service_tier.as_deref(), Some("priority"));
     assert!(parse("plan --json").is_err(), "--json takes --config");
     assert!(parse("plan --schema --json").is_err(), "--schema stands alone");
+    assert!(parse("plan --schema --model p/m").is_err(), "--schema refuses built-in options");
+    assert!(parse("plan --model p/m").is_err(), "built-in options require a task");
     assert!(parse("plan --config c.json --evidence ev").is_err(), "verification takes --states and --evidence");
     assert!(parse("view --json").is_err(), "an option of another form is refused");
     assert!(parse("fix --host").is_err(), "--host takes its task from the configuration");
@@ -74,8 +76,11 @@ fn golden(line: &str) -> String {
             format!("login provider={provider:?} model={model:?} status={status}")
         }
         Ok(Command::View { dir, serve, port }) => format!("view dir={dir:?} serve={serve} port={port}"),
-        Ok(Command::Plan { config, json, states, evidence }) => {
-            format!("plan config={config:?} json={json} states={states:?} evidence={evidence:?}")
+        Ok(Command::Plan { options, json, states, evidence }) => {
+            format!(
+                "plan task={:?} config={:?} json={json} states={states:?} evidence={evidence:?}",
+                options.task, options.config
+            )
         }
         Ok(Command::Schema) => "schema".to_string(),
         Ok(Command::Telemetry { logs, json }) => format!("telemetry logs={logs:?} json={json}"),
@@ -106,12 +111,13 @@ fn representative_invocations_parse_to_known_values() {
         ("login --status", "login provider=None model=None status=true"),
         ("view logs", "view dir=\"logs\" serve=false port=0"),
         ("view logs --serve --port 8080", "view dir=\"logs\" serve=true port=8080"),
-        ("plan", "plan config=None json=false states=None evidence=None"),
-        ("plan --config c.json", "plan config=Some(\"c.json\") json=false states=None evidence=None"),
-        ("plan --config c.json --json", "plan config=Some(\"c.json\") json=true states=None evidence=None"),
+        ("plan", "plan task=None config=None json=false states=None evidence=None"),
+        ("plan --config c.json", "plan task=None config=Some(\"c.json\") json=false states=None evidence=None"),
+        ("plan --config c.json --json", "plan task=None config=Some(\"c.json\") json=true states=None evidence=None"),
+        ("plan fix --model p/m --json", "plan task=Some(\"fix\") config=None json=true states=None evidence=None"),
         (
             "plan --config c.json --states st --evidence ev",
-            "plan config=Some(\"c.json\") json=false states=Some(\"st\") evidence=Some(\"ev\")",
+            "plan task=None config=Some(\"c.json\") json=false states=Some(\"st\") evidence=Some(\"ev\")",
         ),
         ("plan --config c.json --states st", "error"),
         ("plan --schema", "schema"),

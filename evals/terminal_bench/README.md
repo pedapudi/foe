@@ -699,10 +699,10 @@ recorded without deciding candidate acceptance.
 The self-improvement runner records accepted workflow candidates under the
 retained run directory's `lineage/` tree. Its evidence bundle contains the
 episode tree, child identity document, and artifact manifest. Trusted
-`build-bundle` and ancestry-checker binaries come from the invoking Bazel
-action. The candidate source cannot replace them. The result records their
-content digests and the structured ancestry report must begin with the
-adopted program identity.
+`build-bundle` and ancestry-checker binaries come from the controller
+checkout's Bazel action. The writable candidate checkout is a separate input.
+The result records their content digests. The structured ancestry report must
+begin with the adopted program identity.
 
 An accepted source candidate retains a `source-candidate-bundle` directory.
 Its manifest binds the parent identity, proposal verification, source objects,
@@ -727,11 +727,16 @@ must match the candidate. Workflow ownership and completion governance must
 also match. Task identity may vary. The current Foe source tree and binary
 must match the candidate's recorded identity.
 
-Apply an accepted source candidate from its clean worktree with:
+Build the candidate binary in its clean worktree. Then run the source
+evaluation target from a separate immutable controller checkout:
 
 ```sh
-bazel run //evals/terminal_bench:foe-development -- \
+cd /absolute/path/to/controller-checkout
+bazel run //evals/terminal_bench:foe-source-candidate -- \
+  --foe /absolute/path/to/candidate/bazel-bin/foe-portable \
+  --source-root /absolute/path/to/candidate/Cargo.toml \
   --source-adoption /absolute/path/to/self-improvement/result.json \
+  --built-in-workflow \
   --service-tier priority \
   --confirm-spend
 ```
@@ -743,13 +748,22 @@ the clean candidate tree. It computes and records the source-tree and rebuilt
 binary digest pair. The pair is a recorded computation rather than a build
 attestation.
 
-The adapter retains the rebuilt binary's `foe plan --json` output before the
-first provider request. After the trial, the trusted checker requires the root
-episode to carry the same program identity, resolved program, and binary
-digest. It creates the child state from the actual identity document and
-requires the canonical ancestry checker to accept the transition.
+The controller rejects a source result whose recorded bundle, candidate,
+base-tree, parent-program, or capture-checker identity differs from the
+bundle. It also rejects proposal trees with unrelated verification episodes
+or unauthorized verifiers. A confirmed campaign copies the validated bundle
+into its run directory before provider spend. Later adoption uses this frozen
+copy.
 
-`campaign.json` records the source candidate and one completed adoption per
+The adapter retains the rebuilt binary's `foe plan --json` output before the
+first provider request. `foe plan TASK --json` resolves the built-in workflow
+with the same task and options as the running form. After the trial, the
+trusted checker requires the root episode to carry the same program identity,
+resolved program, and binary digest. It creates the child state from the actual
+identity document. The canonical ancestry checker must accept the transition.
+
+`campaign.json` records the controller runner and checker paths and digests.
+It records the source candidate and one completed adoption per
 trial. Each adoption includes the adoption, evidence, program, state, and
 parent identities. It also records the checker digest and evaluated source
 and binary pair. A failed adoption invalidates the trial and makes the campaign

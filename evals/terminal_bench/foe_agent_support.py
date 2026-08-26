@@ -139,6 +139,28 @@ def builtin_workflow_arguments(
     return tuple(arguments)
 
 
+def builtin_workflow_plan_arguments(
+    instruction: str,
+    model_name: str,
+    credential_path: str,
+    completion_checker: str | None,
+    episode_directory: str,
+    service_tier: str,
+    binary: str = "/usr/local/bin/foe",
+) -> tuple[str, ...]:
+    """Resolve the same built-in program without starting an episode."""
+    run = builtin_workflow_arguments(
+        instruction,
+        model_name,
+        credential_path,
+        completion_checker,
+        episode_directory,
+        service_tier,
+        binary,
+    )
+    return (run[0], "plan", *run[1:-3], "--json")
+
+
 def missing_episode_diagnostic(
     logs_dir: Path,
     exit_code: int | None,

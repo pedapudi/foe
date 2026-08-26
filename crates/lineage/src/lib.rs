@@ -318,31 +318,6 @@ fn check_transition(
     if address != claim.evidence {
         return Err(invalid("program_lineage.evidence", "equals the digest of the bundle's canonical manifest"));
     }
-    // Every episode log retained in the bundle is a valid log.
-    let mut logs = BTreeMap::new();
-    for file in manifest.files.iter().filter(|f| f.path == "episode.jsonl" || f.path.ends_with("/episode.jsonl")) {
-        let log_dir = dir.join(&file.path);
-        let log_dir = log_dir.parent().expect("a log path has a parent");
-        let events = fold::read_all(log_dir)
-            .map_err(|e| invalid(format!("evidence log {}", file.path), format!("is readable: {e}")))?;
-        let state = fold::fold(&events)
-            .map_err(|e| invalid(format!("evidence log {}", file.path), format!("is a valid log: {e}")))?;
-        logs.insert(file.path.clone(), (events, state));
-    }
-    // The accepted verifier result the claim names.
-    let (events, _) = logs
-        .get(&claim.verification_log)
-        .ok_or_else(|| invalid("program_lineage.verification_log", "names an episode log in the bundle"))?;
-    let event = events
-        .iter()
-        .find(|e| e.seq == claim.verification_seq)
-        .ok_or_else(|| invalid("program_lineage.verification_seq", "names an event in verification_log"))?;
-    let EventData::VerificationResult(result) = &event.data else {
-        return Err(invalid("program_lineage.verification_seq", "names a verification/result event"));
-    };
-    if result.status != VerificationStatus::Accepted {
-        return Err(invalid("program_lineage.verification_seq", "names an accepted verification/result"));
-    }
     // Exact input binding: the adoption record, written by the bundle
     // builder, pairs the candidate's identity members with the accepted
     // event's coordinates. The frozen event carries no digest of its
@@ -376,22 +351,66 @@ fn check_transition(
     if record.program_identity != child_identity {
         return Err(invalid("adoption_record.program_identity", "equals the descendant state's program identity"));
     }
-    // The proposal tree descends from the named parent.
-    let (_, root_state) = logs
-        .get(&manifest.proposal_log)
-        .ok_or_else(|| invalid("evidence.manifest.proposal_log", "names an episode log"))?;
-    let root_start =
+    report.unverifiable.extend(check_proposal(
+        &dir,
+        manifest.files.iter().map(|file| file.path.as_str()),
+        &manifest.proposal_log,
+        &claim.verification_log,
+        claim.verification_seq,
+        parent_document,
+    )?);
+    Ok(())
+}
+
+/// Verifies that an accepted result belongs to the retained proposal tree
+/// and was produced by a verifier authorized by the parent program. The
+/// caller supplies every retained file name so missing spawn-path logs
+/// cannot be recovered from ambient filesystem state.
+pub fn check_proposal<'a>(
+    dir: &Path,
+    files: impl Iterator<Item = &'a str>,
+    proposal_log: &str,
+    verification_log: &str,
+    verification_seq: u64,
+    parent_document: &Value,
+) -> Result<Vec<String>, LineageError> {
+    let mut logs = BTreeMap::new();
+    for path in files.filter(|path| *path == "episode.jsonl" || path.ends_with("/episode.jsonl")) {
+        let log_dir = dir.join(path);
+        let events = fold::read_all(log_dir.parent().expect("a log path has a parent"))
+            .map_err(|e| invalid(format!("evidence log {path}"), format!("is readable: {e}")))?;
+        let state =
+            fold::fold(&events).map_err(|e| invalid(format!("evidence log {path}"), format!("is a valid log: {e}")))?;
+        logs.insert(path.to_string(), (events, state));
+    }
+    let (events, verifier_state) = logs
+        .get(verification_log)
+        .ok_or_else(|| invalid("program_lineage.verification_log", "names an episode log in the bundle"))?;
+    let event = events
+        .iter()
+        .find(|event| event.seq == verification_seq)
+        .ok_or_else(|| invalid("program_lineage.verification_seq", "names an event in verification_log"))?;
+    let EventData::VerificationResult(result) = &event.data else {
+        return Err(invalid("program_lineage.verification_seq", "names a verification/result event"));
+    };
+    if result.status != VerificationStatus::Accepted {
+        return Err(invalid("program_lineage.verification_seq", "names an accepted verification/result"));
+    }
+    let (_, root_state) =
+        logs.get(proposal_log).ok_or_else(|| invalid("evidence.manifest.proposal_log", "names an episode log"))?;
+    let root =
         root_state.start.as_ref().ok_or_else(|| invalid("evidence.manifest.proposal_log", "has episode/start"))?;
-    if root_start.identity != claim.parent.program_identity {
+    if root.identity != digest_of(canonical(parent_document).as_bytes()) {
         return Err(invalid(
             "program_lineage.parent.program_identity",
             "equals the proposal root log's program identity",
         ));
     }
-    verify_provenance(&manifest.proposal_log, &claim.verification_log, &logs)?;
-    let (_, verifier_state) = &logs[&claim.verification_log];
-    let verifier_start = verifier_state.start.as_ref().expect("a checked log has episode/start");
-    check_verifier(result, verifier_start, parent_document, report)
+    verify_provenance(proposal_log, verification_log, &logs)?;
+    let start = verifier_state.start.as_ref().expect("a checked log has episode/start");
+    let mut report = AncestryReport { chain: Vec::new(), unverifiable: Vec::new() };
+    check_verifier(result, start, parent_document, &mut report)?;
+    Ok(report.unverifiable)
 }
 
 /// Requires `log` to be `root` or a descendant reached through recorded

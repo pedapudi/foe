@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -19,10 +20,10 @@ def checker_digest(checker: Path) -> str:
     return "sha256:" + hashlib.sha256(checker.read_bytes()).hexdigest()
 
 
-def source_bundle_path(path: Path) -> Path:
-    """Resolve a source bundle directory or a retained self-improvement result."""
+def source_bundle_path(path: Path) -> tuple[Path, dict[str, str] | None]:
+    """Resolve source evidence and retain every identity a result recorded."""
     if path.is_dir():
-        return path.absolute()
+        return path.absolute(), None
     record = json.loads(path.read_text(encoding="utf-8"))
     candidate = record.get("source_candidate") if isinstance(record, dict) else None
     bundle = candidate.get("bundle") if isinstance(candidate, dict) else None
@@ -33,7 +34,29 @@ def source_bundle_path(path: Path) -> Path:
         resolved = path.parent / resolved
     if not resolved.exists():
         raise ValueError(f"source evidence bundle does not exist: {resolved}")
-    return resolved.absolute()
+    names = {
+        "source_bundle_identity": "source_bundle_identity",
+        "source_candidate_identity": "source_candidate_identity",
+        "base_source_tree": "base_source_tree",
+        "parent_program_identity": "parent_program_identity",
+    }
+    expected = {}
+    for retained, checked in names.items():
+        value = candidate.get(retained)
+        pattern = SOURCE_TREE if retained == "base_source_tree" else DIGEST
+        if not isinstance(value, str) or pattern.fullmatch(value) is None:
+            raise ValueError(f"source candidate record {retained} is invalid")
+        expected[checked] = value
+    capture_checker = candidate.get(
+        "capture_checker_sha256", candidate.get("checker_sha256")
+    )
+    if (
+        not isinstance(capture_checker, str)
+        or DIGEST.fullmatch(capture_checker) is None
+    ):
+        raise ValueError("source candidate record capture checker identity is invalid")
+    expected["capture_checker_sha256"] = capture_checker
+    return resolved.absolute(), expected
 
 
 def checked_output(checker: Path, arguments: list[str], fields: set[str]) -> dict[str, Any]:
@@ -160,17 +183,62 @@ def verify_source_candidate(
     runtime_binary: Path,
 ) -> dict[str, Any]:
     repository = source_root if source_root.is_dir() else source_root.parent
-    return checked_output(
+    bundle, expected = source_bundle_path(adoption_path)
+    value = checked_output(
         checker,
         [
             "preflight",
-            str(source_bundle_path(adoption_path)),
+            str(bundle),
             str(repository),
             applied_source_tree,
             str(runtime_binary),
         ],
         PREFLIGHT_FIELDS,
     )
+    if expected is not None:
+        for field, retained in expected.items():
+            if value[field] != retained:
+                raise ValueError(
+                    f"source candidate record {field} does not match its evidence bundle"
+                )
+    return value
+
+
+def freeze_source_candidate(
+    checker: Path,
+    adoption_path: Path,
+    source_root: Path,
+    applied_source_tree: str,
+    runtime_binary: Path,
+    destination: Path,
+    expected_preflight: dict[str, Any],
+) -> tuple[Path, dict[str, Any]]:
+    """Copy validated evidence into a campaign and validate the copy."""
+    expected = verify_source_candidate(
+        checker, adoption_path, source_root, applied_source_tree, runtime_binary
+    )
+    if expected != expected_preflight:
+        raise ValueError("source evidence changed after campaign preflight")
+    source, _ = source_bundle_path(adoption_path)
+    if destination.exists():
+        raise ValueError(f"frozen source evidence already exists: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.copying")
+    if temporary.exists():
+        shutil.rmtree(temporary)
+    shutil.copytree(source, temporary, symlinks=True)
+    try:
+        observed = verify_source_candidate(
+            checker, temporary, source_root, applied_source_tree, runtime_binary
+        )
+    except (OSError, ValueError):
+        shutil.rmtree(temporary)
+        raise
+    if observed != expected:
+        shutil.rmtree(temporary)
+        raise ValueError("source evidence changed while it was copied into the campaign")
+    temporary.rename(destination)
+    return destination, observed
 
 
 def complete_source_adoption(
@@ -182,13 +250,14 @@ def complete_source_adoption(
     plan: Path,
     episode: Path,
     lineage: Path,
+    expected_preflight: dict[str, Any],
 ) -> dict[str, Any]:
     repository = source_root if source_root.is_dir() else source_root.parent
     value = checked_output(
         checker,
         [
             "adopt",
-            str(source_bundle_path(adoption_path)),
+            str(source_bundle_path(adoption_path)[0]),
             str(repository),
             applied_source_tree,
             str(runtime_binary),
@@ -212,4 +281,13 @@ def complete_source_adoption(
     ):
         if DIGEST.fullmatch(value.get(field, "")) is None:
             raise ValueError(f"source adoption {field} is invalid")
+    for field in (
+        "source_bundle_identity",
+        "source_candidate_identity",
+        "parent_program_identity",
+        "checker_sha256",
+        "evaluated_pair",
+    ):
+        if value[field] != expected_preflight[field]:
+            raise ValueError(f"source adoption {field} differs from the frozen preflight")
     return value

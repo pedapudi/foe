@@ -59,7 +59,7 @@ const FORMS: &[Form] = &[
     form("", "[TASK]", "run one bounded episode: the task named here, or the task a program document names"),
     form("login", "[PROVIDER]", "configure a provider's credential and the default model, or list the providers"),
     form("view", "DIR", "write a log directory as one self-contained page, or serve it"),
-    form("plan", "", "print a resolved program with its identity, its transport, its tools, and its effective tool authority; bare, list the built-in tools"),
+    form("plan", "[TASK]", "print a resolved program with its identity, its transport, its tools, and its effective tool authority; bare, list the built-in tools"),
     form("telemetry", "LOG...", "print, for finished episode logs, the payload telemetry emission writes"),
 ];
 
@@ -97,6 +97,11 @@ const OPTS: &[Opt] = &[
     opt("view", "--serve", "", "", "serve the directory instead of writing the page to standard output"),
     opt("view", "--port", "N", "an ephemeral port, printed as the first line", "the port to serve on"),
     opt("plan", "--config", "FILE", "the built-in tools alone", "the program document to resolve"),
+    opt("plan", "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the built-in workflow model"),
+    opt("plan", "--service-tier", "TIER", "the model configuration's value", "the built-in workflow service tier"),
+    opt("plan", "--key-file", "PATH", "the provider's convention path", "the built-in workflow credential file"),
+    opt("plan", "--verify", "PATH", "no verifier gate", "the built-in terminal audit verifier"),
+    opt("plan", "--sandbox", "MODE", "best-effort", "the built-in workflow confinement mode"),
     opt("plan", "--json", "", "", "print one JSON object instead of the report"),
     opt("plan", "--schema", "", "", "print the JSON Schema of the program document and nothing else"),
     opt("plan", "--states", "DIR", "", "directory of ancestor state documents, one <hex>.json each"),
@@ -220,7 +225,7 @@ enum Command {
     Run(run::Options),
     Login { provider: Option<String>, model: Option<String>, status: bool },
     View { dir: PathBuf, serve: bool, port: u16 },
-    Plan { config: Option<PathBuf>, json: bool, states: Option<PathBuf>, evidence: Option<PathBuf> },
+    Plan { options: run::Options, json: bool, states: Option<PathBuf>, evidence: Option<PathBuf> },
     Schema,
     Telemetry { logs: Vec<String>, json: bool },
     Help(&'static Form),
@@ -257,20 +262,42 @@ fn command(argv: &[String]) -> Result<Command, String> {
         },
         "plan" => {
             let (schema, json) = (args.switch("--schema"), args.switch("--json"));
-            let mut dir = |flag| args.value(flag).map(PathBuf::from);
-            let (config, states, evidence) = (dir("--config"), dir("--states"), dir("--evidence"));
-            if schema && (config.is_some() || json || states.is_some() || evidence.is_some()) {
+            let (config, states, evidence) = (
+                args.value("--config").map(PathBuf::from),
+                args.value("--states").map(PathBuf::from),
+                args.value("--evidence").map(PathBuf::from),
+            );
+            let options = run::Options {
+                task: args.positional.pop(),
+                config,
+                model: args.value("--model"),
+                service_tier: args.value("--service-tier"),
+                key_file: args.value("--key-file").map(PathBuf::from),
+                verify: args.value("--verify").map(PathBuf::from),
+                sandbox: args.value("--sandbox"),
+                ..Default::default()
+            };
+            let built_in = options.model.is_some()
+                || options.service_tier.is_some()
+                || options.key_file.is_some()
+                || options.verify.is_some()
+                || options.sandbox.is_some();
+            let has_program = options.task.is_some() || options.config.is_some() || built_in;
+            if schema && (has_program || json || states.is_some() || evidence.is_some()) {
                 return Err("`foe plan --schema` prints the schema and takes no other option".into());
+            }
+            if built_in && (options.task.is_none() || options.config.is_some()) {
+                return Err("built-in plan options require TASK and no --config FILE".into());
             }
             if !schema && states.is_some() != evidence.is_some() {
                 return Err("verifying an ancestry claim takes both --states DIR and --evidence DIR".into());
             }
-            if config.is_none() && (json || evidence.is_some()) {
-                return Err("`foe plan` resolves no program without --config FILE".into());
+            if options.config.is_none() && options.task.is_none() && (json || evidence.is_some()) {
+                return Err("`foe plan` resolves no program without TASK or --config FILE".into());
             }
             match schema {
                 true => Command::Schema,
-                false => Command::Plan { config, json, states, evidence },
+                false => Command::Plan { options, json, states, evidence },
             }
         }
         "login" => Command::Login {
@@ -327,7 +354,7 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
     match command {
         Command::Help(form) => printed(&help(form)),
         Command::Schema => printed(SCHEMA),
-        Command::Plan { config, json, states, evidence } => plan(config.as_deref(), json, states.zip(evidence)),
+        Command::Plan { options, json, states, evidence } => plan(&options, json, states.zip(evidence)),
         Command::View { dir, serve, port } => view(&dir, serve, port),
         Command::Login { provider, model, status } => login(provider, model, status),
         Command::Telemetry { logs, json } => telemetry::preview(&logs, json).map(|()| ExitCode::SUCCESS),
@@ -356,12 +383,8 @@ fn open_browser(url: &str) {
     }
 }
 
-fn load(config: &Path) -> Result<foe_program::document::ResolvedProgram, String> {
-    foe_program::document::load(config).map_err(|e| format!("{}: {e}", config.display()))
-}
-
-/// Resolves the program and prints it with its identity. Without `--config`,
-/// lists the built-in tools the binary carries instead, one row per tool.
+/// Resolves the program and prints it with its identity. Without a task or
+/// `--config`, lists the built-in tools the binary carries, one row per tool.
 /// `--json` prints one object with `identity`, `identity_document` — the
 /// canonical serialized form the identity hash is computed over — and
 /// `program`, which the Python package parses, `context` with the
@@ -375,12 +398,13 @@ fn load(config: &Path) -> Result<foe_program::document::ResolvedProgram, String>
 /// claim is verified through `foe_lineage`; absent, a carried claim is
 /// reported unverified. Without `--json`, a workflow is followed by the
 /// report docs/workflow.md "Firing" describes.
-fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>) -> Result<ExitCode, String> {
-    let Some(config) = config else {
+fn plan(options: &run::Options, json: bool, ancestry: Option<(PathBuf, PathBuf)>) -> Result<ExitCode, String> {
+    if options.config.is_none() && options.task.is_none() {
         let builtins = std::iter::once(block_spec()).chain(run::extra_builtin_specs());
         return printed(&builtins.map(|spec| tool_row(&spec, "built-in")).collect::<String>());
-    };
-    let program = load(config)?;
+    }
+    let config = run::load_program_document(options)?;
+    let program = foe_program::document::resolve(&config).map_err(|e| format!("config: {e}"))?;
     let identity = run::identity(&program)?;
     let value = program.to_value();
     let transport = program.model.as_ref().map(run::describe_transport);
@@ -420,7 +444,7 @@ fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>)
         if program.workflow.is_some() {
             print!("{}", plan::workflow_report(&program)?);
         }
-        print!("tools\n{}", tool_rows(config, &program)?);
+        print!("tools\n{}", tool_rows(&program)?);
         print!("{}", plan::authority_report(&authority));
         if let Some(report) = &checked {
             print!("{}", lineage::rendered(report));
@@ -439,9 +463,9 @@ fn tool_row(spec: &foe_program::ToolSpec, source: &str) -> String {
 }
 
 /// The resolved tools of the root program, one row each.
-fn tool_rows(config: &Path, program: &foe_program::document::ResolvedProgram) -> Result<String, String> {
+fn tool_rows(program: &foe_program::document::ResolvedProgram) -> Result<String, String> {
     let extra = run::extra_builtin_specs();
-    let specs = resolve_specs(program, &extra).map_err(|e| format!("{}: {e}", config.display()))?;
+    let specs = resolve_specs(program, &extra).map_err(|e| format!("program tools: {e}"))?;
     let sources = plan::tool_sources(program, &extra)?;
     let named = |i: usize| match sources.get(i) {
         Some(Source::Builtin) => "built-in",

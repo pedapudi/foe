@@ -140,7 +140,16 @@ child program identity. Before provider spend, a trusted checker verifies the
 retained source bytes, Git blobs, modes, deletions, clean candidate tree, and
 rebuilt binary digest.
 
+Source evaluation runs from a separate controller checkout. The candidate
+binary and source tree are explicit inputs. The controller records its runner
+and checker paths and digests. It validates proposal-tree provenance and
+verifier authorization before provider spend. A confirmed campaign freezes
+the validated source bundle under its run directory and uses that copy for
+every later adoption check.
+
 The adapter retains the rebuilt binary's actual `foe plan --json` report.
+The plan form resolves both configured programs and the built-in coding
+workflow without starting an episode.
 After the episode, the trusted checker requires the root log to carry that
 planned program and the rebuilt binary digest. It then constructs and verifies
 lineage from the actual program identity. `campaign.json` records the source

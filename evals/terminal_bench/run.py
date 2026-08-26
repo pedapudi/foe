@@ -22,7 +22,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from source_adoption import complete_source_adoption, verify_source_candidate
+from source_adoption import (
+    complete_source_adoption,
+    freeze_source_candidate,
+    verify_source_candidate,
+)
 from trajectory_diagnostics import diagnose_episode
 from workflow_candidate import require_matching_run as require_matching_candidate_run
 from workflow_candidate import validate as validate_workflow_candidate
@@ -976,6 +980,7 @@ def task_record(
     ended_at: str,
     elapsed_seconds: float,
     source_adoption_path: Path | None = None,
+    source_preflight: dict[str, Any] | None = None,
     source_checker: Path | None = None,
     source_root: Path | None = None,
     evaluated_source: str | None = None,
@@ -1007,7 +1012,13 @@ def task_record(
                 )
             )
             if source_adoption_path is not None:
-                if None in (source_checker, source_root, evaluated_source, foe):
+                if None in (
+                    source_checker,
+                    source_root,
+                    evaluated_source,
+                    foe,
+                    source_preflight,
+                ):
                     raise ValueError("source adoption finalization lacks a trusted checker or evaluated pair")
                 adoptions = []
                 for plan in sorted((run_dir / task.name).glob("*/agent/foe-plan.json")):
@@ -1022,6 +1033,7 @@ def task_record(
                             plan,
                             plan.parent / "foe-episode",
                             run_dir / "source-lineage" / task.name / trial,
+                            source_preflight,
                         )
                     )
                 if not adoptions:
@@ -1043,6 +1055,11 @@ def parser() -> argparse.ArgumentParser:
         "--source-checker",
         type=Path,
         help="trusted source evidence and lineage checker; required with --source-adoption",
+    )
+    answer.add_argument(
+        "--controller-root",
+        type=Path,
+        help="immutable controller checkout; required with --source-adoption",
     )
     answer.add_argument("--agent-module", type=Path, required=True)
     answer.add_argument("--trace-evaluator", type=Path, required=True)
@@ -1219,10 +1236,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--source-adoption and --workflow-candidate evaluate different candidates")
         if args.source_adoption is not None and args.source_checker is None:
             raise ValueError("--source-adoption requires --source-checker")
-        if args.source_adoption is not None and args.built_in_workflow:
-            raise ValueError(
-                "--source-adoption requires a retained explicit program plan; built-in workflow evaluation does not retain one"
-            )
+        if args.source_adoption is not None and args.controller_root is None:
+            raise ValueError("--source-adoption requires --controller-root")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
         source_checker = (
@@ -1230,6 +1245,13 @@ def main(argv: list[str] | None = None) -> int:
             if args.source_checker is not None
             else None
         )
+        controller_root = (
+            args.controller_root.resolve(strict=True)
+            if args.controller_root is not None
+            else None
+        )
+        if controller_root is not None and controller_root.is_file():
+            controller_root = controller_root.parent
         agent_module = args.agent_module.resolve(strict=True)
         trace_evaluator = args.trace_evaluator.resolve(strict=True)
         completion_checker = (
@@ -1240,6 +1262,21 @@ def main(argv: list[str] | None = None) -> int:
         harbor = args.harbor.resolve(strict=True)
         credential = args.credential_file.resolve()
         workspace = source_root.parent
+        candidate_repository = source_root if source_root.is_dir() else source_root.parent
+        if args.source_adoption is not None:
+            assert controller_root is not None
+            assert source_checker is not None
+            runner_path = Path(__file__).resolve(strict=True)
+            if candidate_repository.is_relative_to(
+                controller_root
+            ) or controller_root.is_relative_to(candidate_repository):
+                raise ValueError(
+                    "--source-adoption requires a controller checkout separate "
+                    "from the candidate source"
+                )
+            for name, path in (("runner", runner_path), ("source checker", source_checker)):
+                if not path.is_relative_to(controller_root):
+                    raise ValueError(f"controller {name} is outside --controller-root")
         jobs_dir = (
             (workspace / args.jobs_dir).resolve()
             if not args.jobs_dir.is_absolute()
@@ -1271,6 +1308,21 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     runtime_digest = digest(foe)
+    controller = (
+        {
+            "root": str(controller_root),
+            "runner": {
+                "path": str(Path(__file__).resolve()),
+                "sha256": digest(Path(__file__).resolve()),
+            },
+            "source_checker": {
+                "path": str(source_checker),
+                "sha256": digest(source_checker),
+            },
+        }
+        if source_adoption_path is not None
+        else None
+    )
     source_adoption = None
     if source_adoption_path is not None:
         try:
@@ -1497,6 +1549,26 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = jobs_dir / f"{args.label}-{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=False)
+    if source_adoption_path is not None:
+        try:
+            assert source_checker is not None
+            assert evaluated_source is not None
+            source_adoption_path, source_adoption = freeze_source_candidate(
+                source_checker,
+                source_adoption_path,
+                source_root,
+                evaluated_source,
+                foe,
+                run_dir / "source-candidate-bundle",
+                source_adoption,
+            )
+            source_adoption = {**source_adoption, "bundle": "source-candidate-bundle"}
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            print(f"terminal-bench eval: {error}", file=sys.stderr)
+            return 2
     try:
         credential_lock = prepare_campaign_credential(
             credential,
@@ -1506,10 +1578,6 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
         return 2
-
-    timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
-    run_dir = jobs_dir / f"{args.label}-{timestamp}"
-    run_dir.mkdir(parents=True, exist_ok=False)
     stages = model_stage_count(
         args.diagnosis_model,
         args.unresolved_diagnosis_reasoning_effort,
@@ -1607,6 +1675,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "workflow_candidate": workflow_candidate,
             "source_candidate": source_adoption,
+            "controller": controller,
             "source_adoptions": [
                 adoption
                 for record in records
@@ -1900,6 +1969,7 @@ def main(argv: list[str] | None = None) -> int:
                                     ended_at=ended_at,
                                     elapsed_seconds=elapsed,
                                     source_adoption_path=source_adoption_path,
+                                    source_preflight=source_adoption,
                                     source_checker=source_checker,
                                     source_root=source_root,
                                     evaluated_source=evaluated_source,
@@ -2006,6 +2076,7 @@ def main(argv: list[str] | None = None) -> int:
                         ended_at=ended_at,
                         elapsed_seconds=elapsed,
                         source_adoption_path=source_adoption_path,
+                        source_preflight=source_adoption,
                         source_checker=source_checker,
                         source_root=source_root,
                         evaluated_source=evaluated_source,

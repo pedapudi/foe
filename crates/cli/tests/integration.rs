@@ -917,6 +917,35 @@ fn plan(config: &Path) -> Value {
     serde_json::from_str(&line).unwrap()
 }
 
+/// docs/config.md: the plan form resolves the built-in workflow without
+/// starting an episode and emits the same plan object as configured programs.
+#[test]
+fn plan_resolves_the_builtin_workflow_without_a_provider_request() {
+    let dir = scratch("plan-builtin");
+    let key = dir.join("credential.json");
+    let check = dir.join("check");
+    std::fs::write(&key, "{}\n").unwrap();
+    std::fs::write(&check, "#!/bin/sh\nexit 0\n").unwrap();
+    let mut permissions = std::fs::metadata(&check).unwrap().permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+    std::fs::set_permissions(&check, permissions).unwrap();
+    let output = Command::new(FOE)
+        .current_dir(&dir)
+        .args(["plan", "repair it", "--model", "openai-codex/gpt-5.6-sol", "--key-file"])
+        .arg(&key)
+        .args(["--verify"])
+        .arg(&check)
+        .args(["--sandbox", "off", "--json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let plan: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(plan["program"]["name"], "coding");
+    assert_eq!(plan["program"]["workflow"]["nodes"]["audit-and-repair-task"]["model"]["done_when"]["verify"], "check");
+    let identity = foe_lineage::digest_of(foe_program::identity::canonical(&plan["identity_document"]).as_bytes());
+    assert_eq!(plan["identity"], identity);
+}
+
 /// docs/design.md "Subagents and teams": `foe plan` reports each distinct
 /// tool definition throughout the reachable tree, even when names repeat,
 /// and omits a program no `grants.spawn` entry reaches.

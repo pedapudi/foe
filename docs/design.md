@@ -657,7 +657,7 @@ foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode see
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan [--config FILE] [--json]                        print the resolved program, its identity, its transport, its tools with their sources, and its effective authority; without --config, list the built-in tools
+foe plan [TASK | --config FILE] [--json]                 print the resolved configured program or built-in workflow, its identity, transport, tools, and effective authority; without either input, list the built-in tools
 foe plan --schema                                        print the JSON Schema for the configuration
 foe plan --config FILE --states DIR --evidence DIR       verify the configuration's ancestry claim against retained evidence
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs

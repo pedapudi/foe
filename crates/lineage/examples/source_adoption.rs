@@ -1,12 +1,12 @@
 //! Captures source-change evidence and completes its lineage after a rebuilt
-//! Foe binary reports the program it actually runs. This evaluator is kept
-//! outside the candidate source tree and is supplied by the invoking build.
+//! Foe binary reports the program it actually runs. An immutable controller
+//! checkout builds this evaluator outside the writable candidate tree.
 
 use foe_lineage::{
-    build_manifest, check_ancestry, digest_of, manifest_bytes, record_bytes, require_manifest_path, state_identity,
-    AdoptionRecord, ManifestFile, ProgramLineage, StateDocument, MANIFEST_FILE,
+    build_manifest, check_ancestry, check_proposal, digest_of, manifest_bytes, record_bytes, require_manifest_path,
+    state_identity, AdoptionRecord, ManifestFile, ProgramLineage, StateDocument, MANIFEST_FILE,
 };
-use foe_log::{fold, EventData, VerificationStatus};
+use foe_log::fold;
 use foe_program::{identity::canonical, LineageParent};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -362,29 +362,17 @@ fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), Strin
     if canonical(&parent).as_bytes() != parent_bytes || digest_of(&parent_bytes) != manifest.parent_program_identity {
         return Err(fail("parent identity document", "is canonical and hashes to parent_program_identity"));
     }
-    let root = bundle.join(&manifest.proposal_log);
-    let root_events =
-        fold::read_all(root.parent().expect("a log has a parent")).map_err(|e| fail("proposal log", e.to_string()))?;
-    let root_state = fold::fold(&root_events).map_err(|e| fail("proposal log", e.to_string()))?;
-    if root_state.start.as_ref().map(|start| &start.identity) != Some(&manifest.parent_program_identity) {
-        return Err(fail("proposal log", "starts under the retained parent program identity"));
-    }
-    let verification = bundle.join(&manifest.verification_log);
-    let events = fold::read_all(verification.parent().expect("a log has a parent"))
-        .map_err(|e| fail("verification log", e.to_string()))?;
-    let state = fold::fold(&events).map_err(|e| fail("verification log", e.to_string()))?;
-    if state.start.is_none() {
-        return Err(fail("verification log", "has episode/start"));
-    }
-    let accepted = events.iter().find(|event| event.seq == manifest.verification_seq).and_then(|event| {
-        if let EventData::VerificationResult(result) = &event.data {
-            Some(result.status == VerificationStatus::Accepted)
-        } else {
-            None
-        }
-    });
-    if accepted != Some(true) {
-        return Err(fail("verification_seq", "names an accepted verification/result"));
+    let open = check_proposal(
+        bundle,
+        manifest.files.iter().map(|file| file.path.as_str()),
+        &manifest.proposal_log,
+        &manifest.verification_log,
+        manifest.verification_seq,
+        &parent,
+    )
+    .map_err(|e| e.to_string())?;
+    if !open.is_empty() {
+        return Err(fail("verification log", format!("has open authorization checks: {}", open.join("; "))));
     }
     Ok(())
 }

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from source_adoption import (
     capture_source_candidate,
+    freeze_source_candidate,
     verify_source_candidate,
 )
 from run import Task, main as run_terminal_bench, task_record, write_json_atomic
@@ -105,7 +106,7 @@ class SourceAdoptionTest(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def fixture(self, root):
+    def fixture(self, root, critical_controller_files=False):
         repository = root / "repository"
         repository.mkdir()
         self.git(repository, "init", "-q")
@@ -113,6 +114,18 @@ class SourceAdoptionTest(unittest.TestCase):
         self.git(repository, "config", "user.email", "foe@example.invalid")
         (repository / "changed.txt").write_text("before\n", encoding="utf-8")
         (repository / "deleted.txt").write_text("remove\n", encoding="utf-8")
+        controller_files = [
+            "crates/lineage/src/lib.rs",
+            "crates/log/src/lib.rs",
+            "crates/program/src/lib.rs",
+            "Cargo.toml",
+            "BUILD.bazel",
+        ]
+        if critical_controller_files:
+            for name in controller_files:
+                path = repository / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("trusted base\n", encoding="utf-8")
         self.git(repository, "add", ".")
         self.git(repository, "commit", "-qm", "base")
         algorithm = self.git(repository, "rev-parse", "--show-object-format")
@@ -132,6 +145,9 @@ class SourceAdoptionTest(unittest.TestCase):
         (repository / "changed.txt").chmod(0o755)
         (repository / "deleted.txt").unlink()
         (repository / "added.txt").write_text("added\n", encoding="utf-8")
+        if critical_controller_files:
+            for name in controller_files:
+                (repository / name).write_text("candidate-controlled replacement\n", encoding="utf-8")
         captured = capture_source_candidate(
             self.checker,
             bundle,
@@ -148,6 +164,16 @@ class SourceAdoptionTest(unittest.TestCase):
         runtime = root / "foe"
         runtime.write_bytes(b"rebuilt foe")
         return repository, bundle, base, applied, runtime, captured
+
+    def test_candidate_controller_files_cannot_change_the_trusted_judgment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository, bundle, _, applied, runtime, _ = self.fixture(
+                Path(directory), critical_controller_files=True
+            )
+            verified = verify_source_candidate(
+                self.checker, bundle, repository, applied, runtime
+            )
+        self.assertEqual(verified["checker_sha256"], sha256(self.checker.read_bytes()))
 
     def test_preflight_binds_bytes_modes_deletions_and_evaluated_pair(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -170,6 +196,64 @@ class SourceAdoptionTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source candidate checker failed"):
                 verify_source_candidate(self.checker, bundle, repository, applied, runtime)
 
+    def test_retained_result_identities_must_match_the_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository, bundle, _, applied, runtime, captured = self.fixture(root)
+            retained = root / "result.json"
+            captured.update(
+                {
+                    "bundle": str(bundle),
+                    "lineage_status": "pending-external-evaluation",
+                    "source_candidate_identity": "sha256:" + "0" * 64,
+                }
+            )
+            retained.write_text(json.dumps({"source_candidate": captured}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "does not match its evidence bundle"):
+                verify_source_candidate(self.checker, retained, repository, applied, runtime)
+
+    def test_frozen_bundle_is_unaffected_by_external_bundle_replacement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository, bundle, _, applied, runtime, _ = self.fixture(root)
+            frozen, expected = freeze_source_candidate(
+                self.checker,
+                bundle,
+                repository,
+                applied,
+                runtime,
+                root / "campaign/source-candidate-bundle",
+                verify_source_candidate(
+                    self.checker, bundle, repository, applied, runtime
+                ),
+            )
+            (bundle / "candidate-files/changed.txt").write_text("replacement\n", encoding="utf-8")
+            self.assertEqual(
+                verify_source_candidate(self.checker, frozen, repository, applied, runtime),
+                expected,
+            )
+            with self.assertRaisesRegex(ValueError, "source candidate checker failed"):
+                verify_source_candidate(self.checker, bundle, repository, applied, runtime)
+
+    def test_bundle_replacement_after_preflight_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository, bundle, _, applied, runtime, _ = self.fixture(root)
+            preflight = verify_source_candidate(
+                self.checker, bundle, repository, applied, runtime
+            )
+            (bundle / "candidate-files/changed.txt").write_text("replacement\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "source candidate checker failed"):
+                freeze_source_candidate(
+                    self.checker,
+                    bundle,
+                    repository,
+                    applied,
+                    runtime,
+                    root / "campaign/source-candidate-bundle",
+                    preflight,
+                )
+
     def test_campaign_rejects_invalid_source_evidence_before_provider_spend(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -183,6 +267,8 @@ class SourceAdoptionTest(unittest.TestCase):
                     str(repository / "changed.txt"),
                     "--source-checker",
                     str(self.checker),
+                    "--controller-root",
+                    str(self.repository),
                     "--source-adoption",
                     str(bundle),
                     "--agent-module",
@@ -193,6 +279,42 @@ class SourceAdoptionTest(unittest.TestCase):
                     str(Path(__file__).with_name("cases.json")),
                     "--harbor",
                     "/bin/true",
+                ]
+            )
+        self.assertEqual(status, 2)
+
+    def test_campaign_rejects_unrelated_verification_episode_before_provider_spend(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository, bundle, _, applied, runtime, captured = self.fixture(root)
+            unrelated = bundle / "unrelated"
+            self.write_episode(unrelated, captured["parent_program_identity"], sha256(b"trusted verifier"))
+            log = unrelated / "episode.jsonl"
+            manifest_path = bundle / "source-candidate-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["verification_log"] = "unrelated/episode.jsonl"
+            manifest["files"].append(
+                {
+                    "path": "unrelated/episode.jsonl",
+                    "bytes": log.stat().st_size,
+                    "sha256": sha256(log.read_bytes()),
+                }
+            )
+            manifest["files"].sort(key=lambda item: item["path"])
+            manifest_path.write_bytes(canonical(manifest))
+            with self.assertRaisesRegex(ValueError, "proposal episode tree"):
+                verify_source_candidate(self.checker, bundle, repository, applied, runtime)
+            status = run_terminal_bench(
+                [
+                    "--foe", str(runtime),
+                    "--source-root", str(repository / "changed.txt"),
+                    "--source-checker", str(self.checker),
+                    "--controller-root", str(self.repository),
+                    "--source-adoption", str(bundle),
+                    "--agent-module", str(Path(__file__).with_name("foe_agent.py")),
+                    "--trace-evaluator", "/bin/true",
+                    "--cases", str(Path(__file__).with_name("cases.json")),
+                    "--harbor", "/bin/true",
                 ]
             )
         self.assertEqual(status, 2)
@@ -384,6 +506,9 @@ class SourceAdoptionTest(unittest.TestCase):
                 source_root=repository,
                 evaluated_source=applied,
                 foe=runtime,
+                source_preflight=verify_source_candidate(
+                    self.checker, bundle, repository, applied, runtime
+                ),
             )
             self.assertNotIn("result_error", record)
             adopted = record["source_adoptions"][0]
@@ -419,6 +544,9 @@ class SourceAdoptionTest(unittest.TestCase):
                 source_root=repository,
                 evaluated_source=applied,
                 foe=runtime,
+                source_preflight=verify_source_candidate(
+                    self.checker, bundle, repository, applied, runtime
+                ),
             )
         self.assertEqual(adopted["source_bundle_identity"], captured["source_bundle_identity"])
         self.assertEqual(adopted["program_identity"], identity)
