@@ -738,7 +738,12 @@ def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
 
 def campaign_execution_complete(records: list[dict[str, Any]], expected: int) -> bool:
     """Report whether every requested task produced a readable Harbor result."""
-    return len(records) == expected and all("result_error" not in row for row in records)
+    return len(records) == expected and all(
+        "result_error" not in row
+        and row.get("n_errored_trials") == 0
+        and row.get("n_completed_trials") == row.get("n_total_trials")
+        for row in records
+    )
 
 
 def write_job_diagnostics(job_dir: Path) -> list[str]:

@@ -85,6 +85,8 @@ bazel run //evals/terminal_bench:foe-install-check
 ```
 
 The adapter validates the installed command surface with `foe plan --schema`.
+The runner rejects the check when Harbor records an errored or incomplete
+trial, even when Harbor produced a readable result file.
 
 ## Probe each task container without model spend
 

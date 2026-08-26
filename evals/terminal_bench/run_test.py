@@ -690,17 +690,26 @@ class CasesTest(unittest.TestCase):
             {
                 "task": "one",
                 "harbor_exit_code": 1,
-                "n_errored_trials": 1,
+                "n_completed_trials": 1,
+                "n_errored_trials": 0,
+                "n_total_trials": 1,
                 "infrastructure_failures": ["one: Foe runtime failed"],
             },
             {
                 "task": "two",
                 "harbor_exit_code": 0,
+                "n_completed_trials": 1,
                 "n_errored_trials": 0,
+                "n_total_trials": 1,
                 "infrastructure_failures": [],
             },
         ]
         self.assertTrue(campaign_execution_complete(records, 2))
+        records[0]["n_completed_trials"] = 0
+        records[0]["n_errored_trials"] = 1
+        self.assertFalse(campaign_execution_complete(records, 2))
+        records[0]["n_completed_trials"] = 1
+        records[0]["n_errored_trials"] = 0
         records[1]["result_error"] = "Harbor result has no stats object"
         self.assertFalse(campaign_execution_complete(records, 2))
 
