@@ -1,9 +1,9 @@
 use super::{model_nodes, node_program};
-use crate::config::resolve;
+use crate::document::resolve;
 use crate::identity::compute;
 use crate::test_util::{config_value, program_with, tmp};
 use crate::workflow::MAX_POSSIBLE_FIRINGS;
-use crate::{Config, ConfigError};
+use crate::{ProgramDocument, ProgramError};
 use foe_log::RuntimeInfo;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -47,9 +47,9 @@ fn rejected(value: Value) -> String {
 }
 
 fn rejection(value: Value) -> (String, String) {
-    let config: Config = serde_json::from_value(value).expect("the document parses");
+    let config: ProgramDocument = serde_json::from_value(value).expect("the document parses");
     match resolve(&config) {
-        Err(ConfigError::Invalid { key, rule }) => {
+        Err(ProgramError::Invalid { key, rule }) => {
             assert!(!rule.is_empty());
             (key, rule)
         }
@@ -57,19 +57,19 @@ fn rejection(value: Value) -> (String, String) {
     }
 }
 
-/// docs/workflow.md "Nodes" and "Firing": the edge set is the union of both
-/// forms, a cycle closes through a branch, and survey lies on it.
+/// docs/workflow.md "Nodes" and "Firing": inputs define data edges, a
+/// branch defines a control edge, and both participate in a cycle.
 #[test]
-fn the_edge_set_unions_both_forms_and_finds_cycles() {
+fn follows_and_branches_define_inputs_and_cycles() {
     let root = tmp("workflow-edges");
-    let config: Config = serde_json::from_value(with_graph(&root, |v| {
-        v["workflow"]["nodes"]["manifest"]["followed_by"] = json!(["survey", "derive"]);
+    let config: ProgramDocument = serde_json::from_value(with_graph(&root, |v| {
+        v["workflow"]["nodes"]["derive"]["follows"] = json!(["propose", "manifest"]);
     }))
     .unwrap();
     let wf = config.workflow.as_ref().unwrap();
     let inputs = wf.inputs();
-    assert_eq!(inputs["survey"], vec!["manifest"], "a duplicate edge is one edge");
-    assert_eq!(inputs["derive"], vec!["propose", "manifest"], "follows first, then followed_by sources");
+    assert_eq!(inputs["survey"], vec!["manifest"]);
+    assert_eq!(inputs["derive"], vec!["propose", "manifest"]);
     assert_eq!(inputs["propose"], vec!["task", "manifest", "survey"], "the task source is an input, listed first");
     let preds = wf.predecessors();
     assert!(preds["survey"].contains("propose"), "a branch target is a successor");
@@ -91,10 +91,6 @@ fn every_workflow_rule_names_its_node() {
     let cases: Vec<Case> = vec![
         ("workflow.nodes.survey.follows", Box::new(|v| v["workflow"]["nodes"]["survey"]["follows"] = json!(["ghost"]))),
         (
-            "workflow.nodes.survey.followed_by",
-            Box::new(|v| v["workflow"]["nodes"]["survey"]["followed_by"] = json!(["x"])),
-        ),
-        (
             "workflow.nodes.propose.branches.widen",
             Box::new(|v| v["workflow"]["nodes"]["propose"]["branches"]["widen"] = json!(["ghost"])),
         ),
@@ -114,10 +110,6 @@ fn every_workflow_rule_names_its_node() {
         ),
         ("workflow.nodes.manifest.", Box::new(|v| v["workflow"]["nodes"]["manifest"] = json!({ "follows": [] }))),
         ("workflow.nodes.task.", Box::new(|v| v["workflow"]["nodes"]["task"] = json!({ "tool": "list" }))),
-        (
-            "workflow.nodes.manifest.followed_by",
-            Box::new(|v| v["workflow"]["nodes"]["manifest"]["followed_by"] = json!(["task"])),
-        ),
         ("workflow.nodes.propose.", Box::new(|v| v["workflow"]["nodes"]["propose"]["args"] = json!({}))),
         ("workflow.nodes.propose.max_fires", Box::new(|v| v["workflow"]["nodes"]["propose"]["max_fires"] = json!(0))),
         ("workflow.nodes.survey.max_fires", Box::new(|v| v["workflow"]["nodes"]["survey"]["max_fires"] = json!(null))),
@@ -143,7 +135,7 @@ fn every_workflow_rule_names_its_node() {
         assert_eq!(rejected(with_graph(&root, edit)), key);
     }
     let unknown = with_graph(&root, |v| v["workflow"]["recovery"] = json!({ "surprise": 1 }));
-    assert!(serde_json::from_value::<Config>(unknown).is_err(), "unknown keys are refused");
+    assert!(serde_json::from_value::<ProgramDocument>(unknown).is_err(), "unknown keys are refused");
 }
 
 /// docs/workflow.md "Identity": the labels, the edges, the bindings, the
@@ -155,7 +147,7 @@ fn identity_hashes_the_graph_and_the_recovery_texts() {
     let hash = |edit: &dyn Fn(&mut Value)| {
         let mut value = with_graph(&root, |_| {});
         edit(&mut value);
-        let config: Config = serde_json::from_value(value).unwrap();
+        let config: ProgramDocument = serde_json::from_value(value).unwrap();
         compute(&resolve(&config).unwrap(), &[], &runtime).unwrap()
     };
     let base = hash(&|_| {});
@@ -208,8 +200,8 @@ fn a_graph_declares_how_many_firings_it_can_perform() {
     let root = tmp("workflow-firing-bound");
     let over = with_graph(&root, |value| {
         value["workflow"] = json!({ "nodes": {
-            "loop": { "tool": "list", "followed_by": ["back"], "max_fires": 4096 },
-            "back": { "tool": "grep", "followed_by": ["loop"], "max_fires": 4096, "terminal": true }
+            "loop": { "tool": "list", "follows": ["back"], "max_fires": 4096 },
+            "back": { "tool": "grep", "follows": ["loop"], "max_fires": 4096, "terminal": true }
         } });
     });
     let (key, rule) = rejection(over);
@@ -220,9 +212,9 @@ fn a_graph_declares_how_many_firings_it_can_perform() {
 
 /// A graph whose nodes declare branches, at the top level and inside a
 /// nested workflow node.
-fn branching_config() -> Config {
+fn branching_config() -> ProgramDocument {
     serde_json::from_value(json!({
-        "version": 2, "name": "wf", "instructions": { "r": "x" }, "tools": ["block"],
+        "version": 3, "name": "wf", "instructions": { "r": "x" }, "tools": ["block"],
         "grants": { "read": ["/p"], "spawn": ["helper"] }, "budget": { "model_calls": 10 }, "task": "t",
         "programs": { "helper": { "name": "helper", "instructions": { "r": "h" }, "tools": ["block"],
                                   "grants": { "read": ["/p"] }, "budget": { "model_calls": 1 } } },

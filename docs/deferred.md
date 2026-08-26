@@ -147,7 +147,7 @@ Program lineage relates immutable program states through content-addressed
 proposal evidence and a verifier declared by the parent state.
 [lineage-identity.md](lineage-identity.md) specifies it. The configuration
 key `program_lineage`, the state identity, the evidence-bundle checker,
-and the ancestry checker are implemented: the key's shape in `foe-config`,
+and the ancestry checker are implemented: the key's shape in `foe-program`,
 the rest in `foe-lineage`. The implemented `verification/result` event
 carries no digest of the verifier's input; the bundle's adoption record
 closes that gap with the attestation strength lineage-identity.md "Exact

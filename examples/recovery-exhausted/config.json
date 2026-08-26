@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "recovery-exhausted",
   "instructions": {
     "role": "You are a coding agent working in a Python repository. Read the module named in the task before changing anything."

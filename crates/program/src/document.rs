@@ -1,20 +1,20 @@
-//! Parsing and validating the configuration document; resolving it into a program.
+//! Parsing and validating a program document; resolving it into a program.
 //!
 //! Implements docs/config.md. Every rule there maps to one
-//! `ConfigError::Invalid { key, rule }` naming the offending key in dotted
+//! `ProgramError::Invalid { key, rule }` naming the offending key in dotted
 //! form, for example `programs.survey.grants.read[0]`.
 
 use crate::workflow::{self, WorkflowConfig};
 use crate::{
-    contains, Budget, ChildProgram, Config, ConfigError, ContextConfig, DoneWhen, Grants, HostToolDef, ModelConfig,
-    SandboxConfig, ToolDef,
+    contains, Budget, ChildProgramDocument, ContextConfig, DoneWhen, Grants, HostToolDef, ModelConfig, ProgramDocument,
+    ProgramError, SandboxConfig, ToolDef,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// The configuration format version this crate accepts.
-pub const CONFIG_VERSION: u32 = 2;
+/// The program-document format version this crate accepts.
+pub const PROGRAM_FORMAT_VERSION: u32 = 3;
 
 /// Whether the completion schema makes the standard `learned` observation
 /// channel an evidence requirement.
@@ -23,10 +23,10 @@ pub fn completion_evidence_required(done: Option<&DoneWhen>) -> bool {
         .is_some_and(|required| required.iter().any(|field| field == "learned"))
 }
 
-/// A configuration with `task` removed, every path canonical, and child
+/// A program document with `task` removed, every path canonical, and child
 /// programs resolved recursively. What `episode/start.program` records.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Program {
+pub struct ResolvedProgram {
     pub name: String,
     pub instructions: BTreeMap<String, String>,
     pub tools: Vec<String>,
@@ -43,16 +43,16 @@ pub struct Program {
     pub model: Option<ModelConfig>,
     /// Inherited by every child program.
     pub sandbox: SandboxConfig,
-    /// The root configuration's ancestry claim, kept so that
+    /// The root document's ancestry claim, kept so that
     /// `episode/start.program` records it. Identity omits it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub program_lineage: Option<crate::ProgramLineage>,
-    pub programs: BTreeMap<String, Program>,
+    pub programs: BTreeMap<String, ResolvedProgram>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow: Option<WorkflowConfig>,
 }
 
-impl Program {
+impl ResolvedProgram {
     /// The JSON recorded in `episode/start.program`.
     pub fn to_value(&self) -> serde_json::Value {
         serde_json::to_value(self).expect("a program serializes")
@@ -62,9 +62,9 @@ impl Program {
 /// A root document holds every key a child program holds, and the keys a
 /// child inherits besides. The shared keys are validated and resolved
 /// through one path, which takes the child form of either.
-impl From<&Config> for ChildProgram {
-    fn from(c: &Config) -> Self {
-        ChildProgram {
+impl From<&ProgramDocument> for ChildProgramDocument {
+    fn from(c: &ProgramDocument) -> Self {
+        ChildProgramDocument {
             name: c.name.clone(),
             instructions: c.instructions.clone(),
             tools: c.tools.clone(),
@@ -81,12 +81,12 @@ impl From<&Config> for ChildProgram {
     }
 }
 
-fn invalid(key: impl Into<String>, rule: impl Into<String>) -> ConfigError {
-    ConfigError::Invalid { key: key.into(), rule: rule.into() }
+fn invalid(key: impl Into<String>, rule: impl Into<String>) -> ProgramError {
+    ProgramError::Invalid { key: key.into(), rule: rule.into() }
 }
 
 /// `Ok` when `holds`; otherwise the error naming `key` and `rule`.
-fn require(holds: bool, key: impl Into<String>, rule: impl Into<String>) -> Result<(), ConfigError> {
+fn require(holds: bool, key: impl Into<String>, rule: impl Into<String>) -> Result<(), ProgramError> {
     if holds {
         Ok(())
     } else {
@@ -96,21 +96,21 @@ fn require(holds: bool, key: impl Into<String>, rule: impl Into<String>) -> Resu
 
 /// Parses the document text. Unknown keys and wrong types are `Parse`
 /// errors; the rules of docs/config.md are checked by [`validate`].
-pub fn parse(text: &str) -> Result<Config, ConfigError> {
+pub fn parse(text: &str) -> Result<ProgramDocument, ProgramError> {
     Ok(serde_json::from_str(text)?)
 }
 
 /// Reads, parses, validates, and resolves a document from `path`.
-pub fn load(path: &Path) -> Result<Program, ConfigError> {
+pub fn load(path: &Path) -> Result<ResolvedProgram, ProgramError> {
     let config = parse(&std::fs::read_to_string(path)?)?;
     resolve(&config)
 }
 
 /// Checks every rule of docs/config.md that does not need the filesystem.
-pub fn validate(config: &Config) -> Result<(), ConfigError> {
-    require(config.version == CONFIG_VERSION, "version", format!("is {CONFIG_VERSION}"))?;
+pub fn validate(config: &ProgramDocument) -> Result<(), ProgramError> {
+    require(config.version == PROGRAM_FORMAT_VERSION, "version", format!("is {PROGRAM_FORMAT_VERSION}"))?;
     require(!config.task.trim().is_empty(), "task", "is not empty")?;
-    validate_section("", &ChildProgram::from(config))
+    validate_section("", &ChildProgramDocument::from(config))
 }
 
 /// `key` under `prefix` in dotted form; `key` alone at the root.
@@ -118,11 +118,11 @@ fn key_at(prefix: &str, key: &str) -> String {
     format!("{prefix}.{key}").trim_start_matches('.').to_string()
 }
 
-fn require_absolute(key: &str, path: &Path) -> Result<(), ConfigError> {
+fn require_absolute(key: &str, path: &Path) -> Result<(), ProgramError> {
     require(path.is_absolute(), key, "is an absolute path")
 }
 
-fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
+fn validate_section(prefix: &str, s: &ChildProgramDocument) -> Result<(), ProgramError> {
     let key = |k: &str| key_at(prefix, k);
     if let Some(model) = &s.model {
         for (field, value) in [("provider", &model.provider), ("model", &model.model)] {
@@ -224,26 +224,29 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
 /// Validates, then canonicalizes every path, resolves `tool_defs` defaults,
 /// and resolves child programs. A child's read roots must lie within the
 /// parent's read roots and its write roots within the parent's write roots.
-pub fn resolve(config: &Config) -> Result<Program, ConfigError> {
+pub fn resolve(config: &ProgramDocument) -> Result<ResolvedProgram, ProgramError> {
     validate(config)?;
     let inherited = (config.model.clone(), config.sandbox.clone());
     let lineage = config.program_lineage.clone();
-    Ok(Program { program_lineage: lineage, ..resolve_section("", &ChildProgram::from(config), &inherited, None)? })
+    Ok(ResolvedProgram {
+        program_lineage: lineage,
+        ..resolve_section("", &ChildProgramDocument::from(config), &inherited, None)?
+    })
 }
 
 fn resolve_section(
     prefix: &str,
-    s: &ChildProgram,
+    s: &ChildProgramDocument,
     inherited: &(Option<ModelConfig>, SandboxConfig),
     parent: Option<&Grants>,
-) -> Result<Program, ConfigError> {
+) -> Result<ResolvedProgram, ProgramError> {
     let key = |k: &str| key_at(prefix, k);
     let model = s.model.clone().or_else(|| inherited.0.clone());
     let descendants = (model.clone(), inherited.1.clone());
-    let canonical = |k: String, path: &Path| -> Result<PathBuf, ConfigError> {
+    let canonical = |k: String, path: &Path| -> Result<PathBuf, ProgramError> {
         std::fs::canonicalize(path).map_err(|e| invalid(k, format!("names an existing path: {}: {e}", path.display())))
     };
-    let roots = |k: &str, paths: &[PathBuf]| -> Result<Vec<PathBuf>, ConfigError> {
+    let roots = |k: &str, paths: &[PathBuf]| -> Result<Vec<PathBuf>, ProgramError> {
         paths.iter().enumerate().map(|(i, p)| canonical(key(&format!("{k}[{i}]")), p)).collect()
     };
     let grants = Grants {
@@ -288,7 +291,7 @@ fn resolve_section(
         let program = resolve_section(&key(&format!("programs.{name}")), child, &descendants, Some(&grants))?;
         programs.insert(name.clone(), program);
     }
-    let program = Program {
+    let program = ResolvedProgram {
         name: s.name.clone(),
         instructions: s.instructions.clone(),
         tools: s.tools.clone(),
@@ -305,7 +308,7 @@ fn resolve_section(
         workflow: s.workflow.clone(),
     };
     if let Some(wf) = &s.workflow {
-        let mut subset = |k: &str, p: &ChildProgram| {
+        let mut subset = |k: &str, p: &ChildProgramDocument| {
             let node = resolve_section(k, p, &descendants, Some(&program.grants))?;
             within_ceiling(k, &node, &program)
         };
@@ -318,7 +321,7 @@ fn resolve_section(
 /// program containing the workflow does not already hold, at every depth.
 /// Grants are checked by `resolve_section`; this covers the rest of
 /// docs/workflow.md "Model nodes".
-fn within_ceiling(prefix: &str, node: &Program, ceiling: &Program) -> Result<(), ConfigError> {
+fn within_ceiling(prefix: &str, node: &ResolvedProgram, ceiling: &ResolvedProgram) -> Result<(), ProgramError> {
     let key = |k: &str| key_at(prefix, k);
     let bounded = |holds: bool, k: String| require(holds, k, "does not exceed the workflow ceiling");
     for (i, name) in node.tools.iter().enumerate() {
@@ -374,11 +377,15 @@ fn within_ceiling(prefix: &str, node: &Program, ceiling: &Program) -> Result<(),
 
 /// Resolves a workflow model node's program against the resolved program
 /// that declares it, for identity. Keyed as `validate` keys it.
-pub fn resolve_node_program(key: &str, parent: &Program, child: &ChildProgram) -> Result<Program, ConfigError> {
+pub fn resolve_node_program(
+    key: &str,
+    parent: &ResolvedProgram,
+    child: &ChildProgramDocument,
+) -> Result<ResolvedProgram, ProgramError> {
     let inherited = (parent.model.clone(), parent.sandbox.clone());
     resolve_section(key, child, &inherited, Some(&parent.grants))
 }
 
 #[cfg(test)]
-#[path = "config_test.rs"]
+#[path = "document_test.rs"]
 mod tests;

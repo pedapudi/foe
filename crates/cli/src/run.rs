@@ -1,4 +1,4 @@
-//! The running form: load the configuration, restrict the process, compose
+//! The running form: load the program document, restrict the process, compose
 //! the runtime's parts, run one episode, and report the outcome.
 //!
 //! Order matters in [`run`]. Everything that reads a file outside the
@@ -9,9 +9,6 @@
 //! applied on the main thread before the asynchronous runtime starts, so
 //! every thread of the episode inherits it.
 
-use foe_config::config::{resolve, Program};
-use foe_config::identity::{compute, Identity};
-use foe_config::{Config, ModelConfig, ToolSpec};
 use foe_core::budget::Pool;
 use foe_core::confine::{Confined, Unconfined};
 use foe_core::context::ContextPolicy;
@@ -28,6 +25,9 @@ use foe_core::team::{self, Team};
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
 use foe_log::{seed::SeedHeader, ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
+use foe_program::document::{resolve, ResolvedProgram};
+use foe_program::identity::{compute, Identity};
+use foe_program::{ModelConfig, ProgramDocument, ToolSpec};
 use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -45,7 +45,7 @@ const BUILTIN_AUDIT_CALLS: u64 = 60;
 
 /// Static behavior of the built-in coding workflow. Dynamic authority,
 /// environment, model, verifier, and task values are filled below.
-const BUILTIN_CONFIG: &str = include_str!("builtin-coding.json");
+const BUILTIN_PROGRAM_DOCUMENT: &str = include_str!("builtin-coding.json");
 const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
@@ -112,7 +112,7 @@ pub fn extra_builtin_specs() -> Vec<ToolSpec> {
         .collect()
 }
 
-pub fn identity(program: &Program) -> Result<Identity, String> {
+pub fn identity(program: &ResolvedProgram) -> Result<Identity, String> {
     compute(program, &extra_builtin_specs(), &runtime_info()).map_err(|e| e.to_string())
 }
 
@@ -124,7 +124,7 @@ pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
 /// to, with the window taken from the block or from the provider table for
 /// the model named. `None` when the program never compacts. An unknown
 /// model with no `window_tokens` is a construction error.
-pub fn context_policy(program: &Program) -> Result<Option<foe_context::Policy>, String> {
+pub fn context_policy(program: &ResolvedProgram) -> Result<Option<foe_context::Policy>, String> {
     let Some(cfg) = program.context.clone().filter(|c| c.compact) else { return Ok(None) };
     let model = program.model.as_ref();
     let window = cfg.window_tokens.or_else(|| model.and_then(known_window)).ok_or_else(|| {
@@ -236,7 +236,7 @@ fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
     }
     if start.identity != identity {
         let (dir, recorded) = (dir.display(), &start.identity);
-        return Err(format!("{dir}: resuming requires the program that ran: the log records identity {recorded}; the given configuration resolves to {identity}"));
+        return Err(format!("{dir}: resuming requires the program that ran: the log records identity {recorded}; the given program document resolves to {identity}"));
     }
     if !torn && foe_log::fold::open_obligations(&events).is_empty() {
         return Ok((dir, lineage));
@@ -255,10 +255,10 @@ fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
     Ok((dest, Lineage { episode_id: new_id, ..lineage }))
 }
 
-/// The configuration to run: the document named by `--config`, with the
+/// The program document to run: the document named by `--config`, with the
 /// command-line task replacing its own, or the built-in coding workflow
 /// for a bare task.
-fn load_config(options: &Options) -> Result<Config, String> {
+fn load_program_document(options: &Options) -> Result<ProgramDocument, String> {
     let Some(path) = &options.config else {
         let task = options.task.clone().ok_or(USAGE_BARE)?;
         let mut model = match &options.model {
@@ -275,7 +275,7 @@ fn load_config(options: &Options) -> Result<Config, String> {
             }
             model.options.insert("service_tier".into(), tier.clone());
         }
-        return builtin_config(
+        return builtin_program_document(
             task,
             model,
             options.key_file.as_deref(),
@@ -292,11 +292,11 @@ fn load_config(options: &Options) -> Result<Config, String> {
             "--service-tier"
         };
         return Err(format!(
-            "{option} applies to the built-in coding workflow; a configuration document declares its own behavior"
+            "{option} applies to the built-in coding workflow; a program document declares its own behavior"
         ));
     }
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut config = foe_config::config::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut config = foe_program::document::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     if let Some(task) = &options.task {
         config.task = task.clone();
     }
@@ -339,13 +339,13 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// `done_when.verify` on it. The independent audit therefore always runs and
 /// its checked result alone can complete the workflow. Without a verifier the
 /// workflow remains an unconditional independent audit.
-fn builtin_config(
+fn builtin_program_document(
     task: String,
     mut model: ModelConfig,
     key_file: Option<&Path>,
     verify: Option<&Path>,
     sandbox: Option<&str>,
-) -> Result<Config, String> {
+) -> Result<ProgramDocument, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
     let explicit_reasoning = model.option("reasoning_effort").is_some();
     apply_builtin_model_defaults(&mut model);
@@ -364,8 +364,8 @@ fn builtin_config(
     let environment = builtin_environment(&cwd, Path::is_file);
     let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });
     let mut document: serde_json::Value =
-        serde_json::from_str(BUILTIN_CONFIG).map_err(|e| format!("built-in configuration template: {e}"))?;
-    document["version"] = serde_json::json!(foe_config::config::CONFIG_VERSION);
+        serde_json::from_str(BUILTIN_PROGRAM_DOCUMENT).map_err(|e| format!("built-in program template: {e}"))?;
+    document["version"] = serde_json::json!(foe_program::document::PROGRAM_FORMAT_VERSION);
     document["model"] = serde_json::json!(model);
     document["grants"] = grants.clone();
     document["budget"]["model_calls"] = serde_json::json!(BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS);
@@ -397,9 +397,9 @@ fn builtin_config(
         }
         document["workflow"]["nodes"]["audit-and-repair-task"]["model"]["done_when"]["verify"] =
             serde_json::json!("check");
-        return serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"));
+        return serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"));
     }
-    serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"))
+    serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"))
 }
 
 #[cfg(feature = "transport")]
@@ -462,7 +462,7 @@ fn built_in_transport(
 }
 
 pub fn run(options: Options) -> Result<ExitCode, String> {
-    let config = load_config(&options)?;
+    let config = load_program_document(&options)?;
     let mut program = resolve(&config).map_err(|e| format!("config: {e}"))?;
     let identity = identity(&program)?;
     let (log_dir, lineage) = episode_directory(&options, &identity.hash, &config.task)?;
@@ -470,8 +470,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let sandbox = Arc::new(Sandbox::new(program.sandbox.mode).map_err(|e| e.to_string())?);
     // Every model node of a workflow is a child program of the spawner, so
-    // the policy and the spawner see the same configuration.
-    let config = foe_workflow::spawner_config(&config);
+    // the policy and the spawner see the same program document.
+    let config = foe_workflow::spawner_document(&config);
     let mut unconfined = Unconfined::new(sandbox, Policy::for_episode(&config, &log_dir));
     // Telemetry is resolved before confinement: the capture directory must
     // be writable after the sandbox closes, so it is created now and
@@ -536,8 +536,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
 /// itself. It carries a [`Confined`] rather than a policy, so nothing
 /// assembled here can widen what the kernel already holds.
 struct Setup {
-    config: Config,
-    program: Program,
+    config: ProgramDocument,
+    program: ResolvedProgram,
     log_dir: PathBuf,
     confined: Confined,
     viewer: Option<foe_view::Bound>,

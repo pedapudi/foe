@@ -6,8 +6,8 @@
 //! the parent's remainder until the child settles and returns what it did
 //! not spend.
 
-use foe_config::Budget;
 use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
+use foe_program::Budget;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 

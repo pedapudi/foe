@@ -3,9 +3,9 @@
 //! which handles they received, and a fake executor.
 
 use crate::{CallCtx, ChunkSink, ExecRequest, ExecResult, Executor, ModelRequestBody, Tool, ToolValue, Transport};
-use foe_config::config::{resolve, Program};
-use foe_config::{Config, Effect, ToolSpec};
 use foe_log::{Chunk, ModelRoute, StopReason, Usage};
+use foe_program::document::{resolve, ResolvedProgram};
+use foe_program::{Effect, ProgramDocument, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,7 @@ pub fn tmp(name: &str) -> PathBuf {
 /// only tool and the host transport.
 pub fn config_value(root: &Path) -> Value {
     json!({
-        "version": 2,
+        "version": 3,
         "name": "fixture",
         "instructions": { "10-role": "You are a test agent.", "05-first": "Be brief." },
         "tools": ["block"],
@@ -33,10 +33,10 @@ pub fn config_value(root: &Path) -> Value {
     })
 }
 
-pub fn program_with(root: &Path, edit: impl FnOnce(&mut Value)) -> Result<Program, foe_config::ConfigError> {
+pub fn program_with(root: &Path, edit: impl FnOnce(&mut Value)) -> Result<ResolvedProgram, foe_program::ProgramError> {
     let mut value = config_value(root);
     edit(&mut value);
-    let config: Config = serde_json::from_value(value)?;
+    let config: ProgramDocument = serde_json::from_value(value)?;
     resolve(&config)
 }
 

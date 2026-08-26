@@ -12,7 +12,7 @@ def build_probe_program(transport_path: str, working_directory: str) -> dict[str
     if not working_directory.startswith("/"):
         raise ValueError("working directory must be an absolute path")
     return {
-        "version": 2,
+        "version": 3,
         "name": "terminal-bench-capability-probes",
         "instructions": {"role": "Execute the deterministic capability probe calls."},
         "tools": ["read", "grep", "bash"],

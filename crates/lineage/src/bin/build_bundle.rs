@@ -8,10 +8,10 @@
 //! self-improvement runner among them — invoke it so the canonical form
 //! has one implementation.
 
-use foe_config::identity::canonical;
 use foe_lineage::{
     build_manifest, digest_of, manifest_bytes, record_bytes, require_manifest_path, AdoptionRecord, MANIFEST_FILE,
 };
+use foe_program::identity::canonical;
 use std::path::Path;
 use std::process::ExitCode;
 

@@ -1,6 +1,6 @@
 use super::{run, RECORD_FILE};
-use foe_config::identity::canonical;
 use foe_lineage::{digest_of, verify_bundle, AdoptionRecord, MANIFEST_FILE};
+use foe_program::identity::canonical;
 use std::path::{Path, PathBuf};
 
 fn tmp(name: &str) -> PathBuf {

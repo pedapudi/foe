@@ -173,7 +173,7 @@ async fn end_of_input_fails_outstanding_waits_instead_of_hanging() {
     let mut chunks: Vec<Chunk> = Vec::new();
     host.transport().stream(req, &mut chunks).await;
     assert!(matches!(chunks.as_slice(), [Chunk::Error { retryable: false, .. }]));
-    let tool = host.tool(crate::test_util::spec("h", foe_config::Effect::Pure));
+    let tool = host.tool(crate::test_util::spec("h", foe_program::Effect::Pure));
     assert!(tool.call(json!({}), &ctx("tc_9", &root)).await.is_error);
 }
 

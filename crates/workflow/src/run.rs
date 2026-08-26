@@ -12,12 +12,6 @@
 
 use crate::bind;
 use crate::graph::{Produced, Scheduler};
-use foe_config::config::Program;
-use foe_config::harness_text as text;
-use foe_config::schema::conforms;
-use foe_config::tools::Source;
-use foe_config::workflow::{ancestors, Node, WorkflowConfig};
-use foe_config::{Effect, ToolSpec};
 use foe_core::budget::Pool;
 use foe_core::loop_::{lock, settle, until, verify_recorded, wait_stop, Log, Params, Recorder};
 use foe_core::registry::{Handles, Registry};
@@ -27,6 +21,12 @@ use foe_log::{
     InboxSource, Message, ModelRequest, Outcome, RequestHeader, SpawnContext, ToolCall, ToolResult, WorkflowBranch,
     WorkflowNodeEnd, WorkflowNodeStart, WorkflowRecovery,
 };
+use foe_program::document::ResolvedProgram;
+use foe_program::harness_text as text;
+use foe_program::schema::conforms;
+use foe_program::tools::Source;
+use foe_program::workflow::{ancestors, Node, WorkflowConfig};
+use foe_program::{Effect, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::future::Future;
@@ -98,7 +98,7 @@ struct Shared {
     pool: Arc<Mutex<Pool>>,
     stop: watch::Receiver<Option<String>>,
     spawner: Arc<dyn Spawner>,
-    program: Program,
+    program: ResolvedProgram,
     /// `episode/start.runtime.build`, which a `verification/result` records
     /// as the identity of a built-in or host verifier.
     runtime_build: String,

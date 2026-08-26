@@ -262,7 +262,7 @@ class Program:
         """
         doc: dict[str, Any] = {}
         if not child:
-            doc["version"] = 2
+            doc["version"] = 3
         doc["name"] = self.name
         doc["instructions"] = {k: self.instructions[k] for k in sorted(self.instructions)}
         doc["tools"] = list(self.tools)

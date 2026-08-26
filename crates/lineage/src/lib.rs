@@ -5,17 +5,17 @@
 //! checker that verifies a claim through two resolvers.
 //!
 //! The claim's shape is the configuration document's business and lives in
-//! `foe-config` as [`ProgramLineage`]. This crate consumes both contracts
-//! — the document from `foe-config` and the episode record from `foe-log`
+//! `foe-program` as [`ProgramLineage`]. This crate consumes both contracts
+//! — the document from `foe-program` and the episode record from `foe-log`
 //! — and is part of neither: nothing in the runtime depends on it, and
 //! everything here is a pure function over values and files already on
 //! disk. Nothing runs, no grant is exercised, no log is written.
 
 #![forbid(unsafe_code)]
 
-use foe_config::identity::{canonical, sha256_hex};
-pub use foe_config::{LineageParent, ProgramLineage};
 use foe_log::{fold, Event, EventData, State, VerificationStatus};
+use foe_program::identity::{canonical, sha256_hex};
+pub use foe_program::{LineageParent, ProgramLineage};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};

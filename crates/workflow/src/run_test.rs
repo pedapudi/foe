@@ -1,7 +1,4 @@
 use super::{empty_after_child, run, Trouble, WorkflowParams};
-use foe_config::config::resolve;
-use foe_config::workflow::Node;
-use foe_config::{Config, Effect, ToolSpec};
 use foe_core::budget::Pool;
 use foe_core::loop_::{Log, Params};
 use foe_core::registry::{Handles, Registry};
@@ -12,6 +9,9 @@ use foe_log::{
     BlockedCode, Chunk, EpisodeStart, Event, EventData, ModelRoute, Outcome, RuntimeInfo, SandboxInfo, SandboxMode,
     StopReason, Usage,
 };
+use foe_program::document::resolve;
+use foe_program::workflow::Node;
+use foe_program::{Effect, ProgramDocument, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -141,7 +141,7 @@ impl Fixture {
         let mut names: Vec<&str> = vec!["block"];
         names.extend(tools);
         let config = json!({
-            "version": 2, "name": "wf", "instructions": { "r": "test" }, "tools": names,
+            "version": 3, "name": "wf", "instructions": { "r": "test" }, "tools": names,
             "grants": { "read": [dir] }, "budget": { "model_calls": 10 }, "task": "run the graph",
             "workflow": workflow
         });
@@ -198,7 +198,7 @@ impl Fixture {
     }
 
     async fn run(&mut self) -> (Outcome, Vec<Event>) {
-        let config: Config = serde_json::from_value(self.config.clone()).unwrap();
+        let config: ProgramDocument = serde_json::from_value(self.config.clone()).unwrap();
         let program = resolve(&config).unwrap();
         let log_dir = self.dir.join("episode");
         std::fs::create_dir_all(&log_dir).unwrap();

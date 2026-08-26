@@ -20,7 +20,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 
-use foe_config::ModelConfig;
+use foe_program::ModelConfig;
 
 use super::AuthKind;
 use crate::paths;

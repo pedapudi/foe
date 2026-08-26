@@ -13,9 +13,9 @@ use crate::{
     parse_args, BASH_DEFAULT_TIMEOUT_SECS, PYTHON_BIN, PYTHON_DIAGNOSTIC_MAX_CHARS, PYTHON_INNER_CALL_MAX,
     PYTHON_MEMORY_MAX_BYTES, PYTHON_SOURCE_MAX_BYTES,
 };
-use foe_config::{Effect, ToolSpec};
 use foe_core::sandbox::Policy;
 use foe_core::{CallCtx, Composer, ExecRequest, ExecResult, Tool, ToolValue};
+use foe_program::{Effect, ToolSpec};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

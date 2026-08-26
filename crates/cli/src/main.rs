@@ -12,8 +12,8 @@ mod plan;
 mod run;
 mod telemetry;
 
-use foe_config::tools::{block_spec, resolve_specs, Source};
-use foe_config::SCHEMA;
+use foe_program::tools::{block_spec, resolve_specs, Source};
+use foe_program::SCHEMA;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
@@ -56,7 +56,7 @@ const fn form(name: Text, args: Text, about: Text) -> Form {
 /// The forms, the running one first: it is what `foe` does without a command
 /// word, and what the top-level help describes.
 const FORMS: &[Form] = &[
-    form("", "[TASK]", "run one bounded episode: the task named here, or the task a configuration document names"),
+    form("", "[TASK]", "run one bounded episode: the task named here, or the task a program document names"),
     form("login", "[PROVIDER]", "configure a provider's credential and the default model, or list the providers"),
     form("view", "DIR", "write a log directory as one self-contained page, or serve it"),
     form("plan", "", "print a resolved program with its identity, its transport, its tools, and its effective tool authority; bare, list the built-in tools"),
@@ -68,7 +68,7 @@ const FORMS: &[Form] = &[
 /// is not accepted, and one present here is documented. `--help` is accepted
 /// by every form and so appears once, under no command.
 const OPTS: &[Opt] = &[
-    opt("", "--config", "FILE", "a built-in coding configuration", "the configuration document to run"),
+    opt("", "--config", "FILE", "the built-in coding workflow", "the program document to run"),
     opt("", "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
     opt("", "--service-tier", "TIER", "the model configuration's value", "request service tier: default or priority"),
     opt(
@@ -96,9 +96,9 @@ const OPTS: &[Opt] = &[
     opt("login", "--status", "", "", "print the default model and every configured credential path"),
     opt("view", "--serve", "", "", "serve the directory instead of writing the page to standard output"),
     opt("view", "--port", "N", "an ephemeral port, printed as the first line", "the port to serve on"),
-    opt("plan", "--config", "FILE", "the built-in tools alone", "the configuration document to resolve"),
+    opt("plan", "--config", "FILE", "the built-in tools alone", "the program document to resolve"),
     opt("plan", "--json", "", "", "print one JSON object instead of the report"),
-    opt("plan", "--schema", "", "", "print the JSON Schema of the configuration document and nothing else"),
+    opt("plan", "--schema", "", "", "print the JSON Schema of the program document and nothing else"),
     opt("plan", "--states", "DIR", "", "directory of ancestor state documents, one <hex>.json each"),
     opt(
         "plan",
@@ -356,8 +356,8 @@ fn open_browser(url: &str) {
     }
 }
 
-fn load(config: &Path) -> Result<foe_config::config::Program, String> {
-    foe_config::config::load(config).map_err(|e| format!("{}: {e}", config.display()))
+fn load(config: &Path) -> Result<foe_program::document::ResolvedProgram, String> {
+    foe_program::document::load(config).map_err(|e| format!("{}: {e}", config.display()))
 }
 
 /// Resolves the program and prints it with its identity. Without `--config`,
@@ -398,7 +398,7 @@ fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>)
                 "cycles": plan::cycles(wf), "write_overlaps": overlaps,
                 "terminal": wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k).collect::<Vec<_>>(),
                 "possible_firings": wf.possible_firings(),
-                "max_possible_firings": foe_config::workflow::MAX_POSSIBLE_FIRINGS,
+                "max_possible_firings": foe_program::workflow::MAX_POSSIBLE_FIRINGS,
             })
         });
         let report = serde_json::json!({
@@ -431,7 +431,7 @@ fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>)
 
 /// One tool row: the name, the source its name resolved in, the effect, and
 /// the first sentence of the description.
-fn tool_row(spec: &foe_config::ToolSpec, source: &str) -> String {
+fn tool_row(spec: &foe_program::ToolSpec, source: &str) -> String {
     let effect = serde_json::to_value(spec.effect).ok().and_then(|v| v.as_str().map(str::to_string));
     let text = &spec.description;
     let first = text[..text.find(". ").map_or(text.len(), |i| i + 1)].trim_end();
@@ -439,7 +439,7 @@ fn tool_row(spec: &foe_config::ToolSpec, source: &str) -> String {
 }
 
 /// The resolved tools of the root program, one row each.
-fn tool_rows(config: &Path, program: &foe_config::config::Program) -> Result<String, String> {
+fn tool_rows(config: &Path, program: &foe_program::document::ResolvedProgram) -> Result<String, String> {
     let extra = run::extra_builtin_specs();
     let specs = resolve_specs(program, &extra).map_err(|e| format!("{}: {e}", config.display()))?;
     let sources = plan::tool_sources(program, &extra)?;

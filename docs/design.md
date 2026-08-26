@@ -718,7 +718,7 @@ implementation claim, repairs defects, and produces the outcome.
 The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
 fills its task, model, current-directory grants, executable inventory, sandbox
 mode, credential path, and optional verifier before resolving it as an ordinary
-configuration document.
+program document.
 
 Both episodes have `read`, `grep`, `edit`, and `bash`. Both may
 read and write the current directory. Each episode has a 60-call backstop.
@@ -738,7 +738,7 @@ Without `--verify`, the independent audit still always runs and completes
 under its typed return contract.
 
 `--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
-workflow. The default is `best-effort`. A configuration document declares
+workflow. The default is `best-effort`. A program document declares
 its own `sandbox.mode`, so `--sandbox` cannot accompany `--config`.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
@@ -816,7 +816,7 @@ not finished.
 ## Structure
 
 ```
-   crates/log ◄─── crates/config ◄─── crates/core ◄──┬── crates/code
+   crates/log ◄─── crates/program ◄─── crates/core ◄──┬── crates/code
     every event      the document,      loop,        │    read grep edit bash
     type,            resolution,        registry,    ├── crates/transport (feature)
     serde,           tool specs,        grants,      │    model clients, credentials
@@ -843,8 +843,8 @@ foe has two contracts, and each is a crate the rest of the repository reads.
 event type, including the reserved ones. It depends on serde, serde_json, and
 thiserror, and on no crate of this repository.
 
-`crates/config` is the second contract, and states what was to run: the
-configuration document, the validation and resolution that turn it into the
+`crates/program` is the second contract, and states what was to run: the
+program document, the validation and resolution that turn it into the
 program `episode/start.program` records, the specification of every tool the
 model will see, and the identity that hashes them. It runs nothing: no
 process starts there, no grant is exercised, and no log is written. It sits
@@ -861,16 +861,16 @@ log's vocabulary, because the two contracts meet at two places by design.
   conversation survives a compaction, because two programs that differ only
   there put different text in front of the model.
 
-`crates/config` therefore depends on `crates/log`, and on no other crate of
+`crates/program` therefore depends on `crates/log`, and on no other crate of
 this repository.
 
 `crates/core` is the machine between the two contracts, and depends on both.
-The line between it and `crates/config` is resolution against execution: what
+The line between it and `crates/program` is resolution against execution: what
 a name means and what a program would be belong to the configuration, and
 running it, guarding it, and charging it belong to the kernel. Tools depend
 on `crates/core` for the tool trait and capability handles and on
-`crates/config` for what a tool declares. `crates/workflow` depends on
-`crates/config` for the graph type and the program each model node runs, and
+`crates/program` for what a tool declares. `crates/workflow` depends on
+`crates/program` for the graph type and the program each model node runs, and
 on `crates/core` for the log, the registry, the budget pool, and the spawner,
 and runs an episode whose configuration declares a `workflow` in place of the
 loop. `crates/context` depends on `crates/core` for the context policy trait
@@ -897,7 +897,7 @@ convention `crates/transport` owns, so the telemetry crate still depends on
 `crates/lineage` is evidence about how program states relate: the lineage
 identity, the evidence-bundle canonical manifest and its checker, and the
 ancestry checker [lineage-identity.md](lineage-identity.md) specifies. It
-depends on `crates/config` for the claim's shape and the canonical
+depends on `crates/program` for the claim's shape and the canonical
 serialization, and on `crates/log` for the episode record, and is part of
 neither contract: nothing in the runtime depends on it. The binary
 supplies only the two directory-backed resolvers `foe plan` builds for its
@@ -909,21 +909,21 @@ The kernel is `log` and `core` — the log format, the loop, budgets, the
 sandbox, and spawning — and its Rust source stays under 5,250 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
-machine alone: what a program is lives in `crates/config`, which is budgeted
-apart under 1,400 lines. The two are separate because a configuration
+machine alone: what a program is lives in `crates/program`, which is budgeted
+apart under 1,400 lines. The two are separate because a program
 document that gains a key must not buy room in the loop, and because the
 claim the kernel's number supports is about the machine that runs a program
 rather than about the data model it runs.
 
-The tool surface in `crates/code` is budgeted apart, under 1,600 lines on
+The tool surface in `crates/code` is budgeted apart, under 1,700 lines on
 the same terms. It is separate because it grows a tool at a time: a new
 tool adds capability without touching the kernel, so room for tools must
 not become room for the loop. The workflow executor in `crates/workflow`
 stays under 1,000 lines: it carries the executor and nothing else, now that
 the inspection of a configured program tree that `foe plan` reports has
-reached `foe_config::inspect`, beside the model it analyses. What the two
+reached `foe_program::inspect`, beside the model it analyses. What the two
 crates still share is one rule — firing a model node starts that node's
-episode — which `spawner_config` realizes in the executor as an ordinary
+episode — which `spawner_document` realizes in the executor as an ordinary
 spawn and the inspection reads as reachability. The compaction policy in
 `crates/context` stays under 500.
 

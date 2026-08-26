@@ -21,9 +21,9 @@
 //! [`Spawner::spawn`] and a wait on [`ChildRun`].
 
 use crate::{CapError, SpawnHandle, SpawnRequest, Spawner, ToolValue};
-use foe_config::{Budget, ChildProgram, Config};
 use foe_log::seed::SeedHeader;
 use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
+use foe_program::{Budget, ChildProgramDocument, ProgramDocument};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -192,7 +192,7 @@ impl ChildRun {
 pub struct ProcessSpawner {
     episode_id: String,
     log_dir: PathBuf,
-    config: Config,
+    config: ProgramDocument,
     /// The child's argument vector prefix; the running `foe` binary.
     launcher: Vec<OsString>,
     uplink: Arc<dyn Uplink>,
@@ -205,7 +205,7 @@ impl ProcessSpawner {
     pub fn new(
         episode_id: String,
         log_dir: PathBuf,
-        config: Config,
+        config: ProgramDocument,
         uplink: Arc<dyn Uplink>,
         router: Arc<Router>,
         observer: Arc<dyn ChildObserver>,
@@ -251,7 +251,7 @@ impl ProcessSpawner {
     /// Whether a child running `program` could start children in turn. A
     /// spawn grant and a workflow model node are the two sources of
     /// descendants, and the model node may sit at any workflow depth.
-    fn spawns_below(&self, program: &ChildProgram) -> bool {
+    fn spawns_below(&self, program: &ChildProgramDocument) -> bool {
         let workflow_spawns = program.workflow.as_ref().is_some_and(|wf| wf.contains_model_node());
         self.config.budget.max_depth > 1
             && program.budget.max_depth > 0
@@ -272,7 +272,12 @@ impl ProcessSpawner {
 /// reserved replace the program's own when they are tighter, the episode
 /// allowance is the share the parent granted, and the depth below the child
 /// is one less than below the parent.
-pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reserve: BudgetAmount) -> Config {
+pub fn child_document(
+    parent: &ProgramDocument,
+    program: &ChildProgramDocument,
+    task: String,
+    reserve: BudgetAmount,
+) -> ProgramDocument {
     let mut budget = program.budget.clone();
     let tighter = |own: Option<u64>, reserved: Option<u64>| reserved.map_or(own, |n| Some(own.map_or(n, |t| t.min(n))));
     budget.model_calls = tighter(Some(budget.model_calls), reserve.model_calls).unwrap_or(budget.model_calls);
@@ -283,7 +288,7 @@ pub fn child_config(parent: &Config, program: &ChildProgram, task: String, reser
     if let Some(episodes) = reserve.episodes {
         budget.max_episodes = budget.max_episodes.min(episodes.try_into().unwrap_or(u32::MAX));
     }
-    Config {
+    ProgramDocument {
         version: parent.version,
         name: program.name.clone(),
         instructions: program.instructions.clone(),
@@ -325,7 +330,7 @@ impl ProcessSpawner {
         let dir = self.log_dir.join("children").join(&child_id);
         std::fs::create_dir_all(&dir)?;
         let invalid = |e: serde_json::Error| CapError::Invalid(e.to_string());
-        let config = child_config(&self.config, program, req.task, req.reserve);
+        let config = child_document(&self.config, program, req.task, req.reserve);
         let config_path = dir.join("config.json");
         std::fs::write(&config_path, serde_json::to_vec_pretty(&config).map_err(invalid)?)?;
         let lineage = serde_json::json!({
