@@ -241,7 +241,7 @@
         },
         "max_fires": { "description": "How many times the node may fire in one episode; required on a cycle, and summed into the graph's possible firings.", "type": "integer", "minimum": 1, "default": 1 },
         "terminal": { "description": "Completing this node completes the workflow.", "type": "boolean", "default": false },
-        "empty": { "description": "The value the node contributes when recovery skips it; without it, skip is not offered." },
+        "empty": { "description": "The value a node contributes when recovery skips it. On a model node, a blocked or exhausted child also contributes this value. Without it, both paths remain strict." },
         "recovery": {
           "type": "object",
           "additionalProperties": false,
