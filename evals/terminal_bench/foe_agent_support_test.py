@@ -253,6 +253,8 @@ class ProgramTest(unittest.TestCase):
         )
         self.assertEqual(audit["model"]["done_when"]["verify"], "task_acceptance")
         self.assertEqual(audit["model"]["model"]["reasoning_effort"], "xhigh")
+        self.assertEqual(audit["follows"], ["task", "implement-task"])
+        self.assertNotIn("derive-task-acceptance", audit["follows"])
         self.assertTrue(audit["terminal"])
         self.assertEqual(
             program["tool_defs"]["task_acceptance"]["exec"],

@@ -373,8 +373,8 @@ def build_program(
             "unresolved risks."
         )
         audit_role = (
-            "Independently audit the shared workspace against the original public task and the "
-            "pre-implementation acceptance requirements. Treat every earlier completion claim as "
+            "Independently derive the acceptance requirements from the original public task, then "
+            "audit the shared workspace. Treat every earlier completion claim and checker result as "
             "unverified. Inspect final artifacts and run checks that compute observable behavior. "
             "Pay special attention to composition and boundary interactions. Repair every defect "
             "you find. Do not edit the task-derived checker or its runner. Run task_acceptance after "
@@ -471,11 +471,7 @@ def build_program(
                         "done_when": checker_contract,
                         "model": child_model(escalation_reasoning_effort),
                     },
-                    "follows": [
-                        "task",
-                        "derive-task-acceptance",
-                        "implement-task",
-                    ],
+                    "follows": ["task", "implement-task"],
                     "terminal": True,
                 },
             },

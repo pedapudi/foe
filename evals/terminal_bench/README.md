@@ -251,7 +251,10 @@ The declared workflow has four nodes:
 3. A Sol-low child implements the task. Its `done_when.verify` runs the
    generated checker and returns findings to the same child.
 4. A fresh Sol-xhigh child audits and repairs the result. The same checker owns
-   its completion condition.
+   its completion condition. Its declared inputs contain the public task and
+   implementation result. They exclude the checker author's source and
+   requirement interpretation, so the audit derives task semantics
+   independently before using the checker as one measurement.
 
 The fixed runner is a portable binary, so the task container does not need a
 Python interpreter. Generated checkers use Bash, which is already required by

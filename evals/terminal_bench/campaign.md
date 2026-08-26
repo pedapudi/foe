@@ -1610,3 +1610,45 @@ task container, which lacked `/usr/bin/python3`. Foe's configuration
 constructor accepts the four-node program. No assessed result is recorded yet,
 so the mechanism remains an evaluation candidate and no Foe behavior has been
 promoted from it.
+
+## Recorded task-derived acceptance-checker disposition
+
+Two assessed DNA attempts used source tree
+`git-tree-sha1:321a31058e806d29003c674b5bc77c76f852bc3b` and runtime binary
+`sha256:65b0b0b8d9fab850e24939a6df1b907476fdfb5a2ef6df127b898e7d0a8f07bb`.
+Both used GPT-5.6 Sol low for implementation and GPT-5.6 Sol xhigh for checker
+derivation and terminal audit. Every request used the priority service tier.
+Both attempts completed with conforming traces and no infrastructure failure.
+
+The first attempt received full task-owned credit. It used 37 model calls,
+634,536 input tokens, 269,312 cached-input tokens, and 49,495 output tokens.
+Its estimated cost was $2.558521. The checker modeled each annealing segment
+as the longest primer suffix that matched the template. The terminal audit
+corrected melting-temperature and assembly defects before completion.
+
+The repeated attempt received zero task-owned credit. It used 36 model calls,
+683,729 input tokens, 348,160 cached-input tokens, and 54,563 output tokens.
+Its estimated cost was $2.572800. The generated checker treated only bases
+after the four-base assembly overhang as the annealing segment. The terminal
+audit installed `oligotm`, repaired the primers under that interpretation,
+and accepted the checker result.
+
+The task-owned grader also counted an assembly-overhang suffix when those
+bases matched the adjacent template. It measured the input primer pair at
+67.736454 and 61.056077 degrees C. Their 6.680377 degree difference exceeded
+the permitted five degrees. The audit had received the generated checker
+source and requirement interpretation as a declared predecessor value. The
+checker author and audit therefore shared the same semantic error.
+
+One success followed by one failure rejects the task-derived checker candidate
+for lack of repeatability. The retained runs are:
+
+- `target/terminal-bench-jobs/task-derived-checker-dna-activation-20260825T231830Z`;
+- `target/terminal-bench-jobs/task-derived-checker-dna-repeat-20260825T233922Z`.
+
+The revised workflow removes the checker-author value from the terminal
+audit's declared inputs. The audit receives the public task and implementation
+result. It can still invoke the immutable checker, whose installation precedes
+implementation. This change tests whether explicit information-flow
+separation prevents a generated semantic error from anchoring the independent
+audit. The revised workflow has no assessed result yet.
