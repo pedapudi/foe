@@ -14,7 +14,7 @@
     "dna-insert": {
       "checker": "verifier_cases/dna_insert/check.pl",
       "oracle": "verifier_cases/dna_insert/oracle.sh",
-      "contract": "The public checker derives every input-output insertion boundary and accepts only a primer interpretation that assigns the insert and both annealing regions under one boundary."
+      "contract": "The public checker derives every input-output insertion boundary and requires every task-consistent primer interpretation to assign the insert and both annealing regions under one boundary and satisfy the declared bounds."
     },
     "fix-git": {
       "checker": "verifier_cases/fix_git/check.py",

@@ -163,8 +163,8 @@ The selected scenarios cover seven forms of completion:
 - `cancel-async-tasks` executes concurrency and cancellation-cleanup probes.
 - `dna-assembly` checks the declared primers, annealing, temperatures, and
   assembly overhangs.
-- `dna-insert` requires one shared interpretation of the inserted sequence and
-  both primer annealing regions.
+- `dna-insert` requires every task-consistent interpretation to use one shared
+  boundary for the inserted sequence and both primer annealing regions.
 - `fix-git` checks that the lost commit reaches `master` in a clean worktree.
 - `git-multibranch` pushes distinct content to both branches and probes both
   live HTTPS endpoints.

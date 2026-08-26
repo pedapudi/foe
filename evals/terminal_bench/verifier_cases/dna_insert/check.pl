@@ -132,11 +132,13 @@ for my $decomposition (@output_decompositions) {
                 "primer temperatures differ by $difference degrees Celsius; expected at most 5"
                 if $difference > 5;
         }
-        exit 0 unless @problems;
-        push @failed_interpretations, "boundary $boundary: " . join("; ", @problems);
+        push @failed_interpretations, "boundary $boundary: " . join("; ", @problems)
+            if @problems;
     }
 }
 
 finding("no jointly consistent decomposition assigns the insert and both annealing regions to the final primer pair")
     unless $joint_interpretations;
-finding($failed_interpretations[0]);
+finding("a task-consistent primer decomposition fails: $failed_interpretations[0]")
+    if @failed_interpretations;
+exit 0;
