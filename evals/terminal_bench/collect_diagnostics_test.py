@@ -23,6 +23,60 @@ from collect_diagnostics import (
     repeated_failure_contrasts,
 )
 from run import read_cases
+from run_self_improvement import supported_independent_audits
+
+
+def contrast_report(
+    episode: str,
+    reward: float | None,
+    check: str = "test_public_interface",
+    locus: str = "same",
+    trial_error=None,
+) -> dict:
+    failed = reward == 0
+    return {
+        "task": "terminal-bench/example",
+        "evidence_identity": {"episode_id": episode},
+        "verifier_reward": reward,
+        "trial_error": trial_error,
+        "outcome": {"kind": "completed"},
+        "artifact_outcome_mismatch": failed,
+        "verifier_feedback": {
+            "sha256": "sha256:" + ("1" if locus == "same" else "2") * 64,
+            "failure_evidence_counts": {
+                "total_failed_tests": int(failed),
+                "retained_failed_tests": int(failed),
+                "omitted_failed_tests": 0,
+                "unlocated_failed_tests": 0,
+                "ambiguous_failed_tests": 0,
+            },
+            "failures": (
+                [
+                    {
+                        "name": check,
+                        "failure_class": "AssertionError",
+                        "locus": {
+                            "locus_sha256": "sha256:"
+                            + ("3" if locus == "same" else "4") * 64,
+                            "location": (
+                                "tests/test_outputs.py:116"
+                                if locus == "same"
+                                else "tests/test_outputs.py:99"
+                            ),
+                            "assertion": (
+                                "abs(fwd_tm - rev_tm) <= 5"
+                                if locus == "same"
+                                else "15 <= len(extra_r) <= 45"
+                            ),
+                            "message": locus,
+                        },
+                    }
+                ]
+                if failed
+                else []
+            ),
+        },
+    }
 
 
 class CollectDiagnosticsTest(unittest.TestCase):
@@ -356,57 +410,11 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 collect(source, binary, [run], {"example"})
 
     def test_repeated_failure_contrast_keeps_distinct_loci_in_one_coarse_profile(self):
-        def report(episode: str, reward: float, check: str, locus: str = "same") -> dict:
-            return {
-                "task": "terminal-bench/example",
-                "evidence_identity": {"episode_id": episode},
-                "verifier_reward": reward,
-                "trial_error": None,
-                "outcome": {"kind": "completed"},
-                "artifact_outcome_mismatch": reward == 0,
-                "verifier_feedback": {
-                    "sha256": "sha256:" + ("1" if locus == "same" else "2") * 64,
-                    "failure_evidence_counts": {
-                        "total_failed_tests": int(reward == 0),
-                        "retained_failed_tests": int(reward == 0),
-                        "omitted_failed_tests": 0,
-                        "unlocated_failed_tests": 0,
-                        "ambiguous_failed_tests": 0,
-                    },
-                    "failures": (
-                        [
-                            {
-                                "name": check,
-                                "failure_class": "AssertionError",
-                                "locus": {
-                                    "locus_sha256": "sha256:" + (
-                                        "3" if locus == "same" else "4"
-                                    ) * 64,
-                                    "location": (
-                                        "tests/test_outputs.py:116"
-                                        if locus == "same"
-                                        else "tests/test_outputs.py:99"
-                                    ),
-                                    "assertion": (
-                                        "abs(fwd_tm - rev_tm) <= 5"
-                                        if locus == "same"
-                                        else "15 <= len(extra_r) <= 45"
-                                    ),
-                                    "message": locus,
-                                },
-                            }
-                        ]
-                        if reward == 0
-                        else []
-                    )
-                },
-            }
-
         reports = [
-            report("ep_failed_one", 0.0, "test_public_interface"),
-            report("ep_failed_two", 0.0, "test_public_interface", "length"),
-            report("ep_different_failure", 0.0, "test_file_layout"),
-            report("ep_success", 1.0, ""),
+            contrast_report("ep_failed_one", 0.0),
+            contrast_report("ep_failed_two", 0.0, locus="length"),
+            contrast_report("ep_different_failure", 0.0, "test_file_layout"),
+            contrast_report("ep_success", 1.0, ""),
         ]
         expected = {
                     "task": "terminal-bench/example",
@@ -477,25 +485,115 @@ class CollectDiagnosticsTest(unittest.TestCase):
         self.assertEqual(repeated_failure_contrasts(reports), [expected])
 
         reports = [
-            report("ep_failed_one", 0.0, "test_public_interface"),
-            {
-                **report("ep_infrastructure_error", 0.0, "test_public_interface"),
-                "trial_error": {"type": "DockerError"},
-            },
-            report("ep_success", 1.0, ""),
-        ]
-        self.assertEqual(repeated_failure_contrasts(reports), [])
-
-        reports = [
-            report("ep_failed_one", 0.0, "test_public_interface"),
-            report("ep_failed_two", 0.0, "test_public_interface"),
-            report("ep_success", 1.0, ""),
+            contrast_report("ep_failed_one", 0.0),
+            contrast_report("ep_failed_two", 0.0),
+            contrast_report("ep_success", 1.0, ""),
         ]
         for failed in reports[:2]:
             failed["verifier_feedback"]["failures"][0]["failure_class"] = None
             failed["verifier_feedback"]["failures"][0]["raw_status"] = "call_failed"
             failed["verifier_feedback"]["failures"][0]["locus"] = None
         self.assertEqual(repeated_failure_contrasts(reports), [])
+
+    def test_trial_errors_and_missing_rewards_cannot_supply_contrast_participants(self):
+        missing_reward = contrast_report("ep_missing_reward", 0.0)
+        missing_reward.pop("verifier_reward")
+        cases = {
+            "positive reward with an object error": [
+                contrast_report("ep_failed_one", 0.0),
+                contrast_report("ep_failed_two", 0.0),
+                contrast_report(
+                    "ep_errored_success",
+                    1.0,
+                    trial_error={"type": "DockerError"},
+                ),
+            ],
+            "positive reward with an empty string error": [
+                contrast_report("ep_failed_one", 0.0),
+                contrast_report("ep_failed_two", 0.0),
+                contrast_report("ep_errored_success", 1.0, trial_error=""),
+            ],
+            "failed reward with an error": [
+                contrast_report("ep_failed_one", 0.0),
+                contrast_report(
+                    "ep_errored_failure",
+                    0.0,
+                    trial_error={"type": "DockerError"},
+                ),
+                contrast_report("ep_success", 1.0, ""),
+            ],
+            "missing reward": [
+                contrast_report("ep_failed_one", 0.0),
+                missing_reward,
+                contrast_report("ep_success", 1.0, ""),
+            ],
+        }
+        for name, reports in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(repeated_failure_contrasts(reports), [])
+
+    def test_evaluation_summary_excludes_errored_and_rewardless_trials(self):
+        evaluation = {
+            "model": "openai-codex/gpt-5.6-sol",
+            "reasoning_effort": "low",
+            "execution_configuration": {
+                "service_tier": "priority",
+                "token_policy": "measurement_only",
+                "implementation": {
+                    "model": "openai-codex/gpt-5.6-sol",
+                    "reasoning_effort": "low",
+                },
+                "independent_audit": {
+                    "model": "openai-codex/gpt-5.6-sol",
+                    "reasoning_effort": "high",
+                    "model_calls": 60,
+                },
+            },
+        }
+
+        def report(reward, trial_error=None, *, include_reward=True):
+            value = {
+                "task": "terminal-bench/example",
+                "evaluation": evaluation,
+                "trial_error": trial_error,
+                "artifact_outcome_mismatch": False,
+                "usage": {"model_calls": 1, "estimated_cost_usd": 0.1},
+            }
+            if include_reward:
+                value["verifier_reward"] = reward
+            return value
+
+        summary = evaluation_summary(
+            [
+                report(1.0),
+                report(1.0, {"type": "DockerError"}),
+                report(1.0, ""),
+                report(0.0, {"type": "DockerError"}),
+                report(None, include_reward=False),
+            ]
+        )
+
+        self.assertEqual(len(summary), 1)
+        self.assertEqual(summary[0]["attempts"], 1)
+        self.assertEqual(summary[0]["verified_successes"], 1)
+        self.assertEqual(summary[0]["model_calls"], 1)
+        self.assertEqual(summary[0]["estimated_cost_usd"], 0.1)
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text(
+                json.dumps({"evaluation_summary": summary}),
+                encoding="utf-8",
+            )
+            supported = supported_independent_audits(
+                evidence,
+                {
+                    "model": "openai-codex/gpt-5.6-sol",
+                    "reasoning_effort": "low",
+                    "service_tier": "priority",
+                    "token_policy": "measurement_only",
+                },
+            )
+        self.assertEqual(supported, [])
 
     def test_missing_verifier_output_cannot_enter_a_failure_contrast(self):
         def failed(episode: str) -> dict:

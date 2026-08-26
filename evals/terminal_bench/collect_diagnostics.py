@@ -330,10 +330,21 @@ def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dic
     return answer
 
 
+def eligible_trial_reward(report: dict[str, Any]) -> int | float | None:
+    """Return a numeric reward only for a trial without an infrastructure error."""
+    if report.get("trial_error") is not None:
+        return None
+    reward = report.get("verifier_reward")
+    return reward if isinstance(reward, (int, float)) else None
+
+
 def evaluation_summary(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Summarize outcomes by task and complete execution configuration."""
     groups: dict[tuple[str, str], dict[str, Any]] = {}
     for report in reports:
+        reward = eligible_trial_reward(report)
+        if reward is None:
+            continue
         evaluation = report["evaluation"]
         task = report.get("task")
         configuration = evaluation["execution_configuration"]
@@ -356,8 +367,7 @@ def evaluation_summary(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
             },
         )
         group["attempts"] += 1
-        reward = report.get("verifier_reward")
-        group["verified_successes"] += int(isinstance(reward, (int, float)) and reward > 0)
+        group["verified_successes"] += int(reward > 0)
         group["artifact_outcome_mismatches"] += int(report.get("artifact_outcome_mismatch") is True)
         usage = report.get("usage", {})
         group["model_calls"] += usage.get("model_calls", 0) or 0
@@ -370,16 +380,16 @@ def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, 
     successes_by_task: dict[str, set[str]] = {}
     failures: dict[tuple[str, str], dict[str, Any]] = {}
     for report in reports:
+        reward = eligible_trial_reward(report)
+        if reward is None:
+            continue
         task = report.get("task")
         identity = report.get("evidence_identity")
         episode_id = identity.get("episode_id") if isinstance(identity, dict) else None
-        reward = report.get("verifier_reward")
         if not isinstance(task, str) or not isinstance(episode_id, str):
             continue
-        if isinstance(reward, (int, float)) and reward > 0:
+        if reward > 0:
             successes_by_task.setdefault(task, set()).add(episode_id)
-            continue
-        if report.get("trial_error") is not None:
             continue
         outcome = report.get("outcome")
         outcome_profile = {
