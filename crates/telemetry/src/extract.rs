@@ -45,11 +45,11 @@ pub struct KnownValue {
     pub value: String,
 }
 
-/// Workflow correction signals derived from typed events.
+/// Workflow correction and degradation signals derived from typed events.
 #[derive(Default)]
-pub struct RecoveryFacts {
-    pub interventions: u64,
-    pub actions: BTreeMap<String, u64>,
+pub struct WorkflowFacts {
+    pub recovery_interventions: u64,
+    pub recovery_actions: BTreeMap<String, u64>,
     pub empty_substitutions: u64,
 }
 
@@ -77,7 +77,7 @@ pub struct Facts {
     /// How a completed episode's completion was established; `None` for an
     /// episode that did not complete. See [`completion_provenance`].
     pub provenance: Option<&'static str>,
-    pub recovery: RecoveryFacts,
+    pub workflow: WorkflowFacts,
 }
 
 /// A known value shorter than this is not substituted: a one- or two-
@@ -160,15 +160,15 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
                         .get(&(end.node.clone(), end.fire))
                         .is_some_and(|child| partial_children.contains(child)) =>
             {
-                facts.recovery.empty_substitutions += 1;
+                facts.workflow.empty_substitutions += 1;
             }
             EventData::WorkflowRecovery(recovery) => {
-                facts.recovery.interventions += 1;
+                facts.workflow.recovery_interventions += 1;
                 let action = match recovery.action.as_str() {
                     "retry" | "amend" | "skip" | "abort" => recovery.action.as_str(),
                     _ => "unknown",
                 };
-                *facts.recovery.actions.entry(action.into()).or_default() += 1;
+                *facts.workflow.recovery_actions.entry(action.into()).or_default() += 1;
             }
             EventData::VerificationResult(v) => {
                 facts.verification_runs += 1;

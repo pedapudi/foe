@@ -132,12 +132,12 @@ pub fn emission(events: &[Event], log_dir: &str, key: Vec<u8>) -> Result<Emissio
     episode_attributes.extend(vec![
         number("foe.verification.runs", facts.verification_runs),
         number("foe.verification.findings", facts.verification_findings),
-        number("foe.workflow.recovery.interventions", facts.recovery.interventions),
+        number("foe.workflow.recovery.interventions", facts.workflow.recovery_interventions),
         list(
             "foe.workflow.recovery.actions",
-            facts.recovery.actions.iter().map(|(action, count)| format!("{action}={count}")),
+            facts.workflow.recovery_actions.iter().map(|(action, count)| format!("{action}={count}")),
         ),
-        number("foe.workflow.empty_substitutions", facts.recovery.empty_substitutions),
+        number("foe.workflow.empty_substitutions", facts.workflow.empty_substitutions),
         text("foe.model.provider", facts.provider.clone()),
         text("foe.model.model", facts.model.clone()),
         text("foe.category", classification.bucket.clone()),

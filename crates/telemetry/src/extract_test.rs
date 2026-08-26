@@ -241,9 +241,9 @@ fn workflow_correction_evidence_is_derived_from_typed_events() {
         event(6, 1060, EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::json!({}) } }),
     ];
     let facts = extract(&events, "/logs");
-    assert_eq!(facts.recovery.interventions, 1);
-    assert_eq!(facts.recovery.actions.get("retry"), Some(&1));
-    assert_eq!(facts.recovery.empty_substitutions, 1);
+    assert_eq!(facts.workflow.recovery_interventions, 1);
+    assert_eq!(facts.workflow.recovery_actions.get("retry"), Some(&1));
+    assert_eq!(facts.workflow.empty_substitutions, 1);
 }
 
 #[test]
@@ -265,8 +265,8 @@ fn an_unknown_recovery_action_emits_only_the_closed_unknown_term() {
         ),
     ];
     let facts = extract(&events, "/logs");
-    assert_eq!(facts.recovery.actions.len(), 1);
-    assert_eq!(facts.recovery.actions.get("unknown"), Some(&1));
+    assert_eq!(facts.workflow.recovery_actions.len(), 1);
+    assert_eq!(facts.workflow.recovery_actions.get("unknown"), Some(&1));
 }
 
 #[test]
