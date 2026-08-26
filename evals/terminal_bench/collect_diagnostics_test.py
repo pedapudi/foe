@@ -28,7 +28,7 @@ from run_self_improvement import supported_independent_audits
 
 def contrast_report(
     episode: str,
-    reward: float | None,
+    reward: int | float | bool | None,
     check: str = "test_public_interface",
     locus: str = "same",
     trial_error=None,
@@ -527,6 +527,16 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 missing_reward,
                 contrast_report("ep_success", 1.0, ""),
             ],
+            "boolean true reward": [
+                contrast_report("ep_failed_one", 0.0),
+                contrast_report("ep_failed_two", 0.0),
+                contrast_report("ep_boolean_reward", True),
+            ],
+            "boolean false reward": [
+                contrast_report("ep_failed_one", 0.0),
+                contrast_report("ep_boolean_reward", False),
+                contrast_report("ep_success", 1.0, ""),
+            ],
         }
         for name, reports in cases.items():
             with self.subTest(name=name):
@@ -570,6 +580,8 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 report(1.0, ""),
                 report(0.0, {"type": "DockerError"}),
                 report(None, include_reward=False),
+                report(True),
+                report(False),
             ]
         )
 

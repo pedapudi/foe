@@ -335,7 +335,7 @@ def eligible_trial_reward(report: dict[str, Any]) -> int | float | None:
     if report.get("trial_error") is not None:
         return None
     reward = report.get("verifier_reward")
-    return reward if isinstance(reward, (int, float)) else None
+    return reward if type(reward) in (int, float) else None
 
 
 def evaluation_summary(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
