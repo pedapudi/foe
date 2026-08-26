@@ -59,6 +59,13 @@ DEVELOPMENT_TASK_INSTRUCTION = "The development run supplies the task instructio
 DEVELOPMENT_TASK_CREDENTIAL = "/credentials/model-token"
 DEVELOPMENT_TASK_DIRECTORY = "/app"
 SHA256_IDENTITY = re.compile(r"^sha256:[0-9a-f]{64}$")
+FAILURE_COUNT_FIELDS = {
+    "total_failed_tests",
+    "retained_failed_tests",
+    "omitted_failed_tests",
+    "unlocated_failed_tests",
+    "ambiguous_failed_tests",
+}
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -193,6 +200,7 @@ def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
         if not isinstance(contrast, dict):
             raise ValueError(f"repeated failure contrast {index} is not an object")
         if set(contrast) != {
+            "contrast_sha256",
             "task",
             "failure_profile",
             "failed_attempts",
@@ -200,9 +208,22 @@ def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
         }:
             raise ValueError(f"repeated failure contrast {index} has an invalid shape")
         task = contrast["task"]
+        contrast_sha256 = contrast["contrast_sha256"]
         profile = contrast["failure_profile"]
         failed = contrast["failed_attempts"]
         successful = contrast["successful_episode_ids"]
+        unsigned_contrast = {
+            key: value for key, value in contrast.items() if key != "contrast_sha256"
+        }
+        expected_contrast_sha256 = digest_bytes(canonical_json(unsigned_contrast))
+        if (
+            not isinstance(contrast_sha256, str)
+            or SHA256_IDENTITY.fullmatch(contrast_sha256) is None
+            or contrast_sha256 != expected_contrast_sha256
+        ):
+            raise ValueError(
+                f"repeated failure contrast {index} has an invalid contrast digest"
+            )
         if not isinstance(task, str) or not task or not isinstance(profile, dict):
             raise ValueError(f"repeated failure contrast {index} has no task or failure profile")
         if set(profile) != {
@@ -238,6 +259,7 @@ def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
             if not isinstance(attempt, dict) or set(attempt) != {
                 "episode_id",
                 "verifier_report_sha256",
+                "failure_evidence_counts",
                 "failure_loci",
             }:
                 raise ValueError(
@@ -245,19 +267,36 @@ def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
                 )
             episode_id = attempt.get("episode_id")
             report_sha256 = attempt.get("verifier_report_sha256")
+            counts = attempt.get("failure_evidence_counts")
             loci = attempt.get("failure_loci")
             if not isinstance(episode_id, str) or not episode_id:
                 raise ValueError(
                     f"repeated failure contrast {index} has an invalid failed episode"
                 )
-            if report_sha256 is not None and (
+            if (
                 not isinstance(report_sha256, str)
                 or SHA256_IDENTITY.fullmatch(report_sha256) is None
             ):
                 raise ValueError(
                     f"repeated failure contrast {index} has an invalid verifier report digest"
                 )
-            if not isinstance(loci, list):
+            if (
+                not isinstance(counts, dict)
+                or set(counts) != FAILURE_COUNT_FIELDS
+                or not all(
+                    type(value) is int and value >= 0 for value in counts.values()
+                )
+                or counts["total_failed_tests"] == 0
+                or counts["retained_failed_tests"]
+                != counts["total_failed_tests"]
+                or counts["omitted_failed_tests"] != 0
+                or counts["unlocated_failed_tests"] != 0
+                or counts["ambiguous_failed_tests"] != 0
+            ):
+                raise ValueError(
+                    f"repeated failure contrast {index} has incomplete failure evidence"
+                )
+            if not isinstance(loci, list) or len(loci) != counts["total_failed_tests"]:
                 raise ValueError(
                     f"repeated failure contrast {index} has invalid failure loci"
                 )
@@ -976,10 +1015,21 @@ def require_failure_coverage(candidate, contrast):
         raise ValueError("causal contrast must cite every failed episode exactly once")
     for episode_id, attempt in expected.items():
         report_sha256 = attempt.get("verifier_report_sha256")
+        counts = attempt.get("failure_evidence_counts")
         expected_loci = {{locus.get("locus_sha256") for locus in attempt.get("failure_loci", [])}}
-        if not isinstance(report_sha256, str) or not expected_loci or None in expected_loci:
+        if (
+            not isinstance(report_sha256, str)
+            or not isinstance(counts, dict)
+            or counts.get("total_failed_tests") != len(expected_loci)
+            or counts.get("retained_failed_tests") != len(expected_loci)
+            or counts.get("omitted_failed_tests") != 0
+            or counts.get("unlocated_failed_tests") != 0
+            or counts.get("ambiguous_failed_tests") != 0
+            or not expected_loci
+            or None in expected_loci
+        ):
             raise ValueError(
-                "selected contrast lacks an exact verifier failure locus; choose insufficient-evidence"
+                "selected contrast lacks complete verifier failure loci"
             )
         citation = observed[episode_id]
         if citation.get("verifier_report_sha256") != report_sha256:
@@ -1013,11 +1063,17 @@ try:
             f"requested candidate kind requires branch {{expected_branch}}, received {{branch}}"
         )
     if branch not in ("insufficient-evidence", None):
-        selected_contrast = candidate.get("failure_contrast")
-        if selected_contrast not in failure_contrasts:
+        selected_digest = candidate.get("failure_contrast_sha256")
+        matches = [
+            contrast
+            for contrast in failure_contrasts
+            if contrast.get("contrast_sha256") == selected_digest
+        ]
+        if len(matches) != 1:
             raise ValueError(
                 "candidate does not select one supported repeated failure contrast"
             )
+        selected_contrast = matches[0]
         require_failure_coverage(candidate, selected_contrast)
     if branch == "configure-workflow":
         audit = validate_independent_audit(candidate.get("independent_audit"))
@@ -1132,7 +1188,7 @@ def build_config(
         "instructions": {
             "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
-            "evidence": "For a candidate-producing disposition, select one object from repeated_failure_contrasts and copy it unchanged into failure_contrast. For every failed attempt, cite its episode identity, verifier-report digest, and every failure-locus digest in causal_contrast.failed, then explain that attempt's locus. State one shared mechanism that accounts for every cited locus. An insufficient-evidence disposition omits failure_contrast, may leave causal_contrast.failed empty, and explains the missing shared mechanism in causal_contrast.difference. Diagnose only one task-specific contrast. Do not combine failure profiles or tasks. Choose insufficient-evidence when the loci do not support one shared mechanism or an attempt lacks an exact locus. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
+            "evidence": "For a candidate-producing disposition, select one object from repeated_failure_contrasts and return its contrast_sha256 as failure_contrast_sha256. For every failed attempt, cite its episode identity, verifier-report digest, and every failure-locus digest in causal_contrast.failed, then explain that attempt's locus. State one shared mechanism that accounts for every cited locus. An insufficient-evidence disposition omits failure_contrast_sha256, may leave causal_contrast.failed empty, and explains the missing shared mechanism in causal_contrast.difference. Diagnose only one task-specific contrast. Do not combine failure profiles or tasks. Choose insufficient-evidence when the loci do not support one shared mechanism. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
             "sufficiency": sufficiency,
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
@@ -1201,96 +1257,10 @@ def build_config(
                     "activation_path": {"type": "string", "minLength": 1},
                     "preserved_controls": {"type": "string", "minLength": 1},
                     "falsification_condition": {"type": "string", "minLength": 1},
-                    "failure_contrast": {
-                        "type": "object",
-                        "properties": {
-                            "task": {"type": "string", "minLength": 1},
-                            "failure_profile": {
-                                "type": "object",
-                                "properties": {
-                                    "outcome": {
-                                        "type": "object",
-                                        "properties": {
-                                            "kind": {"type": "string"},
-                                            "code": {"type": "string"},
-                                            "limit": {"type": "string"},
-                                        },
-                                        "additionalProperties": False,
-                                    },
-                                    "artifact_outcome_mismatch": {"type": "boolean"},
-                                    "failed_verifier_checks": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "name": {"type": "string"},
-                                                "failure_class": {"type": "string"},
-                                            },
-                                            "additionalProperties": False,
-                                        },
-                                    },
-                                },
-                                "required": [
-                                    "outcome",
-                                    "artifact_outcome_mismatch",
-                                    "failed_verifier_checks",
-                                ],
-                                "additionalProperties": False,
-                            },
-                            "failed_attempts": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "episode_id": {"type": "string", "minLength": 1},
-                                        "verifier_report_sha256": {
-                                            "type": "string",
-                                            "minLength": 1,
-                                        },
-                                        "failure_loci": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "name": {"type": "string"},
-                                                    "failure_class": {"type": "string"},
-                                                    "locus_sha256": {"type": "string"},
-                                                    "location": {"type": "string"},
-                                                    "assertion": {"type": "string"},
-                                                    "message": {"type": "string"},
-                                                },
-                                                "required": [
-                                                    "name",
-                                                    "failure_class",
-                                                    "locus_sha256",
-                                                ],
-                                                "additionalProperties": False,
-                                            },
-                                            "minItems": 1,
-                                        },
-                                    },
-                                    "required": [
-                                        "episode_id",
-                                        "verifier_report_sha256",
-                                        "failure_loci",
-                                    ],
-                                    "additionalProperties": False,
-                                },
-                                "minItems": 2,
-                            },
-                            "successful_episode_ids": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "minItems": 1,
-                            },
-                        },
-                        "required": [
-                            "task",
-                            "failure_profile",
-                            "failed_attempts",
-                            "successful_episode_ids",
-                        ],
-                        "additionalProperties": False,
+                    "failure_contrast_sha256": {
+                        "type": "string",
+                        "minLength": 71,
+                        "maxLength": 71,
                     },
                     "independent_audit": {
                         "type": "object",

@@ -64,19 +64,23 @@ which tasks may supply self-improvement evidence. The eligible set contains
 development tasks, capability-search tasks, and opened confirmation tasks.
 Calibration tasks and the sealed holdout remain outside that set.
 
-Evidence schema 5 groups failures by task, typed outcome, artifact mismatch,
+Evidence schema 6 groups failures by task, typed outcome, artifact mismatch,
 and named failed verifier checks. This coarse profile permits two failed
 attempts with different assertions to enter one same-task contrast. The
 contrast also requires one successful episode for the same task. Trial
 infrastructure failures cannot enter a contrast.
 
 The collector reloads the retained task-owned verifier artifact after Foe
-exits. Each failed attempt carries the artifact digest and bounded failure
-loci. A locus contains a normalized source location, assertion expression,
-and concise message when pytest or the Common Test Report Format (CTRF)
-supplies them. Its stable digest covers
-those fields and the named check. Volatile host paths, memory addresses, ANSI
-formatting, and the remaining traceback are excluded.
+exits. It requires regular files confined to the retained trial directory.
+The task name, task checksum, reward, error, and verifier digest must match
+the diagnosis written after that trial.
+
+Each failed attempt carries the verifier digest and bounded failure loci. A
+locus contains a normalized source location, assertion expression, and concise
+message when pytest or the Common Test Report Format (CTRF) supplies them. Its
+digest covers those fields and the normalized check name. Host paths, memory
+addresses, timestamps, terminal formatting, parameter values, and the
+remaining traceback are excluded.
 
 This collection step runs outside the task episode. The model that performs
 the task receives no task-owned grader output through this path. The later
@@ -88,10 +92,11 @@ retain model-authored completion details under `untrusted_completion_claim`.
 The compact JSON document contains at most 12 diagnoses and 48 KiB so one
 workflow result can carry the complete evidence document.
 
-A missing verifier artifact produces an explicit failed attempt without a
-locus. A malformed verifier artifact stops evidence collection. Candidate
-generation from a contrast with any missing locus is invalid, while a typed
-insufficient-evidence result remains valid.
+Every verifier report records total, retained, omitted, unlocated, and
+ambiguous failure counts. An attempt enters a repeated contrast only when each
+failed test has one unique bounded locus. Missing, malformed, partial, and
+ambiguous reports cannot support a contrast. A malformed artifact stops
+evidence collection.
 
 ## Identity-bound candidate workflow
 
@@ -100,8 +105,9 @@ bounded trajectory report produced outside the candidate's authority. The
 report identifies the evaluated source tree and runtime binary. Each eligible
 contrast names one task, at least two failed attempts, at least one successful
 episode identifier, and the common failure profile. Each failed attempt carries
-its verifier provenance and failure loci. Failed and successful identifiers
-must be disjoint.
+its verifier provenance, completeness counts, and failure loci. A digest
+identifies the complete contrast. Failed and successful identifiers must be
+disjoint.
 
 The runner copies the report into the retained run directory before creating
 the program. The resulting version 3 program contains three model nodes:
@@ -123,11 +129,12 @@ terminal audit ends after the source files have been produced, the runner can
 recover the typed diagnosis from its child episode and apply the source checker
 to the artifact.
 
-A candidate-producing diagnosis cites every failed episode, verifier-report
-digest, and locus digest from its selected contrast. It explains each local
-failure and states one shared mechanism. The diagnosis verifier rejects a
-missing or substituted citation. The diagnosis returns insufficient evidence
-when the loci do not support one shared mechanism.
+A candidate-producing diagnosis selects one contrast by its digest. It cites
+every failed episode, verifier-report digest, and locus digest from that
+contrast. It explains each local failure and states one shared mechanism. The
+diagnosis verifier rejects a missing or substituted citation. The diagnosis
+returns insufficient evidence when the loci do not support one shared
+mechanism.
 
 The default OpenAI service tier is `priority` for all three model nodes. A
 preview constructs and validates the complete program without creating the

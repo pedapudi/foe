@@ -18,12 +18,23 @@ MAX_EVIDENCE_TEXT = 320
 MAX_FAILURE_LOCATION = 160
 MAX_FAILURE_ASSERTION = 200
 MAX_FAILURE_MESSAGE = 200
+MAX_FAILURE_STATUS = 64
 
-ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
-MEMORY_ADDRESS = re.compile(r"\b0x[0-9a-fA-F]+\b")
-VOLATILE_PATH = re.compile(
-    r"/(?:tmp|var/tmp|home|private/var/folders)/[^\s,'\"()\[\]]+"
+ANSI_ESCAPE = re.compile(
+    r"(?:\x1b\](?:(?!\x07|\x1b\\)[^\r\n])*(?:\x07|\x1b\\|(?=\r?\n|$))"
+    r"|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-_])"
 )
+CONTROL_CHARACTER = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+MEMORY_ADDRESS = re.compile(r"\b0[xX][0-9a-fA-F]+\b")
+VOLATILE_PATH = re.compile(
+    r"/(?:tmp|var/tmp|home|root|workspace|workspaces|private/var/folders)"
+    r"(?=/|[\s,'\"()\[\]:]|$)(?:/[^\s,'\"()\[\]]*)?"
+)
+TIMESTAMP = re.compile(
+    r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b"
+)
+PARAMETER_VALUE = re.compile(r"\[[^\]\r\n]*\]")
 
 
 def read_event_file(path: Path) -> list[dict[str, Any]]:
@@ -76,10 +87,20 @@ def stable_verifier_text(value: Any, limit: int) -> str | None:
     if not isinstance(value, str) or not value.strip():
         return None
     value = ANSI_ESCAPE.sub("", value)
+    value = CONTROL_CHARACTER.sub("", value)
     value = MEMORY_ADDRESS.sub("<address>", value)
     value = VOLATILE_PATH.sub("<volatile-path>", value)
+    value = TIMESTAMP.sub("<timestamp>", value)
     collapsed = " ".join(value.split())
     return collapsed[:limit] if collapsed else None
+
+
+def stable_test_name(value: Any) -> str | None:
+    """Return a bounded test name without parameter values or host state."""
+    name = stable_verifier_text(value, MAX_EVIDENCE_TEXT)
+    if name is None:
+        return None
+    return PARAMETER_VALUE.sub("[<parameter>]", name)[:MAX_EVIDENCE_TEXT]
 
 
 def stable_python_location(path: str, line: str) -> str:
@@ -94,8 +115,8 @@ def stable_python_location(path: str, line: str) -> str:
     return location[:MAX_FAILURE_LOCATION]
 
 
-def assertion_expression(trace: str) -> str | None:
-    """Extract the source assertion that pytest marks as the failure site."""
+def assertion_expression(trace: str) -> tuple[str | None, bool]:
+    """Extract one source assertion and report ambiguous traceback content."""
     source = []
     observed = []
     for line in trace.splitlines():
@@ -107,9 +128,16 @@ def assertion_expression(trace: str) -> str | None:
             observed.append(rewritten.group(1))
     candidates = source or observed
     if not candidates:
-        return None
-    expression = re.sub(r",\s*(?:\(|[rubfRUBF]*['\"].*)$", "", candidates[-1])
-    return stable_verifier_text(expression, MAX_FAILURE_ASSERTION)
+        return None, False
+    normalized = []
+    for candidate in candidates:
+        expression = re.sub(r",\s*(?:\(|[rubfRUBF]*['\"].*)$", "", candidate)
+        stable = stable_verifier_text(expression, MAX_FAILURE_ASSERTION)
+        if stable is not None and stable not in normalized:
+            normalized.append(stable)
+    if len(normalized) != 1:
+        return None, len(normalized) > 1
+    return normalized[0], False
 
 
 def assertion_location(trace: str) -> str | None:
@@ -121,7 +149,9 @@ def assertion_location(trace: str) -> str | None:
     for line in trace.splitlines():
         match = pattern.match(line)
         if match:
-            locations.append(stable_python_location(match.group(1), match.group(2)))
+            location = stable_python_location(match.group(1), match.group(2))
+            if location not in locations:
+                locations.append(location)
     return locations[-1] if locations else None
 
 
@@ -139,39 +169,78 @@ def assertion_message(trace: str, fallback: Any) -> str | None:
     return stable_verifier_text(value, MAX_FAILURE_MESSAGE)
 
 
-def failure_locus(test: dict[str, Any], failure_class: str | None) -> dict[str, str] | None:
-    """Return a stable, bounded locator for one task-owned verifier failure."""
+def failure_locus_evidence(
+    test: dict[str, Any], failure_class: str | None
+) -> tuple[dict[str, str] | None, bool]:
+    """Return one bounded locator and whether the traceback was ambiguous."""
     trace = test.get("trace") if isinstance(test.get("trace"), str) else ""
+    assertion, ambiguous = assertion_expression(trace)
+    if ambiguous:
+        return None, True
     fields = {
         key: value
         for key, value in (
             ("location", assertion_location(trace)),
-            ("assertion", assertion_expression(trace)),
+            ("assertion", assertion),
             ("message", assertion_message(trace, test.get("message"))),
         )
         if value is not None
     }
     if not fields or not any(key in fields for key in ("location", "assertion")):
-        return None
+        return None, False
     identity = {
-        "test": bounded_text(test.get("name")),
+        "test": stable_test_name(test.get("name")),
         "failure_class": failure_class,
         **fields,
     }
     encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
-    return {
-        "locus_sha256": "sha256:" + hashlib.sha256(encoded).hexdigest(),
-        **fields,
-    }
+    return (
+        {
+            "locus_sha256": "sha256:" + hashlib.sha256(encoded).hexdigest(),
+            **fields,
+        },
+        False,
+    )
 
 
-def verifier_feedback(path: Path | None) -> dict[str, Any] | None:
+def failure_locus(test: dict[str, Any], failure_class: str | None) -> dict[str, str] | None:
+    """Return one stable, bounded locator for a verifier failure."""
+    return failure_locus_evidence(test, failure_class)[0]
+
+
+def require_confined_regular_file(path: Path, root: Path, label: str) -> Path:
+    """Resolve one regular file while rejecting symlinks and escaped paths."""
+    root = root.resolve(strict=True)
+    absolute = path.absolute()
+    try:
+        relative = absolute.relative_to(root)
+    except ValueError as error:
+        raise ValueError(f"{label} is outside its retained trial: {path}") from error
+    current = root
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            raise ValueError(f"{label} must not be a symlink: {path}")
+    resolved = absolute.resolve(strict=True)
+    if not resolved.is_relative_to(root) or not resolved.is_file():
+        raise ValueError(f"{label} is not a confined regular file: {path}")
+    return resolved
+
+
+def verifier_feedback(
+    path: Path | None, *, artifact_root: Path | None = None
+) -> dict[str, Any] | None:
     """Return bounded failure classes from Harbor's structured verifier report."""
     if path is None:
         return None
+    root = artifact_root if artifact_root is not None else path.parent
+    path = require_confined_regular_file(path, root, "Terminal-Bench result")
     report_path = path.parent / "verifier" / "ctrf.json"
     if not report_path.is_file():
         return None
+    report_path = require_confined_regular_file(
+        report_path, root, "Terminal-Bench verifier report"
+    )
     encoded = report_path.read_bytes()
     value = json.loads(encoded)
     results = value.get("results") if isinstance(value, dict) else None
@@ -188,24 +257,56 @@ def verifier_feedback(path: Path | None) -> dict[str, Any] | None:
     ]
     failures = []
     failure_classes = set()
+    locus_counts: Counter[str] = Counter()
+    unlocated = 0
+    ambiguous = 0
     for test in failed_tests:
         trace = test.get("trace") if isinstance(test.get("trace"), str) else ""
         classes = re.findall(r"\b([A-Za-z][A-Za-z0-9_.]*(?:Error|Exception))\b", trace)
-        failure_class = classes[-1] if classes else None
-        if failure_class:
-            failure_classes.add(failure_class)
-        failures.append(
-            {
-                "name": bounded_text(test.get("name")),
-                "status": test.get("status"),
-                "raw_status": test.get("raw_status"),
-                "failure_class": failure_class,
-                "message": stable_verifier_text(test.get("message"), MAX_EVIDENCE_TEXT),
-                "locus": failure_locus(test, failure_class),
-            }
+        failure_class = (
+            stable_verifier_text(classes[-1], MAX_FAILURE_STATUS) if classes else None
         )
-        if len(failures) == MAX_VERIFIER_FAILURES:
-            break
+        retain = len(failures) < MAX_VERIFIER_FAILURES
+        if retain and failure_class:
+            failure_classes.add(failure_class)
+        locus, locus_ambiguous = failure_locus_evidence(test, failure_class)
+        ambiguous += int(locus_ambiguous)
+        unlocated += int(locus is None and not locus_ambiguous)
+        if locus is not None:
+            locus_counts[locus["locus_sha256"]] += 1
+        if retain:
+            failures.append(
+                {
+                    "name": stable_test_name(test.get("name")),
+                    "status": stable_verifier_text(
+                        test.get("status"), MAX_FAILURE_STATUS
+                    ),
+                    "raw_status": stable_verifier_text(
+                        test.get("raw_status"), MAX_FAILURE_STATUS
+                    ),
+                    "failure_class": failure_class,
+                    "message": stable_verifier_text(
+                        test.get("message"), MAX_EVIDENCE_TEXT
+                    ),
+                    "locus": locus,
+                    "locus_ambiguous": locus_ambiguous,
+                }
+            )
+    ambiguous += sum(count for count in locus_counts.values() if count > 1)
+    for row in failures:
+        locus = row["locus"]
+        if (
+            isinstance(locus, dict)
+            and locus_counts[locus["locus_sha256"]] > 1
+        ):
+            row["locus_ambiguous"] = True
+    declared_failures = summary.get("failed")
+    total_failures = max(
+        len(failed_tests),
+        declared_failures
+        if type(declared_failures) is int and declared_failures >= 0
+        else 0,
+    )
     counts = {
         key: summary.get(key)
         for key in ("tests", "passed", "failed", "skipped", "pending", "other")
@@ -217,11 +318,19 @@ def verifier_feedback(path: Path | None) -> dict[str, Any] | None:
         "summary": counts,
         "failure_classes": sorted(failure_classes),
         "failures": failures,
-        "omitted_failures": max(0, len(failed_tests) - len(failures)),
+        "failure_evidence_counts": {
+            "total_failed_tests": total_failures,
+            "retained_failed_tests": len(failures),
+            "omitted_failed_tests": max(0, total_failures - len(failures)),
+            "unlocated_failed_tests": unlocated,
+            "ambiguous_failed_tests": ambiguous,
+        },
     }
 
 
-def trial_facts(path: Path | None) -> dict[str, Any]:
+def trial_facts(
+    path: Path | None, *, artifact_root: Path | None = None
+) -> dict[str, Any]:
     if path is None:
         return {
             "task": None,
@@ -231,6 +340,8 @@ def trial_facts(path: Path | None) -> dict[str, Any]:
             "estimated_cost_usd": None,
             "verifier_feedback": None,
         }
+    root = artifact_root if artifact_root is not None else path.parent
+    path = require_confined_regular_file(path, root, "Terminal-Bench result")
     value = json.loads(path.read_text(encoding="utf-8"))
     verifier = value.get("verifier_result")
     rewards = verifier.get("rewards") if isinstance(verifier, dict) else None
@@ -248,7 +359,7 @@ def trial_facts(path: Path | None) -> dict[str, Any]:
         "estimated_cost_usd": (
             estimated_cost if isinstance(estimated_cost, (int, float)) else None
         ),
-        "verifier_feedback": verifier_feedback(path),
+        "verifier_feedback": verifier_feedback(path, artifact_root=root),
     }
 
 
@@ -444,7 +555,7 @@ def diagnose_episode(
     ]
     runtime = start.get("runtime") if isinstance(start.get("runtime"), dict) else {}
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "evidence_identity": {
             "program_identity": start.get("identity"),
             "runtime_build": runtime.get("build"),

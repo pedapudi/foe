@@ -207,7 +207,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             ],
         )
         self.assertIn("falsification_condition", returns["required"])
-        self.assertIn("failure_contrast", returns["properties"])
+        self.assertIn("failure_contrast_sha256", returns["properties"])
         causal = returns["properties"]["causal_contrast"]
         self.assertNotIn("minItems", causal["properties"]["failed"])
         self.assertNotIn("shared_mechanism", causal["required"])
@@ -687,6 +687,13 @@ BASE_CONFIGURATION = {
 }
 EVIDENCE_SHA256 = "sha256:" + "3" * 64
 SUPPORTED_AUDIT = {"reasoning_effort": "high", "model_calls": 60}
+COMPLETE_FAILURE_COUNTS = {
+    "total_failed_tests": 1,
+    "retained_failed_tests": 1,
+    "omitted_failed_tests": 0,
+    "unlocated_failed_tests": 0,
+    "ambiguous_failed_tests": 0,
+}
 FAILURE_CONTRAST = {
     "task": "terminal-bench/example",
     "failure_profile": {
@@ -700,6 +707,7 @@ FAILURE_CONTRAST = {
         {
             "episode_id": "ep_failed_one",
             "verifier_report_sha256": "sha256:" + "4" * 64,
+            "failure_evidence_counts": COMPLETE_FAILURE_COUNTS,
             "failure_loci": [
                 {
                     "name": "test_public_interface",
@@ -714,6 +722,7 @@ FAILURE_CONTRAST = {
         {
             "episode_id": "ep_failed_two",
             "verifier_report_sha256": "sha256:" + "6" * 64,
+            "failure_evidence_counts": COMPLETE_FAILURE_COUNTS,
             "failure_loci": [
                 {
                     "name": "test_public_interface",
@@ -728,6 +737,18 @@ FAILURE_CONTRAST = {
     ],
     "successful_episode_ids": ["ep_success"],
 }
+FAILURE_CONTRAST["contrast_sha256"] = digest_bytes(
+    canonical_json(FAILURE_CONTRAST)
+)
+FAILURE_CONTRAST_SHA256 = FAILURE_CONTRAST["contrast_sha256"]
+
+
+def with_contrast_digest(value):
+    answer = {key: item for key, item in value.items() if key != "contrast_sha256"}
+    answer["contrast_sha256"] = digest_bytes(canonical_json(answer))
+    return answer
+
+
 VALID_CAUSAL_CONTRAST = {
     "failed": [
         {
@@ -790,7 +811,10 @@ class DiagnosisValidatorTest(unittest.TestCase):
             results = []
             for value in values:
                 if value.get("branch") not in ("insufficient-evidence", None):
-                    value = {"causal_contrast": VALID_CAUSAL_CONTRAST, **value}
+                    value = {
+                        "causal_contrast": VALID_CAUSAL_CONTRAST,
+                        **value,
+                    }
                 result = subprocess.run(
                     [str(validator)],
                     input=json.dumps(value),
@@ -816,10 +840,10 @@ class DiagnosisValidatorTest(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "no validated repeated failure contrast"):
                 supported_failure_contrasts(evidence)
-            invalid = {
+            invalid = with_contrast_digest({
                 **FAILURE_CONTRAST,
                 "failed_attempts": FAILURE_CONTRAST["failed_attempts"][:1],
-            }
+            })
             evidence.write_text(
                 json.dumps({"repeated_failure_contrasts": [invalid]}),
                 encoding="utf-8",
@@ -828,17 +852,17 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 supported_failure_contrasts(evidence)
 
     def test_supported_failure_contrasts_validate_nested_fields_and_disjoint_episodes(self):
-        malformed_profile = {
+        malformed_profile = with_contrast_digest({
             **FAILURE_CONTRAST,
             "failure_profile": {
                 **FAILURE_CONTRAST["failure_profile"],
                 "failed_verifier_checks": [{"name": "test_public_interface"}],
             },
-        }
-        overlapping_episodes = {
+        })
+        overlapping_episodes = with_contrast_digest({
             **FAILURE_CONTRAST,
             "successful_episode_ids": ["ep_failed_one"],
-        }
+        })
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "evidence.json"
             evidence.write_text(
@@ -854,11 +878,50 @@ class DiagnosisValidatorTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "reuses an episode across outcomes"):
                 supported_failure_contrasts(evidence)
 
+    def test_supported_failure_contrasts_reject_partial_loci_and_tampering(self):
+        incomplete_attempt = {
+            **FAILURE_CONTRAST["failed_attempts"][0],
+            "failure_evidence_counts": {
+                **COMPLETE_FAILURE_COUNTS,
+                "unlocated_failed_tests": 1,
+            },
+        }
+        incomplete = with_contrast_digest(
+            {
+                **FAILURE_CONTRAST,
+                "failed_attempts": [
+                    incomplete_attempt,
+                    FAILURE_CONTRAST["failed_attempts"][1],
+                ],
+            }
+        )
+        tampered = {**FAILURE_CONTRAST, "task": "terminal-bench/different"}
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text(
+                json.dumps({"repeated_failure_contrasts": [incomplete]}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "incomplete failure evidence"):
+                supported_failure_contrasts(evidence)
+            evidence.write_text(
+                json.dumps({"repeated_failure_contrasts": [tampered]}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "invalid contrast digest"):
+                supported_failure_contrasts(evidence)
+
     def test_requested_candidate_kind_is_enforced_by_the_diagnosis_verifier(self):
         judged = self.judgments(
             [
-                {"branch": "implement-source", "failure_contrast": FAILURE_CONTRAST},
-                {"branch": "configure-workflow", "failure_contrast": FAILURE_CONTRAST},
+                {
+                    "branch": "implement-source",
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
+                },
+                {
+                    "branch": "configure-workflow",
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
+                },
                 {"branch": "insufficient-evidence"},
             ],
             "source-change",
@@ -887,22 +950,22 @@ class DiagnosisValidatorTest(unittest.TestCase):
             [
                 {
                     "branch": "implement-source",
-                    "failure_contrast": FAILURE_CONTRAST,
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "causal_contrast": VALID_CAUSAL_CONTRAST,
                 },
                 {
                     "branch": "implement-source",
-                    "failure_contrast": FAILURE_CONTRAST,
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "causal_contrast": missing_attempt,
                 },
                 {
                     "branch": "implement-source",
-                    "failure_contrast": FAILURE_CONTRAST,
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "causal_contrast": missing_locus,
                 },
                 {
                     "branch": "implement-source",
-                    "failure_contrast": FAILURE_CONTRAST,
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "causal_contrast": missing_mechanism,
                 },
             ]
@@ -912,30 +975,37 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertIn("every failure locus exactly once", judged[2])
         self.assertIn("one shared failure mechanism", judged[3])
 
-    def test_missing_verifier_output_permits_only_insufficient_evidence(self):
-        incomplete = {
+    def test_incomplete_failure_evidence_cannot_produce_a_candidate(self):
+        incomplete = with_contrast_digest({
             **FAILURE_CONTRAST,
             "failed_attempts": [
                 FAILURE_CONTRAST["failed_attempts"][0],
                 {
                     "episode_id": "ep_failed_two",
                     "verifier_report_sha256": None,
+                    "failure_evidence_counts": {
+                        "total_failed_tests": 1,
+                        "retained_failed_tests": 1,
+                        "omitted_failed_tests": 0,
+                        "unlocated_failed_tests": 1,
+                        "ambiguous_failed_tests": 0,
+                    },
                     "failure_loci": [],
                 },
             ],
-        }
+        })
         judged = self.judgments(
             [
                 {
                     "branch": "implement-source",
-                    "failure_contrast": incomplete,
+                    "failure_contrast_sha256": incomplete["contrast_sha256"],
                     "causal_contrast": VALID_CAUSAL_CONTRAST,
                 },
                 {"branch": "insufficient-evidence"},
             ],
             failure_contrasts=[incomplete],
         )
-        self.assertIn("choose insufficient-evidence", judged[0])
+        self.assertIn("complete verifier failure loci", judged[0])
         self.assertEqual(judged[1], "")
 
     def test_validator_accepts_each_valid_diagnosis_and_reports_findings(self):
@@ -944,27 +1014,27 @@ class DiagnosisValidatorTest(unittest.TestCase):
             [
                 {
                     "branch": "configure-workflow",
-                    "failure_contrast": FAILURE_CONTRAST,
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "independent_audit": SUPPORTED_AUDIT,
                 },
                 {
                     "branch": "configure-workflow",
-                    "failure_contrast": FAILURE_CONTRAST,
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "independent_audit": {"reasoning_effort": "xhigh", "model_calls": 120},
                 },
                 {
                     "branch": "revise-instructions",
-                    "failure_contrast": FAILURE_CONTRAST,
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "instruction_revision": REVISION,
                 },
                 {
                     "branch": "revise-instructions",
-                    "failure_contrast": FAILURE_CONTRAST,
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "instruction_revision": {**REVISION, "old_text": "absent text"},
                 },
                 {
                     "branch": "define-tool",
-                    "failure_contrast": FAILURE_CONTRAST,
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "tool_definition": {
                         "name": "check-layout",
                         "description": "Verify the workspace layout.",
@@ -974,7 +1044,7 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 },
                 {
                     "branch": "define-tool",
-                    "failure_contrast": FAILURE_CONTRAST,
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "tool_definition": {
                         "name": "check-layout",
                         "description": "Verify the workspace layout.",
@@ -982,16 +1052,19 @@ class DiagnosisValidatorTest(unittest.TestCase):
                         "executable_sha256": "sha256:" + "0" * 64,
                     },
                 },
-                {"branch": "implement-source", "failure_contrast": FAILURE_CONTRAST},
                 {
                     "branch": "implement-source",
-                    "failure_contrast": {
-                        **FAILURE_CONTRAST,
-                        "task": "terminal-bench/different-task",
-                    },
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
+                },
+                {
+                    "branch": "implement-source",
+                    "failure_contrast_sha256": "sha256:" + "0" * 64,
                 },
                 {"branch": "insufficient-evidence"},
-                {"branch": "unknown", "failure_contrast": FAILURE_CONTRAST},
+                {
+                    "branch": "unknown",
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
+                },
                 {"branch": "implement-source"},
             ]
         )

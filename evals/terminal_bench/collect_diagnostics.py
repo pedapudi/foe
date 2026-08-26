@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Any
 sys.path.append(str(Path(__file__).resolve().parent.parent / "harness_bench"))
 from foe_source_identity import evaluated_foe, require_evaluated_foe
 from run import read_cases
-from trajectory_diagnostics import verifier_feedback
+from trajectory_diagnostics import require_confined_regular_file, trial_facts
 
 MAX_DIAGNOSES = 12
 # The evidence enters a diagnosis child through one root workflow result.
@@ -388,9 +389,31 @@ def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, 
         }
         feedback = report.get("verifier_feedback")
         feedback = feedback if isinstance(feedback, dict) else {}
+        counts = feedback.get("failure_evidence_counts")
+        failures_value = feedback.get("failures")
+        if (
+            not isinstance(counts, dict)
+            or set(counts)
+            != {
+                "total_failed_tests",
+                "retained_failed_tests",
+                "omitted_failed_tests",
+                "unlocated_failed_tests",
+                "ambiguous_failed_tests",
+            }
+            or not all(type(value) is int and value >= 0 for value in counts.values())
+            or counts["total_failed_tests"] == 0
+            or counts["retained_failed_tests"] != counts["total_failed_tests"]
+            or counts["omitted_failed_tests"] != 0
+            or counts["unlocated_failed_tests"] != 0
+            or counts["ambiguous_failed_tests"] != 0
+            or not isinstance(failures_value, list)
+            or len(failures_value) != counts["retained_failed_tests"]
+        ):
+            continue
         checks = []
         failure_loci = []
-        for failure in feedback.get("failures", []):
+        for failure in failures_value:
             if not isinstance(failure, dict):
                 continue
             name = failure.get("name")
@@ -428,6 +451,12 @@ def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, 
                         },
                     }
                 )
+        if (
+            len(failure_loci) != counts["total_failed_tests"]
+            or len({locus["locus_sha256"] for locus in failure_loci})
+            != len(failure_loci)
+        ):
+            continue
         profile = {
             "outcome": outcome_profile,
             "artifact_outcome_mismatch": report.get("artifact_outcome_mismatch") is True,
@@ -451,6 +480,7 @@ def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, 
             "verifier_report_sha256": (
                 report_sha256 if isinstance(report_sha256, str) else None
             ),
+            "failure_evidence_counts": counts,
             "failure_loci": sorted(
                 failure_loci,
                 key=lambda locus: (
@@ -477,14 +507,21 @@ def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, 
         successful_episode_ids = sorted(successes_by_task.get(group["task"], set()))
         if len(failed_attempts) < 2 or not successful_episode_ids:
             continue
-        answer.append(
-            {
-                "task": group["task"],
-                "failure_profile": group["failure_profile"],
-                "failed_attempts": failed_attempts,
-                "successful_episode_ids": successful_episode_ids,
-            }
-        )
+        contrast = {
+            "task": group["task"],
+            "failure_profile": group["failure_profile"],
+            "failed_attempts": failed_attempts,
+            "successful_episode_ids": successful_episode_ids,
+        }
+        contrast["contrast_sha256"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                contrast,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
+        answer.append(contrast)
     return answer
 
 
@@ -505,7 +542,11 @@ def collect(
     reports = []
     runs = []
     for run_dir in run_dirs:
+        run_dir = run_dir.resolve(strict=True)
         manifest_path = run_dir / "campaign.json"
+        manifest_path = require_confined_regular_file(
+            manifest_path, run_dir, "Terminal-Bench campaign manifest"
+        )
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest_identity = require_evaluated_foe(
             manifest.get("evaluated_foe"), f"Terminal-Bench manifest {manifest_path}"
@@ -519,11 +560,48 @@ def collect(
             raise ValueError(f"Terminal-Bench run has no Foe diagnostics: {run_dir}")
         evaluation = evaluation_metadata(manifest, manifest_path)
         for path in diagnostic_paths:
+            path = require_confined_regular_file(
+                path, run_dir, "Foe trajectory diagnosis"
+            )
             report = json.loads(path.read_text(encoding="utf-8"))
             trial_result = path.parent.parent / "result.json"
-            report["verifier_feedback"] = verifier_feedback(
-                trial_result if trial_result.is_file() else None
+            facts = trial_facts(trial_result, artifact_root=run_dir)
+            identity_value = report.get("evidence_identity")
+            prior_feedback = report.get("verifier_feedback")
+            current_feedback = facts["verifier_feedback"]
+            prior_digest = (
+                prior_feedback.get("sha256")
+                if isinstance(prior_feedback, dict)
+                else None
             )
+            current_digest = (
+                current_feedback.get("sha256")
+                if isinstance(current_feedback, dict)
+                else None
+            )
+            expected = {
+                "task": report.get("task"),
+                "task_checksum": (
+                    identity_value.get("task_checksum")
+                    if isinstance(identity_value, dict)
+                    else None
+                ),
+                "reward": report.get("verifier_reward"),
+                "error": report.get("trial_error"),
+                "verifier_report_sha256": prior_digest,
+            }
+            observed = {
+                "task": facts["task"],
+                "task_checksum": facts["task_checksum"],
+                "reward": facts["reward"],
+                "error": facts["error"],
+                "verifier_report_sha256": current_digest,
+            }
+            if expected != observed:
+                raise ValueError(
+                    f"trajectory diagnosis does not match its retained result or verifier report: {path}"
+                )
+            report["verifier_feedback"] = current_feedback
             task = report.get("task")
             task_name = task.rsplit("/", 1)[-1] if isinstance(task, str) else None
             if task_name not in eligible_tasks:
@@ -538,7 +616,7 @@ def collect(
                 raise ValueError(f"self-improvement evidence exceeds {MAX_DIAGNOSES} trajectory diagnoses")
         runs.append({**evaluation, "diagnoses": len(diagnostic_paths)})
     answer = {
-        "schema_version": 5,
+        "schema_version": 6,
         "evaluated_foe": identity,
         "runs": runs,
         "evaluation_summary": evaluation_summary(reports),

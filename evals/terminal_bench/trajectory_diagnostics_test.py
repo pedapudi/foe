@@ -61,6 +61,15 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
             annealing_failure["locus"]["locus_sha256"],
         )
         self.assertNotEqual(temperature["sha256"], annealing["sha256"])
+        complete = {
+            "total_failed_tests": 1,
+            "retained_failed_tests": 1,
+            "omitted_failed_tests": 0,
+            "unlocated_failed_tests": 0,
+            "ambiguous_failed_tests": 0,
+        }
+        self.assertEqual(temperature["failure_evidence_counts"], complete)
+        self.assertEqual(annealing["failure_evidence_counts"], complete)
 
     def test_failure_locus_removes_volatile_paths_and_addresses(self):
         locus = failure_locus(
@@ -82,6 +91,190 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
         self.assertNotIn("pytest-391", encoded)
         self.assertNotIn("7ff01234", encoded)
 
+    def test_failure_locus_stabilizes_host_state_and_parameterized_names(self):
+        first = failure_locus(
+            {
+                "name": "tests/test_worker.py::test_result[2026-08-26T10:22:31Z]",
+                "trace": (
+                    "> assert result == expected\n"
+                    "E AssertionError: \x1b]0;first-title\x07failed at "
+                    "/workspace/job-17 on 2026-08-26T10:22:31Z\n"
+                    "/root/source/tests/test_worker.py:47: AssertionError\n"
+                ),
+            },
+            "AssertionError",
+        )
+        second = failure_locus(
+            {
+                "name": "tests/test_worker.py::test_result[2026-08-26T11:23:32Z]",
+                "trace": (
+                    "> assert result == expected\n"
+                    "E AssertionError: \x1b]0;second-title\x07failed at "
+                    "/workspace/job-18 on 2026-08-26T11:23:32Z\n"
+                    "/root/source/tests/test_worker.py:47: AssertionError\n"
+                ),
+            },
+            "AssertionError",
+        )
+        self.assertEqual(first, second)
+        encoded = json.dumps(first)
+        self.assertNotIn("workspace", encoded)
+        self.assertNotIn("root/source", encoded)
+        self.assertNotIn("2026-08-26", encoded)
+        self.assertNotIn("title", encoded)
+
+    def test_failure_locus_removes_absolute_non_test_roots_and_malformed_osc(self):
+        first = failure_locus(
+            {
+                "name": "check_result[first]",
+                "trace": (
+                    "> assert result == 0XABCD\n"
+                    "E AssertionError: /workspace at 2026-08-26 10:22:31 "
+                    "\x1b]unterminated title\n"
+                    "/workspace/job-17/check.py:47: AssertionError\n"
+                ),
+            },
+            "AssertionError",
+        )
+        second = failure_locus(
+            {
+                "name": "check_result[second]",
+                "trace": (
+                    "> assert result == 0X1234\n"
+                    "E AssertionError: /root at 2026-08-26 11:23:32 "
+                    "\x1b]another unterminated title\n"
+                    "/root/job-18/check.py:47: AssertionError\n"
+                ),
+            },
+            "AssertionError",
+        )
+        self.assertEqual(first, second)
+        self.assertEqual(first["location"], "check.py:47")
+        encoded = json.dumps(first)
+        self.assertNotIn("workspace", encoded)
+        self.assertNotIn("root", encoded)
+        self.assertNotIn("unterminated", encoded)
+        self.assertNotIn("0X", encoded)
+
+    def test_verifier_feedback_marks_ambiguous_and_omitted_loci(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            trial = root / "result.json"
+            trial.write_text("{}\n", encoding="utf-8")
+            verifier = root / "verifier"
+            verifier.mkdir()
+            tests = [
+                {
+                    "name": "test_monolithic",
+                    "status": "failed",
+                    "raw_status": "call_failed",
+                    "trace": (
+                        "> assert first_condition\n"
+                        "/tests/test_outputs.py:10: AssertionError\n"
+                        "> assert unrelated_condition\n"
+                        "/tests/test_outputs.py:20: AssertionError\n"
+                    ),
+                },
+                *[
+                    {
+                        "name": f"test_{index}",
+                        "status": "failed",
+                        "raw_status": "call_failed",
+                        "trace": (
+                            f"> assert value == {index}\n"
+                            f"/tests/test_outputs.py:{30 + index}: AssertionError\n"
+                        ),
+                    }
+                    for index in range(5)
+                ],
+            ]
+            (verifier / "ctrf.json").write_text(
+                json.dumps({"results": {"tests": tests}}), encoding="utf-8"
+            )
+            feedback = verifier_feedback(trial)
+        self.assertEqual(
+            feedback["failure_evidence_counts"],
+            {
+                "total_failed_tests": 6,
+                "retained_failed_tests": 4,
+                "omitted_failed_tests": 2,
+                "unlocated_failed_tests": 0,
+                "ambiguous_failed_tests": 1,
+            },
+        )
+        self.assertIsNone(feedback["failures"][0]["locus"])
+        self.assertTrue(feedback["failures"][0]["locus_ambiguous"])
+
+    def test_verifier_feedback_bounds_status_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            trial = root / "result.json"
+            trial.write_text("{}\n", encoding="utf-8")
+            verifier = root / "verifier"
+            verifier.mkdir()
+            huge = "grader-text-" * 5_000
+            (verifier / "ctrf.json").write_text(
+                json.dumps(
+                    {
+                        "results": {
+                            "tests": [
+                                {
+                                    "name": "test_result[param-secret]",
+                                    "status": huge,
+                                    "raw_status": huge,
+                                    "trace": "> assert result\n/tests/test.py:1: AssertionError",
+                                }
+                            ]
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            feedback = verifier_feedback(trial)
+        failure = feedback["failures"][0]
+        self.assertEqual(failure["name"], "test_result[<parameter>]")
+        self.assertEqual(len(failure["status"]), 64)
+        self.assertEqual(len(failure["raw_status"]), 64)
+
+    def test_verifier_summary_cannot_hide_omitted_failed_tests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            trial = root / "result.json"
+            trial.write_text("{}\n", encoding="utf-8")
+            verifier = root / "verifier"
+            verifier.mkdir()
+            (verifier / "ctrf.json").write_text(
+                json.dumps(
+                    {
+                        "results": {
+                            "summary": {"failed": 3},
+                            "tests": [
+                                {
+                                    "name": "test_result",
+                                    "status": "failed",
+                                    "trace": (
+                                        "> assert result\n"
+                                        "/tests/test_outputs.py:1: AssertionError"
+                                    ),
+                                }
+                            ],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            feedback = verifier_feedback(trial)
+        self.assertEqual(
+            feedback["failure_evidence_counts"],
+            {
+                "total_failed_tests": 3,
+                "retained_failed_tests": 1,
+                "omitted_failed_tests": 2,
+                "unlocated_failed_tests": 0,
+                "ambiguous_failed_tests": 0,
+            },
+        )
+
     def test_verifier_feedback_distinguishes_missing_and_malformed_reports(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -94,6 +287,24 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
             (verifier / "ctrf.json").write_text("{malformed\n", encoding="utf-8")
             with self.assertRaises(json.JSONDecodeError):
                 verifier_feedback(trial)
+            (verifier / "ctrf.json").write_bytes(b"\xff\xfe{}")
+            with self.assertRaises(json.JSONDecodeError):
+                verifier_feedback(trial)
+
+    def test_verifier_feedback_rejects_escaped_and_symlinked_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root = parent / "retained"
+            root.mkdir()
+            outside = parent / "result.json"
+            outside.write_text("{}\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "outside its retained trial"):
+                verifier_feedback(outside, artifact_root=root)
+
+            linked = root / "result.json"
+            linked.symlink_to(outside)
+            with self.assertRaisesRegex(ValueError, "must not be a symlink"):
+                verifier_feedback(linked, artifact_root=root)
 
     def test_a_generic_ctrf_message_does_not_claim_an_exact_locus(self):
         self.assertIsNone(
@@ -223,7 +434,7 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
             report = diagnose_episode(root, trial_result=trial)
 
         self.assertEqual(report["evidence_identity"]["runtime_build"], "sha256:runtime")
-        self.assertEqual(report["schema_version"], 4)
+        self.assertEqual(report["schema_version"], 5)
         self.assertEqual(report["usage"]["model_calls"], 3)
         self.assertEqual(report["usage"]["input_tokens"], 325)
         self.assertEqual(report["usage"]["cache_read_tokens"], 145)

@@ -791,24 +791,33 @@ recorded. Verified task quality governs candidate promotion.
 
 The digest retains the final edit and a bounded sequence of later tool results
 for each episode. The collector reloads each retained task-owned verifier
-artifact after Foe exits. Task execution therefore cannot receive grader data
-through the diagnostic path.
+artifact after Foe exits. It accepts only regular files confined to the trial
+directory. The retained task identity, checksum, reward, error, and verifier
+digest must agree. Task execution therefore cannot receive grader data through
+the diagnostic path.
 
 Structured verifier reports contribute counts, failure classes, and a content
 digest. Each failed attempt also carries bounded assertion loci. A locus
 contains its normalized location, assertion expression, concise message, and
-stable digest. Raw traceback text stays outside the self-improvement evidence.
+digest. Host paths, addresses, timestamps, terminal formatting, parameter
+values, and raw traceback text stay outside the self-improvement evidence.
+
+Each attempt records total, retained, omitted, unlocated, and ambiguous
+failure counts. A repeated contrast requires one unique bounded locus for
+every failed test. Partial or ambiguous failure evidence cannot enter a
+contrast.
 
 The task registry admits development, capability-search, and opened
 confirmation artifacts. Calibration and sealed-holdout artifacts remain
 excluded. Confirmation artifacts stay protected until their candidate
 disposition is recorded and the registry is updated.
 
-A candidate-producing diagnosis must cite every failed episode, verifier
-report digest, and failure-locus digest. It must explain each local assertion
-and state one shared mechanism. Heterogeneous loci that do not support one
-mechanism require an insufficient-evidence result. The diagnosis also states a
-falsifying observation and the activation path under the evaluated program.
+A candidate-producing diagnosis selects one repeated contrast by its digest.
+It must cite every failed episode, verifier-report digest, and failure-locus
+digest in that contrast. It must explain each local assertion and state one
+shared mechanism. Heterogeneous loci that do not support one mechanism require
+an insufficient-evidence result. The diagnosis also states a falsifying
+observation and the activation path under the evaluated program.
 
 A request without provider usage invalidates exact cost and token claims. The
 retained campaign record identifies each incomplete resource record. Runtime
@@ -2007,12 +2016,19 @@ Episode `ep_01be21a9` received full task-owned credit under the same execution
 configuration. The collector therefore produces one repeated same-task
 contrast with two distinct failed-attempt loci and one successful episode.
 Grouping remains coarse enough to acquire the contrast, while diagnosis sees
-the assertion heterogeneity.
+the assertion heterogeneity. The contrast digest is
+`sha256:4a84ee05fafe94143a1b266d1faac110de591f5b28791de25bddca0efc4b92a2`.
+
+Each failed attempt has one total and retained failed test. Both attempts have
+zero omitted, unlocated, and ambiguous failures. The collector rejects an
+attempt from contrast construction when any completeness count is nonzero or
+the locus digests are not unique.
 
 The diagnosis validator requires citations for both failed episodes, both
 verifier artifact digests, and both locus digests. It also requires a local
-explanation for each attempt and one shared mechanism. An absent locus or an
-unsupported shared mechanism permits only an insufficient-evidence result.
+explanation for each attempt and one shared mechanism. An unsupported shared
+mechanism permits only an insufficient-evidence result. A missing or ambiguous
+locus prevents construction of the contrast before a model request.
 
 The retained attempts are:
 
@@ -2022,5 +2038,6 @@ The retained attempts are:
 
 The regression fixtures contain only the failed assertion region from each
 CTRF artifact. Additional tests cover missing and malformed verifier output,
-volatile path and address removal, and the registry exclusion for calibration
-and sealed-holdout artifacts. This qualification made no provider request.
+stale result metadata, changed verifier digests, symlinked artifacts, bounded
+status fields, ambiguous assertions, host-state normalization, and protected
+task groups. This qualification made no provider request.

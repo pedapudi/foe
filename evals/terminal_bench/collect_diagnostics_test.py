@@ -140,25 +140,33 @@ class CollectDiagnosticsTest(unittest.TestCase):
         agent = run / "task" / "trial" / "agent"
         agent.mkdir(parents=True)
         trial = agent.parent
-        (trial / "result.json").write_text("{}\n", encoding="utf-8")
-        verifier = trial / "verifier"
-        verifier.mkdir()
-        (verifier / "ctrf.json").write_text(
+        (trial / "result.json").write_text(
             json.dumps(
                 {
-                    "results": {
-                        "summary": {"tests": 1, "passed": 1, "failed": 0},
-                        "tests": [
-                            {
-                                "name": "test_outputs.py::test_public_interface",
-                                "status": "passed",
-                            }
-                        ],
-                    }
+                    "task_name": "terminal-bench/example",
+                    "task_checksum": "sha256:task",
+                    "verifier_result": {"rewards": {"reward": 1.0}},
+                    "exception_info": None,
                 }
             ),
             encoding="utf-8",
         )
+        verifier = trial / "verifier"
+        verifier.mkdir()
+        ctrf = json.dumps(
+            {
+                "results": {
+                    "summary": {"tests": 1, "passed": 1, "failed": 0},
+                    "tests": [
+                        {
+                            "name": "test_outputs.py::test_public_interface",
+                            "status": "passed",
+                        }
+                    ],
+                }
+            }
+        ).encode()
+        (verifier / "ctrf.json").write_bytes(ctrf)
         (run / "campaign.json").write_text(
             json.dumps(
                 {
@@ -191,11 +199,14 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     "evidence_identity": {
                         "runtime_build": identity["runtime_binary"],
                         "episode_id": "ep_root",
+                        "task_checksum": "sha256:task",
                     },
                     "task": "terminal-bench/example",
                     "verifier_reward": 1.0,
+                    "trial_error": None,
                     "artifact_outcome_mismatch": False,
                     "verifier_feedback": {
+                        "sha256": "sha256:" + hashlib.sha256(ctrf).hexdigest(),
                         "failure_classes": [],
                         "summary": {"tests": 1, "passed": 1, "failed": 0},
                     },
@@ -228,7 +239,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
             source, binary, run, identity = self.fixture(Path(directory))
             report = collect(source, binary, [run], {"example"})
         self.assertEqual(report["evaluated_foe"], identity)
-        self.assertEqual(report["schema_version"], 5)
+        self.assertEqual(report["schema_version"], 6)
         diagnosis = report["trajectory_diagnostics"][0]
         self.assertEqual(diagnosis["task"], "terminal-bench/example")
         self.assertEqual(diagnosis["evaluation"]["label"], "development")
@@ -280,14 +291,16 @@ class CollectDiagnosticsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source, binary, run, _ = self.fixture(Path(directory))
             diagnosis_path = next(run.glob("*/*/agent/foe-diagnostics.json"))
+            trial = diagnosis_path.parent.parent
+            fixture = Path(__file__).with_name("testdata") / "dna_tm_delta_ctrf.json"
+            retained = fixture.read_bytes()
+            (trial / "verifier" / "ctrf.json").write_bytes(retained)
             diagnosis = json.loads(diagnosis_path.read_text(encoding="utf-8"))
             diagnosis["verifier_feedback"] = {
+                "sha256": "sha256:" + hashlib.sha256(retained).hexdigest(),
                 "failures": [{"name": "model-supplied-check", "message": "untrusted"}]
             }
             diagnosis_path.write_text(json.dumps(diagnosis), encoding="utf-8")
-            trial = diagnosis_path.parent.parent
-            fixture = Path(__file__).with_name("testdata") / "dna_tm_delta_ctrf.json"
-            (trial / "verifier" / "ctrf.json").write_bytes(fixture.read_bytes())
 
             report = collect(source, binary, [run], {"example"})
 
@@ -298,6 +311,49 @@ class CollectDiagnosticsTest(unittest.TestCase):
             "abs(fwd_tm - rev_tm) <= 5",
         )
         self.assertNotIn("model-supplied-check", json.dumps(feedback))
+
+    def test_collector_rejects_stale_or_swapped_trial_artifacts(self):
+        mutations = {
+            "task": lambda result, diagnosis: result.update(
+                task_name="terminal-bench/different"
+            ),
+            "task checksum": lambda result, diagnosis: result.update(
+                task_checksum="sha256:different"
+            ),
+            "reward": lambda result, diagnosis: result["verifier_result"][
+                "rewards"
+            ].update(reward=0.0),
+            "error": lambda result, diagnosis: result.update(
+                exception_info={"type": "VerifierError"}
+            ),
+            "verifier digest": lambda result, diagnosis: diagnosis[
+                "verifier_feedback"
+            ].update(sha256="sha256:" + "0" * 64),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                source, binary, run, _ = self.fixture(Path(directory))
+                diagnosis_path = next(run.glob("*/*/agent/foe-diagnostics.json"))
+                result_path = diagnosis_path.parent.parent / "result.json"
+                result = json.loads(result_path.read_text(encoding="utf-8"))
+                diagnosis = json.loads(diagnosis_path.read_text(encoding="utf-8"))
+                mutate(result, diagnosis)
+                result_path.write_text(json.dumps(result), encoding="utf-8")
+                diagnosis_path.write_text(json.dumps(diagnosis), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "does not match"):
+                    collect(source, binary, [run], {"example", "different"})
+
+    def test_collector_rejects_a_symlinked_verifier_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, binary, run, _ = self.fixture(root)
+            report = next(run.glob("*/*/verifier/ctrf.json"))
+            outside = root / "outside-ctrf.json"
+            outside.write_bytes(report.read_bytes())
+            report.unlink()
+            report.symlink_to(outside)
+            with self.assertRaisesRegex(ValueError, "must not be a symlink"):
+                collect(source, binary, [run], {"example"})
 
     def test_repeated_failure_contrast_keeps_distinct_loci_in_one_coarse_profile(self):
         def report(episode: str, reward: float, check: str, locus: str = "same") -> dict:
@@ -310,6 +366,13 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 "artifact_outcome_mismatch": reward == 0,
                 "verifier_feedback": {
                     "sha256": "sha256:" + ("1" if locus == "same" else "2") * 64,
+                    "failure_evidence_counts": {
+                        "total_failed_tests": int(reward == 0),
+                        "retained_failed_tests": int(reward == 0),
+                        "omitted_failed_tests": 0,
+                        "unlocated_failed_tests": 0,
+                        "ambiguous_failed_tests": 0,
+                    },
                     "failures": (
                         [
                             {
@@ -345,10 +408,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
             report("ep_different_failure", 0.0, "test_file_layout"),
             report("ep_success", 1.0, ""),
         ]
-        self.assertEqual(
-            repeated_failure_contrasts(reports),
-            [
-                {
+        expected = {
                     "task": "terminal-bench/example",
                     "failure_profile": {
                         "outcome": {"kind": "completed"},
@@ -364,6 +424,13 @@ class CollectDiagnosticsTest(unittest.TestCase):
                         {
                             "episode_id": "ep_failed_one",
                             "verifier_report_sha256": "sha256:" + "1" * 64,
+                            "failure_evidence_counts": {
+                                "total_failed_tests": 1,
+                                "retained_failed_tests": 1,
+                                "omitted_failed_tests": 0,
+                                "unlocated_failed_tests": 0,
+                                "ambiguous_failed_tests": 0,
+                            },
                             "failure_loci": [
                                 {
                                     "name": "test_public_interface",
@@ -378,6 +445,13 @@ class CollectDiagnosticsTest(unittest.TestCase):
                         {
                             "episode_id": "ep_failed_two",
                             "verifier_report_sha256": "sha256:" + "2" * 64,
+                            "failure_evidence_counts": {
+                                "total_failed_tests": 1,
+                                "retained_failed_tests": 1,
+                                "omitted_failed_tests": 0,
+                                "unlocated_failed_tests": 0,
+                                "ambiguous_failed_tests": 0,
+                            },
                             "failure_loci": [
                                 {
                                     "name": "test_public_interface",
@@ -391,9 +465,16 @@ class CollectDiagnosticsTest(unittest.TestCase):
                         },
                     ],
                     "successful_episode_ids": ["ep_success"],
-                }
-            ],
-        )
+        }
+        expected["contrast_sha256"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                expected,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
+        self.assertEqual(repeated_failure_contrasts(reports), [expected])
 
         reports = [
             report("ep_failed_one", 0.0, "test_public_interface"),
@@ -414,13 +495,9 @@ class CollectDiagnosticsTest(unittest.TestCase):
             failed["verifier_feedback"]["failures"][0]["failure_class"] = None
             failed["verifier_feedback"]["failures"][0]["raw_status"] = "call_failed"
             failed["verifier_feedback"]["failures"][0]["locus"] = None
-        contrast = repeated_failure_contrasts(reports)[0]
-        self.assertEqual(
-            contrast["failure_profile"]["failed_verifier_checks"],
-            [{"name": "test_public_interface", "failure_class": "call_failed"}],
-        )
+        self.assertEqual(repeated_failure_contrasts(reports), [])
 
-    def test_missing_verifier_output_is_explicit_in_the_failed_attempt(self):
+    def test_missing_verifier_output_cannot_enter_a_failure_contrast(self):
         def failed(episode: str) -> dict:
             return {
                 "task": "terminal-bench/example",
@@ -441,22 +518,60 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 "artifact_outcome_mismatch": False,
             },
         ]
-        contrast = repeated_failure_contrasts(reports)[0]
-        self.assertEqual(
-            contrast["failed_attempts"],
-            [
-                {
-                    "episode_id": "ep_failed_one",
-                    "verifier_report_sha256": None,
-                    "failure_loci": [],
+        self.assertEqual(repeated_failure_contrasts(reports), [])
+
+    def test_partial_failure_locus_sets_cannot_enter_a_failure_contrast(self):
+        def failed(episode: str, incomplete_field: str) -> dict:
+            counts = {
+                "total_failed_tests": 2,
+                "retained_failed_tests": 2,
+                "omitted_failed_tests": 0,
+                "unlocated_failed_tests": 0,
+                "ambiguous_failed_tests": 0,
+            }
+            counts[incomplete_field] = 1
+            if incomplete_field == "omitted_failed_tests":
+                counts["retained_failed_tests"] = 1
+            return {
+                "task": "terminal-bench/example",
+                "evidence_identity": {"episode_id": episode},
+                "verifier_reward": 0.0,
+                "trial_error": None,
+                "outcome": {"kind": "completed"},
+                "artifact_outcome_mismatch": True,
+                "verifier_feedback": {
+                    "sha256": "sha256:" + "1" * 64,
+                    "failure_evidence_counts": counts,
+                    "failures": [
+                        {
+                            "name": "test_public_interface",
+                            "failure_class": "AssertionError",
+                            "locus": {
+                                "locus_sha256": "sha256:" + "2" * 64,
+                                "assertion": "result is valid",
+                            },
+                        }
+                    ],
                 },
-                {
-                    "episode_id": "ep_failed_two",
-                    "verifier_report_sha256": None,
-                    "failure_loci": [],
-                },
-            ],
-        )
+            }
+
+        success = {
+            **failed("ep_success", "unlocated_failed_tests"),
+            "verifier_reward": 1.0,
+            "artifact_outcome_mismatch": False,
+        }
+        for field in (
+            "omitted_failed_tests",
+            "unlocated_failed_tests",
+            "ambiguous_failed_tests",
+        ):
+            with self.subTest(field=field):
+                reports = [
+                    failed("ep_failed_one", field),
+                    failed("ep_failed_two", field),
+                    success,
+                ]
+                self.assertEqual(repeated_failure_contrasts(reports), [])
 
     def test_one_episode_identity_cannot_name_different_verifier_evidence(self):
         def report(digest: str) -> dict:
@@ -469,6 +584,13 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 "artifact_outcome_mismatch": True,
                 "verifier_feedback": {
                     "sha256": "sha256:" + digest * 64,
+                    "failure_evidence_counts": {
+                        "total_failed_tests": 1,
+                        "retained_failed_tests": 1,
+                        "omitted_failed_tests": 0,
+                        "unlocated_failed_tests": 0,
+                        "ambiguous_failed_tests": 0,
+                    },
                     "failures": [
                         {
                             "name": "test_public_interface",
@@ -693,6 +815,10 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 diagnosis = json.loads(diagnosis_path.read_text(encoding="utf-8"))
                 diagnosis["task"] = f"terminal-bench/{task}"
                 diagnosis_path.write_text(json.dumps(diagnosis), encoding="utf-8")
+                result_path = diagnosis_path.parent.parent / "result.json"
+                result = json.loads(result_path.read_text(encoding="utf-8"))
+                result["task_name"] = f"terminal-bench/{task}"
+                result_path.write_text(json.dumps(result), encoding="utf-8")
                 output = Path(directory) / "evidence.json"
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
                     io.StringIO()

@@ -518,6 +518,11 @@ It does not use verifier output captured inside a model episode. The task model
 therefore receives no task-owned grader or checker data from this collection
 path.
 
+The retained diagnosis, result, and verifier report must be regular files
+inside one trial directory. The collector rejects symlinks. It also rejects a
+task name, task checksum, reward, error, or verifier digest that differs
+between the diagnosis and retained result.
+
 The collector groups results by task and complete execution configuration. It
 groups failures by task, typed outcome, artifact mismatch, and named failed
 verifier checks. A repeated failure contrast requires two matching failed
@@ -527,9 +532,14 @@ failures cannot enter a contrast.
 The coarse profile remains the grouping key. Each failed attempt also carries
 its verifier-report digest and bounded failure loci. A locus contains the
 pytest assertion expression, normalized source location, and concise assertion
-message when those fields are available. The collector removes volatile host
-paths, memory addresses, ANSI formatting, and the remaining traceback. A
-stable digest identifies the bounded locus.
+message when those fields are available. The collector removes host paths,
+memory addresses, timestamps, terminal formatting, parameter values, and the
+remaining traceback. A digest identifies the bounded locus.
+
+Every attempt records total, retained, omitted, unlocated, and ambiguous
+failure counts. A repeated contrast requires one unique locus for every failed
+test. An attempt with an omitted, unlocated, duplicate, or ambiguous locus
+cannot enter a contrast.
 
 The file keeps up to four input-growth landmarks and three entries from each
 ranked result list. Input growth resets at each episode boundary. An artifact
@@ -541,16 +551,17 @@ The collector accepts at most 12 diagnoses and 48 KiB of compact JSON. The
 capability-search, and opened confirmation tasks. Calibration and the sealed
 holdout remain outside the evidence set.
 
-Evidence schema 5 stores repeated contrasts under
+Evidence schema 6 stores repeated contrasts under
 `repeated_failure_contrasts`. Each entry contains one task, a coarse failure
 profile, at least two failed-attempt records, and at least one successful
 episode identity. Each failed-attempt record contains its episode identity,
-verifier-report digest when available, and failure-locus list. The failed and
-successful episode sets must be disjoint.
+verifier-report digest, completeness counts, and failure-locus list. A digest
+identifies the complete contrast. The failed and successful episode sets must
+be disjoint.
 
-A malformed retained verifier report stops collection. A missing report
-creates a failed-attempt record without a provenance digest or locus. Such a
-contrast can support only an `insufficient-evidence` diagnosis.
+A malformed retained verifier report stops collection. A missing or partial
+report remains visible in its trajectory diagnosis and cannot enter a repeated
+failure contrast.
 
 Create a clean candidate worktree at the evaluated commit. Run the
 self-improvement workflow from that worktree:
@@ -579,12 +590,13 @@ so it cannot inspect the candidate source or retained run directories. Its
 typed result contains one causal contrast, one intervention, and the controls
 and falsification condition needed to evaluate that intervention.
 
-A candidate-producing diagnosis must cite every failed episode, its verifier
-report digest, and every locus digest. It gives each attempt a local
-explanation and states one shared mechanism. The diagnosis returns
-`insufficient-evidence` when heterogeneous loci do not support one shared
-mechanism. The generated diagnosis verifier enforces citation coverage before
-another workflow node can start.
+A candidate-producing diagnosis returns the digest of one repeated contrast.
+It must cite every failed episode, verifier-report digest, and locus digest in
+that contrast. It gives each attempt a local explanation and states one shared
+mechanism. The diagnosis returns `insufficient-evidence` when heterogeneous
+loci do not support one shared mechanism. The generated diagnosis verifier
+resolves the contrast digest and enforces citation coverage before another
+workflow node can start.
 
 The diagnosis node's completion verifier is a generated executable declared
 through `done_when.verify`. The runner writes it before the episode; it
