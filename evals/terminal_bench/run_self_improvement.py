@@ -43,11 +43,15 @@ from workflow_candidate import validate_independent_audit
 
 DIAGNOSIS_CALLS = 20
 IMPLEMENTATION_CALLS = 60
-AUDIT_CALLS = 60
+AUDIT_REVIEW_CALLS = 44
+AUDIT_FINALIZATION_CALLS = 16
+AUDIT_CALLS = AUDIT_REVIEW_CALLS + AUDIT_FINALIZATION_CALLS
 AUDIT_REASONING_EFFORT = "xhigh"
 DIAGNOSIS_SECONDS = 1_800
 IMPLEMENTATION_SECONDS = 3_600
-AUDIT_SECONDS = 3_600
+AUDIT_REVIEW_SECONDS = 2_700
+AUDIT_FINALIZATION_SECONDS = 900
+AUDIT_SECONDS = AUDIT_REVIEW_SECONDS + AUDIT_FINALIZATION_SECONDS
 SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + AUDIT_SECONDS
 LOOP_THRESHOLD = 8
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
@@ -1595,7 +1599,7 @@ def build_config(
     implementation = {
         "name": "implement-foe-improvement",
         "instructions": {
-            "role": "Implement the supplied typed diagnosis as a candidate for independent source audit.",
+            "role": "Implement the supplied typed diagnosis as a candidate for independent review and verifier-owned finalization.",
             "scope": "Inspect source before editing. Change runtime source, a regression test, and each affected specification. Preserve reconstructable logs, declared authority, typed outcomes, and explicit completion semantics.",
             "build_metadata": "Do not change Cargo, Bazel, module, toolchain, package, or build-script metadata. Automatic source candidates preserve the trusted build graph.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Do not encode benchmark identifiers, fixture values, or grader rules. Refuse an intervention that changes only a built-in default overridden by the explicit evaluated program.",
@@ -1626,17 +1630,34 @@ def build_config(
         "tool_defs": {"check": check_tool},
         "grants": {"read": implementation_read_roots, "write": write_roots, "execute": execute},
         "budget": {
-            "model_calls": AUDIT_CALLS,
-            "seconds": AUDIT_SECONDS,
+            "model_calls": AUDIT_REVIEW_CALLS,
+            "seconds": AUDIT_REVIEW_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
         },
         "model": audit_model,
+        "done_when": {"returns": implementation_handoff},
+    }
+    finalization = {
+        **audit,
+        "name": "finalize-foe-improvement",
+        "instructions": {
+            "role": "Finalize the independently reviewed source candidate under the candidate checker's authority.",
+            "evidence": "Treat the diagnosis, implementation handoff, and review handoff as unverified. Inspect the current diff and affected source, tests, and specifications before accepting them.",
+            "correction": "Run the candidate check first. Repair every reported defect. Run it again after the final edit. The declared verifier owns completion, so return only after the current candidate passes.",
+            "independence": audit["instructions"]["independence"],
+            "build_metadata": audit["instructions"]["build_metadata"],
+        },
+        "budget": {
+            "model_calls": AUDIT_FINALIZATION_CALLS,
+            "seconds": AUDIT_FINALIZATION_SECONDS,
+            "loop_threshold": LOOP_THRESHOLD,
+        },
         "done_when": {"verify": "check", "retries": 4},
     }
     return {
         "version": 3,
         "name": "identity-bound-trajectory-self-improvement",
-        "instructions": {"role": "Run the declared diagnosis, implementation, and independent source-audit workflow."},
+        "instructions": {"role": "Run the declared diagnosis, implementation, review, and verifier-owned finalization workflow."},
         "tools": [
             *CODING_TOOLS,
             "block",
@@ -1657,7 +1678,7 @@ def build_config(
             "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS + AUDIT_CALLS,
             "seconds": SECONDS,
             "max_depth": 1,
-            "max_episodes": 4,
+            "max_episodes": 5,
             "max_concurrent": 1,
             "loop_threshold": LOOP_THRESHOLD,
         },
@@ -1693,6 +1714,23 @@ def build_config(
                 "audit-runtime-improvement": {
                     "model": audit,
                     "follows": ["task", "diagnose-runtime", "implement-runtime-improvement"],
+                    "empty": {
+                        "summary": "The independent review spent its allowance before returning a handoff.",
+                        "changed_paths": [],
+                        "validation": [],
+                        "unresolved_risks": [
+                            "The finalization child must inspect the candidate without a completed review handoff."
+                        ],
+                    },
+                },
+                "finalize-runtime-improvement": {
+                    "model": finalization,
+                    "follows": [
+                        "task",
+                        "diagnose-runtime",
+                        "implement-runtime-improvement",
+                        "audit-runtime-improvement",
+                    ],
                     "terminal": True,
                 },
             },

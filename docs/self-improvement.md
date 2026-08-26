@@ -110,22 +110,26 @@ identifies the complete contrast. Failed and successful identifiers must be
 disjoint.
 
 The runner copies the report into the retained run directory before creating
-the program. The resulting version 3 program contains three model nodes:
+the program. The resulting version 3 program contains four model nodes:
 
 1. A diagnosis node receives only the task and bounded trajectory report. In
    automatic mode, it chooses a source or workflow-configuration candidate.
    It may instead report insufficient evidence.
 2. A source implementation node receives the typed diagnosis and task. It
    returns a typed summary of changed paths, validation, and unresolved risks.
-3. A fresh audit node receives the task, diagnosis, and implementation
-   handoff. It uses `xhigh` reasoning, repairs the candidate, and owns terminal
-   completion through the candidate checker.
+3. A fresh review node receives the task, diagnosis, and implementation
+   handoff. It uses `xhigh` reasoning and can repair the candidate. Its
+   44-request allowance cannot consume the finalization allowance. When it
+   exhausts, a declared empty handoff lets the workflow continue.
+4. A fresh finalization node receives every typed handoff. It has 16 reserved
+   requests, runs the candidate checker before review, repairs remaining
+   findings, and owns terminal completion through that checker.
 
 The diagnosis verifier enforces a requested candidate kind before an
 implementation episode can start. It accepts an insufficient-evidence result
 for every requested kind. The source checker runs from outside the candidate's
 writable directories and remains the authority for source acceptance. If the
-terminal audit ends after the source files have been produced, the runner can
+finalization node ends after the source files have been produced, the runner can
 recover the typed diagnosis from its child episode and apply the source checker
 to the artifact.
 
@@ -184,10 +188,10 @@ records the number of intervening results that it omitted.
 Supplying a private assessment does not add a workflow node. The existing
 trajectory tool node returns a document that contains both trajectory
 diagnostics and the validated assessment projection. Only the fresh diagnosis
-node follows that tool result. The implementation node still receives the
-task and typed diagnosis. The audit node still receives the task, diagnosis,
-and implementation handoff. Neither coding node has a read grant for the
-assessment files.
+node follows that tool result. The implementation node still receives the task
+and typed diagnosis. The review receives the task, diagnosis, and
+implementation handoff. Finalization also receives the review handoff or its
+declared empty value. No coding node has a read grant for the assessment files.
 
 A revised diagnosis cites the assessment contrast, rejected source-candidate
 identity, prior diagnosis digest, every failed attempt, every failed verifier,
@@ -254,7 +258,7 @@ committed tree identity. It separately records the trusted build root that
 contains the checker, along with runner and checker paths and digests. It
 validates proposal-tree provenance and verifier authorization before provider
 spend. Source evidence retains the generated candidate checker as a regular
-file. Its digest must equal the accepted result recorded by the source-audit
+file. Its digest must equal the accepted result recorded by the finalization
 child, whose program must declare that checker. A confirmed campaign freezes
 the validated source bundle under its run directory and uses that copy for
 every later adoption check.

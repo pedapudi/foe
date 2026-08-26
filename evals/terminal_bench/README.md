@@ -639,10 +639,10 @@ identity. The runner rejects a later source candidate whose identity equals
 the rejected source candidate.
 
 The runner emits a version 3 program. Its default service tier is `default`
-for diagnosis, implementation, and source audit. The model blocks explicitly
-name the credential file from Foe's per-provider convention under the passwd
-home directory. The retained plan and `episode/start.program` therefore carry
-the same runtime-resolved model block. `--candidate-kind` can
+for diagnosis, implementation, review, and finalization. The model blocks
+explicitly name the credential file from Foe's per-provider convention under
+the passwd home directory. The retained plan and `episode/start.program`
+therefore carry the same runtime-resolved model block. `--candidate-kind` can
 restrict the diagnosis to `source-change`, `workflow-configuration`,
 `instruction-revision`, or `tool-definition`. The diagnosis verifier enforces
 the restriction before another model node can start. Every restricted run may
@@ -706,14 +706,17 @@ files. Its write authority covers runtime crates, specifications, and examples.
 It cannot write evaluation code or benchmark material.
 
 The implementation node returns a typed handoff with its summary, changed
-paths, validation, and unresolved risks. A fresh source-audit node receives
-the task, diagnosis, and handoff. The audit uses the same model route and
-service tier as implementation with `xhigh` reasoning. It can inspect and
-repair the source through the full coding tool surface. Its candidate checker
-owns terminal completion through `done_when.verify`, with four correction
-attempts. If the audit ends after producing an artifact, the runner recovers
-the diagnosis from its child episode and applies the external source checker
-to the candidate.
+paths, validation, and unresolved risks. A fresh source-review node receives
+the task, diagnosis, and handoff. It uses the same model route and service tier
+as implementation with `xhigh` reasoning. Its 44-request allowance cannot
+consume the 16 requests reserved for a fresh finalization child. A review that
+ends blocked or exhausted contributes a declared empty handoff, so finalization
+still runs. The finalization child inspects the current source, runs the
+candidate checker first, repairs remaining findings, and owns terminal
+completion through `done_when.verify`, with four correction attempts. If
+finalization ends after producing an artifact, the runner recovers the
+diagnosis from its child episode and applies the external source checker to the
+candidate.
 
 When the diagnosis chooses `configure-workflow`, the runner validates the
 typed independent-audit setting. It writes `workflow-candidate.json` beside
@@ -818,7 +821,7 @@ begin with the adopted program identity.
 An accepted source candidate retains a `source-candidate-bundle` directory.
 Its manifest binds the parent identity, proposal verification, source objects,
 and every retained file. The bundle includes the generated candidate checker
-as a regular file. Its digest binds the accepted result in the source-audit
+as a regular file. Its digest binds the accepted result in the finalization
 child to the exact executable that produced it. The result reports
 `pending-external-evaluation` because source bytes cannot determine a Foe
 program identity.
@@ -874,9 +877,9 @@ base-tree, or parent-program identity differs from the bundle. A raw bundle
 cannot claim a capture-checker identity. The campaign records the trusted
 checker it actually invokes. The controller also rejects incomplete proposal
 trees, spawn programs that do not resolve to their child identity, unrelated
-verification episodes, and unauthorized verifiers. A source-audit child must
-declare the accepted verifier tool. Its recorded verifier identity must equal
-the retained candidate checker's digest. A confirmed campaign copies the
+verification episodes, and unauthorized verifiers. The finalization child
+must declare the accepted verifier tool. Its recorded verifier identity must
+equal the retained candidate checker's digest. A confirmed campaign copies the
 validated bundle into its run directory before provider spend. Later adoption
 uses this frozen copy.
 
