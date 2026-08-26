@@ -13,10 +13,10 @@
 
 use crate::{parse_args, process_output, shell_environment, SESSION_MAX_ALIVE, SHELL};
 
-use foe_config::{Effect, ToolSpec};
 use foe_core::exec::TERM_GRACE;
 use foe_core::session::{subject, SESSION_TOOL};
 use foe_core::{CallCtx, SessionLifetime, SessionOutput, SessionRequest, SessionStatus, Tool, ToolValue};
+use foe_program::{Effect, ToolSpec};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::Path;

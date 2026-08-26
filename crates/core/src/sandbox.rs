@@ -12,8 +12,8 @@
 //! child inherits the narrower domain before it executes anything.
 
 use crate::RuntimeError;
-use foe_config::Config;
 use foe_log::{SandboxInfo, SandboxMode};
+use foe_program::ProgramDocument;
 use landlock::{
     Access, AccessFs, AccessNet, BitFlags, CompatLevel, Compatible, LandlockStatus, NetPort, PathBeneath, PathFd,
     Ruleset, RulesetAttr, RulesetCreated, RulesetCreatedAttr, RulesetStatus, Scope, ABI,
@@ -87,9 +87,9 @@ impl Policy {
     /// transport. The credential file the transport reads is not known
     /// here; the binary appends it to `read_files` after resolving the
     /// `model` block.
-    pub fn for_episode(config: &Config, log_dir: &Path) -> Policy {
+    pub fn for_episode(config: &ProgramDocument, log_dir: &Path) -> Policy {
         let mut exec = Vec::new();
-        configured_executables(&foe_config::ChildProgram::from(config), &mut exec);
+        configured_executables(&foe_program::ChildProgramDocument::from(config), &mut exec);
         if !config.grants.spawn.is_empty() {
             exec.extend(std::env::current_exe().ok());
         }
@@ -137,7 +137,7 @@ impl Policy {
 /// names. Reserving is what makes the descendant's own narrowing possible;
 /// the descendant's ruleset still holds its own executables alone, so no
 /// episode gains reach over a sibling's tool.
-fn configured_executables(program: &foe_config::ChildProgram, into: &mut Vec<PathBuf>) {
+fn configured_executables(program: &foe_program::ChildProgramDocument, into: &mut Vec<PathBuf>) {
     into.extend(program.tool_defs.values().map(|d| d.exec.clone()));
     let mut models = Vec::new();
     if let Some(graph) = &program.workflow {
@@ -150,7 +150,10 @@ fn configured_executables(program: &foe_config::ChildProgram, into: &mut Vec<Pat
 
 /// Every model node's program in `graph`, including those of the workflows
 /// its nodes nest.
-fn model_programs<'a>(graph: &'a foe_config::workflow::WorkflowConfig, into: &mut Vec<&'a foe_config::ChildProgram>) {
+fn model_programs<'a>(
+    graph: &'a foe_program::workflow::WorkflowConfig,
+    into: &mut Vec<&'a foe_program::ChildProgramDocument>,
+) {
     for node in graph.nodes.values() {
         into.extend(node.model.as_ref());
         if let Some(nested) = &node.workflow {

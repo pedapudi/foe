@@ -964,7 +964,7 @@ def build_config(
         "done_when": {"verify": "check", "retries": 2},
     }
     return {
-        "version": 2,
+        "version": 3,
         "name": "identity-bound-trajectory-self-improvement",
         "instructions": {"role": "Run the declared diagnosis and implementation workflow."},
         "tools": [*CODING_TOOLS, "block", "evidence", "check"],

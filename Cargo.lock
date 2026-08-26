@@ -247,11 +247,11 @@ name = "foe"
 version = "0.1.0"
 dependencies = [
  "foe-code",
- "foe-config",
  "foe-context",
  "foe-core",
  "foe-lineage",
  "foe-log",
+ "foe-program",
  "foe-telemetry",
  "foe-transport",
  "foe-view",
@@ -269,8 +269,8 @@ name = "foe-code"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "foe-config",
  "foe-core",
+ "foe-program",
  "grep-matcher",
  "grep-regex",
  "grep-searcher",
@@ -284,25 +284,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "foe-config"
-version = "0.1.0"
-dependencies = [
- "foe-log",
- "hex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
-]
-
-[[package]]
 name = "foe-context"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "foe-config",
  "foe-core",
  "foe-log",
+ "foe-program",
  "serde_json",
  "tokio",
 ]
@@ -314,8 +302,8 @@ dependencies = [
  "async-trait",
  "cap-std",
  "command-fds",
- "foe-config",
  "foe-log",
+ "foe-program",
  "hex",
  "ignore",
  "landlock",
@@ -331,8 +319,8 @@ dependencies = [
 name = "foe-lineage"
 version = "0.1.0"
 dependencies = [
- "foe-config",
  "foe-log",
+ "foe-program",
  "serde",
  "serde_json",
  "thiserror",
@@ -344,6 +332,18 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "foe-program"
+version = "0.1.0"
+dependencies = [
+ "foe-log",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
  "thiserror",
 ]
 
@@ -365,9 +365,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64",
- "foe-config",
  "foe-core",
  "foe-log",
+ "foe-program",
  "nix",
  "ring",
  "rustls",
@@ -395,9 +395,9 @@ name = "foe-workflow"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "foe-config",
  "foe-core",
  "foe-log",
+ "foe-program",
  "serde",
  "serde_json",
  "tokio",

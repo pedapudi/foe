@@ -7,10 +7,11 @@
 
 use crate::diff::{self, Span};
 use crate::{display, file_version, parse_args, resolve, EDIT_DIFF_MAX_LINES};
-use foe_config::{Effect, ToolSpec};
 use foe_core::{CallCtx, CapError, Tool, ToolValue};
+use foe_program::{Effect, ToolSpec};
 use serde::Deserialize;
 use serde_json::json;
+use std::io::Read as _;
 
 const BOM: &str = "\u{feff}";
 
@@ -127,11 +128,13 @@ impl Tool for Edit {
         let path = resolve(reader.roots(), &a.path);
         let shown = display(reader.roots(), &path);
         let creates_file = a.edits.len() == 1 && a.edits[0].old_text.is_empty();
-        let raw_bytes = match reader.read(&path) {
-            Ok(bytes) => bytes,
-            Err(CapError::Io(e)) if creates_file && e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        let mut raw_bytes = Vec::new();
+        let read = reader.open(&path).and_then(|mut file| file.read_to_end(&mut raw_bytes).map_err(Into::into));
+        match read {
+            Ok(_) => {}
+            Err(CapError::Io(e)) if creates_file && e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return ToolValue::error(format!("edit: {shown}: {e}")),
-        };
+        }
         let previous_version = file_version(&raw_bytes);
         if a.expected_version.as_ref().is_some_and(|expected| expected != &previous_version) {
             return ToolValue::error(format!(

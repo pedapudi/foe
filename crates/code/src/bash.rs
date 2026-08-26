@@ -9,8 +9,8 @@
 use crate::{
     parse_args, process_output, shell_environment, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES, SHELL,
 };
-use foe_config::{Effect, ToolSpec};
 use foe_core::{CallCtx, ExecRequest, Tool, ToolValue, SUBJECT_MAX};
+use foe_program::{Effect, ToolSpec};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;

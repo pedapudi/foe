@@ -15,7 +15,7 @@ name = "build-bundle"
 path = "src/bin/build_bundle.rs"
 
 [dependencies]
-foe-config = { path = "../config" }
+foe-program = { path = "../program" }
 foe-log = { path = "../log" }
 serde.workspace = true
 serde_json.workspace = true

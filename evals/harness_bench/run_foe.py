@@ -239,7 +239,7 @@ def program(task: Task, workspace: Path, prompt: str, route: dict[str, str], too
         }
     writes = [str(workspace / relative) for relative in task.write_paths]
     return {
-        "version": 2,
+        "version": 3,
         "name": "harness-bench-" + task.identifier,
         "instructions": {
             "10-role": "Complete the benchmark task autonomously in the granted workspace.",

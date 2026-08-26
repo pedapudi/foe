@@ -69,11 +69,6 @@ impl Reader for RootReader {
         Ok(Box::new(self.dirs[i].open(rest)?.into_std()))
     }
 
-    fn read(&self, path: &Path) -> Result<Vec<u8>, CapError> {
-        let (i, rest) = locate(&self.roots, path)?;
-        Ok(self.dirs[i].read(rest)?)
-    }
-
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError> {
         let (i, rest) = locate(&self.roots, path)?;
         Ok(self.dirs[i].open(rest)?.into_std().metadata()?)

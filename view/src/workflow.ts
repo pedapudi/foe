@@ -173,6 +173,7 @@ export function readWorkflow(program: Record<string, unknown>, events: LogEvent[
       if (source === TASK_SOURCE) hasTask = true;
       addEdge(source, name, null);
     }
+    // Retained logs are immutable compatibility inputs and may use the outgoing spelling.
     for (const target of arr(raw.followed_by).map((s) => str(s))) addEdge(name, target, null);
   }
   // A branch edge is declared from the other end and may name a node that

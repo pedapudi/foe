@@ -6,20 +6,20 @@
 //! docs/design.md "Subagents and teams".
 
 use crate::run;
-use foe_config::config::Program;
-use foe_config::workflow::{MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
+use foe_program::document::ResolvedProgram;
+use foe_program::workflow::{MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
 use std::fmt::Write;
 
-pub use foe_config::inspect::{cycles, tool_sources, Authority};
+pub use foe_program::inspect::{cycles, tool_sources, Authority};
 
 /// Every distinct tool definition reachable from `root`, with the binary's
-/// extra built-in packs supplied. See `foe_config::inspect`.
-pub fn authority(root: &Program) -> Result<Vec<Authority>, String> {
-    foe_config::inspect::authority(root, &run::extra_builtin_specs())
+/// extra built-in packs supplied. See `foe_program::inspect`.
+pub fn authority(root: &ResolvedProgram) -> Result<Vec<Authority>, String> {
+    foe_program::inspect::authority(root, &run::extra_builtin_specs())
 }
 
-pub fn write_overlaps(program: &Program) -> Result<Vec<(String, String, String, String)>, String> {
-    foe_config::inspect::write_overlaps(program, &run::extra_builtin_specs())
+pub fn write_overlaps(program: &ResolvedProgram) -> Result<Vec<(String, String, String, String)>, String> {
+    foe_program::inspect::write_overlaps(program, &run::extra_builtin_specs())
 }
 
 /// The authority report `foe plan` prints below the program. One line per
@@ -46,7 +46,7 @@ pub fn authority_report(rows: &[Authority]) -> String {
 
 /// The workflow report `foe plan` prints below the program. The built-in
 /// `task` source is listed among the nodes when any node follows it.
-pub fn workflow_report(program: &Program) -> Result<String, String> {
+pub fn workflow_report(program: &ResolvedProgram) -> Result<String, String> {
     let wf = program.workflow.as_ref().expect("called for a program that declares a workflow");
     let mut out = String::from("workflow nodes\n");
     let inputs = wf.inputs();

@@ -633,7 +633,7 @@ function workflowConfig(root) {
     ...extra,
   });
   return {
-    version: 2,
+    version: 3,
     name: "survey-propose-apply",
     instructions: { role: "The ceiling of a declared workflow. Each model node carries its own instructions." },
     tools: ["read", "grep", "edit", "bash", "check"],

@@ -33,9 +33,6 @@ impl Reader for FailingReader {
         }
         self.inner.open(path)
     }
-    fn read(&self, path: &Path) -> Result<Vec<u8>, CapError> {
-        self.inner.read(path)
-    }
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError> {
         self.inner.metadata(path)
     }
@@ -121,7 +118,6 @@ async fn streams_files_without_requesting_whole_file_buffers() {
     let fx = tree();
     let v = grep(&fx, json!({"pattern": "alpha"})).await;
     assert_eq!(v.value["matches"], 4);
-    assert_eq!(fx.whole_reads(), 0);
 }
 
 /// docs/tools.md `grep`: the search stops after `GREP_COLLECT_MAX` matches.

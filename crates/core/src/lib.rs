@@ -2,18 +2,18 @@
 //!
 //! This crate owns grants, budget, the tool registry, the agent loop, the
 //! inbox, spawning, teams, the executable runner, the Landlock sandbox, and
-//! the host protocol. What a program is — the configuration document, its
-//! resolution, and identity — is `foe-config`, which this crate reads.
+//! the host protocol. What a program is — the program document, its
+//! resolution, and identity — is `foe-program`, which this crate reads.
 //! `docs/design.md` states what each part guarantees.
 //!
 //! This file holds the runtime contract types shared across crates: what a
 //! tool receives when it is called, what it returns, and how a model
 //! transport is driven. Behavior lives in the modules. Tool packs such as
-//! `foe-code` depend on this file and on `foe-config`.
+//! `foe-code` depend on this file and on `foe-program`.
 
 #![forbid(unsafe_code)]
 
-use foe_config::{ConfigError, ToolSpec};
+use foe_program::{ProgramError, ToolSpec};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -142,7 +142,6 @@ pub trait Reader: Send + Sync {
     /// Opens a file through the descriptor-bound root. Streaming consumers
     /// use this operation so their memory does not grow with the file size.
     fn open(&self, path: &Path) -> Result<Box<dyn std::io::Read + Send>, CapError>;
-    fn read(&self, path: &Path) -> Result<Vec<u8>, CapError>;
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError>;
     /// Enumerates one directory through the same descriptor-bound root.
     fn read_dir(&self, path: &Path) -> Result<Vec<ReadEntry>, CapError>;
@@ -368,7 +367,7 @@ impl ChunkSink for Vec<Chunk> {
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
     #[error(transparent)]
-    Config(#[from] ConfigError),
+    Program(#[from] ProgramError),
     #[error(transparent)]
     Log(#[from] foe_log::LogError),
     #[error(transparent)]

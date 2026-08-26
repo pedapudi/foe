@@ -4,18 +4,18 @@ use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::{Handles, Registry};
 use crate::test_util::{call, done, program_with, text as text_chunk, tmp, turn, Probe, ScriptedTransport, Verifier};
 use crate::{Tool, Transport};
-use foe_config::config::Program;
-use foe_config::harness_text as text;
-use foe_config::Effect;
 use foe_log::{
     BlockedCode, Chunk, Covered, EpisodeStart, Event, EventData, ExhaustedLimit, InboxSource, Outcome, RuntimeInfo,
     SandboxInfo, SandboxMode, StopReason, Usage, VerificationStatus,
 };
+use foe_program::document::ResolvedProgram;
+use foe_program::harness_text as text;
+use foe_program::Effect;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
 
-fn start(program: &Program) -> EpisodeStart {
+fn start(program: &ResolvedProgram) -> EpisodeStart {
     EpisodeStart {
         id: "ep_test".into(),
         parent_id: None,
@@ -32,7 +32,7 @@ fn start(program: &Program) -> EpisodeStart {
 struct Fixture {
     dir: std::path::PathBuf,
     log: Arc<Log>,
-    program: Program,
+    program: ResolvedProgram,
     tools: Vec<Box<dyn Tool>>,
     transport: Arc<dyn Transport>,
     context: Option<Arc<dyn ContextPolicy>>,
@@ -212,7 +212,7 @@ struct Shared(Arc<Probe>);
 
 #[async_trait::async_trait]
 impl Tool for Shared {
-    fn spec(&self) -> &foe_config::ToolSpec {
+    fn spec(&self) -> &foe_program::ToolSpec {
         self.0.spec()
     }
     async fn call(&self, args: serde_json::Value, ctx: &crate::CallCtx) -> crate::ToolValue {
@@ -668,11 +668,11 @@ fn learned_return_schema() -> serde_json::Value {
     })
 }
 
-struct LargeError(foe_config::ToolSpec);
+struct LargeError(foe_program::ToolSpec);
 
 #[async_trait::async_trait]
 impl Tool for LargeError {
-    fn spec(&self) -> &foe_config::ToolSpec {
+    fn spec(&self) -> &foe_program::ToolSpec {
         &self.0
     }
 
@@ -1036,12 +1036,12 @@ fn tolerant_parsing_closes_what_a_truncated_stream_left_open() {
 /// inner call, one whose arguments are not an object, and one naming an
 /// excluded control tool.
 struct ComposeProbe {
-    spec: foe_config::ToolSpec,
+    spec: foe_program::ToolSpec,
 }
 
 #[async_trait::async_trait]
 impl Tool for ComposeProbe {
-    fn spec(&self) -> &foe_config::ToolSpec {
+    fn spec(&self) -> &foe_program::ToolSpec {
         &self.spec
     }
 

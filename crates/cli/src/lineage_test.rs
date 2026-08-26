@@ -1,6 +1,6 @@
 use super::{rendered, verify};
-use foe_config::{LineageParent, ProgramLineage};
 use foe_lineage::{AncestryReport, ChainEntry};
+use foe_program::{LineageParent, ProgramLineage};
 use serde_json::json;
 use std::path::Path;
 

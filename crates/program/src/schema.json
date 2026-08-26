@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/pedapudi/foe/blob/main/docs/config.md",
-  "title": "foe configuration",
-  "description": "The configuration document of one episode. docs/config.md specifies every key; this schema mirrors it. Every path is absolute. No value is read from the environment.",
+  "title": "foe program document",
+  "description": "The program document of one episode. docs/config.md specifies every key; this schema mirrors it. Every path is absolute. No value is read from the environment.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "name", "instructions", "tools", "grants", "budget", "task"],
   "properties": {
     "version": {
-      "description": "The configuration format version. This schema describes version 2.",
-      "const": 2
+      "description": "The program-document format version. This schema describes version 3.",
+      "const": 3
     },
     "name": {
       "description": "A short name for the program. Shown in the viewer and written into the log. Participates in identity.",
@@ -177,12 +177,12 @@
       }
     },
     "programs": {
-      "description": "Program name to a child configuration. A name listed in grants.spawn must appear here. A child's grants must be a subset of its parent's. Each child program's identity participates in the parent's.",
+      "description": "Program name to a child program document. A name listed in grants.spawn must appear here. A child's grants must be a subset of its parent's. Each child program's identity participates in the parent's.",
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/child_program" }
     },
     "child_program": {
-      "description": "A full configuration without version, task, or sandbox. An omitted model inherits the nearest ancestor's model.",
+      "description": "A full program document without version, task, or sandbox. An omitted model inherits the nearest ancestor's model.",
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "instructions", "tools", "grants", "budget"],
@@ -231,7 +231,6 @@
         "model": { "$ref": "#/$defs/child_program" },
         "workflow": { "$ref": "#/$defs/workflow" },
         "follows": { "description": "Nodes whose outputs this node receives.", "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "followed_by": { "description": "The same edges written from the other end.", "type": "array", "items": { "type": "string", "minLength": 1 } },
         "verify": { "description": "A tool in tools run on the node's output; findings re-fire the node.", "type": "string", "minLength": 1 },
         "retries": { "description": "How many times verify findings re-fire the node.", "type": "integer", "minimum": 0, "default": 2 },
         "branches": {

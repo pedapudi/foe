@@ -2,11 +2,11 @@ use super::{
     build_manifest, check_ancestry, digest_of, manifest_bytes, record_bytes, state_identity, validate, AdoptionRecord,
     AncestryReport, LineageParent, ProgramLineage, StateDocument, MANIFEST_FILE,
 };
-use foe_config::config::{resolve, Program};
-use foe_config::identity::{canonical, compute, sha256_hex, Identity};
-use foe_config::Config;
 use foe_log::append::Writer;
 use foe_log::{EpisodeStart, EventData, Outcome, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
+use foe_program::document::{resolve, ResolvedProgram};
+use foe_program::identity::{canonical, compute, sha256_hex, Identity};
+use foe_program::ProgramDocument;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -28,7 +28,7 @@ fn tmp(name: &str) -> PathBuf {
 /// as its only tool and the host transport.
 fn config_value(root: &Path) -> Value {
     json!({
-        "version": 2,
+        "version": 3,
         "name": "fixture",
         "instructions": { "10-role": "You are a test agent.", "05-first": "Be brief." },
         "tools": ["block"],
@@ -38,10 +38,10 @@ fn config_value(root: &Path) -> Value {
     })
 }
 
-fn program_with(root: &Path, edit: impl FnOnce(&mut Value)) -> Program {
+fn program_with(root: &Path, edit: impl FnOnce(&mut Value)) -> ResolvedProgram {
     let mut value = config_value(root);
     edit(&mut value);
-    let config: Config = serde_json::from_value(value).unwrap();
+    let config: ProgramDocument = serde_json::from_value(value).unwrap();
     resolve(&config).unwrap()
 }
 
@@ -122,12 +122,12 @@ fn only_the_command_line_depends_on_this_crate() {
 /// and the verifier executable's content hash.
 struct Fixture {
     root: PathBuf,
-    parent_program: Program,
+    parent_program: ResolvedProgram,
     parent: Identity,
     exec_identity: String,
 }
 
-fn verified_config(root: &Path, edit: impl FnOnce(&mut Value)) -> Program {
+fn verified_config(root: &Path, edit: impl FnOnce(&mut Value)) -> ResolvedProgram {
     let exec = root.join("check.sh");
     program_with(root, |v| {
         v["tools"] = json!(["block", "check"]);

@@ -4,10 +4,10 @@
 //! write roots overlap. Each is read from the document and its resolution
 //! alone, which is what makes them reportable before anything runs. They
 //! encode one rule the executor in `foe-workflow` realizes as well, and
-//! which `spawner_config` there realizes from the same walk: a workflow
+//! which `spawner_document` there realizes from the same walk: a workflow
 //! model node is reachable because firing it starts that node's episode.
 
-use crate::config::{resolve_node_program, Program};
+use crate::document::{resolve_node_program, ResolvedProgram};
 use crate::tools::{resolve_sources, resolve_specs, Source};
 use crate::workflow::WorkflowConfig;
 use crate::{Effect, ToolSpec};
@@ -34,7 +34,7 @@ type AuthorityKey = (String, &'static str, String, String);
 /// paths that may call it. A child program is reachable only when its
 /// parent names it in `grants.spawn`. A workflow model node is reachable
 /// because firing it starts that node's episode.
-pub fn authority(root: &Program, extra: &[ToolSpec]) -> Result<Vec<Authority>, String> {
+pub fn authority(root: &ResolvedProgram, extra: &[ToolSpec]) -> Result<Vec<Authority>, String> {
     let mut found: BTreeMap<AuthorityKey, Authority> = BTreeMap::new();
     collect_authority(root, "program", extra, &mut found)?;
     Ok(found.into_values().collect())
@@ -42,7 +42,7 @@ pub fn authority(root: &Program, extra: &[ToolSpec]) -> Result<Vec<Authority>, S
 
 /// Where each name in `program.tools` resolved, in `tools` order. The
 /// built-in names are the blocking tool and the packs the binary links.
-pub fn tool_sources(program: &Program, extra: &[ToolSpec]) -> Result<Vec<Source>, String> {
+pub fn tool_sources(program: &ResolvedProgram, extra: &[ToolSpec]) -> Result<Vec<Source>, String> {
     let mut builtins: Vec<&str> = vec![crate::harness_text::BLOCK_NAME];
     builtins.extend(extra.iter().map(|s| s.name.as_str()));
     let configured: Vec<&str> = program.tool_defs.keys().map(String::as_str).collect();
@@ -51,7 +51,7 @@ pub fn tool_sources(program: &Program, extra: &[ToolSpec]) -> Result<Vec<Source>
 }
 
 fn collect_authority(
-    program: &Program,
+    program: &ResolvedProgram,
     path: &str,
     extra: &[ToolSpec],
     found: &mut BTreeMap<AuthorityKey, Authority>,
@@ -125,7 +125,7 @@ type Overlap = (String, String, String, String);
 /// write roots. A tool node whose effect is not concurrent contributes the
 /// write roots of the program declaring the graph, which is every root such
 /// a call could reach.
-pub fn write_overlaps(program: &Program, extra: &[ToolSpec]) -> Result<Vec<Overlap>, String> {
+pub fn write_overlaps(program: &ResolvedProgram, extra: &[ToolSpec]) -> Result<Vec<Overlap>, String> {
     let mut writers = Vec::new();
     if let Some(wf) = &program.workflow {
         collect_writers(program, wf, "", extra, &mut writers)?;
@@ -146,7 +146,7 @@ pub fn write_overlaps(program: &Program, extra: &[ToolSpec]) -> Result<Vec<Overl
 }
 
 fn collect_writers(
-    program: &Program,
+    program: &ResolvedProgram,
     wf: &WorkflowConfig,
     prefix: &str,
     extra: &[ToolSpec],

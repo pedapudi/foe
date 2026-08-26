@@ -8,7 +8,7 @@ document specifies the graph, the three places, and the guarantee that
 holds across all of them.
 
 Status: implemented. The configuration types and construction rules are in
-`crates/config/src/workflow.rs`; the executor is `crates/workflow`;
+`crates/program/src/workflow.rs`; the executor is `crates/workflow`;
 `examples/workflow` runs one graph.
 
 ## Why a graph, and why agency inside it
@@ -98,7 +98,7 @@ lists the source when any node follows it.
 
 ### Nodes
 
-A node carries fourteen keys at most, and any key outside the two tables
+A node carries twelve keys at most, and any key outside the two tables
 below is refused at construction. One of the first three names the node's
 kind, and exactly one of them is present.
 
@@ -111,12 +111,11 @@ kind, and exactly one of them is present.
 A `tool` node also takes `args`, specified under "Tool nodes" below. No
 other key accompanies a kind.
 
-The ten remaining fields apply to a node of any kind.
+The eight remaining fields apply to a node of any kind.
 
 | field | type | meaning |
 |---|---|---|
 | `follows` | list of node names | the nodes whose outputs this node receives, and `task` for the invocation task; default empty |
-| `followed_by` | list of node names | the same edges written from the other end; the union of both forms is the edge set |
 | `verify` | tool name | a verifier run on the node's output; non-empty findings re-fire the node with the findings attached |
 | `retries` | integer | how many times `verify` findings re-fire the node; default 2 |
 | `branches` | object | a choice point; see below |
@@ -129,8 +128,8 @@ The ten remaining fields apply to a node of any kind.
 the model may choose, specified under "Choice points" below. Every other
 key in this document is a fixed name.
 
-A `follows` entry and a `followed_by` entry that name the same edge are one
-edge. The graph is the union. Duplicate edges are not an error.
+Each `follows` entry defines one data edge from the named source to the node.
+Each successor in `branches` defines a control edge from the choice node.
 
 `foe plan --schema` prints the JSON Schema of the whole configuration, including
 `workflow`, `workflow_node`, and the recovery blocks, with
@@ -143,9 +142,9 @@ completes against it.
 `args` is the argument object for the call. A value of the form
 `{ "$node": NAME }` is replaced by that node's canonical output; with
 `"pointer"`, by the value at that JSON Pointer within it. NAME must be one
-of the node's inputs: a name in its `follows`, or a node whose
-`followed_by` names it. No other substitution exists. A tool node has no
-judgment of its own; when its call fails, recovery decides. For a tool
+of the node's inputs: a name in its `follows`. No other substitution exists.
+A tool node has no judgment of its own; when its call fails, recovery
+decides. For a tool
 declared in `tool_defs`, an exit code other than zero or a timeout is a
 failure of the node, because no model reads the code the way the loop's
 model does; the exit code and both output streams are the error recovery

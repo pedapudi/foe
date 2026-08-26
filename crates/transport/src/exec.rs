@@ -31,8 +31,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use foe_config::ModelConfig;
 use foe_core::{Chunk, ExecRequest, Executor, ModelRequestBody, Transport};
+use foe_program::ModelConfig;
 use serde::Deserialize;
 
 use crate::TransportError;
