@@ -1607,9 +1607,8 @@ digest, Harbor argument propagation, and evidence-integrity checks pass
 locally. The installed checker is bound to its typed value in the root episode
 log. A portable runner completed a provider-free installation check in the DNA
 task container, which lacked `/usr/bin/python3`. Foe's configuration
-constructor accepts the four-node program. No assessed result is recorded yet,
-so the mechanism remains an evaluation candidate and no Foe behavior has been
-promoted from it.
+constructor accepts the four-node program. The assessed results below reject
+the mechanism for lack of repeatability.
 
 ## Recorded task-derived acceptance-checker disposition
 
@@ -1651,4 +1650,51 @@ audit's declared inputs. The audit receives the public task and implementation
 result. It can still invoke the immutable checker, whose installation precedes
 implementation. This change tests whether explicit information-flow
 separation prevents a generated semantic error from anchoring the independent
-audit. The revised workflow has no assessed result yet.
+audit.
+
+## Recorded independent-audit checker disposition
+
+Two revised DNA attempts used source tree
+`git-tree-sha1:3066e4f545880905ba2aaf9cc0772dcbc8a91436` and runtime binary
+`sha256:65b0b0b8d9fab850e24939a6df1b907476fdfb5a2ef6df127b898e7d0a8f07bb`.
+Both used GPT-5.6 Sol low for implementation and GPT-5.6 Sol xhigh for checker
+derivation and terminal audit. Every request used the priority service tier.
+Both attempts completed with conforming traces and no infrastructure failure.
+
+The first revised attempt received full task-owned credit. It used 35 model
+calls, 610,641 input tokens, 244,224 cached-input tokens, and 54,061 output
+tokens. Its estimated cost was $2.644578. The terminal audit repaired the
+primers after independent physical and assembly checks.
+
+The repeated attempt received zero task-owned credit. It used 46 model calls,
+833,010 input tokens, 483,328 cached-input tokens, and 54,920 output tokens.
+Its estimated cost was $2.690459. The generated checker accepted the result,
+and the terminal audit independently installed `oligotm`, repaired three
+primers, reconstructed the assembly, and accepted its own validation.
+
+The terminal audit searched for the longest primer suffix that appeared
+anywhere in the corresponding template. It did not require extra matching
+overhang bases to be adjacent to the selected annealing-arm occurrence. The
+audit therefore measured the input primer pair at 67.983932 and 63.059994
+degrees C, whose difference was 4.923938 degrees.
+
+The task-owned grader evaluated the matching overhang suffix beside the
+selected annealing arm. It measured the same pair at 67.938466 and 62.922277
+degrees C. Their 5.016189 degree difference exceeded the permitted five
+degrees.
+
+Removing the checker-author value prevented the generated interpretation from
+entering the terminal audit's declared context. The independent audit still
+constructed a different incorrect acceptance rule. One success followed by
+one failure therefore rejects the revised candidate for lack of repeatability.
+No transfer attempt is warranted.
+
+The retained runs are:
+
+- `target/terminal-bench-jobs/task-derived-checker-independent-audit-dna-activation-20260826T000538Z`;
+- `target/terminal-bench-jobs/task-derived-checker-independent-audit-dna-repeat-20260826T002511Z`.
+
+Task-derived checkers remain research evidence. Author-supplied public
+completion checkers remain the primary development mechanism because their
+meaning can be validated before provider spend. The unchanged task-owned
+grader remains the quality authority for every assessed result.

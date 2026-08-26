@@ -303,6 +303,15 @@ before inspecting unrelated transfer-task trajectories. A source or workflow
 change earns promotion only after unchanged closed-book tasks confirm that the
 quality gain transfers beyond the generated checker.
 
+Retained DNA evidence rejects task-derived checkers as a quality-improvement
+mechanism. The original workflow and the information-separated terminal-audit
+workflow each received full task-owned credit once and zero credit on an exact
+repeat. Both failing attempts completed through a generated checker that
+misimplemented one public annealing rule. Further task-derived checker runs
+remain parked until a different mechanism addresses semantic evaluator errors.
+Author-supplied public checkers remain the primary verifier-governed
+development lane.
+
 ## Preview and run one assessed task
 
 Every model-backed target prints planning token estimates and an estimated
