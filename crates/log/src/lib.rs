@@ -743,7 +743,9 @@ pub struct WorkflowNodeStart {
 }
 
 /// A firing ended. `value` is the node's canonical output and `rendered`
-/// the text its successors receive; both are empty when `error` is set.
+/// the text its successors receive. A failed firing carries null and an
+/// empty rendering. An optional model node carries its declared `empty`
+/// output together with the blocked or exhausted child error.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorkflowNodeEnd {
     pub node: String,
