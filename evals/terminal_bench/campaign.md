@@ -174,19 +174,18 @@ runner changes, corpus manifests, and content digests.
 
 ### Parallel execution
 
-The assessed runner currently executes one provider-backed trial at a time.
-It holds one exclusive lock on the OAuth credential state for the complete
-run. Starting another runner with a separate credential-state path would
-bypass that protection and could race token refresh. Assessed trials remain
-serial until the runner provides credential-safe concurrency.
+The assessed runner uses one worker by default and accepts at most two workers.
+It holds one exclusive lock on the renewable OAuth credential state for the
+complete run. Parallel workers receive separate access-only credentials that
+omit the refresh token. The runner returns to serial execution when the access
+token lifetime or host capacity cannot cover a parallel cohort.
 
 The concurrency implementation uses one campaign coordinator. It gives each
-trial an isolated job directory and credential view. A trial cannot overwrite
-newer credential state or expose credential contents through retained
-evidence. A deterministic rotating-token test must exercise simultaneous
-refresh before a provider-backed parallel trial. Runner tests must also cover
-unique output paths, complete result collection, cancellation, and a worker
-failure while another worker completes.
+trial an isolated job directory and access-only credential. The adapter checks
+that each credential is unchanged after the trial and scans retained evidence
+for credential exposure. The runner tests cover unique output paths, complete
+result collection, cancellation, lease expiry, and a worker failure while
+another worker completes.
 
 At most two workers may run provider-free capability probes or verifier
 controls within a task set that is already open. Workers may also analyze
@@ -202,10 +201,10 @@ gibibytes of free disk. It stops admission after memory pressure, swap-out,
 an out-of-memory termination, or less than ten gibibytes of available memory.
 
 Every concurrent cohort records its cap, task membership, resource
-reservations, queue time, peak host resource use, provider throttling,
-makespan, and invalidated attempts. A matched serial cohort supplies the
-reference for any runtime claim. Concurrency remains identical between a
-baseline and candidate comparison.
+reservations, host resource snapshots, process starts, makespan, and
+invalidated attempts. A matched serial cohort supplies the reference for any
+runtime claim. Concurrency remains identical between a baseline and candidate
+comparison.
 
 The first assessed concurrency qualification uses four already-open
 development tasks selected from recorded resource metadata before execution.
@@ -1889,3 +1888,39 @@ supply no matching success. This result validates evidence transport while
 correctly withholding autonomous candidate generation. A subsequent
 self-improvement input must contain two matching failures and one same-task
 success before the workflow can spend a model call.
+
+## Two-worker execution implementation
+
+The campaign runner supports one or two assessed workers. One worker remains
+the default. A parallel cohort receives separate access-only OAuth files that
+contain no refresh token. Foe rejects a request when the access token enters
+its refresh window. The runner rechecks the complete required lifetime when it
+issues each credential.
+
+The runner admits two tasks only when their declared reservations total at
+most four CPUs and eight GiB of memory. An eight-GiB task runs alone. Host
+admission requires at least fourteen GiB of available memory and one hundred
+GiB of free disk. Swap activity, full-memory pressure, or an out-of-memory
+result disables later parallel cohorts. Ten GiB of available memory is the
+minimum for any further task.
+
+SIGINT and SIGTERM terminate every active Harbor process group. Cleanup removes
+the temporary credentials. The campaign manifest is replaced atomically after
+each execution group and during cancellation or error recovery. It distinguishes
+tasks whose Harbor process started from tasks that never started.
+
+An adversarial review found four defects. The runner did not handle SIGTERM,
+could signal a process group after its process exited, wrote the manifest only
+at campaign end, and checked lease expiry before the point of issuance. The
+reviewed implementation corrects all four defects. Documentation describes the
+credential file mode as accidental-write prevention and the post-run digest as
+mutation detection. The task identity may read or change its access-only file,
+so the integrity claim rests on post-run detection rather than the file mode.
+
+The integrated branch passes 104 evaluator tests, the Bazel evaluator target,
+the full Rust workspace tests, clippy with warnings denied, every executable
+example, and all line-budget checks. The implementation has made no provider
+request. The required matched four-task serial and two-worker qualification
+remains pending. Assessed parallel execution cannot contribute campaign quality
+evidence until that qualification preserves all four scores, trace results,
+credential checks, and retained records while reducing makespan by one third.
