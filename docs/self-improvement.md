@@ -144,6 +144,9 @@ bundle, source candidate, and proposal program. Canonical SHA-256 identities
 cover each evaluator-owned object. The assessment also
 retains the prior typed diagnosis, exact candidate source entries and bytes,
 the private campaign and trial records, and each exact raw verifier report.
+It reads the private task from the retained plan. For a campaign that has no
+plan artifact, it reads the task from the root `episode/start` only when that
+event's episode, program, and runtime identities match the trial diagnostics.
 
 The evaluator derives one bounded candidate-assessment diagnostics projection
 from the private assessment. The projection contains the prior typed

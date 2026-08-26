@@ -446,6 +446,53 @@ def completed_campaign_jobs(
     return identity, jobs
 
 
+def retained_trial_task(
+    diagnostic_path: Path,
+    job_root: Path,
+    diagnostic: dict[str, Any],
+    role: str,
+) -> str:
+    """Return the private task from a retained plan or its bound root start."""
+    plan_path = diagnostic_path.parent / "foe-plan.json"
+    if plan_path.exists() or plan_path.is_symlink():
+        plan_path = require_confined_regular_file(
+            plan_path,
+            job_root,
+            f"{role} trial plan",
+        )
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        raw_task_text = plan.get("task") if isinstance(plan, dict) else None
+    else:
+        log_path = require_confined_regular_file(
+            diagnostic_path.parent / "foe-episode" / "episode.jsonl",
+            job_root,
+            f"{role} trial root episode",
+        )
+        with log_path.open(encoding="utf-8") as stream:
+            first_line = stream.readline()
+        start = json.loads(first_line)
+        data = start.get("data") if isinstance(start, dict) else None
+        evidence = diagnostic.get("evidence_identity")
+        runtime = data.get("runtime") if isinstance(data, dict) else None
+        if (
+            not isinstance(start, dict)
+            or start.get("type") != "episode/start"
+            or not isinstance(data, dict)
+            or not isinstance(runtime, dict)
+            or not isinstance(evidence, dict)
+            or data.get("id") != evidence.get("episode_id")
+            or data.get("identity") != evidence.get("program_identity")
+            or runtime.get("build") != evidence.get("runtime_build")
+        ):
+            raise ValueError(
+                f"{role} trial root episode conflicts with its diagnostics"
+            )
+        raw_task_text = data.get("task")
+    if not isinstance(raw_task_text, str) or not raw_task_text.strip():
+        raise ValueError(f"{role} trial evidence has no raw task text")
+    return raw_task_text
+
+
 def campaign_trials(path: Path, role: str) -> dict[str, Any]:
     """Read one completed external campaign and its private trial evidence."""
     path = path.absolute()
@@ -477,15 +524,6 @@ def campaign_trials(path: Path, role: str) -> dict[str, Any]:
             diagnostic_path = require_confined_regular_file(
                 job_root / diagnostic_relative, job_root, f"{role} trial diagnostics"
             )
-            plan_path = require_confined_regular_file(
-                diagnostic_path.parent / "foe-plan.json",
-                job_root,
-                f"{role} trial plan",
-            )
-            plan = json.loads(plan_path.read_text(encoding="utf-8"))
-            raw_task_text = plan.get("task") if isinstance(plan, dict) else None
-            if not isinstance(raw_task_text, str) or not raw_task_text.strip():
-                raise ValueError(f"{role} trial plan has no raw task text")
             trial_path = diagnostic_path.parent.parent / "result.json"
             trial_path = require_confined_regular_file(
                 trial_path, job_root, f"{role} trial result"
@@ -493,6 +531,9 @@ def campaign_trials(path: Path, role: str) -> dict[str, Any]:
             trial = json.loads(trial_path.read_text(encoding="utf-8"))
             diagnostic = json.loads(diagnostic_path.read_text(encoding="utf-8"))
             validate_trial(trial, diagnostic, identity, role)
+            raw_task_text = retained_trial_task(
+                diagnostic_path, job_root, diagnostic, role
+            )
             report_path = require_confined_regular_file(
                 trial_path.parent / "verifier" / "ctrf.json",
                 job_root,

@@ -241,6 +241,19 @@ def write_campaign(
             trial_root / "result.json", artifact_root=job_root
         )
         write_json(diagnostic_path, diagnostic)
+        write_json(
+            trial_root / "agent" / "foe-episode" / "episode.jsonl",
+            {
+                "seq": 0,
+                "type": "episode/start",
+                "data": {
+                    "id": episode_id,
+                    "identity": diagnostic["evidence_identity"]["program_identity"],
+                    "runtime": {"build": runtime},
+                    "task": PRIVATE_TASK,
+                },
+            },
+        )
         diagnostic_paths.append(str(diagnostic_path.relative_to(job_root)))
     job = {
         "task": "private-task-name",
@@ -422,6 +435,44 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         self.assertEqual(len(contrast["success_references"]["parent"]), 1)
         self.assertEqual(len(contrast["success_references"]["candidate"]), 1)
         self.assertLessEqual(len(public_bytes), MAX_DIAGNOSTICS_BYTES)
+
+    def test_assessment_uses_identity_bound_root_start_when_plan_is_absent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle, manifest, candidate_identity, _, _ = write_source_bundle(root)
+            parent = root / "parent-campaign"
+            candidate = root / "candidate-campaign"
+            write_campaign(
+                parent,
+                source_tree=PARENT_TREE,
+                runtime=SHA_ONE,
+                trials=[("ep-parent-success", True)],
+            )
+            (parent / "job/trial-1/agent/foe-plan.json").unlink()
+            source_candidate = {
+                "source_bundle_identity": bytes_digest(canonical_json(manifest)),
+                "source_candidate_identity": candidate_identity,
+                "base_source_tree": PARENT_TREE,
+                "parent_program_identity": SHA_ONE,
+                "evaluated_pair": {
+                    "source_tree": CANDIDATE_TREE,
+                    "runtime_binary": SHA_TWO,
+                },
+            }
+            write_campaign(
+                candidate,
+                source_tree=CANDIDATE_TREE,
+                runtime=SHA_TWO,
+                trials=[("ep-candidate-failure", False)],
+                source_candidate=source_candidate,
+            )
+
+            assessment = create_source_candidate_assessment(bundle, parent, candidate)
+
+        self.assertEqual(
+            assessment["evaluations"]["parent"]["trials"][0]["raw_task_text"],
+            PRIVATE_TASK,
+        )
 
     def test_projection_accepts_a_candidate_with_only_failed_attempts(self):
         with tempfile.TemporaryDirectory() as directory:
