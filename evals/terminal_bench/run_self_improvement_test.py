@@ -870,6 +870,7 @@ FAILURE_CONTRAST = {
                     "locus_sha256": "sha256:" + "5" * 64,
                     "location": "tests/test_outputs.py:116",
                     "assertion": "abs(fwd_tm - rev_tm) <= 5",
+                    "observed_assertion": "5.8 <= 5",
                     "message": "primer melting temperatures differ by more than five degrees",
                 }
             ],

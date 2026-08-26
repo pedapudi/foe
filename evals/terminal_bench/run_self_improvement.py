@@ -373,6 +373,7 @@ def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
                             "locus_sha256",
                             "location",
                             "assertion",
+                            "observed_assertion",
                             "message",
                         }
                     )
