@@ -201,7 +201,7 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
 Equivalent targets end in `foe-verifier-fix-git` and
 `foe-verifier-large-scale-text-editing`. Additional targets cover
 `dna-assembly`, `git-multibranch`, and `gpt2-codegolf`. These targets use the
-standard service tier and low reasoning. They construct an adapter-owned
+priority service tier and low reasoning. They construct an adapter-owned
 single-episode program with the public checker as its completion verifier.
 
 Targets beginning with `foe-built-in-verifier-` invoke the coding workflow
@@ -334,9 +334,10 @@ time allowance ends. [`cases.json`](cases.json) records each multiplier's
 base timeout from the pinned task metadata.
 
 The default route is `openai-codex/gpt-5.6-sol` with low reasoning effort.
-Every model node requests the standard service tier by default. The runner
-records the requested tier and credit multiplier beside its token-derived cost
-estimate. Use `--service-tier priority` to request Fast mode. OpenAI documents
+Campaign Bazel targets request the priority service tier. A direct invocation
+of `run.py` defaults to the standard tier and must set `--service-tier
+priority` to match the campaign. The runner records the requested tier and
+credit multiplier beside its token-derived cost estimate. OpenAI documents
 Fast mode as targeting 1.5 times Standard speed while GPT-5.6 consumes 2.5
 times the Standard ChatGPT credits. See the
 [OpenAI speed documentation](https://developers.openai.com/codex/speed).
@@ -349,6 +350,9 @@ bazel run //evals/terminal_bench:foe-smoke -- \
   --reasoning-effort low \
   --confirm-spend
 ```
+
+The current capability campaign excludes these models. Every provider request
+in its acceptance evidence uses GPT-5.6 Sol.
 
 The supported reasoning settings end at `xhigh` for this campaign.
 
@@ -834,7 +838,7 @@ Apply a retained workflow candidate to any permitted task set with:
 ```sh
 bazel run //evals/terminal_bench:foe-development -- \
   --workflow-candidate /absolute/path/to/workflow-candidate.json \
-  --service-tier default \
+  --service-tier priority \
   --confirm-spend
 ```
 
@@ -853,7 +857,7 @@ bazel run //evals/terminal_bench:foe-source-candidate -- \
   --source-adoption /absolute/path/to/self-improvement/result.json \
   --controller-bazel /absolute/path/to/bazel \
   --built-in-workflow \
-  --service-tier default \
+  --service-tier priority \
   --confirm-spend
 ```
 

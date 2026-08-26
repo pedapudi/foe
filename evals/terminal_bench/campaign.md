@@ -19,9 +19,9 @@ least 85 percent quality on the twenty-task calibration set. It must also
 demonstrate repeatable self-improvement that transfers beyond each activation
 case.
 
-GPT-5.6 Sol with low reasoning is the primary coding model. Conditional
-escalation may use Sol with at most `xhigh` reasoning. Provider requests use
-the standard service tier. Token use, estimated cost, cache use, and latency
+Every provider request uses GPT-5.6 Sol and the priority service tier. Low
+reasoning is the primary coding setting. Conditional escalation may use at
+most `xhigh` reasoning. Token use, estimated cost, cache use, and latency
 are measurements. Task quality is the only candidate promotion metric until
 every quality gate passes.
 
@@ -75,12 +75,11 @@ failures when the failure originates in Foe or its evaluation adapter.
 
 After every quality condition passes, matched successful tasks must show at
 least a 20 percent reduction in median estimated cost. The cost comparison may
-use conditional model escalation or bounded work by Luna or Terra. It must
-preserve task quality.
+use conditional Sol reasoning escalation. It must preserve task quality.
 
 Planning estimates bound campaign exposure before each confirmed command.
 They do not reject a candidate that improves task quality. Development runs
-use the standard service tier and record it in the manifest. Foe records
+use the priority service tier and record it in the manifest. Foe records
 usage without enforcing token ceilings during ordinary quality runs.
 
 ## Confirmation-quality recovery
@@ -760,7 +759,7 @@ quality benefit from a separate audit stage.
 
 ## Self-improvement contract
 
-The self-improvement workflow has at most three model nodes. A Luna diagnosis
+The self-improvement workflow has at most three model nodes. A Sol diagnosis
 node reads the bounded trajectory digest and returns a typed causal
 intervention. It has no source-tree inspection tool or access.
 

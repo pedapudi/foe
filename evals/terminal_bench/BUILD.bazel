@@ -14,6 +14,8 @@ COMMON_ARGS = [
     "$(rootpath //evals:score-trace)",
     "--cases",
     "$(rootpath :cases.json)",
+    "--service-tier",
+    "priority",
 ]
 
 SOURCE_CONTROLLER_ARGS = [
@@ -31,6 +33,8 @@ SOURCE_CONTROLLER_ARGS = [
     "$(rootpath //evals:score-trace)",
     "--cases",
     "$(rootpath :cases.json)",
+    "--service-tier",
+    "priority",
 ]
 
 COMMON_DATA = [
@@ -173,8 +177,6 @@ sh_binary(
             task,
             "--completion-checker",
             "$(rootpath " + checker + ")",
-            "--service-tier",
-            "default",
         ],
         data = COMMON_DATA + [checker],
         visibility = ["//visibility:public"],
@@ -194,8 +196,6 @@ sh_binary(
             "--completion-checker",
             "$(rootpath " + checker + ")",
             "--built-in-workflow",
-            "--service-tier",
-            "default",
         ],
         data = COMMON_DATA + [checker],
         visibility = ["//visibility:public"],
@@ -375,6 +375,8 @@ sh_binary(
         "$(rootpath //crates/lineage:check-ancestry)",
         "--source-checker",
         "$(rootpath //crates/lineage:source-adoption)",
+        "--service-tier",
+        "priority",
     ],
     data = [
         "//:foe-portable",
