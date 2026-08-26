@@ -2201,3 +2201,96 @@ checks the candidate before editing, repairs findings, and completes only
 through `done_when.verify`. The root call allowance remains unchanged. A
 provider-free generated program passes `foe plan` with five possible firings
 and the declared 44-plus-16 allocation.
+
+## Reserved-finalization autonomous source improvement
+
+The source-improvement workflow reran against the exact parent source tree
+`git-tree-sha1:8c5e2b72580507cc49881ed11d83209bc0c26c0e`. It used the bound
+cross-trajectory report and private candidate assessment from the rejected
+source candidate. The runtime binary matched the report at
+`sha256:ff7d062a57acf865e22d7781fb7e9c05ac95863e5a255fc3145d4479e0eebb59`.
+All model nodes used the standard service tier.
+
+The diagnosis child completed in one model call. The implementation child
+used 46 calls and passed the source checker. The independent review used its
+complete 44-call allowance and ended exhausted after introducing a clippy
+failure. Its declared empty value allowed the workflow to continue. The fresh
+finalization child ran the source checker on its first call. It repaired the
+reported defect and completed through `done_when.verify` after ten calls.
+
+The resulting source candidate passed with zero checker findings. Its result
+records `candidate_acceptance.accepted: true`, a non-null source candidate,
+and `direct_implementation_required: false`. The bundle identity is
+`sha256:fb05444920bbf92d862edeca3d3451759f55d4f8a196a63a56fe161749e1669e`.
+The candidate identity is
+`sha256:7a2786902748b31aa16713c3d638d5d1702e43400244ced9d68598b28c933941`.
+The run used 101 model calls, 7,416,184 input tokens, 6,090,752 cached-input
+tokens, and 55,861 output tokens. Estimated cost was $8.855249. It completed
+in 1,433.009 seconds.
+
+The accepted source is commit `8765e74` with Git tree
+`git-tree-sha1:1f79451d5c717464f453b1843d819f4458d0590a`. It changes runtime
+source, regression tests, the built-in workflow, and both affected
+specifications. Its portable binary is
+`sha256:b420f4a2a6a3db278bd3f4b75d277e813bfb74fe812a9ab336f2f16a35e50f0c`.
+The retained self-improvement result is under
+`/home/sunil/git/foe-identity-bound-dna-source-improvement/target/dna-finalization-autonomous-source-improvement-retry`.
+Its result SHA-256 is
+`6c5316ee73225c563013ea8bc32ce1e070f9a44e5da80b65133481d92b32a725`.
+
+An unchanged task-owned `dna-assembly` grader accepted the exact source and
+binary pair with score 1.0. The adopted run used 29 model calls, 491,323 input
+tokens, 295,936 cached-input tokens, and 24,528 output tokens. Estimated cost
+was $1.390482. The trace passed 6,421 assertions with no violation. The
+accepted completion contained eleven requirement-specific citations to
+successful checks after the final edit.
+
+The activation run is retained under
+`/home/sunil/git/foe-dna-finalization-autonomous/target/terminal-bench-jobs/standard-autonomous-finalization-dna-20260826T192112Z`.
+Its campaign manifest SHA-256 is
+`9449bd1e586fa7005ddd9111ca0f2460c3317d6647f9df2ed6fd97afdf5d1445`.
+The source adoption verified its launched program and recorded adoption
+identity
+`sha256:89f8a1386c0ac66f35dfc49baac5679b7daf3adaafe1b00824134d7929eac4bf`.
+
+Two frozen activation repeats also received task score 1.0 with no exception.
+The first repeat completed after 34 model calls. It used 614,952 input tokens,
+393,216 cached-input tokens, and 23,566 output tokens. Estimated cost was
+$1.515550. Its trace passed 6,103 assertions. The second completed after 47
+model calls. It used 899,426 input tokens, 696,832 cached-input tokens, and
+23,314 output tokens. Estimated cost was $1.555389. Its trace passed 9,516
+assertions. Both traces had zero violations.
+
+The repeats are retained under
+`/home/sunil/git/foe-dna-finalization-autonomous/target/terminal-bench-jobs/standard-autonomous-finalization-dna-repeat-20260826T193131Z`.
+Their campaign manifest SHA-256 is
+`24376caf7317d4aa1db34c8a0bb326ec5299672e5f9798b2fef2a58ecf4697ba`.
+The exact autonomous source candidate has scored 3.0 of 3.0 on its activation
+case and advances to the unrelated transfer case.
+
+The unrelated `gpt2-codegolf` transfer case also received task score 1.0 with
+no exception. The implementation child used 16 model calls, and the terminal
+audit used 43. The audit replaced degenerate repeated-token behavior with a
+sampler that passed the unchanged public-continuation checker. Foe completed
+with requirement-specific evidence after the final edit.
+
+The transfer used 1,872,508 input tokens, 1,387,008 cached-input tokens, and
+31,257 output tokens. Estimated cost was $3.121943. The trace passed 39,685
+assertions with no violation. The transfer is retained under
+`/home/sunil/git/foe-dna-finalization-autonomous/target/terminal-bench-jobs/standard-autonomous-finalization-gpt2-transfer-20260826T195233Z`.
+Its campaign manifest SHA-256 is
+`af29e1083042665f56fc42bd86f10ed7a3ecd3fe437b0449c5afd9c06efcb90d`.
+
+The candidate therefore satisfies the source-improvement transfer gate: it is
+identity-bound, accepted without direct repair, includes source, test, and
+specification changes, scores 3.0 of 3.0 on its activation case, and scores
+1.0 on an unrelated task. The reviewed implementation remains the production
+candidate because it enforces the same mechanism with stronger exact checks.
+
+Direct review found two correctness gaps in the autonomously generated gate.
+It treats a nonzero process result as successful evidence because process exit
+status is data rather than a tool error. It also places the final-artifact
+boundary after declared writes while an executable call can change files. The
+reviewed implementation in pull request 114 covers both cases and has a
+readable validation path. The autonomous source remains an evaluated
+self-improvement artifact. It is not the proposed production implementation.
