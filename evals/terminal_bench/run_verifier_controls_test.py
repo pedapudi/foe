@@ -30,6 +30,7 @@ class VerifierControlTest(unittest.TestCase):
             {
                 "cancel-async-tasks",
                 "dna-assembly",
+                "dna-insert",
                 "fix-git",
                 "git-multibranch",
                 "gpt2-codegolf",

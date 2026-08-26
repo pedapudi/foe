@@ -58,6 +58,8 @@ VERIFIER_CASE_DATA = [
     "verifier_cases/cancel_async_tasks/oracle.sh",
     "verifier_cases/dna_assembly/check.pl",
     "verifier_cases/dna_assembly/oracle.sh",
+    "verifier_cases/dna_insert/check.pl",
+    "verifier_cases/dna_insert/oracle.sh",
     "verifier_cases/fix_git/check.py",
     "verifier_cases/fix_git/oracle.sh",
     "verifier_cases/git_multibranch/check.py",
@@ -78,6 +80,11 @@ VERIFIER_CASES = [
         "dna-assembly",
         "dna-assembly",
         "verifier_cases/dna_assembly/check.pl",
+    ),
+    (
+        "dna-insert",
+        "dna-insert",
+        "verifier_cases/dna_insert/check.pl",
     ),
     ("fix-git", "fix-git", "verifier_cases/fix_git/check.py"),
     (
