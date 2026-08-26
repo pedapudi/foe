@@ -28,6 +28,7 @@ from foe_agent_support import (
     normalized_plan,
     parse_boolean,
     read_episode_summary,
+    replace_json,
     retained_artifacts_contain_credential,
     replace_credential_state,
     schema_probe_command,
@@ -401,10 +402,7 @@ class FoeAgent(BaseInstalledAgent):
                     )
             retained_plan = self.logs_dir / "foe-plan.json"
             plan = normalized_plan(json.loads(retained_plan.read_text(encoding="utf-8")), instruction)
-            retained_plan.write_text(
-                json.dumps(plan, sort_keys=True, separators=(",", ":")) + "\n",
-                encoding="utf-8",
-            )
+            replace_json(retained_plan, plan)
             result = await self.exec_as_agent(
                 environment,
                 command=command,

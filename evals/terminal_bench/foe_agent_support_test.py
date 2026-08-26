@@ -20,12 +20,25 @@ from foe_agent_support import (
     normalized_plan,
     parse_boolean,
     read_episode_summary,
+    replace_json,
     retained_artifacts_contain_credential,
     schema_probe_command,
 )
 
 
 class ProgramTest(unittest.TestCase):
+    def test_normalized_plan_replaces_a_read_only_container_owned_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "foe-plan.json"
+            path.write_text('{"program":{"name":"before"}}\n', encoding="utf-8")
+            path.chmod(0o444)
+            replace_json(path, {"program": {"name": "after"}, "task": "repair it"})
+            self.assertEqual(
+                json.loads(path.read_text(encoding="utf-8")),
+                {"program": {"name": "after"}, "task": "repair it"},
+            )
+            self.assertFalse(path.with_name(".foe-plan.json.normalized").exists())
+
     def test_retained_plan_adds_or_checks_a_task_outside_program(self):
         old = normalized_plan({"program": {"name": "p"}}, "full instruction")
         self.assertEqual(old["task"], "full instruction")

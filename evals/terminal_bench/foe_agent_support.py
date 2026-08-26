@@ -60,6 +60,17 @@ def normalized_plan(plan: dict[str, Any], task: str) -> dict[str, Any]:
     return {**plan, "task": task}
 
 
+def replace_json(path: Path, value: Any) -> None:
+    """Replace a retained container-owned JSON file through its writable directory."""
+    temporary = path.with_name(f".{path.name}.normalized")
+    temporary.unlink(missing_ok=True)
+    temporary.write_text(
+        json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
 COMPLETION_SCHEMA = {
     "type": "object",
     "properties": {
