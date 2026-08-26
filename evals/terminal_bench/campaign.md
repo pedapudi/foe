@@ -2293,3 +2293,87 @@ boundary after declared writes while an executable call can change files. The
 reviewed implementation in pull request 114 covers both cases and has a
 readable validation path. The autonomous source remains an evaluated
 self-improvement artifact. It is not the proposed production implementation.
+
+## Priority frozen-release activation and verifier feedback
+
+One candidate combines the unconditional built-in terminal audit, the live
+task-state completion rule, and final-artifact acceptance evidence. Its commit
+is `4669797`, and its Git tree is
+`git-tree-sha1:cda2cf060df78de9dfac45cccffa656a1082e984`. The portable binary
+is `sha256:0442fcfd2d5563c688397a5c5d9f053f474f2c737798435d564a08d9d766dcca`
+and is 6,079,656 bytes. Repository tests, clippy, the example suite, and line
+budgets pass.
+
+A provider-free installation run loaded the portable binary in the
+`dna-assembly`, `git-multibranch`, and `gpt2-codegolf` images. It used two
+installation workers and recorded no exception. The retained directory is
+`/home/sunil/git/foe-priority-frozen-release/target/terminal-bench-jobs/priority-frozen-activation-install-20260826T202043Z`.
+Its campaign manifest SHA-256 is
+`dd5ab8c122fefc4f8da5e405e7cff5e26a5b0b5be741abb87394b818880cf602`.
+
+Deterministic capability probes then ran in all three images. Each image
+provided a writable task directory, package installation, large-file search,
+windowed reads, and enforced tool timeouts. The DNA and GPT-2 images lacked
+one or more executables in the fixed standard-path probe. All three images
+killed a background shell process after its tool call. These observations
+change model-visible tool selection but do not invalidate the task
+configuration. The retained capability reports have these SHA-256 digests:
+
+- `dna-assembly`: `7b39a9e8725cde6078181b90d37a6cbb50a4d7b17c3c875af3e39ddfd7007683`;
+- `git-multibranch`: `ab0a9edd2ee982cb9ae8749d7c4cd5cb85cd37e8bd2317e958ce11d137e1bc9b`;
+- `gpt2-codegolf`: `e8ea4f66a3562014873148c70d39f9869b5f5106ad6781110bcab1584287c887`.
+
+The first unchanged Terminal-Bench pass used GPT-5.6 Sol, low implementation
+reasoning, high audit reasoning, the priority service tier, sandbox mode
+`off`, and measurement-only token accounting. The results were:
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Trace assertions |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `dna-assembly` | 0.0 | 31 | 393,312 | 212,480 | 21,107 | $1.230460 | 7,094 |
+| `git-multibranch` | 1.0 | 35 | 340,751 | 164,864 | 19,522 | $1.159934 | 32,008 |
+| `gpt2-codegolf` | 1.0 | 49 | 1,047,590 | 671,232 | 28,497 | $2.343865 | 34,964 |
+
+Every trace conformed, and no trial recorded an infrastructure failure. The
+run requested two assessed workers. The resource policy selected serial
+execution because available memory was below its fixed 14,336 MiB parallel
+threshold. This run therefore provides no two-worker qualification evidence.
+The retained directory is
+`/home/sunil/git/foe-priority-frozen-release/target/terminal-bench-jobs/priority-frozen-activation-first-pass-20260826T202241Z`.
+Its campaign manifest SHA-256 is
+`aa3b72cc826a2370243c19eba30cda6ac67262de692a66b9da1e9a048d4315ef`.
+
+The DNA audit cited one comprehensive command for every task requirement and
+reported completion. The unchanged task-owned grader rejected the input primer
+pair. The audit removed a fixed thirteen-base prefix before computing melting
+temperatures. The grader also counted overhang suffix bases that matched the
+template. Under that definition, the pair differed by 5.263745 degrees
+Celsius, above the permitted five degrees. This is a semantic false acceptance
+rather than an infrastructure or runtime-evidence failure.
+
+The public DNA completion checker models the grader's overlap rule. Its fresh
+negative and oracle controls both passed. The controls are retained under
+`/home/sunil/git/foe-priority-frozen-release/target/terminal-bench-verifier-controls/priority-frozen-dna/controls-20260826T205408Z`.
+The control report SHA-256 is
+`cd34417996444c54c33d295cbd7fd92e6cf4b179da57c672b76eb2ff11cf6d9d`.
+
+The same frozen release then ran `dna-assembly` with that checker assigned to
+the terminal audit's `done_when.verify`. The audit called the checker six
+times. Intermediate findings identified an unavailable `oligotm` executable,
+an invalid BsaI flank, a 46-base annealing tract, and a primer pair whose
+melting temperatures differed by more than five degrees. The audit installed
+the missing package and repaired each finding. Its final checker call and
+authoritative completion verification returned no findings. The unchanged
+task-owned grader awarded score 1.0.
+
+The governed run used 57 model calls, 929,237 input tokens, 684,544 cached
+input tokens, and 24,955 output tokens. Its estimated cost was $1.751690. The
+trace passed 6,825 assertions with no violation. The retained directory is
+`/home/sunil/git/foe-priority-frozen-release/target/terminal-bench-jobs/priority-frozen-dna-done-when-20260826T205457Z`.
+Its campaign manifest SHA-256 is
+`0eb2f4558c4b91b39cc46ea6df8cdcd058e30eb699bbdf44c180a1f76908da4b`.
+
+The frozen release remains in development. It has one priority-tier pass on
+two activation tasks and one closed-book DNA failure. The verifier-governed
+DNA result establishes corrective convergence and identifies the semantic
+gap. Two additional unchanged DNA attempts are required to decide the
+three-attempt activation gate.

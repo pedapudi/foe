@@ -642,8 +642,11 @@ feedback to the later diagnosis without participating in the source-candidate
 identity. The runner rejects a later source candidate whose identity equals
 the rejected source candidate.
 
-The runner emits a version 3 program. Its default service tier is `default`
-for diagnosis, implementation, review, and finalization. The model blocks
+The runner emits a version 3 program. The campaign Bazel target supplies the
+`priority` service tier for diagnosis, implementation, review, and
+finalization. A direct invocation of `run_self_improvement.py` defaults to
+`default` and must set `--service-tier priority` to match the campaign. The
+model blocks
 explicitly name the credential file from Foe's per-provider convention under
 the passwd home directory. The retained plan and `episode/start.program`
 therefore carry the same runtime-resolved model block. `--candidate-kind` can
