@@ -25,6 +25,7 @@ from foe_agent_support import (
     fixed_executable_probe_command,
     missing_builtin_workflow_options,
     missing_episode_diagnostic,
+    normalized_plan,
     parse_boolean,
     read_episode_summary,
     retained_artifacts_contain_credential,
@@ -398,6 +399,12 @@ class FoeAgent(BaseInstalledAgent):
                         "installed Foe could not resolve the retained evaluation program: "
                         f"status {plan_result.return_code}"
                     )
+            retained_plan = self.logs_dir / "foe-plan.json"
+            plan = normalized_plan(json.loads(retained_plan.read_text(encoding="utf-8")), instruction)
+            retained_plan.write_text(
+                json.dumps(plan, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
             result = await self.exec_as_agent(
                 environment,
                 command=command,

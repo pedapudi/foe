@@ -12,6 +12,7 @@ from source_adoption import (
     build_source_candidate,
     capture_source_candidate,
     freeze_source_candidate,
+    retain_parent_executables,
     verify_source_candidate,
 )
 from run import Task, main as run_terminal_bench, task_record, write_json_atomic
@@ -39,11 +40,18 @@ class SourceAdoptionTest(unittest.TestCase):
             cls.checker = runfile
         else:
             subprocess.run(
+                ["cargo", "build", "-p", "foe", "--bin", "foe"],
+                cwd=cls.repository,
+                check=True,
+            )
+            subprocess.run(
                 ["cargo", "build", "-p", "foe-lineage", "--example", "source_adoption"],
                 cwd=cls.repository,
                 check=True,
             )
             cls.checker = cls.repository / "target/debug/examples/source_adoption"
+        bazel_foe = Path(test_srcdir) / "_main/foe-portable" if test_srcdir else Path()
+        cls.foe = bazel_foe if bazel_foe.is_file() else cls.repository / "target/debug/foe"
 
     def git(self, root, *arguments):
         result = subprocess.run(
@@ -68,7 +76,53 @@ class SourceAdoptionTest(unittest.TestCase):
         bazel.chmod(0o755)
         return bazel
 
-    def write_episode(self, directory, parent_identity, verifier_sha256):
+    def plan(self, bundle, task, workflow=False):
+        check = str((bundle / "candidate-check").resolve())
+        child = lambda name, verify=False: {
+            "name": name,
+            "instructions": {"role": "Improve Foe."},
+            "tools": ["check"],
+            "tool_defs": {"check": {"exec": check, "description": "Judge the source candidate."}},
+            "grants": {"read": [str(bundle)], "write": [str(bundle)]},
+            "budget": {"model_calls": 2},
+            **({"done_when": {"verify": "check"}} if verify else {}),
+        }
+        config = {
+            "version": 3,
+            "name": "source-improvement",
+            "instructions": {"role": "Improve Foe."},
+            "tools": ["check"],
+            "tool_defs": {"check": {"exec": check, "description": "Judge the source candidate."}},
+            "grants": {"read": [str(bundle)], "write": [str(bundle)]},
+            "budget": {"model_calls": 12, "max_episodes": 4, "max_concurrent": 1},
+            "done_when": {"verify": "check"},
+            "task": task,
+        }
+        if workflow:
+            config["workflow"] = {"nodes": {
+                "diagnose-runtime": {"model": child("diagnose-foe-from-trajectory-measurements")},
+                "implement-runtime-improvement": {
+                    "model": child("implement-foe-improvement"), "follows": ["diagnose-runtime"],
+                },
+                "audit-runtime-improvement": {
+                    "model": child("audit-runtime-improvement", True),
+                    "follows": ["implement-runtime-improvement"], "terminal": True,
+                },
+            }}
+        path = bundle / "parent-config.json"
+        path.write_text(json.dumps(config), encoding="utf-8")
+        result = subprocess.run(
+            [str(self.foe), "plan", "--config", str(path), "--json"],
+            text=True, capture_output=True, check=True,
+        )
+        path.unlink()
+        plan = json.loads(result.stdout)
+        if plan.get("task", task) != task:
+            raise ValueError("test Foe plan reported a different task")
+        plan["task"] = task
+        return plan
+
+    def write_episode(self, directory, plan, verifier_sha256):
         events = [
             {
                 "seq": 0,
@@ -79,18 +133,9 @@ class SourceAdoptionTest(unittest.TestCase):
                     "parent_id": None,
                     "fork_origin": None,
                     "team_id": None,
-                    "program": {
-                        "tools": ["check"],
-                        "tool_defs": {
-                            "check": {
-                                "exec": "/trusted/check",
-                                "description": "Judge the source candidate.",
-                            }
-                        },
-                        "done_when": {"verify": "check"},
-                    },
-                    "identity": parent_identity,
-                    "task": "propose one source change",
+                    "program": plan["program"],
+                    "identity": plan["identity"],
+                    "task": plan["task"],
                     "runtime": {"version": "0.1.0", "build": "unknown"},
                     "sandbox": {"mode": "off", "landlock_abi": 0},
                 },
@@ -122,36 +167,25 @@ class SourceAdoptionTest(unittest.TestCase):
         )
 
     def write_workflow_episode(
-        self, directory, parent_identity, diagnosis_identity,
-        implementation_identity, audit_identity, verifier_sha256,
+        self, directory, plan, verifier_sha256,
     ):
+        identities = plan["identity_document"]["workflow"]["nodes"]
         programs = {
             "ep_diagnosis": (
                 "diagnose-runtime",
                 "diagnose-foe-from-trajectory-measurements",
-                diagnosis_identity,
+                identities["diagnose-runtime"]["model"],
             ),
             "ep_implementation": (
                 "implement-runtime-improvement",
                 "implement-foe-improvement",
-                implementation_identity,
+                identities["implement-runtime-improvement"]["model"],
             ),
             "ep_audit": (
                 "audit-runtime-improvement",
                 "audit-and-repair-foe-improvement",
-                audit_identity,
+                identities["audit-runtime-improvement"]["model"],
             ),
-        }
-        audit_program = {
-            "name": "audit-runtime-improvement",
-            "tools": ["check"],
-            "tool_defs": {
-                "check": {
-                    "exec": "/controller/candidate-check",
-                    "description": "Judge the source candidate.",
-                }
-            },
-            "done_when": {"verify": "check"},
         }
         root = [
             {
@@ -159,17 +193,8 @@ class SourceAdoptionTest(unittest.TestCase):
                 "data": {
                     "id": "ep_root", "parent_id": None, "fork_origin": None,
                     "team_id": None,
-                    "program": {
-                        "workflow": {
-                            "nodes": {
-                                "collect-trajectory-diagnostics": {"tool": "evidence"},
-                                "diagnose-runtime": {"model": {"name": "diagnose-foe-from-trajectory-measurements"}},
-                                "implement-runtime-improvement": {"model": {"name": "implement-foe-improvement"}},
-                                "audit-runtime-improvement": {"model": audit_program},
-                            }
-                        }
-                    },
-                    "identity": parent_identity, "task": "improve Foe",
+                    "program": plan["program"],
+                    "identity": plan["identity"], "task": plan["task"],
                     "runtime": {"version": "0.1.0", "build": "unknown"},
                     "sandbox": {"mode": "off", "landlock_abi": 0},
                 },
@@ -200,13 +225,19 @@ class SourceAdoptionTest(unittest.TestCase):
             "\n".join(json.dumps(event) for event in root) + "\n", encoding="utf-8"
         )
         for child_id, (_, program_name, identity) in programs.items():
-            child_program = audit_program if child_id == "ep_audit" else {"name": program_name}
+            node = plan["program"]["workflow"]["nodes"][programs[child_id][0]]["model"]
+            child_program = json.loads(json.dumps(node))
+            for definition in child_program["tool_defs"].values():
+                definition.setdefault("cwd", child_program["grants"]["read"][0])
+            child_program["sandbox"] = plan["program"]["sandbox"]
+            if "model" not in child_program and "model" in plan["program"]:
+                child_program["model"] = plan["program"]["model"]
             child = [{
                 "seq": 0, "time": 0, "type": "episode/start",
                 "data": {
                     "id": child_id, "parent_id": "ep_root", "fork_origin": None,
                     "team_id": "ep_root", "program": child_program,
-                    "identity": identity, "task": "improve Foe",
+                    "identity": identity, "task": plan["task"],
                     "runtime": {"version": "0.1.0", "build": "unknown"},
                     "sandbox": {"mode": "off", "landlock_abi": 0},
                 },
@@ -237,15 +268,14 @@ class SourceAdoptionTest(unittest.TestCase):
         retained.update(bytes=path.stat().st_size, sha256=sha256(path.read_bytes()))
         manifest_path.write_bytes(canonical(manifest))
 
-    def write_parent_plan(self, bundle, parent):
-        start = json.loads((bundle / "episode/episode.jsonl").read_text().splitlines()[0])["data"]
-        program = dict(start["program"])
-        program["task"] = start["task"]
+    def write_parent_plan(self, bundle, plan):
         (bundle / "parent-plan.json").write_bytes(canonical({
-            "identity": sha256(canonical(parent)),
-            "identity_document": parent,
-            "program": program,
+            "identity": plan["identity"],
+            "identity_document": plan["identity_document"],
+            "program": plan["program"],
+            "task": plan["task"],
         }))
+        retain_parent_executables(bundle, plan["program"])
 
     def fixture(self, root, critical_controller_files=False):
         repository = root / "repository"
@@ -274,16 +304,12 @@ class SourceAdoptionTest(unittest.TestCase):
         base = f"git-tree-{algorithm}:{self.git(repository, 'rev-parse', 'HEAD^{tree}')}"
         verifier = b"trusted verifier"
         verifier_sha256 = sha256(verifier)
-        parent = {
-            "name": "source-improvement",
-            "tools": [{"name": "check", "exec_sha256": verifier_sha256.removeprefix("sha256:")}],
-        }
-        parent_identity = sha256(canonical(parent))
         bundle = root / "bundle"
         bundle.mkdir()
         (bundle / "candidate-check").write_bytes(verifier)
-        self.write_episode(bundle / "episode", parent_identity, verifier_sha256)
-        self.write_parent_plan(bundle, parent)
+        plan = self.plan(bundle, "propose one source change")
+        self.write_episode(bundle / "episode", plan, verifier_sha256)
+        self.write_parent_plan(bundle, plan)
         (repository / "changed.txt").write_text("after\n", encoding="utf-8")
         (repository / "changed.txt").chmod(0o755)
         (repository / "deleted.txt").unlink()
@@ -334,29 +360,13 @@ class SourceAdoptionTest(unittest.TestCase):
             base = f"git-tree-{algorithm}:{self.git(repository, 'rev-parse', 'HEAD^{tree}')}"
             (repository / "changed.txt").write_text("after\n", encoding="utf-8")
             verifier = b"#!/bin/sh\nexit 0\n"
-            diagnosis_identity = sha256(canonical({"name": "diagnose-runtime"}))
-            implementation_identity = sha256(canonical({"name": "implement-runtime-improvement"}))
-            audit_identity = sha256(canonical({"name": "audit-runtime-improvement"}))
-            parent = {
-                "name": "source-improvement",
-                "workflow": {
-                    "nodes": {
-                        "collect-trajectory-diagnostics": {"tool": "evidence"},
-                        "diagnose-runtime": {"model": diagnosis_identity},
-                        "implement-runtime-improvement": {"model": implementation_identity},
-                        "audit-runtime-improvement": {"model": audit_identity},
-                    }
-                },
-            }
-            parent_identity = sha256(canonical(parent))
             bundle = root / "bundle"
             bundle.mkdir()
             (bundle / "candidate-check").write_bytes(verifier)
-            self.write_workflow_episode(
-                bundle / "episode", parent_identity, diagnosis_identity,
-                implementation_identity, audit_identity, sha256(verifier)
-            )
-            self.write_parent_plan(bundle, parent)
+            plan = self.plan(bundle, "improve Foe", workflow=True)
+            diagnosis_identity = plan["identity_document"]["workflow"]["nodes"]["diagnose-runtime"]["model"]
+            self.write_workflow_episode(bundle / "episode", plan, sha256(verifier))
+            self.write_parent_plan(bundle, plan)
             captured = capture_source_candidate(
                 self.checker,
                 bundle,
@@ -450,6 +460,44 @@ class SourceAdoptionTest(unittest.TestCase):
             (bundle / "candidate-check").write_bytes(b"substituted")
             with self.assertRaisesRegex(ValueError, "source candidate checker failed"):
                 verify_source_candidate(self.checker, bundle, repository, applied, runtime)
+            (bundle / "candidate-check").write_bytes(verifier)
+            self.update_retained_file(bundle, "candidate-check")
+            plan_path = bundle / "parent-plan.json"
+            original_plan = plan_path.read_bytes()
+            mutated_plan = json.loads(original_plan)
+            mutated_plan["program"]["workflow"]["nodes"]["audit-runtime-improvement"]["model"] = (
+                mutated_plan["program"]["workflow"]["nodes"]["diagnose-runtime"]["model"]
+            )
+            plan_path.write_bytes(canonical(mutated_plan))
+            root_events = [json.loads(line) for line in original_root_log.decode().splitlines()]
+            root_events[0]["data"]["program"] = mutated_plan["program"]
+            audit_spawn = next(
+                event for event in root_events
+                if event["type"] == "spawn/start" and event["data"]["child_id"] == "ep_audit"
+            )
+            audit_spawn["data"]["program"] = "diagnose-runtime"
+            root_log.write_text("\n".join(json.dumps(event) for event in root_events) + "\n")
+            diagnosis_log = bundle / "episode/children/ep_diagnosis/episode.jsonl"
+            diagnosis_start = json.loads(diagnosis_log.read_text().splitlines()[0])["data"]
+            audit_events = [json.loads(line) for line in original_audit_log.decode().splitlines()]
+            audit_events[0]["data"]["program"] = diagnosis_start["program"]
+            audit_events[0]["data"]["identity"] = diagnosis_start["identity"]
+            audit_log.write_text("\n".join(json.dumps(event) for event in audit_events) + "\n")
+            for relative in [
+                "parent-plan.json", "episode/episode.jsonl",
+                "episode/children/ep_audit/episode.jsonl",
+            ]:
+                self.update_retained_file(bundle, relative)
+            with self.assertRaisesRegex(ValueError, "matches the identity and document recomputed"):
+                verify_source_candidate(self.checker, bundle, repository, applied, runtime)
+            plan_path.write_bytes(original_plan)
+            root_log.write_bytes(original_root_log)
+            audit_log.write_bytes(original_audit_log)
+            for relative in [
+                "parent-plan.json", "episode/episode.jsonl",
+                "episode/children/ep_audit/episode.jsonl",
+            ]:
+                self.update_retained_file(bundle, relative)
 
     def test_preflight_binds_bytes_modes_deletions_and_evaluated_pair(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -633,7 +681,8 @@ class SourceAdoptionTest(unittest.TestCase):
             root = Path(directory)
             repository, bundle, _, applied, runtime, captured = self.fixture(root)
             unrelated = bundle / "unrelated"
-            self.write_episode(unrelated, captured["parent_program_identity"], sha256(b"trusted verifier"))
+            plan = json.loads((bundle / "parent-plan.json").read_text(encoding="utf-8"))
+            self.write_episode(unrelated, plan, sha256(b"trusted verifier"))
             log = unrelated / "episode.jsonl"
             events = [json.loads(line) for line in log.read_text().splitlines()]
             events[0]["data"]["id"] = "ep_unrelated"
@@ -713,9 +762,11 @@ class SourceAdoptionTest(unittest.TestCase):
                     (repository / "a").write_text("b", encoding="utf-8")
                     bundle = root / "bundle"
                     bundle.mkdir()
-                    parent = {"name": "parent"}
-                    self.write_episode(bundle / "episode", sha256(canonical(parent)), sha256(b"check"))
-                    self.write_parent_plan(bundle, parent)
+                    (bundle / "candidate-check").write_bytes(b"check")
+                    plan = self.plan(bundle, "propose one source change")
+                    self.write_episode(bundle / "episode", plan, sha256(b"check"))
+                    self.write_parent_plan(bundle, plan)
+                    (bundle / "candidate-check").unlink()
                     (bundle / "candidate-check").symlink_to(bundle / "parent-plan.json")
                 with self.assertRaisesRegex(ValueError, "symbolic link"):
                     capture_source_candidate(
@@ -780,7 +831,7 @@ class SourceAdoptionTest(unittest.TestCase):
             )
             identity_document = {"name": "evaluated-program", "tools": []}
             identity = sha256(canonical(identity_document))
-            program = {"name": "evaluated-program", "task": "transfer task"}
+            program = {"name": "evaluated-program"}
             plan = root / "foe-plan.json"
             plan.write_text(
                 json.dumps(
@@ -788,6 +839,7 @@ class SourceAdoptionTest(unittest.TestCase):
                         "identity": identity,
                         "identity_document": identity_document,
                         "program": program,
+                        "task": "transfer task",
                     }
                 ),
                 encoding="utf-8",

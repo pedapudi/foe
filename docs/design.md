@@ -663,6 +663,9 @@ foe plan --config FILE --states DIR --evidence DIR       verify the configuratio
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
 
+The JSON plan report carries `task` beside `program`. The resolved program
+omits the task because task text does not participate in program identity.
+
 One declarative table in `crates/cli/src/main.rs` names every form, its
 positional shape, and each option it accepts with that option's value
 placeholder, its default, and its meaning. The parser and both help screens
@@ -910,9 +913,11 @@ sandbox, and spawning — and its Rust source stays under 5,250 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/program`, which is budgeted
-apart under 1,425 lines. The budget includes validation that reserves `/`
-for unambiguous nested-workflow paths in logs and lineage evidence. The two
-are separate because a program document that gains a key must not buy room
+apart under 1,500 lines. The budget includes validation that reserves `/`
+for unambiguous nested-workflow paths in logs and lineage evidence. It also
+includes identity recomputation from retained resolved programs and configured
+executable digests. The two are separate because a program document that gains
+a key must not buy room
 in the loop, and because the
 claim the kernel's number supports is about the machine that runs a program
 rather than about the data model it runs.
@@ -958,7 +963,7 @@ to verify how one program state descends from another, and nothing in the
 runtime depends on it. A claim that gains a check must not buy room inside
 either contract. See [lineage-identity.md](lineage-identity.md).
 
-The external source-adoption evaluator stays under 800 Rust lines. It retains
+The external source-adoption evaluator stays under 850 Rust lines. It retains
 and checks the planned root program and each named workflow child's program
 before source changes can enter an external campaign. Its separate budget
 covers validation of Git objects, retained source bytes,

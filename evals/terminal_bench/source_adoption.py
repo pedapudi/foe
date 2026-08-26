@@ -40,6 +40,34 @@ def file_digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def retain_parent_executables(bundle: Path, program: dict[str, Any]) -> None:
+    """Retain every configured executable needed to recompute program identity."""
+    paths: set[str] = set()
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            definitions = value.get("tool_defs")
+            if isinstance(definitions, dict):
+                for definition in definitions.values():
+                    if isinstance(definition, dict) and isinstance(definition.get("exec"), str):
+                        paths.add(definition["exec"])
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(program)
+    destination = bundle / "parent-executables"
+    for value in sorted(paths):
+        source = Path(value)
+        if not source.is_file():
+            raise ValueError(f"parent plan configured executable is not a file: {source}")
+        destination.mkdir(parents=True, exist_ok=True)
+        name = hashlib.sha256(value.encode("utf-8")).hexdigest()
+        shutil.copyfile(source, destination / name)
+
+
 def build_graph(candidate: Path) -> dict[str, str]:
     """Identify the protected files that define the candidate build."""
     listed = subprocess.run(

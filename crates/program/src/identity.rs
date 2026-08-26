@@ -11,10 +11,12 @@
 
 use crate::document::{resolve_node_program, ResolvedProgram};
 use crate::workflow::WorkflowConfig;
-use crate::{harness_text, tools, ProgramError, ToolSpec};
+use crate::{harness_text, tools, ProgramError, ToolDef, ToolSpec};
 use foe_log::RuntimeInfo;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 /// A computed identity with the document it hashes, for `foe plan`.
 #[derive(Debug, Clone, PartialEq)]
@@ -43,25 +45,76 @@ pub fn compute(
     extra_builtins: &[ToolSpec],
     runtime: &RuntimeInfo,
 ) -> Result<Identity, ProgramError> {
+    compute_using(program, extra_builtins, runtime, &|name, def| {
+        let bytes = std::fs::read(&def.exec).map_err(|e| ProgramError::Invalid {
+            key: format!("tool_defs.{name}.exec"),
+            rule: format!("is readable for hashing: {}: {e}", def.exec.display()),
+        })?;
+        Ok(sha256_hex(&bytes))
+    })
+}
+
+/// Recomputes a retained resolved program without opening its original
+/// executable paths. Configured-tool digests come from retained regular
+/// files. Built-in specifications come from the claimed root document,
+/// whose complete recomputed form the caller compares byte for byte.
+pub fn compute_retained(
+    program: &ResolvedProgram,
+    document: &Value,
+    configured: &BTreeMap<PathBuf, String>,
+) -> Result<Identity, ProgramError> {
+    let listed = document["tools"]
+        .as_array()
+        .ok_or_else(|| ProgramError::Invalid { key: "identity_document.tools".into(), rule: "is an array".into() })?;
+    let mut extra = Vec::new();
+    for name in &program.tools {
+        if name == harness_text::BLOCK_NAME
+            || program.tool_defs.contains_key(name)
+            || program.host_tools.contains_key(name)
+        {
+            continue;
+        }
+        let value = listed.iter().find(|value| value["name"] == *name).ok_or_else(|| ProgramError::Invalid {
+            key: "identity_document.tools".into(),
+            rule: format!("contains the built-in specification for `{name}`"),
+        })?;
+        extra.push(serde_json::from_value::<ToolSpec>(value.clone())?);
+    }
+    let runtime = serde_json::from_value::<RuntimeInfo>(document["runtime"].clone())?;
+    compute_using(program, &extra, &runtime, &|name, def| {
+        configured.get(&def.exec).cloned().ok_or_else(|| ProgramError::Invalid {
+            key: format!("tool_defs.{name}.exec"),
+            rule: "has retained executable bytes".into(),
+        })
+    })
+}
+
+fn compute_using(
+    program: &ResolvedProgram,
+    extra_builtins: &[ToolSpec],
+    runtime: &RuntimeInfo,
+    configured_digest: &dyn Fn(&str, &ToolDef) -> Result<String, ProgramError>,
+) -> Result<Identity, ProgramError> {
     let mut tools = Vec::new();
     for spec in tools::resolve_specs(program, extra_builtins)? {
         let mut entry = serde_json::to_value(&spec)?;
         if let Some(def) = program.tool_defs.get(&spec.name) {
-            let bytes = std::fs::read(&def.exec).map_err(|e| ProgramError::Invalid {
-                key: format!("tool_defs.{}.exec", spec.name),
-                rule: format!("is readable for hashing: {}: {e}", def.exec.display()),
-            })?;
-            entry["exec_sha256"] = Value::String(sha256_hex(&bytes));
+            entry["exec_sha256"] = Value::String(configured_digest(&spec.name, def)?);
         }
         tools.push(entry);
     }
     let mut programs = serde_json::Map::new();
     for (name, child) in &program.programs {
-        programs.insert(name.clone(), Value::String(compute(child, extra_builtins, runtime)?.hash));
+        programs.insert(
+            name.clone(),
+            Value::String(compute_using(child, extra_builtins, runtime, configured_digest)?.hash),
+        );
     }
     let texts = texts(harness_text::all());
-    let workflow =
-        program.workflow.as_ref().map(|wf| workflow_document("workflow", wf, program, extra_builtins, runtime));
+    let workflow = program
+        .workflow
+        .as_ref()
+        .map(|wf| workflow_document("workflow", wf, program, extra_builtins, runtime, configured_digest));
     let mut grants = json!({
         "read": program.grants.read.len(), "write": program.grants.write.len(),
         "execute": program.grants.execute.len(), "spawn": program.grants.spawn.len(), "bind": program.grants.bind.len(),
@@ -99,6 +152,7 @@ fn workflow_document(
     parent: &ResolvedProgram,
     extra_builtins: &[ToolSpec],
     runtime: &RuntimeInfo,
+    configured_digest: &dyn Fn(&str, &ToolDef) -> Result<String, ProgramError>,
 ) -> Result<Value, ProgramError> {
     let inputs = wf.inputs();
     let mut nodes = serde_json::Map::new();
@@ -110,10 +164,20 @@ fn workflow_document(
         fields.insert("max_fires".into(), json!(node.max_fires.unwrap_or(1)));
         if let Some(child) = &node.model {
             let program = resolve_node_program(&format!("{key}.model"), parent, child)?;
-            fields.insert("model".into(), json!(compute(&program, extra_builtins, runtime)?.hash));
+            fields.insert(
+                "model".into(),
+                json!(compute_using(&program, extra_builtins, runtime, configured_digest)?.hash),
+            );
         }
         if let Some(inner) = &node.workflow {
-            let inner = workflow_document(&format!("{key}.workflow"), inner, parent, extra_builtins, runtime)?;
+            let inner = workflow_document(
+                &format!("{key}.workflow"),
+                inner,
+                parent,
+                extra_builtins,
+                runtime,
+                configured_digest,
+            )?;
             fields.insert("workflow".into(), inner);
         }
         nodes.insert(name.clone(), entry);

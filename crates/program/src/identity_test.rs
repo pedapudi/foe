@@ -1,9 +1,10 @@
-use super::{canonical, compute};
+use super::{canonical, compute, compute_retained, sha256_hex};
 use crate::harness_text;
 use crate::test_util::{program, program_with, spec, tmp};
 use crate::Effect;
 use foe_log::RuntimeInfo;
 use serde_json::json;
+use std::collections::BTreeMap;
 
 fn runtime() -> RuntimeInfo {
     RuntimeInfo { version: "0.1.0".into(), build: "sha256:test".into() }
@@ -77,4 +78,25 @@ fn identity_hashes_harness_text_exec_content_and_children() {
     std::fs::write(&exec, "v2").unwrap();
     let second = compute(&program_with(&root, with_tool).unwrap(), &spawn, &runtime()).unwrap();
     assert_ne!(second.hash, first.hash, "replacing the executable changes identity");
+}
+
+#[test]
+fn retained_identity_uses_the_resolved_program_and_retained_executable_digest() {
+    let root = tmp("identity-retained");
+    let exec = root.join("tool.sh");
+    std::fs::write(&exec, "retained bytes").unwrap();
+    let program = program_with(&root, |value| {
+        value["tools"] = json!(["block", "configured"]);
+        value["tool_defs"] = json!({
+            "configured": { "exec": exec, "description": "Inspect retained evidence." }
+        });
+    })
+    .unwrap();
+    let identity = compute(&program, &[], &runtime()).unwrap();
+    let retained = BTreeMap::from([(exec, sha256_hex(b"retained bytes"))]);
+    assert_eq!(compute_retained(&program, &identity.document, &retained).unwrap(), identity);
+
+    let mut changed = program;
+    changed.instructions.insert("changed".into(), "Different model-visible text.".into());
+    assert_ne!(compute_retained(&changed, &identity.document, &retained).unwrap(), identity);
 }
