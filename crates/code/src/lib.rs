@@ -18,6 +18,8 @@ mod diff;
 mod edit;
 mod grep;
 #[cfg(feature = "exec")]
+mod process_output;
+#[cfg(feature = "exec")]
 mod python;
 mod read;
 #[cfg(feature = "exec")]

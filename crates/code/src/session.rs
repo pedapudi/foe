@@ -11,15 +11,14 @@
 //! settlement. With explicit authority, a task-lifetime session is released
 //! to the environment that owns the foe invocation.
 
-use crate::{parse_args, shell_environment, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES, SESSION_MAX_ALIVE, SHELL};
+use crate::{parse_args, process_output, shell_environment, SESSION_MAX_ALIVE, SHELL};
 
 use foe_config::{Effect, ToolSpec};
 use foe_core::exec::TERM_GRACE;
 use foe_core::session::{subject, SESSION_TOOL};
-use foe_core::{fitting, CallCtx, SessionLifetime, SessionOutput, SessionRequest, SessionStatus, Tool, ToolValue};
+use foe_core::{CallCtx, SessionLifetime, SessionOutput, SessionRequest, SessionStatus, Tool, ToolValue};
 use serde::Deserialize;
 use serde_json::json;
-use std::fmt::Write;
 use std::path::Path;
 
 pub struct Session {
@@ -199,57 +198,20 @@ impl Tool for Session {
 /// shape, so the status survives any later cut of the middle. On
 /// truncation the whole text is saved and a notice names the file.
 fn render_poll(ctx: &CallCtx, status: &SessionStatus, output: &SessionOutput) -> ToolValue {
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let mut combined = stdout.to_string();
-    if !stderr.is_empty() {
-        if !combined.is_empty() && !combined.ends_with('\n') {
-            combined.push('\n');
-        }
-        let _ = write!(combined, "--- stderr ---\n{stderr}");
-    }
-    let lines: Vec<&str> = combined.lines().collect();
-    let (kept, _) = fitting(lines.iter().rev(), OUTPUT_MAX_LINES, OUTPUT_MAX_CHARS);
-    let truncated = kept < lines.len();
-    let mut spill = None;
-    let mut out = format!("[{}]\n", subject(status));
-    if truncated {
-        let file = ctx.spill_dir.join(format!("{}-session.txt", ctx.call_id));
-        let saved = std::fs::create_dir_all(&ctx.spill_dir).and_then(|()| std::fs::write(&file, combined.as_bytes()));
-        let _ = match &saved {
-            Ok(()) => writeln!(
-                out,
-                "[Showing the last {} of {} lines. Full output saved to {}]",
-                kept,
-                lines.len(),
-                file.display()
-            ),
-            Err(e) => writeln!(
-                out,
-                "[Showing the last {} of {} lines. Saving the full output failed: {e}]",
-                kept,
-                lines.len()
-            ),
-        };
-        if saved.is_ok() {
-            spill = Some(file.display().to_string());
-        }
-    }
-    for l in &lines[lines.len() - kept..] {
-        let _ = writeln!(out, "{l}");
-    }
-    let line_count = stdout.lines().count() + stderr.lines().count();
+    let line = subject(status);
+    let output = process_output::render(ctx, &line, &output.stdout, &output.stderr, "session");
     ToolValue::ok(
         json!({
             "session": status.id, "name": status.name, "alive": status.alive,
             "exit_code": status.exit_code, "seconds": status.seconds,
-            "stdout": stdout, "stderr": stderr, "truncated": truncated, "spill": spill,
+            "stdout": output.stdout, "stderr": output.stderr,
+            "truncated": output.truncated, "spill": output.spill,
         }),
-        out,
+        output.rendered,
     )
     .subject(match status.alive {
-        true => format!("{}, {line_count} lines", subject(status)),
-        false => subject(status),
+        true => format!("{line}, {} lines", output.line_count),
+        false => line,
     })
 }
 
