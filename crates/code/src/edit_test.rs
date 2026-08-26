@@ -207,17 +207,20 @@ async fn expected_version_refuses_a_stale_edit() {
 }
 
 /// docs/tools.md `edit`: the canonical prefix and the bare digest identify
-/// the same observed file version.
+/// the same observed file version, including for stale-version rejection.
 #[tokio::test]
-async fn expected_version_accepts_the_bare_read_digest() {
+async fn expected_version_accepts_a_matching_bare_digest_and_refuses_it_when_stale() {
     let fx = Fixture::new();
     fx.write("a.txt", "one\n");
     let observed = crate::file_version(b"one\n");
-    let value = edit(
-        &fx,
-        json!({"path": "a.txt", "expected_version": observed.trim_start_matches("sha256:"), "edits": [replace("one", "two")]}),
-    )
-    .await;
+    let bare = observed.trim_start_matches("sha256:");
+    let value = edit(&fx, json!({"path": "a.txt", "expected_version": bare, "edits": [replace("one", "two")]})).await;
     assert!(!value.is_error, "{value:?}");
     assert_eq!(value.value["previous_version"], observed);
+
+    let value = edit(&fx, json!({"path": "a.txt", "expected_version": bare, "edits": [replace("two", "three")]})).await;
+    assert!(value.is_error);
+    assert!(value.rendered.unwrap().contains("differs from expected_version"));
+    assert_eq!(fx.read("a.txt"), "two\n");
+    assert_eq!(fx.writes(), 1);
 }
