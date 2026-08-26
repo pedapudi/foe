@@ -562,6 +562,82 @@ class SourceAdoptionTest(unittest.TestCase):
             self.assertEqual(
                 verified["source_bundle_identity"], captured["source_bundle_identity"]
             )
+            evaluated_document = {"name": "evaluated-program", "tools": []}
+            evaluated_identity = sha256(canonical(evaluated_document))
+            evaluated_plan = root / "evaluated-plan.json"
+            evaluated_plan.write_text(
+                json.dumps(
+                    {
+                        "identity": evaluated_identity,
+                        "identity_document": evaluated_document,
+                        "program": {"name": "evaluated-program"},
+                        "task": "transfer task",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            evaluated_episode = root / "evaluated-episode"
+            evaluated_episode.mkdir()
+            (evaluated_episode / "episode.jsonl").write_text(
+                "\n".join(
+                    json.dumps(event)
+                    for event in [
+                        {
+                            "seq": 0,
+                            "time": 0,
+                            "type": "episode/start",
+                            "data": {
+                                "id": "ep_evaluated",
+                                "parent_id": None,
+                                "fork_origin": None,
+                                "team_id": None,
+                                "program": {"name": "evaluated-program"},
+                                "identity": evaluated_identity,
+                                "task": "transfer task",
+                                "runtime": {
+                                    "version": "0.1.0",
+                                    "build": sha256(runtime.read_bytes()),
+                                },
+                                "sandbox": {"mode": "off", "landlock_abi": 0},
+                            },
+                        },
+                        {
+                            "seq": 1,
+                            "time": 1,
+                            "type": "episode/end",
+                            "data": {
+                                "outcome": {"kind": "completed", "value": {}}
+                            },
+                        },
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            adopted = subprocess.run(
+                [
+                    str(self.checker),
+                    "adopt",
+                    str(bundle),
+                    str(repository),
+                    applied,
+                    str(runtime),
+                    str(evaluated_plan),
+                    str(evaluated_episode),
+                    str(root / "lineage"),
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            adoption = json.loads(adopted.stdout)
+            evidence = root / "lineage/evidence" / adoption["evidence_identity"].removeprefix("sha256:")
+            record = json.loads((evidence / "adoption-record.json").read_text())
+            self.assertEqual(record["schema_version"], 2)
+            self.assertEqual(
+                set(record["proposal_evidence"]["effective_children"]),
+                {"ep_diagnosis", "ep_implementation", "ep_audit"},
+            )
             root_log = bundle / "episode/episode.jsonl"
             original_root_log = root_log.read_bytes()
             audit_log = bundle / "episode/children/ep_audit/episode.jsonl"
@@ -897,7 +973,10 @@ class SourceAdoptionTest(unittest.TestCase):
             )
             manifest["files"].sort(key=lambda item: item["path"])
             manifest_path.write_bytes(canonical(manifest))
-            with self.assertRaisesRegex(ValueError, "reaches every retained episode"):
+            with self.assertRaisesRegex(
+                ValueError,
+                "effective child identities name every retained child|reaches every retained episode",
+            ):
                 verify_source_candidate(self.checker, bundle, repository, applied, runtime)
             status = run_terminal_bench(
                 [

@@ -256,7 +256,7 @@ Its Git objects, modes, and regular bytes must match every entry.
 The manifest contains no absolute path. A store may place the bundle
 anywhere, provided that a resolver can retrieve it by content address.
 
-The adoption record has this canonical form:
+An ordinary artifact adoption uses this canonical record:
 
 ```json
 {
@@ -269,7 +269,7 @@ The adoption record has this canonical form:
 }
 ```
 
-The bundle builder writes the record. `program_identity` is the hash of
+The generic bundle builder writes schema 1. `program_identity` is the hash of
 the canonical child identity document; the two digest members name the
 retained identity document and artifact manifest by content;
 `verification_log` and `verification_seq` are the coordinates of the
@@ -278,6 +278,38 @@ accepted verifier result. The manifest names the record in
 absent from the bundle because it contains the bundle address. An artifact
 manifest is a checker-defined list of candidate files and their content
 digests. "Exact input binding" states what the record establishes.
+
+Source adoption uses schema 2. It adds the evidence that source capture
+authenticated while resolving the workflow against the retained parent plan:
+
+```json
+{
+  "schema_version": 2,
+  "program_identity": "sha256:…",
+  "identity_document_sha256": "sha256:…",
+  "artifact_manifest_sha256": "sha256:…",
+  "verification_log": "episode/children/ep_audit/episode.jsonl",
+  "verification_seq": 74,
+  "proposal_evidence": {
+    "verifier": {
+      "tool": "check-candidate",
+      "executable_sha256": "sha256:…"
+    },
+    "effective_children": {
+      "ep_audit": "sha256:…",
+      "ep_diagnosis": "sha256:…",
+      "ep_implementation": "sha256:…"
+    }
+  }
+}
+```
+
+The effective-child map contains every retained child episode and no other
+key. Each value equals that child's `episode/start.identity`. The verifier
+digest names a retained file. The source-adoption checker writes these values
+only after recomputing every child identity and matching the verifier bytes to
+the accepted result. An ancestry checker reuses the retained values when it
+checks the portable lineage bundle.
 
 The `foe-lineage` crate carries a `build-bundle` binary so the canonical
 form has one implementation for builders outside the runtime. Given a
@@ -380,9 +412,9 @@ steps:
     its parent as its team.
 12. Require every retained spawn edge to name exactly one retained child. The
     program named by `spawn/start` must resolve through the parent identity
-    document. External source capture may supply a runtime-effective child
-    identity after it verifies the retained child program and recomputes that
-    identity. Nested workflow paths resolve one node at a time.
+    document. A schema 2 source-adoption record supplies every runtime-effective
+    child identity after source capture verifies the retained program and
+    recomputes that identity. Nested workflow paths resolve one node at a time.
 13. Resolve `parent.state_identity` and require its program identity to
     equal `parent.program_identity`.
 14. Require the verifier episode's program identity to be reachable in the
@@ -431,10 +463,11 @@ One further check is weakened by the shape of the identity document rather
 than by the event. Step 14 compares the recorded verifier identity with
 the executable hash the parent program declares. The parent identity
 document reduces a child program to its hash, so when the verifier episode
-runs a child program with a configured verifier, the declared executable
-hash is retained nowhere the checker can reach, and the comparison is
-reported as unverifiable. A built-in verifier is checked in every
-position, against the recorded runtime build.
+runs a child program with a configured verifier, a schema 1 record leaves the
+declared executable hash unavailable and the comparison remains unverifiable.
+A schema 2 source-adoption record carries the verifier binding that source
+capture authenticated. A built-in verifier is checked in every position
+against the recorded runtime build.
 
 ## Branches and repeated states
 
@@ -547,9 +580,11 @@ runtime build digest to equal the evaluated binary digest.
 
 The checker then creates the child state from the actual plan identity
 document. It places the exact source manifest in the lineage evidence bundle
-and binds it through the adoption record. The canonical ancestry checker
-must accept the resulting state. Adoption failure invalidates the assessed
-trial and makes the campaign exit unsuccessfully.
+and binds it through a schema 2 adoption record. The record preserves the
+runtime-effective child identities and configured verifier that source
+capture authenticated. The canonical ancestry checker must accept the
+resulting state. Adoption failure invalidates the assessed trial and makes
+the campaign exit unsuccessfully.
 
 `campaign.json` records the source-bundle, source-candidate, adoption,
 evidence, program, state, and parent identities. It records the evaluation

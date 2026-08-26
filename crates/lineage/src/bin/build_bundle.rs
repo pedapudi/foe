@@ -49,6 +49,7 @@ fn run(args: &[String]) -> Result<String, String> {
         artifact_manifest_sha256: digest_of(&read(artifact_manifest)?),
         verification_log: verification_log.clone(),
         verification_seq: seq,
+        proposal_evidence: None,
     };
     std::fs::write(dir.join(RECORD_FILE), canonical_bytes(&record).map_err(|e| e.to_string())?)
         .map_err(|e| format!("{RECORD_FILE}: {e}"))?;

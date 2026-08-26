@@ -1,6 +1,6 @@
 use super::{
     build_manifest, canonical_bytes, check_ancestry, digest_of, state_identity, validate, AdoptionRecord,
-    AncestryReport, LineageParent, ProgramLineage, StateDocument, MANIFEST_FILE,
+    AncestryReport, LineageParent, ProgramLineage, ProposalEvidence, RetainedVerifier, StateDocument, MANIFEST_FILE,
 };
 use foe_log::append::Writer;
 use foe_log::{EpisodeStart, EventData, Outcome, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
@@ -222,6 +222,7 @@ fn write_candidate_files(dir: &Path, child: &Identity, log: &str, seq: u64) -> A
         artifact_manifest_sha256: digest_of(artifacts.as_bytes()),
         verification_log: log.into(),
         verification_seq: seq,
+        proposal_evidence: None,
     }
 }
 
@@ -262,6 +263,49 @@ fn bundle(dir: &Path, f: &Fixture, child: &Identity, tool: &str, verifier_identi
         ],
     );
     seal(dir, "episode/episode.jsonl", "episode/episode.jsonl", 1, f, child)
+}
+
+fn runtime_effective_bundle(
+    dir: &Path,
+    f: &Fixture,
+    child: &Identity,
+    effective_identity: &str,
+    effective_children: BTreeMap<String, String>,
+    verifier_identity: &str,
+) -> ProgramLineage {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::copy(f.root.join("check.sh"), dir.join("retained-check.sh")).unwrap();
+    write_log(
+        &dir.join("episode"),
+        vec![
+            start("ep_root", None, &f.parent.hash, f.parent_program.to_value()),
+            EventData::SpawnStart {
+                child_id: "ep_kid".into(),
+                program: "kid".into(),
+                context: SpawnContext::Fresh,
+                call_id: "tc_1".into(),
+            },
+            EventData::SpawnEnd { child_id: "ep_kid".into(), outcome: Outcome::Completed { value: json!({}) } },
+            ended(),
+        ],
+    );
+    write_log(
+        &dir.join("episode/children/ep_kid"),
+        vec![
+            start("ep_kid", Some("ep_root"), effective_identity, f.parent_program.programs["kid"].to_value()),
+            accepted("check", &f.exec_identity),
+            ended(),
+        ],
+    );
+    let mut record = write_candidate_files(dir, child, "episode/children/ep_kid/episode.jsonl", 1);
+    record.schema_version = 2;
+    record.proposal_evidence = Some(ProposalEvidence {
+        verifier: RetainedVerifier { tool: "check".into(), executable_sha256: verifier_identity.into() },
+        effective_children,
+    });
+    std::fs::write(dir.join("adoption-record.json"), canonical_bytes(&record).unwrap()).unwrap();
+    let manifest = build_manifest(dir, "episode/episode.jsonl", "adoption-record.json").unwrap();
+    seal_manifest(dir, manifest, "episode/children/ep_kid/episode.jsonl", 1, f)
 }
 
 fn check(
@@ -534,4 +578,71 @@ fn a_verifier_result_in_a_spawned_child_log_is_reached_by_provenance() {
         "{:?}",
         report.unverifiable
     );
+}
+
+#[test]
+fn source_adoption_retains_runtime_effective_child_identities() {
+    let root = tmp("runtime-effective-child");
+    let exec = root.join("check.sh");
+    std::fs::write(&exec, "#!/bin/sh\nexit 0\n").unwrap();
+    let kid = json!({
+        "name": "kid", "instructions": { "a": "verify the candidate" },
+        "tools": ["block", "check"],
+        "tool_defs": { "check": { "exec": exec, "description": "verifies the candidate" } },
+        "done_when": { "verify": "check" },
+        "grants": { "read": [root] }, "budget": { "model_calls": 4 },
+    });
+    let parent_program = program_with(&root, |value| {
+        value["grants"]["spawn"] = json!(["kid"]);
+        value["programs"] = json!({ "kid": kid });
+    });
+    let parent = compute(&parent_program, &[], &runtime()).unwrap();
+    let f = Fixture {
+        root: root.clone(),
+        parent_program,
+        parent,
+        exec_identity: digest_of(&std::fs::read(&exec).unwrap()),
+    };
+    let child = child_of(&f, "descendant");
+    let effective = digest('e');
+    let exact = BTreeMap::from([("ep_kid".into(), effective.clone())]);
+    let (root_id, root_doc) = root_state(&f);
+
+    let dir = root.join("accepted");
+    let claim = runtime_effective_bundle(&dir, &f, &child, &effective, exact.clone(), &f.exec_identity);
+    let state = StateDocument { identity_document: child.document.clone(), program_lineage: Some(claim.clone()) };
+    let report =
+        check(&state, BTreeMap::from([(root_id.clone(), root_doc.clone())]), BTreeMap::from([(claim.evidence, dir)]))
+            .unwrap();
+    assert!(report.unverifiable.is_empty(), "{:?}", report.unverifiable);
+
+    let cases = [
+        ("missing", BTreeMap::new(), f.exec_identity.clone(), "effective child identities"),
+        (
+            "extra",
+            BTreeMap::from([("ep_kid".into(), effective.clone()), ("ep_other".into(), digest('f'))]),
+            f.exec_identity.clone(),
+            "effective child identities",
+        ),
+        (
+            "wrong",
+            BTreeMap::from([("ep_kid".into(), digest('f'))]),
+            f.exec_identity.clone(),
+            "identity of workflow node",
+        ),
+        ("unretained-verifier", exact, digest('f'), "digest of a retained file"),
+    ];
+    for (name, children, verifier, expected) in cases {
+        let dir = root.join(name);
+        let claim = runtime_effective_bundle(&dir, &f, &child, &effective, children, &verifier);
+        let state = StateDocument { identity_document: child.document.clone(), program_lineage: Some(claim.clone()) };
+        let error = check(
+            &state,
+            BTreeMap::from([(root_id.clone(), root_doc.clone())]),
+            BTreeMap::from([(claim.evidence, dir)]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains(expected), "{name}: {error}");
+    }
 }

@@ -36,17 +36,21 @@ pub enum LineageError {
 /// A configured verifier whose executable bytes are retained outside the
 /// parent identity document. The caller establishes the byte digest before
 /// asking proposal validation to close the child-program authorization check.
-#[derive(Clone, Copy)]
-pub struct RetainedVerifier<'a> {
-    pub tool: &'a str,
-    pub executable_sha256: &'a str,
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetainedVerifier {
+    pub tool: String,
+    pub executable_sha256: String,
 }
 
 /// Source-capture evidence that a trusted caller authenticates before the
-/// generic proposal check uses runtime-effective child identities.
-pub struct ProposalEvidence<'a> {
-    pub verifier: RetainedVerifier<'a>,
-    pub effective_children: &'a BTreeMap<String, String>,
+/// generic proposal check uses runtime-effective child identities. Source
+/// adoption retains this value so ancestry checking can repeat that check.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProposalEvidence {
+    pub verifier: RetainedVerifier,
+    pub effective_children: BTreeMap<String, String>,
 }
 
 fn invalid(key: impl Into<String>, rule: impl Into<String>) -> LineageError {
@@ -239,6 +243,10 @@ pub struct AdoptionRecord {
     /// ancestry claim names them.
     pub verification_log: String,
     pub verification_seq: u64,
+    /// Runtime-effective workflow identities and their retained verifier.
+    /// Source adoption records them after authenticating the parent plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal_evidence: Option<ProposalEvidence>,
 }
 
 // ---- ancestry ---------------------------------------------------------------
@@ -332,8 +340,8 @@ fn check_transition(
     if canonical_bytes(&record)? != bytes {
         return Err(invalid("adoption_record", "is the canonical serialization of its object"));
     }
-    if record.schema_version != 1 {
-        return Err(invalid("adoption_record.schema_version", "is 1"));
+    if record.schema_version != 1 + u32::from(record.proposal_evidence.is_some()) {
+        return Err(invalid("adoption_record.schema_version", "matches the presence of proposal_evidence"));
     }
     if record.verification_log != claim.verification_log || record.verification_seq != claim.verification_seq {
         return Err(invalid("adoption_record", "names the verification the ancestry claim names"));
@@ -345,6 +353,14 @@ fn check_transition(
         .ok_or_else(|| invalid("adoption_record.identity_document_sha256", "equals the digest of a retained file"))?;
     if listed(&record.artifact_manifest_sha256).is_none() {
         return Err(invalid("adoption_record.artifact_manifest_sha256", "equals the digest of a retained file"));
+    }
+    if let Some(proposal) = &record.proposal_evidence {
+        if listed(&proposal.verifier.executable_sha256).is_none() {
+            return Err(invalid(
+                "adoption_record.proposal_evidence.verifier.executable_sha256",
+                "equals the digest of a retained file",
+            ));
+        }
     }
     let document: Value = serde_json::from_slice(&std::fs::read(dir.join(&identity_file.path))?)?;
     if digest_of(canonical(&document).as_bytes()) != record.program_identity {
@@ -363,7 +379,7 @@ fn check_transition(
         &claim.verification_log,
         claim.verification_seq,
         parent_document,
-        None,
+        record.proposal_evidence.as_ref(),
     )?);
     Ok(())
 }
@@ -381,7 +397,7 @@ pub fn check_proposal<'a>(
     verification_log: &str,
     verification_seq: u64,
     parent_document: &Value,
-    evidence: Option<ProposalEvidence<'_>>,
+    evidence: Option<&ProposalEvidence>,
 ) -> Result<Vec<String>, LineageError> {
     let mut logs = BTreeMap::new();
     for path in files.filter(|path| *path == "episode.jsonl" || path.ends_with("/episode.jsonl")) {
@@ -415,15 +431,10 @@ pub fn check_proposal<'a>(
             "equals the proposal root log's program identity",
         ));
     }
-    verify_provenance(
-        proposal_log,
-        &logs,
-        parent_document,
-        evidence.as_ref().map(|evidence| evidence.effective_children),
-    )?;
+    verify_provenance(proposal_log, &logs, parent_document, evidence.map(|evidence| &evidence.effective_children))?;
     let start = verifier_state.start.as_ref().expect("a checked log has episode/start");
     let mut report = AncestryReport { chain: Vec::new(), unverifiable: Vec::new() };
-    check_verifier(result, start, parent_document, evidence.as_ref(), &mut report)?;
+    check_verifier(result, start, parent_document, evidence, &mut report)?;
     Ok(report.unverifiable)
 }
 
@@ -450,6 +461,11 @@ fn verify_provenance(
         }
     }
     children.remove(logs[root].1.start.as_ref().expect("a checked log has episode/start").id.as_str());
+    if effective_children.is_some_and(|effective| {
+        effective.len() != children.len() || effective.keys().any(|id| !children.contains_key(id.as_str()))
+    }) {
+        return Err(invalid(key, "effective child identities name every retained child and no other episode"));
+    }
     for (parent_path, (events, state)) in logs {
         let parent_id = &state.start.as_ref().expect("a checked log has episode/start").id;
         for (child_id, program) in events.iter().filter_map(|event| match &event.data {
@@ -471,9 +487,10 @@ fn verify_provenance(
             if *parent_path != root {
                 return Err(invalid(key, format!("{child_path} lacks its spawning parent's identity document")));
             }
-            let declared = workflow_child_identity(parent_document, program);
-            let effective = effective_children.and_then(|children| children.get(child_id)).map(String::as_str);
-            if declared != Some(start.identity.as_str()) && effective != Some(start.identity.as_str()) {
+            let expected = effective_children
+                .and_then(|children| children.get(child_id).map(String::as_str))
+                .or_else(|| workflow_child_identity(parent_document, program));
+            if expected != Some(start.identity.as_str()) {
                 return Err(invalid(key, format!("{} has the identity of workflow node {program}", start.id)));
             }
         }
@@ -501,7 +518,7 @@ fn check_verifier(
     result: &foe_log::VerificationResult,
     start: &foe_log::EpisodeStart,
     parent_document: &Value,
-    evidence: Option<&ProposalEvidence<'_>>,
+    evidence: Option<&ProposalEvidence>,
     report: &mut AncestryReport,
 ) -> Result<(), LineageError> {
     let parent_identity = digest_of(canonical(parent_document).as_bytes());
@@ -547,7 +564,7 @@ fn check_verifier(
             ));
         }
     } else if !evidence
-        .map(|evidence| evidence.verifier)
+        .map(|evidence| &evidence.verifier)
         .is_some_and(|binding| binding.tool == result.tool && binding.executable_sha256 == result.verifier_identity)
     {
         report.unverifiable.push(format!(

@@ -523,7 +523,7 @@ fn walk_files(root: &Path, omit: &str) -> Result<Vec<ManifestFile>, String> {
     Ok(files)
 }
 
-fn checked_manifest(bundle: &Path) -> Result<(SourceManifest, String), String> {
+fn checked_manifest(bundle: &Path) -> Result<(SourceManifest, String, ProposalEvidence), String> {
     let bundle_metadata = std::fs::symlink_metadata(bundle).map_err(|e| fail("source evidence", e.to_string()))?;
     if bundle_metadata.file_type().is_symlink() || !bundle_metadata.is_dir() {
         return Err(fail("source evidence", "is a real directory rather than a symbolic link"));
@@ -601,8 +601,8 @@ fn checked_manifest(bundle: &Path) -> Result<(SourceManifest, String), String> {
             }
         }
     }
-    verify_proposal(bundle, &manifest)?;
-    Ok((manifest, digest_of(&bytes)))
+    let proposal = verify_proposal(bundle, &manifest)?;
+    Ok((manifest, digest_of(&bytes), proposal))
 }
 
 fn verification_result(bundle: &Path, log: &str, seq: u64) -> Result<(String, String), String> {
@@ -616,7 +616,7 @@ fn verification_result(bundle: &Path, log: &str, seq: u64) -> Result<(String, St
     Ok((result.tool.clone(), result.verifier_identity.clone()))
 }
 
-fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), String> {
+fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<ProposalEvidence, String> {
     let plan = read_parent_plan(bundle, &manifest.parent_plan)?;
     if plan.identity != manifest.parent_program_identity {
         return Err(fail("parent plan identity", "equals parent_program_identity"));
@@ -637,6 +637,13 @@ fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), Strin
         ));
     }
     let effective_children = verify_planned_children(bundle, manifest, &plan, &plan.program, &proposal_events)?;
+    let proposal = ProposalEvidence {
+        verifier: RetainedVerifier {
+            tool: manifest.verification_tool.clone(),
+            executable_sha256: manifest.verification_executable_sha256.clone(),
+        },
+        effective_children,
+    };
     let open = check_proposal(
         bundle,
         manifest.files.iter().map(|file| file.path.as_str()),
@@ -644,19 +651,13 @@ fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), Strin
         &manifest.verification_log,
         manifest.verification_seq,
         &plan.identity_document,
-        Some(ProposalEvidence {
-            verifier: RetainedVerifier {
-                tool: &manifest.verification_tool,
-                executable_sha256: &manifest.verification_executable_sha256,
-            },
-            effective_children: &effective_children,
-        }),
+        Some(&proposal),
     )
     .map_err(|e| e.to_string())?;
     if !open.is_empty() {
         return Err(fail("verification log", format!("has open authorization checks: {}", open.join("; "))));
     }
-    Ok(())
+    Ok(proposal)
 }
 
 fn capture(args: &[String]) -> Result<Value, String> {
@@ -704,7 +705,7 @@ fn capture(args: &[String]) -> Result<Value, String> {
     };
     let bytes = canonical_bytes(&manifest)?;
     std::fs::write(bundle.join(SOURCE_MANIFEST), &bytes).map_err(|e| fail(SOURCE_MANIFEST, e.to_string()))?;
-    let (checked, identity) = checked_manifest(bundle)?;
+    let (checked, identity, _) = checked_manifest(bundle)?;
     manifest.files = checked.files;
     Ok(json!({
         "schema_version": 1,
@@ -775,7 +776,7 @@ fn evaluated_pair(runtime: &Path, applied: &str) -> Result<Value, String> {
 }
 
 fn preflight_value(bundle: &Path, source: &Path, applied: &str, runtime: &Path) -> Result<Value, String> {
-    let (manifest, bundle_identity) = checked_manifest(bundle)?;
+    let (manifest, bundle_identity, _) = checked_manifest(bundle)?;
     verify_clean_tree(source, applied, &manifest)?;
     Ok(json!({
         "schema_version": 1,
@@ -818,7 +819,7 @@ fn adopt(args: &[String]) -> Result<Value, String> {
     let source = Path::new(source);
     let runtime = Path::new(runtime);
     let preflight = preflight_value(bundle, source, applied, runtime)?;
-    let (source_manifest, _) = checked_manifest(bundle)?;
+    let (source_manifest, _, proposal_evidence) = checked_manifest(bundle)?;
     let plan: Value = serde_json::from_slice(&std::fs::read(plan_path).map_err(|e| fail("foe plan", e.to_string()))?)
         .map_err(|e| fail("foe plan", e.to_string()))?;
     let plan_object = plan.as_object().ok_or_else(|| fail("foe plan", "is one JSON object"))?;
@@ -858,12 +859,13 @@ fn adopt(args: &[String]) -> Result<Value, String> {
         .map_err(|e| fail("child identity document", e.to_string()))?;
     let source_manifest_bytes = std::fs::read(bundle.join(SOURCE_MANIFEST)).map_err(|e| e.to_string())?;
     let record = AdoptionRecord {
-        schema_version: 1,
+        schema_version: 2,
         program_identity: identity.into(),
         identity_document_sha256: digest_of(&child_bytes),
         artifact_manifest_sha256: digest_of(&source_manifest_bytes),
         verification_log: source_manifest.verification_log.clone(),
         verification_seq: source_manifest.verification_seq,
+        proposal_evidence: Some(proposal_evidence),
     };
     let record_data = canonical_bytes(&record)?;
     std::fs::write(build.join(ADOPTION_RECORD), &record_data).map_err(|e| fail(ADOPTION_RECORD, e.to_string()))?;
