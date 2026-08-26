@@ -1249,12 +1249,17 @@ def require_failure_coverage(candidate, contrast):
         if not isinstance(citation.get("explanation"), str) or not citation["explanation"].strip():
             raise ValueError("causal contrast must explain every failed attempt")
     successful = causal.get("successful")
+    expected_successful = sorted(contrast["successful_episode_ids"])
     if (
         not isinstance(successful, list)
         or not all(isinstance(value, str) for value in successful)
-        or set(successful) != set(contrast["successful_episode_ids"])
+        or len(successful) != len(set(successful))
+        or set(successful) != set(expected_successful)
     ):
-        raise ValueError("causal contrast must cite every successful episode")
+        raise ValueError(
+            "causal_contrast.successful must equal the selected contrast's bare "
+            f"successful_episode_ids: {{json.dumps(expected_successful)}}"
+        )
     shared = causal.get("shared_mechanism")
     if not isinstance(shared, str) or not shared.strip():
         raise ValueError("causal contrast must state one shared failure mechanism")
@@ -1333,6 +1338,7 @@ def build_config(
     objective: str,
     requested_candidate_kind: str,
     candidate_assessment_diagnostics: dict[str, Any] | None = None,
+    failure_contrasts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if candidate_assessment_diagnostics is not None:
         validate_candidate_assessment_diagnostics(candidate_assessment_diagnostics)
@@ -1408,16 +1414,26 @@ def build_config(
         if candidate_assessment_diagnostics is not None
         else None
     )
+    successful_episode_ids = sorted(
+        {
+            episode_id
+            for contrast in failure_contrasts or []
+            for episode_id in contrast["successful_episode_ids"]
+        }
+    )
+    successful_schema = {"type": "string"}
+    if successful_episode_ids:
+        successful_schema["enum"] = successful_episode_ids
     diagnosis = {
         "name": "diagnose-foe-from-trajectory-measurements",
         "instructions": {
             "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
-            "evidence": "For a candidate-producing disposition, select one object from repeated_failure_contrasts and return its contrast_sha256 as failure_contrast_sha256. For every failed attempt, cite its episode identity, verifier-report digest, and every failure-locus digest in causal_contrast.failed, then explain that attempt's locus. State one shared mechanism that accounts for every cited locus. An insufficient-evidence disposition omits failure_contrast_sha256, may leave causal_contrast.failed empty, and explains the missing shared mechanism in causal_contrast.difference. Diagnose only one task-specific contrast. Do not combine failure profiles or tasks. Choose insufficient-evidence when the loci do not support one shared mechanism. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
+            "evidence": "For a candidate-producing disposition, select one object from repeated_failure_contrasts and return its contrast_sha256 as failure_contrast_sha256. For every failed attempt, cite its episode identity, verifier-report digest, and every failure-locus digest in causal_contrast.failed, then explain that attempt's locus. Set causal_contrast.successful to the selected contrast's successful_episode_ids copied verbatim as bare strings; descriptions and child episode identities do not belong in that array. State one shared mechanism that accounts for every cited locus. An insufficient-evidence disposition omits failure_contrast_sha256, may leave causal_contrast.failed empty, and explains the missing shared mechanism in causal_contrast.difference. Diagnose only one task-specific contrast. Do not combine failure profiles or tasks. Choose insufficient-evidence when the loci do not support one shared mechanism. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
             "sufficiency": sufficiency,
             **({"candidate_assessment": assessment_instruction} if assessment_instruction else {}),
-            "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
+            "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. The runtime invokes validate-candidate after return; do not call that tool directly. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block", DIAGNOSIS_VALIDATOR_TOOL],
         "tool_defs": {DIAGNOSIS_VALIDATOR_TOOL: validator_tool},
@@ -1467,7 +1483,7 @@ def build_config(
                             },
                             "successful": {
                                 "type": "array",
-                                "items": {"type": "string"},
+                                "items": successful_schema,
                             },
                             "difference": {"type": "string", "minLength": 1},
                             "shared_mechanism": {"type": "string", "minLength": 1},
@@ -2026,6 +2042,7 @@ def main(argv: list[str] | None = None) -> int:
         args.objective,
         args.candidate_kind,
         candidate_assessment_diagnostics,
+        failure_contrasts,
     )
     program = root / "program.json"
     write_json(program, program_document)

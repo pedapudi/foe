@@ -280,6 +280,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             {"model_calls": 20, "seconds": 1800, "loop_threshold": 8},
         )
         self.assertIn("four model requests as a planning target", diagnosis["instructions"]["result"])
+        self.assertIn("do not call that tool directly", diagnosis["instructions"]["result"])
         self.assertIn("loop backstop", diagnosis["instructions"]["result"])
         self.assertIn("model capability", diagnosis["instructions"]["sufficiency"])
         self.assertIn("configure-workflow", diagnosis["instructions"]["sufficiency"])
@@ -921,6 +922,31 @@ REVISION = {
 
 
 class DiagnosisValidatorTest(unittest.TestCase):
+    def test_diagnosis_schema_exposes_only_evidence_bound_success_ids(self):
+        config = build_config(
+            Path("/tmp/candidate"),
+            Path("/tmp/evidence.json"),
+            Path("/tmp/check"),
+            Path("/tmp/diagnosis-validator"),
+            model_config("openai-codex/gpt-5.6-sol", "low"),
+            model_config("openai-codex/gpt-5.6-sol", "low"),
+            [Path("/opt/toolchain")],
+            [Path("/repo/.git")],
+            [Path("/opt/cargo-cache")],
+            "Raise verified completion.",
+            "source-change",
+            failure_contrasts=[FAILURE_CONTRAST],
+        )
+        diagnosis = config["workflow"]["nodes"]["diagnose-runtime"]["model"]
+        successful = diagnosis["done_when"]["returns"]["properties"][
+            "causal_contrast"
+        ]["properties"]["successful"]
+        self.assertEqual(successful["items"]["enum"], ["ep_success"])
+        self.assertIn(
+            "copied verbatim as bare strings",
+            diagnosis["instructions"]["evidence"],
+        )
+
     def judgments(
         self,
         values,
@@ -1080,6 +1106,10 @@ class DiagnosisValidatorTest(unittest.TestCase):
             ],
         }
         missing_mechanism = {**VALID_CAUSAL_CONTRAST, "shared_mechanism": ""}
+        described_success = {
+            **VALID_CAUSAL_CONTRAST,
+            "successful": ["Successful episode ep_success passed."],
+        }
         judged = self.judgments(
             [
                 {
@@ -1102,12 +1132,21 @@ class DiagnosisValidatorTest(unittest.TestCase):
                     "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
                     "causal_contrast": missing_mechanism,
                 },
+                {
+                    "branch": "implement-source",
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
+                    "causal_contrast": described_success,
+                },
             ]
         )
         self.assertEqual(judged[0], "")
         self.assertIn("every failed episode exactly once", judged[1])
         self.assertIn("every failure locus exactly once", judged[2])
         self.assertIn("one shared failure mechanism", judged[3])
+        self.assertIn(
+            'bare successful_episode_ids: ["ep_success"]',
+            judged[4],
+        )
 
     def test_incomplete_failure_evidence_cannot_produce_a_candidate(self):
         incomplete = with_contrast_digest({

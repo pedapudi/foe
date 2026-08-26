@@ -131,10 +131,12 @@ to the artifact.
 
 A candidate-producing diagnosis selects one contrast by its digest. It cites
 every failed episode, verifier-report digest, and locus digest from that
-contrast. It explains each local failure and states one shared mechanism. The
-diagnosis verifier rejects a missing or substituted citation. The diagnosis
-returns insufficient evidence when the loci do not support one shared
-mechanism.
+contrast. Its success list copies the selected contrast's successful root
+episode identifiers as bare strings. It explains each local failure and states
+one shared mechanism. The runtime invokes the diagnosis verifier after the
+node returns its typed value. The diagnosis verifier rejects a missing or
+substituted citation. The diagnosis returns insufficient evidence when the
+loci do not support one shared mechanism.
 
 An external source-candidate assessment can guide one later generation. The
 evaluator constructs the private assessment from the retained source bundle,
