@@ -162,6 +162,11 @@ narrowed ruleset to itself, starts the process, hands the process handle
 back, and ends. The process inherits the thread's ruleset before it
 executes anything, which is the same point at which a hook would act.
 
+A session released with task lifetime keeps the ruleset it inherited. The
+restrictions remain attached to the process after foe exits. The enclosing
+task environment owns process cleanup, as [tools.md](tools.md#session)
+specifies.
+
 One request may replace the derived narrowing with a policy of its own.
 The built-in `python` tool is the one caller: its interpreter runs with
 read on `/usr` alone, execute on the interpreter, write on nothing, and no

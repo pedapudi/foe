@@ -80,11 +80,7 @@ fn invalid(key: impl Into<String>, rule: impl Into<String>) -> ConfigError {
 
 /// `Ok` when `holds`; otherwise the error naming `key` and `rule`.
 fn require(holds: bool, key: impl Into<String>, rule: impl Into<String>) -> Result<(), ConfigError> {
-    if holds {
-        Ok(())
-    } else {
-        Err(invalid(key, rule))
-    }
+    holds.then_some(()).ok_or_else(|| invalid(key, rule))
 }
 
 /// Parses the document text. Unknown keys and wrong types are `Parse`
@@ -95,8 +91,7 @@ pub fn parse(text: &str) -> Result<Config, ConfigError> {
 
 /// Reads, parses, validates, and resolves a document from `path`.
 pub fn load(path: &Path) -> Result<Program, ConfigError> {
-    let config = parse(&std::fs::read_to_string(path)?)?;
-    resolve(&config)
+    resolve(&parse(&std::fs::read_to_string(path)?)?)
 }
 
 /// Checks every rule of docs/config.md that does not need the filesystem.
@@ -203,8 +198,10 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
 pub fn resolve(config: &Config) -> Result<Program, ConfigError> {
     validate(config)?;
     let inherited = (config.model.clone(), config.sandbox.clone());
-    let lineage = config.program_lineage.clone();
-    Ok(Program { program_lineage: lineage, ..resolve_section("", &ChildProgram::from(config), &inherited, None)? })
+    Ok(Program {
+        program_lineage: config.program_lineage.clone(),
+        ..resolve_section("", &ChildProgram::from(config), &inherited, None)?
+    })
 }
 
 fn resolve_section(
@@ -228,6 +225,7 @@ fn resolve_section(
         execute: roots("grants.execute", &s.grants.execute)?,
         spawn: s.grants.spawn.clone(),
         bind: s.grants.bind.clone(),
+        task_session: s.grants.task_session,
     };
     if let Some(parent) = parent {
         for (field, own, theirs) in [
@@ -245,6 +243,7 @@ fn resolve_section(
         if let Some(i) = grants.bind.iter().position(|port| !parent.bind.contains(port)) {
             return Err(invalid(key(&format!("grants.bind[{i}]")), "is a bind port of the parent program"));
         }
+        require(!grants.task_session || parent.task_session, key("grants.task_session"), "is granted by the parent")?;
     }
     let mut tool_defs = BTreeMap::new();
     for (name, def) in &s.tool_defs {
@@ -320,6 +319,7 @@ fn within_ceiling(prefix: &str, node: &Program, ceiling: &Program) -> Result<(),
     for (i, name) in node.grants.spawn.iter().enumerate() {
         bounded(ceiling.grants.spawn.contains(name), key(&format!("grants.spawn[{i}]")))?;
     }
+    bounded(!node.grants.task_session || ceiling.grants.task_session, key("grants.task_session"))?;
     // `max_episodes` and `max_concurrent` are absent here. The pool clamps
     // a child's episode share when it reserves, and `max_concurrent` counts
     // one episode's own direct children rather than the tree's, so neither

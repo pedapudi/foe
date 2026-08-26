@@ -256,6 +256,7 @@ Object. Required. Names what the episode may reach.
 | `execute` | list of strings | no | absolute files or directories that a tool subprocess may read and execute; default empty |
 | `spawn` | list of strings | no | names from `programs` the episode may start; default empty |
 | `bind` | list of integers | no | TCP ports, 1 to 65535, that a process of the episode may bind; default empty |
+| `task_session` | boolean | no | permits `session start` with `lifetime: "task"`; default false |
 
 Paths are prefixes. A grant on `/home/user/project` covers every path below
 it. There is no pattern syntax.
@@ -264,6 +265,12 @@ A `bind` grant lets a server the episode starts listen on the named ports;
 [sandbox.md](sandbox.md) states how the kernel enforces it. It grants no
 outbound reach: connecting stays tied to the model transport and to each
 tool definition's `network` field.
+
+A `task_session` grant permits a session process to survive episode
+settlement. The `session` call must also request `lifetime: "task"`. At
+settlement the runtime transfers process ownership to the environment that
+owns the foe invocation. [tools.md](tools.md#session) specifies the lifecycle
+and the cleanup requirement.
 
 The runtime opens each granted directory once when the episode starts, and
 every read and write below it names a path relative to that open directory.
@@ -528,8 +535,9 @@ The `model` block is optional and follows the inheritance rule above. A name
 listed in `grants.spawn` must appear here.
 
 A child program's grants must be a subset of its parent's, checked at
-construction. Each child program's identity participates in the parent's
-identity. Its tool list may differ from its parent's. The effective tool
+construction. A child may set `task_session` only when its parent sets it.
+Each child program's identity participates in the parent's identity. Its
+tool list may differ from its parent's. The effective tool
 authority `foe plan` reports covers the root, each descendant program a
 `grants.spawn` entry reaches, and each workflow model node. A declaration
 no such path reaches stays in the resolved program and is absent from the

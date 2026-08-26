@@ -176,12 +176,9 @@ pub fn ancestors(preds: &BTreeMap<String, BTreeSet<String>>, node: &str) -> BTre
 
 /// The node name of every `$node` binding in `args`, at any depth.
 pub fn bindings(value: &Value) -> Vec<String> {
-    match value.as_object() {
-        Some(o) => match o.get("$node").and_then(Value::as_str) {
-            Some(name) => vec![name.to_string()],
-            None => o.values().flat_map(bindings).collect(),
-        },
-        None => Vec::new(),
+    match value.get("$node").and_then(Value::as_str) {
+        Some(name) => vec![name.to_string()],
+        None => value.as_object().into_iter().flat_map(|o| o.values()).flat_map(bindings).collect(),
     }
 }
 

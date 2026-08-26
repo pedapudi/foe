@@ -286,6 +286,12 @@ tool call left without a result receives a synthetic error result. The
 record of a completed run is therefore never mistakable for the record of
 one killed mid-flight.
 
+A process session normally ends at episode settlement. A program with the
+`task_session` grant may request task lifetime when it starts a session.
+Settlement then records the process and process-group identities and
+transfers cleanup responsibility to the environment that owns the foe
+invocation. The process retains its sandbox restrictions after foe exits.
+
 Ending a child that a model meant to keep is a poor answer, so a parent
 that means to wait says so: the `wait` tool returns once every child it
 started has ended, bounded by the episode's `seconds` budget. When it
@@ -444,6 +450,8 @@ an operation runs rather than when a pathname was last checked.
 A `bind` grant appears in neither column: it names TCP ports rather than a
 tool's effect, no tool requires it, and it reaches every process of the
 episode through the compiled sandbox alone ([sandbox.md](sandbox.md)).
+The `task_session` grant also appears in neither column. The session
+capability checks it only when a `start` call requests task lifetime.
 
 Tools come from three sources, resolved in this order at construction.
 A name that resolves in two sources is an error.

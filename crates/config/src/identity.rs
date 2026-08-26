@@ -58,17 +58,18 @@ pub fn compute(program: &Program, extra_builtins: &[ToolSpec], runtime: &Runtime
     let texts = texts(harness_text::all());
     let workflow =
         program.workflow.as_ref().map(|wf| workflow_document("workflow", wf, program, extra_builtins, runtime));
+    let mut grants = json!({
+        "read": program.grants.read.len(), "write": program.grants.write.len(),
+        "execute": program.grants.execute.len(), "spawn": program.grants.spawn.len(), "bind": program.grants.bind.len(),
+    });
+    if program.grants.task_session {
+        grants["task_session"] = Value::Bool(true);
+    }
     let document = json!({
         "name": program.name,
         "instructions": program.instructions,
         "tools": tools,
-        "grants": {
-            "read": program.grants.read.len(),
-            "write": program.grants.write.len(),
-            "execute": program.grants.execute.len(),
-            "spawn": program.grants.spawn.len(),
-            "bind": program.grants.bind.len(),
-        },
+        "grants": grants,
         "budget": program.budget,
         "done_when": program.done_when,
         "context": program.context,
