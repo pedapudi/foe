@@ -1,4 +1,4 @@
-use super::{parse, resolve, validate};
+use super::{completion_evidence_required, parse, resolve, validate};
 use crate::test_util::{config, config_value, program_with, tmp};
 use crate::ConfigError;
 use serde_json::{json, Value};
@@ -47,6 +47,34 @@ fn unknown_keys_and_wrong_types_are_parse_errors() {
     let mut value = config_value(&root);
     value["budget"]["model_calls"] = json!("ten");
     assert!(matches!(parse(&value.to_string()), Err(ConfigError::Parse(_))));
+}
+
+/// docs/config.md `done_when`: a required `learned` field activates the
+/// evidence contract only through its standard declared shape.
+#[test]
+fn required_learned_completion_has_the_evidence_shape() {
+    let root = tmp("config-completion-evidence");
+    let schema = json!({
+        "type": "object",
+        "properties": { "learned": {
+            "type": "array", "minItems": 1,
+            "items": {
+                "type": "object",
+                "properties": { "claim": { "type": "string" }, "seq": { "type": "integer", "minimum": 0 } },
+                "required": ["claim", "seq"]
+            }
+        } },
+        "required": ["learned"]
+    });
+    let program = program_with(&root, |value| value["done_when"] = json!({ "returns": schema })).unwrap();
+    assert!(completion_evidence_required(program.done_when.as_ref()));
+
+    let key = rejected(&root, |value| {
+        value["done_when"] = json!({ "returns": {
+            "type": "object", "properties": { "learned": { "type": "string" } }, "required": ["learned"]
+        } });
+    });
+    assert_eq!(key, "done_when.returns.properties.learned");
 }
 
 #[test]

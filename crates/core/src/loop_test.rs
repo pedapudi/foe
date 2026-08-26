@@ -1,4 +1,4 @@
-use super::{parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
+use super::{learned_findings, parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::{Handles, Registry};
@@ -649,6 +649,136 @@ async fn a_returns_program_completes_only_through_the_return_tool() {
     let system =
         events.iter().filter(|e| matches!(&e.data, EventData::InboxItem(i) if i.source == InboxSource::System)).count();
     assert_eq!(system, 1, "a finished turn without `return` is answered with the requirement");
+}
+
+fn learned_return_schema() -> serde_json::Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "learned": {
+                "type": "array", "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "properties": { "claim": { "type": "string" }, "seq": { "type": "integer", "minimum": 0 } },
+                    "required": ["claim", "seq"], "additionalProperties": false
+                }
+            }
+        },
+        "required": ["learned"], "additionalProperties": false
+    })
+}
+
+struct LargeError(foe_config::ToolSpec);
+
+#[async_trait::async_trait]
+impl Tool for LargeError {
+    fn spec(&self) -> &foe_config::ToolSpec {
+        &self.0
+    }
+
+    async fn call(&self, _args: serde_json::Value, _ctx: &crate::CallCtx) -> crate::ToolValue {
+        crate::ToolValue::error("x".repeat(SPILL_LIMIT + 1))
+    }
+}
+
+/// docs/config.md `done_when`: requiring `learned` makes completion cite
+/// successful results in this episode before the semantic verifier judges it.
+#[tokio::test]
+async fn learned_completion_rejects_a_foreign_event_then_runs_the_declared_verifier() {
+    let verifier =
+        Verifier { spec: crate::test_util::spec("check", Effect::Pure), findings: Mutex::new(vec![vec![]].into()) };
+    let fx = Fixture::new(
+        "loop-learned-completion",
+        |v| {
+            v["tools"] = json!(["p", "check"]);
+            v["done_when"] = json!({ "returns": learned_return_schema(), "verify": "check" });
+        },
+        vec![
+            turn("observe", vec![call("evidence", "p", "{}")]),
+            turn(
+                "wrong event",
+                vec![call("bad-return", "return", r#"{"value":{"learned":[{"claim":"the probe ran","seq":9}]}}"#)],
+            ),
+            turn(
+                "cited result",
+                vec![call("good-return", "return", r#"{"value":{"learned":[{"claim":"the probe ran","seq":10}]}}"#)],
+            ),
+        ],
+    );
+    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).tool(verifier).run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!({ "learned": [{ "claim": "the probe ran", "seq": 10 }] }) });
+    let evidence = &events[10];
+    assert!(matches!(&evidence.data, EventData::ToolResult(result) if !result.is_error));
+    assert!(
+        matches!(&events[9].data, EventData::AssistantMessage(_)),
+        "the rejected citation names another event kind"
+    );
+    let notices = events.iter().filter_map(|event| match &event.data {
+        EventData::InboxItem(item) if item.source == InboxSource::System => Some(&item.content),
+        _ => None,
+    });
+    assert!(notices.into_iter().any(|content| format!("{content:?}").contains("does not name a successful")));
+    let second_request = events
+        .iter()
+        .filter_map(|event| match &event.data {
+            EventData::ModelRequest(request) => Some(request),
+            _ => None,
+        })
+        .nth(1)
+        .unwrap();
+    assert!(format!("{:?}", second_request.messages).contains("[seq 10]"), "the model receives a citable sequence");
+    let verified = verifications(&events);
+    assert_eq!(verified.len(), 1, "the semantic verifier runs only after the evidence contract passes");
+    assert_eq!(verified[0].status, VerificationStatus::Accepted);
+}
+
+/// docs/config.md `done_when`: a cited spilled result remains evidence only
+/// while its canonical JSON can be reconstructed from the episode directory.
+#[test]
+fn learned_completion_requires_reconstructable_spilled_evidence() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let fx = Fixture::new(
+        "loop-learned-spill",
+        |v| v["tools"] = json!(["p"]),
+        vec![
+            turn("observe", vec![call("evidence", "p", &format!(r#"{{"big":{}}}"#, SPILL_LIMIT + 1))]),
+            turn("done", vec![]),
+        ],
+    );
+    let dir = fx.dir.clone();
+    let (_, events) = runtime.block_on(fx.tool(Probe::new("p", Effect::Pure)).run());
+    let evidence = events
+        .iter()
+        .find(|event| matches!(&event.data, EventData::ToolResult(result) if result.spill.is_some()))
+        .unwrap();
+    let log = Log::create_or_open(&dir, None).unwrap();
+    let candidate = json!({ "learned": [{ "claim": "the probe ran", "seq": evidence.seq }] });
+    assert!(learned_findings(&log, &candidate).is_empty());
+    let EventData::ToolResult(result) = &evidence.data else { unreachable!() };
+    std::fs::remove_file(dir.join("spill").join(result.spill.as_ref().unwrap())).unwrap();
+    assert!(learned_findings(&log, &candidate).contains("does not reconstruct"));
+}
+
+/// docs/config.md `done_when`: spilling a result preserves whether the
+/// tool failed, so a large error cannot become successful cited evidence.
+#[tokio::test]
+async fn learned_completion_rejects_a_spilled_error() {
+    let fx = Fixture::new(
+        "loop-learned-spilled-error",
+        |v| v["tools"] = json!(["bad"]),
+        vec![turn("observe", vec![call("bad-evidence", "bad", "{}")]), turn("done", vec![])],
+    );
+    let dir = fx.dir.clone();
+    let (_, events) = fx.tool(LargeError(crate::test_util::spec("bad", Effect::Pure))).run().await;
+    let evidence = events
+        .iter()
+        .find(|event| matches!(&event.data, EventData::ToolResult(result) if result.spill.is_some()))
+        .unwrap();
+    let EventData::ToolResult(result) = &evidence.data else { unreachable!() };
+    assert!(result.is_error, "spilling preserves the tool-owned error flag");
+    let log = Log::create_or_open(&dir, None).unwrap();
+    let candidate = json!({ "learned": [{ "claim": "the call succeeded", "seq": evidence.seq }] });
+    assert!(learned_findings(&log, &candidate).contains("does not name a successful tool/result"));
 }
 
 #[tokio::test]

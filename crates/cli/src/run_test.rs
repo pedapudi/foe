@@ -68,7 +68,7 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
     let completion = implementation_program.done_when.as_ref().unwrap().returns.as_ref().unwrap();
     assert_eq!(
         completion["required"],
-        serde_json::json!(["summary", "changed_paths", "validation", "unresolved_risks"])
+        serde_json::json!(["summary", "changed_paths", "validation", "unresolved_risks", "learned"])
     );
     assert!(implementation_program.instructions["environment"].contains("Fixed-path executable probe"));
     let audit = &workflow.nodes["audit-and-repair-task"];
@@ -78,14 +78,16 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
     assert_eq!(audit_program.budget.model_calls, BUILTIN_AUDIT_CALLS);
     assert_eq!(audit_program.done_when.as_ref().unwrap().returns.as_ref().unwrap(), completion);
     assert_eq!(completion["properties"]["validation"]["minItems"], 1);
-    // The `learned` observation channel is optional and bounded: at most
-    // eight claims, each citing the log event that evidences it.
+    // The `learned` completion evidence is bounded: one to eight claims,
+    // each citing the successful tool result that supports it.
     let learned = &completion["properties"]["learned"];
     assert_eq!(learned["maxItems"], 8);
+    assert_eq!(learned["minItems"], 1);
     assert_eq!(learned["items"]["required"], serde_json::json!(["claim", "seq"]));
     assert_eq!(learned["items"]["additionalProperties"], serde_json::json!(false));
-    assert!(!completion["required"].as_array().unwrap().contains(&serde_json::json!("learned")));
+    assert!(completion["required"].as_array().unwrap().contains(&serde_json::json!("learned")));
     assert!(audit_program.instructions["role"].contains("every path changed by either episode"));
+    assert!(audit_program.instructions["role"].contains("reproduce or challenge every claim"));
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available

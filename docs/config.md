@@ -392,13 +392,26 @@ general-purpose linter is wrapped by a short script that reads the
 candidate, runs the linter, prints its findings, and exits with status zero
 whether or not it found any.
 
-A `returns` schema may declare an optional `learned` member: an array of at
-most eight objects, each pairing a one-sentence `claim` string with an
-integer `seq` that cites the event in this episode's own log evidencing the
-claim. The member is a convention rather than a mechanism: it is the
-standard exit through which an episode reports observations for a launching
-parent to collect, and the runtime reads nothing from it. The built-in
-coding workflow declares it on both of its episodes.
+A `returns` schema may declare a `learned` member. The member is an array of
+objects. Each object pairs a one-sentence `claim` string with an integer
+`seq` that cites the supporting event in this episode's log. This shape is
+the standard exit through which an episode exports observations. A schema
+that requires `learned` must declare this non-empty array shape.
+
+In an agent-loop program, listing `learned` in the schema's `required` array
+makes the citations a completion condition. Every tool result shown to that
+episode starts with its log sequence as `[seq N]`. Before completion, the
+runtime requires at least one observation. Each `seq` must name a successful
+`tool/result` in the same episode. An inlined canonical value is
+reconstructable from the event. A spilled canonical value must still be
+readable as JSON at the single-component path and byte length in the event.
+
+An invalid citation returns a `system` inbox finding and the episode
+continues. The runtime does not judge whether the result supports the claim.
+The configured verifier, when present, runs only after every citation passes
+these structural checks. An optional `learned` member remains an exported
+observation that the runtime does not require for completion. The built-in
+coding workflow requires one to eight observations from both episodes.
 
 Without `returns`, a non-error ordinary call to the declared verifier asks
 the runtime to verify the assistant text after the turn settles. Acceptance

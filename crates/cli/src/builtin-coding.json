@@ -22,7 +22,7 @@
           "name": "implement-task",
           "instructions": {
             "environment": "",
-            "role": "Implement the task in the current directory, which is the root of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the final change. In the completion value, report changed artifacts, commands and observed results, and unresolved risks for an independent audit."
+            "role": "Implement the task in the current directory, which is the root of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the final change. Each tool result begins with its log sequence as `[seq N]`. Return at least one `learned` claim whose `seq` cites such a result. Also report changed artifacts, validation, and unresolved risks."
           },
           "tools": ["read", "grep", "edit", "bash"],
           "grants": {
@@ -68,6 +68,7 @@
                 },
                 "learned": {
                   "type": "array",
+                  "minItems": 1,
                   "maxItems": 8,
                   "items": {
                     "type": "object",
@@ -87,7 +88,7 @@
                   }
                 }
               },
-              "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
+              "required": ["summary", "changed_paths", "validation", "unresolved_risks", "learned"],
               "additionalProperties": false
             }
           }
@@ -99,7 +100,7 @@
           "name": "audit-and-repair-task",
           "instructions": {
             "environment": "",
-            "role": "Independently determine whether the shared workspace satisfies the original task. Treat the implementation episode's completion claim as unverified. Inspect the artifacts and run checks that distinguish plausible incorrect implementations. Repair every defect you find. After the final edit, run the strongest available task-relevant checks. Complete with the workspace in the state the task requires. Report every path changed by either episode, including valid implementation changes that required no audit edit."
+            "role": "Independently determine whether the shared workspace satisfies the original task. Treat the implementation episode's completion claim and its cited `learned` observations as unverified. Independently reproduce or challenge every claim relevant to completion. Repair every defect you find. After the final edit, run the strongest task-relevant checks. Return at least one cited `learned` observation and report every path changed by either episode, including valid implementation changes that required no audit edit."
           },
           "tools": ["read", "grep", "edit", "bash"],
           "grants": {
@@ -145,6 +146,7 @@
                 },
                 "learned": {
                   "type": "array",
+                  "minItems": 1,
                   "maxItems": 8,
                   "items": {
                     "type": "object",
@@ -164,7 +166,7 @@
                   }
                 }
               },
-              "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
+              "required": ["summary", "changed_paths", "validation", "unresolved_risks", "learned"],
               "additionalProperties": false
             }
           },

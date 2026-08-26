@@ -11,10 +11,9 @@ use crate::budget::Pool;
 use crate::context::{Answer, ContextPolicy, ContextState, Summarized, SummaryCall};
 use crate::inbox::Inbox;
 use crate::registry::{Handles, Registry};
-use crate::result_budget;
 use crate::spawn::Router;
-use crate::{ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
-use foe_config::config::Program;
+use crate::{result_budget, ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
+use foe_config::config::{completion_evidence_required, Program};
 use foe_config::harness_text as text;
 use foe_log::{
     fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
@@ -22,7 +21,7 @@ use foe_log::{
     RequestHeader, RetryCause, StopReason, ThinkingBlock, ToolCall, ToolResult, ToolSchema, Usage, VerificationResult,
     VerificationStatus, SUMMARY_REQUEST_PREFIX,
 };
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -637,7 +636,8 @@ impl Episode {
         duration_ms: u64,
         synthetic: bool,
     ) -> Result<ToolResult, RuntimeError> {
-        append_result(&self.p.log, &self.spill_dir, self.step, call, value, archive, duration_ms, synthetic)
+        let cite = completion_evidence_required(self.p.program.done_when.as_ref());
+        append_result(&self.p.log, &self.spill_dir, self.step, call, value, archive, duration_ms, synthetic, cite)
     }
 
     /// Block, looping, `done_when`, then budget. A turn that completes the
@@ -690,6 +690,14 @@ impl Episode {
             (finished || verifier_called).then(|| Value::String(message.text.clone()))
         };
         let Some(candidate) = candidate else { return Ok(None) };
+        if completion_evidence_required(self.p.program.done_when.as_ref()) {
+            let findings = learned_findings(&self.p.log, &candidate);
+            if !findings.is_empty() {
+                let message = text::fill(text::INVALID_ARGS, &[("name", text::RETURN_NAME), ("reason", &findings)]);
+                self.append_inbox(InboxSource::System, &message)?;
+                return Ok(None);
+            }
+        }
         let Some(done) = self.p.program.done_when.clone().filter(|d| d.verify.is_some()) else {
             return Ok(Some(Outcome::Completed { value: candidate }));
         };
@@ -720,6 +728,35 @@ impl Episode {
         self.append_inbox(InboxSource::Verify, &framed)?;
         Ok(None)
     }
+}
+
+fn learned_findings(log: &Log, candidate: &Value) -> String {
+    let Some(items) = candidate.get("learned").and_then(Value::as_array).filter(|items| !items.is_empty()) else {
+        return "`value.learned` is a non-empty array".into();
+    };
+    log.with_events(|events| {
+        for (index, item) in items.iter().enumerate() {
+            let seq = item.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
+            let result =
+                usize::try_from(seq).ok().and_then(|seq| events.get(seq)).and_then(|event| match &event.data {
+                    EventData::ToolResult(result) if !result.is_error && !result.synthetic => Some(result),
+                    _ => None,
+                });
+            let Some(result) = result else {
+                return format!("`learned[{index}].seq` {seq} does not name a successful tool/result");
+            };
+            if !result.spill.as_ref().is_none_or(|file| {
+                Path::new(file).file_name().is_some_and(|name| name == std::ffi::OsStr::new(file))
+                    && std::fs::read(log.dir().join("spill").join(file)).is_ok_and(|bytes| {
+                        result.value == json!({ "spill": file, "bytes": bytes.len(), "is_error": false })
+                            && serde_json::from_slice::<Value>(&bytes).is_ok()
+                    })
+            }) {
+                return format!("`learned[{index}].seq` {seq} does not reconstruct");
+            }
+        }
+        String::new()
+    })
 }
 
 #[async_trait::async_trait]
@@ -769,14 +806,18 @@ fn append_result(
     archive: Option<crate::retrieval::ArchivedRendering>,
     duration_ms: u64,
     synthetic: bool,
+    cite_seq: bool,
 ) -> Result<ToolResult, RuntimeError> {
-    let subject = value.subject.clone();
+    let (subject, is_error) = (value.subject.clone(), value.is_error);
     if let Some(archive) = archive {
         let archive = crate::retrieval::retain(spill_dir, step, &call.id, &archive)?;
         log.append(EventData::ToolRenderingArchive(archive))?;
     }
-    let (value, rendered, spill) = spill(spill_dir, &call.id, value)?;
-    let is_error = value.get("error").is_some() && value.as_object().is_some_and(|o| o.len() == 1);
+    let (value, mut rendered, spill) = spill(spill_dir, &call.id, value)?;
+    let mut inner = lock(&log.inner);
+    if cite_seq {
+        rendered.insert_str(0, &format!("[seq {}]\n", inner.0.next_seq()))
+    }
     let result = ToolResult {
         step,
         call_id: call.id.clone(),
@@ -789,7 +830,8 @@ fn append_result(
         duration_ms,
         synthetic,
     };
-    log.append(EventData::ToolResult(result.clone()))?;
+    let event = inner.0.append(EventData::ToolResult(result.clone()))?;
+    inner.1.push(event);
     Ok(result)
 }
 
@@ -834,7 +876,10 @@ impl crate::Composer for InnerCalls {
         // a spill locator in its place.
         let canonical = value.value.clone();
         let ms = started.elapsed().as_millis() as u64;
-        Ok((canonical, append_result(&self.log, &self.spill_dir, self.step, &call, value, None, ms, false)?.is_error))
+        Ok((
+            canonical,
+            append_result(&self.log, &self.spill_dir, self.step, &call, value, None, ms, false, false)?.is_error,
+        ))
     }
 }
 

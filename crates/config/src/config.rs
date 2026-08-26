@@ -16,6 +16,13 @@ use std::path::{Path, PathBuf};
 /// The configuration format version this crate accepts.
 pub const CONFIG_VERSION: u32 = 2;
 
+/// Whether the completion schema makes the standard `learned` observation
+/// channel an evidence requirement.
+pub fn completion_evidence_required(done: Option<&DoneWhen>) -> bool {
+    done.and_then(|d| d.returns.as_ref()?.get("required")?.as_array())
+        .is_some_and(|required| required.iter().any(|field| field == "learned"))
+}
+
 /// A configuration with `task` removed, every path canonical, and child
 /// programs resolved recursively. What `episode/start.program` records.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -182,6 +189,23 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
         )?;
         if let Some(returns) = &done.returns {
             crate::schema::check(key("done_when.returns"), returns)?;
+            if completion_evidence_required(Some(done)) {
+                let learned = &returns["properties"]["learned"];
+                let item = &learned["items"];
+                let required = item["required"].as_array();
+                let shape = learned["type"] == "array"
+                    && learned["minItems"].as_u64().is_some_and(|n| n > 0)
+                    && item["type"] == "object"
+                    && item["properties"]["claim"]["type"] == "string"
+                    && item["properties"]["seq"]["type"] == "integer"
+                    && item["properties"]["seq"]["minimum"].as_i64() == Some(0)
+                    && required.is_some_and(|r| r.iter().any(|f| f == "claim") && r.iter().any(|f| f == "seq"));
+                require(
+                    shape,
+                    key("done_when.returns.properties.learned"),
+                    "is the standard non-empty array of claim and seq objects",
+                )?;
+            }
         }
     }
     if let Some(c) = s.context.as_ref().filter(|c| c.compact) {
