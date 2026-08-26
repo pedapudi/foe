@@ -176,7 +176,7 @@ The adapter retains the rebuilt binary's actual `foe plan --json` report.
 The plan form resolves both configured programs and the built-in coding
 workflow without starting an episode.
 After the episode, the trusted checker requires the root log to carry that
-planned program and the rebuilt binary digest. It then constructs and verifies
+planned program, task, and rebuilt binary digest. It then constructs and verifies
 lineage from the actual program identity. `campaign.json` records the source
 candidate, completed adoptions, checker digests, and evaluated source and
 binary pair. Adoption failure sets `direct_implementation_required`,

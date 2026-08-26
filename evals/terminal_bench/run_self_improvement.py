@@ -1919,8 +1919,14 @@ def main(argv: list[str] | None = None) -> int:
         source_bundle = root / "source-candidate-bundle"
         try:
             shutil.copytree(episode, source_bundle / "episode")
-            (source_bundle / "parent-identity.json").write_bytes(
-                canonical_json(plan["identity_document"])
+            (source_bundle / "parent-plan.json").write_bytes(
+                canonical_json(
+                    {
+                        "identity": plan["identity"],
+                        "identity_document": plan["identity_document"],
+                        "program": plan["program"],
+                    }
+                )
             )
             shutil.copy2(check, source_bundle / "candidate-check")
             verification_log, verification_seq = find_accepted_verification(
@@ -1931,7 +1937,7 @@ def main(argv: list[str] | None = None) -> int:
                 source_bundle,
                 candidate,
                 identity["source_tree"],
-                "parent-identity.json",
+                "parent-plan.json",
                 "episode/episode.jsonl",
                 verification_log,
                 verification_seq,

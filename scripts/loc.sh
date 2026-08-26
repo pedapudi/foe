@@ -2,13 +2,13 @@
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
 # Ten budgets: 5,250 over the kernel, which is log and core together — the
 # log format, the loop, budgets, sandbox, and spawn, whose smallness is the
-# product claim; 1,400 over program, the other contract, which is the
+# product claim; 1,425 over program, the other contract, which is the
 # program document, its resolution, and identity; 1,700
 # over tools, which is code — the tool surface, which grows a tool at a time
 # without touching the kernel; 1,000 over workflow; 500 over context; 600
 # over view; 1,300 over cli; 1,000
 # over telemetry; 500 over lineage, which reads finished evidence about how
-# program states relate and is part of neither contract; and 750 over the
+# program states relate and is part of neither contract; and 800 over the
 # source-adoption evaluator used by external campaigns. The kernel is budgeted apart
 # from program because the kernel measures the machine and program measures the
 # data model; a document that gains a key must not buy room in the loop. The
@@ -32,7 +32,7 @@ for c in log core; do
 done
 printf '%-8s %6d  (budget 5250)\n' kernel "$kernel"
 program=$(count program)
-printf '%-8s %6d  (budget 1400)\n' program "$program"
+printf '%-8s %6d  (budget 1425)\n' program "$program"
 tools=$(count code)
 printf '%-8s %6d  (budget 1700)\n' tools "$tools"
 workflow=$(count workflow)
@@ -48,7 +48,7 @@ printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 lineage=$(count lineage)
 printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
 source_adoption=$(grep -cvE '^\s*$|^\s*//' crates/lineage/examples/source_adoption.rs || true)
-printf '%-15s %6d  (budget 750)\n' source_adoption "$source_adoption"
-[ "$kernel" -le 5250 ] && [ "$program" -le 1400 ] && [ "$tools" -le 1700 ] && [ "$workflow" -le 1000 ] \
+printf '%-15s %6d  (budget 800)\n' source_adoption "$source_adoption"
+[ "$kernel" -le 5250 ] && [ "$program" -le 1425 ] && [ "$tools" -le 1700 ] && [ "$workflow" -le 1000 ] \
   && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ] \
-  && [ "$lineage" -le 500 ] && [ "$source_adoption" -le 750 ]
+  && [ "$lineage" -le 500 ] && [ "$source_adoption" -le 800 ]

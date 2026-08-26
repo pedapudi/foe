@@ -128,6 +128,10 @@ The eight remaining fields apply to a node of any kind.
 the model may choose, specified under "Choice points" below. Every other
 key in this document is a fixed name.
 
+A node name contains no `/`. Log events and spawn records use `/` to join
+the names of nodes in nested workflows, so this rule makes every recorded
+path resolve to one declared node.
+
 Each `follows` entry defines one data edge from the named source to the node.
 Each successor in `branches` defines a control edge from the choice node.
 

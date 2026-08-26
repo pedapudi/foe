@@ -193,6 +193,9 @@ pub fn check(
         if name == TASK_SOURCE {
             return Err(invalid(key(""), "has a name other than `task`, which names the built-in source".into()));
         }
+        if name.contains('/') {
+            return Err(invalid(key(""), "has no `/`, which separates nested workflow node names".into()));
+        }
         let kinds = [node.tool.is_some(), node.model.is_some(), node.workflow.is_some()];
         if kinds.iter().filter(|set| **set).count() != 1 || (node.args.is_some() && node.tool.is_none()) {
             let rule = "has exactly one of tool, model, and workflow, and args only with tool";

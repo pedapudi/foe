@@ -146,7 +146,7 @@ def build_source_candidate(
             "sha256": file_digest(bazel),
             "version": version.stdout.strip(),
         },
-        "toolchain_definition": {
+        "protected_build_graph": {
             "sha256": "sha256:" + hashlib.sha256(graph_bytes).hexdigest(),
             "files": before,
         },
@@ -291,7 +291,7 @@ def capture_source_candidate(
     bundle: Path,
     candidate: Path,
     base_source_tree: str,
-    parent_document: str,
+    parent_plan: str,
     proposal_log: str,
     verification_log: str,
     verification_seq: int,
@@ -304,7 +304,7 @@ def capture_source_candidate(
             str(bundle),
             str(candidate),
             base_source_tree,
-            parent_document,
+            parent_plan,
             proposal_log,
             verification_log,
             str(verification_seq),

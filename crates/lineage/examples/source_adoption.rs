@@ -59,7 +59,7 @@ struct SourceManifest {
     candidate_identity: String,
     base_source_tree: String,
     entries: Vec<SourceEntry>,
-    parent_identity_document: String,
+    parent_plan: String,
     parent_program_identity: String,
     proposal_log: String,
     verification_log: String,
@@ -70,6 +70,14 @@ struct SourceManifest {
     files: Vec<ManifestFile>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ParentPlan {
+    identity: String,
+    identity_document: Value,
+    program: Value,
+}
+
 fn fail(key: &str, rule: impl AsRef<str>) -> String {
     format!("{key}: {}", rule.as_ref())
 }
@@ -77,6 +85,70 @@ fn fail(key: &str, rule: impl AsRef<str>) -> String {
 fn canonical_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
     let value = serde_json::to_value(value).map_err(|e| e.to_string())?;
     Ok(canonical(&value).into_bytes())
+}
+
+fn read_parent_plan(bundle: &Path, path: &str) -> Result<ParentPlan, String> {
+    let bytes = std::fs::read(bundle.join(path)).map_err(|e| fail("parent plan", e.to_string()))?;
+    let plan: ParentPlan = serde_json::from_slice(&bytes).map_err(|e| fail("parent plan", e.to_string()))?;
+    if canonical_bytes(&plan)? != bytes || digest_of(canonical(&plan.identity_document).as_bytes()) != plan.identity {
+        return Err(fail("parent plan", "is canonical and binds identity to identity_document"));
+    }
+    Ok(plan)
+}
+
+fn planned_start(plan: &ParentPlan) -> Result<(Value, String), String> {
+    let mut program = plan.program.clone();
+    let object = program.as_object_mut().ok_or_else(|| fail("parent plan program", "is an object"))?;
+    let task = object
+        .remove("task")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .ok_or_else(|| fail("parent plan program.task", "is a string"))?;
+    Ok((program, task))
+}
+
+fn workflow_model<'a>(program: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut workflow = program.get("workflow")?;
+    let mut parts = path.split('/').peekable();
+    while let Some(name) = parts.next() {
+        let node = workflow.get("nodes")?.get(name)?;
+        if parts.peek().is_none() {
+            return node.get("model");
+        }
+        workflow = node.get("workflow")?;
+    }
+    None
+}
+
+fn verify_planned_children(
+    bundle: &Path,
+    manifest: &SourceManifest,
+    program: &Value,
+    events: &[foe_log::Event],
+) -> Result<(), String> {
+    for (child_id, node) in events.iter().filter_map(|event| match &event.data {
+        foe_log::EventData::SpawnStart { child_id, program, .. } => Some((child_id, program)),
+        _ => None,
+    }) {
+        let mut found = None;
+        for file in manifest.files.iter().filter(|file| file.path.ends_with("episode.jsonl")) {
+            let state = fold::fold(
+                &fold::read_all(bundle.join(&file.path).parent().expect("a log path has a parent"))
+                    .map_err(|e| fail("proposal child log", e.to_string()))?,
+            )
+            .map_err(|e| fail("proposal child log", e.to_string()))?;
+            if state.start.as_ref().is_some_and(|start| start.id == *child_id) {
+                found = state.start.map(|start| start.program);
+                break;
+            }
+        }
+        if found.as_ref() != workflow_model(program, node) {
+            return Err(fail(
+                "proposal child log",
+                format!("{child_id} starts with the planned model program for {node}"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn checker_digest() -> Result<String, String> {
@@ -336,8 +408,7 @@ fn checked_manifest(bundle: &Path) -> Result<(SourceManifest, String), String> {
     foe_lineage::require_digest("source manifest parent_program_identity", &manifest.parent_program_identity)
         .map_err(|e| e.to_string())?;
     parse_tree(&manifest.base_source_tree)?;
-    require_manifest_path("source manifest parent_identity_document", &manifest.parent_identity_document)
-        .map_err(|e| e.to_string())?;
+    require_manifest_path("source manifest parent_plan", &manifest.parent_plan).map_err(|e| e.to_string())?;
     require_manifest_path("source manifest proposal_log", &manifest.proposal_log).map_err(|e| e.to_string())?;
     require_manifest_path("source manifest verification_log", &manifest.verification_log).map_err(|e| e.to_string())?;
     require_manifest_path("source manifest verification_executable", &manifest.verification_executable)
@@ -361,12 +432,9 @@ fn checked_manifest(bundle: &Path) -> Result<(SourceManifest, String), String> {
     if observed != manifest.files {
         return Err(fail("source manifest files", "match every retained regular file and no other entry"));
     }
-    for required in [
-        &manifest.parent_identity_document,
-        &manifest.proposal_log,
-        &manifest.verification_log,
-        &manifest.verification_executable,
-    ] {
+    for required in
+        [&manifest.parent_plan, &manifest.proposal_log, &manifest.verification_log, &manifest.verification_executable]
+    {
         if !manifest.files.iter().any(|file| &file.path == required) {
             return Err(fail("source manifest files", format!("retain {required}")));
         }
@@ -415,20 +483,27 @@ fn verification_result(bundle: &Path, log: &str, seq: u64) -> Result<(String, St
 }
 
 fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), String> {
-    let parent_bytes = std::fs::read(bundle.join(&manifest.parent_identity_document))
-        .map_err(|e| fail("parent identity document", e.to_string()))?;
-    let parent: Value =
-        serde_json::from_slice(&parent_bytes).map_err(|e| fail("parent identity document", e.to_string()))?;
-    if canonical(&parent).as_bytes() != parent_bytes || digest_of(&parent_bytes) != manifest.parent_program_identity {
-        return Err(fail("parent identity document", "is canonical and hashes to parent_program_identity"));
+    let plan = read_parent_plan(bundle, &manifest.parent_plan)?;
+    if plan.identity != manifest.parent_program_identity {
+        return Err(fail("parent plan identity", "equals parent_program_identity"));
     }
+    let (planned_program, planned_task) = planned_start(&plan)?;
+    let proposal_events =
+        fold::read_all(bundle.join(&manifest.proposal_log).parent().expect("a log path has a parent"))
+            .map_err(|e| fail("proposal log", e.to_string()))?;
+    let proposal_state = fold::fold(&proposal_events).map_err(|e| fail("proposal log", e.to_string()))?;
+    let proposal_start = proposal_state.start.as_ref().ok_or_else(|| fail("proposal log", "has episode/start"))?;
+    if proposal_start.program != planned_program || proposal_start.task != planned_task {
+        return Err(fail("proposal log", "starts with the retained plan's exact resolved program and task"));
+    }
+    verify_planned_children(bundle, manifest, &planned_program, &proposal_events)?;
     let open = check_proposal(
         bundle,
         manifest.files.iter().map(|file| file.path.as_str()),
         &manifest.proposal_log,
         &manifest.verification_log,
         manifest.verification_seq,
-        &parent,
+        &plan.identity_document,
         Some(RetainedVerifier {
             tool: &manifest.verification_tool,
             executable_sha256: &manifest.verification_executable_sha256,
@@ -442,8 +517,8 @@ fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), Strin
 }
 
 fn capture(args: &[String]) -> Result<Value, String> {
-    let [bundle, candidate, base, parent_document, proposal_log, verification_log, seq, verifier] = args else {
-        return Err("usage: source-adoption capture BUNDLE CANDIDATE BASE_TREE PARENT_DOCUMENT PROPOSAL_LOG VERIFICATION_LOG VERIFICATION_SEQ VERIFIER_EXECUTABLE".into());
+    let [bundle, candidate, base, parent_plan, proposal_log, verification_log, seq, verifier] = args else {
+        return Err("usage: source-adoption capture BUNDLE CANDIDATE BASE_TREE PARENT_PLAN PROPOSAL_LOG VERIFICATION_LOG VERIFICATION_SEQ VERIFIER_EXECUTABLE".into());
     };
     let bundle = Path::new(bundle);
     let candidate = Path::new(candidate);
@@ -453,11 +528,7 @@ fn capture(args: &[String]) -> Result<Value, String> {
         return Err(fail(SOURCE_MANIFEST, "does not exist before capture"));
     }
     let entries = source_entries(candidate, base, bundle)?;
-    let parent_bytes = std::fs::read(bundle.join(parent_document)).map_err(|e| fail(parent_document, e.to_string()))?;
-    let parent: Value = serde_json::from_slice(&parent_bytes).map_err(|e| fail(parent_document, e.to_string()))?;
-    if canonical(&parent).as_bytes() != parent_bytes {
-        return Err(fail(parent_document, "is one canonical JSON value"));
-    }
+    let parent = read_parent_plan(bundle, parent_plan)?;
     require_manifest_path("VERIFIER_EXECUTABLE", verifier).map_err(|e| e.to_string())?;
     let verifier_metadata =
         std::fs::symlink_metadata(bundle.join(verifier)).map_err(|e| fail(verifier, e.to_string()))?;
@@ -478,8 +549,8 @@ fn capture(args: &[String]) -> Result<Value, String> {
         candidate_identity: candidate_identity(base, &entries)?,
         base_source_tree: base.clone(),
         entries,
-        parent_identity_document: parent_document.clone(),
-        parent_program_identity: digest_of(&parent_bytes),
+        parent_plan: parent_plan.clone(),
+        parent_program_identity: parent.identity,
         proposal_log: proposal_log.clone(),
         verification_log: verification_log.clone(),
         verification_seq,
@@ -620,15 +691,21 @@ fn adopt(args: &[String]) -> Result<Value, String> {
     let state = fold::fold(&events).map_err(|e| fail("evaluated episode", e.to_string()))?;
     let start = state.start.as_ref().ok_or_else(|| fail("evaluated episode", "has episode/start"))?;
     let mut normalized_program = planned_program.clone();
-    if let Some(object) = normalized_program.as_object_mut() {
-        object.remove("task");
-    }
+    let planned_task = normalized_program
+        .as_object_mut()
+        .and_then(|object| object.remove("task"))
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .ok_or_else(|| fail("foe plan program.task", "is a string"))?;
     let runtime_identity =
         preflight["evaluated_pair"]["runtime_binary"].as_str().expect("preflight emits a runtime identity");
-    if start.identity != identity || start.program != normalized_program || start.runtime.build != runtime_identity {
+    if start.identity != identity
+        || start.program != normalized_program
+        || start.task != planned_task
+        || start.runtime.build != runtime_identity
+    {
         return Err(fail(
             "evaluated episode",
-            "starts with the planned program identity, planned resolved program, and evaluated binary digest",
+            "starts with the planned identity, resolved program, task, and evaluated binary digest",
         ));
     }
     let lineage = Path::new(lineage);
@@ -660,9 +737,7 @@ fn adopt(args: &[String]) -> Result<Value, String> {
     std::fs::create_dir_all(&evidence_root).map_err(|e| fail("evidence directory", e.to_string()))?;
     let evidence_dir = evidence_root.join(evidence_identity.trim_start_matches("sha256:"));
     std::fs::rename(&build, &evidence_dir).map_err(|e| fail("evidence directory", e.to_string()))?;
-    let parent_bytes =
-        std::fs::read(bundle.join(&source_manifest.parent_identity_document)).map_err(|e| e.to_string())?;
-    let parent_document: Value = serde_json::from_slice(&parent_bytes).map_err(|e| e.to_string())?;
+    let parent_document = read_parent_plan(bundle, &source_manifest.parent_plan)?.identity_document;
     let parent_state_identity = state_identity(&source_manifest.parent_program_identity, None);
     let claim = ProgramLineage {
         parent: LineageParent {
