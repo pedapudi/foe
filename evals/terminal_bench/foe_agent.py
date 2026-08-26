@@ -18,7 +18,9 @@ from harbor.models.agent.context import AgentContext
 
 from foe_agent_support import (
     build_program,
+    credential_values,
     describe_container_environment,
+    episode_contains_credential,
     fixed_executable_probe_command,
     read_episode_summary,
     replace_credential_state,
@@ -134,6 +136,8 @@ class FoeAgent(BaseInstalledAgent):
         self._credential_digest = hashlib.sha256(
             self._credential_file.read_bytes()
         ).hexdigest()
+        self._credential_values = credential_values(self._credential_file)
+        self._credential_exposed = False
         if not self._trace_evaluator.is_file():
             raise FileNotFoundError(
                 f"Foe trace evaluator does not exist: {self._trace_evaluator}"
@@ -306,6 +310,13 @@ class FoeAgent(BaseInstalledAgent):
                     ).hexdigest()
             finally:
                 await self._retain_credential(environment)
+                values = self._credential_values | credential_values(
+                    self._credential_file
+                )
+                self._credential_exposed = episode_contains_credential(
+                    self.logs_dir / "foe-episode",
+                    values,
+                )
 
     @override
     def populate_context_post_run(self, context: AgentContext) -> None:
@@ -353,6 +364,7 @@ class FoeAgent(BaseInstalledAgent):
                 else None,
                 "foe_credential_mode": self._credential_mode,
                 "foe_credential_unchanged": self._credential_unchanged,
+                "foe_credential_exposed": self._credential_exposed,
             }
         )
         if self._completion_checker_digest is not None:

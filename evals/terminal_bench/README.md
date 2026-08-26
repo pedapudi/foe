@@ -71,6 +71,11 @@ model from that container. Use the pinned Terminal-Bench dataset for these
 runs. A task with untrusted provenance could read or transmit credentials
 available to an installed coding agent.
 
+The adapter scans retained episode events for exact access-token, refresh-token,
+and API-key values. A detected value invalidates the trial as infrastructure
+evidence. The scan reports only whether a match exists. It does not isolate a
+credential from a task process that can read the file.
+
 ## Check installation without model spend
 
 The evaluation targets build `//:foe-portable`, a static x86-64 Linux binary

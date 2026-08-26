@@ -685,6 +685,39 @@ class CasesTest(unittest.TestCase):
             ["task__attempt: the access-only credential changed during the trial"],
         )
 
+    def test_job_integrity_rejects_model_visible_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            job = Path(directory)
+            trial = job / "task__attempt"
+            trial.mkdir()
+            (trial / "result.json").write_text(
+                json.dumps(
+                    {
+                        "trial_name": "task__attempt",
+                        "exception_info": None,
+                        "agent_result": {
+                            "metadata": {
+                                "foe_outcome": {
+                                    "kind": "completed",
+                                    "value": "done",
+                                },
+                                "foe_trace_conformant": True,
+                                "foe_usage_reported": True,
+                                "foe_credential_exposed": True,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            integrity = read_job_integrity(job)
+        self.assertEqual(
+            integrity["infrastructure_failures"],
+            [
+                "task__attempt: model-visible episode events contain a provider credential"
+            ],
+        )
+
     def test_runtime_diagnostics_do_not_block_a_complete_quality_run(self):
         records = [
             {
