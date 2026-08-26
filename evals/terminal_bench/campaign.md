@@ -1917,10 +1917,50 @@ credential file mode as accidental-write prevention and the post-run digest as
 mutation detection. The task identity may read or change its access-only file,
 so the integrity claim rests on post-run detection rather than the file mode.
 
-The integrated branch passes 104 evaluator tests, the Bazel evaluator target,
+The integrated branch passes 105 evaluator tests, the Bazel evaluator target,
 the full Rust workspace tests, clippy with warnings denied, every executable
 example, and all line-budget checks. The implementation has made no provider
 request. The required matched four-task serial and two-worker qualification
 remains pending. Assessed parallel execution cannot contribute campaign quality
 evidence until that qualification preserves all four scores, trace results,
 credential checks, and retained records while reducing makespan by one third.
+
+## Two-worker installation preflight
+
+The first four-task installation preflight exposed two adapter defects without
+making a provider request. The assessed adapter invoked the removed `foe
+schema` form rather than `foe plan --schema`. Harbor recorded an errored trial
+for each task. The campaign runner still returned success because it treated a
+readable Harbor result as complete without checking the completed and errored
+trial counts.
+
+The adapters now share one tested schema-probe command. Campaign completion
+requires zero errored trials and requires the completed count to equal the
+total count. The original failed artifacts remain under
+`target/terminal-bench-jobs/qualification-install-serial-20260826T074847Z`.
+
+The corrected `fix-git` smoke installation completed without an exception at
+`target/terminal-bench-jobs/corrected-install-smoke-20260826T075345Z`. The
+matched four-task serial and two-worker installation cohorts then completed
+all four trials with zero errors. Both used portable binary
+`sha256:ff7d062a57acf865e22d7781fb7e9c05ac95863e5a255fc3145d4479e0eebb59`.
+
+The serial manifest is retained at
+`target/terminal-bench-jobs/qualification-install-serial-corrected-20260826T075406Z/campaign.json`.
+Its SHA-256 digest is
+`996bcf9e1227baeefa4ee7934d92f1843c247a8d4f3106bd7d9c04c92ea9b66c`.
+The four execution groups took 62.625 seconds in total.
+
+The two-worker manifest is retained at
+`target/terminal-bench-jobs/qualification-install-parallel-corrected-20260826T075519Z/campaign.json`.
+Its SHA-256 digest is
+`f62a254aadb0ecb2deff5afa8fe17c28231fe31fce5fdc6a5cd9e07d9a2576d2`.
+The two execution groups took 32.305 seconds in total. The 48.4 percent
+reduction exceeds the one-third makespan target for installation mechanics.
+The result does not qualify assessed concurrency because installation-only
+trials produce no task score, Foe episode, or conformance report.
+
+A local command-surface diagnosis also invoked `foe schema` with an explicit
+model. It was terminated at workflow startup before any model request. Its
+six-event account is retained at
+`target/terminal-bench-preflight/accidental-schema-task-20260826`.
