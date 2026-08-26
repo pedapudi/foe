@@ -49,11 +49,19 @@ bazel run //:foe -- login --status
 ```
 
 The runner copies `openai-codex.json` to
-`~/.cache/foe/terminal-bench/openai-codex.json`. Every trial receives that
-private working copy. A refreshed credential returns to the working copy
-before the next trial. The original login file remains unchanged. The runner
-holds a file lock so two local campaigns cannot race a token refresh. The
+`~/.cache/foe/terminal-bench/openai-codex.json`. A serial trial receives this
+private working copy and can return a refreshed credential before the next
+trial. The original login file remains unchanged. The runner holds a file lock
+for the complete campaign so local campaigns cannot race a token refresh. The
 private copy stays outside Harbor job directories and Foe episode directories.
+
+A parallel pair receives two private, read-only access leases. Each lease
+contains the access token and expiry. The account identifier is included when
+present. Each lease omits the rotating refresh token. Foe fails locally if a
+lease reaches its sixty-second refresh margin. The adapter uses a distinct
+remote path for each lease, verifies the downloaded bytes, and removes the
+remote file after the trial. A changed lease invalidates the trial as
+infrastructure evidence.
 
 The task container must receive the provider credential because Foe calls the
 model from that container. Use the pinned Terminal-Bench dataset for these
@@ -174,6 +182,44 @@ Run the `fix-git` smoke case after reviewing that maximum:
 ```sh
 bazel run //evals/terminal_bench:foe-smoke -- --confirm-spend
 ```
+
+## Run resource-bounded task pairs
+
+The default `--workers 1` mode executes one assessed task at a time. Use two
+workers to run eligible tasks from one evaluation group as pairs:
+
+```sh
+bazel run //evals/terminal_bench:foe-development -- \
+  --workers 2 \
+  --confirm-spend
+```
+
+The runner starts a pair when all of these conditions hold:
+
+- The case metadata reserves less than 8 GiB for each task.
+- The pair reserves at most 8 GiB and four CPUs in total.
+- The host has at least 14 GiB of available memory and 100 GiB of free disk.
+- Linux full-memory pressure stays below one percent over ten seconds.
+- The host has not swapped pages out since the preceding execution.
+- The access token covers every attempt and configured model stage. Its
+  remaining lifetime also covers fifteen minutes of startup and five minutes
+  of process settlement per attempt, plus Foe's sixty-second refresh margin.
+
+A task that reserves 8 GiB runs alone. A failed pair admission runs its tasks
+serially with the mutable credential. An out-of-memory result, an increased
+swap-out counter, or excessive memory pressure makes every later task serial.
+The campaign stops before starting more work when available memory falls below
+10 GiB or free disk falls below 100 GiB.
+
+Parallelism applies between independent assessed tasks. Diagnosis,
+implementation, conditional escalation, and audit stages inside one task keep
+their declared order. Harbor also runs attempts for each task with its
+per-process concurrency set to one.
+
+Finish adaptive development and capability-search runs before confirmation or
+calibration-holdout evidence begins. Freeze the candidate and its execution
+configuration before starting a holdout group. This ordering preserves the
+holdout's role as evidence that did not influence the candidate.
 
 The runner records token usage and estimated cost without enforcing token
 ceilings. Model calls and wall time remain loop backstops. Use
@@ -528,7 +574,18 @@ Each confirmed command writes under `target/terminal-bench-jobs/`. One
 timestamped run contains a `campaign.json` manifest and one Harbor job per
 task. Harbor retains the task configuration, verifier result, exception data,
 aggregate token fields, and estimated cost. The manifest records the pricing
-source and whether token estimates were measurements or hard limits.
+source and whether token estimates were measurements or hard limits. It also
+records the requested worker limit, maximum scheduled concurrency, every
+execution group, process start counts, task resource reservations, credential
+mode, credential expiry bounds, admission fallbacks, host resource snapshots,
+and each group's timestamps and makespan. Concurrent tasks retain distinct
+Harbor job names and result paths.
+
+An interrupt terminates every active Harbor process group before the runner
+writes the manifest. A process-start failure also terminates workers that
+already started. Completed and partially retained task records remain in the
+manifest. Tasks scheduled after the interrupted or failed execution receive an
+explicit `not_started` record. The runner exits unsuccessfully.
 
 The adapter runs `foe plan` against the task-specific program inside the task
 container before its first provider request. An invalid program is a setup
