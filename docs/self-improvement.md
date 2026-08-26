@@ -54,10 +54,18 @@ program, tool, budget, episode, and workflow concepts.
 
 ## Cross-trajectory quality feedback
 
-The foe runtime does not aggregate separate episode trees. The Terminal-Bench
-campaign supplies that cross-trajectory view through a deterministic collector
-outside the runtime. The collector produces a bounded diagnostic digest and
-binds it to the source tree and runtime binary that produced the trajectories.
+The Foe runtime keeps each episode tree independent. A local trajectory corpus
+preserves selected episode trees and their external verifier artifacts across
+runs. The corpus stores immutable content-addressed objects and a canonical
+manifest. The manifest identifies the source tree and runtime binary that
+produced every admitted trajectory.
+
+The self-improvement workflow invokes a declared deterministic collector as
+its first tool node. The collector reads the corpus and produces a bounded
+diagnostic digest. Its executable identity binds the collector modules, corpus
+manifest, and task-selection file. A preflight derivation must produce the same
+bytes as the recorded workflow result. The diagnosis child receives only that
+result. It cannot read the raw corpus.
 
 The collector groups failures by task, typed outcome, outcome-to-grader
 mismatch, and failed verifier checks. A group becomes a candidate activation
@@ -84,9 +92,9 @@ subsequent generation starts from that candidate source.
 The [campaign record](../evals/terminal_bench/campaign.md) contains one measured
 source improvement produced through this feedback cycle. The generated
 candidate passed the unchanged task that exposed the limitation twice and
-passed one unrelated transfer task. Task execution, evidence collection, and
-promotion still run as separate harness operations. The declared workflow
-therefore demonstrates candidate generation and correction, while autonomous
+passed one unrelated transfer task. Task execution, corpus snapshotting, and
+promotion remain separate harness operations. The declared workflow performs
+cross-trajectory diagnosis, candidate generation, and correction. Autonomous
 cross-run promotion remains unsupported.
 
 ## Acceptance conditions

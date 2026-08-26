@@ -30,9 +30,11 @@ from run_self_improvement import (
     supported_independent_audits,
     supported_failure_contrasts,
     tool_candidate_from_outcome,
+    trajectory_collection_findings,
     validate_program,
     workflow_candidate_from_outcome,
     workflow_node_value,
+    write_bound_python_launcher,
     write_candidate_check,
     write_diagnosis_validator,
 )
@@ -43,6 +45,30 @@ from workflow_candidate import create as create_workflow_candidate
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
+    def test_bound_python_launcher_refuses_a_changed_dependency(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            entrypoint = root / "entrypoint.py"
+            dependency = root / "dependency.py"
+            launcher = root / "launcher"
+            entrypoint.write_text(
+                "from dependency import VALUE\nprint(f'collected {VALUE}')\n",
+                encoding="utf-8",
+            )
+            dependency.write_text("VALUE = 1\n", encoding="utf-8")
+            write_bound_python_launcher(launcher, entrypoint, [dependency])
+            accepted = subprocess.run(
+                [str(launcher)], text=True, capture_output=True, check=False
+            )
+            dependency.write_text("VALUE = 2\n", encoding="utf-8")
+            rejected = subprocess.run(
+                [str(launcher)], text=True, capture_output=True, check=False
+            )
+        self.assertEqual(accepted.returncode, 0)
+        self.assertEqual(accepted.stdout, "collected 1\n")
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("dependency changed", rejected.stderr)
+
     def test_preview_does_not_create_the_requested_retained_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             requested = Path(directory) / "retained"
@@ -128,6 +154,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             nodes["audit-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime", "implement-runtime-improvement"],
         )
+
         self.assertEqual(
             nodes["diagnose-runtime"]["branches"],
             {
@@ -232,6 +259,52 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(implementation["budget"]["model_calls"], 60)
         self.assertEqual(audit["budget"]["model_calls"], 60)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
+
+    def test_workflow_can_collect_evidence_from_an_identity_bound_tool(self):
+        config = build_config(
+            Path("/tmp/candidate"),
+            Path("/tmp/evidence.json"),
+            Path("/tmp/check"),
+            Path("/tmp/diagnosis-validator"),
+            model_config("openai-codex/gpt-5.6-terra", "high"),
+            model_config("openai-codex/gpt-5.6-luna", "low"),
+            [Path("/opt/toolchain")],
+            [Path("/repo/.git")],
+            [Path("/opt/cargo-cache")],
+            "Raise verified completion.",
+            "auto",
+            {
+                "exec": "/tmp/bound-collector",
+                "description": "Collect diagnostics from immutable trajectories.",
+            },
+            ["--corpus", "/tmp/corpus/manifests/example.json"],
+            [Path("/tmp/corpus")],
+        )
+        self.assertEqual(config["tool_defs"]["evidence"]["exec"], "/tmp/bound-collector")
+        self.assertEqual(
+            config["workflow"]["nodes"]["collect-trajectory-diagnostics"]["args"],
+            {"args": ["--corpus", "/tmp/corpus/manifests/example.json"]},
+        )
+        self.assertIn("/tmp/corpus", config["grants"]["read"])
+
+    def test_trajectory_collection_requires_the_preflight_bytes(self):
+        self.assertEqual(
+            trajectory_collection_findings(
+                {"exit_code": 0, "stdout": '{"report":true}\n'},
+                '{"report":true}\n',
+            ),
+            [],
+        )
+        self.assertEqual(
+            trajectory_collection_findings(
+                {"exit_code": 1, "stdout": "different"},
+                '{"report":true}\n',
+            ),
+            [
+                "trajectory corpus diagnostics executable did not exit successfully",
+                "trajectory corpus diagnostics differ from the preflight report",
+            ],
+        )
 
     def test_source_candidate_requires_evidence_for_source_owned_behavior(self):
         config = build_config(

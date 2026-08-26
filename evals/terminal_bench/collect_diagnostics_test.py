@@ -10,16 +10,38 @@ from pathlib import Path
 from collect_diagnostics import (
     EVALUATION_FIELDS,
     collect,
+    collect_from_corpus,
+    development_tasks,
     diagnostic_outcome,
     encoded_evidence,
     evaluation_metadata,
     evaluation_summary,
     input_growth_landmarks,
+    main as collect_main,
     repeated_failure_contrasts,
 )
+from trajectory_corpus import snapshot_corpus
 
 
 class CollectDiagnosticsTest(unittest.TestCase):
+    def test_development_tasks_excludes_protected_evaluation_groups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cases = Path(directory) / "cases.json"
+            cases.write_text(
+                json.dumps(
+                    {
+                        "groups": {
+                            "development": ["develop"],
+                            "capability_search": ["probe"],
+                            "confirmation": ["confirm"],
+                            "calibration_holdout": ["sealed"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(development_tasks(cases), {"develop", "probe"})
+
     def test_diagnostic_outcome_keeps_completion_claim_only_when_requested(self):
         completion = {
             "kind": "completed",
@@ -195,7 +217,73 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 }
             ],
         )
-        encoded = encoded_evidence(report)
+
+    def test_corpus_collection_matches_direct_collection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, binary, run, identity = self.fixture(root)
+            campaign_path = run / "campaign.json"
+            campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+            campaign["tasks"] = [{"name": "example"}]
+            campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+            trial = run / "task" / "trial"
+            (trial / "result.json").write_text(
+                json.dumps(
+                    {
+                        "task_name": "terminal-bench/example",
+                        "agent_result": {
+                            "metadata": {"foe_credential_exposed": False}
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            episode = trial / "agent" / "foe-episode"
+            episode.mkdir()
+            (episode / "episode.jsonl").write_text(
+                json.dumps(
+                    {
+                        "seq": 1,
+                        "type": "episode/start",
+                        "data": {"runtime": {"build": identity["runtime_binary"]}},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            cases = root / "cases.json"
+            cases.write_text(
+                json.dumps(
+                    {
+                        "dataset": "terminal-bench/example@1",
+                        "groups": {
+                            "development": ["example"],
+                            "capability_search": [],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest = snapshot_corpus(source, binary, [run], cases, root / "corpus")
+            direct = collect(source, binary, [run], {"example"})
+            from_corpus = collect_from_corpus(manifest, cases, identity)
+            rejected = collect_main(
+                [
+                    "--corpus",
+                    str(manifest),
+                    "--cases",
+                    str(cases),
+                    "--expected-source-tree",
+                    identity["source_tree"],
+                    "--expected-runtime-binary",
+                    identity["runtime_binary"],
+                    "--expected-report-sha256",
+                    "sha256:" + "0" * 64,
+                ]
+            )
+        self.assertEqual(from_corpus, direct)
+        self.assertEqual(rejected, 2)
+        encoded = encoded_evidence(direct)
         self.assertTrue(encoded.endswith("\n"))
         self.assertNotIn("\n  ", encoded)
 
