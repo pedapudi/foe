@@ -883,8 +883,22 @@ class CollectDiagnosticsTest(unittest.TestCase):
             "completion_checker": None,
         }
         bare = evaluation_metadata(manifest, Path("bare/campaign.json"))
-        manifest.update({"label": "built-in", "built_in_workflow": True})
+        manifest.update(
+            {
+                "label": "built-in",
+                "built_in_workflow": True,
+                "built_in_audit_reasoning_effort": "xhigh",
+            }
+        )
         built_in = evaluation_metadata(manifest, Path("built-in/campaign.json"))
+        self.assertEqual(
+            built_in["execution_configuration"]["built_in_terminal_audit"],
+            {
+                "model": "openai-codex/gpt-5.6-sol",
+                "reasoning_effort": "xhigh",
+                "model_calls": 60,
+            },
+        )
         reports = [
             {
                 "task": "terminal-bench/example",

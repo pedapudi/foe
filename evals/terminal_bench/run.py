@@ -35,6 +35,7 @@ from workflow_candidate import validate as validate_workflow_candidate
 
 HARBOR_VERSION = "0.22.0"
 DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
+REASONING_EFFORTS = ("low", "medium", "high", "xhigh")
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 MIN_AUXILIARY_MODEL_CALLS = 6
 BUILTIN_WORKFLOW_MODEL_CALLS = 120
@@ -844,15 +845,49 @@ def built_in_program_failures(
         "audit.follows": ("task", "implement-task"),
         "audit.terminal": True,
         "audit.name": "audit-and-repair-task",
-        "audit.model": ("openai-codex", "gpt-5.6-sol", "high", "priority"),
+        "audit.model": actual["audit.model"],
         "audit.model_calls": 60,
         "audit.verify": "check" if completion_checker else None,
     }
+    audit_model = actual["audit.model"]
+    if not (
+        len(audit_model) == 4
+        and audit_model[0:2] == ("openai-codex", "gpt-5.6-sol")
+        and audit_model[2] in REASONING_EFFORTS
+        and audit_model[3] == "priority"
+    ):
+        expected["audit.model"] = (
+            "openai-codex",
+            "gpt-5.6-sol",
+            "low|medium|high|xhigh",
+            "priority",
+        )
     return [
         f"built-in profile {key}: expected {expected[key]!r}, recorded {value!r}"
         for key, value in actual.items()
         if value != expected[key]
     ]
+
+
+def built_in_audit_reasoning_effort(result_path: Path) -> str:
+    """Read the resolved terminal-audit effort from one root episode."""
+    episode_path = result_path.parent / "agent" / "foe-episode" / "episode.jsonl"
+    try:
+        with episode_path.open(encoding="utf-8") as source:
+            event = json.loads(source.readline())
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"cannot read the built-in root episode: {error}") from error
+    data = event.get("data") if isinstance(event, dict) else None
+    program = data.get("program") if isinstance(data, dict) else None
+    workflow = program.get("workflow") if isinstance(program, dict) else None
+    nodes = workflow.get("nodes") if isinstance(workflow, dict) else None
+    audit = nodes.get("audit-and-repair-task") if isinstance(nodes, dict) else None
+    audit_program = audit.get("model") if isinstance(audit, dict) else None
+    model = audit_program.get("model") if isinstance(audit_program, dict) else None
+    effort = model.get("reasoning_effort") if isinstance(model, dict) else None
+    if effort not in REASONING_EFFORTS:
+        raise ValueError("the resolved built-in terminal audit has invalid reasoning effort")
+    return effort
 
 
 def read_job_integrity(
@@ -864,6 +899,7 @@ def read_job_integrity(
     """Record runtime, trace, and resource diagnostics beside task quality."""
     infrastructure_failures = []
     incomplete_resource_measurements = []
+    built_in_audit_efforts: set[str] = set()
     trial_results = sorted(job_dir.glob("*/result.json"))
     if not trial_results:
         raise ValueError(f"Harbor job has no trial results: {job_dir}")
@@ -905,6 +941,10 @@ def read_job_integrity(
                     completion_checker=completion_checker,
                 )
             )
+            try:
+                built_in_audit_efforts.add(built_in_audit_reasoning_effort(path))
+            except ValueError as error:
+                infrastructure_failures.append(f"{trial}: {error}")
         if (
             "foe_completion_checker_unchanged" in metadata
             and metadata.get("foe_completion_checker_unchanged") is not True
@@ -927,10 +967,19 @@ def read_job_integrity(
             missing = metadata.get("foe_unreported_model_calls")
             count = missing if isinstance(missing, int) else "unknown"
             incomplete_resource_measurements.append(f"{trial}: {count} model call(s) lack provider usage")
+    if len(built_in_audit_efforts) > 1:
+        infrastructure_failures.append(
+            "built-in terminal-audit reasoning effort differs across trials"
+        )
     return {
         "infrastructure_failures": infrastructure_failures,
         "incomplete_resource_measurements": incomplete_resource_measurements,
         "configuration_claim_valid": not infrastructure_failures,
+        "built_in_audit_reasoning_effort": (
+            next(iter(built_in_audit_efforts))
+            if len(built_in_audit_efforts) == 1
+            else None
+        ),
     }
 
 
@@ -1744,6 +1793,14 @@ def main(argv: list[str] | None = None) -> int:
                 "hard" if args.hard_token_limits else "measurement_only"
             ),
             "built_in_workflow": args.built_in_workflow,
+            "built_in_audit_reasoning_effort": next(
+                (
+                    record["built_in_audit_reasoning_effort"]
+                    for record in records
+                    if record.get("built_in_audit_reasoning_effort") is not None
+                ),
+                None,
+            ),
             "install_only": args.install_only,
             "credential_policy": (
                 "provider_free_installation"

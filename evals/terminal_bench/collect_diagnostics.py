@@ -204,6 +204,18 @@ def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[s
             f"Terminal-Bench manifest {manifest_path} has no boolean `built_in_workflow`"
         )
     configuration["built_in_workflow"] = built_in_workflow
+    if built_in_workflow:
+        audit_effort = manifest.get("built_in_audit_reasoning_effort")
+        if audit_effort not in ("low", "medium", "high", "xhigh"):
+            raise ValueError(
+                f"Terminal-Bench manifest {manifest_path} has invalid "
+                "`built_in_audit_reasoning_effort`"
+            )
+        configuration["built_in_terminal_audit"] = {
+            "model": answer["model"],
+            "reasoning_effort": audit_effort,
+            "model_calls": 60,
+        }
     optional_stages = {
         "diagnosis": (
             ("model", "diagnosis_model", str),

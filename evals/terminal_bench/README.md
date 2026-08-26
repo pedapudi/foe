@@ -206,10 +206,12 @@ single-episode program with the public checker as its completion verifier.
 
 Targets beginning with `foe-built-in-verifier-` invoke the coding workflow
 constructed by the Foe binary. The workflow gives 60 model calls to an
-implementation episode that uses Sol with low reasoning. It gives 60 calls to
-a fresh terminal audit that uses Sol with high reasoning. The terminal audit
-owns `done_when.verify`. The adapter disables Landlock because each
-Terminal-Bench task already runs in its Docker container.
+implementation episode and 60 calls to a fresh terminal audit. The campaign
+manifest records the resolved reasoning effort for the terminal audit. This
+keeps source candidates with different audit effort in distinct diagnostic
+configurations. The terminal audit owns `done_when.verify`. The adapter
+disables Landlock because each Terminal-Bench task already runs in its Docker
+container.
 
 Preview or run one built-in verifier-governed scenario:
 

@@ -117,6 +117,46 @@ class CasesTest(unittest.TestCase):
                 built_in_program_failures(result, completion_checker=True),
                 [],
             )
+            program["workflow"]["nodes"]["audit-and-repair-task"]["model"][
+                "model"
+            ]["reasoning_effort"] = "xhigh"
+            (episode / "episode.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "episode/start",
+                        "data": {"program": program},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            result.write_text(
+                json.dumps(
+                    {
+                        "trial_name": "trial",
+                        "exception_info": None,
+                        "agent_result": {
+                            "metadata": {
+                                "foe_outcome": {"kind": "completed", "value": "done"},
+                                "foe_trace_conformant": True,
+                                "foe_usage_reported": True,
+                                "foe_built_in_workflow": True,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            integrity = read_job_integrity(
+                Path(directory),
+                built_in_workflow=True,
+                completion_checker=True,
+            )
+            self.assertTrue(integrity["configuration_claim_valid"])
+            self.assertEqual(integrity["built_in_audit_reasoning_effort"], "xhigh")
+            program["workflow"]["nodes"]["audit-and-repair-task"]["model"][
+                "model"
+            ]["reasoning_effort"] = "high"
             program["workflow"]["nodes"]["implement-task"]["model"]["done_when"][
                 "verify"
             ] = "check"
