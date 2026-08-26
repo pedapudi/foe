@@ -2453,3 +2453,83 @@ under
 The cancelled campaign manifest SHA-256 is
 `b3b50b2b558475b40d1082913a7b005ed9f1023b13540d7f0cfd1c6eebf81a3b`.
 The autonomous candidate is rejected for promotion.
+
+## Failure-operand diagnosis and final-artifact audit candidate
+
+Review of the rejected autonomous candidate found that the trajectory report
+retained each pytest source assertion but omitted its concrete rewritten
+assertion. The diagnosis could see `abs(fwd_tm - rev_tm) <= 5`. It could not
+see the measured value `5.263745 <= 5`. The missing operands prevented a
+causal comparison between the audit's accepted interpretation and the
+task-owned verifier's rejected interpretation.
+
+The trajectory collector now retains one bounded pytest rewritten assertion
+when the verifier supplies an unambiguous value. The value does not
+participate in the stable failure-locus identity. The source-improvement
+diagnosis receives the value, while its generalized implementation handoff
+and candidate source remain unable to copy task-specific failure details.
+
+The revised parser recovered these operands from the three retained DNA
+failures:
+
+- `5.263745 <= 5`;
+- `72.019132 <= 72`;
+- `6.021674000000004 <= 5`.
+
+The failure-locus hashes remained unchanged. The Terminal-Bench unit suite
+passed all 182 tests, including identity stability and disclosure controls.
+Commit `6148220` contains the collector, workflow instruction, tests, and
+documentation.
+
+A direct Foe candidate then changed the built-in terminal audit's final-state
+acceptance rule. When a requirement measures a portion of a final value that
+matches supplied input, the audit aligns the complete final value against the
+input. It includes every contiguous matching extension in the measured
+portion. The audit treats implementation-asserted boundaries as unverified
+until an independent observation establishes them.
+
+The candidate changes one checked-in workflow instruction, three regression
+assertions, and the design specification. It adds no runtime mechanism. Its
+commit is `3aee3e7`, and its Git tree is
+`git-tree-sha1:cb1efa794591cbbe9733ec86a7779bfbe0ff9ecd`. The evaluated binary
+is `sha256:b6910a230b5c935e2140f767a8e15fe0cadb90a51190b4c0cd2d7a78b8073c72`.
+Workspace tests, clippy, examples, formatting, and line budgets pass.
+
+Three priority-tier closed-book DNA attempts evaluated the unchanged task and
+task-owned grader. All three received score 1.0 without an exception. Their
+measurements were:
+
+| Attempt | Calls | Input | Cache read | Output | Estimated cost | Trace assertions |
+|---|---:|---:|---:|---:|---:|---:|
+| `RGcMngE` | 38 | 822,635 | 577,536 | 29,451 | $1.800430 | 11,045 |
+| `TZtHJ2e` | 34 | 462,302 | 236,032 | 24,346 | $1.486413 | 6,729 |
+| `UJRapEQ` | 25 | 292,462 | 161,280 | 18,689 | $0.963020 | 3,861 |
+
+Every trace had zero conformance violations. The first audit found that the
+original forward primers exceeded the 72-degree maximum under every
+contiguous input match. It also found that the original primer pairs exceeded
+the five-degree difference limit. The audit repaired the primers and checked
+both the intended and maximal-match interpretations before completion. The
+task-owned grader accepted the resulting artifact.
+
+The three attempts are retained under
+`/home/sunil/git/foe-input-derived-final-artifact-audit/target/terminal-bench-jobs/priority-input-derived-boundary-activation-20260826T221840Z`.
+Their campaign manifest SHA-256 is
+`b15e154fcfb244541301df8a7b6c3f9b8008a6bd99d3227fff293f8d410e199f`.
+The candidate converted the matched closed-book DNA result from three failures
+to three successes.
+
+An unchanged closed-book `git-multibranch` transfer attempt also received
+score 1.0 without an exception. It used 20 model calls, 148,853 input tokens,
+62,976 cached-input tokens, and 16,426 output tokens. Its estimated cost was
+$0.697218. The retained directory is
+`/home/sunil/git/foe-input-derived-final-artifact-audit/target/terminal-bench-jobs/priority-input-derived-boundary-transfer-20260826T224856Z`.
+Its campaign manifest SHA-256 is
+`b68a43e95dcda0580ccf78b19798b860217a0eb23b98a58037259f02ffa626d6`.
+
+The candidate satisfies one campaign conversion criterion and one unrelated
+transfer check. It does not count as an autonomous improvement because direct
+source review selected and implemented it. The failed autonomous attempt and
+the repaired trajectory sensor establish the next self-improvement test: a
+future candidate must derive its intervention from concrete failure operands
+and pass unchanged external activation cases.
