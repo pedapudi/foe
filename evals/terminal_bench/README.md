@@ -495,8 +495,8 @@ gate, and success criterion.
 
 Every completed trial contains `agent/foe-diagnostics.json`. The report names
 request growth, replayed tool results, repeated calls, failures, verifier
-outcomes, final post-edit tool results, bounded verifier failure classes, and
-log sequence numbers across the episode tree.
+outcomes, final post-edit tool results, bounded verifier failure loci, and log
+sequence numbers across the episode tree.
 
 Collect diagnoses from one or more retained eligible runs. The command
 requires a clean source tree and the exact evaluated binary:
@@ -513,11 +513,23 @@ identifies diagnosis, unresolved-diagnosis, implementation, independent-audit,
 and completion-verifier stages when present. It also records whether Foe's
 built-in workflow constructed the model episodes.
 
+The collector reads the retained task-owned verifier report after Foe exits.
+It does not use verifier output captured inside a model episode. The task model
+therefore receives no task-owned grader or checker data from this collection
+path.
+
 The collector groups results by task and complete execution configuration. It
 groups failures by task, typed outcome, artifact mismatch, and named failed
 verifier checks. A repeated failure contrast requires two matching failed
 episodes and one successful episode for the same task. Trial infrastructure
 failures cannot enter a contrast.
+
+The coarse profile remains the grouping key. Each failed attempt also carries
+its verifier-report digest and bounded failure loci. A locus contains the
+pytest assertion expression, normalized source location, and concise assertion
+message when those fields are available. The collector removes volatile host
+paths, memory addresses, ANSI formatting, and the remaining traceback. A
+stable digest identifies the bounded locus.
 
 The file keeps up to four input-growth landmarks and three entries from each
 ranked result list. Input growth resets at each episode boundary. An artifact
@@ -529,13 +541,16 @@ The collector accepts at most 12 diagnoses and 48 KiB of compact JSON. The
 capability-search, and opened confirmation tasks. Calibration and the sealed
 holdout remain outside the evidence set.
 
-The self-improvement runner requires a `repeated_failure_contrasts` list in
-the evidence file. Each entry contains one task, a failure profile, at least
-two unique failed episode identifiers, and at least one unique successful
-episode identifier. The two identifier sets must be disjoint. The failure
-profile contains the typed outcome, artifact-outcome mismatch flag, and
-failed verifier checks. This field is the interface between cross-trajectory
-collection and candidate selection.
+Evidence schema 5 stores repeated contrasts under
+`repeated_failure_contrasts`. Each entry contains one task, a coarse failure
+profile, at least two failed-attempt records, and at least one successful
+episode identity. Each failed-attempt record contains its episode identity,
+verifier-report digest when available, and failure-locus list. The failed and
+successful episode sets must be disjoint.
+
+A malformed retained verifier report stops collection. A missing report
+creates a failed-attempt record without a provenance digest or locus. Such a
+contrast can support only an `insufficient-evidence` diagnosis.
 
 Create a clean candidate worktree at the evaluated commit. Run the
 self-improvement workflow from that worktree:
@@ -563,6 +578,13 @@ digest. Its ordinary tools are `block` and the generated candidate validator,
 so it cannot inspect the candidate source or retained run directories. Its
 typed result contains one causal contrast, one intervention, and the controls
 and falsification condition needed to evaluate that intervention.
+
+A candidate-producing diagnosis must cite every failed episode, its verifier
+report digest, and every locus digest. It gives each attempt a local
+explanation and states one shared mechanism. The diagnosis returns
+`insufficient-evidence` when heterogeneous loci do not support one shared
+mechanism. The generated diagnosis verifier enforces citation coverage before
+another workflow node can start.
 
 The diagnosis node's completion verifier is a generated executable declared
 through `done_when.verify`. The runner writes it before the episode; it

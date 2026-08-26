@@ -5,10 +5,107 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from trajectory_diagnostics import diagnose_episode
+from trajectory_diagnostics import diagnose_episode, failure_locus, verifier_feedback
 
 
 class TrajectoryDiagnosticsTest(unittest.TestCase):
+    def ctrf_feedback(self, fixture: str) -> dict:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            trial = root / "result.json"
+            trial.write_text("{}\n", encoding="utf-8")
+            verifier = root / "verifier"
+            verifier.mkdir()
+            source = Path(__file__).with_name("testdata") / fixture
+            (verifier / "ctrf.json").write_bytes(source.read_bytes())
+            feedback = verifier_feedback(trial)
+        self.assertIsNotNone(feedback)
+        return feedback
+
+    def test_dna_failures_share_a_coarse_check_and_keep_distinct_loci(self):
+        temperature = self.ctrf_feedback("dna_tm_delta_ctrf.json")
+        annealing = self.ctrf_feedback("dna_effective_annealing_length_ctrf.json")
+        temperature_failure = temperature["failures"][0]
+        annealing_failure = annealing["failures"][0]
+
+        self.assertEqual(temperature_failure["name"], annealing_failure["name"])
+        self.assertEqual(
+            temperature_failure["failure_class"], annealing_failure["failure_class"]
+        )
+        self.assertEqual(
+            temperature_failure["locus"],
+            {
+                "locus_sha256": temperature_failure["locus"]["locus_sha256"],
+                "location": "tests/test_outputs.py:116",
+                "assertion": "abs(fwd_tm - rev_tm) <= 5",
+                "message": (
+                    "Tm of forward and reverse primers must be within 5 degrees C "
+                    "of each other."
+                ),
+            },
+        )
+        self.assertEqual(
+            annealing_failure["locus"],
+            {
+                "locus_sha256": annealing_failure["locus"]["locus_sha256"],
+                "location": "tests/test_outputs.py:99",
+                "assertion": "15 <= len(extra_r) <= 45",
+                "message": (
+                    "Reverse primer annealing (incl. overhang match) must be "
+                    "15–45 nt."
+                ),
+            },
+        )
+        self.assertNotEqual(
+            temperature_failure["locus"]["locus_sha256"],
+            annealing_failure["locus"]["locus_sha256"],
+        )
+        self.assertNotEqual(temperature["sha256"], annealing["sha256"])
+
+    def test_failure_locus_removes_volatile_paths_and_addresses(self):
+        locus = failure_locus(
+            {
+                "name": "tests/test_worker.py::test_result",
+                "message": "fallback",
+                "trace": (
+                    "> assert result == 0x7ff01234\n"
+                    "E AssertionError: /tmp/pytest-391/result at 0x7ff01234 failed\n"
+                    "/home/runner/build/tests/test_worker.py:47: AssertionError\n"
+                ),
+            },
+            "AssertionError",
+        )
+        self.assertIsNotNone(locus)
+        encoded = json.dumps(locus)
+        self.assertEqual(locus["location"], "tests/test_worker.py:47")
+        self.assertEqual(locus["assertion"], "result == <address>")
+        self.assertNotIn("pytest-391", encoded)
+        self.assertNotIn("7ff01234", encoded)
+
+    def test_verifier_feedback_distinguishes_missing_and_malformed_reports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            trial = root / "result.json"
+            trial.write_text("{}\n", encoding="utf-8")
+            self.assertIsNone(verifier_feedback(trial))
+
+            verifier = root / "verifier"
+            verifier.mkdir()
+            (verifier / "ctrf.json").write_text("{malformed\n", encoding="utf-8")
+            with self.assertRaises(json.JSONDecodeError):
+                verifier_feedback(trial)
+
+    def test_a_generic_ctrf_message_does_not_claim_an_exact_locus(self):
+        self.assertIsNone(
+            failure_locus(
+                {
+                    "name": "tests/test_worker.py::test_result",
+                    "message": "The test failed in the call phase",
+                },
+                None,
+            )
+        )
+
     def test_diagnosis_measures_exact_replay_and_completed_outcome(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -126,7 +223,7 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
             report = diagnose_episode(root, trial_result=trial)
 
         self.assertEqual(report["evidence_identity"]["runtime_build"], "sha256:runtime")
-        self.assertEqual(report["schema_version"], 3)
+        self.assertEqual(report["schema_version"], 4)
         self.assertEqual(report["usage"]["model_calls"], 3)
         self.assertEqual(report["usage"]["input_tokens"], 325)
         self.assertEqual(report["usage"]["cache_read_tokens"], 145)
@@ -225,7 +322,12 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
                                     "status": "failed",
                                     "raw_status": "call_failed",
                                     "message": "The semantic assertion failed",
-                                    "trace": "AssertionError: fixture value SECRET-VALUE",
+                                    "trace": (
+                                        "hidden setup value SECRET-VALUE\n"
+                                        "> assert public_result == expected\n"
+                                        "E AssertionError: public result differs\n"
+                                        "/tests/test_outputs.py:41: AssertionError"
+                                    ),
                                 }
                             ],
                         }
@@ -247,6 +349,10 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
         self.assertEqual(
             feedback["failures"][0]["name"],
             "test_outputs.py::test_public_interface",
+        )
+        self.assertEqual(
+            feedback["failures"][0]["locus"]["assertion"],
+            "public_result == expected",
         )
         self.assertNotIn("SECRET-VALUE", json.dumps(feedback))
 

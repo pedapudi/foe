@@ -22,6 +22,7 @@ from collect_diagnostics import (
     main,
     repeated_failure_contrasts,
 )
+from run import read_cases
 
 
 class CollectDiagnosticsTest(unittest.TestCase):
@@ -138,6 +139,26 @@ class CollectDiagnosticsTest(unittest.TestCase):
         run = root / "run"
         agent = run / "task" / "trial" / "agent"
         agent.mkdir(parents=True)
+        trial = agent.parent
+        (trial / "result.json").write_text("{}\n", encoding="utf-8")
+        verifier = trial / "verifier"
+        verifier.mkdir()
+        (verifier / "ctrf.json").write_text(
+            json.dumps(
+                {
+                    "results": {
+                        "summary": {"tests": 1, "passed": 1, "failed": 0},
+                        "tests": [
+                            {
+                                "name": "test_outputs.py::test_public_interface",
+                                "status": "passed",
+                            }
+                        ],
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
         (run / "campaign.json").write_text(
             json.dumps(
                 {
@@ -207,7 +228,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
             source, binary, run, identity = self.fixture(Path(directory))
             report = collect(source, binary, [run], {"example"})
         self.assertEqual(report["evaluated_foe"], identity)
-        self.assertEqual(report["schema_version"], 4)
+        self.assertEqual(report["schema_version"], 5)
         diagnosis = report["trajectory_diagnostics"][0]
         self.assertEqual(diagnosis["task"], "terminal-bench/example")
         self.assertEqual(diagnosis["evaluation"]["label"], "development")
@@ -255,8 +276,31 @@ class CollectDiagnosticsTest(unittest.TestCase):
         self.assertTrue(encoded.endswith("\n"))
         self.assertNotIn("\n  ", encoded)
 
-    def test_repeated_failure_contrast_requires_two_matching_failures_and_a_success(self):
-        def report(episode: str, reward: float, check: str) -> dict:
+    def test_collector_reloads_the_retained_task_owned_verifier_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, binary, run, _ = self.fixture(Path(directory))
+            diagnosis_path = next(run.glob("*/*/agent/foe-diagnostics.json"))
+            diagnosis = json.loads(diagnosis_path.read_text(encoding="utf-8"))
+            diagnosis["verifier_feedback"] = {
+                "failures": [{"name": "model-supplied-check", "message": "untrusted"}]
+            }
+            diagnosis_path.write_text(json.dumps(diagnosis), encoding="utf-8")
+            trial = diagnosis_path.parent.parent
+            fixture = Path(__file__).with_name("testdata") / "dna_tm_delta_ctrf.json"
+            (trial / "verifier" / "ctrf.json").write_bytes(fixture.read_bytes())
+
+            report = collect(source, binary, [run], {"example"})
+
+        feedback = report["trajectory_diagnostics"][0]["verifier_feedback"]
+        self.assertEqual(feedback["source"], "verifier/ctrf.json")
+        self.assertEqual(
+            feedback["failures"][0]["locus"]["assertion"],
+            "abs(fwd_tm - rev_tm) <= 5",
+        )
+        self.assertNotIn("model-supplied-check", json.dumps(feedback))
+
+    def test_repeated_failure_contrast_keeps_distinct_loci_in_one_coarse_profile(self):
+        def report(episode: str, reward: float, check: str, locus: str = "same") -> dict:
             return {
                 "task": "terminal-bench/example",
                 "evidence_identity": {"episode_id": episode},
@@ -265,8 +309,30 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 "outcome": {"kind": "completed"},
                 "artifact_outcome_mismatch": reward == 0,
                 "verifier_feedback": {
+                    "sha256": "sha256:" + ("1" if locus == "same" else "2") * 64,
                     "failures": (
-                        [{"name": check, "failure_class": "AssertionError"}]
+                        [
+                            {
+                                "name": check,
+                                "failure_class": "AssertionError",
+                                "locus": {
+                                    "locus_sha256": "sha256:" + (
+                                        "3" if locus == "same" else "4"
+                                    ) * 64,
+                                    "location": (
+                                        "tests/test_outputs.py:116"
+                                        if locus == "same"
+                                        else "tests/test_outputs.py:99"
+                                    ),
+                                    "assertion": (
+                                        "abs(fwd_tm - rev_tm) <= 5"
+                                        if locus == "same"
+                                        else "15 <= len(extra_r) <= 45"
+                                    ),
+                                    "message": locus,
+                                },
+                            }
+                        ]
                         if reward == 0
                         else []
                     )
@@ -275,7 +341,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
 
         reports = [
             report("ep_failed_one", 0.0, "test_public_interface"),
-            report("ep_failed_two", 0.0, "test_public_interface"),
+            report("ep_failed_two", 0.0, "test_public_interface", "length"),
             report("ep_different_failure", 0.0, "test_file_layout"),
             report("ep_success", 1.0, ""),
         ]
@@ -294,7 +360,36 @@ class CollectDiagnosticsTest(unittest.TestCase):
                             }
                         ],
                     },
-                    "failed_episode_ids": ["ep_failed_one", "ep_failed_two"],
+                    "failed_attempts": [
+                        {
+                            "episode_id": "ep_failed_one",
+                            "verifier_report_sha256": "sha256:" + "1" * 64,
+                            "failure_loci": [
+                                {
+                                    "name": "test_public_interface",
+                                    "failure_class": "AssertionError",
+                                    "locus_sha256": "sha256:" + "3" * 64,
+                                    "location": "tests/test_outputs.py:116",
+                                    "assertion": "abs(fwd_tm - rev_tm) <= 5",
+                                    "message": "same",
+                                }
+                            ],
+                        },
+                        {
+                            "episode_id": "ep_failed_two",
+                            "verifier_report_sha256": "sha256:" + "2" * 64,
+                            "failure_loci": [
+                                {
+                                    "name": "test_public_interface",
+                                    "failure_class": "AssertionError",
+                                    "locus_sha256": "sha256:" + "4" * 64,
+                                    "location": "tests/test_outputs.py:99",
+                                    "assertion": "15 <= len(extra_r) <= 45",
+                                    "message": "length",
+                                }
+                            ],
+                        },
+                    ],
                     "successful_episode_ids": ["ep_success"],
                 }
             ],
@@ -318,11 +413,77 @@ class CollectDiagnosticsTest(unittest.TestCase):
         for failed in reports[:2]:
             failed["verifier_feedback"]["failures"][0]["failure_class"] = None
             failed["verifier_feedback"]["failures"][0]["raw_status"] = "call_failed"
+            failed["verifier_feedback"]["failures"][0]["locus"] = None
         contrast = repeated_failure_contrasts(reports)[0]
         self.assertEqual(
             contrast["failure_profile"]["failed_verifier_checks"],
             [{"name": "test_public_interface", "failure_class": "call_failed"}],
         )
+
+    def test_missing_verifier_output_is_explicit_in_the_failed_attempt(self):
+        def failed(episode: str) -> dict:
+            return {
+                "task": "terminal-bench/example",
+                "evidence_identity": {"episode_id": episode},
+                "verifier_reward": 0.0,
+                "trial_error": None,
+                "outcome": {"kind": "completed"},
+                "artifact_outcome_mismatch": True,
+                "verifier_feedback": None,
+            }
+
+        reports = [
+            failed("ep_failed_one"),
+            failed("ep_failed_two"),
+            {
+                **failed("ep_success"),
+                "verifier_reward": 1.0,
+                "artifact_outcome_mismatch": False,
+            },
+        ]
+        contrast = repeated_failure_contrasts(reports)[0]
+        self.assertEqual(
+            contrast["failed_attempts"],
+            [
+                {
+                    "episode_id": "ep_failed_one",
+                    "verifier_report_sha256": None,
+                    "failure_loci": [],
+                },
+                {
+                    "episode_id": "ep_failed_two",
+                    "verifier_report_sha256": None,
+                    "failure_loci": [],
+                },
+            ],
+        )
+
+    def test_one_episode_identity_cannot_name_different_verifier_evidence(self):
+        def report(digest: str) -> dict:
+            return {
+                "task": "terminal-bench/example",
+                "evidence_identity": {"episode_id": "ep_reused"},
+                "verifier_reward": 0.0,
+                "trial_error": None,
+                "outcome": {"kind": "completed"},
+                "artifact_outcome_mismatch": True,
+                "verifier_feedback": {
+                    "sha256": "sha256:" + digest * 64,
+                    "failures": [
+                        {
+                            "name": "test_public_interface",
+                            "failure_class": "AssertionError",
+                            "locus": {
+                                "locus_sha256": "sha256:" + digest * 64,
+                                "assertion": "result is valid",
+                            },
+                        }
+                    ],
+                },
+            }
+
+        with self.assertRaisesRegex(ValueError, "inconsistent verifier failure evidence"):
+            repeated_failure_contrasts([report("1"), report("2")])
 
     def test_collector_rejects_a_different_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -552,6 +713,12 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     )
                 self.assertEqual(status, expected_status)
                 self.assertEqual(output.exists(), expected_status == 0)
+
+    def test_registry_excludes_protected_calibration_and_holdout_tasks(self):
+        _, groups, _, _ = read_cases(Path(__file__).with_name("cases.json"))
+        eligible = set(groups["self_improvement_evidence"])
+        self.assertTrue(eligible.isdisjoint(groups["calibration"]))
+        self.assertTrue(eligible.isdisjoint(groups["calibration_holdout"]))
 
 
 if __name__ == "__main__":

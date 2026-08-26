@@ -789,13 +789,26 @@ candidate preserves the primary model route, reasoning effort, task
 allowances, token policy, service tier, and task set. Resource changes are
 recorded. Verified task quality governs candidate promotion.
 
-The digest retains the final edit and a bounded sequence of later tool
-results for each episode. Structured verifier reports contribute counts,
-failure classes, bounded messages, and a content digest. Confirmation and
-calibration holdout feedback remains closed. A diagnosis must cite evidence
-that differs between failures and successes. It must also state a falsifying
-observation, required product paths, and activation under the evaluated
-program.
+The digest retains the final edit and a bounded sequence of later tool results
+for each episode. The collector reloads each retained task-owned verifier
+artifact after Foe exits. Task execution therefore cannot receive grader data
+through the diagnostic path.
+
+Structured verifier reports contribute counts, failure classes, and a content
+digest. Each failed attempt also carries bounded assertion loci. A locus
+contains its normalized location, assertion expression, concise message, and
+stable digest. Raw traceback text stays outside the self-improvement evidence.
+
+The task registry admits development, capability-search, and opened
+confirmation artifacts. Calibration and sealed-holdout artifacts remain
+excluded. Confirmation artifacts stay protected until their candidate
+disposition is recorded and the registry is updated.
+
+A candidate-producing diagnosis must cite every failed episode, verifier
+report digest, and failure-locus digest. It must explain each local assertion
+and state one shared mechanism. Heterogeneous loci that do not support one
+mechanism require an insufficient-evidence result. The diagnosis also states a
+falsifying observation and the activation path under the evaluated program.
 
 A request without provider usage invalidates exact cost and token claims. The
 retained campaign record identifies each incomplete resource record. Runtime
@@ -1964,3 +1977,50 @@ A local command-surface diagnosis also invoked `foe schema` with an explicit
 model. It was terminated at workflow startup before any model request. Its
 six-event account is retained at
 `target/terminal-bench-preflight/accidental-schema-task-20260826`.
+
+## Verifier failure-locus evidence qualification
+
+Three retained `dna-assembly` attempts from 2026-08-26 exercise the
+failure-locus evidence contract. They evaluated source tree
+`git-tree-sha1:8c5e2b72580507cc49881ed11d83209bc0c26c0e` with runtime binary
+`sha256:ff7d062a57acf865e22d7781fb7e9c05ac95863e5a255fc3145d4479e0eebb59`.
+Every attempt used the built-in workflow, GPT-5.6 Sol with low reasoning, and
+the priority service tier.
+
+Two completed attempts received zero task-owned credit. Both have the same
+coarse profile: an artifact-outcome mismatch in
+`test_outputs.py::test_primers` with `AssertionError`. Their retained Common
+Test Report Format (CTRF) artifacts identify different assertions:
+
+| Episode | Verifier artifact SHA-256 | Stable locus | Assertion |
+| --- | --- | --- | --- |
+| `ep_ff14aa09` | `8a687e9240a719d4d8f222441d5782674bd8c85d40cfebc117404f504577395d` | `sha256:83bdf345ca8ce6972feeb670ba0b3abfb45ad3b63ce65b75ac3d5b93a1821c07` | `tests/test_outputs.py:116`, `abs(fwd_tm - rev_tm) <= 5` |
+| `ep_1164414b` | `b26c75aa24c7b3b5f28319724dda415799cce5bb073cab956b7fc134437494b6` | `sha256:1f250d2468444abe8ba559196f90927c3443ce3d460cc340b881c848b9b7438e` | `tests/test_outputs.py:99`, `15 <= len(extra_r) <= 45` |
+
+The second verifier observed an effective reverse annealing length of 46
+bases. The first verifier observed a primer melting-temperature difference of
+5.813507 degrees C. The compact evidence keeps the stable assertions and
+messages. It excludes those observed-value expansion lines and the remaining
+traceback.
+
+Episode `ep_01be21a9` received full task-owned credit under the same execution
+configuration. The collector therefore produces one repeated same-task
+contrast with two distinct failed-attempt loci and one successful episode.
+Grouping remains coarse enough to acquire the contrast, while diagnosis sees
+the assertion heterogeneity.
+
+The diagnosis validator requires citations for both failed episodes, both
+verifier artifact digests, and both locus digests. It also requires a local
+explanation for each attempt and one shared mechanism. An absent locus or an
+unsupported shared mechanism permits only an insufficient-evidence result.
+
+The retained attempts are:
+
+- `/home/sunil/git/foe-terminal-bench-quality-campaign/target/terminal-bench-jobs/built-in-closed-book-development-dna-assembly-20260826T101346Z`;
+- `/home/sunil/git/foe-terminal-bench-quality-campaign/target/terminal-bench-jobs/built-in-closed-book-development-dna-assembly-third-20260826T103457Z`;
+- `/home/sunil/git/foe-terminal-bench-quality-campaign/target/terminal-bench-jobs/built-in-closed-book-development-dna-assembly-repeat-20260826T102503Z`.
+
+The regression fixtures contain only the failed assertion region from each
+CTRF artifact. Additional tests cover missing and malformed verifier output,
+volatile path and address removal, and the registry exclusion for calibration
+and sealed-holdout artifacts. This qualification made no provider request.

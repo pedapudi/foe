@@ -1,0 +1,18 @@
+{
+  "results": {
+    "summary": {
+      "tests": 1,
+      "passed": 0,
+      "failed": 1
+    },
+    "tests": [
+      {
+        "name": "test_outputs.py::test_primers",
+        "status": "failed",
+        "raw_status": "call_failed",
+        "message": "The test failed in the call phase due to an assertion error",
+        "trace": ">       assert abs(fwd_tm - rev_tm) <= 5, (\n            \"Tm of forward and reverse primers must be within 5 degrees C of each other.\"\n        )\nE       AssertionError: Tm of forward and reverse primers must be within 5 degrees C of each other.\nE       assert 5.813507000000001 <= 5\nE        +  where 5.813507000000001 = abs((70.395675 - 64.582168))\n\n/tests/test_outputs.py:116: AssertionError"
+      }
+    ]
+  }
+}

@@ -64,10 +64,23 @@ which tasks may supply self-improvement evidence. The eligible set contains
 development tasks, capability-search tasks, and opened confirmation tasks.
 Calibration tasks and the sealed holdout remain outside that set.
 
-Evidence schema 4 groups failures by task, typed outcome, artifact mismatch,
-and named failed verifier checks. A repeated failure contrast requires two
-failed episode identities with the same profile and one successful episode
-for the same task. Trial infrastructure failures cannot enter a contrast.
+Evidence schema 5 groups failures by task, typed outcome, artifact mismatch,
+and named failed verifier checks. This coarse profile permits two failed
+attempts with different assertions to enter one same-task contrast. The
+contrast also requires one successful episode for the same task. Trial
+infrastructure failures cannot enter a contrast.
+
+The collector reloads the retained task-owned verifier artifact after Foe
+exits. Each failed attempt carries the artifact digest and bounded failure
+loci. A locus contains a normalized source location, assertion expression,
+and concise message when pytest or the Common Test Report Format (CTRF)
+supplies them. Its stable digest covers
+those fields and the named check. Volatile host paths, memory addresses, ANSI
+formatting, and the remaining traceback are excluded.
+
+This collection step runs outside the task episode. The model that performs
+the task receives no task-owned grader output through this path. The later
+self-improvement diagnosis receives only the compact derived evidence.
 
 The collector retains bounded outcomes, input-growth landmarks, resource
 usage, and execution-configuration summaries. A failed completed attempt may
@@ -75,14 +88,20 @@ retain model-authored completion details under `untrusted_completion_claim`.
 The compact JSON document contains at most 12 diagnoses and 48 KiB so one
 workflow result can carry the complete evidence document.
 
+A missing verifier artifact produces an explicit failed attempt without a
+locus. A malformed verifier artifact stops evidence collection. Candidate
+generation from a contrast with any missing locus is invalid, while a typed
+insufficient-evidence result remains valid.
+
 ## Identity-bound candidate workflow
 
 The [Terminal-Bench evaluation runner](../evals/terminal_bench/) accepts a
 bounded trajectory report produced outside the candidate's authority. The
 report identifies the evaluated source tree and runtime binary. Each eligible
-contrast names one task, at least two failed episode identifiers, at least one
-successful episode identifier, and the common failure profile. Failed and
-successful identifiers must be disjoint.
+contrast names one task, at least two failed attempts, at least one successful
+episode identifier, and the common failure profile. Each failed attempt carries
+its verifier provenance and failure loci. Failed and successful identifiers
+must be disjoint.
 
 The runner copies the report into the retained run directory before creating
 the program. The resulting version 3 program contains three model nodes:
@@ -103,6 +122,12 @@ writable directories and remains the authority for source acceptance. If the
 terminal audit ends after the source files have been produced, the runner can
 recover the typed diagnosis from its child episode and apply the source checker
 to the artifact.
+
+A candidate-producing diagnosis cites every failed episode, verifier-report
+digest, and locus digest from its selected contrast. It explains each local
+failure and states one shared mechanism. The diagnosis verifier rejects a
+missing or substituted citation. The diagnosis returns insufficient evidence
+when the loci do not support one shared mechanism.
 
 The default OpenAI service tier is `priority` for all three model nodes. A
 preview constructs and validates the complete program without creating the

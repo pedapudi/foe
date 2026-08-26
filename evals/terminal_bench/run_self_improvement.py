@@ -58,6 +58,7 @@ DEVELOPMENT_TASK_SECONDS = 1_800
 DEVELOPMENT_TASK_INSTRUCTION = "The development run supplies the task instruction at launch."
 DEVELOPMENT_TASK_CREDENTIAL = "/credentials/model-token"
 DEVELOPMENT_TASK_DIRECTORY = "/app"
+SHA256_IDENTITY = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -194,13 +195,13 @@ def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
         if set(contrast) != {
             "task",
             "failure_profile",
-            "failed_episode_ids",
+            "failed_attempts",
             "successful_episode_ids",
         }:
             raise ValueError(f"repeated failure contrast {index} has an invalid shape")
         task = contrast["task"]
         profile = contrast["failure_profile"]
-        failed = contrast["failed_episode_ids"]
+        failed = contrast["failed_attempts"]
         successful = contrast["successful_episode_ids"]
         if not isinstance(task, str) or not task or not isinstance(profile, dict):
             raise ValueError(f"repeated failure contrast {index} has no task or failure profile")
@@ -230,21 +231,75 @@ def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
             for check in checks
         ):
             raise ValueError(f"repeated failure contrast {index} has invalid verifier checks")
-        if (
-            not isinstance(failed, list)
-            or len(failed) < 2
-            or not all(isinstance(value, str) and value for value in failed)
-        ):
+        if not isinstance(failed, list) or len(failed) < 2:
             raise ValueError(f"repeated failure contrast {index} has fewer than two failed episodes")
+        failed_episode_ids = []
+        for attempt in failed:
+            if not isinstance(attempt, dict) or set(attempt) != {
+                "episode_id",
+                "verifier_report_sha256",
+                "failure_loci",
+            }:
+                raise ValueError(
+                    f"repeated failure contrast {index} has an invalid failed attempt"
+                )
+            episode_id = attempt.get("episode_id")
+            report_sha256 = attempt.get("verifier_report_sha256")
+            loci = attempt.get("failure_loci")
+            if not isinstance(episode_id, str) or not episode_id:
+                raise ValueError(
+                    f"repeated failure contrast {index} has an invalid failed episode"
+                )
+            if report_sha256 is not None and (
+                not isinstance(report_sha256, str)
+                or SHA256_IDENTITY.fullmatch(report_sha256) is None
+            ):
+                raise ValueError(
+                    f"repeated failure contrast {index} has an invalid verifier report digest"
+                )
+            if not isinstance(loci, list):
+                raise ValueError(
+                    f"repeated failure contrast {index} has invalid failure loci"
+                )
+            locus_ids = []
+            for locus in loci:
+                if (
+                    not isinstance(locus, dict)
+                    or not {"name", "failure_class", "locus_sha256"}.issubset(locus)
+                    or not set(locus).issubset(
+                        {
+                            "name",
+                            "failure_class",
+                            "locus_sha256",
+                            "location",
+                            "assertion",
+                            "message",
+                        }
+                    )
+                    or not all(isinstance(value, str) and value for value in locus.values())
+                    or SHA256_IDENTITY.fullmatch(locus["locus_sha256"]) is None
+                    or not any(key in locus for key in ("location", "assertion", "message"))
+                ):
+                    raise ValueError(
+                        f"repeated failure contrast {index} has an invalid failure locus"
+                    )
+                locus_ids.append(locus["locus_sha256"])
+            if len(set(locus_ids)) != len(locus_ids):
+                raise ValueError(
+                    f"repeated failure contrast {index} repeats a failure locus"
+                )
+            failed_episode_ids.append(episode_id)
         if (
             not isinstance(successful, list)
             or not successful
             or not all(isinstance(value, str) and value for value in successful)
         ):
             raise ValueError(f"repeated failure contrast {index} has no successful episode")
-        if len(set(failed)) != len(failed) or len(set(successful)) != len(successful):
+        if len(set(failed_episode_ids)) != len(failed_episode_ids) or len(
+            set(successful)
+        ) != len(successful):
             raise ValueError(f"repeated failure contrast {index} repeats an episode identity")
-        if set(failed).intersection(successful):
+        if set(failed_episode_ids).intersection(successful):
             raise ValueError(f"repeated failure contrast {index} reuses an episode across outcomes")
         answer.append(contrast)
     if not answer:
@@ -900,6 +955,56 @@ expected_branch = {expected_candidate_branch(requested_candidate_kind)!r}
 program = {str(program)!r}
 
 findings = []
+
+def require_failure_coverage(candidate, contrast):
+    causal = candidate.get("causal_contrast")
+    if not isinstance(causal, dict):
+        raise ValueError("candidate has no causal contrast")
+    failed = causal.get("failed")
+    if not isinstance(failed, list):
+        raise ValueError("causal contrast has no failed-attempt citations")
+    expected = {{attempt.get("episode_id"): attempt for attempt in contrast["failed_attempts"]}}
+    observed = {{}}
+    for citation in failed:
+        if not isinstance(citation, dict):
+            raise ValueError("causal contrast has an invalid failed-attempt citation")
+        episode_id = citation.get("episode_id")
+        if not isinstance(episode_id, str) or episode_id in observed:
+            raise ValueError("causal contrast repeats or omits a failed episode identity")
+        observed[episode_id] = citation
+    if set(observed) != set(expected):
+        raise ValueError("causal contrast must cite every failed episode exactly once")
+    for episode_id, attempt in expected.items():
+        report_sha256 = attempt.get("verifier_report_sha256")
+        expected_loci = {{locus.get("locus_sha256") for locus in attempt.get("failure_loci", [])}}
+        if not isinstance(report_sha256, str) or not expected_loci or None in expected_loci:
+            raise ValueError(
+                "selected contrast lacks an exact verifier failure locus; choose insufficient-evidence"
+            )
+        citation = observed[episode_id]
+        if citation.get("verifier_report_sha256") != report_sha256:
+            raise ValueError("causal contrast cites the wrong verifier report digest")
+        locus_sha256s = citation.get("locus_sha256s")
+        if (
+            not isinstance(locus_sha256s, list)
+            or not all(isinstance(value, str) for value in locus_sha256s)
+            or len(locus_sha256s) != len(set(locus_sha256s))
+            or set(locus_sha256s) != expected_loci
+        ):
+            raise ValueError("causal contrast must cite every failure locus exactly once")
+        if not isinstance(citation.get("explanation"), str) or not citation["explanation"].strip():
+            raise ValueError("causal contrast must explain every failed attempt")
+    successful = causal.get("successful")
+    if (
+        not isinstance(successful, list)
+        or not all(isinstance(value, str) for value in successful)
+        or set(successful) != set(contrast["successful_episode_ids"])
+    ):
+        raise ValueError("causal contrast must cite every successful episode")
+    shared = causal.get("shared_mechanism")
+    if not isinstance(shared, str) or not shared.strip():
+        raise ValueError("causal contrast must state one shared failure mechanism")
+
 try:
     candidate = json.load(sys.stdin)
     branch = candidate.get("branch") if isinstance(candidate, dict) else None
@@ -908,10 +1013,12 @@ try:
             f"requested candidate kind requires branch {{expected_branch}}, received {{branch}}"
         )
     if branch not in ("insufficient-evidence", None):
-        if candidate.get("failure_contrast") not in failure_contrasts:
+        selected_contrast = candidate.get("failure_contrast")
+        if selected_contrast not in failure_contrasts:
             raise ValueError(
                 "candidate does not select one supported repeated failure contrast"
             )
+        require_failure_coverage(candidate, selected_contrast)
     if branch == "configure-workflow":
         audit = validate_independent_audit(candidate.get("independent_audit"))
         if audit not in supported_audits:
@@ -1025,7 +1132,7 @@ def build_config(
         "instructions": {
             "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
-            "evidence": "Select one object from repeated_failure_contrasts and copy it unchanged into failure_contrast. Diagnose only that task-specific contrast. Do not combine failure profiles or tasks. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
+            "evidence": "For a candidate-producing disposition, select one object from repeated_failure_contrasts and copy it unchanged into failure_contrast. For every failed attempt, cite its episode identity, verifier-report digest, and every failure-locus digest in causal_contrast.failed, then explain that attempt's locus. State one shared mechanism that accounts for every cited locus. An insufficient-evidence disposition omits failure_contrast, may leave causal_contrast.failed empty, and explains the missing shared mechanism in causal_contrast.difference. Diagnose only one task-specific contrast. Do not combine failure profiles or tasks. Choose insufficient-evidence when the loci do not support one shared mechanism or an attempt lacks an exact locus. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
             "sufficiency": sufficiency,
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
@@ -1052,17 +1159,42 @@ def build_config(
                         "properties": {
                             "failed": {
                                 "type": "array",
-                                "items": {"type": "string"},
-                                "minItems": 1,
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "episode_id": {"type": "string", "minLength": 1},
+                                        "verifier_report_sha256": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                        },
+                                        "locus_sha256s": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "minItems": 1,
+                                        },
+                                        "explanation": {"type": "string", "minLength": 1},
+                                    },
+                                    "required": [
+                                        "episode_id",
+                                        "verifier_report_sha256",
+                                        "locus_sha256s",
+                                        "explanation",
+                                    ],
+                                    "additionalProperties": False,
+                                },
                             },
                             "successful": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "minItems": 1,
                             },
                             "difference": {"type": "string", "minLength": 1},
+                            "shared_mechanism": {"type": "string", "minLength": 1},
                         },
-                        "required": ["failed", "successful", "difference"],
+                        "required": [
+                            "failed",
+                            "successful",
+                            "difference",
+                        ],
                         "additionalProperties": False,
                     },
                     "intervention": {"type": "string", "minLength": 1},
@@ -1105,9 +1237,45 @@ def build_config(
                                 ],
                                 "additionalProperties": False,
                             },
-                            "failed_episode_ids": {
+                            "failed_attempts": {
                                 "type": "array",
-                                "items": {"type": "string"},
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "episode_id": {"type": "string", "minLength": 1},
+                                        "verifier_report_sha256": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                        },
+                                        "failure_loci": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "name": {"type": "string"},
+                                                    "failure_class": {"type": "string"},
+                                                    "locus_sha256": {"type": "string"},
+                                                    "location": {"type": "string"},
+                                                    "assertion": {"type": "string"},
+                                                    "message": {"type": "string"},
+                                                },
+                                                "required": [
+                                                    "name",
+                                                    "failure_class",
+                                                    "locus_sha256",
+                                                ],
+                                                "additionalProperties": False,
+                                            },
+                                            "minItems": 1,
+                                        },
+                                    },
+                                    "required": [
+                                        "episode_id",
+                                        "verifier_report_sha256",
+                                        "failure_loci",
+                                    ],
+                                    "additionalProperties": False,
+                                },
                                 "minItems": 2,
                             },
                             "successful_episode_ids": {
@@ -1119,7 +1287,7 @@ def build_config(
                         "required": [
                             "task",
                             "failure_profile",
-                            "failed_episode_ids",
+                            "failed_attempts",
                             "successful_episode_ids",
                         ],
                         "additionalProperties": False,

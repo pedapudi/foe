@@ -1,0 +1,18 @@
+{
+  "results": {
+    "summary": {
+      "tests": 1,
+      "passed": 0,
+      "failed": 1
+    },
+    "tests": [
+      {
+        "name": "test_outputs.py::test_primers",
+        "status": "failed",
+        "raw_status": "call_failed",
+        "message": "The test failed in the call phase due to an assertion error",
+        "trace": ">       assert 15 <= len(extra_r) <= 45, (\n            \"Reverse primer annealing (incl. overhang match) must be 15–45 nt.\"\n        )\nE       AssertionError: Reverse primer annealing (incl. overhang match) must be 15–45 nt.\nE       assert 46 <= 45\nE        +  where 46 = len('attttgtttaactttaagaaggagatatacatatgagtacatgatt')\n\n/tests/test_outputs.py:99: AssertionError"
+      }
+    ]
+  }
+}

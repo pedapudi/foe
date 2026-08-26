@@ -15,6 +15,15 @@ from typing import Any
 MAX_VERIFICATION_RESULTS = 8
 MAX_VERIFIER_FAILURES = 4
 MAX_EVIDENCE_TEXT = 320
+MAX_FAILURE_LOCATION = 160
+MAX_FAILURE_ASSERTION = 200
+MAX_FAILURE_MESSAGE = 200
+
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+MEMORY_ADDRESS = re.compile(r"\b0x[0-9a-fA-F]+\b")
+VOLATILE_PATH = re.compile(
+    r"/(?:tmp|var/tmp|home|private/var/folders)/[^\s,'\"()\[\]]+"
+)
 
 
 def read_event_file(path: Path) -> list[dict[str, Any]]:
@@ -62,6 +71,100 @@ def bounded_text(value: Any) -> str | None:
     return collapsed[:MAX_EVIDENCE_TEXT]
 
 
+def stable_verifier_text(value: Any, limit: int) -> str | None:
+    """Return one bounded line without host-specific paths or addresses."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    value = ANSI_ESCAPE.sub("", value)
+    value = MEMORY_ADDRESS.sub("<address>", value)
+    value = VOLATILE_PATH.sub("<volatile-path>", value)
+    collapsed = " ".join(value.split())
+    return collapsed[:limit] if collapsed else None
+
+
+def stable_python_location(path: str, line: str) -> str:
+    """Normalize a Python traceback path while preserving its source location."""
+    normalized = path.replace("\\", "/").lstrip("./")
+    parts = [part for part in normalized.split("/") if part]
+    if "tests" in parts:
+        parts = parts[parts.index("tests") :]
+    elif path.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:[/\\]", path):
+        parts = parts[-1:]
+    location = f"{'/'.join(parts)}:{line}"
+    return location[:MAX_FAILURE_LOCATION]
+
+
+def assertion_expression(trace: str) -> str | None:
+    """Extract the source assertion that pytest marks as the failure site."""
+    source = []
+    observed = []
+    for line in trace.splitlines():
+        marked = re.match(r"^\s*>\s*assert\s+(.+?)\s*$", line)
+        if marked:
+            source.append(marked.group(1))
+        rewritten = re.match(r"^\s*E\s+assert\s+(.+?)\s*$", line)
+        if rewritten:
+            observed.append(rewritten.group(1))
+    candidates = source or observed
+    if not candidates:
+        return None
+    expression = re.sub(r",\s*(?:\(|[rubfRUBF]*['\"].*)$", "", candidates[-1])
+    return stable_verifier_text(expression, MAX_FAILURE_ASSERTION)
+
+
+def assertion_location(trace: str) -> str | None:
+    """Extract the final Python source coordinate from a pytest traceback."""
+    locations = []
+    pattern = re.compile(
+        r"^\s*((?:[A-Za-z]:)?[/\\]?[^:\n]+\.py):(\d+)(?::.*)?$"
+    )
+    for line in trace.splitlines():
+        match = pattern.match(line)
+        if match:
+            locations.append(stable_python_location(match.group(1), match.group(2)))
+    return locations[-1] if locations else None
+
+
+def assertion_message(trace: str, fallback: Any) -> str | None:
+    """Extract pytest's concise assertion message without retaining its traceback."""
+    messages = []
+    for line in trace.splitlines():
+        match = re.match(
+            r"^\s*E\s+[A-Za-z][A-Za-z0-9_.]*(?:Error|Exception):\s*(.+?)\s*$",
+            line,
+        )
+        if match:
+            messages.append(match.group(1))
+    value = messages[-1] if messages else fallback
+    return stable_verifier_text(value, MAX_FAILURE_MESSAGE)
+
+
+def failure_locus(test: dict[str, Any], failure_class: str | None) -> dict[str, str] | None:
+    """Return a stable, bounded locator for one task-owned verifier failure."""
+    trace = test.get("trace") if isinstance(test.get("trace"), str) else ""
+    fields = {
+        key: value
+        for key, value in (
+            ("location", assertion_location(trace)),
+            ("assertion", assertion_expression(trace)),
+            ("message", assertion_message(trace, test.get("message"))),
+        )
+        if value is not None
+    }
+    if not fields or not any(key in fields for key in ("location", "assertion")):
+        return None
+    identity = {
+        "test": bounded_text(test.get("name")),
+        "failure_class": failure_class,
+        **fields,
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+    return {
+        "locus_sha256": "sha256:" + hashlib.sha256(encoded).hexdigest(),
+        **fields,
+    }
+
+
 def verifier_feedback(path: Path | None) -> dict[str, Any] | None:
     """Return bounded failure classes from Harbor's structured verifier report."""
     if path is None:
@@ -97,7 +200,8 @@ def verifier_feedback(path: Path | None) -> dict[str, Any] | None:
                 "status": test.get("status"),
                 "raw_status": test.get("raw_status"),
                 "failure_class": failure_class,
-                "message": bounded_text(test.get("message")),
+                "message": stable_verifier_text(test.get("message"), MAX_EVIDENCE_TEXT),
+                "locus": failure_locus(test, failure_class),
             }
         )
         if len(failures) == MAX_VERIFIER_FAILURES:
@@ -340,7 +444,7 @@ def diagnose_episode(
     ]
     runtime = start.get("runtime") if isinstance(start.get("runtime"), dict) else {}
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "evidence_identity": {
             "program_identity": start.get("identity"),
             "runtime_build": runtime.get("build"),

@@ -12,6 +12,7 @@ from typing import Any
 sys.path.append(str(Path(__file__).resolve().parent.parent / "harness_bench"))
 from foe_source_identity import evaluated_foe, require_evaluated_foe
 from run import read_cases
+from trajectory_diagnostics import verifier_feedback
 
 MAX_DIAGNOSES = 12
 # The evidence enters a diagnosis child through one root workflow result.
@@ -388,6 +389,7 @@ def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, 
         feedback = report.get("verifier_feedback")
         feedback = feedback if isinstance(feedback, dict) else {}
         checks = []
+        failure_loci = []
         for failure in feedback.get("failures", []):
             if not isinstance(failure, dict):
                 continue
@@ -403,6 +405,29 @@ def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, 
             if isinstance(failure_class, str):
                 check["failure_class"] = failure_class
             checks.append(check)
+            locus = failure.get("locus")
+            if (
+                isinstance(name, str)
+                and isinstance(failure_class, str)
+                and isinstance(locus, dict)
+                and isinstance(locus.get("locus_sha256"), str)
+            ):
+                failure_loci.append(
+                    {
+                        "name": name,
+                        "failure_class": failure_class,
+                        **{
+                            key: locus[key]
+                            for key in (
+                                "locus_sha256",
+                                "location",
+                                "assertion",
+                                "message",
+                            )
+                            if isinstance(locus.get(key), str)
+                        },
+                    }
+                )
         profile = {
             "outcome": outcome_profile,
             "artifact_outcome_mismatch": report.get("artifact_outcome_mismatch") is True,
@@ -417,23 +442,46 @@ def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, 
             {
                 "task": task,
                 "failure_profile": profile,
-                "failed_episode_ids": set(),
+                "failed_attempts": {},
             },
         )
-        group["failed_episode_ids"].add(episode_id)
+        report_sha256 = feedback.get("sha256")
+        attempt = {
+            "episode_id": episode_id,
+            "verifier_report_sha256": (
+                report_sha256 if isinstance(report_sha256, str) else None
+            ),
+            "failure_loci": sorted(
+                failure_loci,
+                key=lambda locus: (
+                    locus.get("name", ""),
+                    locus.get("location", ""),
+                    locus.get("locus_sha256", ""),
+                ),
+            ),
+        }
+        previous = group["failed_attempts"].get(episode_id)
+        if previous is not None and previous != attempt:
+            raise ValueError(
+                f"episode {episode_id} has inconsistent verifier failure evidence"
+            )
+        group["failed_attempts"][episode_id] = attempt
 
     answer = []
     for key in sorted(failures):
         group = failures[key]
-        failed_episode_ids = sorted(group["failed_episode_ids"])
+        failed_attempts = [
+            group["failed_attempts"][episode]
+            for episode in sorted(group["failed_attempts"])
+        ]
         successful_episode_ids = sorted(successes_by_task.get(group["task"], set()))
-        if len(failed_episode_ids) < 2 or not successful_episode_ids:
+        if len(failed_attempts) < 2 or not successful_episode_ids:
             continue
         answer.append(
             {
                 "task": group["task"],
                 "failure_profile": group["failure_profile"],
-                "failed_episode_ids": failed_episode_ids,
+                "failed_attempts": failed_attempts,
                 "successful_episode_ids": successful_episode_ids,
             }
         )
@@ -472,6 +520,10 @@ def collect(
         evaluation = evaluation_metadata(manifest, manifest_path)
         for path in diagnostic_paths:
             report = json.loads(path.read_text(encoding="utf-8"))
+            trial_result = path.parent.parent / "result.json"
+            report["verifier_feedback"] = verifier_feedback(
+                trial_result if trial_result.is_file() else None
+            )
             task = report.get("task")
             task_name = task.rsplit("/", 1)[-1] if isinstance(task, str) else None
             if task_name not in eligible_tasks:
@@ -486,7 +538,7 @@ def collect(
                 raise ValueError(f"self-improvement evidence exceeds {MAX_DIAGNOSES} trajectory diagnoses")
         runs.append({**evaluation, "diagnoses": len(diagnostic_paths)})
     answer = {
-        "schema_version": 4,
+        "schema_version": 5,
         "evaluated_foe": identity,
         "runs": runs,
         "evaluation_summary": evaluation_summary(reports),

@@ -208,6 +208,9 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertIn("falsification_condition", returns["required"])
         self.assertIn("failure_contrast", returns["properties"])
+        causal = returns["properties"]["causal_contrast"]
+        self.assertNotIn("minItems", causal["properties"]["failed"])
+        self.assertNotIn("shared_mechanism", causal["required"])
         self.assertNotIn("required_paths", returns["properties"])
         self.assertNotIn("runtime_activation", returns["properties"])
         self.assertNotIn("implementation_files", returns["properties"])
@@ -693,8 +696,56 @@ FAILURE_CONTRAST = {
             {"name": "test_public_interface", "failure_class": "AssertionError"}
         ],
     },
-    "failed_episode_ids": ["ep_failed_one", "ep_failed_two"],
+    "failed_attempts": [
+        {
+            "episode_id": "ep_failed_one",
+            "verifier_report_sha256": "sha256:" + "4" * 64,
+            "failure_loci": [
+                {
+                    "name": "test_public_interface",
+                    "failure_class": "AssertionError",
+                    "locus_sha256": "sha256:" + "5" * 64,
+                    "location": "tests/test_outputs.py:116",
+                    "assertion": "abs(fwd_tm - rev_tm) <= 5",
+                    "message": "primer melting temperatures differ by more than five degrees",
+                }
+            ],
+        },
+        {
+            "episode_id": "ep_failed_two",
+            "verifier_report_sha256": "sha256:" + "6" * 64,
+            "failure_loci": [
+                {
+                    "name": "test_public_interface",
+                    "failure_class": "AssertionError",
+                    "locus_sha256": "sha256:" + "7" * 64,
+                    "location": "tests/test_outputs.py:99",
+                    "assertion": "15 <= len(extra_r) <= 45",
+                    "message": "effective reverse annealing length is 46 bases",
+                }
+            ],
+        },
+    ],
     "successful_episode_ids": ["ep_success"],
+}
+VALID_CAUSAL_CONTRAST = {
+    "failed": [
+        {
+            "episode_id": "ep_failed_one",
+            "verifier_report_sha256": "sha256:" + "4" * 64,
+            "locus_sha256s": ["sha256:" + "5" * 64],
+            "explanation": "The candidate missed the temperature-pair constraint.",
+        },
+        {
+            "episode_id": "ep_failed_two",
+            "verifier_report_sha256": "sha256:" + "6" * 64,
+            "locus_sha256s": ["sha256:" + "7" * 64],
+            "explanation": "The candidate missed the effective annealing-length constraint.",
+        },
+    ],
+    "successful": ["ep_success"],
+    "difference": "The success validated complete annealing tracts before completion.",
+    "shared_mechanism": "Completion evidence omitted constraints on complete annealing tracts.",
 }
 PROGRAM_DOCUMENT = {
     "instructions": {"role": "Run the declared workflow."},
@@ -715,7 +766,12 @@ REVISION = {
 
 
 class DiagnosisValidatorTest(unittest.TestCase):
-    def judgments(self, values, requested_candidate_kind="auto"):
+    def judgments(
+        self,
+        values,
+        requested_candidate_kind="auto",
+        failure_contrasts=None,
+    ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             program = root / "program.json"
@@ -728,11 +784,13 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 EVIDENCE_SHA256,
                 BASE_CONFIGURATION,
                 [SUPPORTED_AUDIT],
-                [FAILURE_CONTRAST],
+                failure_contrasts or [FAILURE_CONTRAST],
                 requested_candidate_kind,
             )
             results = []
             for value in values:
+                if value.get("branch") not in ("insufficient-evidence", None):
+                    value = {"causal_contrast": VALID_CAUSAL_CONTRAST, **value}
                 result = subprocess.run(
                     [str(validator)],
                     input=json.dumps(value),
@@ -760,7 +818,7 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 supported_failure_contrasts(evidence)
             invalid = {
                 **FAILURE_CONTRAST,
-                "failed_episode_ids": ["ep_failed_one"],
+                "failed_attempts": FAILURE_CONTRAST["failed_attempts"][:1],
             }
             evidence.write_text(
                 json.dumps({"repeated_failure_contrasts": [invalid]}),
@@ -808,6 +866,77 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertEqual(judged[0], "")
         self.assertIn("requires branch implement-source", judged[1])
         self.assertEqual(judged[2], "")
+
+    def test_validator_requires_every_failed_attempt_and_distinct_locus(self):
+        missing_attempt = {
+            **VALID_CAUSAL_CONTRAST,
+            "failed": VALID_CAUSAL_CONTRAST["failed"][:1],
+        }
+        missing_locus = {
+            **VALID_CAUSAL_CONTRAST,
+            "failed": [
+                VALID_CAUSAL_CONTRAST["failed"][0],
+                {
+                    **VALID_CAUSAL_CONTRAST["failed"][1],
+                    "locus_sha256s": ["sha256:" + "8" * 64],
+                },
+            ],
+        }
+        missing_mechanism = {**VALID_CAUSAL_CONTRAST, "shared_mechanism": ""}
+        judged = self.judgments(
+            [
+                {
+                    "branch": "implement-source",
+                    "failure_contrast": FAILURE_CONTRAST,
+                    "causal_contrast": VALID_CAUSAL_CONTRAST,
+                },
+                {
+                    "branch": "implement-source",
+                    "failure_contrast": FAILURE_CONTRAST,
+                    "causal_contrast": missing_attempt,
+                },
+                {
+                    "branch": "implement-source",
+                    "failure_contrast": FAILURE_CONTRAST,
+                    "causal_contrast": missing_locus,
+                },
+                {
+                    "branch": "implement-source",
+                    "failure_contrast": FAILURE_CONTRAST,
+                    "causal_contrast": missing_mechanism,
+                },
+            ]
+        )
+        self.assertEqual(judged[0], "")
+        self.assertIn("every failed episode exactly once", judged[1])
+        self.assertIn("every failure locus exactly once", judged[2])
+        self.assertIn("one shared failure mechanism", judged[3])
+
+    def test_missing_verifier_output_permits_only_insufficient_evidence(self):
+        incomplete = {
+            **FAILURE_CONTRAST,
+            "failed_attempts": [
+                FAILURE_CONTRAST["failed_attempts"][0],
+                {
+                    "episode_id": "ep_failed_two",
+                    "verifier_report_sha256": None,
+                    "failure_loci": [],
+                },
+            ],
+        }
+        judged = self.judgments(
+            [
+                {
+                    "branch": "implement-source",
+                    "failure_contrast": incomplete,
+                    "causal_contrast": VALID_CAUSAL_CONTRAST,
+                },
+                {"branch": "insufficient-evidence"},
+            ],
+            failure_contrasts=[incomplete],
+        )
+        self.assertIn("choose insufficient-evidence", judged[0])
+        self.assertEqual(judged[1], "")
 
     def test_validator_accepts_each_valid_diagnosis_and_reports_findings(self):
         executable = "#!/bin/sh\nexit 0\n"
