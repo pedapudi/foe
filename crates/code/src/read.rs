@@ -12,6 +12,7 @@ use foe_config::{Effect, ToolSpec};
 use foe_core::{CallCtx, Tool, ToolValue};
 use serde::Deserialize;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::fmt::Write;
 
 pub struct Read {
@@ -35,12 +36,13 @@ impl Read {
                 description: format!(
                     "Read a text file with line numbers. Shows at most {OUTPUT_MAX_LINES} lines or \
                      {kib} KiB per call, never splitting a line; when more remains, the result ends \
-                     with a notice naming the offset to continue from. Binary files are reported \
-                     with their size rather than shown."
+                     with a notice naming the offset to continue from. Returns a sha256 version of \
+                     the complete bytes. Binary files are reported with their size rather than shown."
                 ),
                 instruction: Some(
-                    "Use read to look at a file before editing it. For a long file, continue from the \
-                     offset the truncation notice names rather than rereading from the start."
+                    "Use read to look at a file before editing it, then pass its version to edit as \
+                     expected_version. For a long file, continue from the offset the truncation notice \
+                     names rather than rereading from the start."
                         .into(),
                 ),
                 params: json!({
@@ -73,6 +75,7 @@ struct Scan {
     invalid_utf8: bool,
     /// Bytes in the file.
     bytes: u64,
+    version: String,
 }
 
 /// The window under construction while the stream is scanned. A line
@@ -155,7 +158,15 @@ impl Window {
 /// buffer before validation, so a boundary can never make a text file
 /// binary.
 fn scan(stream: &mut dyn std::io::Read, first: usize, max_lines: usize, max_chars: usize) -> std::io::Result<Scan> {
-    let mut scan = Scan { total: 0, kept: Vec::new(), first_chars: 0, nul: false, invalid_utf8: false, bytes: 0 };
+    let mut scan = Scan {
+        total: 0,
+        kept: Vec::new(),
+        first_chars: 0,
+        nul: false,
+        invalid_utf8: false,
+        bytes: 0,
+        version: String::new(),
+    };
     let mut window = Window {
         first,
         max_lines,
@@ -174,6 +185,7 @@ fn scan(stream: &mut dyn std::io::Read, first: usize, max_lines: usize, max_char
     let mut joined: Vec<u8> = Vec::new();
     let mut line = 0usize;
     let mut line_open = false;
+    let mut digest = Sha256::new();
     loop {
         let n = stream.read(&mut buffer)?;
         if n == 0 {
@@ -181,6 +193,7 @@ fn scan(stream: &mut dyn std::io::Read, first: usize, max_lines: usize, max_char
         }
         scan.bytes += n as u64;
         let chunk = &buffer[..n];
+        digest.update(chunk);
         if scan.nul {
             continue;
         }
@@ -240,6 +253,7 @@ fn scan(stream: &mut dyn std::io::Read, first: usize, max_lines: usize, max_char
     scan.total = line;
     scan.kept = window.kept;
     scan.first_chars = window.first_chars;
+    scan.version = format!("sha256:{}", hex::encode(digest.finalize()));
     Ok(scan)
 }
 
@@ -290,11 +304,15 @@ impl Tool for Read {
                 "shown": shown_n,
                 "truncated": truncated,
                 "content": content,
+                "version": &s.version,
             })
         };
         if total == 0 {
-            return ToolValue::ok(value(0, false, ""), format!("[{shown} is empty: 0 lines.]"))
-                .subject(format!("{shown} is empty"));
+            return ToolValue::ok(
+                value(0, false, ""),
+                format!("[version {}]\n[{shown} is empty: 0 lines.]", s.version),
+            )
+            .subject(format!("{shown} is empty"));
         }
         if offset > total {
             return ToolValue::error(format!(
@@ -304,15 +322,16 @@ impl Tool for Read {
         let kept = s.kept.len();
         if kept == 0 {
             let notice = format!(
-                "[Line {offset} of {shown} is {} characters, over the {OUTPUT_MAX_CHARS}-character limit \
+                "[version {}]\n[Line {offset} of {shown} is {} characters, over the {OUTPUT_MAX_CHARS}-character limit \
                  for one read. Use bash: sed -n '{offset}p' '{shown}' | head -c 4000]",
+                s.version,
                 s.first_chars
             );
             return ToolValue::ok(value(0, true, ""), notice)
                 .subject(format!("{shown} line {offset} is too long to show"));
         }
         let last = offset - 1 + kept;
-        let mut out = String::new();
+        let mut out = format!("[version {}]\n", s.version);
         for (i, line) in s.kept.iter().enumerate() {
             let _ = writeln!(out, "{}\t{line}", offset + i);
         }

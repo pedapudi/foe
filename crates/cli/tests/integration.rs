@@ -775,7 +775,7 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert_eq!(start["data"]["trigger"], "threshold");
     assert_eq!(
         start["data"]["projected_tokens"],
-        90 + 5 + 2 + 15,
+        90 + 5 + 23 + 15,
         "input, output, result estimate, and the remaining output cap"
     );
     assert_eq!(start["data"]["reserved"]["model_calls"], 2);
@@ -1036,18 +1036,18 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
 /// model sees, never a side effect of moving code between crates.
 #[rustfmt::skip]
 const RECORDED_IDENTITIES: [(&str, &str); 12] = [
-    ("budget-exhausted", "sha256:09d3262e730cad87270bd0d50efb69c5e862677604fd1666468bee373afd90f4"),
-    ("exec-transport", "sha256:38c385026ef43198405bddb0b8d92a1dbfecbad65e6b302e2122ab7b047fdd16"),
-    ("host-transport", "sha256:28d50b6be0462c4abded81ffdd5fe7937a162cbede5fa198bae2da2b1093924e"),
-    ("minimal", "sha256:5f5f0e6d72f42320acdd50814b395c0672bd505bdbe3ca1bfceb284a325536ca"),
-    ("recovery-exhausted", "sha256:c2c96477349effbf628e8fbd42c83de2abedb5846ebd01f32fb096289ad93da3"),
+    ("budget-exhausted", "sha256:e73fc1785b82f89a8e989d6eb3913067294a3cda464d83ab31dc4933157a84c1"),
+    ("exec-transport", "sha256:d37cd0303796e2954ae40c4b4b8cbd717857b16dd02183c351bb063986288927"),
+    ("host-transport", "sha256:1fd473f344efe3e85a4eb5407620329dd954b56ecd6bed385d2aadc71bb2d981"),
+    ("minimal", "sha256:c90f321dad1b5ff2a683657f8bc4d69430e5d0b6b51bd75d4dd96c06b30abdbf"),
+    ("recovery-exhausted", "sha256:2d78337db680cf5953534d6c02e575b1fde29a23a592ec729edaa21b2c1e5d5d"),
     ("sandbox", "sha256:af9e111ff74c666f5c6cfd607567bd03202db18bb752c179b562a32665bf79dd"),
-    ("self-extension", "sha256:187f7525d2c2908e309f18646ec9679dd516e1be36dc7fc1b3f866ef91e42b0f"),
-    ("subagents", "sha256:963dc10b4925e013a2301804cbb4fcb3bbaa7494bcc9e753d9037f88300e949c"),
-    ("team", "sha256:21b0f67315c6c700024b47d760185fef14960e6178907e05a4ecd1cc225c2a31"),
-    ("verification-unsatisfiable", "sha256:e7f5a0646672ab3ec54669014465465950d535bb08e95a69687b4a11dc63c4ca"),
-    ("workflow", "sha256:168714a517d59babdf94af002802bbe709befc94f91b9c76772073f3216e56f4"),
-    ("wrap-a-binary", "sha256:06a6b353d728ef3c55ab30eed2fbc61863149aa9066f3d051805381af4251b4b"),
+    ("self-extension", "sha256:0a483dc442524c77d833d23dbb6c261857ac0ba33b01424686487bfce84bc107"),
+    ("subagents", "sha256:342d7efdec551e0de776fd2f287c68b098eb0acd40e0ff73c68be4d2ad783505"),
+    ("team", "sha256:a9fd607325bd87b470ad429e78c1fed43db4910b11342d9eff217e6d0be390f6"),
+    ("verification-unsatisfiable", "sha256:123953f8cbe22cffe6a7a1f22d7016dc75f5690f34b9931c879867111b39512d"),
+    ("workflow", "sha256:0d8f5bcd48cef1ef4a338661150e6a2926359a913e35e501bb17f560c655fdab"),
+    ("wrap-a-binary", "sha256:abde8c98805d936de692901443d10b50557ffdd00a89870ff2061d83fe4f7963"),
 ];
 
 /// The runtime the recorded identities were computed under. The real one
@@ -1108,13 +1108,17 @@ fn every_example_program_hashes_to_its_recorded_identity() {
     let recorded: std::collections::BTreeMap<&str, &str> = RECORDED_IDENTITIES.into_iter().collect();
     let found = examples();
     assert_eq!(found.len(), recorded.len(), "every example has a recorded identity");
+    let mut changed = Vec::new();
     for (name, text) in found {
         let path = materialize(&dir, &name, &text, "the task the recording ignores");
         let program = foe_config::config::load(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
         let identity = foe_config::identity::compute(&program, &specs, &recorded_runtime())
             .unwrap_or_else(|e| panic!("{name}: {e}"));
-        assert_eq!(identity.hash, recorded[name.as_str()], "{name}: the program hashes to another identity");
+        if identity.hash != recorded[name.as_str()] {
+            changed.push(format!("({name:?}, {:?})", identity.hash));
+        }
     }
+    assert!(changed.is_empty(), "example identities changed:\n    {}", changed.join(",\n    "));
 }
 
 /// Replaces every `$ref` into `$defs` by the definition it names, to the

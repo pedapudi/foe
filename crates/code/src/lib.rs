@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 
 use foe_core::Tool;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "exec")]
@@ -126,6 +127,10 @@ fn display(roots: &[PathBuf], path: &Path) -> String {
         Some(rel) => rel.display().to_string(),
         None => path.display().to_string(),
     }
+}
+
+fn file_version(bytes: &[u8]) -> String {
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 #[cfg(test)]

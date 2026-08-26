@@ -274,9 +274,11 @@ dependencies = [
  "grep-matcher",
  "grep-regex",
  "grep-searcher",
+ "hex",
  "ignore",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "tokio",
 ]

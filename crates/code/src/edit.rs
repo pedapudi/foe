@@ -6,7 +6,7 @@
 //! model matches against the text it saw through `read`.
 
 use crate::diff::{self, Span};
-use crate::{display, parse_args, resolve, EDIT_DIFF_MAX_LINES};
+use crate::{display, file_version, parse_args, resolve, EDIT_DIFF_MAX_LINES};
 use foe_config::{Effect, ToolSpec};
 use foe_core::{CallCtx, CapError, Tool, ToolValue};
 use serde::Deserialize;
@@ -22,6 +22,7 @@ pub struct Edit {
 #[serde(deny_unknown_fields)]
 struct Args {
     path: String,
+    expected_version: Option<String>,
     edits: Vec<Replacement>,
 }
 
@@ -46,13 +47,15 @@ impl Edit {
                 instruction: Some(
                     "Use edit for every file change. Read an existing file first and include enough \
                      surrounding lines in old_text to make each match unique. To create a file, send \
-                     one edit with empty old_text and the complete file in new_text."
+                     one edit with empty old_text and the complete file in new_text. Pass the version \
+                     returned by read as expected_version when the file must be unchanged."
                         .into(),
                 ),
                 params: json!({
                     "type": "object",
                     "properties": {
                         "path": {"type": "string", "description": "File path, absolute or relative to the first read root."},
+                        "expected_version": {"type": "string", "description": "Optional sha256 version returned by read; the edit is refused when the current bytes differ."},
                         "edits": {
                             "type": "array",
                             "minItems": 1,
@@ -124,13 +127,23 @@ impl Tool for Edit {
         let path = resolve(reader.roots(), &a.path);
         let shown = display(reader.roots(), &path);
         let creates_file = a.edits.len() == 1 && a.edits[0].old_text.is_empty();
-        let raw = match reader.read(&path).map(String::from_utf8) {
-            Ok(Ok(s)) => s,
-            Ok(Err(_)) => {
+        let raw_bytes = match reader.read(&path) {
+            Ok(bytes) => bytes,
+            Err(CapError::Io(e)) if creates_file && e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return ToolValue::error(format!("edit: {shown}: {e}")),
+        };
+        let previous_version = file_version(&raw_bytes);
+        if a.expected_version.as_ref().is_some_and(|expected| expected != &previous_version) {
+            return ToolValue::error(format!(
+                "edit: {shown} has version {previous_version}, which differs from expected_version {}",
+                a.expected_version.as_deref().unwrap_or_default()
+            ));
+        }
+        let raw = match String::from_utf8(raw_bytes) {
+            Ok(s) => s,
+            Err(_) => {
                 return ToolValue::error(format!("edit: {shown} is not valid UTF-8; edit changes text files only"))
             }
-            Err(CapError::Io(e)) if creates_file && e.kind() == std::io::ErrorKind::NotFound => String::new(),
-            Err(e) => return ToolValue::error(format!("edit: {shown}: {e}")),
         };
         let (bom, body) = match raw.strip_prefix(BOM) {
             Some(rest) => (true, rest),
@@ -223,6 +236,8 @@ impl Tool for Edit {
                 "added": d.added,
                 "removed": d.removed,
                 "diff": d.text,
+                "previous_version": previous_version,
+                "version": file_version(out.as_bytes()),
             }),
             format!("edited {did}\n{}", bounded_diff(&d.text)),
         )

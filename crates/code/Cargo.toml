@@ -18,6 +18,8 @@ foe-core = { path = "../core" }
 serde.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
+sha2.workspace = true
+hex.workspace = true
 # The `python` tool serves its interpreter's dispatch socket without
 # blocking the executor thread that owns the process.
 tokio = { workspace = true, features = ["net"] }

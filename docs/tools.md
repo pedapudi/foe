@@ -153,9 +153,9 @@ the first `read` root, and paths in results are shown relative to it.
 
 | tool | effect | arguments | limits | canonical value |
 |---|---|---|---|---|
-| `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused; the file streams through a 64 KiB buffer, so memory does not grow with file size | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |
+| `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused; the file streams through a 64 KiB buffer | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content`, `version` |
 | `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `traversal_failures`, `first_failure`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
-| `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff` |
+| `edit` | writes | `path`; optional `expected_version` from `read`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; an expected version must match the current bytes; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff`, `previous_version`, `version` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
 | `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `lifetime`, `episode` by default or `task`; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule; task lifetime requires `grants.task_session` | `session`, `name`, `lifetime`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`; `bytes`; `signal` |
 | `python` | execs | `program`, source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
@@ -207,6 +207,11 @@ fitting keep one meaning. The turn budget below fits whichever end of a
 rendering carries its information.
 
 ### `read`
+
+Every successful read begins with a `sha256:` version of the complete raw
+file bytes. The same version appears in the canonical value. It is identical
+for every window of unchanged bytes, including windows that omit most of the
+file.
 
 `offset` and `limit` select a range of lines. The rendered form numbers each
 line as `N<TAB>text`, with `N` counted from the start of the file. That
@@ -270,6 +275,12 @@ collection bound or failed file makes `complete` false and appears in the
 rendering.
 
 ### `edit`
+
+`expected_version` is optional. When present, `edit` hashes the current raw
+bytes before matching or writing and refuses a different version. A
+successful edit records the versions before and after the write. The check
+detects changes that `edit` observes before mutation. An external writer can
+still race the interval between that observation and the atomic replacement.
 
 Every `old_text` is located in the file as it was before the call. The
 edits are therefore independent of each other's results, and their order in

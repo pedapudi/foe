@@ -5,13 +5,20 @@ async fn read(fx: &Fixture, args: serde_json::Value) -> ToolValue {
     Read::new().call(args, &ctx(fx)).await
 }
 
+fn body(value: &ToolValue) -> &str {
+    let rendered = value.rendered.as_deref().unwrap();
+    let (version, body) = rendered.split_once('\n').unwrap();
+    assert_eq!(version, format!("[version {}]", value.value["version"].as_str().unwrap()));
+    body
+}
+
 #[tokio::test]
 async fn numbers_lines_and_reports_totals() {
     let fx = Fixture::new();
     fx.write("a.txt", "one\ntwo\nthree\n");
     let v = read(&fx, json!({"path": "a.txt"})).await;
     assert!(!v.is_error, "{v:?}");
-    assert_eq!(v.rendered.as_deref(), Some("1\tone\n2\ttwo\n3\tthree\n"));
+    assert_eq!(body(&v), "1\tone\n2\ttwo\n3\tthree\n");
     assert_eq!(v.value["total_lines"], 3);
     assert_eq!(v.value["shown"], 3);
     assert_eq!(v.value["truncated"], false);
@@ -23,19 +30,19 @@ async fn truncates_at_the_line_limit_and_names_the_next_offset() {
     let text: String = (1..=8431).map(|i| format!("line {i}\n")).collect();
     fx.write("big.txt", &text);
     let v = read(&fx, json!({"path": "big.txt"})).await;
-    let r = v.rendered.unwrap();
+    let r = body(&v);
     assert!(r.ends_with("[Showing lines 1-2000 of 8431. Use offset=2001 to continue.]"), "{r}");
     assert!(r.starts_with("1\tline 1\n"));
     assert_eq!(v.value["shown"], 2000);
     assert_eq!(v.value["truncated"], true);
 
     let v = read(&fx, json!({"path": "big.txt", "offset": 2001, "limit": 10})).await;
-    let r = v.rendered.unwrap();
+    let r = body(&v);
     assert!(r.starts_with("2001\tline 2001\n"));
     assert!(r.ends_with("[Showing lines 2001-2010 of 8431. Use offset=2011 to continue.]"), "{r}");
 
     let v = read(&fx, json!({"path": "big.txt", "offset": 8431})).await;
-    assert_eq!(v.rendered.as_deref(), Some("8431\tline 8431\n"));
+    assert_eq!(body(&v), "8431\tline 8431\n");
     assert_eq!(v.value["truncated"], false);
 }
 
@@ -92,7 +99,7 @@ async fn empty_files_and_crlf_files_render() {
     assert_eq!(v.value["total_lines"], 0);
     fx.write("crlf", "a\r\nb\r\n");
     let v = read(&fx, json!({"path": "crlf"})).await;
-    assert_eq!(v.rendered.as_deref(), Some("1\ta\n2\tb\n"));
+    assert_eq!(body(&v), "1\ta\n2\tb\n");
 }
 
 #[tokio::test]
@@ -114,7 +121,7 @@ async fn streams_the_file_without_a_whole_file_buffer() {
     fx.write("big.txt", &text);
     let v = read(&fx, json!({"path": "big.txt", "offset": 9000, "limit": 3})).await;
     assert_eq!(fx.whole_reads(), 0, "read consumed the stream rather than a whole-file buffer");
-    let r = v.rendered.unwrap();
+    let r = body(&v);
     assert!(r.starts_with("9000\tline 9000\n9001\tline 9001\n9002\tline 9002\n"), "{r}");
     assert!(r.ends_with("[Showing lines 9000-9002 of 20000. Use offset=9003 to continue.]"), "{r}");
     assert_eq!(v.value["total_lines"], 20_000);
@@ -136,7 +143,7 @@ async fn utf8_sequences_split_across_the_buffer_boundary_survive() {
     fx.write("wide.txt", &text);
     let v = read(&fx, json!({"path": "wide.txt", "offset": 2})).await;
     assert!(!v.is_error, "{v:?}");
-    assert_eq!(v.rendered.as_deref(), Some("2\ttail é line\n"));
+    assert_eq!(body(&v), "2\ttail é line\n");
     assert_eq!(v.value["total_lines"], 2);
     let v = read(&fx, json!({"path": "wide.txt", "offset": 1, "limit": 1})).await;
     assert!(!v.is_error, "{v:?}");
@@ -171,7 +178,7 @@ async fn crlf_split_across_the_buffer_boundary_renders_clean() {
     fx.write("split.txt", &text);
     let v = read(&fx, json!({"path": "split.txt", "offset": 2})).await;
     assert!(!v.is_error, "{v:?}");
-    assert_eq!(v.rendered.as_deref(), Some("2\tok\n"));
+    assert_eq!(body(&v), "2\tok\n");
     assert_eq!(v.value["total_lines"], 2);
     // The same boundary split on a line too long to show: the reported
     // character count excludes the carriage return.
@@ -185,7 +192,7 @@ async fn crlf_split_across_the_buffer_boundary_renders_clean() {
     let r = v.rendered.unwrap();
     assert!(r.contains(&format!("is {} characters", READ_BUFFER_BYTES - 12)), "{r}");
     let v = read(&fx, json!({"path": "split2.txt", "offset": 3})).await;
-    assert_eq!(v.rendered.as_deref(), Some("3\tend\n"));
+    assert_eq!(body(&v), "3\tend\n");
 }
 
 /// What a person reads in a list: the file and the span actually shown,

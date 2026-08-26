@@ -184,3 +184,24 @@ async fn states_the_file_and_what_it_changed() {
     assert_eq!(v.subject.as_deref(), Some("a.txt: 1 edit(s), +1 -1 lines"));
     assert!(v.rendered.as_deref().unwrap().starts_with("edited a.txt: 1 edit(s), +1 -1 lines\n"));
 }
+
+/// docs/tools.md `edit`: expected_version compares the complete byte
+/// snapshot before any mutation, and successful edits report both versions.
+#[tokio::test]
+async fn expected_version_refuses_a_stale_edit() {
+    let fx = Fixture::new();
+    fx.write("a.txt", "one\n");
+    let observed = crate::file_version(b"one\n");
+    let value =
+        edit(&fx, json!({"path": "a.txt", "expected_version": observed, "edits": [replace("one", "two")]})).await;
+    assert!(!value.is_error, "{value:?}");
+    assert_eq!(value.value["previous_version"], crate::file_version(b"one\n"));
+    assert_eq!(value.value["version"], crate::file_version(b"two\n"));
+
+    let value =
+        edit(&fx, json!({"path": "a.txt", "expected_version": observed, "edits": [replace("two", "three")]})).await;
+    assert!(value.is_error);
+    assert!(value.rendered.unwrap().contains("differs from expected_version"));
+    assert_eq!(fx.read("a.txt"), "two\n");
+    assert_eq!(fx.writes(), 1);
+}
