@@ -80,7 +80,11 @@ fn invalid(key: impl Into<String>, rule: impl Into<String>) -> ConfigError {
 
 /// `Ok` when `holds`; otherwise the error naming `key` and `rule`.
 fn require(holds: bool, key: impl Into<String>, rule: impl Into<String>) -> Result<(), ConfigError> {
-    holds.then_some(()).ok_or_else(|| invalid(key, rule))
+    if holds {
+        Ok(())
+    } else {
+        Err(invalid(key, rule))
+    }
 }
 
 /// Parses the document text. Unknown keys and wrong types are `Parse`
@@ -91,7 +95,8 @@ pub fn parse(text: &str) -> Result<Config, ConfigError> {
 
 /// Reads, parses, validates, and resolves a document from `path`.
 pub fn load(path: &Path) -> Result<Program, ConfigError> {
-    resolve(&parse(&std::fs::read_to_string(path)?)?)
+    let config = parse(&std::fs::read_to_string(path)?)?;
+    resolve(&config)
 }
 
 /// Checks every rule of docs/config.md that does not need the filesystem.
@@ -198,10 +203,8 @@ fn validate_section(prefix: &str, s: &ChildProgram) -> Result<(), ConfigError> {
 pub fn resolve(config: &Config) -> Result<Program, ConfigError> {
     validate(config)?;
     let inherited = (config.model.clone(), config.sandbox.clone());
-    Ok(Program {
-        program_lineage: config.program_lineage.clone(),
-        ..resolve_section("", &ChildProgram::from(config), &inherited, None)?
-    })
+    let lineage = config.program_lineage.clone();
+    Ok(Program { program_lineage: lineage, ..resolve_section("", &ChildProgram::from(config), &inherited, None)? })
 }
 
 fn resolve_section(

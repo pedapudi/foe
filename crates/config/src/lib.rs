@@ -266,8 +266,9 @@ impl ModelConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, default)]
+#[serde(deny_unknown_fields)]
 pub struct SandboxConfig {
+    #[serde(default)]
     pub mode: foe_log::SandboxMode,
 }
 
