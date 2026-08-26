@@ -1,24 +1,138 @@
 #!/usr/bin/python3
 
 import json
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
 
 from foe_agent_support import (
     FIXED_EXECUTABLE_PATHS,
+    builtin_workflow_arguments,
     build_program,
     credential_values,
     describe_container_environment,
-    episode_contains_credential,
     estimate_usage_cost,
     fixed_executable_probe_command,
+    missing_builtin_workflow_options,
+    missing_episode_diagnostic,
+    parse_boolean,
     read_episode_summary,
+    retained_artifacts_contain_credential,
     schema_probe_command,
 )
 
 
 class ProgramTest(unittest.TestCase):
+    def test_builtin_workflow_invocation_uses_the_command_line_surface(self):
+        arguments = builtin_workflow_arguments(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            "/tmp/completion-check",
+            "/logs/episode",
+            "priority",
+        )
+        self.assertEqual(
+            arguments,
+            (
+                "/usr/local/bin/foe",
+                "repair it",
+                "--model",
+                "openai-codex/gpt-5.6-sol",
+                "--service-tier",
+                "priority",
+                "--key-file",
+                "/tmp/private.json",
+                "--verify",
+                "/tmp/completion-check",
+                "--sandbox",
+                "off",
+                "--headless",
+                "--log-dir",
+                "/logs/episode",
+            ),
+        )
+
+    def test_builtin_workflow_invocation_can_remain_closed_book(self):
+        arguments = builtin_workflow_arguments(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            None,
+            "/logs/episode",
+            "priority",
+        )
+        self.assertNotIn("--verify", arguments)
+        self.assertEqual(arguments[0:2], ("/usr/local/bin/foe", "repair it"))
+        self.assertEqual(arguments[-2:], ("--log-dir", "/logs/episode"))
+
+    def test_builtin_workflow_arguments_survive_shell_quoting(self):
+        instruction = "line one\n'$(touch /tmp/forbidden)' \"$HOME\""
+        arguments = builtin_workflow_arguments(
+            instruction,
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private path.json",
+            "/tmp/check path",
+            "/logs/episode path",
+            "priority",
+        )
+        self.assertEqual(shlex.split(shlex.join(arguments)), list(arguments))
+
+    def test_builtin_workflow_option_probe_requires_the_verifier_lane(self):
+        help_text = """options:
+  --model PROVIDER/MODEL
+  --key-file PATH
+  --headless
+  --log-dir DIR
+  --service-tier TIER
+  --sandbox MODE
+"""
+        self.assertEqual(
+            missing_builtin_workflow_options(help_text),
+            ["--verify"],
+        )
+        help_text += "  --verify PATH\n"
+        self.assertEqual(
+            missing_builtin_workflow_options(help_text),
+            [],
+        )
+
+    def test_harbor_boolean_parser_rejects_ambiguous_values(self):
+        self.assertTrue(parse_boolean(True, "built_in_workflow"))
+        self.assertTrue(parse_boolean("true", "built_in_workflow"))
+        self.assertFalse(parse_boolean("0", "built_in_workflow"))
+        with self.assertRaisesRegex(ValueError, "must be true or false"):
+            parse_boolean("enabled", "built_in_workflow")
+
+    def test_missing_episode_diagnostic_retains_status_and_bounded_stderr(self):
+        with tempfile.TemporaryDirectory() as directory:
+            logs = Path(directory)
+            (logs / "foe.stderr").write_text("prefix-" + "x" * 2100, encoding="utf-8")
+            diagnostic = missing_episode_diagnostic(
+                logs,
+                2,
+                frozenset({"secret-value"}),
+            )
+            self.assertIsNotNone(diagnostic)
+            self.assertIn("status 2", diagnostic)
+            self.assertNotIn("prefix", diagnostic)
+            (logs / "foe.stderr").write_text(
+                "failure: secret-value",
+                encoding="utf-8",
+            )
+            diagnostic = missing_episode_diagnostic(
+                logs,
+                2,
+                frozenset({"secret-value"}),
+            )
+            self.assertNotIn("secret-value", diagnostic)
+            self.assertIn("[credential redacted]", diagnostic)
+            episode = logs / "foe-episode"
+            episode.mkdir()
+            (episode / "episode.jsonl").write_text("{}\n", encoding="utf-8")
+            self.assertIsNone(missing_episode_diagnostic(logs, 0))
+
     def test_installers_share_the_supported_schema_probe(self):
         self.assertEqual(
             schema_probe_command("/opt/Foe Binary"),
@@ -423,7 +537,7 @@ class ProgramTest(unittest.TestCase):
 
 
 class EpisodeSummaryTest(unittest.TestCase):
-    def test_credential_exposure_detection_reports_exact_secret_values(self):
+    def test_credential_exposure_detection_checks_every_retained_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             credential = root / "credential.json"
@@ -433,9 +547,9 @@ class EpisodeSummaryTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            episode = root / "episode"
-            episode.mkdir()
-            log = episode / "episode.jsonl"
+            artifacts = root / "artifacts"
+            artifacts.mkdir()
+            log = artifacts / "foe.stderr"
             log.write_text(
                 json.dumps(
                     {
@@ -447,13 +561,13 @@ class EpisodeSummaryTest(unittest.TestCase):
                 encoding="utf-8",
             )
             values = credential_values(credential)
-            self.assertTrue(episode_contains_credential(episode, values))
+            self.assertTrue(retained_artifacts_contain_credential(artifacts, values))
             log.write_text(
                 json.dumps({"type": "tool/result", "data": {"rendered": "safe"}})
                 + "\n",
                 encoding="utf-8",
             )
-            self.assertFalse(episode_contains_credential(episode, values))
+            self.assertFalse(retained_artifacts_contain_credential(artifacts, values))
 
     def test_summary_requires_a_root_episode_log(self):
         with tempfile.TemporaryDirectory() as directory:

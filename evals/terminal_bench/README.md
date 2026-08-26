@@ -16,8 +16,10 @@ validation according to the
 [release description](https://www.tbench.ai/news/terminal-bench-2-1).
 
 The adapter implements Harbor's installed-agent interface. Harbor downloads a
-task image, uploads a statically linked Foe binary, runs one Foe episode, and
-executes the task-owned verifier. Harbor documents the custom interface in its
+task image, uploads a statically linked Foe binary, and executes the task-owned
+verifier after Foe exits. Adapter-generated targets run one coding episode.
+Built-in targets invoke the implementation and terminal-audit workflow
+constructed by the Foe binary. Harbor documents the custom interface in its
 [agent integration guide](https://harborframework.com/docs/agents).
 
 The installed-agent program sets `sandbox.mode` to `off`. The Harbor Docker
@@ -42,7 +44,11 @@ Install Harbor with `uv`:
 uv tool install harbor==0.22.0
 ```
 
-Authenticate Foe once:
+The installation checks require no provider login. Each installation worker
+receives a distinct private file containing an empty JSON object. The runner
+does not read, initialize, or lock the campaign OAuth state for these checks.
+
+Authenticate Foe once before a provider-backed run:
 
 ```sh
 bazel run //:foe -- login --status
@@ -71,10 +77,12 @@ model from that container. Use the pinned Terminal-Bench dataset for these
 runs. A task with untrusted provenance could read or transmit credentials
 available to an installed coding agent.
 
-The adapter scans retained episode events for exact access-token, refresh-token,
-and API-key values. A detected value invalidates the trial as infrastructure
-evidence. The scan reports only whether a match exists. It does not isolate a
-credential from a task process that can read the file.
+The adapter scans every retained regular Foe artifact for exact access-token,
+refresh-token, and API-key values. These artifacts include the program or
+invocation, standard streams, episode tree, checker copy, and conformance
+reports. A detected value invalidates the trial as infrastructure evidence.
+The scan reports only whether a match exists. It does not isolate a credential
+from a task process that can read the file.
 
 ## Check installation without model spend
 
@@ -92,6 +100,19 @@ bazel run //evals/terminal_bench:foe-install-check
 The adapter validates the installed command surface with `foe plan --schema`.
 The runner rejects the check when Harbor records an errored or incomplete
 trial, even when Harbor produced a readable result file.
+
+The built-in coding workflow uses Foe's task-oriented command-line surface.
+Validate that surface in the task container without a model request:
+
+```sh
+bazel run //evals/terminal_bench:foe-built-in-install-check
+```
+
+This check also requires the full command-line surface used by the
+verifier-governed built-in lane. An incompatible binary fails during
+installation. When Foe exits before creating an episode log, the adapter
+reports the retained exit status and the final 2,000 characters of standard
+error.
 
 ## Probe each task container without model spend
 
@@ -118,13 +139,15 @@ The report describes the benchmark image as supplied. Do not install optional
 utilities to make the report pass. The coding program receives the observed
 working directory and fixed-path executable availability. A missing optional
 utility therefore changes tool selection without invalidating the benchmark.
-An installation failure or a missing task-required capability is an
-infrastructure failure and must not contribute a quality score.
+An installation failure or a missing task-required capability invalidates the
+execution configuration claim. The retained task-owned score remains
+unchanged.
 
 ## Validate verifier-governed completion without model spend
 
-Three modified scenarios expose a public, read-only checker as a configured
-tool. One Sol-low coding episode combines a typed return with
+Six modified scenarios expose a public, read-only checker as a configured
+tool. The adapter-generated execution path uses one coding episode with Sol
+and low reasoning. That episode combines a typed return with
 `done_when.verify`. Foe rejects a completion claim when the checker reports
 findings. The model receives those findings and can continue within the
 episode's remaining allowance.
@@ -135,10 +158,16 @@ task-owned verifier determines task quality. Results from this modified lane
 are Foe-specific convergence evidence and do not contribute to a standard
 Terminal-Bench score.
 
-The selected scenarios cover three forms of completion:
+The selected scenarios cover six forms of completion:
 
 - `cancel-async-tasks` executes concurrency and cancellation-cleanup probes.
+- `dna-assembly` checks the declared primers, annealing, temperatures, and
+  assembly overhangs.
 - `fix-git` checks that the lost commit reaches `master` in a clean worktree.
+- `git-multibranch` pushes distinct content to both branches and probes both
+  live HTTPS endpoints.
+- `gpt2-codegolf` compiles the size-bounded source and checks four public
+  continuations.
 - `large-scale-text-editing` checks the allowed Vim grammar and a temporary
   10,000-row sample. The task-owned verifier applies the script to all one
   million rows.
@@ -161,7 +190,7 @@ Preview one verifier-governed case:
 bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks
 ```
 
-Run the case after reviewing the maximum:
+Run the case after reviewing the planning estimate:
 
 ```sh
 bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
@@ -172,9 +201,35 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
 Equivalent targets end in `foe-verifier-fix-git` and
 `foe-verifier-large-scale-text-editing`. Additional targets cover
 `dna-assembly`, `git-multibranch`, and `gpt2-codegolf`. These targets use the
-`priority` service tier, low reasoning for implementation, and high reasoning
-for an independent audit. The implementation retains 60 model calls. The audit
-receives 25 additional calls. These values are loop backstops.
+`priority` service tier and low reasoning. They construct an adapter-owned
+single-episode program with the public checker as its completion verifier.
+
+Targets beginning with `foe-built-in-verifier-` invoke the coding workflow
+constructed by the Foe binary. The workflow gives 60 model calls to an
+implementation episode that uses Sol with low reasoning. It gives 60 calls to
+a fresh terminal audit that uses Sol with high reasoning. The terminal audit
+owns `done_when.verify`. The adapter disables Landlock because each
+Terminal-Bench task already runs in its Docker container.
+
+Preview or run one built-in verifier-governed scenario:
+
+```sh
+bazel run //evals/terminal_bench:foe-built-in-verifier-fix-git
+bazel run //evals/terminal_bench:foe-built-in-verifier-fix-git -- \
+  --label built-in-verifier-fix-git \
+  --confirm-spend
+```
+
+Every `foe-verifier-` suffix has a corresponding
+`foe-built-in-verifier-` target. The built-in targets reject
+runner-defined diagnosis, escalation, workflow candidates, and hard token
+allowances. They require `openai-codex/gpt-5.6-sol`, because the built-in
+workflow supplies the evaluated low-to-high reasoning policy for that model.
+They also require the `priority` service tier. The binary owns both model
+stages and their call backstops. The adapter retains the exact command-line
+arguments in `foe-invocation.json`. The
+adapter-generated execution path retains its resolved input in
+`foe-program.json`.
 
 The configured executable's bytes participate in Foe's program identity. The
 adapter also downloads the checker after the episode and compares its digest
@@ -187,6 +242,33 @@ terminal audit owns `done_when.verify`. Both episodes retain the checker tool,
 so the implementation may use it before handoff. A failed implementation check
 cannot prevent the audit from inspecting and repairing the shared workspace.
 
+Every assessed result retains Harbor's task-owned score. The runner records
+`configuration_claim_valid` separately. Runtime, trace, credential, checker,
+and resolved-program integrity failures set this field to `false` and make the
+runner return a nonzero status. Such a result remains evidence about task
+quality, but it cannot support a claim about the requested Foe configuration.
+For a built-in target, the runner reconstructs the root program from the
+episode log and checks both workflow nodes, model policies, call backstops,
+sandbox mode, data-flow edges, and completion ownership.
+
+## Run the built-in workflow on closed-book tasks
+
+The closed-book built-in target runs Foe's implementation and terminal-audit
+episodes on the frozen twelve-task development set:
+
+```sh
+bazel run //evals/terminal_bench:foe-built-in-development
+bazel run //evals/terminal_bench:foe-built-in-development -- \
+  --label built-in-development \
+  --confirm-spend
+```
+
+The preview reports estimated spend without making a model request. Actual
+usage can exceed this estimate because token use is measured without a hard
+allowance. These tasks do not expose the public development checkers. Both
+episodes must select and run task-relevant checks from the task environment.
+Harbor runs the unchanged task-owned verifier after Foe exits.
+
 ## Preview and run one assessed task
 
 Every model-backed target prints planning token estimates and an estimated
@@ -196,7 +278,7 @@ cost. The preview makes no model request:
 bazel run //evals/terminal_bench:foe-smoke
 ```
 
-Run the `fix-git` smoke case after reviewing that maximum:
+Run the `fix-git` smoke case after reviewing that planning estimate:
 
 ```sh
 bazel run //evals/terminal_bench:foe-smoke -- --confirm-spend
@@ -305,8 +387,9 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
 The Luna episode chooses direct implementation only when repository evidence
 resolves every implementation-critical fact. Otherwise a read-only Sol
 `xhigh` episode resolves the uncertainty. A fresh Sol `low` episode performs
-the implementation on either path. The spending preview includes the maximum
-conditional path. Actual cost includes only the branch that fires. The deeper
+the implementation on either path. The spending preview includes the
+conditional path's planning estimate. Actual cost includes only the branch
+that fires. The deeper
 diagnosis has a twenty-call backstop because it may need to derive and validate
 an implementation-critical fact before returning its typed report. Its prompt
 uses six requests as a soft planning target. It can continue when a named fact

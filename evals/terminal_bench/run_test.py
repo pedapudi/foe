@@ -10,9 +10,11 @@ from pathlib import Path
 
 import run as terminal_bench_run
 from run import (
+    BUILTIN_WORKFLOW_MODEL_CALLS,
     CampaignCancellation,
     HostResources,
     access_only_lease_requirement_ms,
+    built_in_program_failures,
     campaign_execution_complete,
     campaign_signal_handlers,
     credential_supports_parallel_tasks,
@@ -20,7 +22,9 @@ from run import (
     harbor_command,
     issue_access_only_lease,
     lock_credential_state,
+    model_stage_count,
     parallel_host_admission,
+    prepare_campaign_credential,
     read_cases,
     read_job_integrity,
     read_job_result,
@@ -28,10 +32,139 @@ from run import (
     run_host_admission,
     source_tree,
     write_json_atomic,
+    write_provider_free_credential,
 )
 
 
 class CasesTest(unittest.TestCase):
+    def test_installation_credentials_do_not_open_campaign_oauth_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            login = root / "missing-login.json"
+            state = root / "credential-state" / "openai-codex.json"
+            lock = prepare_campaign_credential(
+                login,
+                state,
+                install_only=True,
+            )
+            self.assertIsNone(lock)
+            self.assertFalse(state.parent.exists())
+            first = root / "worker-one.json"
+            second = root / "worker-two.json"
+            write_provider_free_credential(first)
+            write_provider_free_credential(second)
+            self.assertEqual(first.read_text(encoding="utf-8"), "{}\n")
+            self.assertEqual(second.read_text(encoding="utf-8"), "{}\n")
+            self.assertEqual(first.stat().st_mode & 0o777, 0o400)
+            self.assertNotEqual(first, second)
+
+    def test_built_in_program_integrity_requires_terminal_audit_ownership(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trial = Path(directory) / "trial"
+            episode = trial / "agent" / "foe-episode"
+            episode.mkdir(parents=True)
+            result = trial / "result.json"
+            program = {
+                "name": "coding",
+                "budget": {"model_calls": 120},
+                "sandbox": {"mode": "off"},
+                "model": {
+                    "provider": "openai-codex",
+                    "model": "gpt-5.6-sol",
+                    "reasoning_effort": "low",
+                    "service_tier": "priority",
+                },
+                "workflow": {
+                    "nodes": {
+                        "implement-task": {
+                            "follows": ["task"],
+                            "terminal": False,
+                            "model": {
+                                "name": "implement-task",
+                                "budget": {"model_calls": 60},
+                                "done_when": {"returns": {}},
+                            },
+                        },
+                        "audit-and-repair-task": {
+                            "follows": ["task", "implement-task"],
+                            "terminal": True,
+                            "model": {
+                                "name": "audit-and-repair-task",
+                                "budget": {"model_calls": 60},
+                                "model": {
+                                    "provider": "openai-codex",
+                                    "model": "gpt-5.6-sol",
+                                    "reasoning_effort": "high",
+                                    "service_tier": "priority",
+                                },
+                                "done_when": {"returns": {}, "verify": "check"},
+                            },
+                        },
+                    }
+                },
+            }
+            (episode / "episode.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "episode/start",
+                        "data": {"program": program},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                built_in_program_failures(result, completion_checker=True),
+                [],
+            )
+            program["workflow"]["nodes"]["implement-task"]["model"]["done_when"][
+                "verify"
+            ] = "check"
+            (episode / "episode.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "episode/start",
+                        "data": {"program": program},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertIn(
+                "built-in profile implementation.verify: expected None, recorded 'check'",
+                built_in_program_failures(result, completion_checker=True),
+            )
+            result.write_text(
+                json.dumps(
+                    {
+                        "trial_name": "trial",
+                        "exception_info": None,
+                        "agent_result": {
+                            "metadata": {
+                                "foe_outcome": {"kind": "completed", "value": "done"},
+                                "foe_trace_conformant": True,
+                                "foe_usage_reported": True,
+                                "foe_built_in_workflow": True,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            integrity = read_job_integrity(
+                Path(directory),
+                built_in_workflow=True,
+                completion_checker=True,
+            )
+            self.assertFalse(integrity["configuration_claim_valid"])
+            record = {
+                "n_completed_trials": 1,
+                "n_errored_trials": 0,
+                "n_total_trials": 1,
+                **integrity,
+            }
+            self.assertFalse(campaign_execution_complete([record], 1))
+
     def test_cases_pin_revision_and_separate_task_sets(self):
         dataset, groups, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
         self.assertEqual(dataset, "terminal-bench/terminal-bench-2-1@6")
@@ -169,6 +302,130 @@ class CasesTest(unittest.TestCase):
         self.assertIn("credential_file=/tmp/fix-git.json", commands[0])
         self.assertIn("credential_file=/tmp/cancel-async-tasks.json", commands[1])
         self.assertTrue(all("credential_mode=access_only" in command for command in commands))
+
+    def test_harbor_command_runs_the_built_in_two_episode_workflow(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        command = harbor_command(
+            harbor=Path("/tools/harbor"),
+            dataset="terminal-bench/terminal-bench-2-1@6",
+            task=tasks["fix-git"],
+            attempts=1,
+            jobs_dir=Path("/tmp/jobs"),
+            agent_module=Path("/tmp/foe_agent.py"),
+            trace_evaluator=Path("/tmp/score-trace"),
+            foe=Path("/tmp/foe"),
+            credential_state=Path("/tmp/private.json"),
+            model="openai-codex/gpt-5.6-sol",
+            reasoning_effort="low",
+            diagnosis_model=None,
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            diagnosis_pricing=None,
+            unresolved_diagnosis_reasoning_effort=None,
+            unresolved_diagnosis_model_calls=6,
+            escalation_reasoning_effort=None,
+            escalation_model_calls=0,
+            runtime_digest="abc123",
+            pricing=pricing["openai-codex/gpt-5.6-sol"],
+            completion_checker=Path("/tmp/completion-check"),
+            built_in_workflow=True,
+        )
+        self.assertIn("built_in_workflow=true", command)
+        self.assertIn(f"model_calls={BUILTIN_WORKFLOW_MODEL_CALLS}", command)
+        self.assertIn("completion_checker=/tmp/completion-check", command)
+        self.assertAlmostEqual(
+            float(command[command.index("--agent-timeout-multiplier") + 1]),
+            (tasks["fix-git"].seconds * 2 + 300)
+            / tasks["fix-git"].harbor_agent_seconds,
+        )
+        self.assertEqual(model_stage_count(None, None, None, True), 2)
+
+    def test_harbor_command_runs_the_closed_book_built_in_workflow(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        command = harbor_command(
+            harbor=Path("/tools/harbor"),
+            dataset="terminal-bench/terminal-bench-2-1@6",
+            task=tasks["fix-git"],
+            attempts=1,
+            jobs_dir=Path("/tmp/jobs"),
+            agent_module=Path("/tmp/foe_agent.py"),
+            trace_evaluator=Path("/tmp/score-trace"),
+            foe=Path("/tmp/foe"),
+            credential_state=Path("/tmp/private.json"),
+            model="openai-codex/gpt-5.6-sol",
+            reasoning_effort="low",
+            diagnosis_model=None,
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            diagnosis_pricing=None,
+            unresolved_diagnosis_reasoning_effort=None,
+            unresolved_diagnosis_model_calls=6,
+            escalation_reasoning_effort=None,
+            escalation_model_calls=0,
+            runtime_digest="abc123",
+            pricing=pricing["openai-codex/gpt-5.6-sol"],
+            built_in_workflow=True,
+        )
+        self.assertIn("built_in_workflow=true", command)
+        self.assertFalse(
+            any(value.startswith("completion_checker=") for value in command)
+        )
+
+    def test_harbor_command_rejects_external_stages_for_the_built_in_workflow(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        with self.assertRaisesRegex(ValueError, "owns its implementation and audit"):
+            harbor_command(
+                harbor=Path("/tools/harbor"),
+                dataset="terminal-bench/terminal-bench-2-1@6",
+                task=tasks["fix-git"],
+                attempts=1,
+                jobs_dir=Path("/tmp/jobs"),
+                agent_module=Path("/tmp/foe_agent.py"),
+                trace_evaluator=Path("/tmp/score-trace"),
+                foe=Path("/tmp/foe"),
+                credential_state=Path("/tmp/private.json"),
+                model="openai-codex/gpt-5.6-sol",
+                reasoning_effort="low",
+                diagnosis_model=None,
+                diagnosis_reasoning_effort="high",
+                diagnosis_model_calls=6,
+                diagnosis_pricing=None,
+                unresolved_diagnosis_reasoning_effort=None,
+                unresolved_diagnosis_model_calls=6,
+                escalation_reasoning_effort="xhigh",
+                escalation_model_calls=60,
+                runtime_digest="abc123",
+                pricing=pricing["openai-codex/gpt-5.6-sol"],
+                built_in_workflow=True,
+            )
+
+    def test_harbor_command_rejects_a_different_built_in_model(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        with self.assertRaisesRegex(ValueError, "requires model openai-codex/gpt-5.6-sol"):
+            harbor_command(
+                harbor=Path("/tools/harbor"),
+                dataset="terminal-bench/terminal-bench-2-1@6",
+                task=tasks["fix-git"],
+                attempts=1,
+                jobs_dir=Path("/tmp/jobs"),
+                agent_module=Path("/tmp/foe_agent.py"),
+                trace_evaluator=Path("/tmp/score-trace"),
+                foe=Path("/tmp/foe"),
+                credential_state=Path("/tmp/private.json"),
+                model="openai-codex/gpt-5.6-luna",
+                reasoning_effort="low",
+                diagnosis_model=None,
+                diagnosis_reasoning_effort="high",
+                diagnosis_model_calls=6,
+                diagnosis_pricing=None,
+                unresolved_diagnosis_reasoning_effort=None,
+                unresolved_diagnosis_model_calls=6,
+                escalation_reasoning_effort=None,
+                escalation_model_calls=0,
+                runtime_digest="abc123",
+                pricing=pricing["openai-codex/gpt-5.6-luna"],
+                built_in_workflow=True,
+            )
 
     def test_access_only_leases_omit_refresh_and_use_private_permissions(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -623,6 +880,7 @@ class CasesTest(unittest.TestCase):
             integrity["infrastructure_failures"],
             ["task__attempt: Foe runtime failed: provider response ended"],
         )
+        self.assertFalse(integrity["configuration_claim_valid"])
         self.assertEqual(
             integrity["incomplete_resource_measurements"],
             ["task__attempt: 1 model call(s) lack provider usage"],
@@ -714,11 +972,11 @@ class CasesTest(unittest.TestCase):
         self.assertEqual(
             integrity["infrastructure_failures"],
             [
-                "task__attempt: model-visible episode events contain a provider credential"
+                "task__attempt: retained Foe artifacts contain a provider credential"
             ],
         )
 
-    def test_runtime_diagnostics_do_not_block_a_complete_quality_run(self):
+    def test_configuration_failures_preserve_quality_but_invalidate_the_claim(self):
         records = [
             {
                 "task": "one",
@@ -727,6 +985,7 @@ class CasesTest(unittest.TestCase):
                 "n_errored_trials": 0,
                 "n_total_trials": 1,
                 "infrastructure_failures": ["one: Foe runtime failed"],
+                "configuration_claim_valid": False,
             },
             {
                 "task": "two",
@@ -735,8 +994,12 @@ class CasesTest(unittest.TestCase):
                 "n_errored_trials": 0,
                 "n_total_trials": 1,
                 "infrastructure_failures": [],
+                "configuration_claim_valid": True,
             },
         ]
+        self.assertEqual(records[0]["n_completed_trials"], 1)
+        self.assertFalse(campaign_execution_complete(records, 2))
+        records[0]["configuration_claim_valid"] = True
         self.assertTrue(campaign_execution_complete(records, 2))
         records[0]["n_completed_trials"] = 0
         records[0]["n_errored_trials"] = 1

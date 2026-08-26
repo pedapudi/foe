@@ -20,6 +20,15 @@ CODING_INSTRUCTION = (
 EVALUATION_LOOP_THRESHOLD = 8
 MIN_AUXILIARY_MODEL_CALLS = 6
 COMPLETION_CHECK_RETRIES = 12
+BUILTIN_WORKFLOW_REQUIRED_OPTIONS = (
+    "--model",
+    "--service-tier",
+    "--key-file",
+    "--verify",
+    "--sandbox",
+    "--headless",
+    "--log-dir",
+)
 FIXED_EXECUTABLE_PATHS = (
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
@@ -62,6 +71,94 @@ COMPLETION_SCHEMA = {
     "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
     "additionalProperties": False,
 }
+
+
+def parse_boolean(value: bool | str, name: str) -> bool:
+    """Parse one Harbor agent keyword without accepting ambiguous values."""
+    if isinstance(value, bool):
+        return value
+    normalized = value.strip().lower()
+    if normalized in ("true", "1"):
+        return True
+    if normalized in ("false", "0"):
+        return False
+    raise ValueError(f"{name} must be true or false")
+
+
+def missing_builtin_workflow_options(help_text: str) -> list[str]:
+    """Return built-in invocation options absent from a Foe help page."""
+    declared = {
+        fields[0]
+        for line in help_text.splitlines()
+        if (fields := line.split()) and fields[0].startswith("--")
+    }
+    return [
+        option
+        for option in BUILTIN_WORKFLOW_REQUIRED_OPTIONS
+        if option not in declared
+    ]
+
+
+def builtin_workflow_arguments(
+    instruction: str,
+    model_name: str,
+    credential_path: str,
+    completion_checker: str | None,
+    episode_directory: str,
+    service_tier: str,
+    binary: str = "/usr/local/bin/foe",
+) -> tuple[str, ...]:
+    """Return the direct built-in coding workflow invocation for one trial."""
+    if "/" not in model_name or model_name.startswith("/") or model_name.endswith("/"):
+        raise ValueError("model must have the form provider/model")
+    if service_tier not in ("default", "priority"):
+        raise ValueError("service tier must be default or priority")
+    paths = {
+        "binary": binary,
+        "credential": credential_path,
+        "episode directory": episode_directory,
+    }
+    if completion_checker is not None:
+        paths["completion checker"] = completion_checker
+    for name, value in paths.items():
+        if not PurePosixPath(value).is_absolute():
+            raise ValueError(f"{name} path must be absolute")
+    arguments = [
+        binary,
+        instruction,
+        "--model",
+        model_name,
+        "--service-tier",
+        service_tier,
+        "--key-file",
+        credential_path,
+    ]
+    if completion_checker is not None:
+        arguments.extend(("--verify", completion_checker))
+    arguments.extend(("--sandbox", "off", "--headless", "--log-dir", episode_directory))
+    return tuple(arguments)
+
+
+def missing_episode_diagnostic(
+    logs_dir: Path,
+    exit_code: int | None,
+    sensitive_values: frozenset[str] = frozenset(),
+) -> str | None:
+    """Describe an early Foe exit when no root episode log was retained."""
+    if (logs_dir / "foe-episode" / "episode.jsonl").is_file():
+        return None
+    stderr_path = logs_dir / "foe.stderr"
+    detail = (
+        stderr_path.read_text(encoding="utf-8", errors="replace").strip()
+        if stderr_path.is_file()
+        else "standard error was not retained"
+    )
+    for value in sensitive_values:
+        detail = detail.replace(value, "[credential redacted]")
+    return (
+        f"Foe exited with status {exit_code} before creating an episode log: "
+        f"{detail[-2000:]}"
+    )
 
 
 def fixed_executable_probe_command() -> str:
@@ -520,16 +617,26 @@ def credential_values(path: Path) -> frozenset[str]:
     )
 
 
-def episode_contains_credential(log_dir: Path, values: frozenset[str]) -> bool:
-    """Detect an exact credential value in retained model-visible events."""
+def retained_artifacts_contain_credential(
+    log_dir: Path,
+    values: frozenset[str],
+) -> bool:
+    """Detect an exact credential value in any retained regular file."""
     encoded = tuple(value.encode("utf-8") for value in values)
     if not encoded:
         return False
-    return any(
-        value in path.read_bytes()
-        for path in log_dir.rglob("episode.jsonl")
-        for value in encoded
-    )
+    overlap = max(map(len, encoded)) - 1
+    for path in log_dir.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        tail = b""
+        with path.open("rb") as source:
+            while chunk := source.read(64 * 1024):
+                observed = tail + chunk
+                if any(value in observed for value in encoded):
+                    return True
+                tail = observed[-overlap:] if overlap else b""
+    return False
 
 
 def read_episode_summary(

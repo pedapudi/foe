@@ -17,12 +17,16 @@ from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
 from foe_agent_support import (
+    builtin_workflow_arguments,
     build_program,
     credential_values,
     describe_container_environment,
-    episode_contains_credential,
     fixed_executable_probe_command,
+    missing_builtin_workflow_options,
+    missing_episode_diagnostic,
+    parse_boolean,
     read_episode_summary,
+    retained_artifacts_contain_credential,
     replace_credential_state,
     schema_probe_command,
 )
@@ -69,12 +73,15 @@ class FoeAgent(BaseInstalledAgent):
         escalation_reasoning_effort: str | None = None,
         escalation_model_calls: int | str = 0,
         completion_checker: str | None = None,
+        built_in_workflow: bool | str = False,
         **kwargs: Any,
     ) -> None:
         self._foe_binary = Path(foe_binary)
         self._credential_file = Path(credential_file)
-        if credential_mode not in ("mutable", "access_only"):
-            raise ValueError("credential_mode must be mutable or access_only")
+        if credential_mode not in ("mutable", "access_only", "provider_free"):
+            raise ValueError(
+                "credential_mode must be mutable, access_only, or provider_free"
+            )
         self._credential_mode = credential_mode
         self._remote_credential = f"/tmp/.foe-credential-{uuid.uuid4().hex}.json"
         self._credential_digest = ""
@@ -103,6 +110,10 @@ class FoeAgent(BaseInstalledAgent):
         self._escalation_model_calls = int(escalation_model_calls)
         self._completion_checker = (
             Path(completion_checker) if completion_checker is not None else None
+        )
+        self._built_in_workflow = parse_boolean(
+            built_in_workflow,
+            "built_in_workflow",
         )
         self._completion_checker_digest: str | None = None
         self._observed_completion_checker_digest: str | None = None
@@ -150,6 +161,26 @@ class FoeAgent(BaseInstalledAgent):
             self._completion_checker_digest = hashlib.sha256(
                 self._completion_checker.read_bytes()
             ).hexdigest()
+        if self._built_in_workflow:
+            if any(
+                value is not None
+                for value in (
+                    self._diagnosis_model,
+                    self._unresolved_diagnosis_reasoning_effort,
+                    self._escalation_reasoning_effort,
+                )
+            ):
+                raise ValueError(
+                    "the built-in workflow owns its implementation and audit stages"
+                )
+            if self._reasoning_effort != "low":
+                raise ValueError("the built-in workflow requires low primary reasoning")
+            if self._service_tier != "priority":
+                raise ValueError(
+                    "the built-in evaluation workflow requires priority service"
+                )
+            if self._input_tokens is not None or self._output_tokens is not None:
+                raise ValueError("the built-in workflow owns its token allowances")
         super().__init__(*args, **kwargs)
 
     @staticmethod
@@ -175,7 +206,7 @@ class FoeAgent(BaseInstalledAgent):
                 f"chown {shlex.quote(str(owner))} "
                 f"{shlex.quote(self._remote_credential)} && "
             )
-        credential_mode = "400" if self._credential_mode == "access_only" else "600"
+        credential_mode = "600" if self._credential_mode == "mutable" else "400"
         await self.exec_as_root(
             environment,
             command=(
@@ -184,13 +215,30 @@ class FoeAgent(BaseInstalledAgent):
                 f"{schema_probe_command(REMOTE_BINARY)}"
             ),
         )
+        if self._built_in_workflow:
+            help_result = await self.exec_as_agent(
+                environment,
+                command=f"{shlex.quote(REMOTE_BINARY)} --help",
+                cwd=environment.task_env_config.workdir,
+            )
+            missing = missing_builtin_workflow_options(help_result.stdout or "")
+            if help_result.return_code != 0 or missing:
+                detail = (
+                    f"status {help_result.return_code}"
+                    if help_result.return_code != 0
+                    else ", ".join(missing)
+                )
+                raise RuntimeError(
+                    "installed Foe binary lacks the required built-in workflow "
+                    f"command surface: {detail}"
+                )
 
     async def _retain_credential(self, environment: BaseEnvironment) -> None:
         state = self._credential_file
         temporary = state.parent / f".{state.name}.{uuid.uuid4().hex}.tmp"
         try:
             await environment.download_file(self._remote_credential, temporary)
-            if self._credential_mode == "access_only":
+            if self._credential_mode != "mutable":
                 self._credential_unchanged = (
                     hashlib.sha256(temporary.read_bytes()).hexdigest()
                     == self._credential_digest
@@ -215,81 +263,109 @@ class FoeAgent(BaseInstalledAgent):
             raise ValueError("Foe Harbor runs require --model provider/model")
         if not self.model_name.startswith("openai-codex/"):
             raise ValueError("the retained login credential supports only openai-codex models")
+        if self._built_in_workflow and self.model_name != "openai-codex/gpt-5.6-sol":
+            raise ValueError(
+                "the built-in evaluation workflow requires openai-codex/gpt-5.6-sol"
+            )
 
         pwd = await self.exec_as_agent(environment, command="/bin/pwd")
         if pwd.return_code != 0:
             raise RuntimeError(f"task working-directory probe exited with status {pwd.return_code}")
         working_directory = (pwd.stdout or "").strip()
-        executable_probe = await self.exec_as_agent(
-            environment,
-            command=fixed_executable_probe_command(),
-            cwd=environment.task_env_config.workdir,
-        )
-        if executable_probe.return_code != 0:
-            raise RuntimeError(
-                "fixed executable probe exited with status "
-                f"{executable_probe.return_code}"
-            )
-        environment_facts = describe_container_environment(
-            working_directory,
-            executable_probe.stdout or "",
-        )
-        program = build_program(
-            instruction,
-            self.model_name,
-            self._remote_credential,
-            working_directory,
-            model_calls=self._model_calls,
-            input_tokens=self._input_tokens,
-            output_tokens=self._output_tokens,
-            seconds=self._seconds,
-            reasoning_effort=self._reasoning_effort,
-            service_tier=self._service_tier,
-            environment_facts=environment_facts,
-            completion_checker=(
-                REMOTE_COMPLETION_CHECKER
-                if self._completion_checker is not None
-                else None
-            ),
-            diagnosis_model_name=self._diagnosis_model,
-            diagnosis_reasoning_effort=self._diagnosis_reasoning_effort,
-            diagnosis_model_calls=self._diagnosis_model_calls,
-            unresolved_diagnosis_reasoning_effort=self._unresolved_diagnosis_reasoning_effort,
-            unresolved_diagnosis_model_calls=self._unresolved_diagnosis_model_calls,
-            escalation_reasoning_effort=self._escalation_reasoning_effort,
-            escalation_model_calls=self._escalation_model_calls,
-        )
         self.logs_dir.mkdir(parents=True, exist_ok=True)
-        local_program = self.logs_dir / "foe-program.json"
-        local_program.write_text(
-            json.dumps(program, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        await environment.upload_file(local_program, REMOTE_PROGRAM)
-
         logs = PurePosixPath(self.environment_logs_dir)
         episode = (logs / "foe-episode").as_posix()
         stdout = (logs / "foe.stdout").as_posix()
         stderr = (logs / "foe.stderr").as_posix()
         exit_code = (logs / "foe-exit-code").as_posix()
+        if self._built_in_workflow:
+            invocation = builtin_workflow_arguments(
+                instruction,
+                self.model_name,
+                self._remote_credential,
+                (
+                    REMOTE_COMPLETION_CHECKER
+                    if self._completion_checker is not None
+                    else None
+                ),
+                episode,
+                self._service_tier,
+                REMOTE_BINARY,
+            )
+            (self.logs_dir / "foe-invocation.json").write_text(
+                json.dumps({"arguments": invocation}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            foe_command = shlex.join(invocation)
+        else:
+            executable_probe = await self.exec_as_agent(
+                environment,
+                command=fixed_executable_probe_command(),
+                cwd=environment.task_env_config.workdir,
+            )
+            if executable_probe.return_code != 0:
+                raise RuntimeError(
+                    "fixed executable probe exited with status "
+                    f"{executable_probe.return_code}"
+                )
+            environment_facts = describe_container_environment(
+                working_directory,
+                executable_probe.stdout or "",
+            )
+            program = build_program(
+                instruction,
+                self.model_name,
+                self._remote_credential,
+                working_directory,
+                model_calls=self._model_calls,
+                input_tokens=self._input_tokens,
+                output_tokens=self._output_tokens,
+                seconds=self._seconds,
+                reasoning_effort=self._reasoning_effort,
+                service_tier=self._service_tier,
+                environment_facts=environment_facts,
+                completion_checker=(
+                    REMOTE_COMPLETION_CHECKER
+                    if self._completion_checker is not None
+                    else None
+                ),
+                diagnosis_model_name=self._diagnosis_model,
+                diagnosis_reasoning_effort=self._diagnosis_reasoning_effort,
+                diagnosis_model_calls=self._diagnosis_model_calls,
+                unresolved_diagnosis_reasoning_effort=self._unresolved_diagnosis_reasoning_effort,
+                unresolved_diagnosis_model_calls=self._unresolved_diagnosis_model_calls,
+                escalation_reasoning_effort=self._escalation_reasoning_effort,
+                escalation_model_calls=self._escalation_model_calls,
+            )
+            local_program = self.logs_dir / "foe-program.json"
+            local_program.write_text(
+                json.dumps(program, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            await environment.upload_file(local_program, REMOTE_PROGRAM)
+            foe_command = (
+                f"{shlex.quote(REMOTE_BINARY)} --config "
+                f"{shlex.quote(REMOTE_PROGRAM)} --headless "
+                f"--log-dir {shlex.quote(episode)}"
+            )
         command = (
             "set +e; "
-            f"{shlex.quote(REMOTE_BINARY)} --config {shlex.quote(REMOTE_PROGRAM)} "
-            f"--headless --log-dir {shlex.quote(episode)} "
+            f"{foe_command} "
             f"> {shlex.quote(stdout)} 2> {shlex.quote(stderr)}; "
             "foe_status=$?; "
             f"printf '%s\\n' \"$foe_status\" > {shlex.quote(exit_code)}; "
             "printf '%s\\n' \"$foe_status\""
         )
         try:
-            await self.exec_as_agent(
-                environment,
-                command=(
-                    f"{shlex.quote(REMOTE_BINARY)} plan "
-                    f"--config {shlex.quote(REMOTE_PROGRAM)} >/dev/null"
-                ),
-                cwd=environment.task_env_config.workdir,
-            )
+            if not self._built_in_workflow:
+                await self.exec_as_agent(
+                    environment,
+                    command=(
+                        f"{shlex.quote(REMOTE_BINARY)} plan "
+                        f"--config {shlex.quote(REMOTE_PROGRAM)} >/dev/null"
+                    ),
+                    cwd=environment.task_env_config.workdir,
+                )
             result = await self.exec_as_agent(
                 environment,
                 command=command,
@@ -313,14 +389,23 @@ class FoeAgent(BaseInstalledAgent):
                 values = self._credential_values | credential_values(
                     self._credential_file
                 )
-                self._credential_exposed = episode_contains_credential(
-                    self.logs_dir / "foe-episode",
+                self._credential_exposed = retained_artifacts_contain_credential(
+                    self.logs_dir,
                     values,
                 )
 
     @override
     def populate_context_post_run(self, context: AgentContext) -> None:
         episode_dir = self.logs_dir / "foe-episode"
+        sensitive_values = self._credential_values | credential_values(
+            self._credential_file
+        )
+        if diagnostic := missing_episode_diagnostic(
+            self.logs_dir,
+            self._exit_code,
+            sensitive_values,
+        ):
+            raise RuntimeError(diagnostic)
         prices = {self.model_name: self._pricing}
         if self._diagnosis_model is not None and self._diagnosis_pricing is not None:
             prices[self._diagnosis_model] = self._diagnosis_pricing
@@ -336,6 +421,13 @@ class FoeAgent(BaseInstalledAgent):
         (self.logs_dir / "foe-conformance.stderr").write_text(
             trace_process.stderr,
             encoding="utf-8",
+        )
+        self._credential_exposed = (
+            self._credential_exposed
+            or retained_artifacts_contain_credential(
+                self.logs_dir,
+                sensitive_values,
+            )
         )
         try:
             trace = json.loads(trace_process.stdout)
@@ -365,6 +457,7 @@ class FoeAgent(BaseInstalledAgent):
                 "foe_credential_mode": self._credential_mode,
                 "foe_credential_unchanged": self._credential_unchanged,
                 "foe_credential_exposed": self._credential_exposed,
+                "foe_built_in_workflow": self._built_in_workflow,
             }
         )
         if self._completion_checker_digest is not None:

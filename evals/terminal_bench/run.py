@@ -20,7 +20,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from trajectory_diagnostics import diagnose_episode
 from workflow_candidate import require_matching_run as require_matching_candidate_run
@@ -31,6 +31,7 @@ HARBOR_VERSION = "0.22.0"
 DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 MIN_AUXILIARY_MODEL_CALLS = 6
+BUILTIN_WORKFLOW_MODEL_CALLS = 120
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
 AGENT_TIMEOUT_GRACE_SECONDS = 300
 CREDENTIAL_LEASE_STARTUP_SECONDS = 900
@@ -200,7 +201,10 @@ def model_stage_count(
     diagnosis_model: str | None,
     unresolved_diagnosis_reasoning_effort: str | None,
     escalation_reasoning_effort: str | None,
+    built_in_workflow: bool = False,
 ) -> int:
+    if built_in_workflow:
+        return 2
     return 1 + sum(
         value is not None
         for value in (
@@ -563,6 +567,31 @@ def lock_credential_state(state: Path):
     return lock
 
 
+def prepare_campaign_credential(
+    source: Path,
+    state: Path,
+    *,
+    install_only: bool,
+) -> TextIO | None:
+    """Prepare the authoritative credential only for provider-backed work."""
+    if install_only:
+        return None
+    lock = lock_credential_state(state)
+    try:
+        if not state.exists():
+            initialize_credential_state(source, state)
+    except Exception:
+        lock.close()
+        raise
+    return lock
+
+
+def write_provider_free_credential(path: Path) -> None:
+    """Write a private empty credential object for one installation worker."""
+    path.write_text("{}\n", encoding="utf-8")
+    os.chmod(path, 0o400)
+
+
 def harbor_command(
     *,
     harbor: Path,
@@ -589,13 +618,37 @@ def harbor_command(
     runtime_digest: str,
     pricing: Pricing,
     completion_checker: Path | None = None,
+    built_in_workflow: bool = False,
     hard_token_limits: bool = False,
     install_only: bool = False,
 ) -> list[str]:
+    if built_in_workflow:
+        if model != DEFAULT_MODEL:
+            raise ValueError(
+                f"the built-in evaluation workflow requires model {DEFAULT_MODEL}"
+            )
+        if reasoning_effort != "low":
+            raise ValueError("the built-in workflow requires low primary reasoning")
+        if service_tier != "priority":
+            raise ValueError("the built-in evaluation workflow requires priority service")
+        if any(
+            stage_enabled
+            for stage_enabled in (
+                diagnosis_model is not None,
+                unresolved_diagnosis_reasoning_effort is not None,
+                escalation_reasoning_effort is not None,
+            )
+        ):
+            raise ValueError(
+                "the built-in workflow owns its implementation and audit stages"
+            )
+        if hard_token_limits:
+            raise ValueError("the built-in workflow owns its token allowances")
     model_stages = model_stage_count(
         diagnosis_model,
         unresolved_diagnosis_reasoning_effort,
         escalation_reasoning_effort,
+        built_in_workflow,
     )
     agent_timeout_seconds = task_agent_timeout_seconds(task, model_stages)
     agent_timeout_multiplier = agent_timeout_seconds / task.harbor_agent_seconds
@@ -604,7 +657,9 @@ def harbor_command(
         "credential_file": credential_state,
         "credential_mode": credential_mode,
         "trace_evaluator": trace_evaluator,
-        "model_calls": task.model_calls,
+        "model_calls": (
+            BUILTIN_WORKFLOW_MODEL_CALLS if built_in_workflow else task.model_calls
+        ),
         "seconds": task.seconds,
         "reasoning_effort": reasoning_effort,
         "service_tier": service_tier,
@@ -629,6 +684,8 @@ def harbor_command(
         kwargs["escalation_model_calls"] = escalation_model_calls
     if completion_checker is not None:
         kwargs["completion_checker"] = completion_checker
+    if built_in_workflow:
+        kwargs["built_in_workflow"] = "true"
     command = [
         "/usr/bin/env",
         f"PYTHONPATH={agent_module.parent}",
@@ -682,7 +739,102 @@ def read_job_result(path: Path) -> dict[str, Any]:
     return result
 
 
-def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
+def built_in_program_failures(
+    result_path: Path,
+    *,
+    completion_checker: bool,
+) -> list[str]:
+    """Validate the resolved built-in workflow recorded by one trial."""
+    episode_path = result_path.parent / "agent" / "foe-episode" / "episode.jsonl"
+    try:
+        with episode_path.open(encoding="utf-8") as source:
+            first = source.readline()
+        event = json.loads(first)
+    except (OSError, json.JSONDecodeError) as error:
+        return [f"cannot read the built-in root episode: {error}"]
+    data = event.get("data") if isinstance(event, dict) else None
+    program = data.get("program") if isinstance(data, dict) else None
+    if (
+        not isinstance(event, dict)
+        or event.get("type") != "episode/start"
+        or not isinstance(program, dict)
+    ):
+        return ["the root log does not begin with a resolved episode/start program"]
+    def mapping(value: Any) -> dict[str, Any]:
+        return value if isinstance(value, dict) else {}
+
+    def model_profile(value: Any) -> tuple[Any, ...]:
+        model = mapping(value)
+        return tuple(
+            model.get(key)
+            for key in ("provider", "model", "reasoning_effort", "service_tier")
+        )
+
+    def sequence(value: Any) -> tuple[Any, ...]:
+        return tuple(value) if isinstance(value, list) else ()
+
+    root_model = mapping(program.get("model"))
+    nodes = mapping(mapping(program.get("workflow")).get("nodes"))
+    implementation = mapping(nodes.get("implement-task"))
+    audit = mapping(nodes.get("audit-and-repair-task"))
+    implementation_program = mapping(implementation.get("model"))
+    audit_program = mapping(audit.get("model"))
+    actual = {
+        "root.name": program.get("name"),
+        "root.model": model_profile(root_model),
+        "root.model_calls": mapping(program.get("budget")).get("model_calls"),
+        "root.sandbox": mapping(program.get("sandbox")).get("mode"),
+        "workflow.nodes": tuple(sorted(nodes)),
+        "implementation.follows": sequence(implementation.get("follows")),
+        "implementation.terminal": implementation.get("terminal"),
+        "implementation.name": implementation_program.get("name"),
+        "implementation.model_calls": mapping(
+            implementation_program.get("budget")
+        ).get("model_calls"),
+        "implementation.verify": mapping(
+            implementation_program.get("done_when")
+        ).get("verify"),
+        "audit.follows": sequence(audit.get("follows")),
+        "audit.terminal": audit.get("terminal"),
+        "audit.name": audit_program.get("name"),
+        "audit.model": model_profile(audit_program.get("model")),
+        "audit.model_calls": mapping(audit_program.get("budget")).get(
+            "model_calls"
+        ),
+        "audit.verify": mapping(audit_program.get("done_when")).get("verify"),
+    }
+    sol_low = ("openai-codex", "gpt-5.6-sol", "low", "priority")
+    expected = {
+        "root.name": "coding",
+        "root.model": sol_low,
+        "root.model_calls": BUILTIN_WORKFLOW_MODEL_CALLS,
+        "root.sandbox": "off",
+        "workflow.nodes": ("audit-and-repair-task", "implement-task"),
+        "implementation.follows": ("task",),
+        "implementation.terminal": False,
+        "implementation.name": "implement-task",
+        "implementation.model_calls": 60,
+        "implementation.verify": None,
+        "audit.follows": ("task", "implement-task"),
+        "audit.terminal": True,
+        "audit.name": "audit-and-repair-task",
+        "audit.model": ("openai-codex", "gpt-5.6-sol", "high", "priority"),
+        "audit.model_calls": 60,
+        "audit.verify": "check" if completion_checker else None,
+    }
+    return [
+        f"built-in profile {key}: expected {expected[key]!r}, recorded {value!r}"
+        for key, value in actual.items()
+        if value != expected[key]
+    ]
+
+
+def read_job_integrity(
+    job_dir: Path,
+    *,
+    built_in_workflow: bool | None = None,
+    completion_checker: bool = False,
+) -> dict[str, list[str]]:
     """Record runtime, trace, and resource diagnostics beside task quality."""
     infrastructure_failures = []
     incomplete_resource_measurements = []
@@ -713,6 +865,21 @@ def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
         if metadata.get("foe_trace_conformant") is not True:
             infrastructure_failures.append(f"{trial}: Foe trace conformance was not established")
         if (
+            built_in_workflow is not None
+            and metadata.get("foe_built_in_workflow") is not built_in_workflow
+        ):
+            infrastructure_failures.append(
+                f"{trial}: Foe did not record the requested built-in workflow setting"
+            )
+        if built_in_workflow:
+            infrastructure_failures.extend(
+                f"{trial}: {failure}"
+                for failure in built_in_program_failures(
+                    path,
+                    completion_checker=completion_checker,
+                )
+            )
+        if (
             "foe_completion_checker_unchanged" in metadata
             and metadata.get("foe_completion_checker_unchanged") is not True
         ):
@@ -728,7 +895,7 @@ def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
             )
         if metadata.get("foe_credential_exposed") is True:
             infrastructure_failures.append(
-                f"{trial}: model-visible episode events contain a provider credential"
+                f"{trial}: retained Foe artifacts contain a provider credential"
             )
         if metadata.get("foe_usage_reported") is not True:
             missing = metadata.get("foe_unreported_model_calls")
@@ -737,15 +904,17 @@ def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
     return {
         "infrastructure_failures": infrastructure_failures,
         "incomplete_resource_measurements": incomplete_resource_measurements,
+        "configuration_claim_valid": not infrastructure_failures,
     }
 
 
 def campaign_execution_complete(records: list[dict[str, Any]], expected: int) -> bool:
-    """Report whether every requested task produced a readable Harbor result."""
+    """Report whether every task produced valid evidence for its configuration."""
     return len(records) == expected and all(
         "result_error" not in row
         and row.get("n_errored_trials") == 0
         and row.get("n_completed_trials") == row.get("n_total_trials")
+        and row.get("configuration_claim_valid") is True
         for row in records
     )
 
@@ -797,6 +966,8 @@ def task_record(
     run_dir: Path,
     harbor_exit_code: int | None,
     install_only: bool,
+    built_in_workflow: bool,
+    completion_checker: bool,
     worker: int,
     execution_group: str,
     credential_mode: str,
@@ -819,10 +990,19 @@ def task_record(
     try:
         record.update(read_job_result(job_result_path))
         record["diagnostics"] = write_job_diagnostics(run_dir / task.name)
-        if not install_only:
-            record.update(read_job_integrity(run_dir / task.name))
+        if install_only:
+            record["configuration_claim_valid"] = True
+        else:
+            record.update(
+                read_job_integrity(
+                    run_dir / task.name,
+                    built_in_workflow=built_in_workflow,
+                    completion_checker=completion_checker,
+                )
+            )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         record["result_error"] = str(error)
+        record["configuration_claim_valid"] = False
     return record
 
 
@@ -888,6 +1068,11 @@ def parser() -> argparse.ArgumentParser:
         help="read-only checker used by done_when.verify; requires one selected task",
     )
     answer.add_argument(
+        "--built-in-workflow",
+        action="store_true",
+        help="exercise Foe's built-in implementation and terminal-audit workflow",
+    )
+    answer.add_argument(
         "--hard-token-limits",
         action="store_true",
         help="enforce the planning token estimates as Foe allowances",
@@ -910,6 +1095,31 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("a task may be selected only once")
         if args.completion_checker is not None and len(selected_names) != 1:
             raise ValueError("--completion-checker requires exactly one selected task")
+        if args.built_in_workflow:
+            if args.model != DEFAULT_MODEL:
+                raise ValueError(
+                    f"--built-in-workflow requires --model {DEFAULT_MODEL}"
+                )
+            if args.reasoning_effort != "low":
+                raise ValueError("--built-in-workflow requires --reasoning-effort low")
+            if args.service_tier != "priority":
+                raise ValueError("--built-in-workflow requires --service-tier priority")
+            if any(
+                stage_enabled
+                for stage_enabled in (
+                    args.diagnosis_model is not None,
+                    args.unresolved_diagnosis_reasoning_effort is not None,
+                    args.escalation_reasoning_effort is not None,
+                    args.workflow_candidate is not None,
+                )
+            ):
+                raise ValueError(
+                    "--built-in-workflow cannot be combined with runner-defined model stages"
+                )
+            if args.hard_token_limits:
+                raise ValueError(
+                    "--built-in-workflow cannot be combined with --hard-token-limits"
+                )
         if not 1 <= args.attempts <= 3:
             raise ValueError("--attempts must be between 1 and 3")
         if not SAFE_LABEL.fullmatch(args.label):
@@ -1037,6 +1247,14 @@ def main(argv: list[str] | None = None) -> int:
     diagnosis_pricing = pricing[args.diagnosis_model] if args.diagnosis_model else None
     plans = []
     for task in selected:
+        primary_calls = (
+            BUILTIN_WORKFLOW_MODEL_CALLS
+            if args.built_in_workflow
+            else task.model_calls
+        )
+        primary_fraction = primary_calls / task.model_calls
+        primary_input = round(task.expected_input_tokens * primary_fraction)
+        primary_output = round(task.expected_output_tokens * primary_fraction)
         diagnosis_fraction = (
             args.diagnosis_model_calls / task.model_calls
             if args.diagnosis_model is not None
@@ -1059,25 +1277,26 @@ def main(argv: list[str] | None = None) -> int:
             task.expected_output_tokens * unresolved_diagnosis_fraction
         )
         expected_input = (
-            task.expected_input_tokens
+            primary_input
             + diagnosis_input
             + unresolved_diagnosis_input
             + escalation_input
         )
         expected_output = (
-            task.expected_output_tokens
+            primary_output
             + diagnosis_output
             + unresolved_diagnosis_output
             + escalation_output
         )
         expected_cost = selected_pricing.expected_cost(
-            task.expected_input_tokens + unresolved_diagnosis_input + escalation_input,
-            task.expected_output_tokens + unresolved_diagnosis_output + escalation_output,
+            primary_input + unresolved_diagnosis_input + escalation_input,
+            primary_output + unresolved_diagnosis_output + escalation_output,
         )
         if diagnosis_pricing is not None:
             expected_cost += diagnosis_pricing.expected_cost(
                 diagnosis_input, diagnosis_output
             )
+        primary_seconds = task.seconds * (2 if args.built_in_workflow else 1)
         diagnosis_seconds = task.seconds if args.diagnosis_model is not None else 0
         escalation_seconds = task.seconds if args.escalation_reasoning_effort is not None else 0
         unresolved_diagnosis_seconds = (
@@ -1086,11 +1305,11 @@ def main(argv: list[str] | None = None) -> int:
         plans.append(
             (
                 task,
-                task.model_calls + auxiliary_calls,
+                primary_calls + auxiliary_calls,
                 expected_input,
                 expected_output,
                 expected_cost,
-                task.seconds
+                primary_seconds
                 + diagnosis_seconds
                 + unresolved_diagnosis_seconds
                 + escalation_seconds,
@@ -1123,6 +1342,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if workflow_candidate is not None:
         print(f"workflow      {workflow_candidate['digest']}")
+    elif args.built_in_workflow:
+        print("workflow      built-in implementation and terminal audit")
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; workers {args.workers}")
     print("planning      calls      input     output  est. cost  seconds  task")
@@ -1141,8 +1362,9 @@ def main(argv: list[str] | None = None) -> int:
     token_policy = "hard allowances" if args.hard_token_limits else "measurement only"
     print(f"token limits  {token_policy}")
     if completion_checker is not None:
+        owner = "built-in terminal audit" if args.built_in_workflow else "coding episode"
         print(
-            "completion    done_when.verify "
+            f"completion    {owner} done_when.verify "
             f"sha256:{digest(completion_checker)}"
         )
     if args.service_tier == "priority":
@@ -1150,7 +1372,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.install_only:
         print("Installation compatibility check selected; no model requests will be made.")
     elif not args.confirm_spend:
-        print("No model requests were made. Add --confirm-spend after reviewing the maximum.")
+        print(
+            "No model requests were made. Add --confirm-spend after reviewing "
+            "the planning estimate."
+        )
         return 0
 
     if evaluated_source is None and not args.install_only:
@@ -1188,17 +1413,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     try:
-        credential_lock = lock_credential_state(credential_state)
-    except (OSError, ValueError) as error:
+        credential_lock = prepare_campaign_credential(
+            credential,
+            credential_state,
+            install_only=args.install_only,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
         return 2
-    if not credential_state.exists():
-        try:
-            initialize_credential_state(credential, credential_state)
-        except (OSError, ValueError, json.JSONDecodeError) as error:
-            credential_lock.close()
-            print(f"terminal-bench eval: {error}", file=sys.stderr)
-            return 2
 
     timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
     run_dir = jobs_dir / f"{args.label}-{timestamp}"
@@ -1207,6 +1429,7 @@ def main(argv: list[str] | None = None) -> int:
         args.diagnosis_model,
         args.unresolved_diagnosis_reasoning_effort,
         args.escalation_reasoning_effort,
+        args.built_in_workflow,
     )
     planned_groups = execution_groups(selected, args.workers)
     records: list[dict[str, Any]] = []
@@ -1282,8 +1505,13 @@ def main(argv: list[str] | None = None) -> int:
             "token_limits": (
                 "hard" if args.hard_token_limits else "measurement_only"
             ),
-            "built_in_workflow": False,
+            "built_in_workflow": args.built_in_workflow,
             "install_only": args.install_only,
+            "credential_policy": (
+                "provider_free_installation"
+                if args.install_only
+                else "isolated_oauth_state"
+            ),
             "completion_checker": (
                 {
                     "path": str(completion_checker),
@@ -1338,6 +1566,7 @@ def main(argv: list[str] | None = None) -> int:
             runtime_digest=runtime_digest,
             pricing=selected_pricing,
             completion_checker=completion_checker,
+            built_in_workflow=args.built_in_workflow,
             hard_token_limits=args.hard_token_limits,
             install_only=args.install_only,
         )
@@ -1347,7 +1576,7 @@ def main(argv: list[str] | None = None) -> int:
         with campaign_signal_handlers():
             with tempfile.TemporaryDirectory(
                 prefix=f".{credential_state.name}.leases-",
-                dir=credential_state.parent,
+                dir=run_dir if args.install_only else credential_state.parent,
             ) as lease_directory_text:
                 lease_directory = Path(lease_directory_text)
                 os.chmod(lease_directory, 0o700)
@@ -1361,8 +1590,12 @@ def main(argv: list[str] | None = None) -> int:
                         resources,
                         previous_resources,
                     )
-                    state = read_credential_state(credential_state)
-                    token_allowed = credential_supports_parallel_tasks(
+                    state = (
+                        None
+                        if args.install_only
+                        else read_credential_state(credential_state)
+                    )
+                    token_allowed = args.install_only or credential_supports_parallel_tasks(
                         state,
                         planned_group,
                         attempts=args.attempts,
@@ -1406,11 +1639,23 @@ def main(argv: list[str] | None = None) -> int:
                         execution_number += 1
                         execution_group = f"task-execution-{execution_number:04d}"
                         credential_mode = (
-                            "access_only" if len(actual_group) == 2 else "mutable"
+                            "provider_free"
+                            if args.install_only
+                            else "access_only"
+                            if len(actual_group) == 2
+                            else "mutable"
                         )
                         credential_paths = []
                         required_expiry_ms = None
-                        if credential_mode == "access_only":
+                        if credential_mode == "provider_free":
+                            for worker, task in enumerate(actual_group, start=1):
+                                path = lease_directory / (
+                                    f"{execution_group}-worker-{worker}-{task.name}.json"
+                                )
+                                write_provider_free_credential(path)
+                                credential_paths.append(path)
+                        elif credential_mode == "access_only":
+                            assert state is not None
                             required_expiry_ms = access_only_lease_requirement_ms(
                                 actual_group,
                                 attempts=args.attempts,
@@ -1443,7 +1688,9 @@ def main(argv: list[str] | None = None) -> int:
                         execution_record = {
                             "execution_group": execution_group,
                             "mode": (
-                                "parallel_access_only_credentials"
+                                "provider_free_installation"
+                                if credential_mode == "provider_free"
+                                else "parallel_access_only_credentials"
                                 if credential_mode == "access_only"
                                 else "serial_authoritative_credential"
                             ),
@@ -1553,6 +1800,8 @@ def main(argv: list[str] | None = None) -> int:
                                     run_dir=run_dir,
                                     harbor_exit_code=exit_code,
                                     install_only=args.install_only,
+                                    built_in_workflow=args.built_in_workflow,
+                                    completion_checker=completion_checker is not None,
                                     worker=worker,
                                     execution_group=execution_group,
                                     credential_mode=credential_mode,
@@ -1627,7 +1876,8 @@ def main(argv: list[str] | None = None) -> int:
         execution_failure = error
         stopped_reason = f"campaign execution failed: {error}"
     finally:
-        credential_lock.close()
+        if credential_lock is not None:
+            credential_lock.close()
 
     completed_names = {record["task"] for record in records}
     if len(completed_names) != len(selected):
@@ -1651,6 +1901,8 @@ def main(argv: list[str] | None = None) -> int:
                         run_dir=run_dir,
                         harbor_exit_code=None,
                         install_only=args.install_only,
+                        built_in_workflow=args.built_in_workflow,
+                        completion_checker=completion_checker is not None,
                         worker=started["worker"],
                         execution_group=started["execution_group"],
                         credential_mode=started["credential_mode"],
