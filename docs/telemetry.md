@@ -330,8 +330,7 @@ one place it is implemented.
   log's last such event, since acceptance is what completes it. For a
   workflow episode it is an accepted event after the completing terminal
   `workflow/node-end` (the episode's `done_when.verify`), one between
-  that firing's start and end (the node's own `verify`), or a terminal
-  `workflow/node-skipped`, which stands on an acceptance by definition.
+  that firing's start and end (the node's own `verify`).
 - `reviewed` — no verifier accepted the completing value, but the
   completing terminal node is a model node that received another model
   node's completion value among its inputs: an independent review

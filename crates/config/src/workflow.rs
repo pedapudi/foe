@@ -83,8 +83,6 @@ pub struct Node {
     pub verify: Option<String>,
     #[serde(default = "crate::u32_default::<2>")]
     pub retries: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skip_when_verified: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub branches: BTreeMap<String, Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -226,39 +224,6 @@ pub fn check(
             list.iter().try_for_each(|t| names(&format!("branches.{label}"), t))?;
         }
         node.recovery.iter().flat_map(|r| &r.follows).try_for_each(|t| names("recovery.follows", t))?;
-        if let Some(target) = &node.skip_when_verified {
-            names("skip_when_verified", target)?;
-            if !inputs[name].contains(target) {
-                let rule = format!("names a node in this node's follows; `{target}` is not among them");
-                return Err(invalid(key("skip_when_verified"), rule));
-            }
-            // The guard reads an accepted verification of the named node,
-            // so that node must be able to produce one: a node-level
-            // `verify`, or a model program whose own `done_when.verify` is
-            // declared. Any other node completes without a verifier and
-            // the guard could never fire.
-            let observed = wf.nodes.get(target).is_some_and(|named| {
-                named.verify.is_some()
-                    || named.model.as_ref().is_some_and(|m| m.done_when.as_ref().is_some_and(|d| d.verify.is_some()))
-            });
-            if !observed {
-                let rule = format!(
-                    "names a node with a verifier; `{target}` declares no `verify` and its program no \
-                     `done_when.verify`, so the guard could never observe a verification"
-                );
-                return Err(invalid(key("skip_when_verified"), rule));
-            }
-            // A choice point is the node's own judgment over its result,
-            // and a skipped node exercises none: no rule could say which
-            // branch a value the node never produced selects. The two
-            // declarations are therefore refused together.
-            if !node.branches.is_empty() {
-                let rule = "is declared beside branches; a skipped node makes no choice, so a guarded node \
-                            cannot be a choice point"
-                    .to_string();
-                return Err(invalid(key("skip_when_verified"), rule));
-            }
-        }
         node.verify.iter().try_for_each(|v| tool_in("verify", v))?;
         node.tool.iter().try_for_each(|t| tool_in("tool", t))?;
         let args = node.args.clone().map_or(Value::Null, Value::Object);

@@ -399,50 +399,6 @@ test("completion provenance derives verifier, reviewed, and model report", () =>
   assert.equal(completionProvenance(new EpisodeFold("ep_d", { stream: false }).summary), null, "only completed episodes");
 });
 
-test("a terminal skip is verifier provenance and a node-skipped row", () => {
-  const program = {
-    workflow: {
-      nodes: {
-        "implement-task": { model: { name: "implement-task", done_when: { verify: "check" } }, follows: ["task"] },
-        "audit-and-repair-task": {
-          model: { name: "audit" },
-          follows: ["implement-task"],
-          skip_when_verified: "implement-task",
-          terminal: true,
-        },
-      },
-    },
-  };
-  const f = new EpisodeFold("ep_s", { stream: false });
-  f.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_s", program } });
-  f.push({
-    seq: 1,
-    time: 2,
-    type: "workflow/node-start",
-    data: { node: "implement-task", fire: 1, inputs: [], child_id: "ep_impl" },
-  });
-  f.push({
-    seq: 2,
-    time: 3,
-    type: "workflow/node-end",
-    data: { node: "implement-task", fire: 1, value: {}, rendered: "", duration_ms: 1 },
-  });
-  f.push({
-    seq: 3,
-    time: 4,
-    type: "workflow/node-skipped",
-    data: { node: "audit-and-repair-task", verified_by: "implement-task", verification_seq: 41 },
-  });
-  f.push({ seq: 4, time: 5, type: "episode/end", data: { outcome: { kind: "completed", value: "v" } } });
-  assert.deepEqual(completionProvenance(f.summary), { kind: "verifier", verifier: "check" });
-  assert.deepEqual(f.summary.skips, [
-    { seq: 3, node: "audit-and-repair-task", verifiedBy: "implement-task", verificationSeq: 41 },
-  ]);
-  const note = rows<NoteRow>(f, "note").find((n) => n.type === "workflow/node-skipped")!;
-  assert.equal(note.label, "node skipped");
-  assert.match(note.detail, /verified by implement-task · verification seq 41/);
-});
-
 test("a retry's mark carries the backoff it imposes as its duration", () => {
   const s = fold("retries-exhausted.jsonl").summary;
   const retries = s.marks.filter((m) => m.kind === "retry");

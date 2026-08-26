@@ -146,67 +146,6 @@ fn every_workflow_rule_names_its_node() {
     assert!(serde_json::from_value::<Config>(unknown).is_err(), "unknown keys are refused");
 }
 
-/// docs/workflow.md "The conditional audit guard": the named node exists,
-/// appears in the declaring node's follows, and can produce a
-/// verification; each refusal names the key.
-#[test]
-fn a_guard_that_could_never_observe_a_verification_is_refused() {
-    let root = tmp("workflow-guard");
-    let key = "workflow.nodes.derive.skip_when_verified";
-    let guard = |target: &str, edit: fn(&mut Value)| {
-        let target = target.to_string();
-        with_graph(&root, move |v| {
-            v["workflow"]["nodes"]["derive"]["skip_when_verified"] = json!(target);
-            edit(v);
-        })
-    };
-    let (found, rule) = rejection(guard("ghost", |_| {}));
-    assert_eq!(found, key);
-    assert!(rule.contains("absent"), "{rule}");
-    let (found, rule) = rejection(guard("manifest", |_| {}));
-    assert_eq!(found, key);
-    assert!(rule.contains("follows"), "{rule}");
-    // `derive` follows `propose`, a model node with no verifier anywhere.
-    let (found, rule) = rejection(guard("propose", |_| {}));
-    assert_eq!(found, key);
-    assert!(rule.contains("could never observe a verification"), "{rule}");
-    // A guarded node cannot be a choice point: a skipped node makes no
-    // choice, so `branches` beside the guard is refused.
-    let (found, rule) = rejection(guard("propose", |v| {
-        v["workflow"]["nodes"]["propose"]["model"]["done_when"] = json!({ "verify": "block" });
-        v["workflow"]["nodes"]["derive"]["branches"] = json!({ "accept": [] });
-        v["workflow"]["nodes"]["derive"]["terminal"] = json!(false);
-    }));
-    assert_eq!(found, key);
-    assert!(rule.contains("choice point"), "{rule}");
-    // With `done_when.verify` on the named node's program the guard stands.
-    let accepted = guard("propose", |v| {
-        v["workflow"]["nodes"]["propose"]["model"]["done_when"] = json!({ "verify": "block" });
-    });
-    let config: Config = serde_json::from_value(accepted).unwrap();
-    let program = resolve(&config).expect("a guard over a verified model node resolves");
-    let derive = &program.workflow.as_ref().unwrap().nodes["derive"];
-    assert_eq!(derive.skip_when_verified.as_deref(), Some("propose"));
-}
-
-/// docs/workflow.md "Identity": `skip_when_verified` participates.
-#[test]
-fn identity_hashes_the_guard() {
-    let root = tmp("workflow-guard-identity");
-    let runtime = RuntimeInfo { version: "0".into(), build: "unknown".into() };
-    let hash = |edit: &dyn Fn(&mut Value)| {
-        let mut value = with_graph(&root, |v| {
-            v["workflow"]["nodes"]["propose"]["model"]["done_when"] = json!({ "verify": "block" });
-        });
-        edit(&mut value);
-        let config: Config = serde_json::from_value(value).unwrap();
-        compute(&resolve(&config).unwrap(), &[], &runtime).unwrap()
-    };
-    let base = hash(&|_| {});
-    let guarded = hash(&|v| v["workflow"]["nodes"]["derive"]["skip_when_verified"] = json!("propose"));
-    assert_ne!(guarded.hash, base.hash, "the guard participates in identity");
-}
-
 /// docs/workflow.md "Identity": the labels, the edges, the bindings, the
 /// model programs, and the runtime's recovery instruction participate.
 #[test]

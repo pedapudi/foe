@@ -154,10 +154,9 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
 /// `verifier`: the completing value was accepted by an authoritative
 /// `verification/result`. For a loop episode that is the log's last such
 /// event; for a workflow episode, an accepted event after the completing
-/// terminal `workflow/node-end` (the episode's `done_when.verify`), one
-/// between that firing's start and end (the node's own `verify`), or a
-/// terminal `workflow/node-skipped`, which stands on an acceptance by
-/// definition. `reviewed`: no verifier accepted the completing value, but
+/// terminal `workflow/node-end` (the episode's `done_when.verify`) or one
+/// between that firing's start and end (the node's own `verify`).
+/// `reviewed`: no verifier accepted the completing value, but
 /// the completing terminal node is a model node that received another
 /// model node's completion value — an independent review episode, as in
 /// the built-in coding workflow. `model-report`: neither. A workflow that
@@ -182,27 +181,18 @@ pub fn completion_provenance(events: &[Event], program: &serde_json::Value) -> O
     }
     let terminal = |name: &str| nodes[name]["terminal"].as_bool() == Some(true);
     let is_model = |name: &str| nodes[name].get("model").is_some_and(|m| !m.is_null());
-    let mut skipped = false;
     let mut completing: Option<(usize, &WorkflowNodeEnd)> = None;
     let mut last_end: Option<(usize, &WorkflowNodeEnd)> = None;
     for (i, event) in events.iter().enumerate() {
         match &event.data {
-            EventData::WorkflowNodeSkipped(skip) if terminal(&skip.node) => {
-                skipped = true;
-                completing = None;
-            }
             EventData::WorkflowNodeEnd(end) if end.error.is_none() => {
                 last_end = Some((i, end));
                 if terminal(&end.node) {
-                    skipped = false;
                     completing = Some((i, end));
                 }
             }
             _ => {}
         }
-    }
-    if skipped {
-        return Some("verifier");
     }
     let Some((at, end)) = completing.or(last_end) else { return Some("model-report") };
     let started = events

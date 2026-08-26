@@ -161,9 +161,7 @@ Each `verification/result` appears at its position as one compact line in
 the event-line style: the verifier's name, the status, the findings
 count, and the duration. The finding strings expand behind the row, and
 the `verify` inbox item that carried them to the model renders as the
-user row it is. A `workflow/node-skipped` reads the same way, naming the
-skipped node, the node whose verifier accepted, and the verification's
-log sequence.
+user row it is.
 
 Where a message came from is one of the six words `inbox/item` allows, and
 the file a spilled tool value sits in under `spill/` is a name a reader
@@ -598,15 +596,6 @@ Weight over that structure is what the run did.
 
 - A node that never fired is drawn in neutral ink inside a dashed outline,
   so that its absence from the run is visible.
-- A node a satisfied `skip_when_verified` guard skipped keeps its surface
-  inside a dashed outline, its name in the faint ink, and its second line
-  reading `skipped · verifier accepted` — distinct from a node that
-  merely never became ready, which loses its fill. Selecting it sets the
-  figure's detail line to the sentence that explains the skip: which
-  node's verifier accepted, at which log sequence, with a link that
-  brings the conversation to that event — in the named node's child
-  episode when its own program declared the verifier. The figure's
-  caption also names each skipped node.
 - An edge that carried a value is solid; an edge declared and never
   traversed is faint and dashed. An edge carried a value when a
   `workflow/node-start` on its target lists, among its `inputs`, the `seq`
