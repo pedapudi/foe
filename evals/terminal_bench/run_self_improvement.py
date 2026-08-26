@@ -1844,6 +1844,7 @@ def main(argv: list[str] | None = None) -> int:
             (source_bundle / "parent-identity.json").write_bytes(
                 canonical_json(plan["identity_document"])
             )
+            shutil.copy2(check, source_bundle / "candidate-check")
             verification_log, verification_seq = find_accepted_verification(
                 episode, "check"
             )
@@ -1856,6 +1857,7 @@ def main(argv: list[str] | None = None) -> int:
                 "episode/episode.jsonl",
                 verification_log,
                 verification_seq,
+                "candidate-check",
             )
             source_candidate["bundle"] = str(source_bundle.relative_to(root))
             source_candidate["lineage_status"] = "pending-external-evaluation"

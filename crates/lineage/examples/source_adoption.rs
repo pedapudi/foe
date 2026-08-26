@@ -4,7 +4,7 @@
 
 use foe_lineage::{
     build_manifest, check_ancestry, check_proposal, digest_of, manifest_bytes, record_bytes, require_manifest_path,
-    state_identity, AdoptionRecord, ManifestFile, ProgramLineage, StateDocument, MANIFEST_FILE,
+    state_identity, AdoptionRecord, ManifestFile, ProgramLineage, RetainedVerifier, StateDocument, MANIFEST_FILE,
 };
 use foe_log::fold;
 use foe_program::{identity::canonical, LineageParent};
@@ -64,6 +64,9 @@ struct SourceManifest {
     proposal_log: String,
     verification_log: String,
     verification_seq: u64,
+    verification_tool: String,
+    verification_executable: String,
+    verification_executable_sha256: String,
     capture_checker_sha256: String,
     files: Vec<ManifestFile>,
 }
@@ -314,6 +317,13 @@ fn checked_manifest(bundle: &Path) -> Result<(SourceManifest, String), String> {
         .map_err(|e| e.to_string())?;
     require_manifest_path("source manifest proposal_log", &manifest.proposal_log).map_err(|e| e.to_string())?;
     require_manifest_path("source manifest verification_log", &manifest.verification_log).map_err(|e| e.to_string())?;
+    require_manifest_path("source manifest verification_executable", &manifest.verification_executable)
+        .map_err(|e| e.to_string())?;
+    foe_lineage::require_digest(
+        "source manifest verification_executable_sha256",
+        &manifest.verification_executable_sha256,
+    )
+    .map_err(|e| e.to_string())?;
     let paths: Vec<_> = manifest.entries.iter().map(SourceEntry::path).collect();
     if paths.windows(2).any(|pair| pair[0] >= pair[1]) {
         return Err(fail("source manifest entries", "are unique and ordered by path"));
@@ -328,10 +338,23 @@ fn checked_manifest(bundle: &Path) -> Result<(SourceManifest, String), String> {
     if observed != manifest.files {
         return Err(fail("source manifest files", "match every retained regular file and no other entry"));
     }
-    for required in [&manifest.parent_identity_document, &manifest.proposal_log, &manifest.verification_log] {
+    for required in [
+        &manifest.parent_identity_document,
+        &manifest.proposal_log,
+        &manifest.verification_log,
+        &manifest.verification_executable,
+    ] {
         if !manifest.files.iter().any(|file| &file.path == required) {
             return Err(fail("source manifest files", format!("retain {required}")));
         }
+    }
+    let verifier_file = manifest
+        .files
+        .iter()
+        .find(|file| file.path == manifest.verification_executable)
+        .expect("a required verifier file is retained");
+    if verifier_file.sha256 != manifest.verification_executable_sha256 {
+        return Err(fail("source manifest verification_executable_sha256", "matches the retained verifier bytes"));
     }
     for entry in &manifest.entries {
         require_manifest_path("source entry path", entry.path()).map_err(|e| e.to_string())?;
@@ -354,6 +377,17 @@ fn checked_manifest(bundle: &Path) -> Result<(SourceManifest, String), String> {
     Ok((manifest, digest_of(&bytes)))
 }
 
+fn verification_result(bundle: &Path, log: &str, seq: u64) -> Result<(String, String), String> {
+    let path = bundle.join(log);
+    let events = fold::read_all(path.parent().expect("a log path has a parent"))
+        .map_err(|e| fail("verification log", e.to_string()))?;
+    let event = events.iter().find(|event| event.seq == seq).ok_or_else(|| fail("verification_seq", "exists"))?;
+    let foe_log::EventData::VerificationResult(result) = &event.data else {
+        return Err(fail("verification_seq", "names a verification/result event"));
+    };
+    Ok((result.tool.clone(), result.verifier_identity.clone()))
+}
+
 fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), String> {
     let parent_bytes = std::fs::read(bundle.join(&manifest.parent_identity_document))
         .map_err(|e| fail("parent identity document", e.to_string()))?;
@@ -369,6 +403,10 @@ fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), Strin
         &manifest.verification_log,
         manifest.verification_seq,
         &parent,
+        Some(RetainedVerifier {
+            tool: &manifest.verification_tool,
+            executable_sha256: &manifest.verification_executable_sha256,
+        }),
     )
     .map_err(|e| e.to_string())?;
     if !open.is_empty() {
@@ -378,8 +416,8 @@ fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), Strin
 }
 
 fn capture(args: &[String]) -> Result<Value, String> {
-    let [bundle, candidate, base, parent_document, proposal_log, verification_log, seq] = args else {
-        return Err("usage: source-adoption capture BUNDLE CANDIDATE BASE_TREE PARENT_DOCUMENT PROPOSAL_LOG VERIFICATION_LOG VERIFICATION_SEQ".into());
+    let [bundle, candidate, base, parent_document, proposal_log, verification_log, seq, verifier] = args else {
+        return Err("usage: source-adoption capture BUNDLE CANDIDATE BASE_TREE PARENT_DOCUMENT PROPOSAL_LOG VERIFICATION_LOG VERIFICATION_SEQ VERIFIER_EXECUTABLE".into());
     };
     let bundle = Path::new(bundle);
     let candidate = Path::new(candidate);
@@ -394,6 +432,21 @@ fn capture(args: &[String]) -> Result<Value, String> {
     if canonical(&parent).as_bytes() != parent_bytes {
         return Err(fail(parent_document, "is one canonical JSON value"));
     }
+    require_manifest_path("VERIFIER_EXECUTABLE", verifier).map_err(|e| e.to_string())?;
+    let verifier_metadata =
+        std::fs::symlink_metadata(bundle.join(verifier)).map_err(|e| fail(verifier, e.to_string()))?;
+    if verifier_metadata.file_type().is_symlink() || !verifier_metadata.is_file() {
+        return Err(fail(
+            "VERIFIER_EXECUTABLE",
+            "is a regular file; symbolic links and other entry types are unsupported",
+        ));
+    }
+    let verifier_bytes = std::fs::read(bundle.join(verifier)).map_err(|e| fail(verifier, e.to_string()))?;
+    let verifier_sha256 = digest_of(&verifier_bytes);
+    let (verification_tool, recorded_verifier) = verification_result(bundle, verification_log, verification_seq)?;
+    if recorded_verifier != verifier_sha256 {
+        return Err(fail("VERIFIER_EXECUTABLE", "hashes to the accepted verification/result.verifier_identity"));
+    }
     let mut manifest = SourceManifest {
         schema_version: 1,
         candidate_identity: candidate_identity(base, &entries)?,
@@ -404,6 +457,9 @@ fn capture(args: &[String]) -> Result<Value, String> {
         proposal_log: proposal_log.clone(),
         verification_log: verification_log.clone(),
         verification_seq,
+        verification_tool,
+        verification_executable: verifier.clone(),
+        verification_executable_sha256: verifier_sha256,
         capture_checker_sha256: checker_digest()?,
         files: walk_files(bundle, SOURCE_MANIFEST)?,
     };

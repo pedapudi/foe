@@ -141,11 +141,15 @@ retained source bytes, Git blobs, modes, deletions, clean candidate tree, and
 rebuilt binary digest.
 
 Source evaluation runs from a separate controller checkout. The candidate
-binary and source tree are explicit inputs. The controller records its runner
-and checker paths and digests. It validates proposal-tree provenance and
-verifier authorization before provider spend. A confirmed campaign freezes
-the validated source bundle under its run directory and uses that copy for
-every later adoption check.
+binary and source tree are explicit inputs. The controller records its source
+root and committed tree identity. It separately records the trusted build root
+that contains the checker, along with runner and checker paths and digests. It
+validates proposal-tree provenance and verifier authorization before provider
+spend. Source evidence retains the generated candidate checker as a regular
+file. Its digest must equal the
+accepted result recorded by the source-audit child, whose program must declare
+that checker. A confirmed campaign freezes the validated source bundle under
+its run directory and uses that copy for every later adoption check.
 
 The adapter retains the rebuilt binary's actual `foe plan --json` report.
 The plan form resolves both configured programs and the built-in coding

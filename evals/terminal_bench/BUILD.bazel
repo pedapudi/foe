@@ -19,6 +19,8 @@ COMMON_ARGS = [
 SOURCE_CONTROLLER_ARGS = [
     "--controller-root",
     "$(rootpath //:Cargo.toml)",
+    "--controller-artifact-root",
+    "$(rootpath //crates/lineage:source-adoption)",
     "--source-checker",
     "$(rootpath //crates/lineage:source-adoption)",
     "--agent-module",
@@ -262,8 +264,9 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
-# Run this controller target from an immutable checkout. The caller supplies
-# --foe, --source-root, and --source-adoption from a separate candidate tree.
+# Run this target from an immutable controller checkout. Its source files and
+# Bazel-built checker occupy separate trusted roots. The caller supplies the
+# candidate binary, source tree, and adoption evidence.
 sh_binary(
     name = "foe-source-candidate",
     srcs = ["run.py"],
@@ -280,6 +283,27 @@ sh_binary(
         "workflow_candidate.py",
     ],
     visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "source-candidate-wrapper-test",
+    srcs = ["source_candidate_wrapper_test.py"],
+    args = [
+        "$(rootpath :foe-source-candidate)",
+        "$(rootpath //crates/lineage:source-adoption)",
+    ] + SOURCE_CONTROLLER_ARGS,
+    data = [
+        ":foe-source-candidate",
+        "//:Cargo.toml",
+        "//crates/lineage:source-adoption",
+        "//evals:score-trace",
+        "cases.json",
+        "foe_agent.py",
+        "foe_agent_support.py",
+        "source_adoption.py",
+        "trajectory_diagnostics.py",
+        "workflow_candidate.py",
+    ],
 )
 
 sh_binary(

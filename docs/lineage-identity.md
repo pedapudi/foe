@@ -135,8 +135,9 @@ The bundle contains these files:
 Source evidence exists before the descendant program identity is known. It
 therefore uses a separate content-addressed source-candidate manifest. The
 manifest retains the parent identity document, proposal episode tree,
-accepted verification coordinates, and every source entry. It also lists
-every retained regular file by path, length, and SHA-256 digest.
+accepted verification coordinates, verifier executable, and every source
+entry. It also lists every retained regular file by path, length, and
+SHA-256 digest.
 
 A source artifact manifest has this canonical form:
 
@@ -175,13 +176,26 @@ A source artifact manifest has this canonical form:
   "parent_identity_document": "parent-identity.json",
   "parent_program_identity": "sha256:…",
   "proposal_log": "episode/episode.jsonl",
-  "verification_log": "episode/episode.jsonl",
+  "verification_log": "episode/children/ep_audit/episode.jsonl",
   "verification_seq": 19,
+  "verification_tool": "check",
+  "verification_executable": "candidate-check",
+  "verification_executable_sha256": "sha256:…",
   "capture_checker_sha256": "sha256:…",
   "files": [
     {
+      "path": "candidate-check",
+      "bytes": 2401,
+      "sha256": "sha256:…"
+    },
+    {
       "path": "candidate-files/crates/code/src/read.rs",
       "bytes": 1204,
+      "sha256": "sha256:…"
+    },
+    {
+      "path": "episode/children/ep_audit/episode.jsonl",
+      "bytes": 3104,
       "sha256": "sha256:…"
     },
     {
@@ -203,6 +217,12 @@ the applied Git blob, file mode, SHA-256 digest, and retained content path.
 A deleted entry records the removed base object. The checker accepts regular
 blobs with modes `100644` and `100755`. It rejects symbolic links, trees,
 submodules, special files, and symbolic links anywhere inside the bundle.
+
+The verification executable is the exact regular file that produced the
+accepted verifier result. Its manifest digest must equal the result's
+`verifier_identity`. The verification tool and coordinates bind those bytes
+to one result in one reachable episode. A symbolic link cannot supply the
+verification executable.
 
 The candidate identity hashes the base tree and ordered source entries.
 Content, deletion, and executable-mode changes therefore produce different
@@ -495,8 +515,18 @@ identity remains variable.
 Source preflight uses the canonical proposal checker before provider spend.
 The checker requires the verification episode to descend from the retained
 proposal root through recorded spawn events. It also requires the parent
-identity document to authorize the verifier. A source candidate with an open
-verifier-authorization check cannot enter external evaluation.
+identity document to reach the child program identity. The child must declare
+the result's verifier tool. A configured child verifier is authorized only
+when the source manifest retains its exact executable bytes and binds their
+digest to that result. Every other open verifier-authorization check prevents
+external evaluation.
+
+The controller source checkout and its trusted build output are separate
+roots. The evaluation runner must resolve under the source root. The source
+checker must resolve under the build-output root. Both roots must remain
+outside the candidate source tree. The campaign record includes the committed
+controller source-tree identity, runner digest, checker digest, and the build
+root associated with that checker.
 
 ## Required implementation tests
 
@@ -524,4 +554,12 @@ accepted:
 - a retained result whose recorded source identities differ from its bundle;
 - an unrelated proposal or verifier episode rejected before provider spend;
 - replacement of the external source bundle after the campaign freezes it;
-- candidate changes to the controller's lineage and build sources.
+- candidate changes to the controller's lineage and build sources;
+- a configured verifier in the source-audit child bound to its retained
+  executable;
+- a verifier executable represented by a symbolic link or changed after
+  source evidence capture;
+- an unrelated retained verifier that attempts to close the child verifier's
+  authorization check;
+- the generated source-candidate target with its checker outside the
+  controller source root and inside the declared build-output root.

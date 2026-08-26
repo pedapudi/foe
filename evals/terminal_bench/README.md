@@ -706,7 +706,9 @@ begin with the adopted program identity.
 
 An accepted source candidate retains a `source-candidate-bundle` directory.
 Its manifest binds the parent identity, proposal verification, source objects,
-and every retained file. The result reports
+and every retained file. The bundle includes the generated candidate checker
+as a regular file. Its digest binds the accepted result in the source-audit
+child to the exact executable that produced it. The result reports
 `pending-external-evaluation` because source bytes cannot determine a Foe
 program identity.
 [`docs/lineage-identity.md`](../../docs/lineage-identity.md) "Harness
@@ -741,6 +743,13 @@ bazel run //evals/terminal_bench:foe-source-candidate -- \
   --confirm-spend
 ```
 
+The target supplies two controller roots. The source root contains the
+evaluation runner and has a recorded committed Git tree. The build-output root
+contains the Bazel-built source checker and records that checker's digest.
+Both roots remain separate from the candidate checkout. This separation lets
+the generated Bazel target use trusted outputs under `bazel-out` without
+treating candidate-controlled build products as controller evidence.
+
 The argument may also name the `source-candidate-bundle` directory. Before
 provider spend, the trusted checker validates the manifest and its regular
 files. It compares the recorded Git objects, modes, bytes, and deletions with
@@ -751,7 +760,9 @@ attestation.
 The controller rejects a source result whose recorded bundle, candidate,
 base-tree, parent-program, or capture-checker identity differs from the
 bundle. It also rejects proposal trees with unrelated verification episodes
-or unauthorized verifiers. A confirmed campaign copies the validated bundle
+or unauthorized verifiers. A source-audit child must declare the accepted
+verifier tool. Its recorded verifier identity must equal the retained
+candidate checker's digest. A confirmed campaign copies the validated bundle
 into its run directory before provider spend. Later adoption uses this frozen
 copy.
 
@@ -762,7 +773,8 @@ trusted checker requires the root episode to carry the same program identity,
 resolved program, and binary digest. It creates the child state from the actual
 identity document. The canonical ancestry checker must accept the transition.
 
-`campaign.json` records the controller runner and checker paths and digests.
+`campaign.json` records the controller source and build-output roots, the
+committed controller source tree, and the runner and checker paths and digests.
 It records the source candidate and one completed adoption per
 trial. Each adoption includes the adoption, evidence, program, state, and
 parent identities. It also records the checker digest and evaluated source

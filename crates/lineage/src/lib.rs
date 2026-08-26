@@ -33,6 +33,15 @@ pub enum LineageError {
     Io(#[from] std::io::Error),
 }
 
+/// A configured verifier whose executable bytes are retained outside the
+/// parent identity document. The caller establishes the byte digest before
+/// asking proposal validation to close the child-program authorization check.
+#[derive(Clone, Copy)]
+pub struct RetainedVerifier<'a> {
+    pub tool: &'a str,
+    pub executable_sha256: &'a str,
+}
+
 fn invalid(key: impl Into<String>, rule: impl Into<String>) -> LineageError {
     LineageError::Invalid { key: key.into(), rule: rule.into() }
 }
@@ -358,6 +367,7 @@ fn check_transition(
         &claim.verification_log,
         claim.verification_seq,
         parent_document,
+        None,
     )?);
     Ok(())
 }
@@ -373,6 +383,7 @@ pub fn check_proposal<'a>(
     verification_log: &str,
     verification_seq: u64,
     parent_document: &Value,
+    retained_verifier: Option<RetainedVerifier<'_>>,
 ) -> Result<Vec<String>, LineageError> {
     let mut logs = BTreeMap::new();
     for path in files.filter(|path| *path == "episode.jsonl" || path.ends_with("/episode.jsonl")) {
@@ -409,7 +420,7 @@ pub fn check_proposal<'a>(
     verify_provenance(proposal_log, verification_log, &logs)?;
     let start = verifier_state.start.as_ref().expect("a checked log has episode/start");
     let mut report = AncestryReport { chain: Vec::new(), unverifiable: Vec::new() };
-    check_verifier(result, start, parent_document, &mut report)?;
+    check_verifier(result, start, parent_document, retained_verifier, &mut report)?;
     Ok(report.unverifiable)
 }
 
@@ -454,14 +465,15 @@ fn verify_provenance(root: &str, log: &str, logs: &BTreeMap<String, (Vec<Event>,
 
 /// The verifier episode runs a program of the parent state's tree, and the
 /// identity the event records is the one that program declares. The
-/// identity document reduces a child program to its hash, so a configured
-/// verifier is checkable against its declared executable hash only when
-/// the verifier episode runs the parent program itself; the child case is
-/// reported open.
+/// identity document reduces a child program to its hash. A configured
+/// verifier in a child program therefore needs a retained executable
+/// binding from the evidence bundle. A child verifier without that exact
+/// binding remains an open authorization check.
 fn check_verifier(
     result: &foe_log::VerificationResult,
     start: &foe_log::EpisodeStart,
     parent_document: &Value,
+    retained: Option<RetainedVerifier<'_>>,
     report: &mut AncestryReport,
 ) -> Result<(), LineageError> {
     let parent_identity = digest_of(canonical(parent_document).as_bytes());
@@ -505,7 +517,9 @@ fn check_verifier(
                 "equals the executable hash the parent program declares",
             ));
         }
-    } else {
+    } else if !retained
+        .is_some_and(|binding| binding.tool == result.tool && binding.executable_sha256 == result.verifier_identity)
+    {
         report.unverifiable.push(format!(
             "verifier episode {}: a configured verifier of a child program; the parent identity document \
              reduces the child to its hash, so the declared executable hash is not retained",

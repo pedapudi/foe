@@ -106,6 +106,114 @@ class SourceAdoptionTest(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def write_workflow_episode(
+        self, directory, parent_identity, diagnosis_identity,
+        implementation_identity, audit_identity, verifier_sha256,
+    ):
+        programs = {
+            "ep_diagnosis": (
+                "diagnose-runtime",
+                "diagnose-foe-from-trajectory-measurements",
+                diagnosis_identity,
+            ),
+            "ep_implementation": (
+                "implement-runtime-improvement",
+                "implement-foe-improvement",
+                implementation_identity,
+            ),
+            "ep_audit": (
+                "audit-runtime-improvement",
+                "audit-and-repair-foe-improvement",
+                audit_identity,
+            ),
+        }
+        audit_program = {
+            "name": "audit-runtime-improvement",
+            "tools": ["check"],
+            "tool_defs": {
+                "check": {
+                    "exec": "/controller/candidate-check",
+                    "description": "Judge the source candidate.",
+                }
+            },
+            "done_when": {"verify": "check"},
+        }
+        root = [
+            {
+                "seq": 0, "time": 0, "type": "episode/start",
+                "data": {
+                    "id": "ep_root", "parent_id": None, "fork_origin": None,
+                    "team_id": None,
+                    "program": {
+                        "workflow": {
+                            "nodes": {
+                                "collect-trajectory-diagnostics": {"tool": "evidence"},
+                                "diagnose-runtime": {"model": {"name": "diagnosis"}},
+                                "implement-runtime-improvement": {"model": {"name": "implementation"}},
+                                "audit-runtime-improvement": {"model": {"name": "audit"}},
+                            }
+                        }
+                    },
+                    "identity": parent_identity, "task": "improve Foe",
+                    "runtime": {"version": "0.1.0", "build": "unknown"},
+                    "sandbox": {"mode": "off", "landlock_abi": 0},
+                },
+            },
+        ]
+        sequence = 1
+        for child_id, (node, _, _) in programs.items():
+            root.extend([
+                {
+                    "seq": sequence, "time": sequence, "type": "spawn/start",
+                    "data": {
+                        "child_id": child_id, "program": node,
+                        "context": "fresh", "call_id": f"tc_{child_id}",
+                    },
+                },
+                {
+                    "seq": sequence + 1, "time": sequence + 1, "type": "spawn/end",
+                    "data": {"child_id": child_id, "outcome": {"kind": "completed", "value": {}}},
+                },
+            ])
+            sequence += 2
+        root.append({
+            "seq": sequence, "time": sequence, "type": "episode/end",
+            "data": {"outcome": {"kind": "completed", "value": {}}},
+        })
+        directory.mkdir(parents=True)
+        (directory / "episode.jsonl").write_text(
+            "\n".join(json.dumps(event) for event in root) + "\n", encoding="utf-8"
+        )
+        for child_id, (_, program_name, identity) in programs.items():
+            child_program = audit_program if child_id == "ep_audit" else {"name": program_name}
+            child = [{
+                "seq": 0, "time": 0, "type": "episode/start",
+                "data": {
+                    "id": child_id, "parent_id": "ep_root", "fork_origin": None,
+                    "team_id": None, "program": child_program,
+                    "identity": identity, "task": "improve Foe",
+                    "runtime": {"version": "0.1.0", "build": "unknown"},
+                    "sandbox": {"mode": "off", "landlock_abi": 0},
+                },
+            }]
+            if child_id == "ep_audit":
+                child.append({
+                    "seq": 1, "time": 1, "type": "verification/result",
+                    "data": {
+                        "step": 1, "tool": "check", "verifier_identity": verifier_sha256,
+                        "status": "accepted", "findings": [], "duration_ms": 1,
+                    },
+                })
+            child.append({
+                "seq": len(child), "time": len(child), "type": "episode/end",
+                "data": {"outcome": {"kind": "completed", "value": {}}},
+            })
+            child_dir = directory / f"children/{child_id}"
+            child_dir.mkdir(parents=True)
+            (child_dir / "episode.jsonl").write_text(
+                "\n".join(json.dumps(event) for event in child) + "\n", encoding="utf-8"
+            )
+
     def fixture(self, root, critical_controller_files=False):
         repository = root / "repository"
         repository.mkdir()
@@ -140,6 +248,7 @@ class SourceAdoptionTest(unittest.TestCase):
         bundle = root / "bundle"
         bundle.mkdir()
         (bundle / "parent-identity.json").write_bytes(canonical(parent))
+        (bundle / "candidate-check").write_bytes(verifier)
         self.write_episode(bundle / "episode", parent_identity, verifier_sha256)
         (repository / "changed.txt").write_text("after\n", encoding="utf-8")
         (repository / "changed.txt").chmod(0o755)
@@ -157,6 +266,7 @@ class SourceAdoptionTest(unittest.TestCase):
             "episode/episode.jsonl",
             "episode/episode.jsonl",
             1,
+            "candidate-check",
         )
         self.git(repository, "add", "-A")
         self.git(repository, "commit", "-qm", "candidate")
@@ -174,6 +284,78 @@ class SourceAdoptionTest(unittest.TestCase):
                 self.checker, bundle, repository, applied, runtime
             )
         self.assertEqual(verified["checker_sha256"], sha256(self.checker.read_bytes()))
+
+    def test_workflow_child_verifier_is_closed_by_its_retained_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = root / "repository"
+            repository.mkdir()
+            self.git(repository, "init", "-q")
+            self.git(repository, "config", "user.name", "Foe Test")
+            self.git(repository, "config", "user.email", "foe@example.invalid")
+            (repository / "changed.txt").write_text("before\n", encoding="utf-8")
+            self.git(repository, "add", ".")
+            self.git(repository, "commit", "-qm", "base")
+            algorithm = self.git(repository, "rev-parse", "--show-object-format")
+            base = f"git-tree-{algorithm}:{self.git(repository, 'rev-parse', 'HEAD^{tree}')}"
+            (repository / "changed.txt").write_text("after\n", encoding="utf-8")
+            verifier = b"#!/bin/sh\nexit 0\n"
+            diagnosis_identity = sha256(canonical({"name": "diagnose-runtime"}))
+            implementation_identity = sha256(canonical({"name": "implement-runtime-improvement"}))
+            audit_identity = sha256(canonical({"name": "audit-runtime-improvement"}))
+            parent = {
+                "name": "source-improvement",
+                "workflow": {
+                    "nodes": {
+                        "collect-trajectory-diagnostics": {"tool": "evidence"},
+                        "diagnose-runtime": {"model": diagnosis_identity},
+                        "implement-runtime-improvement": {"model": implementation_identity},
+                        "audit-runtime-improvement": {"model": audit_identity},
+                    }
+                },
+            }
+            parent_identity = sha256(canonical(parent))
+            bundle = root / "bundle"
+            bundle.mkdir()
+            (bundle / "parent-identity.json").write_bytes(canonical(parent))
+            (bundle / "candidate-check").write_bytes(verifier)
+            self.write_workflow_episode(
+                bundle / "episode", parent_identity, diagnosis_identity,
+                implementation_identity, audit_identity, sha256(verifier)
+            )
+            captured = capture_source_candidate(
+                self.checker,
+                bundle,
+                repository,
+                base,
+                "parent-identity.json",
+                "episode/episode.jsonl",
+                "episode/children/ep_audit/episode.jsonl",
+                1,
+                "candidate-check",
+            )
+            self.git(repository, "add", "-A")
+            self.git(repository, "commit", "-qm", "candidate")
+            applied = f"git-tree-{algorithm}:{self.git(repository, 'rev-parse', 'HEAD^{tree}')}"
+            runtime = root / "foe"
+            runtime.write_bytes(b"rebuilt foe")
+            verified = verify_source_candidate(
+                self.checker, bundle, repository, applied, runtime
+            )
+            self.assertEqual(
+                verified["source_bundle_identity"], captured["source_bundle_identity"]
+            )
+            manifest_path = bundle / "source-candidate-manifest.json"
+            manifest_bytes = manifest_path.read_bytes()
+            manifest = json.loads(manifest_bytes)
+            manifest["verification_tool"] = "unrelated-check"
+            manifest_path.write_bytes(canonical(manifest))
+            with self.assertRaisesRegex(ValueError, "open authorization checks"):
+                verify_source_candidate(self.checker, bundle, repository, applied, runtime)
+            manifest_path.write_bytes(manifest_bytes)
+            (bundle / "candidate-check").write_bytes(b"substituted")
+            with self.assertRaisesRegex(ValueError, "source candidate checker failed"):
+                verify_source_candidate(self.checker, bundle, repository, applied, runtime)
 
     def test_preflight_binds_bytes_modes_deletions_and_evaluated_pair(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -228,12 +410,16 @@ class SourceAdoptionTest(unittest.TestCase):
                 ),
             )
             (bundle / "candidate-files/changed.txt").write_text("replacement\n", encoding="utf-8")
+            (bundle / "candidate-check").write_bytes(b"replaced checker")
             self.assertEqual(
                 verify_source_candidate(self.checker, frozen, repository, applied, runtime),
                 expected,
             )
             with self.assertRaisesRegex(ValueError, "source candidate checker failed"):
                 verify_source_candidate(self.checker, bundle, repository, applied, runtime)
+            (frozen / "candidate-check").write_bytes(b"replaced frozen checker")
+            with self.assertRaisesRegex(ValueError, "source candidate checker failed"):
+                verify_source_candidate(self.checker, frozen, repository, applied, runtime)
 
     def test_bundle_replacement_after_preflight_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -269,6 +455,8 @@ class SourceAdoptionTest(unittest.TestCase):
                     str(self.checker),
                     "--controller-root",
                     str(self.repository),
+                    "--controller-artifact-root",
+                    str(self.checker.parent),
                     "--source-adoption",
                     str(bundle),
                     "--agent-module",
@@ -310,6 +498,7 @@ class SourceAdoptionTest(unittest.TestCase):
                     "--source-root", str(repository / "changed.txt"),
                     "--source-checker", str(self.checker),
                     "--controller-root", str(self.repository),
+                    "--controller-artifact-root", str(self.checker.parent),
                     "--source-adoption", str(bundle),
                     "--agent-module", str(Path(__file__).with_name("foe_agent.py")),
                     "--trace-evaluator", "/bin/true",
@@ -346,7 +535,7 @@ class SourceAdoptionTest(unittest.TestCase):
                     parent = {"name": "parent"}
                     (bundle / "parent-identity.json").write_bytes(canonical(parent))
                     self.write_episode(bundle / "episode", sha256(canonical(parent)), sha256(b"check"))
-                    (bundle / "linked").symlink_to(bundle / "parent-identity.json")
+                    (bundle / "candidate-check").symlink_to(bundle / "parent-identity.json")
                 with self.assertRaisesRegex(ValueError, "symbolic link"):
                     capture_source_candidate(
                         self.checker,
@@ -357,6 +546,7 @@ class SourceAdoptionTest(unittest.TestCase):
                         "episode/episode.jsonl",
                         "episode/episode.jsonl",
                         1,
+                        "candidate-check",
                     )
 
     def test_malformed_manifest_and_base_tree_fail_without_python_traceback(self):
@@ -394,6 +584,7 @@ class SourceAdoptionTest(unittest.TestCase):
                     "episode/episode.jsonl",
                     "episode/episode.jsonl",
                     1,
+                    "candidate-check",
                 )
 
     def test_external_evaluation_completes_lineage_from_actual_plan_and_episode(self):

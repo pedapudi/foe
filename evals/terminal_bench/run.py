@@ -538,6 +538,26 @@ def source_tree(path: Path) -> str:
     return f"git-tree-{object_format}:{tree}"
 
 
+def committed_source_tree(path: Path) -> str:
+    """Return the committed Git tree containing an immutable controller root."""
+
+    def git(*arguments: str) -> str:
+        result = subprocess.run(
+            ["/usr/bin/git", "-C", str(path), *arguments],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+            raise ValueError(f"cannot identify controller source: git {' '.join(arguments)}: {detail}")
+        return result.stdout.strip()
+
+    object_format = git("rev-parse", "--show-object-format")
+    tree = git("rev-parse", "HEAD^{tree}")
+    return f"git-tree-{object_format}:{tree}"
+
+
 def initialize_credential_state(source: Path, state: Path) -> None:
     contents = source.read_bytes()
     value = json.loads(contents)
@@ -1061,6 +1081,11 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         help="immutable controller checkout; required with --source-adoption",
     )
+    answer.add_argument(
+        "--controller-artifact-root",
+        type=Path,
+        help="trusted controller build output; required with --source-adoption",
+    )
     answer.add_argument("--agent-module", type=Path, required=True)
     answer.add_argument("--trace-evaluator", type=Path, required=True)
     answer.add_argument("--cases", type=Path, required=True)
@@ -1238,6 +1263,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--source-adoption requires --source-checker")
         if args.source_adoption is not None and args.controller_root is None:
             raise ValueError("--source-adoption requires --controller-root")
+        if args.source_adoption is not None and args.controller_artifact_root is None:
+            raise ValueError("--source-adoption requires --controller-artifact-root")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
         source_checker = (
@@ -1252,6 +1279,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         if controller_root is not None and controller_root.is_file():
             controller_root = controller_root.parent
+        controller_artifact_root = (
+            args.controller_artifact_root.resolve(strict=True)
+            if args.controller_artifact_root is not None
+            else None
+        )
+        if controller_artifact_root is not None and controller_artifact_root.is_file():
+            controller_artifact_root = controller_artifact_root.parent
         agent_module = args.agent_module.resolve(strict=True)
         trace_evaluator = args.trace_evaluator.resolve(strict=True)
         completion_checker = (
@@ -1265,18 +1299,21 @@ def main(argv: list[str] | None = None) -> int:
         candidate_repository = source_root if source_root.is_dir() else source_root.parent
         if args.source_adoption is not None:
             assert controller_root is not None
+            assert controller_artifact_root is not None
             assert source_checker is not None
             runner_path = Path(__file__).resolve(strict=True)
-            if candidate_repository.is_relative_to(
-                controller_root
-            ) or controller_root.is_relative_to(candidate_repository):
-                raise ValueError(
-                    "--source-adoption requires a controller checkout separate "
-                    "from the candidate source"
-                )
-            for name, path in (("runner", runner_path), ("source checker", source_checker)):
-                if not path.is_relative_to(controller_root):
-                    raise ValueError(f"controller {name} is outside --controller-root")
+            for name, root in (
+                ("source checkout", controller_root),
+                ("build output", controller_artifact_root),
+            ):
+                if candidate_repository.is_relative_to(root) or root.is_relative_to(candidate_repository):
+                    raise ValueError(
+                        f"--source-adoption requires the controller {name} separate from the candidate source"
+                    )
+            if not runner_path.is_relative_to(controller_root):
+                raise ValueError("controller runner is outside --controller-root")
+            if not source_checker.is_relative_to(controller_artifact_root):
+                raise ValueError("controller source checker is outside --controller-artifact-root")
         jobs_dir = (
             (workspace / args.jobs_dir).resolve()
             if not args.jobs_dir.is_absolute()
@@ -1302,6 +1339,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.source_adoption is not None
             else None
         )
+        controller_source_identity = (
+            committed_source_tree(controller_root)
+            if source_adoption_path is not None
+            else None
+        )
         evaluated_source = None
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
@@ -1310,7 +1352,14 @@ def main(argv: list[str] | None = None) -> int:
     runtime_digest = digest(foe)
     controller = (
         {
-            "root": str(controller_root),
+            "source_root": {
+                "path": str(controller_root),
+                "source_tree": controller_source_identity,
+            },
+            "artifact_root": {
+                "path": str(controller_artifact_root),
+                "source_checker_sha256": digest(source_checker),
+            },
             "runner": {
                 "path": str(Path(__file__).resolve()),
                 "sha256": digest(Path(__file__).resolve()),

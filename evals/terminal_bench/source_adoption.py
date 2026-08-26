@@ -158,6 +158,7 @@ def capture_source_candidate(
     proposal_log: str,
     verification_log: str,
     verification_seq: int,
+    verifier_executable: str,
 ) -> dict[str, Any]:
     return checked_output(
         checker,
@@ -170,6 +171,7 @@ def capture_source_candidate(
             proposal_log,
             verification_log,
             str(verification_seq),
+            verifier_executable,
         ],
         CAPTURE_FIELDS,
     )
