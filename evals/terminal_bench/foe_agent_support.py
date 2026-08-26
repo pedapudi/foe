@@ -163,26 +163,54 @@ def builtin_workflow_arguments(
     return tuple(arguments)
 
 
-def builtin_workflow_plan_arguments(
-    instruction: str,
-    model_name: str,
-    credential_path: str,
-    completion_checker: str | None,
-    episode_directory: str,
-    service_tier: str,
-    binary: str = "/usr/local/bin/foe",
-) -> tuple[str, ...]:
-    """Resolve the same built-in program without starting an episode."""
-    run = builtin_workflow_arguments(
-        instruction,
-        model_name,
-        credential_path,
-        completion_checker,
-        episode_directory,
-        service_tier,
-        binary,
-    )
-    return (run[0], "plan", *run[1:-3], "--json")
+def program_document_from_episode_start(
+    episode: Path,
+    task: str,
+) -> tuple[dict[str, Any], str]:
+    """Rebuild a plan input from the resolved program that a root recorded."""
+    try:
+        with episode.open(encoding="utf-8") as stream:
+            first = json.loads(stream.readline())
+    except json.JSONDecodeError as error:
+        raise ValueError(f"root episode start is not valid JSON: {episode}") from error
+    data = first.get("data") if isinstance(first, dict) else None
+    if (
+        not isinstance(first, dict)
+        or first.get("seq") != 0
+        or first.get("type") != "episode/start"
+        or not isinstance(data, dict)
+    ):
+        raise ValueError("root episode must begin with episode/start at sequence zero")
+    if data.get("task") != task:
+        raise ValueError("root episode task differs from the controller instruction")
+    program = data.get("program")
+    if not isinstance(program, dict) or "task" in program or "version" in program:
+        raise ValueError("root episode program must omit task and format version")
+    identity = data.get("identity")
+    encoded_identity = identity.removeprefix("sha256:") if isinstance(identity, str) else ""
+    if (
+        not isinstance(identity, str)
+        or len(encoded_identity) != 64
+        or any(character not in "0123456789abcdef" for character in encoded_identity)
+    ):
+        raise ValueError("root episode program identity is invalid")
+    return {"version": 3, "task": task, **program}, identity
+
+
+def normalized_episode_plan(
+    plan: dict[str, Any],
+    task: str,
+    program: dict[str, Any],
+    identity: str,
+) -> dict[str, Any]:
+    """Require a reconstructed plan to describe the recorded root program."""
+    plan = normalized_plan(plan, task)
+    expected_program = {key: value for key, value in program.items() if key not in ("version", "task")}
+    if plan.get("program") != expected_program:
+        raise ValueError("reconstructed plan program differs from the root episode start")
+    if plan.get("identity") != identity:
+        raise ValueError("reconstructed plan identity differs from the root episode start")
+    return plan
 
 
 def missing_episode_diagnostic(

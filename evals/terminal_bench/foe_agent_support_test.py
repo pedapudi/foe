@@ -9,7 +9,6 @@ from pathlib import Path
 from foe_agent_support import (
     FIXED_EXECUTABLE_PATHS,
     builtin_workflow_arguments,
-    builtin_workflow_plan_arguments,
     build_program,
     credential_values,
     describe_container_environment,
@@ -18,7 +17,9 @@ from foe_agent_support import (
     missing_builtin_workflow_options,
     missing_episode_diagnostic,
     normalized_plan,
+    normalized_episode_plan,
     parse_boolean,
+    program_document_from_episode_start,
     read_episode_summary,
     replace_json,
     retained_artifacts_contain_credential,
@@ -95,16 +96,92 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(arguments[0:2], ("/usr/local/bin/foe", "repair it"))
         self.assertEqual(arguments[-2:], ("--log-dir", "/logs/episode"))
 
-    def test_builtin_workflow_plan_uses_the_run_configuration(self):
-        run = builtin_workflow_arguments(
-            "repair it", "openai-codex/gpt-5.6-sol", "/tmp/private.json",
-            "/tmp/check", "/logs/episode", "priority",
+    def test_builtin_workflow_plan_is_reconstructed_from_the_root_start(self):
+        with tempfile.TemporaryDirectory() as directory:
+            episode = Path(directory) / "episode.jsonl"
+            program = {"name": "coding", "budget": {"model_calls": 120}}
+            episode.write_text(
+                json.dumps(
+                    {
+                        "seq": 0,
+                        "type": "episode/start",
+                        "data": {
+                            "task": "repair it",
+                            "program": program,
+                            "identity": "sha256:" + "1" * 64,
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            document, identity = program_document_from_episode_start(
+                episode, "repair it"
+            )
+        self.assertEqual(
+            document,
+            {"version": 3, "task": "repair it", **program},
         )
-        plan = builtin_workflow_plan_arguments(
-            "repair it", "openai-codex/gpt-5.6-sol", "/tmp/private.json",
-            "/tmp/check", "/logs/episode", "priority",
+        planned = normalized_episode_plan(
+            {
+                "program": program,
+                "identity": identity,
+            },
+            "repair it",
+            document,
+            identity,
         )
-        self.assertEqual(plan, (run[0], "plan", *run[1:-3], "--json"))
+        self.assertEqual(planned["task"], "repair it")
+
+    def test_builtin_workflow_reconstruction_rejects_a_different_plan(self):
+        with self.assertRaisesRegex(ValueError, "program differs"):
+            normalized_episode_plan(
+                {"program": {"name": "other"}, "identity": "sha256:" + "1" * 64},
+                "repair it",
+                {"version": 3, "task": "repair it", "name": "coding"},
+                "sha256:" + "1" * 64,
+            )
+        with self.assertRaisesRegex(ValueError, "identity differs"):
+            normalized_episode_plan(
+                {"program": {"name": "coding"}, "identity": "sha256:" + "2" * 64},
+                "repair it",
+                {"version": 3, "task": "repair it", "name": "coding"},
+                "sha256:" + "1" * 64,
+            )
+
+    def test_builtin_workflow_reconstruction_rejects_an_invalid_root_start(self):
+        valid = {
+            "seq": 0,
+            "type": "episode/start",
+            "data": {
+                "task": "repair it",
+                "program": {"name": "coding"},
+                "identity": "sha256:" + "1" * 64,
+            },
+        }
+        cases = (
+            ({**valid, "seq": 1}, "sequence zero"),
+            ({**valid, "type": "tool/result"}, "sequence zero"),
+            ({**valid, "data": {**valid["data"], "task": "other"}}, "task differs"),
+            (
+                {
+                    **valid,
+                    "data": {
+                        **valid["data"],
+                        "program": {"version": 3, "name": "coding"},
+                    },
+                },
+                "omit task and format version",
+            ),
+            ({**valid, "data": {**valid["data"], "identity": "sha256:BAD"}}, "identity is invalid"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            episode = Path(directory) / "episode.jsonl"
+            for event, message in cases:
+                episode.write_text(json.dumps(event) + "\n", encoding="utf-8")
+                with self.subTest(message=message):
+                    with self.assertRaisesRegex(ValueError, message):
+                        program_document_from_episode_start(episode, "repair it")
 
     def test_builtin_workflow_arguments_survive_shell_quoting(self):
         instruction = "line one\n'$(touch /tmp/forbidden)' \"$HOME\""

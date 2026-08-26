@@ -280,19 +280,20 @@ version, and digest, protected build-graph digest, complete build-log digest,
 source-tree identity, and output digest. Evaluation and adoption use only the
 retained output.
 
-The adapter retains the rebuilt binary's actual `foe plan --json` report.
-The plan form resolves both configured programs and the built-in coding
-workflow without starting an episode. The retained report carries the exact
-task in a top-level field while its resolved program remains taskless. A
-controller supplies that field for a binary built before the field existed.
-After the episode, the trusted checker requires the root log to carry that
-planned program, task, and rebuilt binary digest. It then constructs and verifies
-lineage from the actual program identity. The portable adoption record retains
-the runtime-effective workflow child identities and configured verifier that
-source capture authenticated. `campaign.json` records the source
-candidate, completed adoptions, checker digests, and evaluated source and
-binary pair. Adoption failure sets `direct_implementation_required`,
-invalidates the task record, and makes the campaign exit unsuccessfully.
+The adapter retains the rebuilt binary's actual `foe plan --json` report. For
+a configured program, it creates the report before the episode starts. For
+the built-in coding workflow, it reconstructs a program document from the
+root `episode/start` and plans that document after the episode. The verifier
+and credential paths remain present until reconstruction ends. The adapter
+requires the plan to equal the recorded program, task, and identity. The
+trusted checker also requires the root log to carry the rebuilt binary digest.
+It then constructs and verifies lineage from the actual program identity. The
+portable adoption record retains the runtime-effective workflow child
+identities and configured verifier that source capture authenticated.
+`campaign.json` records the source candidate, completed adoptions, checker
+digests, and evaluated source and binary pair. Adoption failure sets
+`direct_implementation_required`, invalidates the task record, and makes the
+campaign exit unsuccessfully.
 
 The source-improvement controller writes Foe's conventional credential path
 into every model block before planning or execution. Transport construction

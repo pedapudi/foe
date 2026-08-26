@@ -18,7 +18,6 @@ from harbor.models.agent.context import AgentContext
 
 from foe_agent_support import (
     builtin_workflow_arguments,
-    builtin_workflow_plan_arguments,
     build_program,
     credential_values,
     describe_container_environment,
@@ -26,7 +25,9 @@ from foe_agent_support import (
     missing_builtin_workflow_options,
     missing_episode_diagnostic,
     normalized_plan,
+    normalized_episode_plan,
     parse_boolean,
+    program_document_from_episode_start,
     read_episode_summary,
     replace_json,
     retained_artifacts_contain_credential,
@@ -278,21 +279,10 @@ class FoeAgent(BaseInstalledAgent):
         stderr = (logs / "foe.stderr").as_posix()
         exit_code = (logs / "foe-exit-code").as_posix()
         plan_output = (logs / "foe-plan.json").as_posix()
+        plan_stderr = (logs / "foe-plan.stderr").as_posix()
+        plan_exit_code = (logs / "foe-plan-exit-code").as_posix()
         if self._built_in_workflow:
             invocation = builtin_workflow_arguments(
-                instruction,
-                self.model_name,
-                self._remote_credential,
-                (
-                    REMOTE_COMPLETION_CHECKER
-                    if self._completion_checker is not None
-                    else None
-                ),
-                episode,
-                self._service_tier,
-                REMOTE_BINARY,
-            )
-            plan_invocation = builtin_workflow_plan_arguments(
                 instruction,
                 self.model_name,
                 self._remote_credential,
@@ -371,41 +361,74 @@ class FoeAgent(BaseInstalledAgent):
         )
         try:
             if self._built_in_workflow:
-                plan_result = await self.exec_as_agent(
+                result = await self.exec_as_agent(
                     environment,
-                    command=f"{shlex.join(plan_invocation)} > {shlex.quote(plan_output)}",
+                    command=command,
                     cwd=environment.task_env_config.workdir,
                 )
-                if plan_result.return_code != 0:
-                    raise RuntimeError(
-                        "installed Foe could not resolve the retained built-in evaluation program: "
-                        f"status {plan_result.return_code}"
-                    )
-            else:
-                plan_result = await self.exec_as_agent(
-                    environment,
-                    command=(
-                        f"{shlex.quote(REMOTE_BINARY)} plan "
-                        f"--config {shlex.quote(REMOTE_PROGRAM)} --json "
-                        f"> {shlex.quote(plan_output)}"
-                    ),
-                    cwd=environment.task_env_config.workdir,
+                status_line = (result.stdout or "").strip().splitlines()
+                self._exit_code = int(status_line[-1]) if status_line else None
+                if diagnostic := missing_episode_diagnostic(
+                    self.logs_dir,
+                    self._exit_code,
+                    self._credential_values,
+                ):
+                    raise RuntimeError(diagnostic)
+                local_program = self.logs_dir / "foe-program.json"
+                program, identity = program_document_from_episode_start(
+                    self.logs_dir / "foe-episode" / "episode.jsonl",
+                    instruction,
                 )
-                if plan_result.return_code != 0:
-                    raise RuntimeError(
-                        "installed Foe could not resolve the retained evaluation program: "
-                        f"status {plan_result.return_code}"
-                    )
-            retained_plan = self.logs_dir / "foe-plan.json"
-            plan = normalized_plan(json.loads(retained_plan.read_text(encoding="utf-8")), instruction)
-            replace_json(retained_plan, plan)
-            result = await self.exec_as_agent(
+                local_program.write_text(
+                    json.dumps(program, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                await environment.upload_file(local_program, REMOTE_PROGRAM)
+            plan_result = await self.exec_as_agent(
                 environment,
-                command=command,
+                command=(
+                    "set +e; "
+                    f"{shlex.quote(REMOTE_BINARY)} plan "
+                    f"--config {shlex.quote(REMOTE_PROGRAM)} --json "
+                    f"> {shlex.quote(plan_output)} 2> {shlex.quote(plan_stderr)}; "
+                    "plan_status=$?; "
+                    f"printf '%s\\n' \"$plan_status\" > {shlex.quote(plan_exit_code)}; "
+                    "printf '%s\\n' \"$plan_status\""
+                ),
                 cwd=environment.task_env_config.workdir,
             )
-            status_line = (result.stdout or "").strip().splitlines()
-            self._exit_code = int(status_line[-1]) if status_line else None
+            status_line = (plan_result.stdout or "").strip().splitlines()
+            plan_status = int(status_line[-1]) if status_line else None
+            if plan_status != 0:
+                retained_error = self.logs_dir / "foe-plan.stderr"
+                detail = (
+                    retained_error.read_text(encoding="utf-8", errors="replace").strip()
+                    if retained_error.is_file()
+                    else "standard error was not retained"
+                )
+                for value in self._credential_values:
+                    detail = detail.replace(value, "[credential redacted]")
+                action = "reconstruct" if self._built_in_workflow else "resolve"
+                raise RuntimeError(
+                    f"installed Foe could not {action} the retained evaluation program: "
+                    f"status {plan_status}: {detail}"
+                )
+            retained_plan = self.logs_dir / "foe-plan.json"
+            raw_plan = json.loads(retained_plan.read_text(encoding="utf-8"))
+            plan = (
+                normalized_episode_plan(raw_plan, instruction, program, identity)
+                if self._built_in_workflow
+                else normalized_plan(raw_plan, instruction)
+            )
+            replace_json(retained_plan, plan)
+            if not self._built_in_workflow:
+                result = await self.exec_as_agent(
+                    environment,
+                    command=command,
+                    cwd=environment.task_env_config.workdir,
+                )
+                status_line = (result.stdout or "").strip().splitlines()
+                self._exit_code = int(status_line[-1]) if status_line else None
         finally:
             try:
                 if self._completion_checker is not None:

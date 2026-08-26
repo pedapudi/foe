@@ -880,15 +880,15 @@ the retained candidate checker's digest. A confirmed campaign copies the
 validated bundle into its run directory before provider spend. Later adoption
 uses this frozen copy.
 
-The adapter retains the rebuilt binary's `foe plan --json` output before the
-first provider request. `foe plan TASK --json` resolves the built-in workflow
-with the same task and options as the running form. The adapter requires a
-reported top-level task to equal the exact task instruction. It adds that
-field to output from an older binary while leaving `program` taskless. After
-the trial, the trusted checker requires the root episode to carry the same
-program identity, resolved program, task, and binary digest. It creates the
-child state from the actual identity document. The canonical ancestry checker
-must accept the transition.
+The running form is the only command that materializes the built-in workflow.
+After that command ends, the adapter reads the resolved program and task from
+the root `episode/start`. It adds the program format version, runs the same
+installed binary with `foe plan --config`, and retains the resulting JSON
+report. The verifier and credential paths remain present until planning ends.
+The adapter requires the reconstructed plan to equal the recorded program,
+task, and identity. The trusted checker also requires the root episode to
+carry the rebuilt binary digest. It creates the child state from the checked
+identity document. The canonical ancestry checker must accept the transition.
 
 `campaign.json` records the controller source and build-output roots, the
 committed controller source tree, and the runner and checker paths and digests.
@@ -928,10 +928,12 @@ manifest. A task whose Harbor process started retains that status even when its
 result is incomplete. Tasks whose processes did not start receive an explicit
 `not_started` record. The runner exits unsuccessfully.
 
-The adapter runs `foe plan` against the task-specific program inside the task
+For an adapter-generated program, the adapter runs `foe plan` inside the task
 container before its first provider request. An invalid program is a setup
-error with zero model spend. It is excluded from task accuracy and must be
-replaced before a repeated result is complete.
+error with zero model spend. For the built-in workflow, the adapter performs
+the post-run reconstruction described above because no standalone command
+materializes that workflow. Either planning failure invalidates the task
+record and must be corrected before a repeated result is complete.
 
 The Harbor trial's `agent/foe-episode/` directory is the complete native Foe
 episode tree. It contains `episode.jsonl`, child episodes, spill values, and

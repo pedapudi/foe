@@ -568,15 +568,16 @@ campaign records the checker it actually invokes, copies the validated bundle
 into its run directory before provider spend, and uses only that copy during
 adoption.
 
-The adapter retains `foe plan --json` immediately before the first provider
-request. For the built-in workflow it supplies the same task, model,
-credential, verifier, service tier, and sandbox mode to the plan and run
-forms. A controller normalizes older output by adding the exact task as the
-top-level `task` field. The `program` field remains taskless. After the
-episode, the trusted checker recomputes the reported program
-identity. It requires the root `episode/start` to carry the planned program,
-permitted transport resolution, task, and identity. It also requires the
-runtime build digest to equal the evaluated binary digest.
+For a configured program, the adapter retains `foe plan --json` immediately
+before the first provider request. The running form is the only command that
+materializes the built-in workflow. After a built-in run, the adapter reads
+the resolved program and task from the root `episode/start`. It adds the
+program format version and runs the same installed binary with `foe plan
+--config` while the configured verifier and credential paths remain present.
+The adapter requires this reconstructed plan to equal the recorded program,
+task, and identity. The trusted checker recomputes the reported program
+identity and requires the runtime build digest to equal the evaluated binary
+digest.
 
 The checker then creates the child state from the actual plan identity
 document. It places the exact source manifest in the lineage evidence bundle
