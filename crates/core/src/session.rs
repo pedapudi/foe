@@ -62,6 +62,10 @@ impl Output {
         }
         let available = end - *offset;
         let kept = available.min(CAPTURE_LIMIT as u64);
+        let start = end - kept;
+        if file.seek(SeekFrom::Start(start)).is_err() {
+            return Vec::new();
+        }
         let mut out = Vec::with_capacity(kept as usize);
         if file.take(kept).read_to_end(&mut out).is_err() {
             return Vec::new();

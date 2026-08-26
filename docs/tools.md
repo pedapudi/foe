@@ -359,8 +359,8 @@ ended it, and `seconds` measures the group lifetime. The rendering opens with
 the status line and then shows the tail of the new output under the
 collection-and-spill rule of `bash`:
 the last 2,000 lines or 51,200 characters, the whole text saved to
-`CALL_ID-session.txt` under `spill/` when a cut happens. Each poll reads at
-most 1 MiB of new bytes from each stream's per-session file. A notice names
+`CALL_ID-session.txt` under `spill/` when a cut happens. Each poll reads the
+newest 1 MiB of new bytes from each stream's per-session file. A notice names
 that file when more new output was available. The file retains the complete
 stream.
 

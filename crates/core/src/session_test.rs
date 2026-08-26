@@ -55,6 +55,22 @@ fn a_session_outlives_calls_and_polls_return_only_new_output() {
     assert_eq!(subject(&status), format!("session 1: exit 7 after {}s", status.seconds));
 }
 
+/// docs/tools.md `session`: when more than the poll bound arrived, the poll
+/// returns the newest bounded bytes and the evidence file retains the stream.
+#[test]
+fn a_poll_of_large_output_keeps_the_newest_bytes() {
+    let dir = scratch("session", "bounded-output");
+    let path = dir.join("stream.stdout");
+    let mut bytes = vec![b'a'; crate::exec::CAPTURE_LIMIT];
+    bytes.extend_from_slice(b"newest");
+    std::fs::write(&path, &bytes).unwrap();
+    let output = Output { path: path.clone(), offset: Mutex::new(0) };
+
+    let taken = String::from_utf8(output.take()).unwrap();
+    assert!(taken.contains("newest\n[output beyond"), "the bounded poll includes the newest bytes: {taken:?}");
+    assert_eq!(std::fs::read(path).unwrap(), bytes, "the evidence file remains complete");
+}
+
 /// docs/tools.md "session": a session may bind a TCP port the policy's
 /// `bind_tcp` lists — filled from `grants.bind` — and the bound listener
 /// answers across calls while the session stays alive. The sandbox tests
