@@ -1964,3 +1964,70 @@ A local command-surface diagnosis also invoked `foe schema` with an explicit
 model. It was terminated at workflow startup before any model request. Its
 six-event account is retained at
 `target/terminal-bench-preflight/accidental-schema-task-20260826`.
+
+## Assessed two-worker qualification
+
+Four already-open development tasks ran under one frozen Foe release on
+2026-08-26. The tasks were `cancel-async-tasks`, `fix-git`,
+`sqlite-db-truncate`, and `large-scale-text-editing`. Each task earned the
+task-owned score `1.0` in the serial cohort and in both two-worker cohorts.
+
+Every cohort used source tree
+`git-tree-sha1:8c5e2b72580507cc49881ed11d83209bc0c26c0e` and portable
+binary
+`sha256:ff7d062a57acf865e22d7781fb7e9c05ac95863e5a255fc3145d4479e0eebb59`.
+The source-tree digest is the Git tree at commit `9a42f32`. The built-in
+workflow gave implementation to GPT-5.6 Sol with low reasoning. Its terminal
+audit used GPT-5.6 Sol with high reasoning. Every model stage requested the
+`priority` service tier. Token allowances were disabled, and provider usage
+remained a measurement.
+
+| Cohort | Workers | Execution-group seconds | Batch makespan | Reduction from serial | Input tokens | Cached-input tokens | Output tokens | Estimated cost |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Serial reference | 1 | 207.755, 212.915, 171.366, 225.444 | 817.481 s | reference | 294,037 | 51,200 | 27,703 | $1.545888 |
+| First parallel cohort | 2 | 206.173, 350.816 | 556.989 s | 31.865% | 470,014 | 177,664 | 29,297 | $1.826406 |
+| Parallel confirmation | 2 | 290.894, 244.415 | 535.309 s | 34.517% | 253,390 | 43,520 | 29,681 | $1.450508 |
+
+The required parallel makespan was at most 544.987 seconds, which is two
+thirds of the 817.481-second serial reference. The first parallel cohort
+missed this threshold by 12.002 seconds. Its
+`large-scale-text-editing` trajectory took longer than the corresponding
+serial trajectory, while every score and integrity check remained valid.
+
+The parallel confirmation cleared the threshold by 9.678 seconds. Its
+535.309-second makespan was 65.483 percent of the serial reference, a 34.517
+percent reduction. This confirmation qualifies two-worker assessed execution
+under the campaign rule. The preceding near miss remains evidence that model
+trajectory duration can move a four-task batch across the one-third boundary.
+
+Every job recorded a valid built-in-workflow configuration, a completed trial,
+a conformant Foe trace, and zero trace violations. Every infrastructure-failure
+list and incomplete-resource-measurement list was empty. Host memory pressure
+was zero at every execution-group boundary. The swap-out page counter remained
+unchanged during every group.
+
+The credential scanner found no provider credential in any retained artifact.
+Each parallel worker used a separate access-only credential. Every access-only
+credential retained its pre-run digest. The serial reference used the
+authoritative renewable credential, whose contents can change during a
+refresh; its retained artifacts also passed the exposure scan.
+
+The retained campaign manifests are:
+
+- serial reference:
+  `target/terminal-bench-jobs/qualification-built-in-assessed-serial-20260826T083539Z/campaign.json`,
+  SHA-256
+  `96a06ed8e72bf00f175c7900960141543952b13a67413750982bcd295a60baab`;
+- first parallel cohort:
+  `target/terminal-bench-jobs/qualification-built-in-assessed-parallel-20260826T084930Z/campaign.json`,
+  SHA-256
+  `b977800b21ac5e64f50bb88fccc3b3068d5b0089e1b2136a079ecadb64d1982f`;
+- parallel confirmation:
+  `target/terminal-bench-jobs/qualification-built-in-assessed-parallel-confirmation-20260826T085935Z/campaign.json`,
+  SHA-256
+  `f003a14a471de46b922f9cc0d5939968bca2f946edefea8c6fd69c1a7923eb7b`.
+
+The job directories beside each manifest retain the task-owned verifier
+result, Foe episode tree, conformance report, invocation, diagnostics, and
+credential-integrity fields. Raw jobs and temporary credentials remain
+outside Git.
