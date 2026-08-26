@@ -291,6 +291,9 @@ A field that answers no question is not emitted. This table is the gate.
 | `foe.outcome.detail` | what a blocked or failed episode said about why |
 | `foe.completion.provenance` | how a completed episode's completion was established: `verifier`, `reviewed`, or `model-report`; absent for any other outcome |
 | `foe.verification.runs`, `foe.verification.findings` | how often authoritative verification ran in the episode, and how many findings it returned in all |
+| `foe.workflow.recovery.interventions` | how many model-selected recovery actions the workflow applied |
+| `foe.workflow.recovery.actions` | counts by the applied `retry`, `amend`, `skip`, or `abort` action; an unrecognized value is `unknown` |
+| `foe.workflow.empty_substitutions` | optional model children whose blocked or exhausted outcome contributed the declared `empty` value |
 | `foe.model.provider`, `foe.model.model` | does outcome or cost differ by route |
 | `foe.category`, `foe.category.top_level` | failure rate and cost distribution by kind of work |
 | `foe.category.counts` | which categories an episode belongs to at once, and how strongly, since one episode can be both testing and infrastructure |
@@ -340,6 +343,25 @@ one place it is implemented.
 A workflow that completes through a branch label with no successors
 flags no terminal node; the last errorless `workflow/node-end` then
 stands in as the completing firing.
+
+### Workflow correction evidence
+
+Workflow correction fields are derived after the episode ends. The
+runtime records the decisions and outcomes it already applies. Telemetry
+counts those typed events without adding an event or a running-episode
+instrumentation hook.
+
+A `workflow/recovery` event contributes one intervention and action. A
+collector combines these fields with `foe.outcome.kind` to compare
+completion rates. Such a comparison records association rather than
+causation. Recovery causes remain in the local log because their string
+field is outside telemetry's closed emission vocabulary.
+
+An optional model child can contribute its declared `empty` value after
+ending blocked or exhausted. Its `workflow/node-start` names the child
+episode. A blocked or exhausted `spawn/end` for that child, followed by a
+non-null `workflow/node-end` for the same firing, is an empty substitution.
+This derivation uses typed links and outcomes rather than error text.
 
 ## Reading the capture
 

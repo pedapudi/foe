@@ -5,7 +5,7 @@
 //! field here is the decision to consider emitting it.
 
 use foe_log::{Event, EventData, Outcome, StopReason, Usage, VerificationStatus, WorkflowNodeEnd};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// One model call and the response that closed it.
 pub struct Step {
@@ -45,6 +45,14 @@ pub struct KnownValue {
     pub value: String,
 }
 
+/// Workflow correction signals derived from typed events.
+#[derive(Default)]
+pub struct RecoveryFacts {
+    pub interventions: u64,
+    pub actions: BTreeMap<String, u64>,
+    pub empty_substitutions: u64,
+}
+
 /// Everything telemetry knows about one episode.
 #[derive(Default)]
 pub struct Facts {
@@ -69,6 +77,7 @@ pub struct Facts {
     /// How a completed episode's completion was established; `None` for an
     /// episode that did not complete. See [`completion_provenance`].
     pub provenance: Option<&'static str>,
+    pub recovery: RecoveryFacts,
 }
 
 /// A known value shorter than this is not substituted: a one- or two-
@@ -89,6 +98,8 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
     push_known(&mut facts.known, 'p', log_dir);
     let mut open: BTreeMap<String, usize> = BTreeMap::new();
     let mut program = serde_json::Value::Null;
+    let mut child_by_firing = BTreeMap::new();
+    let mut partial_children = BTreeSet::new();
     for event in events {
         match &event.data {
             EventData::EpisodeStart(start) => {
@@ -134,7 +145,31 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
                 subject: result.subject.clone().unwrap_or_default(),
             }),
             EventData::SpawnStart { .. } => facts.evidence.spawns += 1,
-            EventData::WorkflowNodeStart(_) => facts.evidence.workflow_nodes += 1,
+            EventData::SpawnEnd { child_id, outcome: Outcome::Blocked { .. } | Outcome::Exhausted { .. } } => {
+                partial_children.insert(child_id.clone());
+            }
+            EventData::WorkflowNodeStart(start) => {
+                facts.evidence.workflow_nodes += 1;
+                if let Some(child) = &start.child_id {
+                    child_by_firing.insert((start.node.clone(), start.fire), child.clone());
+                }
+            }
+            EventData::WorkflowNodeEnd(end)
+                if !end.value.is_null()
+                    && child_by_firing
+                        .get(&(end.node.clone(), end.fire))
+                        .is_some_and(|child| partial_children.contains(child)) =>
+            {
+                facts.recovery.empty_substitutions += 1;
+            }
+            EventData::WorkflowRecovery(recovery) => {
+                facts.recovery.interventions += 1;
+                let action = match recovery.action.as_str() {
+                    "retry" | "amend" | "skip" | "abort" => recovery.action.as_str(),
+                    _ => "unknown",
+                };
+                *facts.recovery.actions.entry(action.into()).or_default() += 1;
+            }
             EventData::VerificationResult(v) => {
                 facts.verification_runs += 1;
                 facts.verification_findings += v.findings.len() as u64;

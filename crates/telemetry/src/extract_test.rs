@@ -1,7 +1,7 @@
 use super::*;
 use foe_log::{
     AssistantMessage, EpisodeStart, ModelRoute, Outcome, RequestHeader, RuntimeInfo, SandboxInfo, StopReason, ToolCall,
-    ToolResult, Usage,
+    ToolResult, Usage, WorkflowNodeEnd, WorkflowNodeStart, WorkflowRecovery,
 };
 
 fn event(seq: u64, time: i64, data: EventData) -> Event {
@@ -176,6 +176,97 @@ fn steps_and_calls_carry_their_own_times_and_usage() {
     assert_eq!((facts.calls[0].start_ms, facts.calls[0].end_ms), (1060, 1100));
     assert!(facts.calls[0].is_error);
     assert_eq!(outcome_terms(facts.outcome.as_ref()), ("failed", "none".into(), "no".into()));
+}
+
+#[test]
+fn workflow_correction_evidence_is_derived_from_typed_events() {
+    let events = vec![
+        event(0, 1000, start(serde_json::json!({}))),
+        event(
+            1,
+            1010,
+            EventData::WorkflowRecovery(WorkflowRecovery {
+                node: "repair".into(),
+                fire: 1,
+                cause: "verify-findings".into(),
+                action: "retry".into(),
+                target: Some("repair".into()),
+                note: None,
+                intervention: 1,
+            }),
+        ),
+        event(
+            2,
+            1020,
+            EventData::ModelRequest(foe_log::ModelRequest {
+                step: 2,
+                attempt: 1,
+                request_id: "rq_2".into(),
+                header_seq: 0,
+                consumed: Vec::new(),
+                messages: Vec::new(),
+                max_output_tokens: None,
+            }),
+        ),
+        event(
+            3,
+            1030,
+            EventData::WorkflowNodeStart(WorkflowNodeStart {
+                node: "optional-diagnosis".into(),
+                fire: 1,
+                inputs: vec![1],
+                child_id: Some("ep_child".into()),
+            }),
+        ),
+        event(
+            4,
+            1040,
+            EventData::SpawnEnd {
+                child_id: "ep_child".into(),
+                outcome: Outcome::Exhausted { limit: foe_log::ExhaustedLimit::ModelCalls },
+            },
+        ),
+        event(
+            5,
+            1050,
+            EventData::WorkflowNodeEnd(WorkflowNodeEnd {
+                node: "optional-diagnosis".into(),
+                fire: 1,
+                value: serde_json::json!({ "branch": "continue" }),
+                rendered: r#"{"branch":"continue"}"#.into(),
+                error: Some("exhausted: model_calls: the child spent its budget".into()),
+                duration_ms: 20,
+            }),
+        ),
+        event(6, 1060, EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::json!({}) } }),
+    ];
+    let facts = extract(&events, "/logs");
+    assert_eq!(facts.recovery.interventions, 1);
+    assert_eq!(facts.recovery.actions.get("retry"), Some(&1));
+    assert_eq!(facts.recovery.empty_substitutions, 1);
+}
+
+#[test]
+fn an_unknown_recovery_action_emits_only_the_closed_unknown_term() {
+    let events = vec![
+        event(0, 1000, start(serde_json::json!({}))),
+        event(
+            1,
+            1010,
+            EventData::WorkflowRecovery(WorkflowRecovery {
+                node: "repair".into(),
+                fire: 1,
+                cause: "private cause text".into(),
+                action: "private action text".into(),
+                target: None,
+                note: None,
+                intervention: 1,
+            }),
+        ),
+    ];
+    let facts = extract(&events, "/logs");
+    assert_eq!(facts.recovery.actions.len(), 1);
+    assert_eq!(facts.recovery.actions.get("unknown"), Some(&1));
 }
 
 #[test]
