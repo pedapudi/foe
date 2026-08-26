@@ -6,10 +6,25 @@
       "oracle": "verifier_cases/cancel_async_tasks/oracle.sh",
       "contract": "The public checker exercises bounded concurrency and cancellation cleanup without changing the task workspace."
     },
+    "dna-assembly": {
+      "checker": "verifier_cases/dna_assembly/check.pl",
+      "oracle": "verifier_cases/dna_assembly/oracle.sh",
+      "contract": "The public checker validates the eight declared primers, physical template binding, full annealed tracts, oligotm temperatures, and compatible assembly overhangs."
+    },
     "fix-git": {
       "checker": "verifier_cases/fix_git/check.py",
       "oracle": "verifier_cases/fix_git/oracle.sh",
       "contract": "The public checker requires the lost commit to be reachable from master in a clean worktree without testing hidden file hashes."
+    },
+    "git-multibranch": {
+      "checker": "verifier_cases/git_multibranch/check.py",
+      "oracle": "verifier_cases/git_multibranch/oracle.sh",
+      "contract": "The public checker performs password-authenticated Git pushes with distinct public content and requires both live HTTPS endpoints to serve the pushed branches within three seconds."
+    },
+    "gpt2-codegolf": {
+      "checker": "verifier_cases/gpt2_codegolf/check.sh",
+      "oracle": "verifier_cases/gpt2_codegolf/oracle.sh",
+      "contract": "The public checker enforces the source-size and compilation requirements and checks three arg-max continuations that differ from the task-owned verifier input."
     },
     "large-scale-text-editing": {
       "checker": "verifier_cases/large_scale_text_editing/check.py",

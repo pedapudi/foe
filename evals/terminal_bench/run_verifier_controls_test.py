@@ -27,7 +27,14 @@ class VerifierControlTest(unittest.TestCase):
         )
         self.assertEqual(
             set(cases),
-            {"cancel-async-tasks", "fix-git", "large-scale-text-editing"},
+            {
+                "cancel-async-tasks",
+                "dna-assembly",
+                "fix-git",
+                "git-multibranch",
+                "gpt2-codegolf",
+                "large-scale-text-editing",
+            },
         )
         self.assertTrue(cases["cancel-async-tasks"].checker.is_file())
         self.assertTrue(cases["cancel-async-tasks"].oracle.is_file())

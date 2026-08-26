@@ -150,10 +150,11 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
 ```
 
 Equivalent targets end in `foe-verifier-fix-git` and
-`foe-verifier-large-scale-text-editing`. These targets use the default service
-tier, low reasoning for implementation, and high reasoning for an independent
-audit. The implementation retains 60 model calls. The audit receives 25
-additional calls. These values are loop backstops.
+`foe-verifier-large-scale-text-editing`. Additional targets cover
+`dna-assembly`, `git-multibranch`, and `gpt2-codegolf`. These targets use the
+`priority` service tier, low reasoning for implementation, and high reasoning
+for an independent audit. The implementation retains 60 model calls. The audit
+receives 25 additional calls. These values are loop backstops.
 
 The configured executable's bytes participate in Foe's program identity. The
 adapter also downloads the checker after the episode and compares its digest
