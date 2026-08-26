@@ -26,7 +26,6 @@ from foe_agent_support import (
 
 
 REMOTE_BINARY = "/usr/local/bin/foe"
-REMOTE_CREDENTIAL = "/tmp/foe-openai-codex.json"
 REMOTE_PROGRAM = "/tmp/foe-terminal-bench-program.json"
 REMOTE_COMPLETION_CHECKER = "/tmp/foe-completion-check"
 
@@ -39,6 +38,7 @@ class FoeAgent(BaseInstalledAgent):
         *args: Any,
         foe_binary: str,
         credential_file: str,
+        credential_mode: str = "mutable",
         trace_evaluator: str,
         model_calls: int | str,
         seconds: int | str,
@@ -70,6 +70,12 @@ class FoeAgent(BaseInstalledAgent):
     ) -> None:
         self._foe_binary = Path(foe_binary)
         self._credential_file = Path(credential_file)
+        if credential_mode not in ("mutable", "access_only"):
+            raise ValueError("credential_mode must be mutable or access_only")
+        self._credential_mode = credential_mode
+        self._remote_credential = f"/tmp/.foe-credential-{uuid.uuid4().hex}.json"
+        self._credential_digest = ""
+        self._credential_unchanged: bool | None = None
         self._trace_evaluator = Path(trace_evaluator)
         self._model_calls = int(model_calls)
         self._input_tokens = int(input_tokens) if input_tokens is not None else None
@@ -124,6 +130,9 @@ class FoeAgent(BaseInstalledAgent):
             raise FileNotFoundError(
                 f"Foe credential state does not exist: {self._credential_file}"
             )
+        self._credential_digest = hashlib.sha256(
+            self._credential_file.read_bytes()
+        ).hexdigest()
         if not self._trace_evaluator.is_file():
             raise FileNotFoundError(
                 f"Foe trace evaluator does not exist: {self._trace_evaluator}"
@@ -146,7 +155,7 @@ class FoeAgent(BaseInstalledAgent):
     @override
     async def install(self, environment: BaseEnvironment) -> None:
         await environment.upload_file(self._foe_binary, REMOTE_BINARY)
-        await environment.upload_file(self._credential_file, REMOTE_CREDENTIAL)
+        await environment.upload_file(self._credential_file, self._remote_credential)
         checker_setup = ""
         if self._completion_checker is not None:
             await environment.upload_file(
@@ -157,12 +166,16 @@ class FoeAgent(BaseInstalledAgent):
         owner = environment.default_user
         ownership = ""
         if owner is not None:
-            ownership = f"chown {shlex.quote(str(owner))} {shlex.quote(REMOTE_CREDENTIAL)} && "
+            ownership = (
+                f"chown {shlex.quote(str(owner))} "
+                f"{shlex.quote(self._remote_credential)} && "
+            )
+        credential_mode = "400" if self._credential_mode == "access_only" else "600"
         await self.exec_as_root(
             environment,
             command=(
                 f"{ownership}{checker_setup}chmod 755 {shlex.quote(REMOTE_BINARY)} && "
-                f"chmod 600 {shlex.quote(REMOTE_CREDENTIAL)} && "
+                f"chmod {credential_mode} {shlex.quote(self._remote_credential)} && "
                 f"{shlex.quote(REMOTE_BINARY)} schema >/dev/null"
             ),
         )
@@ -171,12 +184,18 @@ class FoeAgent(BaseInstalledAgent):
         state = self._credential_file
         temporary = state.parent / f".{state.name}.{uuid.uuid4().hex}.tmp"
         try:
-            await environment.download_file(REMOTE_CREDENTIAL, temporary)
-            replace_credential_state(temporary, state)
+            await environment.download_file(self._remote_credential, temporary)
+            if self._credential_mode == "access_only":
+                self._credential_unchanged = (
+                    hashlib.sha256(temporary.read_bytes()).hexdigest()
+                    == self._credential_digest
+                )
+            else:
+                replace_credential_state(temporary, state)
         finally:
             temporary.unlink(missing_ok=True)
             await environment.exec(
-                command=f"rm -f {shlex.quote(REMOTE_CREDENTIAL)}",
+                command=f"rm -f {shlex.quote(self._remote_credential)}",
                 user="root",
             )
 
@@ -213,7 +232,7 @@ class FoeAgent(BaseInstalledAgent):
         program = build_program(
             instruction,
             self.model_name,
-            REMOTE_CREDENTIAL,
+            self._remote_credential,
             working_directory,
             model_calls=self._model_calls,
             input_tokens=self._input_tokens,
@@ -331,6 +350,8 @@ class FoeAgent(BaseInstalledAgent):
                 "foe_trace_violations": len(trace.get("violations", []))
                 if isinstance(trace.get("violations"), list)
                 else None,
+                "foe_credential_mode": self._credential_mode,
+                "foe_credential_unchanged": self._credential_unchanged,
             }
         )
         if self._completion_checker_digest is not None:
