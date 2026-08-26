@@ -143,7 +143,11 @@ assessment binds the parent and candidate evaluations, source trees, source
 bundle, source candidate, and proposal program. Canonical SHA-256 identities
 cover each evaluator-owned object. The assessment also
 retains the prior typed diagnosis, exact candidate source entries and bytes,
-the private campaign and trial records, and each exact raw verifier report.
+an identity-bound line-oriented patch in unified-diff format, the private
+campaign and trial records, and
+each exact raw verifier report. For changed and deleted files, the evaluator
+reads base blobs from a supplied parent repository and requires each blob to
+match the source manifest and recorded base tree.
 It reads the private task from the retained plan. For a campaign that has no
 plan artifact, it reads the task from the root `episode/start` only when that
 event's episode, program, and runtime identities match the trial diagnostics.
@@ -151,7 +155,10 @@ event's episode, program, and runtime identities match the trial diagnostics.
 The evaluator derives one bounded candidate-assessment diagnostics projection
 from the private assessment. The projection contains the prior typed
 diagnosis, the verified candidate patch, complete candidate failure loci, final
-validation timelines, and qualified parent and candidate success references.
+validation windows, and qualified parent and candidate success references.
+The projected patch carries ordered source entries, a unified diff with five
+context lines, and the digest of the private full-content patch. Complete file
+contents remain in the private assessment.
 It contains no raw task text, task name, task checksum, numeric reward,
 campaign label, absolute artifact path, or unstructured grader prose. A
 normalized failure locus may carry its bounded location, assertion, and
@@ -161,8 +168,10 @@ The projection is limited to 48 KiB. Construction rejects symbolic links,
 escaped paths, incomplete campaigns, errored or nonconformant trials, Boolean
 or nonfinite rewards, conflicting identities, and an incomplete source
 adoption set. A candidate failure is eligible only when every failed test has
-one unique bounded locus. Its final validation timelines must contain every
-selected result without omission or truncation.
+one unique bounded locus. Each validation window contains at most eight
+untruncated results. A longer sequence retains the last edit and the latest
+seven results, or the latest eight results when no edit occurred. The window
+records the number of intervening results that it omitted.
 
 Supplying a private assessment does not add a workflow node. The existing
 trajectory tool node returns a document that contains both trajectory
@@ -270,7 +279,9 @@ task in a top-level field while its resolved program remains taskless. A
 controller supplies that field for a binary built before the field existed.
 After the episode, the trusted checker requires the root log to carry that
 planned program, task, and rebuilt binary digest. It then constructs and verifies
-lineage from the actual program identity. `campaign.json` records the source
+lineage from the actual program identity. The portable adoption record retains
+the runtime-effective workflow child identities and configured verifier that
+source capture authenticated. `campaign.json` records the source
 candidate, completed adoptions, checker digests, and evaluated source and
 binary pair. Adoption failure sets `direct_implementation_required`,
 invalidates the task record, and makes the campaign exit unsuccessfully.

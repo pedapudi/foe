@@ -22,12 +22,16 @@ from source_candidate_assessment import (
     require_assessment_isolation,
     require_novel_source_candidate,
     require_source_candidate_excludes_assessment_literals,
+    source_unified_diff,
     validate_candidate_assessment_diagnostics,
     validate_revised_diagnosis,
 )
 from run_self_improvement import build_config, model_config, write_diagnosis_validator
-from trajectory_diagnostics import verifier_feedback
-from trajectory_diagnostics import verifier_feedback_from_bytes
+from trajectory_diagnostics import (
+    MAX_VERIFICATION_RESULTS,
+    verifier_feedback,
+    verifier_feedback_from_bytes,
+)
 
 
 PRIVATE_TASK = "PRIVATE TASK TEXT SENTINEL"
@@ -366,6 +370,61 @@ def write_source_bundle(root: Path):
 
 
 class SourceCandidateAssessmentTest(unittest.TestCase):
+    def test_unified_diff_reads_the_recorded_base_blob(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["/usr/bin/git", "init", "-q", str(root)], check=True)
+            subprocess.run(
+                ["/usr/bin/git", "-C", str(root), "config", "user.name", "Foe Test"],
+                check=True,
+            )
+            subprocess.run(
+                ["/usr/bin/git", "-C", str(root), "config", "user.email", "foe@example.invalid"],
+                check=True,
+            )
+            path = root / "src/example.rs"
+            path.parent.mkdir()
+            path.write_text("fn value() -> bool { false }\n", encoding="utf-8")
+            subprocess.run(["/usr/bin/git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["/usr/bin/git", "-C", str(root), "commit", "-qm", "base"], check=True)
+            algorithm = subprocess.check_output(
+                ["/usr/bin/git", "-C", str(root), "rev-parse", "--show-object-format"],
+                text=True,
+            ).strip()
+            tree = subprocess.check_output(
+                ["/usr/bin/git", "-C", str(root), "rev-parse", "HEAD^{tree}"],
+                text=True,
+            ).strip()
+            blob = subprocess.check_output(
+                ["/usr/bin/git", "-C", str(root), "rev-parse", "HEAD:src/example.rs"],
+                text=True,
+            ).strip()
+            entry = {
+                "status": "present",
+                "path": "src/example.rs",
+                "base": {
+                    "mode": "100644",
+                    "object_type": "blob",
+                    "identity": f"git-blob-{algorithm}:{blob}",
+                },
+            }
+            diff = source_unified_diff(
+                root,
+                f"git-tree-{algorithm}:{tree}",
+                [entry],
+                [{"path": "src/example.rs", "content": "fn value() -> bool { true }\n"}],
+            )
+            self.assertIn("-fn value() -> bool { false }", diff)
+            self.assertIn("+fn value() -> bool { true }", diff)
+            entry["base"]["identity"] = f"git-blob-{algorithm}:" + "0" * len(blob)
+            with self.assertRaisesRegex(ValueError, "recorded base tree"):
+                source_unified_diff(
+                    root,
+                    f"git-tree-{algorithm}:{tree}",
+                    [entry],
+                    [{"path": "src/example.rs", "content": "fn value() -> bool { true }\n"}],
+                )
+
     def assessment(
         self,
         root: Path,
@@ -420,9 +479,13 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             projection["identities"]["source_candidate_identity"], candidate_identity
         )
         self.assertEqual(projection["prior_diagnosis"], prior_diagnosis)
+        self.assertIn(
+            content.decode().strip(),
+            projection["verified_source_patch"]["unified_diff"],
+        )
         self.assertEqual(
-            projection["verified_source_patch"]["contents"][0]["content"].encode(),
-            content,
+            projection["verified_source_patch"]["source_patch_sha256"],
+            digest(assessment["source_patch"]),
         )
         contrast = projection["assessment_contrast"]
         self.assertEqual(len(contrast["failed_attempts"]), 1)
@@ -588,7 +651,7 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "maximum"):
             validate_candidate_assessment_diagnostics(projection)
 
-    def test_projection_validation_rejects_unstructured_prose_and_incomplete_timelines(self):
+    def test_projection_validation_rejects_unstructured_prose_and_incomplete_windows(self):
         with tempfile.TemporaryDirectory() as directory:
             assessment, _, _, _ = self.assessment(Path(directory))
         projection = project_candidate_assessment_diagnostics(assessment)
@@ -604,8 +667,28 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             "final_validation_timelines"
         ][0]["omitted_results"] = 1
         reidentify_projection(incomplete)
-        with self.assertRaisesRegex(ValueError, "omits validation results"):
+        with self.assertRaisesRegex(ValueError, "incomplete bounded validation window"):
             validate_candidate_assessment_diagnostics(incomplete)
+
+        bounded = copy.deepcopy(assessment)
+        timeline = bounded["evaluations"]["candidate"]["trials"][1][
+            "diagnostics"
+        ]["verification_timeline"][0]
+        while len(timeline["results"]) < MAX_VERIFICATION_RESULTS:
+            result = copy.deepcopy(timeline["results"][-1])
+            result["seq"] += len(timeline["results"])
+            result["step"] += len(timeline["results"])
+            result["call_id"] += f"-{len(timeline['results'])}"
+            timeline["results"].append(result)
+        timeline["omitted_results"] = 3
+        reidentify_assessment(bounded)
+        retained = project_candidate_assessment_diagnostics(bounded)
+        self.assertEqual(
+            retained["assessment_contrast"]["failed_attempts"][0][
+                "final_validation_timelines"
+            ][0]["omitted_results"],
+            3,
+        )
 
     def test_rejects_symlinked_bundle_entries_and_escaped_campaign_paths(self):
         with tempfile.TemporaryDirectory() as directory:

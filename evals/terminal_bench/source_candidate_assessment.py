@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
 import math
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -31,6 +33,7 @@ MAX_DIAGNOSTICS_BYTES = 48 * 1024
 MAX_ASSESSMENT_FAILURES = 12
 MAX_ASSESSMENT_SUCCESSES_PER_ROLE = 12
 MAX_FINAL_VALIDATION_TIMELINES = 24
+MAX_SOURCE_DIFF_BYTES = 24 * 1024
 SOURCE_MANIFEST = "source-candidate-manifest.json"
 ASSESSMENT_DIAGNOSTICS_FILE = "candidate-assessment-diagnostics.json"
 GENERATION_CONTEXT_FILE = "candidate-generation-context.json"
@@ -276,7 +279,79 @@ def validate_source_manifest_shape(
     return base_tree, candidate_identity, parent_program_identity, files
 
 
-def source_bundle_facts(bundle: Path) -> dict[str, Any]:
+def base_source_text(
+    source_root: Path | None,
+    base_tree: str,
+    entry: dict[str, Any],
+) -> str:
+    """Read one recorded base blob from the repository that owns the base tree."""
+    base = entry.get("base")
+    if not isinstance(base, dict):
+        return ""
+    if source_root is None:
+        raise ValueError("source assessment needs a parent source root for changed or deleted files")
+    source_root = require_real_directory(source_root, "parent source root")
+    algorithm, tree = base_tree.removeprefix("git-tree-").split(":", 1)
+    identity = base.get("identity")
+    prefix = f"git-blob-{algorithm}:"
+    if not isinstance(identity, str) or not identity.startswith(prefix):
+        raise ValueError(
+            f"source entry {entry.get('path')} has a base blob from a different object format"
+        )
+    result = subprocess.run(
+        ["/usr/bin/git", "-C", str(source_root), "ls-tree", "-z", tree, "--", entry["path"]],
+        capture_output=True,
+        check=False,
+    )
+    expected = (
+        f"{base.get('mode')} blob {identity.removeprefix(prefix)}\t{entry['path']}\0".encode()
+    )
+    if result.returncode != 0 or result.stdout != expected:
+        raise ValueError(f"source entry {entry['path']} does not match the recorded base tree")
+    content = subprocess.run(
+        ["/usr/bin/git", "-C", str(source_root), "cat-file", "blob", identity.removeprefix(prefix)],
+        capture_output=True,
+        check=False,
+    )
+    if content.returncode != 0:
+        raise ValueError(f"source entry {entry['path']} base blob is not readable")
+    try:
+        return content.stdout.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError(f"source entry {entry['path']} base is not UTF-8") from error
+
+
+def source_unified_diff(
+    source_root: Path | None,
+    base_tree: str,
+    entries: list[dict[str, Any]],
+    contents: list[dict[str, Any]],
+) -> str:
+    """Return a bounded diff whose base blobs match the recorded source tree."""
+    applied = {item["path"]: item["content"] for item in contents}
+    sections = []
+    for entry in entries:
+        path = entry["path"]
+        before = base_source_text(source_root, base_tree, entry)
+        after = applied.get(path, "")
+        section = "".join(
+            difflib.unified_diff(
+                before.splitlines(keepends=True),
+                after.splitlines(keepends=True),
+                fromfile=f"a/{path}" if entry.get("base") else "/dev/null",
+                tofile=f"b/{path}" if entry["status"] == "present" else "/dev/null",
+                n=5,
+            )
+        )
+        if section:
+            sections.append(section)
+    answer = "\n".join(sections)
+    if not answer or len(answer.encode("utf-8")) > MAX_SOURCE_DIFF_BYTES:
+        raise ValueError("source candidate unified diff is empty or exceeds 24 KiB")
+    return answer
+
+
+def source_bundle_facts(bundle: Path, source_root: Path | None = None) -> dict[str, Any]:
     """Validate retained source bytes and return the identity-bound proposal facts."""
     bundle = require_real_directory(bundle, "source evidence bundle")
     manifest_path = require_confined_regular_file(
@@ -378,7 +453,11 @@ def source_bundle_facts(bundle: Path) -> dict[str, Any]:
         "source_candidate_identity": candidate_identity,
         "parent_source_tree": base_tree,
         "parent_program_identity": parent_program_identity,
-        "source_patch": {"entries": entries, "contents": contents},
+        "source_patch": {
+            "entries": entries,
+            "contents": contents,
+            "unified_diff": source_unified_diff(source_root, base_tree, entries, contents),
+        },
         "source_evidence": {
             "parent_plan": parent_plan_text,
             "proposal_log": proposal_log,
@@ -670,9 +749,10 @@ def create_source_candidate_assessment(
     source_bundle: Path,
     parent_campaign: Path,
     candidate_campaign: Path,
+    parent_source_root: Path | None = None,
 ) -> dict[str, Any]:
     """Create one private evaluator-owned assessment from completed campaigns."""
-    bundle = source_bundle_facts(source_bundle)
+    bundle = source_bundle_facts(source_bundle, parent_source_root)
     parent = campaign_trials(parent_campaign, "parent")
     candidate = campaign_trials(candidate_campaign, "candidate")
     if parent["evaluated_foe"]["source_tree"] != bundle["parent_source_tree"]:
@@ -767,7 +847,9 @@ def validate_source_candidate_assessment(value: Any) -> dict[str, Any]:
     ):
         raise ValueError("assessment source manifest conflicts with its parent identities")
     patch = require_exact_fields(
-        assessment["source_patch"], {"entries", "contents"}, "assessment source patch"
+        assessment["source_patch"],
+        {"entries", "contents", "unified_diff"},
+        "assessment source patch",
     )
     if patch["entries"] != manifest.get("entries"):
         raise ValueError("assessment source patch conflicts with its manifest entries")
@@ -940,6 +1022,7 @@ def validate_source_candidate_assessment(value: Any) -> dict[str, Any]:
 
 
 def validate_patch_contents(base_tree: str, patch: dict[str, Any]) -> None:
+    require_exact_fields(patch, {"entries", "contents", "unified_diff"}, "assessment source patch")
     expected = validate_source_entries(base_tree, patch["entries"])
     contents = patch["contents"]
     if not isinstance(contents, list) or len(contents) != len(expected):
@@ -962,6 +1045,13 @@ def validate_patch_contents(base_tree: str, patch: dict[str, Any]) -> None:
             or item["mode"] != applied.get("mode")
         ):
             raise ValueError("assessment source patch content conflicts with its source entry")
+    unified_diff = patch["unified_diff"]
+    if (
+        not isinstance(unified_diff, str)
+        or not unified_diff
+        or len(unified_diff.encode("utf-8")) > MAX_SOURCE_DIFF_BYTES
+    ):
+        raise ValueError("assessment source patch has no bounded unified diff")
 
 
 def complete_failure(trial: dict[str, Any]) -> dict[str, Any]:
@@ -1066,11 +1156,16 @@ def bounded_timelines(trial: dict[str, Any]) -> list[dict[str, Any]]:
     projected = []
     episode_ids = []
     for timeline in timelines:
-        if not isinstance(timeline, dict) or timeline.get("omitted_results") != 0:
-            raise ValueError("assessment trial has an incomplete final validation timeline")
+        if not isinstance(timeline, dict):
+            raise ValueError("assessment trial has an invalid final validation timeline")
+        omitted = timeline.get("omitted_results")
+        if type(omitted) is not int or omitted < 0:
+            raise ValueError("assessment trial has an invalid omitted-result count")
         results = timeline.get("results")
         if not isinstance(results, list) or len(results) > MAX_VERIFICATION_RESULTS:
             raise ValueError("assessment trial has an oversized final validation timeline")
+        if omitted and len(results) != MAX_VERIFICATION_RESULTS:
+            raise ValueError("assessment trial has an incomplete bounded validation window")
         bounded_results = []
         for result in results:
             if not isinstance(result, dict) or result.get("truncated") is not False:
@@ -1099,7 +1194,7 @@ def bounded_timelines(trial: dict[str, Any]) -> list[dict[str, Any]]:
                 "episode_id": episode_id,
                 "last_edit_seq": timeline.get("last_edit_seq"),
                 "results": bounded_results,
-                "omitted_results": 0,
+                "omitted_results": omitted,
                 "outcome": bounded_outcome(timeline.get("outcome")),
             }
         )
@@ -1188,7 +1283,11 @@ def project_candidate_assessment_diagnostics(value: Any) -> dict[str, Any]:
         "identities": identities,
         "prior_diagnosis_sha256": prior_diagnosis_sha256,
         "prior_diagnosis": assessment["prior_diagnosis"],
-        "verified_source_patch": assessment["source_patch"],
+        "verified_source_patch": {
+            "entries": assessment["source_patch"]["entries"],
+            "unified_diff": assessment["source_patch"]["unified_diff"],
+            "source_patch_sha256": digest(assessment["source_patch"]),
+        },
         "assessment_contrast_sha256": digest(contrast),
         "assessment_contrast": contrast,
     }
@@ -1245,17 +1344,21 @@ def require_private_literals_absent(
             }
             raw_report = json.loads(trial["raw_verifier_report"])
 
-            def collect_grader_strings(item: Any, field: str | None = None) -> None:
+            def collect_grader_strings(
+                item: Any, field: str | None = None, inside_test: bool = False
+            ) -> None:
                 if isinstance(item, dict):
                     for key, nested in item.items():
-                        collect_grader_strings(nested, key)
+                        collect_grader_strings(
+                            nested, key, inside_test or key == "tests"
+                        )
                 elif isinstance(item, list):
                     for nested in item:
-                        collect_grader_strings(nested, field)
+                        collect_grader_strings(nested, field, inside_test or field == "tests")
                 elif (
                     isinstance(item, str)
                     and item
-                    and field in ("message", "name", "trace")
+                    and (field in ("message", "trace") or (field == "name" and inside_test))
                     and item not in allowed_locus_strings
                 ):
                     private.add(item)
@@ -1340,11 +1443,14 @@ def validate_final_timelines(
         last_edit = timeline["last_edit_seq"]
         if last_edit is not None:
             require_nonnegative_integer(last_edit, f"{label} timeline {index} last edit")
-        if timeline["omitted_results"] != 0:
-            raise ValueError(f"{label} timeline {index} omits validation results")
+        omitted = require_nonnegative_integer(
+            timeline["omitted_results"], f"{label} timeline {index} omitted results"
+        )
         results = timeline["results"]
         if not isinstance(results, list) or len(results) > MAX_VERIFICATION_RESULTS:
             raise ValueError(f"{label} timeline {index} has oversized validation results")
+        if omitted and len(results) != MAX_VERIFICATION_RESULTS:
+            raise ValueError(f"{label} timeline {index} has an incomplete bounded validation window")
         for result_index, result_value in enumerate(results):
             result = require_exact_fields(
                 result_value,
@@ -1570,9 +1676,18 @@ def validate_candidate_assessment_diagnostics(value: Any) -> dict[str, Any]:
     ):
         require_digest(identities[field], field)
     patch = require_exact_fields(
-        diagnostics["verified_source_patch"], {"entries", "contents"}, "verified source patch"
+        diagnostics["verified_source_patch"],
+        {"entries", "unified_diff", "source_patch_sha256"},
+        "verified source patch",
     )
-    validate_patch_contents(identities["parent_source_tree"], patch)
+    validate_source_entries(identities["parent_source_tree"], patch["entries"])
+    require_digest(patch["source_patch_sha256"], "verified source patch identity")
+    if (
+        not isinstance(patch["unified_diff"], str)
+        or not patch["unified_diff"]
+        or len(patch["unified_diff"].encode("utf-8")) > MAX_SOURCE_DIFF_BYTES
+    ):
+        raise ValueError("verified source patch has no bounded unified diff")
     if digest(
         {"base_source_tree": identities["parent_source_tree"], "entries": patch["entries"]}
     ) != identities["source_candidate_identity"]:
@@ -1923,6 +2038,7 @@ def parser() -> argparse.ArgumentParser:
     create.add_argument("--source-bundle", type=Path, required=True)
     create.add_argument("--parent-campaign", type=Path, required=True)
     create.add_argument("--candidate-campaign", type=Path, required=True)
+    create.add_argument("--parent-source-root", type=Path)
     create.add_argument("--assessment", type=Path, required=True)
     create.add_argument("--diagnostics", type=Path, required=True)
     validate = subcommands.add_parser("validate")
@@ -1935,7 +2051,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "create":
             assessment = create_source_candidate_assessment(
-                args.source_bundle, args.parent_campaign, args.candidate_campaign
+                args.source_bundle,
+                args.parent_campaign,
+                args.candidate_campaign,
+                args.parent_source_root,
             )
             diagnostics = project_candidate_assessment_diagnostics(assessment)
             assessment_output = new_output_path(args.assessment, "private assessment output")
