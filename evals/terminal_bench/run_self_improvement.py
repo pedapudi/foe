@@ -22,6 +22,7 @@ from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256
 from foe_agent_support import build_program, estimate_usage_cost
 from instruction_candidate import create as create_instruction_candidate
 from run import Pricing, read_cases
+from source_adoption import PROTECTED_BUILD_NAMES, capture_source_candidate
 from tool_candidate import create as create_tool_candidate
 from tool_candidate import validate_definition as validate_tool_definition
 from workflow_candidate import create as create_workflow_candidate
@@ -38,7 +39,6 @@ AUDIT_SECONDS = 3_600
 SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + AUDIT_SECONDS
 LOOP_THRESHOLD = 8
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
-ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel.lock")
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
 SYSTEM_DEVELOPMENT_READ_DIRS = (Path("/usr/include"), Path("/usr/local/include"))
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
@@ -98,6 +98,25 @@ def verify_evidence_identity(candidate: Path, binary: Path, evidence: Path) -> d
     return identity
 
 
+def evaluation_base_configuration(configuration: dict[str, Any]) -> dict[str, str | None] | None:
+    """Return the controls that determine candidate activation."""
+    implementation = configuration.get("implementation")
+    if not isinstance(implementation, dict):
+        return None
+    return {
+        "model": implementation.get("model"),
+        "reasoning_effort": implementation.get("reasoning_effort"),
+        "service_tier": configuration.get("service_tier"),
+        "token_policy": configuration.get("token_policy"),
+        "workflow_ownership": (
+            "foe-built-in" if configuration.get("built_in_workflow") is True else "evaluation-runner"
+        ),
+        "completion_governance": (
+            "declared-verifier" if "completion_verifier" in configuration else "model-report"
+        ),
+    }
+
+
 def failed_base_configuration(evidence: Path) -> dict[str, str]:
     """Return the one failed configuration a candidate must preserve."""
     report = json.loads(evidence.read_text(encoding="utf-8"))
@@ -119,15 +138,9 @@ def failed_base_configuration(evidence: Path) -> dict[str, str]:
             or "independent_audit" in configuration
         ):
             continue
-        implementation = configuration.get("implementation")
-        if not isinstance(implementation, dict):
+        candidate = evaluation_base_configuration(configuration)
+        if candidate is None:
             continue
-        candidate = {
-            "model": implementation.get("model"),
-            "reasoning_effort": implementation.get("reasoning_effort"),
-            "service_tier": configuration.get("service_tier"),
-            "token_policy": configuration.get("token_policy"),
-        }
         candidates[json.dumps(candidate, sort_keys=True)] = candidate
     if len(candidates) != 1:
         raise ValueError(
@@ -142,11 +155,28 @@ def failed_base_configuration(evidence: Path) -> dict[str, str]:
 def supported_independent_audits(
     evidence: Path, base_configuration: dict[str, str]
 ) -> list[dict[str, Any]]:
-    """Return repeated successful audit settings that preserve the base run."""
+    """Return audits that reverse a same-task baseline failure under fixed controls."""
     report = json.loads(evidence.read_text(encoding="utf-8"))
     summaries = report.get("evaluation_summary")
     if not isinstance(summaries, list):
         raise ValueError("self-improvement evidence has no evaluation_summary list")
+    activation_tasks = {
+        summary.get("task")
+        for summary in summaries
+        if isinstance(summary, dict)
+        and isinstance(summary.get("task"), str)
+        and isinstance(summary.get("execution_configuration"), dict)
+        and "independent_audit" not in summary["execution_configuration"]
+        and evaluation_base_configuration(summary["execution_configuration"])
+        == base_configuration
+        and type(summary.get("attempts")) is int
+        and type(summary.get("verified_successes")) is int
+        and summary["verified_successes"] < summary["attempts"]
+    }
+    if not activation_tasks:
+        raise ValueError(
+            "self-improvement evidence has no task-specific baseline failure for the preserved controls"
+        )
     supported: dict[str, dict[str, Any]] = {}
     for summary in summaries:
         if not isinstance(summary, dict):
@@ -159,18 +189,11 @@ def supported_independent_audits(
             or attempts < 2
             or successes != attempts
             or not isinstance(configuration, dict)
+            or summary.get("task") not in activation_tasks
         ):
             continue
-        implementation = configuration.get("implementation")
         audit = configuration.get("independent_audit")
-        observed_base = {
-            "model": implementation.get("model") if isinstance(implementation, dict) else None,
-            "reasoning_effort": (
-                implementation.get("reasoning_effort") if isinstance(implementation, dict) else None
-            ),
-            "service_tier": configuration.get("service_tier"),
-            "token_policy": configuration.get("token_policy"),
-        }
+        observed_base = evaluation_base_configuration(configuration)
         if observed_base != base_configuration or not isinstance(audit, dict):
             continue
         if audit.get("model") != base_configuration["model"]:
@@ -415,7 +438,6 @@ def development_program_document(
     base_configuration: dict[str, str],
     audit: dict[str, Any] | None = None,
     tool: dict[str, str] | None = None,
-    runtime: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The development program document an adoption produces.
 
@@ -423,8 +445,7 @@ def development_program_document(
     directory, and per-task allowances — are fixed to the declared values
     so the document is stable across launches. `audit` adds the
     independent-audit stage, `tool` adds a tool_defs entry carrying the
-    executable's content hash, and `runtime` names the produced runtime of
-    a source adoption.
+    executable's content hash.
     """
     document = build_program(
         DEVELOPMENT_TASK_INSTRUCTION,
@@ -450,8 +471,6 @@ def development_program_document(
                 "exec_sha256": tool["executable_sha256"].removeprefix("sha256:"),
             },
         }
-    if runtime is not None:
-        document["runtime"] = runtime
     return document
 
 
@@ -459,7 +478,6 @@ def adoption_state_document(
     candidate_kind: str,
     candidate: dict[str, Any],
     program_document: dict[str, Any],
-    base_configuration: dict[str, str],
 ) -> dict[str, Any]:
     """The state document an adoption of `candidate` creates.
 
@@ -467,9 +485,9 @@ def adoption_state_document(
     state document is the program document that will run under the
     adoption. An instruction revision yields the revised self-improvement
     program document; the other kinds yield the development program
-    document the adoption produces — with the audit stage applied, with
-    the defined tool declared, or with the changed source named as the
-    produced runtime until the rebuilt binary's hash attaches.
+    document the adoption produces, with the audit stage applied or the
+    defined tool declared. A source candidate has no program identity until
+    its rebuilt binary resolves the external evaluation program.
     """
     if candidate_kind == "instruction-revision":
         return revised_program_document(program_document, candidate["revision"])
@@ -479,11 +497,6 @@ def adoption_state_document(
         )
     if candidate_kind == "tool-definition":
         return development_program_document(candidate["base_configuration"], tool=candidate["tool"])
-    if candidate_kind == "source-change":
-        return development_program_document(
-            base_configuration,
-            runtime={"source_tree": candidate["base_source_tree"], "files": candidate["files"]},
-        )
     raise ValueError(f"candidate kind {candidate_kind} has no adoption state document")
 
 
@@ -519,28 +532,26 @@ def record_adoption(
     retained: dict[str, bytes],
     verification_tool: str,
     bundle_builder: list[str],
-    builder_cwd: Path | None = None,
-    builder_env: dict[str, str] | None = None,
-    artifacts: list[dict[str, str]] | None = None,
+    ancestry_checker: list[str],
 ) -> dict[str, Any]:
     """Record one accepted candidate as a lineage transition under `root`.
 
-    Writes the evidence bundle — the episode tree, the state document as
-    the child identity document, and the artifact manifest over the
-    retained candidate files — completes it through the lineage crate's
-    `build-bundle` binary, which writes the adoption record and canonical
-    manifest, and writes the parent and child state documents where the
-    checker's resolvers read them: `root/lineage/states/<hex>.json` by
-    state identity and `root/lineage/evidence/<hex>` by content address.
+    Writes an evidence bundle containing the episode tree, child identity
+    document, and artifact manifest over retained candidate files. It completes
+    the bundle through `build-bundle`, writes the state documents, and requires
+    the lineage ancestry checker to accept the resulting transition.
+    Resolver inputs live at `root/lineage/states/<hex>.json` by state identity
+    and `root/lineage/evidence/<hex>` by content address.
     """
     build = root / "lineage" / "bundle-build"
     shutil.copytree(episode, build / "episode")
     identity_bytes = canonical_json(state_document)
     (build / "child-identity.json").write_bytes(identity_bytes)
     for name, content in sorted(retained.items()):
-        (build / name).write_bytes(content)
-    if artifacts is None:
-        artifacts = [{"path": name, "sha256": digest_bytes(content)} for name, content in sorted(retained.items())]
+        retained_path = build / name
+        retained_path.parent.mkdir(parents=True, exist_ok=True)
+        retained_path.write_bytes(content)
+    artifacts = [{"path": name, "sha256": digest_bytes(content)} for name, content in sorted(retained.items())]
     (build / "artifact-manifest.json").write_bytes(canonical_json(artifacts))
     verification_log, verification_seq = find_accepted_verification(episode, verification_tool)
     result = subprocess.run(
@@ -553,8 +564,6 @@ def record_adoption(
             verification_log,
             str(verification_seq),
         ],
-        cwd=builder_cwd,
-        env=builder_env,
         text=True,
         capture_output=True,
         timeout=1_800,
@@ -583,6 +592,30 @@ def record_adoption(
     child_state_identity = state_identity(child_identity, claim)
     child_state = states / (child_state_identity.removeprefix("sha256:") + ".json")
     write_json(child_state, {"identity_document": state_document, "program_lineage": claim})
+    checked = subprocess.run(
+        [*ancestry_checker, str(child_state), str(states), str(evidence_dir.parent)],
+        text=True,
+        capture_output=True,
+        timeout=1_800,
+        check=False,
+    )
+    if checked.returncode != 0:
+        detail = checked.stderr.strip() or checked.stdout.strip() or f"exit status {checked.returncode}"
+        raise ValueError(f"lineage ancestry check failed: {detail}")
+    try:
+        ancestry = json.loads(checked.stdout)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"lineage ancestry checker output is not JSON: {error}") from error
+    if (
+        not isinstance(ancestry, dict)
+        or set(ancestry) != {"chain", "unverifiable"}
+        or not isinstance(ancestry.get("chain"), list)
+        or ancestry["chain"][0:1] != [child_identity]
+        or not isinstance(ancestry.get("unverifiable"), list)
+    ):
+        raise ValueError("lineage ancestry checker output does not start with the adopted program")
+    builder_path = Path(bundle_builder[0])
+    checker_path = Path(ancestry_checker[0])
     return {
         "evidence": address,
         "program_identity": child_identity,
@@ -594,6 +627,8 @@ def record_adoption(
         "state": str(child_state),
         "parent_state": str(parent_state),
         "evidence_directory": str(evidence_dir),
+        "bundle_builder_sha256": digest_bytes(builder_path.read_bytes()),
+        "ancestry_checker_sha256": digest_bytes(checker_path.read_bytes()),
     }
 
 
@@ -669,10 +704,26 @@ def source_hashes(root: Path) -> dict[str, str]:
         for path in sorted((root / directory).rglob("*")):
             if path.is_file():
                 answer[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
-    for name in ALLOWED_ROOT_FILES:
-        path = root / name
-        if path.is_file():
-            answer[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return answer
+
+
+def build_metadata_hashes(root: Path) -> dict[str, str]:
+    """Hash tracked and untracked files that can change the trusted build graph."""
+    result = subprocess.run(
+        ["/usr/bin/git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        capture_output=True,
+        check=True,
+    )
+    answer = {}
+    for value in result.stdout.split(b"\0"):
+        if not value:
+            continue
+        name = value.decode("utf-8")
+        base = name.rsplit("/", 1)[-1]
+        if base in PROTECTED_BUILD_NAMES or base.endswith(".bzl"):
+            path = root / name
+            answer[name] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "absent"
     return answer
 
 
@@ -709,6 +760,45 @@ def candidate_artifact_identity(
     value = {"base_source_tree": base_source_tree, "files": files}
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     return {**value, "digest": "sha256:" + hashlib.sha256(encoded).hexdigest()}
+
+
+def changed_source_paths(candidate: Path) -> list[str]:
+    """Return tracked and untracked changes without interpreting status prefixes."""
+    commands = (
+        ["/usr/bin/git", "diff", "--name-only", "--no-renames", "-z", "HEAD", "--"],
+        ["/usr/bin/git", "ls-files", "--others", "--exclude-standard", "-z"],
+    )
+    paths = set()
+    for command in commands:
+        result = subprocess.run(command, cwd=candidate, capture_output=True, check=True)
+        for value in result.stdout.split(b"\0"):
+            if value:
+                paths.add(value.decode("utf-8"))
+    return sorted(paths)
+
+
+def require_successful_adoption(
+    acceptance: dict[str, Any], recorder: Any
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Make lineage adoption part of candidate acceptance."""
+    if not acceptance["accepted"]:
+        return None, acceptance
+    try:
+        return recorder(), acceptance
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        finding = f"lineage adoption failed: {error}"
+        return {"error": str(error)}, {
+            **acceptance,
+            "accepted": False,
+            "findings": [*acceptance["findings"], finding],
+            "exit_code": None,
+        }
+
+
+def candidate_disposition(acceptance: dict[str, Any], episode_exit: int) -> tuple[bool, int]:
+    """Return whether direct work is required and the process exit status."""
+    accepted = acceptance["accepted"]
+    return not accepted, 0 if accepted else episode_exit or 3
 
 
 def rust_toolchain_identity(cargo: Path) -> dict[str, str]:
@@ -780,6 +870,7 @@ def git_metadata_root(candidate: Path) -> Path:
 
 def write_candidate_check(path: Path, candidate: Path, cargo: Path, cargo_home: Path, cargo_target: Path) -> None:
     baseline = source_hashes(candidate)
+    baseline_build_metadata = build_metadata_hashes(candidate)
     baseline_benchmark_identifiers = {
         name: (candidate / name).read_text(encoding="utf-8", errors="replace").count("terminal-bench/")
         for name in baseline
@@ -797,9 +888,10 @@ import sys
 
 root = pathlib.Path({str(candidate)!r})
 baseline = {baseline!r}
+baseline_build_metadata = {baseline_build_metadata!r}
 baseline_benchmark_identifiers = {baseline_benchmark_identifiers!r}
 allowed_directories = {ALLOWED_DIRECTORIES!r}
-allowed_root_files = {ALLOWED_ROOT_FILES!r}
+protected_build_names = {PROTECTED_BUILD_NAMES!r}
 cargo = {str(cargo)!r}
 cargo_home = {str(cargo_home)!r}
 cargo_target = {str(cargo_target)!r}
@@ -811,35 +903,89 @@ full_validation = baseline_validation or sys.argv[1:] == ["--full"]
 if sys.argv[1:] not in ([], ["--baseline"], ["--full"]):
     print("candidate checker accepts only --baseline or --full")
     raise SystemExit(0)
-current = {{}}
-for directory in allowed_directories:
-    for item in sorted((root / directory).rglob("*")):
-        if item.is_file():
-            current[item.relative_to(root).as_posix()] = hashlib.sha256(item.read_bytes()).hexdigest()
-for name in allowed_root_files:
-    item = root / name
-    if item.is_file():
-        current[name] = hashlib.sha256(item.read_bytes()).hexdigest()
+def source_hashes():
+    answer = {{}}
+    for directory in allowed_directories:
+        for item in sorted((root / directory).rglob("*")):
+            if item.is_file():
+                answer[item.relative_to(root).as_posix()] = hashlib.sha256(item.read_bytes()).hexdigest()
+    return answer
+
+def repository_status():
+    output = subprocess.run(
+        [
+            "/usr/bin/git", "status", "--porcelain=v1", "-z",
+            "--untracked-files=all", "--no-renames",
+        ],
+        cwd=root,
+        capture_output=True,
+        check=True,
+    ).stdout
+    return [value.decode("utf-8") for value in output.split(b"\\0") if value]
+
+def build_metadata_hashes():
+    listed = subprocess.run(
+        ["/usr/bin/git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        capture_output=True,
+        check=True,
+    ).stdout
+    answer = {{}}
+    for value in listed.split(b"\\0"):
+        if not value:
+            continue
+        name = value.decode("utf-8")
+        base = name.rsplit("/", 1)[-1]
+        if base in protected_build_names or base.endswith(".bzl"):
+            item = root / name
+            answer[name] = hashlib.sha256(item.read_bytes()).hexdigest() if item.is_file() else "absent"
+    return answer
+
+current = source_hashes()
 changed = sorted(name for name in set(baseline) | set(current) if baseline.get(name) != current.get(name))
-status = subprocess.run(
-    ["/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all"],
-    cwd=root,
-    text=True,
-    capture_output=True,
-    check=True,
-).stdout.splitlines()
+removed_digests = {{baseline[name] for name in baseline if name not in current}}
+def material_regular_change(name):
+    item = root / name
+    return (
+        name in current
+        and baseline.get(name) != current[name]
+        and item.is_file()
+        and not item.is_symlink()
+        and (name in baseline or current[name] not in removed_digests)
+    )
+status = repository_status()
+current_build_metadata = build_metadata_hashes()
 all_changed = [line[3:] for line in status if len(line) > 3]
 findings = []
 if not baseline_validation:
     outside = sorted(set(all_changed) - set(changed))
     if outside:
         findings.append("changes outside the runtime, documentation, and example surface: " + ", ".join(outside))
-    if not any(name.startswith("crates/") and name.endswith(".rs") and not name.endswith("_test.rs") for name in changed):
+    if not any(
+        material_regular_change(name)
+        and name.startswith("crates/")
+        and name.endswith(".rs")
+        and not name.endswith("_test.rs")
+        for name in changed
+    ):
         findings.append("the candidate contains no Rust implementation change")
-    if not any(name.endswith("_test.rs") for name in changed):
+    if not any(material_regular_change(name) and name.endswith("_test.rs") for name in changed):
         findings.append("the candidate contains no Rust regression test")
-    if not any(name.startswith("docs/") and name.endswith(".md") for name in changed):
+    if not any(
+        material_regular_change(name) and name.startswith("docs/") and name.endswith(".md")
+        for name in changed
+    ):
         findings.append("the candidate does not update an affected specification")
+    protected_changes = sorted(
+        name
+        for name in set(baseline_build_metadata) | set(current_build_metadata)
+        if baseline_build_metadata.get(name) != current_build_metadata.get(name)
+    )
+    if protected_changes:
+        findings.append(
+            "automatic source candidates cannot change build metadata: "
+            + ", ".join(protected_changes)
+        )
 for name in changed:
     item = root / name
     if not item.is_file():
@@ -943,6 +1089,11 @@ if not findings:
         if result.returncode not in (0, 1):
             detail = result.stderr.strip() or f"exit status {{result.returncode}}"
             findings.append("candidate line-budget check failed: " + detail)
+    post_status = repository_status()
+    post_source = source_hashes()
+    post_build_metadata = build_metadata_hashes()
+    if post_status != status or post_source != current or post_build_metadata != current_build_metadata:
+        findings.append("candidate validation changed the source tree or build metadata")
 print("\\n".join(findings))
 '''
     path.write_text(script, encoding="utf-8")
@@ -991,6 +1142,7 @@ base_configuration = {base_configuration!r}
 supported_audits = {supported_audits!r}
 failure_contrasts = {failure_contrasts!r}
 expected_branch = {expected_candidate_branch(requested_candidate_kind)!r}
+automatic_selection = {requested_candidate_kind == "auto"!r}
 program = {str(program)!r}
 
 findings = []
@@ -1058,6 +1210,12 @@ def require_failure_coverage(candidate, contrast):
 try:
     candidate = json.load(sys.stdin)
     branch = candidate.get("branch") if isinstance(candidate, dict) else None
+    if automatic_selection and branch not in (
+        "implement-source", "configure-workflow", "insufficient-evidence"
+    ):
+        raise ValueError(
+            "automatic selection permits only source-change and workflow-configuration candidates"
+        )
     if expected_branch is not None and branch not in (expected_branch, "insufficient-evidence"):
         raise ValueError(
             f"requested candidate kind requires branch {{expected_branch}}, received {{branch}}"
@@ -1176,9 +1334,8 @@ def build_config(
         sufficiency = (
             "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. "
             "Choose `configure-workflow` when a repeated quality gain is caused by exactly one independent "
-            "audit setting; the runner binds that setting directly from the evidence. Choose `revise-instructions` "
-            "when a procedural difference belongs in one instruction section of the retained program document. "
-            "Choose `define-tool` when one missing executable tool explains the gap. Choose "
+            "audit setting; the runner binds that setting directly from the evidence. Instruction revisions and "
+            "tool definitions require application support before automatic selection may choose them. Choose "
             "`insufficient-evidence` when the intervention requires semantic knowledge absent from the log or "
             "an evaluator change. A reasoning-effort difference without a workflow contrast establishes model "
             "capability rather than a Foe defect."
@@ -1342,6 +1499,7 @@ def build_config(
         "instructions": {
             "role": "Implement the supplied typed diagnosis as a candidate for independent source audit.",
             "scope": "Inspect source before editing. Change runtime source, a regression test, and each affected specification. Preserve reconstructable logs, declared authority, typed outcomes, and explicit completion semantics.",
+            "build_metadata": "Do not change Cargo, Bazel, module, toolchain, package, or build-script metadata. Automatic source candidates preserve the trusted build graph.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Do not encode benchmark identifiers, fixture values, or grader rules. Refuse an intervention that changes only a built-in default overridden by the explicit evaluated program.",
             "validation": "Treat the diagnosis as a hypothesis that source and tests must support. Run the candidate check after implementation and use its findings to correct the candidate. Return a typed handoff for a fresh audit, including unresolved architectural risks. Use the check tool as the authority for baseline-relative line budgets because scripts/loc.sh alone cannot distinguish an existing overage from candidate growth.",
         },
@@ -1363,6 +1521,7 @@ def build_config(
             "evidence": "Treat the diagnosis and implementation handoff as unverified hypotheses. Inspect the current diff, the owning source, existing tests, and affected specifications. Reject a proposed mechanism whose source lifecycle cannot produce the claimed task-visible behavior.",
             "architecture": "Trace every proposed tool, authority, process, and mutable resource from creation through model-node return, workflow settlement, and external evaluation. Preserve existing default interfaces unless the source design and general task-quality evidence require a change.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Remove benchmark-specific behavior and refuse changes whose benefit depends on hidden evaluator knowledge.",
+            "build_metadata": "Reject and revert changes to Cargo, Bazel, module, toolchain, package, or build-script metadata.",
             "validation": "Run the candidate check after the final repair. Use its findings to continue until formatting, relevant tests, Clippy, scope, and baseline-relative line budgets pass. Report remaining semantic risks before the authoritative check.",
         },
         "tools": [*CODING_TOOLS, "check"],
@@ -1416,9 +1575,17 @@ def build_config(
                     "branches": {
                         "implement-source": ["implement-runtime-improvement"],
                         "configure-workflow": [],
-                        "revise-instructions": [],
-                        "define-tool": [],
                         "insufficient-evidence": [],
+                        **(
+                            {"revise-instructions": []}
+                            if requested_candidate_kind == "instruction-revision"
+                            else {}
+                        ),
+                        **(
+                            {"define-tool": []}
+                            if requested_candidate_kind == "tool-definition"
+                            else {}
+                        ),
                     },
                 },
                 "implement-runtime-improvement": {
@@ -1590,6 +1757,9 @@ def parser() -> argparse.ArgumentParser:
         help="absolute path to the pinned toolchain's cargo binary, rather than a rustup proxy",
     )
     answer.add_argument("--cargo-home", type=Path, help="absolute Cargo cache used by candidate validation")
+    answer.add_argument("--bundle-builder", type=Path, required=True)
+    answer.add_argument("--ancestry-checker", type=Path, required=True)
+    answer.add_argument("--source-checker", type=Path, required=True)
     answer.add_argument("--keep", type=Path)
     answer.add_argument("--confirm-spend", action="store_true")
     return answer
@@ -1640,6 +1810,16 @@ def main(argv: list[str] | None = None) -> int:
         candidate = args.candidate.resolve(strict=True)
         evidence = args.evidence.resolve(strict=True)
         binary = args.foe.resolve(strict=True)
+        bundle_builder = args.bundle_builder.resolve(strict=True)
+        ancestry_checker = args.ancestry_checker.resolve(strict=True)
+        source_checker = args.source_checker.resolve(strict=True)
+        for label, executable in (
+            ("--bundle-builder", bundle_builder),
+            ("--ancestry-checker", ancestry_checker),
+            ("--source-checker", source_checker),
+        ):
+            if not executable.is_file():
+                raise ValueError(f"{label} must name a trusted executable file")
         identity = verify_evidence_identity(candidate, binary, evidence)
         base_configuration = failed_base_configuration(evidence)
         supported_audits = supported_independent_audits(evidence, base_configuration)
@@ -1756,14 +1936,7 @@ def main(argv: list[str] | None = None) -> int:
         timeout=SECONDS + 30,
         check=False,
     )
-    changed_status = subprocess.run(
-        ["/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all"],
-        cwd=candidate,
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout.splitlines()
-    changed = [line[3:] for line in changed_status if len(line) > 3]
+    changed = changed_source_paths(candidate)
     usage = measure_episode(episode, pricing)
     outcome = usage.get("outcome")
     outcome_value = candidate_outcome_value(episode, outcome)
@@ -1877,10 +2050,46 @@ def main(argv: list[str] | None = None) -> int:
         )
         acceptance = {"accepted": False, "findings": [finding], "exit_code": None}
         candidate_kind = "no-candidate"
+    artifact_accepted = acceptance["accepted"]
     adoption = None
-    if acceptance["accepted"] and candidate_kind != "no-candidate":
+    source_candidate = None
+    if acceptance["accepted"] and candidate_kind == "source-change":
+        source_bundle = root / "source-candidate-bundle"
+        try:
+            shutil.copytree(episode, source_bundle / "episode")
+            (source_bundle / "parent-identity.json").write_bytes(
+                canonical_json(plan["identity_document"])
+            )
+            shutil.copy2(check, source_bundle / "candidate-check")
+            verification_log, verification_seq = find_accepted_verification(
+                episode, "check"
+            )
+            source_candidate = capture_source_candidate(
+                source_checker,
+                source_bundle,
+                candidate,
+                identity["source_tree"],
+                "parent-identity.json",
+                "episode/episode.jsonl",
+                verification_log,
+                verification_seq,
+                "candidate-check",
+            )
+            source_candidate["bundle"] = str(source_bundle.relative_to(root))
+            source_candidate["lineage_status"] = "pending-external-evaluation"
+            artifact_identity = source_candidate
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            acceptance = {
+                **acceptance,
+                "accepted": False,
+                "findings": [
+                    *acceptance["findings"],
+                    f"source evidence capture failed: {error}",
+                ],
+                "exit_code": None,
+            }
+    elif acceptance["accepted"] and candidate_kind != "no-candidate":
         retained: dict[str, bytes] = {}
-        artifacts = None
         verification_tool = DIAGNOSIS_VALIDATOR_TOOL
         if candidate_kind == "workflow-configuration":
             retained["workflow-candidate.json"] = workflow_candidate_path.read_bytes()
@@ -1889,41 +2098,28 @@ def main(argv: list[str] | None = None) -> int:
         elif candidate_kind == "tool-definition":
             retained["tool-candidate.json"] = tool_candidate_path.read_bytes()
             retained["tool-candidate-executable"] = tool_executable_path.read_bytes()
-        else:
-            verification_tool = "check"
-            artifacts = [
-                {"path": name, "sha256": value}
-                for name, value in sorted(artifact_identity["files"].items())
-            ]
-        toolchain_environment = {
-            "CARGO_HOME": str(cargo_home),
-            "CARGO_TARGET_DIR": str(cargo_target),
-            "HOME": str(candidate),
-            "LANG": "C.UTF-8",
-            "PATH": f"{cargo.parent}:/usr/local/bin:/usr/bin:/bin",
-            "TMPDIR": str(cargo_target / "tmp"),
-        }
-        if rustup_home is not None:
-            toolchain_environment["RUSTUP_HOME"] = str(rustup_home)
-            toolchain_environment["RUSTUP_TOOLCHAIN"] = toolchain.name
-        (cargo_target / "tmp").mkdir(parents=True, exist_ok=True)
-        try:
-            adoption = record_adoption(
+
+        def record_candidate_adoption() -> dict[str, Any]:
+            return record_adoption(
                 root,
                 episode,
                 adoption_state_document(
-                    candidate_kind, artifact_identity, program_document, base_configuration
+                    candidate_kind, artifact_identity, program_document
                 ),
                 plan["identity_document"],
                 retained,
                 verification_tool,
-                [str(cargo), "run", "--quiet", "-p", "foe-lineage", "--bin", "build-bundle", "--"],
-                builder_cwd=candidate,
-                builder_env=toolchain_environment,
-                artifacts=artifacts,
+                [str(bundle_builder)],
+                [str(ancestry_checker)],
             )
-        except (OSError, ValueError, subprocess.SubprocessError) as error:
-            adoption = {"error": str(error)}
+
+        adoption, acceptance = require_successful_adoption(
+            acceptance,
+            record_candidate_adoption,
+        )
+    direct_implementation_required, process_exit = candidate_disposition(
+        acceptance, result.returncode
+    )
     record = {
         **preview,
         "evaluated_foe": identity,
@@ -1938,20 +2134,21 @@ def main(argv: list[str] | None = None) -> int:
         "changed_files": changed,
         "candidate_kind": candidate_kind,
         "candidate_artifact": artifact_identity,
+        "source_candidate": source_candidate,
         "workflow_candidate": str(workflow_candidate_path) if workflow_candidate_path else None,
         "instruction_candidate": str(instruction_candidate_path) if instruction_candidate_path else None,
         "tool_candidate": str(tool_candidate_path) if tool_candidate_path else None,
         "tool_candidate_executable": str(tool_executable_path) if tool_executable_path else None,
         "candidate_acceptance": acceptance,
         "adoption": adoption,
-        "artifact_outcome_mismatch": acceptance["accepted"] and result.returncode != 0,
-        "direct_implementation_required": not acceptance["accepted"],
+        "artifact_outcome_mismatch": artifact_accepted and result.returncode != 0,
+        "direct_implementation_required": direct_implementation_required,
     }
     write_json(root / "result.json", record)
     print(json.dumps(record, indent=2, sort_keys=True))
     if temporary:
         temporary.cleanup()
-    return 0 if acceptance["accepted"] else result.returncode or 3
+    return process_exit
 
 
 if __name__ == "__main__":

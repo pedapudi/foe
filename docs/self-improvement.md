@@ -112,9 +112,9 @@ disjoint.
 The runner copies the report into the retained run directory before creating
 the program. The resulting version 3 program contains three model nodes:
 
-1. A diagnosis node receives only the task and bounded trajectory report. It
-   chooses a source, workflow-configuration, instruction, or executable-tool
-   candidate. It may instead report insufficient evidence.
+1. A diagnosis node receives only the task and bounded trajectory report. In
+   automatic mode, it chooses a source or workflow-configuration candidate.
+   It may instead report insufficient evidence.
 2. A source implementation node receives the typed diagnosis and task. It
    returns a typed summary of changed paths, validation, and unresolved risks.
 3. A fresh audit node receives the task, diagnosis, and implementation
@@ -136,6 +136,25 @@ diagnosis verifier rejects a missing or substituted citation. The diagnosis
 returns insufficient evidence when the loci do not support one shared
 mechanism.
 
+An explicit request can produce an instruction-revision or tool-definition
+proposal. The Terminal-Bench runner cannot apply either kind to an evaluation
+program. Automatic selection excludes them until an application path can bind
+the applied program to the proposal.
+
+A workflow candidate preserves the controls that determine its activation.
+The binding covers the primary model, reasoning effort, service tier, token
+policy, workflow owner, and completion-governance mode. The workflow owner
+distinguishes Foe's built-in workflow from a graph created by the evaluation
+runner. Completion governance distinguishes a declared verifier from a model
+completion report. The binding omits task identity so a candidate can be
+evaluated on transfer tasks under the same controls.
+
+The evidence that creates a workflow candidate is task-specific. A successful
+audit must reverse a baseline failure on the same activation task. The model,
+primary effort, service tier, token policy, workflow owner, and completion
+governance must remain equal. Success on a transfer task supplies later
+evidence and cannot establish the initial causal contrast.
+
 The default OpenAI service tier is `priority` for all three model nodes. A
 preview constructs and validates the complete program without creating the
 requested retained directory or sending a model request. It removes any empty
@@ -147,9 +166,57 @@ Terminal-Bench task quality. The unchanged task-owned Terminal-Bench grader
 remains the sole authority for promotion based on quality. Tokens, estimated
 cost, cache use, and latency are recorded as diagnostics.
 
+Source and workflow candidates have external Terminal-Bench application
+paths. The runner accepts source-candidate evidence rather than a proposed
+child program identity. Before provider spend, a trusted checker verifies the
+retained source bytes, Git blobs, modes, deletions, clean candidate tree, and
+rebuilt binary digest.
+
+Source evaluation runs from a separate controller checkout. The candidate
+source tree is an explicit input. The controller records its source root and
+committed tree identity. It separately records the trusted build root that
+contains the checker, along with runner and checker paths and digests. It
+validates proposal-tree provenance and verifier authorization before provider
+spend. Source evidence retains the generated candidate checker as a regular
+file. Its digest must equal the accepted result recorded by the source-audit
+child, whose program must declare that checker. A confirmed campaign freezes
+the validated source bundle under its run directory and uses that copy for
+every later adoption check.
+
+The proposal tree contains one root episode. Every retained child keeps its
+complete parent chain to that root. Each `spawn/start` program resolves to the
+recorded child identity through the parent identity document. Workflow paths
+resolve through nested workflow nodes. The source proposal format carries only
+the root identity document, so a retained child cannot start another retained
+episode.
+
+Automatic source candidates cannot change Cargo, Bazel, module, toolchain,
+package, or build-script metadata. The candidate checker compares that
+metadata with its trusted baseline before validation. It rescans repository
+status, source bytes, and build metadata after all validation commands.
+
+A no-spend preview may pair the source tree with a caller-supplied binary for
+diagnosis. A confirmed campaign builds `//:foe-portable` from the clean,
+accepted tree with the controller's Bazel executable and the protected build
+graph. The candidate cannot change Cargo, Bazel, module, toolchain, package,
+or build-script metadata. The campaign retains the command, Bazel path,
+version, and digest, protected build-graph digest, complete build-log digest,
+source-tree identity, and output digest. Evaluation and adoption use only the
+retained output.
+
+The adapter retains the rebuilt binary's actual `foe plan --json` report.
+The plan form resolves both configured programs and the built-in coding
+workflow without starting an episode.
+After the episode, the trusted checker requires the root log to carry that
+planned program and the rebuilt binary digest. It then constructs and verifies
+lineage from the actual program identity. `campaign.json` records the source
+candidate, completed adoptions, checker digests, and evaluated source and
+binary pair. Adoption failure sets `direct_implementation_required`,
+invalidates the task record, and makes the campaign exit unsuccessfully.
+
 ## Acceptance conditions
 
-A successful attempt satisfies six independent conditions:
+A successful example attempt satisfies six independent conditions:
 
 1. The fresh source produces at least one evaluator finding.
 2. The final source produces no evaluator findings.
@@ -169,6 +236,22 @@ The routine example uses a fast structural checker because it copies only the
 three affected files. Candidate promotion needs a complete build and test
 run. The measured candidates were therefore overlaid onto complete source
 archives and compiled after the model-backed attempts.
+
+The Terminal-Bench self-improvement runner has one additional acceptance
+condition for a workflow candidate. It must complete a valid lineage adoption
+after the artifact check. Adoption failure rejects the candidate, sets
+`direct_implementation_required`, and makes the process exit unsuccessfully.
+
+A source candidate first earns artifact acceptance. Its content-addressed
+manifest retains regular bytes, Git object types, file modes, blob identities,
+and deletions. Evidence capture failure rejects the candidate and makes the
+self-improvement process exit unsuccessfully. Successful capture authorizes
+external evaluation. Promotion requires the external evaluation to complete
+lineage from the rebuilt binary's actual program identity. The required
+implementation, regression test, and specification are regular files that
+exist after the change. Each is added or content-modified relative to the base
+tree. A deletion, symbolic link, type change, unchanged file, or rename-away
+does not satisfy the requirement.
 
 ## Measured result
 
@@ -408,6 +491,10 @@ Every self-improvement evaluation should retain the following evidence:
 
 - the initial and final evaluator findings;
 - the candidate diff and the immutable source revision it started from;
+- the source-bundle and source-candidate identities;
+- each completed adoption, evidence, program, state, and parent identity;
+- the evaluation checker digest and controller-build record;
+- the retained Git object, mode, bytes, or deletion for every changed file;
 - root and child outcomes;
 - provider-reported input, output, and cache-read tokens per response;
 - model requests, tool calls, rendered tool-result sizes, and tool errors;
@@ -438,8 +525,11 @@ Use the following sequence for a bounded self-improvement task:
 6. Keep model-call and token ceilings above observed successful variance.
 7. Re-run an external grader after the episode.
 8. Compile and test the candidate in a complete disposable source tree.
-9. Inspect trace conformance and resource use.
-10. Promote the patch through a separate review step.
+9. Capture the accepted source candidate as content-addressed evidence.
+10. Inspect trace conformance and resource use.
+11. Evaluate the rebuilt candidate against unchanged external tasks.
+12. Complete lineage from each actual evaluation program and episode.
+13. Promote the patch through a separate review step.
 
 Improvements may add capability, simplify implementation, or remove behavior
 that harms task quality. A bound, retry rule, or completion condition is a

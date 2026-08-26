@@ -33,6 +33,15 @@ pub enum LineageError {
     Io(#[from] std::io::Error),
 }
 
+/// A configured verifier whose executable bytes are retained outside the
+/// parent identity document. The caller establishes the byte digest before
+/// asking proposal validation to close the child-program authorization check.
+#[derive(Clone, Copy)]
+pub struct RetainedVerifier<'a> {
+    pub tool: &'a str,
+    pub executable_sha256: &'a str,
+}
+
 fn invalid(key: impl Into<String>, rule: impl Into<String>) -> LineageError {
     LineageError::Invalid { key: key.into(), rule: rule.into() }
 }
@@ -160,7 +169,7 @@ pub fn verify_bundle(dir: &Path) -> Result<(Manifest, String), LineageError> {
 }
 
 /// Builds the manifest of `dir`: every file below it except the manifest
-/// itself, in byte order. The caller writes [`manifest_bytes`] to
+/// itself, in byte order. The caller writes [`canonical_bytes`] to
 /// [`MANIFEST_FILE`]; the digest of those bytes is the bundle's address.
 pub fn build_manifest(dir: &Path, proposal_log: &str, adoption_record: &str) -> Result<Manifest, LineageError> {
     let mut files = Vec::new();
@@ -193,12 +202,12 @@ pub fn build_manifest(dir: &Path, proposal_log: &str, adoption_record: &str) -> 
         proposal_log: proposal_log.into(),
         adoption_record: adoption_record.into(),
     };
-    check_manifest(&manifest_bytes(&manifest)?)
+    check_manifest(&canonical_bytes(&manifest)?)
 }
 
-/// The canonical bytes of a manifest: what [`MANIFEST_FILE`] holds.
-pub fn manifest_bytes(manifest: &Manifest) -> Result<Vec<u8>, LineageError> {
-    Ok(canonical(&serde_json::to_value(manifest)?).into_bytes())
+/// The canonical bytes of a lineage record.
+pub fn canonical_bytes(value: &impl Serialize) -> Result<Vec<u8>, LineageError> {
+    Ok(canonical(&serde_json::to_value(value)?).into_bytes())
 }
 
 /// The adoption record: written into the bundle by its builder, binding
@@ -225,12 +234,6 @@ pub struct AdoptionRecord {
     pub verification_seq: u64,
 }
 
-/// The canonical bytes of an adoption record: what the file named by
-/// `Manifest::adoption_record` holds.
-pub fn record_bytes(record: &AdoptionRecord) -> Result<Vec<u8>, LineageError> {
-    Ok(canonical(&serde_json::to_value(record)?).into_bytes())
-}
-
 // ---- ancestry ---------------------------------------------------------------
 
 /// A state document: the canonical identity document paired with the
@@ -241,11 +244,6 @@ pub struct StateDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub program_lineage: Option<ProgramLineage>,
 }
-
-/// Retrieves a state document by state identity.
-pub type StateResolver<'a> = &'a dyn Fn(&str) -> Result<StateDocument, String>;
-/// Retrieves an evidence bundle directory by content address.
-pub type EvidenceResolver<'a> = &'a dyn Fn(&str) -> Result<PathBuf, String>;
 
 /// One state of a verified chain.
 #[derive(Debug, Clone, Serialize)]
@@ -272,8 +270,8 @@ pub struct AncestryReport {
 /// is reported in `unverifiable` rather than failed.
 pub fn check_ancestry(
     state: &StateDocument,
-    states: StateResolver,
-    evidence: EvidenceResolver,
+    states: &dyn Fn(&str) -> Result<StateDocument, String>,
+    evidence: &dyn Fn(&str) -> Result<PathBuf, String>,
 ) -> Result<AncestryReport, LineageError> {
     let mut current = state.clone();
     let mut seen = BTreeSet::new();
@@ -309,7 +307,7 @@ fn check_transition(
     claim: &ProgramLineage,
     child_identity: &str,
     parent_document: &Value,
-    evidence: EvidenceResolver,
+    evidence: &dyn Fn(&str) -> Result<PathBuf, String>,
     report: &mut AncestryReport,
 ) -> Result<(), LineageError> {
     let dir = evidence(&claim.evidence)
@@ -318,38 +316,13 @@ fn check_transition(
     if address != claim.evidence {
         return Err(invalid("program_lineage.evidence", "equals the digest of the bundle's canonical manifest"));
     }
-    // Every episode log retained in the bundle is a valid log.
-    let mut logs = BTreeMap::new();
-    for file in manifest.files.iter().filter(|f| f.path == "episode.jsonl" || f.path.ends_with("/episode.jsonl")) {
-        let log_dir = dir.join(&file.path);
-        let log_dir = log_dir.parent().expect("a log path has a parent");
-        let events = fold::read_all(log_dir)
-            .map_err(|e| invalid(format!("evidence log {}", file.path), format!("is readable: {e}")))?;
-        let state = fold::fold(&events)
-            .map_err(|e| invalid(format!("evidence log {}", file.path), format!("is a valid log: {e}")))?;
-        logs.insert(file.path.clone(), (events, state));
-    }
-    // The accepted verifier result the claim names.
-    let (events, _) = logs
-        .get(&claim.verification_log)
-        .ok_or_else(|| invalid("program_lineage.verification_log", "names an episode log in the bundle"))?;
-    let event = events
-        .iter()
-        .find(|e| e.seq == claim.verification_seq)
-        .ok_or_else(|| invalid("program_lineage.verification_seq", "names an event in verification_log"))?;
-    let EventData::VerificationResult(result) = &event.data else {
-        return Err(invalid("program_lineage.verification_seq", "names a verification/result event"));
-    };
-    if result.status != VerificationStatus::Accepted {
-        return Err(invalid("program_lineage.verification_seq", "names an accepted verification/result"));
-    }
     // Exact input binding: the adoption record, written by the bundle
     // builder, pairs the candidate's identity members with the accepted
     // event's coordinates. The frozen event carries no digest of its
     // input, so the pairing is attested as strongly as the bundle itself.
     let bytes = std::fs::read(dir.join(&manifest.adoption_record))?;
     let record: AdoptionRecord = serde_json::from_slice(&bytes)?;
-    if record_bytes(&record)? != bytes {
+    if canonical_bytes(&record)? != bytes {
         return Err(invalid("adoption_record", "is the canonical serialization of its object"));
     }
     if record.schema_version != 1 {
@@ -376,73 +349,142 @@ fn check_transition(
     if record.program_identity != child_identity {
         return Err(invalid("adoption_record.program_identity", "equals the descendant state's program identity"));
     }
-    // The proposal tree descends from the named parent.
-    let (_, root_state) = logs
-        .get(&manifest.proposal_log)
-        .ok_or_else(|| invalid("evidence.manifest.proposal_log", "names an episode log"))?;
-    let root_start =
+    report.unverifiable.extend(check_proposal(
+        &dir,
+        manifest.files.iter().map(|file| file.path.as_str()),
+        &manifest.proposal_log,
+        &claim.verification_log,
+        claim.verification_seq,
+        parent_document,
+        None,
+    )?);
+    Ok(())
+}
+
+/// Verifies that an accepted result belongs to the retained proposal tree
+/// and was produced by a verifier authorized by the parent program. The
+/// caller supplies every retained file name so missing spawn-path logs
+/// cannot be recovered from ambient filesystem state.
+pub fn check_proposal<'a>(
+    dir: &Path,
+    files: impl Iterator<Item = &'a str>,
+    proposal_log: &str,
+    verification_log: &str,
+    verification_seq: u64,
+    parent_document: &Value,
+    retained_verifier: Option<RetainedVerifier<'_>>,
+) -> Result<Vec<String>, LineageError> {
+    let mut logs = BTreeMap::new();
+    for path in files.filter(|path| *path == "episode.jsonl" || path.ends_with("/episode.jsonl")) {
+        let log_dir = dir.join(path);
+        let events = fold::read_all(log_dir.parent().expect("a log path has a parent"))
+            .map_err(|e| invalid(format!("evidence log {path}"), format!("is readable: {e}")))?;
+        let state =
+            fold::fold(&events).map_err(|e| invalid(format!("evidence log {path}"), format!("is a valid log: {e}")))?;
+        logs.insert(path.to_string(), (events, state));
+    }
+    let (events, verifier_state) = logs
+        .get(verification_log)
+        .ok_or_else(|| invalid("program_lineage.verification_log", "names an episode log in the bundle"))?;
+    let event = events
+        .iter()
+        .find(|event| event.seq == verification_seq)
+        .ok_or_else(|| invalid("program_lineage.verification_seq", "names an event in verification_log"))?;
+    let EventData::VerificationResult(result) = &event.data else {
+        return Err(invalid("program_lineage.verification_seq", "names a verification/result event"));
+    };
+    if result.status != VerificationStatus::Accepted {
+        return Err(invalid("program_lineage.verification_seq", "names an accepted verification/result"));
+    }
+    let (_, root_state) =
+        logs.get(proposal_log).ok_or_else(|| invalid("evidence.manifest.proposal_log", "names an episode log"))?;
+    let root =
         root_state.start.as_ref().ok_or_else(|| invalid("evidence.manifest.proposal_log", "has episode/start"))?;
-    if root_start.identity != claim.parent.program_identity {
+    if root.identity != digest_of(canonical(parent_document).as_bytes()) {
         return Err(invalid(
             "program_lineage.parent.program_identity",
             "equals the proposal root log's program identity",
         ));
     }
-    verify_provenance(&manifest.proposal_log, &claim.verification_log, &logs)?;
-    let (_, verifier_state) = &logs[&claim.verification_log];
-    let verifier_start = verifier_state.start.as_ref().expect("a checked log has episode/start");
-    check_verifier(result, verifier_start, parent_document, report)
+    verify_provenance(proposal_log, &logs, parent_document)?;
+    let start = verifier_state.start.as_ref().expect("a checked log has episode/start");
+    let mut report = AncestryReport { chain: Vec::new(), unverifiable: Vec::new() };
+    check_verifier(result, start, parent_document, retained_verifier, &mut report)?;
+    Ok(report.unverifiable)
 }
 
-/// Requires `log` to be `root` or a descendant reached through recorded
-/// spawn provenance: each `children/<id>/episode.jsonl` hop is announced by
-/// a `spawn/start` naming `<id>` in the log above it, and the child's
-/// `episode/start` names that episode as its parent.
-fn verify_provenance(root: &str, log: &str, logs: &BTreeMap<String, (Vec<Event>, State)>) -> Result<(), LineageError> {
-    if log == root {
-        return Ok(());
-    }
+/// Requires one retained root and one identity-bound spawn edge for every
+/// retained child. Each child log names the spawning episode as its parent
+/// and team and occupies that episode's `children/<id>` directory.
+fn verify_provenance(
+    root: &str,
+    logs: &BTreeMap<String, (Vec<Event>, State)>,
+    parent_document: &Value,
+) -> Result<(), LineageError> {
     let key = "program_lineage.verification_log";
-    let base = root.strip_suffix("episode.jsonl").unwrap_or_default();
-    let Some(rest) = log.strip_prefix(base).and_then(|r| r.strip_suffix("/episode.jsonl")) else {
-        return Err(invalid(key, "lies in the proposal episode tree"));
-    };
-    let parts: Vec<&str> = rest.split('/').collect();
-    if !parts.len().is_multiple_of(2) || parts.iter().step_by(2).any(|c| *c != "children") {
-        return Err(invalid(key, "descends through children/<id> directories"));
+    if logs[root].1.start.as_ref().expect("a checked log has episode/start").parent_id.is_some()
+        || logs[root].1.start.as_ref().expect("a checked log has episode/start").team_id.is_some()
+    {
+        return Err(invalid("evidence.manifest.proposal_log", "is the sole retained root episode"));
     }
-    let mut above = root.to_string();
-    let mut prefix = base.to_string();
-    for id in parts.iter().skip(1).step_by(2) {
-        let (parent_events, parent_state) = &logs[&above];
-        let spawned =
-            parent_events.iter().any(|e| matches!(&e.data, EventData::SpawnStart { child_id, .. } if child_id == id));
-        if !spawned {
-            return Err(invalid(key, format!("{id} is spawned by the log above it")));
+    let mut children = BTreeMap::new();
+    for (path, (_, state)) in logs {
+        let start = state.start.as_ref().expect("a checked log has episode/start");
+        if children.insert(start.id.as_str(), path.as_str()).is_some() {
+            return Err(invalid(key, format!("episode id {} is unique in the retained tree", start.id)));
         }
-        prefix = format!("{prefix}children/{id}/");
-        let child_path = format!("{prefix}episode.jsonl");
-        let (_, child_state) =
-            logs.get(&child_path).ok_or_else(|| invalid(key, "every log on its spawn path is retained"))?;
-        let child_start = child_state.start.as_ref().ok_or_else(|| invalid(key, "has episode/start"))?;
-        if child_start.parent_id.as_deref() != parent_state.start.as_ref().map(|s| s.id.as_str()) {
-            return Err(invalid(key, format!("{id} names the episode above it as its parent")));
-        }
-        above = child_path;
     }
-    Ok(())
+    children.remove(logs[root].1.start.as_ref().expect("a checked log has episode/start").id.as_str());
+    for (parent_path, (events, state)) in logs {
+        let parent_id = &state.start.as_ref().expect("a checked log has episode/start").id;
+        for (child_id, program) in events.iter().filter_map(|event| match &event.data {
+            EventData::SpawnStart { child_id, program, .. } => Some((child_id, program)),
+            _ => None,
+        }) {
+            let child_path = children
+                .remove(child_id.as_str())
+                .ok_or_else(|| invalid(key, format!("{parent_id} has no unique retained child {child_id}")))?;
+            let start = logs[child_path].1.start.as_ref().expect("a checked log has episode/start");
+            let expected =
+                format!("{}children/{child_id}/episode.jsonl", parent_path.strip_suffix("episode.jsonl").unwrap());
+            if *child_path != expected
+                || start.parent_id.as_ref() != Some(parent_id)
+                || start.team_id.as_ref() != Some(parent_id)
+            {
+                return Err(invalid(key, format!("{child_path} descends from its recorded parent and team")));
+            }
+            if *parent_path != root {
+                return Err(invalid(key, format!("{child_path} lacks its spawning parent's identity document")));
+            }
+            if workflow_child_identity(parent_document, program) != Some(start.identity.as_str()) {
+                return Err(invalid(key, format!("{} has the identity of workflow node {program}", start.id)));
+            }
+        }
+    }
+    children
+        .is_empty()
+        .then_some(())
+        .ok_or_else(|| invalid(key, "reaches every retained episode through one spawn edge"))
+}
+
+fn workflow_child_identity<'a>(document: &'a Value, program: &str) -> Option<&'a str> {
+    if let Some(identity) = document["programs"][program].as_str() {
+        return Some(identity);
+    }
+    program.split('/').try_fold(document, |parent, name| parent["workflow"]["nodes"].get(name))?["model"].as_str()
 }
 
 /// The verifier episode runs a program of the parent state's tree, and the
 /// identity the event records is the one that program declares. The
-/// identity document reduces a child program to its hash, so a configured
-/// verifier is checkable against its declared executable hash only when
-/// the verifier episode runs the parent program itself; the child case is
-/// reported open.
+/// identity document reduces a child program to its hash. A configured
+/// verifier in a child program therefore needs a retained executable
+/// binding from the evidence bundle. A child verifier without that exact
+/// binding remains an open authorization check.
 fn check_verifier(
     result: &foe_log::VerificationResult,
     start: &foe_log::EpisodeStart,
     parent_document: &Value,
+    retained: Option<RetainedVerifier<'_>>,
     report: &mut AncestryReport,
 ) -> Result<(), LineageError> {
     let parent_identity = digest_of(canonical(parent_document).as_bytes());
@@ -486,7 +528,9 @@ fn check_verifier(
                 "equals the executable hash the parent program declares",
             ));
         }
-    } else {
+    } else if !retained
+        .is_some_and(|binding| binding.tool == result.tool && binding.executable_sha256 == result.verifier_identity)
+    {
         report.unverifiable.push(format!(
             "verifier episode {}: a configured verifier of a child program; the parent identity document \
              reduces the child to its hash, so the declared executable hash is not retained",

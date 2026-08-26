@@ -22,6 +22,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from source_adoption import (
+    build_source_candidate,
+    complete_source_adoption,
+    freeze_source_candidate,
+    verify_source_candidate,
+)
 from trajectory_diagnostics import diagnose_episode
 from workflow_candidate import require_matching_run as require_matching_candidate_run
 from workflow_candidate import validate as validate_workflow_candidate
@@ -533,6 +539,26 @@ def source_tree(path: Path) -> str:
     return f"git-tree-{object_format}:{tree}"
 
 
+def committed_source_tree(path: Path) -> str:
+    """Return the committed Git tree containing an immutable controller root."""
+
+    def git(*arguments: str) -> str:
+        result = subprocess.run(
+            ["/usr/bin/git", "-C", str(path), *arguments],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+            raise ValueError(f"cannot identify controller source: git {' '.join(arguments)}: {detail}")
+        return result.stdout.strip()
+
+    object_format = git("rev-parse", "--show-object-format")
+    tree = git("rev-parse", "HEAD^{tree}")
+    return f"git-tree-{object_format}:{tree}"
+
+
 def initialize_credential_state(source: Path, state: Path) -> None:
     contents = source.read_bytes()
     value = json.loads(contents)
@@ -974,6 +1000,12 @@ def task_record(
     started_at: str,
     ended_at: str,
     elapsed_seconds: float,
+    source_adoption_path: Path | None = None,
+    source_preflight: dict[str, Any] | None = None,
+    source_checker: Path | None = None,
+    source_root: Path | None = None,
+    evaluated_source: str | None = None,
+    foe: Path | None = None,
 ) -> dict[str, Any]:
     job_result_path = run_dir / task.name / "result.json"
     record: dict[str, Any] = {
@@ -1000,9 +1032,39 @@ def task_record(
                     completion_checker=completion_checker,
                 )
             )
+            if source_adoption_path is not None:
+                if None in (
+                    source_checker,
+                    source_root,
+                    evaluated_source,
+                    foe,
+                    source_preflight,
+                ):
+                    raise ValueError("source adoption finalization lacks a trusted checker or evaluated pair")
+                adoptions = []
+                for plan in sorted((run_dir / task.name).glob("*/agent/foe-plan.json")):
+                    trial = plan.parent.parent.name
+                    adoptions.append(
+                        complete_source_adoption(
+                            source_checker,
+                            source_adoption_path,
+                            source_root,
+                            evaluated_source,
+                            foe,
+                            plan,
+                            plan.parent / "foe-episode",
+                            run_dir / "source-lineage" / task.name / trial,
+                            source_preflight,
+                        )
+                    )
+                if not adoptions:
+                    raise ValueError("source adoption found no retained Foe plan")
+                record["source_adoptions"] = adoptions
     except (OSError, ValueError, json.JSONDecodeError) as error:
         record["result_error"] = str(error)
         record["configuration_claim_valid"] = False
+        if source_adoption_path is not None:
+            record["direct_implementation_required"] = True
     return record
 
 
@@ -1010,6 +1072,26 @@ def parser() -> argparse.ArgumentParser:
     answer = argparse.ArgumentParser(description=__doc__)
     answer.add_argument("--foe", type=Path, required=True)
     answer.add_argument("--source-root", type=Path, required=True)
+    answer.add_argument(
+        "--source-checker",
+        type=Path,
+        help="trusted source evidence and lineage checker; required with --source-adoption",
+    )
+    answer.add_argument(
+        "--controller-root",
+        type=Path,
+        help="immutable controller checkout; required with --source-adoption",
+    )
+    answer.add_argument(
+        "--controller-artifact-root",
+        type=Path,
+        help="trusted controller build output; required with --source-adoption",
+    )
+    answer.add_argument(
+        "--controller-bazel",
+        type=Path,
+        help="trusted Bazel executable that builds source candidates",
+    )
     answer.add_argument("--agent-module", type=Path, required=True)
     answer.add_argument("--trace-evaluator", type=Path, required=True)
     answer.add_argument("--cases", type=Path, required=True)
@@ -1051,6 +1133,11 @@ def parser() -> argparse.ArgumentParser:
         "--workflow-candidate",
         type=Path,
         help="identity-bound workflow configuration produced by self-improvement",
+    )
+    answer.add_argument(
+        "--source-adoption",
+        type=Path,
+        help="accepted source-change result or lineage evidence bundle applied to this Foe build",
     )
     answer.add_argument("--label", default="baseline")
     answer.add_argument("--jobs-dir", type=Path, default=Path("target/terminal-bench-jobs"))
@@ -1174,8 +1261,44 @@ def main(argv: list[str] | None = None) -> int:
             )
         if args.workflow_candidate is not None and args.install_only:
             raise ValueError("--workflow-candidate cannot be used with --install-only")
+        if args.source_adoption is not None and args.install_only:
+            raise ValueError("--source-adoption cannot be used with --install-only")
+        if args.source_adoption is not None and args.workflow_candidate is not None:
+            raise ValueError("--source-adoption and --workflow-candidate evaluate different candidates")
+        if args.source_adoption is not None and args.source_checker is None:
+            raise ValueError("--source-adoption requires --source-checker")
+        if args.source_adoption is not None and args.controller_root is None:
+            raise ValueError("--source-adoption requires --controller-root")
+        if args.source_adoption is not None and args.controller_artifact_root is None:
+            raise ValueError("--source-adoption requires --controller-artifact-root")
+        if args.source_adoption is not None and args.controller_bazel is None:
+            raise ValueError("--source-adoption requires --controller-bazel")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
+        source_checker = (
+            args.source_checker.resolve(strict=True)
+            if args.source_checker is not None
+            else None
+        )
+        controller_root = (
+            args.controller_root.resolve(strict=True)
+            if args.controller_root is not None
+            else None
+        )
+        if controller_root is not None and controller_root.is_file():
+            controller_root = controller_root.parent
+        controller_artifact_root = (
+            args.controller_artifact_root.resolve(strict=True)
+            if args.controller_artifact_root is not None
+            else None
+        )
+        if controller_artifact_root is not None and controller_artifact_root.is_file():
+            controller_artifact_root = controller_artifact_root.parent
+        controller_bazel = (
+            args.controller_bazel.resolve(strict=True)
+            if args.controller_bazel is not None
+            else None
+        )
         agent_module = args.agent_module.resolve(strict=True)
         trace_evaluator = args.trace_evaluator.resolve(strict=True)
         completion_checker = (
@@ -1186,6 +1309,27 @@ def main(argv: list[str] | None = None) -> int:
         harbor = args.harbor.resolve(strict=True)
         credential = args.credential_file.resolve()
         workspace = source_root.parent
+        candidate_repository = source_root if source_root.is_dir() else source_root.parent
+        if args.source_adoption is not None:
+            assert controller_root is not None
+            assert controller_artifact_root is not None
+            assert source_checker is not None
+            assert controller_bazel is not None
+            runner_path = Path(__file__).resolve(strict=True)
+            for name, root in (
+                ("source checkout", controller_root),
+                ("build output", controller_artifact_root),
+            ):
+                if candidate_repository.is_relative_to(root) or root.is_relative_to(candidate_repository):
+                    raise ValueError(
+                        f"--source-adoption requires the controller {name} separate from the candidate source"
+                    )
+            if not runner_path.is_relative_to(controller_root):
+                raise ValueError("controller runner is outside --controller-root")
+            if not source_checker.is_relative_to(controller_artifact_root):
+                raise ValueError("controller source checker is outside --controller-artifact-root")
+            if controller_bazel.is_relative_to(candidate_repository):
+                raise ValueError("--controller-bazel must remain outside the candidate source")
         jobs_dir = (
             (workspace / args.jobs_dir).resolve()
             if not args.jobs_dir.is_absolute()
@@ -1206,12 +1350,64 @@ def main(argv: list[str] | None = None) -> int:
             if args.workflow_candidate is not None
             else None
         )
+        source_adoption_path = (
+            args.source_adoption.resolve(strict=True)
+            if args.source_adoption is not None
+            else None
+        )
+        controller_source_identity = (
+            committed_source_tree(controller_root)
+            if source_adoption_path is not None
+            else None
+        )
         evaluated_source = None
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
         return 2
 
     runtime_digest = digest(foe)
+    controller = (
+        {
+            "source_root": {
+                "path": str(controller_root),
+                "source_tree": controller_source_identity,
+            },
+            "artifact_root": {
+                "path": str(controller_artifact_root),
+                "source_checker_sha256": digest(source_checker),
+            },
+            "runner": {
+                "path": str(Path(__file__).resolve()),
+                "sha256": digest(Path(__file__).resolve()),
+            },
+            "source_checker": {
+                "path": str(source_checker),
+                "sha256": digest(source_checker),
+            },
+            "bazel": {
+                "path": str(controller_bazel),
+                "sha256": digest(controller_bazel),
+            },
+        }
+        if source_adoption_path is not None
+        else None
+    )
+    source_adoption = None
+    source_build = None
+    if source_adoption_path is not None:
+        try:
+            evaluated_source = source_tree(source_root)
+            assert source_checker is not None
+            source_adoption = verify_source_candidate(
+                source_checker,
+                source_adoption_path,
+                source_root,
+                evaluated_source,
+                foe,
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            print(f"terminal-bench eval: {error}", file=sys.stderr)
+            return 2
     workflow_candidate = None
     if workflow_candidate_path is not None:
         try:
@@ -1230,6 +1426,14 @@ def main(argv: list[str] | None = None) -> int:
                 reasoning_effort=args.reasoning_effort,
                 service_tier=args.service_tier,
                 token_policy="hard" if args.hard_token_limits else "measurement_only",
+                workflow_ownership=(
+                    "foe-built-in" if args.built_in_workflow else "evaluation-runner"
+                ),
+                completion_governance=(
+                    "declared-verifier"
+                    if completion_checker is not None
+                    else "model-report"
+                ),
             )
             args.escalation_reasoning_effort = audit["reasoning_effort"]
             args.escalation_model_calls = audit["model_calls"]
@@ -1344,6 +1548,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"workflow      {workflow_candidate['digest']}")
     elif args.built_in_workflow:
         print("workflow      built-in implementation and terminal audit")
+    if source_adoption is not None:
+        print(f"source bundle {source_adoption['source_bundle_identity']}")
+        print(f"candidate     {source_adoption['source_candidate_identity']}")
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; workers {args.workers}")
     print("planning      calls      input     output  est. cost  seconds  task")
@@ -1412,6 +1619,41 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = jobs_dir / f"{args.label}-{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=False)
+    if source_adoption_path is not None:
+        try:
+            assert source_checker is not None
+            assert evaluated_source is not None
+            assert controller_bazel is not None
+            foe, source_build = build_source_candidate(
+                controller_bazel,
+                candidate_repository,
+                evaluated_source,
+                run_dir / "controller-build",
+            )
+            runtime_digest = digest(foe)
+            source_adoption = verify_source_candidate(
+                source_checker,
+                source_adoption_path,
+                source_root,
+                evaluated_source,
+                foe,
+            )
+            source_adoption_path, source_adoption = freeze_source_candidate(
+                source_checker,
+                source_adoption_path,
+                source_root,
+                evaluated_source,
+                foe,
+                run_dir / "source-candidate-bundle",
+                source_adoption,
+            )
+            source_adoption = {**source_adoption, "bundle": "source-candidate-bundle"}
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            print(f"terminal-bench eval: {error}", file=sys.stderr)
+            return 2
     try:
         credential_lock = prepare_campaign_credential(
             credential,
@@ -1421,10 +1663,6 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
         return 2
-
-    timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
-    run_dir = jobs_dir / f"{args.label}-{timestamp}"
-    run_dir.mkdir(parents=True, exist_ok=False)
     stages = model_stage_count(
         args.diagnosis_model,
         args.unresolved_diagnosis_reasoning_effort,
@@ -1521,6 +1759,14 @@ def main(argv: list[str] | None = None) -> int:
                 else None
             ),
             "workflow_candidate": workflow_candidate,
+            "source_candidate": source_adoption,
+            "source_build": source_build,
+            "controller": controller,
+            "source_adoptions": [
+                adoption
+                for record in records
+                for adoption in record.get("source_adoptions", [])
+            ],
             "foe_sha256": runtime_digest,
             "evaluated_foe": (
                 {
@@ -1808,6 +2054,12 @@ def main(argv: list[str] | None = None) -> int:
                                     started_at=started_at,
                                     ended_at=ended_at,
                                     elapsed_seconds=elapsed,
+                                    source_adoption_path=source_adoption_path,
+                                    source_preflight=source_adoption,
+                                    source_checker=source_checker,
+                                    source_root=source_root,
+                                    evaluated_source=evaluated_source,
+                                    foe=foe,
                                 )
                                 record["execution_status"] = "started"
                                 if execution_error is not None:
@@ -1909,6 +2161,12 @@ def main(argv: list[str] | None = None) -> int:
                         started_at=started["started_at"],
                         ended_at=ended_at,
                         elapsed_seconds=elapsed,
+                        source_adoption_path=source_adoption_path,
+                        source_preflight=source_adoption,
+                        source_checker=source_checker,
+                        source_root=source_root,
+                        evaluated_source=evaluated_source,
+                        foe=foe,
                     )
                     record["execution_status"] = "started"
                     record["campaign_stop_reason"] = reason

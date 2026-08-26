@@ -1,16 +1,14 @@
 # Program lineage and transition evidence
 
-Status: implemented. The configuration parser accepts the
-`program_lineage` key, the identity computation omits it, and the
-`foe-lineage` crate derives the state identity, checks an evidence
-bundle against its canonical manifest, and verifies an ancestry claim
-through two resolvers. The authoritative `verification/result` event
-carries no digest of the verifier's input, because the log format freezes
-an implemented type's data; the adoption record retained in the evidence
-bundle carries the candidate's identity members instead. "Exact input
-binding" states the resolution and its attestation strength. The crate's
-`build-bundle` binary completes a bundle assembled outside the runtime, and
-"Harness adoptions" defines the states the self-improvement runner records.
+Status: implemented. The configuration parser accepts `program_lineage`,
+and the identity computation omits it. The `foe-lineage` crate derives state
+identity, verifies canonical evidence bundles, and checks ancestry through
+state and evidence resolvers. The crate's `build-bundle` binary completes a
+bundle assembled outside the runtime. A separate trusted source-adoption
+checker captures reconstructable source evidence. It completes lineage after
+the rebuilt binary reports the program used for external evaluation.
+"Harness adoptions" specifies how the self-improvement and Terminal-Bench
+runners use these records.
 
 ## Scope of the existing identity
 
@@ -134,6 +132,102 @@ The bundle contains these files:
 - the adoption record;
 - every artifact manifest that the verifier assessed.
 
+Source evidence exists before the descendant program identity is known. It
+therefore uses a separate content-addressed source-candidate manifest. The
+manifest retains the parent identity document, proposal episode tree,
+accepted verification coordinates, verifier executable, and every source
+entry. It also lists every retained regular file by path, length, and
+SHA-256 digest.
+
+A source artifact manifest has this canonical form:
+
+```json
+{
+  "schema_version": 1,
+  "base_source_tree": "git-tree-sha1:…",
+  "candidate_identity": "sha256:…",
+  "entries": [
+    {
+      "status": "present",
+      "path": "crates/code/src/read.rs",
+      "base": {
+        "object_type": "blob",
+        "mode": "100644",
+        "identity": "git-blob-sha1:…"
+      },
+      "applied": {
+        "object_type": "blob",
+        "mode": "100755",
+        "identity": "git-blob-sha1:…"
+      },
+      "sha256": "sha256:…",
+      "content": "candidate-files/crates/code/src/read.rs"
+    },
+    {
+      "status": "deleted",
+      "path": "obsolete.rs",
+      "base": {
+        "object_type": "blob",
+        "mode": "100644",
+        "identity": "git-blob-sha1:…"
+      }
+    }
+  ],
+  "parent_identity_document": "parent-identity.json",
+  "parent_program_identity": "sha256:…",
+  "proposal_log": "episode/episode.jsonl",
+  "verification_log": "episode/children/ep_audit/episode.jsonl",
+  "verification_seq": 19,
+  "verification_tool": "check",
+  "verification_executable": "candidate-check",
+  "verification_executable_sha256": "sha256:…",
+  "files": [
+    {
+      "path": "candidate-check",
+      "bytes": 2401,
+      "sha256": "sha256:…"
+    },
+    {
+      "path": "candidate-files/crates/code/src/read.rs",
+      "bytes": 1204,
+      "sha256": "sha256:…"
+    },
+    {
+      "path": "episode/children/ep_audit/episode.jsonl",
+      "bytes": 3104,
+      "sha256": "sha256:…"
+    },
+    {
+      "path": "episode/episode.jsonl",
+      "bytes": 4201,
+      "sha256": "sha256:…"
+    },
+    {
+      "path": "parent-identity.json",
+      "bytes": 892,
+      "sha256": "sha256:…"
+    }
+  ]
+}
+```
+
+Each present entry records the base object when one exists. It also records
+the applied Git blob, file mode, SHA-256 digest, and retained content path.
+A deleted entry records the removed base object. The checker accepts regular
+blobs with modes `100644` and `100755`. It rejects symbolic links, trees,
+submodules, special files, and symbolic links anywhere inside the bundle.
+
+The verification executable is the exact regular file that produced the
+accepted verifier result. Its manifest digest must equal the result's
+`verifier_identity`. The verification tool and coordinates bind those bytes
+to one result in one reachable episode. A symbolic link cannot supply the
+verification executable.
+
+The candidate identity hashes the base tree and ordered source entries.
+Content, deletion, and executable-mode changes therefore produce different
+identities. The clean evaluation tree must change exactly the recorded paths.
+Its Git objects, modes, and regular bytes must match every entry.
+
 The manifest contains no absolute path. A store may place the bundle
 anywhere, provided that a resolver can retrieve it by content address.
 
@@ -256,15 +350,20 @@ steps:
    canonical child identity document.
 10. Require the proposal tree's root log program identity to equal
    `parent.program_identity`.
-11. Require `verification_log` to be the root log or a descendant linked by
-    valid spawn or workflow provenance.
-12. Resolve `parent.state_identity` and require its program identity to
+11. Require one retained root with no parent or team. Require every retained
+    child to keep its complete parent chain under `children/<id>` and to name
+    its parent as its team.
+12. Require every retained spawn edge to name exactly one retained child. The
+    program named by `spawn/start` must resolve through the parent identity
+    document to that child's identity. Nested workflow paths resolve one node
+    at a time.
+13. Resolve `parent.state_identity` and require its program identity to
     equal `parent.program_identity`.
-13. Require the verifier episode's program identity to be reachable in the
+14. Require the verifier episode's program identity to be reachable in the
     parent state's program tree.
-14. Require the recorded verifier identity to match the verifier declared by
+15. Require the recorded verifier identity to match the verifier declared by
     the verifier episode's program.
-15. Repeat from the parent while rejecting a repeated state identity as a
+16. Repeat from the parent while rejecting a repeated state identity as a
     cycle.
 
 The check establishes a complete chain from the state to a chosen root. It
@@ -290,13 +389,17 @@ The log format freezes an implemented type's data, so such a member cannot
 be added to the existing event.
 
 The adoption record closes the resulting gap. The checker requires an
-accepted `verification/result` at the coordinates both the claim and the
-record name, and steps 8 and 9 bind the record to the retained identity
-document, the retained artifact manifest, and the recomputed child
-identity, so exact input binding, transition rule 3, is verified. The
-record is written by the bundle builder rather than by the runtime that
-invoked the verifier, so it attests the pairing only as strongly as the
-bundle that carries it.
+accepted `verification/result` at the coordinates that the claim and record
+name. Steps 8 and 9 bind the record to the child identity document, artifact
+manifest, and recomputed child identity. The bundle builder writes the record
+after the verifier invocation. Its pairing has the attestation strength of
+the process that assembled the bundle.
+
+Source adoption adds an external check before these steps. The trusted
+source-adoption checker validates the source manifest and clean candidate
+tree. It then places that exact manifest in the lineage bundle as the
+artifact manifest. The adoption record binds the source manifest to the
+actual child identity document supplied by the rebuilt binary.
 
 One further check is weakened by the shape of the identity document rather
 than by the event. Step 14 compares the recorded verifier identity with
@@ -335,51 +438,107 @@ can be admitted through a transition.
 ## Harness adoptions
 
 The identity-bound self-improvement runner
-(`evals/terminal_bench/run_self_improvement.py`) records every accepted
-candidate as a transition between program states. Nothing in this section
-changes how a state derives its identity document; the states the runner
-records share the state identity, the evidence bundle, and the checker.
+(`evals/terminal_bench/run_self_improvement.py`) produces workflow and source
+candidates. A workflow candidate has a complete program document at proposal
+time. The runner records its transition before accepting it. An adoption
+failure rejects the workflow candidate, sets `direct_implementation_required`,
+and makes the runner exit unsuccessfully.
 
 The parent state's identity document is the evaluated self-improvement
 program's own. The runner resolves the program it launches through
 `foe plan --json` and retains the emitted identity document, which
 rehashes to the program identity the proposal episode's root log records.
 
-An adoption's state document follows one rule: it is the program document
-that will run under the adoption.
+An adoption's state document contains the program document that runs under
+the adoption. A workflow candidate yields the development program document
+with the selected audit setting applied to its preserved base configuration.
+The trusted `build-bundle` and ancestry-checker binaries come from the
+invoking build. Candidate source cannot replace either executable.
 
-- An instruction revision yields the revised self-improvement program
-  document.
-- A workflow candidate yields the development program document the runner
-  constructs when applying it: the candidate's independent-audit setting
-  applied to its preserved base configuration.
-- A tool-definition candidate yields the development program document with
-  the defined tool declared; the tool's entry carries the executable's
-  content hash.
-- A source candidate yields the development program document with the
-  changed source named as the produced runtime: the base source tree and
-  every changed file digest. The rebuilt binary's runtime build hash
-  attaches when that binary exists.
+A source candidate has no descendant program document at proposal time. The
+self-improvement runner retains its accepted source manifest and proposal
+tree as artifact evidence. Source evidence capture failure rejects the
+candidate and makes the runner exit unsuccessfully. Successful capture marks
+lineage as pending external evaluation.
+
+Instruction revisions and tool definitions can be retained as explicit
+proposals. The Terminal-Bench runner has no application path for either
+kind. Automatic selection therefore chooses only source changes, workflow
+configurations, or insufficient evidence.
 
 A development program document fixes the run-supplied members — task
 instruction, credential path, working directory, and per-task allowances —
 at the runner's declared values, so the document is stable across
 launches.
 
-The runner retains the bundle — the proposal episode tree, the state
-document as the child identity document, and an artifact manifest over the
-retained candidate files — and completes it through the `build-bundle`
-binary. The adoption record cites the accepted diagnosis-validator result
-for a workflow, instruction, or tool candidate and the accepted
-candidate-check result for a source candidate. The parent and child state
-documents and the bundle land in the layout the checker's resolvers read;
-the crate's `check_ancestry` example verifies a recorded adoption from
-that layout.
+The workflow runner retains the proposal episode tree, child identity
+document, and artifact manifest. It completes the bundle through
+`build-bundle`. The adoption record cites the accepted diagnosis validator.
+Parent and child state documents use the layout expected by the checker.
+The structured ancestry report must start with the adopted program identity.
+The result records digests of both trusted lineage executables.
 
-A live adoption leaves one check open: the accepted verifier runs in a
-child episode of the proposal tree, and the parent identity document
-reduces a child program to its hash, so the verifier's executable hash is
-compared only when the verifier episode runs the parent program itself.
+The Terminal-Bench evaluation runner accepts source evidence explicitly.
+Before provider spend, the trusted source-adoption checker validates the
+source manifest and every retained file. It compares the manifest with the
+clean candidate tree. A caller-supplied binary participates only in no-spend
+diagnosis. A confirmed campaign builds the portable binary from the accepted
+tree under controller authority and uses that retained output for every task.
+
+The evaluation command runs from an immutable controller checkout. Its
+runner and source checker are separate from the writable candidate checkout.
+The command records both executable paths and content digests. The controller
+also supplies the Bazel executable that builds the candidate. Candidate
+changes to lineage, log, program, Cargo, Bazel, module, toolchain, package, or
+build-script files cannot alter judgment or the protected build graph.
+
+When source evidence comes from a retained self-improvement result, preflight
+requires its source-bundle, source-candidate, base-tree, and parent-program
+identities to match the bundle. A raw source bundle carries no capture-checker
+claim because the bundle cannot authenticate who created it. A confirmed
+campaign records the checker it actually invokes, copies the validated bundle
+into its run directory before provider spend, and uses only that copy during
+adoption.
+
+The adapter retains `foe plan --json` immediately before the first provider
+request. For the built-in workflow it supplies the same task, model,
+credential, verifier, service tier, and sandbox mode to the plan and run
+forms. After the episode, the trusted checker recomputes the reported program
+identity. It requires the root `episode/start` to carry the planned program
+and identity. It also requires the runtime build digest to equal the evaluated
+binary digest.
+
+The checker then creates the child state from the actual plan identity
+document. It places the exact source manifest in the lineage evidence bundle
+and binds it through the adoption record. The canonical ancestry checker
+must accept the resulting state. Adoption failure invalidates the assessed
+trial and makes the campaign exit unsuccessfully.
+
+`campaign.json` records the source-bundle, source-candidate, adoption,
+evidence, program, state, and parent identities. It records the evaluation
+checker digest and the evaluated source and binary pair. It also records the
+controller build command, Bazel identity, protected build-graph identity,
+complete log digest, source-tree identity, and output digest. Each task-specific
+program may have a distinct program identity. Transfer-task identity remains
+variable.
+
+Source preflight uses the canonical proposal checker before provider spend.
+The checker requires one retained proposal root and complete retained parent
+chains. Every recorded spawn names a retained child whose identity resolves
+from that spawn's program. Nested workflow paths are resolved through the
+parent identity document. A retained child that spawns again requires its own
+retained identity document, which the source proposal format does not carry.
+The verifier child must declare the result's tool. That verifier is authorized
+only when the source manifest retains its exact executable bytes and binds
+their digest to the result. Every other open verifier-authorization check
+prevents external evaluation.
+
+The controller source checkout and its trusted build output are separate
+roots. The evaluation runner must resolve under the source root. The source
+checker must resolve under the build-output root. Both roots must remain
+outside the candidate source tree. The campaign record includes the committed
+controller source-tree identity, runner digest, checker digest, and the build
+root associated with that checker.
 
 ## Required implementation tests
 
@@ -389,6 +548,10 @@ accepted:
 - a valid root and one valid descendant;
 - a bundle whose adoption record contradicts the claimed coordinates or
   the retained candidate files;
+- source evidence whose bytes, mode, blob, deletion, or path contradicts its
+  manifest;
+- a source evidence path containing a symbolic link or unsupported Git entry;
+- a malformed source manifest or malformed base Git tree;
 - a missing or modified evidence file;
 - a child identity that differs from the accepted candidate identity;
 - a verifier absent from the parent;
@@ -397,4 +560,30 @@ accepted:
 - two children of one parent;
 - one program identity accompanied by two valid ancestry claims;
 - verification with the evidence directory removed from its original
-  machine path.
+  machine path;
+- a candidate that passes artifact checks but whose lineage adoption fails;
+- an actual plan or launched program that differs from the adopted state;
+- a retained result whose recorded source identities differ from its bundle;
+- an unrelated proposal or verifier episode rejected before provider spend;
+- replacement of the external source bundle after the campaign freezes it;
+- candidate changes to the controller's lineage and build sources;
+- a configured verifier in the source-audit child bound to its retained
+  executable;
+- a verifier executable represented by a symbolic link or changed after
+  source evidence capture;
+- an unrelated retained verifier that attempts to close the child verifier's
+  authorization check;
+- the generated source-candidate target with its checker outside the
+  controller source root and inside the declared build-output root;
+- an automatic source candidate that changes a Cargo manifest or another
+  protected build file;
+- a validation command that rewrites `Cargo.lock` after the initial source
+  scan;
+- a raw source bundle that claims a capture-checker digest;
+- an unretained parent or child on a proposal spawn path;
+- a spawn whose workflow-node name resolves to a different child identity;
+- deletion, type change, symbolic linking, or rename-away of the only
+  implementation, regression-test, or specification evidence;
+- substitution of a caller-supplied binary for the controller-built output;
+- a controller build whose source tree, protected build graph, or checkout
+  changes during the build.

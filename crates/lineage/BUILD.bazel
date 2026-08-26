@@ -26,6 +26,21 @@ rust_binary(
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )
 
+rust_binary(
+    name = "source-adoption",
+    srcs = ["examples/source_adoption.rs"],
+    crate_root = "examples/source_adoption.rs",
+    edition = crate_edition(),
+    version = "0.1.0",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":foe_lineage",
+        "//crates/log:foe_log",
+        "//crates/program:foe_program",
+    ] + all_crate_deps(normal = True),
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)
+
 rust_library(
     name = "foe_lineage",
     srcs = glob(["src/**/*.rs"]),

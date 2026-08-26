@@ -584,6 +584,11 @@ restrict the diagnosis to `source-change`, `workflow-configuration`,
 the restriction before another model node can start. Every restricted run may
 return `insufficient-evidence`.
 
+Automatic selection chooses only `source-change`, `workflow-configuration`,
+or `insufficient-evidence`. The Terminal-Bench runner can apply and evaluate
+the first two kinds. An explicit instruction or tool run can retain a typed
+proposal, but no Terminal-Bench application path exists for that proposal.
+
 GPT-5.6 Sol with low reasoning produces the bounded diagnosis from the supplied
 digest. Its ordinary tools are `block` and the generated candidate validator,
 so it cannot inspect the candidate source or retained run directories. Its
@@ -611,13 +616,11 @@ implementation node's candidate check, and an abstention proposes nothing.
 The diagnosis chooses `implement-source` when failed and successful
 trajectories isolate an activated source mechanism. It chooses
 `configure-workflow` when an independent audit stage supplies a repeated
-quality gain. It chooses `revise-instructions` when the repeated causal
-difference is procedural guidance that one instruction section of the
-retained program document can carry. It chooses `define-tool` when one
-missing executable tool explains the gap. It chooses `insufficient-evidence`
-when the contrast identifies only model capability or requires semantic task
-knowledge absent from the log. That choice ends the workflow before a coding
-episode and sets `direct_implementation_required`.
+quality gain. An explicit run can choose `revise-instructions` or `define-tool`
+to retain a proposal for a future application mechanism. The diagnosis chooses
+`insufficient-evidence` when the contrast identifies only model capability or
+requires semantic task knowledge absent from the log. That choice ends the
+workflow before a coding episode and sets `direct_implementation_required`.
 
 When the diagnosis chooses `implement-source`, the configured coding model
 acts with `read`, `grep`, `edit`, and `bash`. The diagnosis node's branch edge
@@ -647,8 +650,8 @@ evidence.
 
 When the diagnosis chooses `revise-instructions`, the runner validates the
 typed revision against the retained `program.json`: the named section key
-resolves to exactly one instruction section, and the old text occurs exactly
-once in it. It writes `instruction-candidate.json` beside the retained
+resolves to one instruction section, and the old text occurs once in it. It
+writes `instruction-candidate.json` beside the retained
 result, with the same identity and evidence bindings a workflow candidate
 carries.
 
@@ -666,9 +669,12 @@ safety backstops. Each model child ends as blocked after eight consecutive
 identical tool calls or assistant turns.
 
 The diagnosis preserves the primary model route, reasoning effort, task
-allowances, token policy, service tier, and task set. Verified task quality is
-the promotion metric. Tokens, cost, cache use, latency, outcome accuracy, and
-conformance remain recorded diagnostics.
+allowances, token policy, service tier, and task set. A workflow candidate
+binds the primary model, reasoning effort, service tier, token policy,
+workflow owner, and completion-governance mode. Task identity remains variable
+so the evaluation can measure transfer. Verified task quality is the promotion
+metric. Tokens, cost, cache use, latency, outcome accuracy, and conformance
+remain recorded diagnostics.
 
 `--cargo` must name the pinned toolchain binary. A Rustup proxy is refused
 because its result depends on process environment and may download a
@@ -681,9 +687,12 @@ cannot consume the self-improvement episode.
 
 The candidate checker repeats formatting, workspace tests, Clippy, and line
 counts under the supplied Cargo cache. It rejects a line count above the
-recorded baseline ceiling. The coding child uses this checker as the line-count
-authority because the repository script reports only absolute limits. Its only
-generated-file write authority is the candidate's private
+recorded baseline ceiling. Automatic source candidates cannot change Cargo,
+Bazel, module, toolchain, package, or build-script metadata. The checker
+compares that metadata with the trusted baseline and rescans repository
+status, source bytes, and build metadata after validation. The coding child
+uses this checker as the line-count authority because the repository script
+reports only absolute limits. Its only generated-file write authority is the candidate's private
 `target/foe-self-improvement-check` directory. Read grants
 cover Cargo and Rustup metadata and installed C headers. Execute grants cover
 the pinned toolchain and candidate build directory. They also cover Cargo's
@@ -708,31 +717,37 @@ candidate checker operate when the candidate is a linked Git worktree.
 
 The runner validates the artifact after Foe exits. A valid artifact remains
 accepted when the episode exhausted its reporting budget after producing the
-files. A source candidate binds the base Git tree and every changed file
-digest. A workflow candidate binds the independent-audit setting and preserved
-controls. `direct_implementation_required` is true when deterministic
-validation finds an error or the workflow produces no candidate.
+files. A source candidate binds the base Git tree and complete changed Git
+entries. Each entry retains object type, mode, blob identity, bytes, or a
+deletion. A workflow candidate binds the independent-audit setting and
+preserved controls.
+
+Workflow acceptance requires successful lineage adoption. An adoption failure
+sets `direct_implementation_required` and makes the self-improvement process
+exit unsuccessfully. Source artifact acceptance requires successful evidence
+capture by the trusted source checker. External evaluation completes source
+lineage after a rebuilt binary exists.
 
 The candidate checker establishes repository conformance. Quality promotion
 uses only the unchanged task-owned Terminal-Bench grader, which runs outside
 the candidate's authority. Tokens, estimated cost, cache use, and latency are
 recorded without deciding candidate acceptance.
 
-The runner records every accepted candidate as a lineage transition under
-the retained run directory's `lineage/` tree. It writes the evidence
-bundle — the episode tree, the adoption's state document as the child
-identity document, and an artifact manifest over the retained candidate
-files — and completes the bundle through the lineage crate's
-`build-bundle` binary, invoked with the pinned toolchain, which writes the
-adoption record and canonical manifest and prints the bundle's content
-address. The record cites the accepted diagnosis-validator result for a
-workflow, instruction, or tool candidate, and the accepted candidate-check
-result for a source candidate. The parent state is the evaluated
-program's identity document, retained from the resolved plan. The parent
-and child state documents land in `lineage/states/` and the bundle in
-`lineage/evidence/`, the layout the checker's resolvers read. The result's
-`adoption` member records the addresses, identities, and verification
-coordinates.
+The self-improvement runner records accepted workflow candidates under the
+retained run directory's `lineage/` tree. Its evidence bundle contains the
+episode tree, child identity document, and artifact manifest. Trusted
+`build-bundle` and ancestry-checker binaries come from the controller
+checkout's Bazel action. The writable candidate checkout is a separate input.
+The result records their content digests. The structured ancestry report must
+begin with the adopted program identity.
+
+An accepted source candidate retains a `source-candidate-bundle` directory.
+Its manifest binds the parent identity, proposal verification, source objects,
+and every retained file. The bundle includes the generated candidate checker
+as a regular file. Its digest binds the accepted result in the source-audit
+child to the exact executable that produced it. The result reports
+`pending-external-evaluation` because source bytes cannot determine a Foe
+program identity.
 [`docs/lineage-identity.md`](../../docs/lineage-identity.md) "Harness
 adoptions" states the one state-document rule: every adoption materializes
 the program document that will run under it.
@@ -747,8 +762,67 @@ bazel run //evals/terminal_bench:foe-development -- \
 ```
 
 The requested model, primary reasoning effort, service tier, and token policy
-must match the candidate. The current Foe source tree and binary must also
-match its recorded identity.
+must match the candidate. Workflow ownership and completion governance must
+also match. Task identity may vary. The current Foe source tree and binary
+must match the candidate's recorded identity.
+
+Run the source evaluation target from a separate immutable controller
+checkout. Name an absolute Bazel executable outside the candidate tree:
+
+```sh
+cd /absolute/path/to/controller-checkout
+bazel run //evals/terminal_bench:foe-source-candidate -- \
+  --source-root /absolute/path/to/candidate/Cargo.toml \
+  --source-adoption /absolute/path/to/self-improvement/result.json \
+  --controller-bazel /absolute/path/to/bazel \
+  --built-in-workflow \
+  --service-tier priority \
+  --confirm-spend
+```
+
+The target supplies two controller roots. The source root contains the
+evaluation runner and has a recorded committed Git tree. The build-output root
+contains the Bazel-built source checker and records that checker's digest.
+Both roots remain separate from the candidate checkout. This separation lets
+the generated Bazel target use trusted outputs under `bazel-out` without
+treating candidate-controlled build products as controller evidence.
+
+The argument may also name the `source-candidate-bundle` directory. Before
+provider spend, the trusted checker validates the manifest and its regular
+files. It compares the recorded Git objects, modes, bytes, and deletions with
+the clean candidate tree. The target's default binary supplies only the
+no-spend diagnostic preflight. A confirmed campaign builds `//:foe-portable`
+from the clean accepted tree with the named controller Bazel executable. It
+retains and evaluates only that output.
+
+The controller rejects a source result whose recorded bundle, candidate,
+base-tree, or parent-program identity differs from the bundle. A raw bundle
+cannot claim a capture-checker identity. The campaign records the trusted
+checker it actually invokes. The controller also rejects incomplete proposal
+trees, spawn programs that do not resolve to their child identity, unrelated
+verification episodes, and unauthorized verifiers. A source-audit child must
+declare the accepted verifier tool. Its recorded verifier identity must equal
+the retained candidate checker's digest. A confirmed campaign copies the
+validated bundle into its run directory before provider spend. Later adoption
+uses this frozen copy.
+
+The adapter retains the rebuilt binary's `foe plan --json` output before the
+first provider request. `foe plan TASK --json` resolves the built-in workflow
+with the same task and options as the running form. After the trial, the
+trusted checker requires the root episode to carry the same program identity,
+resolved program, and binary digest. It creates the child state from the actual
+identity document. The canonical ancestry checker must accept the transition.
+
+`campaign.json` records the controller source and build-output roots, the
+committed controller source tree, and the runner and checker paths and digests.
+It records the source candidate and one completed adoption per trial. The
+source-build record contains the command, Bazel path, version, and digest,
+protected build-graph identity, complete build-log digest, source-tree
+identity, and output digest. Each adoption includes the adoption, evidence,
+program, state, and parent identities. It also records the checker digest and
+evaluated source and binary pair. A failed adoption invalidates the trial and
+makes the campaign exit unsuccessfully. The task record sets
+`direct_implementation_required`.
 
 Capability conversion still requires a separate benchmark rerun. Candidate
 promotion remains outside the workflow. The workflow mechanism and evidence
@@ -784,9 +858,9 @@ replaced before a repeated result is complete.
 
 The Harbor trial's `agent/foe-episode/` directory is the complete native Foe
 episode tree. It contains `episode.jsonl`, child episodes, spill values, and
-renderings. The neighboring files include the generated Foe program, Foe
-standard output, Foe standard error, the typed process exit status, and the
-runtime conformance report. The adapter sums provider-reported input, output,
+renderings. The neighboring files include the generated Foe program, plan
+report, Foe standard output, Foe standard error, the typed process exit status,
+and the runtime conformance report. The adapter sums provider-reported input, output,
 and cache-read tokens into the Harbor agent context. It also records Foe's
 outcome and conformance status as Harbor agent metadata. Cost estimation uses
 the provider-reported uncached-input, cached-input, and output usage for each

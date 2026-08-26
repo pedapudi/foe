@@ -12,6 +12,7 @@ python3 -m py_compile \
   run_capability_probes.py \
   instruction_candidate.py \
   run_self_improvement.py \
+  source_adoption.py \
   tool_candidate.py \
   run_verifier_controls.py \
   verifier_control_agent.py \
@@ -26,6 +27,7 @@ python3 -m unittest -v \
   foe_agent_support_test.py \
   instruction_candidate_test.py \
   run_self_improvement_test.py \
+  source_adoption_test.py \
   tool_candidate_test.py \
   run_test.py \
   run_verifier_controls_test.py \

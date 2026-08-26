@@ -596,16 +596,16 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 json.dumps({"evaluation_summary": summary}),
                 encoding="utf-8",
             )
-            supported = supported_independent_audits(
-                evidence,
-                {
-                    "model": "openai-codex/gpt-5.6-sol",
-                    "reasoning_effort": "low",
-                    "service_tier": "priority",
-                    "token_policy": "measurement_only",
-                },
-            )
-        self.assertEqual(supported, [])
+            with self.assertRaisesRegex(ValueError, "no task-specific baseline failure"):
+                supported_independent_audits(
+                    evidence,
+                    {
+                        "model": "openai-codex/gpt-5.6-sol",
+                        "reasoning_effort": "low",
+                        "service_tier": "priority",
+                        "token_policy": "measurement_only",
+                    },
+                )
 
     def test_missing_verifier_output_cannot_enter_a_failure_contrast(self):
         def failed(episode: str) -> dict:

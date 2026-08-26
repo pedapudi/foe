@@ -8,9 +8,7 @@
 //! self-improvement runner among them — invoke it so the canonical form
 //! has one implementation.
 
-use foe_lineage::{
-    build_manifest, digest_of, manifest_bytes, record_bytes, require_manifest_path, AdoptionRecord, MANIFEST_FILE,
-};
+use foe_lineage::{build_manifest, canonical_bytes, digest_of, require_manifest_path, AdoptionRecord, MANIFEST_FILE};
 use foe_program::identity::canonical;
 use std::path::Path;
 use std::process::ExitCode;
@@ -52,10 +50,10 @@ fn run(args: &[String]) -> Result<String, String> {
         verification_log: verification_log.clone(),
         verification_seq: seq,
     };
-    std::fs::write(dir.join(RECORD_FILE), record_bytes(&record).map_err(|e| e.to_string())?)
+    std::fs::write(dir.join(RECORD_FILE), canonical_bytes(&record).map_err(|e| e.to_string())?)
         .map_err(|e| format!("{RECORD_FILE}: {e}"))?;
     let manifest = build_manifest(dir, proposal_log, RECORD_FILE).map_err(|e| e.to_string())?;
-    let bytes = manifest_bytes(&manifest).map_err(|e| e.to_string())?;
+    let bytes = canonical_bytes(&manifest).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(MANIFEST_FILE), &bytes).map_err(|e| format!("{MANIFEST_FILE}: {e}"))?;
     Ok(digest_of(&bytes))
 }

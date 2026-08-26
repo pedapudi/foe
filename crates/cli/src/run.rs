@@ -258,7 +258,7 @@ fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
 /// The program document to run: the document named by `--config`, with the
 /// command-line task replacing its own, or the built-in coding workflow
 /// for a bare task.
-fn load_program_document(options: &Options) -> Result<ProgramDocument, String> {
+pub(crate) fn load_program_document(options: &Options) -> Result<ProgramDocument, String> {
     let Some(path) = &options.config else {
         let task = options.task.clone().ok_or(USAGE_BARE)?;
         let mut model = match &options.model {

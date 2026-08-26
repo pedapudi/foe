@@ -6,6 +6,25 @@ COMMON_ARGS = [
     "$(rootpath //:foe-portable)",
     "--source-root",
     "$(rootpath //:Cargo.toml)",
+    "--source-checker",
+    "$(rootpath //crates/lineage:source-adoption)",
+    "--agent-module",
+    "$(rootpath :foe_agent.py)",
+    "--trace-evaluator",
+    "$(rootpath //evals:score-trace)",
+    "--cases",
+    "$(rootpath :cases.json)",
+]
+
+SOURCE_CONTROLLER_ARGS = [
+    "--foe",
+    "$(rootpath //:foe-portable)",
+    "--controller-root",
+    "$(rootpath //:Cargo.toml)",
+    "--controller-artifact-root",
+    "$(rootpath //crates/lineage:source-adoption)",
+    "--source-checker",
+    "$(rootpath //crates/lineage:source-adoption)",
     "--agent-module",
     "$(rootpath :foe_agent.py)",
     "--trace-evaluator",
@@ -17,10 +36,12 @@ COMMON_ARGS = [
 COMMON_DATA = [
     "//:foe-portable",
     "//:Cargo.toml",
+    "//crates/lineage:source-adoption",
     "//evals:score-trace",
     "cases.json",
     "foe_agent.py",
     "foe_agent_support.py",
+    "source_adoption.py",
     "trajectory_diagnostics.py",
     "workflow_candidate.py",
 ]
@@ -99,6 +120,7 @@ sh_binary(
         "capability_transport.sh",
         "cases.json",
         "run.py",
+        "source_adoption.py",
         "trajectory_diagnostics.py",
         "workflow_candidate.py",
     ],
@@ -122,6 +144,7 @@ sh_binary(
         "//:Cargo.toml",
         "cases.json",
         "run.py",
+        "source_adoption.py",
         "trajectory_diagnostics.py",
         "workflow_candidate.py",
         "verifier_control_agent.py",
@@ -243,6 +266,50 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
+# Run this target from an immutable controller checkout. Its source files and
+# Bazel-built checker occupy separate trusted roots. The caller supplies the
+# candidate source, adoption evidence, and an absolute trusted Bazel executable.
+sh_binary(
+    name = "foe-source-candidate",
+    srcs = ["run.py"],
+    args = SOURCE_CONTROLLER_ARGS,
+    data = [
+        "//:Cargo.toml",
+        "//:foe-portable",
+        "//crates/lineage:source-adoption",
+        "//evals:score-trace",
+        "cases.json",
+        "foe_agent.py",
+        "foe_agent_support.py",
+        "source_adoption.py",
+        "trajectory_diagnostics.py",
+        "workflow_candidate.py",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "source-candidate-wrapper-test",
+    srcs = ["source_candidate_wrapper_test.py"],
+    args = [
+        "$(rootpath :foe-source-candidate)",
+        "$(rootpath //crates/lineage:source-adoption)",
+    ] + SOURCE_CONTROLLER_ARGS,
+    data = [
+        ":foe-source-candidate",
+        "//:Cargo.toml",
+        "//:foe-portable",
+        "//crates/lineage:source-adoption",
+        "//evals:score-trace",
+        "cases.json",
+        "foe_agent.py",
+        "foe_agent_support.py",
+        "source_adoption.py",
+        "trajectory_diagnostics.py",
+        "workflow_candidate.py",
+    ],
+)
+
 sh_binary(
     name = "foe-calibration",
     srcs = ["run.py"],
@@ -277,6 +344,7 @@ sh_binary(
         "cases.json",
         "run.py",
         "trajectory_diagnostics.py",
+        "source_adoption.py",
         "workflow_candidate.py",
     ],
     visibility = ["//visibility:public"],
@@ -290,14 +358,24 @@ sh_binary(
         "$(rootpath //:foe-portable)",
         "--cases",
         "$(rootpath :cases.json)",
+        "--bundle-builder",
+        "$(rootpath //crates/lineage:build-bundle)",
+        "--ancestry-checker",
+        "$(rootpath //crates/lineage:check-ancestry)",
+        "--source-checker",
+        "$(rootpath //crates/lineage:source-adoption)",
     ],
     data = [
         "//:foe-portable",
+        "//crates/lineage:build-bundle",
+        "//crates/lineage:check-ancestry",
+        "//crates/lineage:source-adoption",
         "//evals/harness_bench:foe_source_identity.py",
         "cases.json",
         "foe_agent_support.py",
         "instruction_candidate.py",
         "run.py",
+        "source_adoption.py",
         "tool_candidate.py",
         "trajectory_diagnostics.py",
         "workflow_candidate.py",
@@ -311,6 +389,7 @@ sh_test(
     data = [
         "//crates/lineage:build-bundle",
         "//crates/lineage:check-ancestry",
+        "//crates/lineage:source-adoption",
         "cases.json",
         "capability_probe_agent.py",
         "capability_probe_support.py",
@@ -328,6 +407,8 @@ sh_test(
         "run_test.py",
         "run_self_improvement.py",
         "run_self_improvement_test.py",
+        "source_adoption.py",
+        "source_adoption_test.py",
         "run_verifier_controls.py",
         "run_verifier_controls_test.py",
         "tool_candidate.py",

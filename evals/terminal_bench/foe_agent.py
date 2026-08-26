@@ -18,6 +18,7 @@ from harbor.models.agent.context import AgentContext
 
 from foe_agent_support import (
     builtin_workflow_arguments,
+    builtin_workflow_plan_arguments,
     build_program,
     credential_values,
     describe_container_environment,
@@ -278,8 +279,22 @@ class FoeAgent(BaseInstalledAgent):
         stdout = (logs / "foe.stdout").as_posix()
         stderr = (logs / "foe.stderr").as_posix()
         exit_code = (logs / "foe-exit-code").as_posix()
+        plan_output = (logs / "foe-plan.json").as_posix()
         if self._built_in_workflow:
             invocation = builtin_workflow_arguments(
+                instruction,
+                self.model_name,
+                self._remote_credential,
+                (
+                    REMOTE_COMPLETION_CHECKER
+                    if self._completion_checker is not None
+                    else None
+                ),
+                episode,
+                self._service_tier,
+                REMOTE_BINARY,
+            )
+            plan_invocation = builtin_workflow_plan_arguments(
                 instruction,
                 self.model_name,
                 self._remote_credential,
@@ -357,15 +372,32 @@ class FoeAgent(BaseInstalledAgent):
             "printf '%s\\n' \"$foe_status\""
         )
         try:
-            if not self._built_in_workflow:
-                await self.exec_as_agent(
+            if self._built_in_workflow:
+                plan_result = await self.exec_as_agent(
+                    environment,
+                    command=f"{shlex.join(plan_invocation)} > {shlex.quote(plan_output)}",
+                    cwd=environment.task_env_config.workdir,
+                )
+                if plan_result.return_code != 0:
+                    raise RuntimeError(
+                        "installed Foe could not resolve the retained built-in evaluation program: "
+                        f"status {plan_result.return_code}"
+                    )
+            else:
+                plan_result = await self.exec_as_agent(
                     environment,
                     command=(
                         f"{shlex.quote(REMOTE_BINARY)} plan "
-                        f"--config {shlex.quote(REMOTE_PROGRAM)} >/dev/null"
+                        f"--config {shlex.quote(REMOTE_PROGRAM)} --json "
+                        f"> {shlex.quote(plan_output)}"
                     ),
                     cwd=environment.task_env_config.workdir,
                 )
+                if plan_result.return_code != 0:
+                    raise RuntimeError(
+                        "installed Foe could not resolve the retained evaluation program: "
+                        f"status {plan_result.return_code}"
+                    )
             result = await self.exec_as_agent(
                 environment,
                 command=command,
