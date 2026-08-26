@@ -9,9 +9,9 @@
 //! running binary is the runtime's business rather than the
 //! configuration's; `foe_core::identity::runtime_info` does it.
 
-use crate::config::{resolve_node_program, Program};
+use crate::document::{resolve_node_program, ResolvedProgram};
 use crate::workflow::WorkflowConfig;
-use crate::{harness_text, tools, ConfigError, ToolSpec};
+use crate::{harness_text, tools, ProgramError, ToolSpec};
 use foe_log::RuntimeInfo;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -38,12 +38,16 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 /// Computes the identity of `program` and, recursively, of every child
 /// program. `extra_builtins` are the specifications of built-in tools
 /// implemented outside this crate, so the same list the registry receives.
-pub fn compute(program: &Program, extra_builtins: &[ToolSpec], runtime: &RuntimeInfo) -> Result<Identity, ConfigError> {
+pub fn compute(
+    program: &ResolvedProgram,
+    extra_builtins: &[ToolSpec],
+    runtime: &RuntimeInfo,
+) -> Result<Identity, ProgramError> {
     let mut tools = Vec::new();
     for spec in tools::resolve_specs(program, extra_builtins)? {
         let mut entry = serde_json::to_value(&spec)?;
         if let Some(def) = program.tool_defs.get(&spec.name) {
-            let bytes = std::fs::read(&def.exec).map_err(|e| ConfigError::Invalid {
+            let bytes = std::fs::read(&def.exec).map_err(|e| ProgramError::Invalid {
                 key: format!("tool_defs.{}.exec", spec.name),
                 rule: format!("is readable for hashing: {}: {e}", def.exec.display()),
             })?;
@@ -92,17 +96,16 @@ pub fn compute(program: &Program, extra_builtins: &[ToolSpec], runtime: &Runtime
 fn workflow_document(
     prefix: &str,
     wf: &WorkflowConfig,
-    parent: &Program,
+    parent: &ResolvedProgram,
     extra_builtins: &[ToolSpec],
     runtime: &RuntimeInfo,
-) -> Result<Value, ConfigError> {
+) -> Result<Value, ProgramError> {
     let inputs = wf.inputs();
     let mut nodes = serde_json::Map::new();
     for (name, node) in &wf.nodes {
         let key = format!("{prefix}.nodes.{name}");
         let mut entry = serde_json::to_value(node)?;
         let fields = entry.as_object_mut().expect("a node serializes to an object");
-        fields.remove("followed_by");
         fields.insert("follows".into(), json!(inputs[name]));
         fields.insert("max_fires".into(), json!(node.max_fires.unwrap_or(1)));
         if let Some(child) = &node.model {

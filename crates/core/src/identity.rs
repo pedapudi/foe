@@ -1,12 +1,12 @@
 //! What the running binary reports about itself for a program's identity.
 //!
-//! The identity document of `foe_config::identity` names the runtime that
+//! The identity document of `foe_program::identity` names the runtime that
 //! will run the program. Producing that name reads `/proc/self/exe`, which
 //! is the runtime probing itself and belongs here rather than in the
 //! configuration.
 
-use foe_config::identity::sha256_hex;
 use foe_log::RuntimeInfo;
+use foe_program::identity::sha256_hex;
 
 /// The running binary's version and content hash. `build` is `unknown`
 /// when the binary cannot be read back, for example off Linux.

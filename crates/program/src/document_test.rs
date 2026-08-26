@@ -1,12 +1,12 @@
 use super::{completion_evidence_required, parse, resolve, validate};
 use crate::test_util::{config, config_value, program_with, tmp};
-use crate::ConfigError;
+use crate::ProgramError;
 use serde_json::{json, Value};
 
 /// Applies `edit` to a valid document and returns the offending key.
 fn rejected(root: &std::path::Path, edit: impl FnOnce(&mut Value)) -> String {
     match program_with(root, edit) {
-        Err(ConfigError::Invalid { key, rule }) => {
+        Err(ProgramError::Invalid { key, rule }) => {
             assert!(!rule.is_empty());
             key
         }
@@ -43,10 +43,10 @@ fn unknown_keys_and_wrong_types_are_parse_errors() {
     let root = tmp("config-parse");
     let mut value = config_value(&root);
     value["surprise"] = json!(1);
-    assert!(matches!(parse(&value.to_string()), Err(ConfigError::Parse(_))));
+    assert!(matches!(parse(&value.to_string()), Err(ProgramError::Parse(_))));
     let mut value = config_value(&root);
     value["budget"]["model_calls"] = json!("ten");
-    assert!(matches!(parse(&value.to_string()), Err(ConfigError::Parse(_))));
+    assert!(matches!(parse(&value.to_string()), Err(ProgramError::Parse(_))));
 }
 
 /// docs/config.md `done_when`: a required `learned` field activates the
@@ -85,7 +85,7 @@ fn every_rule_names_its_key() {
     std::fs::create_dir_all(root.join("child")).unwrap();
     type Case<'a> = (&'a str, Box<dyn FnOnce(&mut Value)>);
     let cases: Vec<Case> = vec![
-        ("version", Box::new(|v| v["version"] = json!(1))),
+        ("version", Box::new(|v| v["version"] = json!(2))),
         ("name", Box::new(|v| v["name"] = json!(" "))),
         ("task", Box::new(|v| v["task"] = json!(""))),
         ("instructions", Box::new(|v| v["instructions"] = json!({}))),
@@ -226,7 +226,7 @@ fn a_childs_execute_grants_stay_within_its_parent() {
         }});
     })
     .unwrap_err();
-    let ConfigError::Invalid { key, rule } = error else { unreachable!() };
+    let ProgramError::Invalid { key, rule } = error else { unreachable!() };
     assert_eq!(key, "programs.kid.grants.execute[0]");
     assert!(rule.contains("parent program"));
 }
@@ -255,7 +255,7 @@ fn a_childs_bind_ports_stay_within_its_parent() {
         v["programs"] = kid(json!([8080, 9090]), &root);
     })
     .unwrap_err();
-    let ConfigError::Invalid { key, rule } = error else { unreachable!() };
+    let ProgramError::Invalid { key, rule } = error else { unreachable!() };
     assert_eq!(key, "programs.kid.grants.bind[1]");
     assert!(rule.contains("parent program"));
 }
@@ -450,7 +450,7 @@ fn a_workflow_model_node_stays_within_its_ceiling() {
         edit(&mut child);
         value["workflow"] = json!({ "nodes": { "work": { "model": child, "terminal": true } } });
         let config = parse(&value.to_string()).unwrap();
-        let ConfigError::Invalid { key, rule } = resolve(&config).unwrap_err() else { unreachable!() };
+        let ProgramError::Invalid { key, rule } = resolve(&config).unwrap_err() else { unreachable!() };
         assert_eq!(key, expected);
         assert!(rule.contains("workflow ceiling"), "{rule}");
     }
@@ -521,8 +521,8 @@ fn program_lineage_is_recorded_and_outside_identity() {
     let bare = crate::test_util::program(&root);
     let mut value = crate::test_util::config_value(&root);
     value["program_lineage"] = lineage_claim();
-    let config: crate::Config = serde_json::from_value(value).unwrap();
-    let claimed = crate::config::resolve(&config).unwrap();
+    let config: crate::ProgramDocument = serde_json::from_value(value).unwrap();
+    let claimed = crate::document::resolve(&config).unwrap();
     assert_eq!(claimed.to_value()["program_lineage"], lineage_claim());
     assert_eq!(
         crate::identity::compute(&claimed, &[], &runtime).unwrap().hash,
@@ -541,6 +541,6 @@ fn program_lineage_is_root_only() {
         "grants": { "read": [root] }, "budget": { "model_calls": 1 },
         "program_lineage": lineage_claim(),
     }});
-    let parsed: Result<crate::Config, _> = serde_json::from_value(value);
+    let parsed: Result<crate::ProgramDocument, _> = serde_json::from_value(value);
     assert!(parsed.is_err(), "a nested program does not carry program_lineage");
 }

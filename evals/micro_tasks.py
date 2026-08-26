@@ -81,7 +81,7 @@ def _base(
     seconds: int,
 ) -> dict[str, Any]:
     return {
-        "version": 2,
+        "version": 3,
         "name": name,
         "instructions": {
             "10-role": "You are a coding agent in a small Python repository.",
@@ -298,7 +298,7 @@ def _config_config(workspace: Path, check: Path, route: dict[str, str]) -> dict[
         "required": ["service", "rule", "evidence"],
     }
     return {
-        "version": 2,
+        "version": 3,
         "name": "micro-typed-evidence",
         "instructions": {
             "10-role": "Inspect the repository and return the requested structured report with evidence from a file you read.",
@@ -444,7 +444,7 @@ def _order_config(workspace: Path, check: Path, route: dict[str, str]) -> dict[s
             "done_when": {"returns": report_schema},
         }
     return {
-        "version": 2,
+        "version": 3,
         "name": "micro-delegated-quotation",
         "instructions": {
             "10-role": "You are the lead coding agent. You make the code change after gathering two independent reports.",
@@ -607,7 +607,7 @@ def _migration_config(workspace: Path, check: Path, route: dict[str, str]) -> di
         "required": ["candidate", "sql", "reason"],
     }
     return {
-        "version": 2,
+        "version": 3,
         "name": "micro-declared-migration-workflow",
         "instructions": {"role": "Run the declared evidence, decision, and application workflow."},
         "tools": ["read", "edit", "check"],
@@ -778,7 +778,7 @@ def _ledger_config(workspace: Path, check: Path, route: dict[str, str]) -> dict[
         "required": ["account", "currency", "balance", "approved", "evidence"],
     }
     return {
-        "version": 2,
+        "version": 3,
         "name": "micro-compaction-ledger",
         "instructions": {
             "10-role": "Follow the linked ledger from its index through the final record and return the resolved state.",

@@ -8,10 +8,10 @@
 
 use crate::loop_::{append_inbox_item, lock, until, wait_stop, Log};
 use crate::{CallCtx, ChunkSink, ModelRequestBody, Tool, ToolValue, Transport};
-use foe_config::config::Program;
-use foe_config::tools::host_spec;
-use foe_config::ToolSpec;
 use foe_log::{Chunk, EventData, InboxItem, InboxSource, ModelRoute};
+use foe_program::document::ResolvedProgram;
+use foe_program::tools::host_spec;
+use foe_program::ToolSpec;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -221,7 +221,7 @@ impl Host {
 
     /// One implementation per `host_tools` entry of `program`, with the
     /// specification taken from the document.
-    pub fn tools(&self, program: &Program) -> Vec<Box<dyn Tool>> {
+    pub fn tools(&self, program: &ResolvedProgram) -> Vec<Box<dyn Tool>> {
         program.host_tools.iter().map(|(name, def)| self.tool(host_spec(name, def))).collect()
     }
 

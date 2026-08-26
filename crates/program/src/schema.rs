@@ -13,11 +13,11 @@
 //! runtime would report a value as conforming while ignoring the part of the
 //! schema it does not read.
 
-use crate::ConfigError;
+use crate::ProgramError;
 use serde_json::{Map, Value};
 
 /// The dialect every embedded schema is read under. `foe plan --schema`
-/// declares it for the configuration document itself.
+/// declares it for the program document itself.
 pub const DIALECT: &str = "https://json-schema.org/draft/2020-12/schema";
 
 /// The assertions [`conforms`] evaluates. The set covers what the Python
@@ -36,8 +36,8 @@ const ANNOTATIONS: &[&str] =
 
 /// Rejects a schema outside the implemented subset as a construction error
 /// under the dotted configuration `key`.
-pub fn check(key: String, schema: &Value) -> Result<(), ConfigError> {
-    supported(schema, "").map_err(|rule| ConfigError::Invalid { key, rule })
+pub fn check(key: String, schema: &Value) -> Result<(), ProgramError> {
+    supported(schema, "").map_err(|rule| ProgramError::Invalid { key, rule })
 }
 
 /// Reports the first part of `schema` foe does not implement. `at` is the

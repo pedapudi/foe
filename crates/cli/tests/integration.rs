@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const FOE: &str = env!("CARGO_BIN_EXE_foe");
-use foe_config::SCHEMA;
+use foe_program::SCHEMA;
 const EXAMPLES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples");
 
 fn scratch(name: &str) -> PathBuf {
@@ -36,7 +36,7 @@ fn call(id: &str, name: &str, args: &str) -> Vec<Value> {
 
 fn config(dir: &Path, edit: impl FnOnce(&mut Value)) -> Value {
     let mut value = json!({
-        "version": 2,
+        "version": 3,
         "name": "test",
         "instructions": { "role": "You are under test." },
         "tools": ["read"],
@@ -562,7 +562,7 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
 /// otherwise: an implementation model node feeding a terminal audit model
 /// node. With a verifier, both episodes can call it and the terminal audit
 /// declares it as `done_when.verify`; no implementation result skips audit.
-/// The wiring itself is pinned by the unit tests over `builtin_config`;
+/// The wiring itself is pinned by the unit tests over `builtin_program_document`;
 /// the bare form cannot run under a scripted transport, because the exec
 /// provider needs a `model` option no flag sets, so these runs drive the
 /// same document under `--host`.
@@ -795,7 +795,7 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert!(end["data"].get("error").is_none());
     let header_of = |request: &Value| events.iter().find(|e| e["seq"] == request["data"]["header_seq"]).unwrap();
     let summary_header = header_of(requests[2]);
-    assert_eq!(summary_header["data"]["system"], foe_config::harness_text::COMPACTION_INSTRUCTION);
+    assert_eq!(summary_header["data"]["system"], foe_program::harness_text::COMPACTION_INSTRUCTION);
     assert_eq!(summary_header["data"]["tools"], json!([]));
     assert_eq!(header_of(requests[3])["data"]["tools"][0]["name"], "read", "the ordinary header returns");
     let messages = requests[3]["data"]["messages"].as_array().unwrap();
@@ -807,7 +807,7 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert_eq!(messages[2]["tool_calls"][0]["id"], "tc_2", "the kept suffix starts with the second step");
     assert_eq!(messages.len(), 5, "the final-request warning follows the compacted context");
     assert!(
-        messages.iter().any(|message| message.to_string().contains(foe_config::harness_text::FINAL_REQUEST)),
+        messages.iter().any(|message| message.to_string().contains(foe_program::harness_text::FINAL_REQUEST)),
         "the last ordinary request carries the recorded warning"
     );
     let prompt = requests[2]["data"]["messages"][0]["content"][0]["text"].as_str().unwrap();
@@ -857,7 +857,7 @@ fn a_failed_summarization_leaves_the_context_as_it_was() {
     let messages = last["data"]["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 6, "the prior context and final-request warning are present");
     assert!(
-        messages.iter().any(|message| message.to_string().contains(foe_config::harness_text::FINAL_REQUEST)),
+        messages.iter().any(|message| message.to_string().contains(foe_program::harness_text::FINAL_REQUEST)),
         "failed compaction preserves the warning"
     );
 }
@@ -1005,8 +1005,8 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
         let identity = first["identity"].as_str().unwrap();
         assert!(identity.starts_with("sha256:") && identity.len() == 71, "{name}: {identity}");
         assert_eq!(first["identity"], second["identity"], "{name}: identity ignores task and paths");
-        let canonical = foe_config::identity::canonical(&first["identity_document"]);
-        let rehashed = format!("sha256:{}", foe_config::identity::sha256_hex(canonical.as_bytes()));
+        let canonical = foe_program::identity::canonical(&first["identity_document"]);
+        let rehashed = format!("sha256:{}", foe_program::identity::sha256_hex(canonical.as_bytes()));
         assert_eq!(rehashed, identity, "{name}: the emitted identity document rehashes to the reported identity");
         assert_eq!(first["program"]["name"], json!(serde_json::from_str::<Value>(&text).unwrap()["name"]));
         assert!(first["program"].get("task").is_none(), "{name}: the program omits the task");
@@ -1065,7 +1065,7 @@ fn recorded_runtime() -> foe_log::RuntimeInfo {
 /// binary's own decision, taken in `foe::run::extra_builtin_specs`, and a
 /// test binary cannot reach the command line's modules — so this names the
 /// two packs itself, and the test below fails if the two lists ever part.
-fn builtin_specs() -> Vec<foe_config::ToolSpec> {
+fn builtin_specs() -> Vec<foe_program::ToolSpec> {
     foe_code::all()
         .iter()
         .map(|tool| tool.spec().clone())
@@ -1081,8 +1081,9 @@ fn builtin_specs() -> Vec<foe_config::ToolSpec> {
 /// builds.
 #[test]
 fn the_recorded_builtins_are_the_ones_the_binary_links() {
-    let effect = |spec: &foe_config::ToolSpec| serde_json::to_value(spec.effect).unwrap().as_str().unwrap().to_string();
-    let mine: Vec<(String, String)> = std::iter::once(foe_config::tools::block_spec())
+    let effect =
+        |spec: &foe_program::ToolSpec| serde_json::to_value(spec.effect).unwrap().as_str().unwrap().to_string();
+    let mine: Vec<(String, String)> = std::iter::once(foe_program::tools::block_spec())
         .chain(builtin_specs())
         .map(|spec| (spec.name.clone(), effect(&spec)))
         .collect();
@@ -1110,8 +1111,8 @@ fn every_example_program_hashes_to_its_recorded_identity() {
     assert_eq!(found.len(), recorded.len(), "every example has a recorded identity");
     for (name, text) in found {
         let path = materialize(&dir, &name, &text, "the task the recording ignores");
-        let program = foe_config::config::load(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
-        let identity = foe_config::identity::compute(&program, &specs, &recorded_runtime())
+        let program = foe_program::document::load(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let identity = foe_program::identity::compute(&program, &specs, &recorded_runtime())
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(identity.hash, recorded[name.as_str()], "{name}: the program hashes to another identity");
     }
@@ -1147,12 +1148,12 @@ fn every_example_conforms_to_the_schema_and_parses() {
     let inlined = inline(&schema, &schema["$defs"], 4);
     for (name, text) in examples() {
         let document: Value = serde_json::from_str(&text).unwrap();
-        foe_config::schema::conforms(&inlined, &document).unwrap_or_else(|e| panic!("{name}: {e}"));
-        foe_config::config::parse(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
+        foe_program::schema::conforms(&inlined, &document).unwrap_or_else(|e| panic!("{name}: {e}"));
+        foe_program::document::parse(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
     }
     let mut broken: Value = serde_json::from_str(&examples()[0].1).unwrap();
     broken["budget"]["model_calls"] = json!("many");
-    assert!(foe_config::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
+    assert!(foe_program::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
 }
 
 /// The issue's acceptance, checked against the process a person runs:

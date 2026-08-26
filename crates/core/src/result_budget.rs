@@ -28,7 +28,7 @@
 
 use crate::retrieval::ArchivedRendering;
 use crate::{fitting, ToolCall, ToolValue};
-use foe_config::harness_text as text;
+use foe_program::harness_text as text;
 
 /// Characters of tool-result text one model turn may show, divided between
 /// the calls of that turn. One call is already bounded below this by the

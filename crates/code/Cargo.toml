@@ -13,7 +13,7 @@ default = ["exec"]
 exec = []
 
 [dependencies]
-foe-config = { path = "../config" }
+foe-program = { path = "../program" }
 foe-core = { path = "../core" }
 serde.workspace = true
 serde_json.workspace = true

@@ -10,8 +10,8 @@ use crate::{
     display, parse_args, resolve, GREP_COLLECT_MAX, GREP_DEFAULT_LIMIT, GREP_HIT_COLLECT_MAX, GREP_LINE_MAX_CHARS,
     GREP_SEARCH_BUFFER_MAX_BYTES,
 };
-use foe_config::{Effect, ToolSpec};
 use foe_core::{CallCtx, Tool, ToolValue};
+use foe_program::{Effect, ToolSpec};
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use ignore::overrides::OverrideBuilder;

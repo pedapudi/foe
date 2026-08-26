@@ -21,10 +21,10 @@ use crate::loop_::{settled_children, SETTLE_POLL};
 use crate::protocol::{Host, InboxSink};
 use crate::spawn::{ChildObserver, Router};
 use crate::{CallCtx, CapError, SpawnHandle, SpawnRequest, Spawner, Tool, ToolValue};
-use foe_config::{Effect, ToolSpec};
 use foe_log::{
     BudgetAmount, ContentBlock, Event, EventData, InboxItem, InboxSource, MemberPhase, Outcome, SpawnContext,
 };
+use foe_program::{Effect, ToolSpec};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};

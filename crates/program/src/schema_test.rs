@@ -1,10 +1,10 @@
 use super::{arguments_conform, check, conforms, DIALECT};
-use crate::ConfigError;
+use crate::ProgramError;
 use serde_json::json;
 
 fn rule(key: &str, schema: &serde_json::Value) -> String {
     match check(key.to_string(), schema) {
-        Err(ConfigError::Invalid { key: named, rule }) => {
+        Err(ProgramError::Invalid { key: named, rule }) => {
             assert_eq!(named, key);
             rule
         }

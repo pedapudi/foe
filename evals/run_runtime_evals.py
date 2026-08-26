@@ -34,7 +34,7 @@ class HarnessError(Exception):
 
 def base_config(name: str, root: Path, transport: Path) -> dict[str, Any]:
     return {
-        "version": 2,
+        "version": 3,
         "name": name,
         "instructions": {"role": "Follow the deterministic evaluation task."},
         "tools": ["read"],

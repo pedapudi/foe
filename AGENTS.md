@@ -52,7 +52,7 @@ sentence on first reading.
   "The two tiers of the test suite".
 - Rust line budgets exclude tests, generated code, blank lines, and
   comment-only lines. `log` and `core` form the kernel and stay under 5,250
-  lines together. `config` stays under 1,400, `code` under 1,600, `workflow`
+  lines together. `program` stays under 1,400, `code` under 1,600, `workflow`
   under 1,000, `context` under 500, `view` under 600, `cli` under 1,300,
   `telemetry` under 1,000, and `lineage` under 500. The viewer HTML,
   TypeScript, and CSS use the compressed bundle limit in `docs/design.md`.
