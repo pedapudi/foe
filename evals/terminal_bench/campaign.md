@@ -2372,8 +2372,84 @@ trace passed 6,825 assertions with no violation. The retained directory is
 Its campaign manifest SHA-256 is
 `0eb2f4558c4b91b39cc46ea6df8cdcd058e30eb699bbdf44c180a1f76908da4b`.
 
-The frozen release remains in development. It has one priority-tier pass on
-two activation tasks and one closed-book DNA failure. The verifier-governed
-DNA result establishes corrective convergence and identifies the semantic
-gap. Two additional unchanged DNA attempts are required to decide the
-three-attempt activation gate.
+Two additional unchanged DNA attempts both received score 0.0 without an
+exception. One attempt used 25 model calls, 285,677 input tokens, 137,216
+cached-input tokens, and 20,606 output tokens. Its estimated cost was
+$1.060850, and its trace passed 7,701 assertions. The other attempt used 38
+model calls, 436,083 input tokens, 244,224 cached-input tokens, and 19,275
+output tokens. Its estimated cost was $1.250626, and its trace passed 9,163
+assertions. Both traces had zero violations.
+
+The repeated failures exercised two related melting-temperature boundaries.
+One primer had a grader temperature of 72.019132 degrees Celsius, above the
+permitted maximum. Another primer pair differed by 6.021674 degrees Celsius,
+above the permitted five degrees. Both audits reported completion after checks
+that used a narrower annealing-region interpretation.
+
+The repeats are retained under
+`/home/sunil/git/foe-priority-frozen-release/target/terminal-bench-jobs/priority-frozen-dna-closed-book-repeats-20260826T211031Z`.
+Their campaign manifest SHA-256 is
+`450f09d176077861521845d6c5a51ce51d00e831331128886ebd17e6eab28241`.
+The frozen release therefore scored 0.0 across three priority-tier closed-book
+DNA attempts. It did not pass its activation gate. The verifier-governed pass
+remains evidence for corrective convergence under a declared semantic
+checker.
+
+## Priority cross-trajectory source-improvement attempt
+
+A cross-trajectory report combined all three closed-book DNA failures with the
+verifier-governed success. It was bound to source tree
+`git-tree-sha1:cda2cf060df78de9dfac45cccffa656a1082e984` and runtime binary
+`sha256:0442fcfd2d5563c688397a5c5d9f053f474f2c737798435d564a08d9d766dcca`.
+The report SHA-256 is
+`81f20e31c7b319695cce155d6646478ed9672c93d6936eee3f2e6810553fb9e0`.
+
+Foe used the report in its declared source-improvement workflow. Every model
+request used GPT-5.6 Sol and the priority service tier. Diagnosis and initial
+implementation used low reasoning. The independent source audit used xhigh
+reasoning. Token limits were measurement-only.
+
+The diagnosis child completed in one call. The implementation child used 25
+calls and proposed moving a configured verifier to the workflow boundary. The
+source audit rejected that proposal because the three activation failures had
+no configured verifier. It also found that moving the gate would weaken the
+existing repair path.
+
+The source audit used its 44-call allowance to replace the rejected proposal.
+It required each passed acceptance claim to quote an exact excerpt from its
+cited tool result. A fresh finalization child used 11 calls and completed
+through the source validator. The resulting source, regression tests, and
+specifications passed the workspace tests, clippy checks, examples, formatting
+check, and line budgets.
+
+The self-improvement run used 81 model calls, 8,201,596 input tokens,
+6,641,664 cached-input tokens, and 34,468 output tokens. Its estimated cost was
+$9.585754, and it completed in 917.141 seconds. The retained result SHA-256 is
+`554e5310939b9ba9c95a5f988fcc3f2f72f4fba02f6bee30a300773efdd06d6d`.
+The bundle identity is
+`sha256:dfad42707edf33a84ab8dfdaf958181a8e736c82b1b2ce9b7b661d20e8b58185`.
+The candidate identity is
+`sha256:d91b9f0c36596397a2ed7a5b08d9adf9b9afddd68615dba1b453586454146b2d`.
+
+The external controller rebuilt the candidate as source tree
+`git-tree-sha1:e3053cdd0c966afa54d893c7303cea9a6de03a90` and portable binary
+`sha256:ce72d3732fcd5807713934992795b07aaf12fdce76c567acd83beabb40931570`.
+The unchanged task-owned grader then rejected both completed activation
+attempts. The attempts used 34 and 21 model calls and cost $1.298761 and
+$0.849888. Their traces passed 7,801 and 4,478 assertions without violations.
+
+Both audits quoted concrete operands from their cited results. Both still used
+a fixed primer-tail boundary and reported a pair difference below five
+degrees Celsius. The grader included a matching overhang suffix in the
+annealing tract and measured 5.263745 degrees Celsius. Exact observation
+binding improved provenance while leaving the semantic interpretation
+unchanged.
+
+The candidate could no longer reach the required two successes in three
+attempts after its second failure. The campaign stopped the third attempt
+under the sequential-stopping rule. The two completed attempts are retained
+under
+`/home/sunil/git/foe-priority-dna-self-improvement/target/terminal-bench-jobs/priority-observed-evidence-activation-controlled-20260826T215119Z`.
+The cancelled campaign manifest SHA-256 is
+`b3b50b2b558475b40d1082913a7b005ed9f1023b13540d7f0cfd1c6eebf81a3b`.
+The autonomous candidate is rejected for promotion.
