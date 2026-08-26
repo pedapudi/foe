@@ -14,6 +14,7 @@ python3 -m py_compile \
   run_self_improvement.py \
   tool_candidate.py \
   run_verifier_controls.py \
+  trajectory_corpus.py \
   verifier_control_agent.py \
   verifier_cases/cancel_async_tasks/check.py \
   verifier_cases/fix_git/check.py \
@@ -29,5 +30,6 @@ python3 -m unittest -v \
   tool_candidate_test.py \
   run_test.py \
   run_verifier_controls_test.py \
+  trajectory_corpus_test.py \
   trajectory_diagnostics_test.py \
   workflow_candidate_test.py
