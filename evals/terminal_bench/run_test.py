@@ -10,9 +10,11 @@ from pathlib import Path
 
 import run as terminal_bench_run
 from run import (
+    CampaignCancellation,
     HostResources,
     access_only_lease_requirement_ms,
     campaign_execution_complete,
+    campaign_signal_handlers,
     credential_supports_parallel_tasks,
     execution_groups,
     harbor_command,
@@ -25,6 +27,7 @@ from run import (
     run_commands,
     run_host_admission,
     source_tree,
+    write_json_atomic,
 )
 
 
@@ -182,6 +185,22 @@ class CasesTest(unittest.TestCase):
             },
         )
         self.assertEqual(mode, 0o400)
+
+    def test_access_only_lease_rechecks_expiry_when_it_is_issued(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lease = Path(directory) / "worker.json"
+            state = {
+                "access": "access-value",
+                "refresh": "refresh-value",
+                "expires": 10_000,
+            }
+            with self.assertRaisesRegex(ValueError, "required execution window"):
+                issue_access_only_lease(
+                    state,
+                    lease,
+                    required_expiry_ms=10_000,
+                )
+            self.assertFalse(lease.exists())
 
     def test_parallel_lease_requires_the_complete_execution_window(self):
         _, _, tasks, _ = read_cases(Path(__file__).with_name("cases.json"))
@@ -341,6 +360,45 @@ class CasesTest(unittest.TestCase):
                 )
         terminate.assert_called_once_with([first, second])
 
+    def test_terminal_signal_unwinds_the_lease_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            lease = None
+            previous_sigint = signal.getsignal(signal.SIGINT)
+            previous_sigterm = signal.getsignal(signal.SIGTERM)
+            with self.assertRaises(CampaignCancellation):
+                with campaign_signal_handlers():
+                    self.assertTrue(callable(signal.getsignal(signal.SIGINT)))
+                    with tempfile.TemporaryDirectory(dir=parent) as lease_text:
+                        lease = Path(lease_text)
+                        (lease / "credential.json").write_text(
+                            "secret",
+                            encoding="utf-8",
+                        )
+                        handler = signal.getsignal(signal.SIGTERM)
+                        self.assertTrue(callable(handler))
+                        handler(signal.SIGTERM, None)
+            self.assertIsNotNone(lease)
+            self.assertFalse(lease.exists())
+            self.assertEqual(signal.getsignal(signal.SIGINT), previous_sigint)
+            self.assertEqual(signal.getsignal(signal.SIGTERM), previous_sigterm)
+
+    def test_atomic_manifest_checkpoint_replaces_a_complete_document(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "campaign.json"
+            write_json_atomic(path, {"jobs": [{"task": "first"}]})
+            write_json_atomic(
+                path,
+                {"jobs": [{"task": "first"}, {"task": "second"}]},
+            )
+            retained = json.loads(path.read_text(encoding="utf-8"))
+            leftovers = list(path.parent.glob(".campaign.json.*"))
+        self.assertEqual(
+            retained,
+            {"jobs": [{"task": "first"}, {"task": "second"}]},
+        )
+        self.assertEqual(leftovers, [])
+
     def test_process_termination_escalates_after_the_grace_period(self):
         class Process:
             pid = 101
@@ -368,6 +426,25 @@ class CasesTest(unittest.TestCase):
             killpg.call_args_list,
             [mock.call(101, signal.SIGTERM), mock.call(101, signal.SIGKILL)],
         )
+
+    def test_process_termination_does_not_signal_a_process_that_exited(self):
+        class Process:
+            pid = 101
+
+            def __init__(self):
+                self.exited = False
+
+            def poll(self):
+                return 0 if self.exited else None
+
+            def wait(self, timeout=None):
+                self.exited = True
+                return 0
+
+        process = Process()
+        with mock.patch.object(terminal_bench_run.os, "killpg") as killpg:
+            terminal_bench_run.terminate_processes([process])
+        self.assertEqual(killpg.call_args_list, [mock.call(101, signal.SIGTERM)])
 
     def test_hard_token_limits_are_an_explicit_runner_option(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
