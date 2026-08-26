@@ -2533,3 +2533,49 @@ source review selected and implemented it. The failed autonomous attempt and
 the repaired trajectory sensor establish the next self-improvement test: a
 future candidate must derive its intervention from concrete failure operands
 and pass unchanged external activation cases.
+
+## Joint-decomposition failure on `dna-insert`
+
+The first `dna-insert` transfer attempt used the frozen final-artifact audit
+candidate but invoked the bare single-episode runner. The attempt received
+score 0.0. Its result is excluded from the active campaign because the scored
+release requires the built-in implementation and terminal-audit workflow. One
+model call lacked provider usage, so its token totals and estimated cost are
+also incomplete. The retained directory is
+`/home/sunil/git/foe-input-derived-final-artifact-audit/target/terminal-bench-jobs/priority-final-artifact-dna-insert-transfer-20260826T230614Z`.
+Its campaign manifest SHA-256 is
+`82d46463e3b6d42e4c94954fbe62b8974776cf379a14c0b4d28cdcb0e0074899`.
+
+The scored development, confirmation, calibration, and sealed-holdout Bazel
+targets now select the built-in workflow in their target definitions. A caller
+cannot omit the workflow flag while using a scored target. Commit `cf3c486`
+contains the target and documentation correction.
+
+A governed `dna-insert` attempt then used the same source tree and binary as
+the successful `dna-assembly` candidate. The implementation used low
+reasoning. The terminal audit used high reasoning. Every model request used
+GPT-5.6 Sol and the priority service tier. Token limits were measurement-only.
+The unchanged task-owned grader awarded score 0.0 without an exception.
+
+The run used 25 model calls, 245,492 input tokens, 103,424 cached-input tokens,
+and 16,960 output tokens. Its estimated cost was $0.948842. The trace had no
+conformance violation. The retained directory is
+`/home/sunil/git/foe-input-derived-final-artifact-audit/target/terminal-bench-jobs/priority-final-artifact-dna-insert-governed-20260826T231042Z`.
+Its campaign manifest SHA-256 is
+`90bc92f9971748af417c61da4571825c17cfa4d183c5858d83be874770a3a75f`.
+
+The terminal audit found three possible boundaries between the supplied
+insert and the primer annealing regions. Its final check combined a reverse
+primer measurement from one boundary with a forward primer measurement from
+another boundary. Under the task-owned grader's single decomposition of the
+complete primer pair, two nucleotides assigned to the reverse annealing region
+by the audit belonged to the matching insert. The resulting primer
+temperatures differed by 5.787026 degrees Celsius, above the permitted five
+degrees.
+
+This failure identifies a general audit requirement. When multiple properties
+depend on a shared decomposition of a final value, the audit must evaluate the
+properties under one jointly consistent decomposition. Measurements from
+different candidate decompositions cannot establish that the final value
+satisfies the combined requirements. A repeated closed-book attempt is needed
+before this result counts as a reproducible activation failure.
