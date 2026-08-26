@@ -685,8 +685,10 @@ and findings return to the same child. A source diagnosis and a typed
 abstention pass this verifier: a source candidate is judged by the
 implementation node's candidate check, and an abstention proposes nothing.
 
-The diagnosis chooses `implement-source` when failed and successful
-trajectories isolate an activated source mechanism. It chooses
+The diagnosis chooses `implement-source` when repeated retained failures
+support one general, source-owned, falsifiable mechanism. Candidate generation
+does not require prior evidence of transfer or task-quality improvement.
+Unchanged external task evaluation decides promotion. The diagnosis chooses
 `configure-workflow` when an independent audit stage supplies a repeated
 quality gain. An explicit run can choose `revise-instructions` or `define-tool`
 to retain a proposal for a future application mechanism. The diagnosis chooses

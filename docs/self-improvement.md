@@ -138,6 +138,12 @@ node returns its typed value. The diagnosis verifier rejects a missing or
 substituted citation. The diagnosis returns insufficient evidence when the
 loci do not support one shared mechanism.
 
+A source diagnosis proposes one general, source-owned, falsifiable mechanism
+from repeated retained failures. Candidate generation does not require prior
+evidence of transfer or task-quality improvement. Repository validation can
+admit the proposal for evaluation. Unchanged external task quality remains the
+sole promotion authority.
+
 An external source-candidate assessment can guide one later generation. The
 evaluator constructs the private assessment from the retained source bundle,
 a completed parent campaign, and a completed candidate campaign. The

@@ -316,7 +316,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(diagnosis["model"]["token_file"], credential)
         self.assertEqual(audit["model"]["token_file"], credential)
 
-    def test_source_candidate_requires_evidence_for_source_owned_behavior(self):
+    def test_source_candidate_is_a_falsifiable_hypothesis_until_external_evaluation(self):
         config = build_config(
             Path("/tmp/candidate"),
             Path("/tmp/evidence.json"),
@@ -333,7 +333,9 @@ class SelfImprovementConfigTest(unittest.TestCase):
         sufficiency = config["workflow"]["nodes"]["diagnose-runtime"]["model"][
             "instructions"
         ]["sufficiency"]
-        self.assertIn("objective identifies behavior owned by Foe source", sufficiency)
+        self.assertIn("general, source-owned, falsifiable mechanism", sufficiency)
+        self.assertIn("does not require prior proof of transfer", sufficiency)
+        self.assertIn("external task evaluation decides promotion", sufficiency)
         self.assertIn("Choose `insufficient-evidence`", sufficiency)
         self.assertIn("Do not choose `configure-workflow`", sufficiency)
 

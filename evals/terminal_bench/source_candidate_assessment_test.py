@@ -889,6 +889,14 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         implementation = nodes["implement-runtime-improvement"]["model"]
         audit = nodes["audit-runtime-improvement"]["model"]
         self.assertIn("assessment_revision", diagnosis["done_when"]["returns"]["required"])
+        self.assertIn(
+            "one distinct general and falsifiable source hypothesis",
+            diagnosis["instructions"]["candidate_assessment"],
+        )
+        self.assertIn(
+            "External task quality decides",
+            diagnosis["instructions"]["candidate_assessment"],
+        )
         self.assertEqual(
             nodes["implement-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime"],

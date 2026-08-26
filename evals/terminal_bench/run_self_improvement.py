@@ -1366,11 +1366,12 @@ def build_config(
     }
     if requested_candidate_kind == "source-change":
         sufficiency = (
-            "Choose `implement-source` when the trajectories support the general intervention named "
-            "by the objective and the objective identifies behavior owned by Foe source. Choose "
-            "`insufficient-evidence` when the evidence does not support that intervention, the source "
-            "ownership claim is absent, or the change requires semantic task knowledge. Do not choose "
-            "`configure-workflow`; this run evaluates whether a proven intervention can become source-owned behavior."
+            "Choose `implement-source` when repeated retained failures support one general, source-owned, "
+            "falsifiable mechanism to test. Candidate generation does not require prior proof of transfer or "
+            "task-quality improvement; unchanged external task evaluation decides promotion. Choose "
+            "`insufficient-evidence` when the evidence identifies no source-owned mechanism, combines "
+            "incompatible failure mechanisms, or requires task-specific semantic behavior in Foe. Do not choose "
+            "`configure-workflow`; this run evaluates one source hypothesis."
         )
     elif requested_candidate_kind == "workflow-configuration":
         sufficiency = (
@@ -1410,7 +1411,9 @@ def build_config(
         "verifier-report digest, every locus digest, and all qualified success episode references in "
         "assessment_revision. Choose retain when the prior mechanism remains supported, narrow when "
         "only a qualified subset remains supported, replace when the contrast falsifies the mechanism, "
-        "or insufficient-evidence when the bounded evidence cannot distinguish those dispositions."
+        "or insufficient-evidence when the bounded evidence cannot distinguish those dispositions. A replace "
+        "disposition may propose one distinct general and falsifiable source hypothesis after the assessment "
+        "rejects the prior mechanism. External task quality decides whether that hypothesis is promoted."
         if candidate_assessment_diagnostics is not None
         else None
     )
