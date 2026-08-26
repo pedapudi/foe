@@ -1,5 +1,9 @@
 {
   "dataset": "terminal-bench/terminal-bench-2-1@6",
+  "default_resources": {
+    "cpus": 1,
+    "memory_mb": 2048
+  },
   "harbor_agent_timeouts": {
     "adaptive-rejection-sampler": 900,
     "bn-fit-modify": 3600,
@@ -268,7 +272,9 @@
       "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 2400
+      "seconds": 2400,
+      "cpus": 2,
+      "memory_mb": 4096
     },
     "constraints-scheduling": {
       "model_calls": 60,
@@ -316,7 +322,8 @@
       "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
-      "seconds": 1800
+      "seconds": 1800,
+      "memory_mb": 4096
     },
     "filter-js-from-html": {
       "model_calls": 60,
@@ -346,7 +353,8 @@
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
-      "seconds": 1800
+      "seconds": 1800,
+      "memory_mb": 8192
     },
     "hf-model-inference": {
       "model_calls": 60,
@@ -418,7 +426,9 @@
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
-      "seconds": 3600
+      "seconds": 3600,
+      "cpus": 4,
+      "memory_mb": 8192
     },
     "model-extraction-relu-logits": {
       "model_calls": 60,
@@ -520,7 +530,8 @@
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
-      "seconds": 3600
+      "seconds": 3600,
+      "memory_mb": 4096
     },
     "torch-tensor-parallelism": {
       "model_calls": 60,

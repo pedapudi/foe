@@ -149,6 +149,8 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     "service_tier": "default",
                     "token_limits": "measurement_only",
                     "built_in_workflow": False,
+                    "requested_workers": 2,
+                    "concurrency": 2,
                     "diagnosis_model": None,
                     "diagnosis_reasoning_effort": None,
                     "diagnosis_model_calls": None,
@@ -232,6 +234,10 @@ class CollectDiagnosticsTest(unittest.TestCase):
                         "built_in_workflow": False,
                         "service_tier": "default",
                         "token_policy": "measurement_only",
+                        "task_execution": {
+                            "requested_workers": 2,
+                            "scheduled_concurrency": 2,
+                        },
                         "implementation": {
                             "model": "openai-codex/gpt-5.6-luna",
                             "reasoning_effort": "low",
@@ -392,6 +398,16 @@ class CollectDiagnosticsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "boolean `built_in_workflow`"):
                 collect(source, binary, [run], {"example"})
 
+    def test_collector_rejects_invalid_task_concurrency(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, binary, run, _ = self.fixture(Path(directory))
+            manifest = run / "campaign.json"
+            value = json.loads(manifest.read_text(encoding="utf-8"))
+            value["concurrency"] = 3
+            manifest.write_text(json.dumps(value), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "invalid `concurrency`"):
+                collect(source, binary, [run], {"example"})
+
     def test_summary_keeps_an_independent_audit_separate_from_a_bare_episode(self):
         manifest = {
             "dataset": "terminal-bench/example@1",
@@ -401,6 +417,8 @@ class CollectDiagnosticsTest(unittest.TestCase):
             "service_tier": "default",
             "token_limits": "measurement_only",
             "built_in_workflow": False,
+            "requested_workers": 1,
+            "concurrency": 1,
             "diagnosis_model": None,
             "diagnosis_reasoning_effort": None,
             "diagnosis_model_calls": None,
@@ -460,6 +478,8 @@ class CollectDiagnosticsTest(unittest.TestCase):
             "service_tier": "default",
             "token_limits": "measurement_only",
             "built_in_workflow": False,
+            "requested_workers": 1,
+            "concurrency": 1,
             "diagnosis_model": None,
             "diagnosis_reasoning_effort": None,
             "diagnosis_model_calls": None,

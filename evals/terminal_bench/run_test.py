@@ -1,18 +1,29 @@
 #!/usr/bin/python3
 
 import json
+import signal
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
+import run as terminal_bench_run
 from run import (
+    HostResources,
+    access_only_lease_requirement_ms,
     campaign_execution_complete,
+    credential_supports_parallel_tasks,
+    execution_groups,
     harbor_command,
+    issue_access_only_lease,
     lock_credential_state,
+    parallel_host_admission,
     read_cases,
     read_job_integrity,
     read_job_result,
+    run_commands,
+    run_host_admission,
     source_tree,
 )
 
@@ -54,7 +65,21 @@ class CasesTest(unittest.TestCase):
         self.assertGreaterEqual(min(task.model_calls for task in tasks.values()), 60)
         self.assertGreaterEqual(min(task.seconds for task in tasks.values()), 1800)
         self.assertEqual(tasks["gpt2-codegolf"].harbor_agent_seconds, 900)
+        self.assertEqual(tasks["fix-git"].memory_mb, 2048)
+        self.assertEqual(tasks["compile-compcert"].cpus, 2)
+        self.assertEqual(tasks["gpt2-codegolf"].memory_mb, 8192)
+        self.assertEqual(tasks["mcmc-sampling-stan"].cpus, 4)
         self.assertEqual(pricing["openai-codex/gpt-5.6-sol"].output_per_million, 20.0)
+
+    def test_case_resources_require_positive_integer_values(self):
+        source = Path(__file__).with_name("cases.json")
+        value = json.loads(source.read_text(encoding="utf-8"))
+        value["tasks"]["fix-git"]["memory_mb"] = True
+        with tempfile.TemporaryDirectory() as directory:
+            cases = Path(directory) / "cases.json"
+            cases.write_text(json.dumps(value), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "fix-git resources"):
+                read_cases(cases)
 
     def test_harbor_command_runs_one_task_at_a_time(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
@@ -99,7 +124,258 @@ class CasesTest(unittest.TestCase):
         self.assertNotIn("output_tokens=20000", command)
         self.assertIn("input_per_million=4.0", command)
         self.assertIn("service_tier=priority", command)
+        self.assertIn("credential_mode=mutable", command)
         self.assertIn("--install-only", command)
+
+    def test_harbor_commands_isolate_job_names_and_access_only_credentials(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        shared = {
+            "harbor": Path("/tools/harbor"),
+            "dataset": "terminal-bench/terminal-bench-2-1@6",
+            "attempts": 1,
+            "jobs_dir": Path("/tmp/jobs"),
+            "agent_module": Path("/tmp/foe_agent.py"),
+            "trace_evaluator": Path("/tmp/score-trace"),
+            "foe": Path("/tmp/foe"),
+            "credential_mode": "access_only",
+            "model": "openai-codex/gpt-5.6-sol",
+            "reasoning_effort": "low",
+            "diagnosis_model": None,
+            "diagnosis_reasoning_effort": "high",
+            "diagnosis_model_calls": 6,
+            "diagnosis_pricing": None,
+            "unresolved_diagnosis_reasoning_effort": None,
+            "unresolved_diagnosis_model_calls": 6,
+            "escalation_reasoning_effort": None,
+            "escalation_model_calls": 0,
+            "runtime_digest": "abc123",
+            "pricing": pricing["openai-codex/gpt-5.6-sol"],
+        }
+        commands = [
+            harbor_command(
+                **shared,
+                task=tasks[name],
+                credential_state=Path(f"/tmp/{name}.json"),
+            )
+            for name in ("fix-git", "cancel-async-tasks")
+        ]
+        self.assertEqual(
+            [command[command.index("--job-name") + 1] for command in commands],
+            ["fix-git", "cancel-async-tasks"],
+        )
+        self.assertIn("credential_file=/tmp/fix-git.json", commands[0])
+        self.assertIn("credential_file=/tmp/cancel-async-tasks.json", commands[1])
+        self.assertTrue(all("credential_mode=access_only" in command for command in commands))
+
+    def test_access_only_leases_omit_refresh_and_use_private_permissions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lease = Path(directory) / "worker.json"
+            issue_access_only_lease(
+                {
+                    "access": "access-value",
+                    "refresh": "rotating-refresh-value",
+                    "expires": 9_000_000,
+                    "account_id": "account-value",
+                },
+                lease,
+            )
+            value = json.loads(lease.read_text(encoding="utf-8"))
+            mode = lease.stat().st_mode & 0o777
+        self.assertEqual(
+            value,
+            {
+                "access": "access-value",
+                "expires": 9_000_000,
+                "account_id": "account-value",
+            },
+        )
+        self.assertEqual(mode, 0o400)
+
+    def test_parallel_lease_requires_the_complete_execution_window(self):
+        _, _, tasks, _ = read_cases(Path(__file__).with_name("cases.json"))
+        selected = [tasks["fix-git"], tasks["cancel-async-tasks"]]
+        required = access_only_lease_requirement_ms(
+            selected,
+            attempts=2,
+            stages=3,
+            now_ms=1_000_000,
+        )
+        self.assertFalse(
+            credential_supports_parallel_tasks(
+                {"expires": required},
+                selected,
+                attempts=2,
+                stages=3,
+                now_ms=1_000_000,
+            )
+        )
+        self.assertTrue(
+            credential_supports_parallel_tasks(
+                {"expires": required + 1},
+                selected,
+                attempts=2,
+                stages=3,
+                now_ms=1_000_000,
+            )
+        )
+
+    def test_execution_groups_keep_eight_gibibyte_tasks_serial(self):
+        _, _, tasks, _ = read_cases(Path(__file__).with_name("cases.json"))
+        selected = [
+            tasks["fix-git"],
+            tasks["cancel-async-tasks"],
+            tasks["gpt2-codegolf"],
+            tasks["git-multibranch"],
+            tasks["sqlite-db-truncate"],
+        ]
+        self.assertEqual(
+            [[task.name for task in group] for group in execution_groups(selected, 2)],
+            [
+                ["fix-git", "cancel-async-tasks"],
+                ["gpt2-codegolf"],
+                ["git-multibranch", "sqlite-db-truncate"],
+            ],
+        )
+        self.assertTrue(all(len(group) == 1 for group in execution_groups(selected, 1)))
+
+    def test_host_admission_falls_back_on_pressure_and_stops_on_low_capacity(self):
+        healthy = HostResources(
+            available_memory_mb=16 * 1024,
+            free_disk_bytes=120 * 1024**3,
+            swap_out_pages=10,
+            memory_pressure_avg10=0.0,
+        )
+        self.assertEqual(parallel_host_admission(healthy, None), (True, None))
+        swapped = HostResources(
+            available_memory_mb=healthy.available_memory_mb,
+            free_disk_bytes=healthy.free_disk_bytes,
+            swap_out_pages=11,
+            memory_pressure_avg10=healthy.memory_pressure_avg10,
+        )
+        self.assertEqual(
+            parallel_host_admission(swapped, healthy),
+            (False, "the host swapped pages out after the preceding cohort"),
+        )
+        low_memory = HostResources(
+            available_memory_mb=9 * 1024,
+            free_disk_bytes=healthy.free_disk_bytes,
+            swap_out_pages=healthy.swap_out_pages,
+            memory_pressure_avg10=healthy.memory_pressure_avg10,
+        )
+        self.assertEqual(
+            run_host_admission(low_memory),
+            (False, "available memory is below 10 GiB"),
+        )
+
+    def test_commands_start_together_and_retain_partial_failure_codes(self):
+        created = []
+        codes = iter((1, 0))
+
+        class Process:
+            def __init__(self, code):
+                self.code = code
+
+            def wait(self):
+                self.assert_all_started()
+                return self.code
+
+            @staticmethod
+            def assert_all_started():
+                if len(created) != 2:
+                    raise AssertionError("a worker waited before its peer started")
+
+        def start(command, *, cwd, start_new_session):
+            self.assertEqual(cwd, Path("/workspace"))
+            self.assertTrue(start_new_session)
+            process = Process(next(codes))
+            created.append((command, process))
+            return process
+
+        started_counts = []
+        exit_codes = run_commands(
+            [["harbor", "first"], ["harbor", "second"]],
+            cwd=Path("/workspace"),
+            popen_factory=start,
+            process_started=started_counts.append,
+        )
+        self.assertEqual(exit_codes, [1, 0])
+        self.assertEqual(started_counts, [1, 2])
+
+    def test_command_start_failure_cancels_every_started_worker(self):
+        first = object()
+        calls = 0
+        started_counts = []
+
+        def start(_command, *, cwd, start_new_session):
+            nonlocal calls
+            self.assertEqual(cwd, Path("/workspace"))
+            self.assertTrue(start_new_session)
+            calls += 1
+            if calls == 1:
+                return first
+            raise OSError("process table full")
+
+        with mock.patch.object(terminal_bench_run, "terminate_processes") as terminate:
+            with self.assertRaisesRegex(OSError, "process table full"):
+                run_commands(
+                    [["harbor", "first"], ["harbor", "second"]],
+                    cwd=Path("/workspace"),
+                    popen_factory=start,
+                    process_started=started_counts.append,
+                )
+        terminate.assert_called_once_with([first])
+        self.assertEqual(started_counts, [1])
+
+    def test_keyboard_interrupt_cancels_every_worker(self):
+        class Process:
+            def wait(self):
+                raise KeyboardInterrupt
+
+        first = Process()
+        second = Process()
+        started = iter((first, second))
+
+        def start_process(_command, *, cwd, start_new_session):
+            self.assertEqual(cwd, Path("/workspace"))
+            self.assertTrue(start_new_session)
+            return next(started)
+
+        with mock.patch.object(terminal_bench_run, "terminate_processes") as terminate:
+            with self.assertRaises(KeyboardInterrupt):
+                run_commands(
+                    [["harbor", "first"], ["harbor", "second"]],
+                    cwd=Path("/workspace"),
+                    popen_factory=start_process,
+                )
+        terminate.assert_called_once_with([first, second])
+
+    def test_process_termination_escalates_after_the_grace_period(self):
+        class Process:
+            pid = 101
+
+            @staticmethod
+            def poll():
+                return None
+
+            @staticmethod
+            def wait(timeout=None):
+                if timeout is not None:
+                    raise subprocess.TimeoutExpired("harbor", timeout)
+                return -signal.SIGKILL
+
+        with (
+            mock.patch.object(terminal_bench_run.os, "killpg") as killpg,
+            mock.patch.object(
+                terminal_bench_run.time,
+                "monotonic",
+                side_effect=(100.0, 100.0),
+            ),
+        ):
+            terminal_bench_run.terminate_processes([Process()])
+        self.assertEqual(
+            killpg.call_args_list,
+            [mock.call(101, signal.SIGTERM), mock.call(101, signal.SIGKILL)],
+        )
 
     def test_hard_token_limits_are_an_explicit_runner_option(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
@@ -301,6 +577,35 @@ class CasesTest(unittest.TestCase):
         self.assertEqual(
             integrity["infrastructure_failures"],
             ["task__attempt: the completion checker changed during the trial"],
+        )
+
+    def test_job_integrity_rejects_a_changed_access_only_credential(self):
+        with tempfile.TemporaryDirectory() as directory:
+            job = Path(directory)
+            trial = job / "task__attempt"
+            trial.mkdir()
+            (trial / "result.json").write_text(
+                json.dumps(
+                    {
+                        "trial_name": "task__attempt",
+                        "exception_info": None,
+                        "agent_result": {
+                            "metadata": {
+                                "foe_outcome": {"kind": "completed", "value": "done"},
+                                "foe_trace_conformant": True,
+                                "foe_usage_reported": True,
+                                "foe_credential_mode": "access_only",
+                                "foe_credential_unchanged": False,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            integrity = read_job_integrity(job)
+        self.assertEqual(
+            integrity["infrastructure_failures"],
+            ["task__attempt: the access-only credential changed during the trial"],
         )
 
     def test_runtime_diagnostics_do_not_block_a_complete_quality_run(self):
