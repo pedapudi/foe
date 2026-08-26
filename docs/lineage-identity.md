@@ -217,11 +217,20 @@ A deleted entry records the removed base object. The checker accepts regular
 blobs with modes `100644` and `100755`. It rejects symbolic links, trees,
 submodules, special files, and symbolic links anywhere inside the bundle.
 
-The parent plan contains exactly `identity`, `identity_document`, `program`,
-and `task`. The program is the taskless resolved program that
-`episode/start.program` records. The task is the exact controller-observed
-instruction. The trusted runner supplies it separately when an older binary
-does not report the top-level `task` field.
+The parent plan contains `identity`, `identity_document`, `program`, and
+`task`. The program is the taskless resolved program. The task is the exact
+controller-observed instruction. The trusted runner supplies it separately
+when a binary does not report the top-level `task` field.
+
+The plan may also contain `execution_credential`, an absolute
+controller-observed path. The checker accepts it only for the authenticated
+runtime build whose plan output omitted the OpenAI Codex `token_file`. Root
+and child starts must add that retained path while preserving every other
+transport field.
+
+This compatibility rule can be removed when no retained uncaptured source
+evidence names that runtime build and every supported runner emits the
+credential path in its retained plan.
 
 The bundle retains every configured executable under `parent-executables/`.
 The checker deserializes the resolved program and recomputes its complete
@@ -230,7 +239,8 @@ built-in tool specifications from the root tool list in the claimed document;
 workflow tool ceilings require every child built-in to appear there. The
 recomputed document and identity must equal the retained values before the
 checker uses the program for child provenance. The proposal root must record
-the exact program and task before any retained spawn edge is accepted.
+the planned program, permitted credential resolution, and exact task before
+any retained spawn edge is accepted.
 
 The verification executable is the exact regular file that produced the
 accepted verifier result. Its manifest digest must equal the result's
@@ -370,8 +380,9 @@ steps:
     its parent as its team.
 12. Require every retained spawn edge to name exactly one retained child. The
     program named by `spawn/start` must resolve through the parent identity
-    document to that child's identity. Nested workflow paths resolve one node
-    at a time.
+    document. External source capture may supply a runtime-effective child
+    identity after it verifies the retained child program and recomputes that
+    identity. Nested workflow paths resolve one node at a time.
 13. Resolve `parent.state_identity` and require its program identity to
     equal `parent.program_identity`.
 14. Require the verifier episode's program identity to be reachable in the
@@ -522,8 +533,8 @@ forms. A controller normalizes older output by adding the exact task as the
 top-level `task` field. The `program` field remains taskless. After the
 episode, the trusted checker recomputes the reported program
 identity. It requires the root `episode/start` to carry the planned program,
-task, and identity. It also requires the runtime build digest to equal the
-evaluated binary digest.
+permitted transport resolution, task, and identity. It also requires the
+runtime build digest to equal the evaluated binary digest.
 
 The checker then creates the child state from the actual plan identity
 document. It places the exact source manifest in the lineage evidence bundle
@@ -545,12 +556,14 @@ metadata used for the controller build.
 
 Source preflight uses the canonical proposal checker before provider spend.
 The checker requires one retained proposal root and complete retained parent
-chains. The retained plan binds that root's identity, exact resolved program,
-and task. Every recorded spawn names a retained child whose identity resolves
-from that spawn's program. Nested workflow paths are resolved through the
-identity document inside the retained parent plan. A retained child that
-spawns again requires its own retained identity document, which the source
-proposal format does not carry.
+chains. The retained plan binds that root's identity, resolved program, and
+task. Every recorded spawn names a retained child. The checker resolves the
+named workflow node, applies the authenticated credential resolution and leaf
+budget reservation, and recomputes the child's identity from its retained
+program. Nested workflow paths are resolved through the identity document
+inside the retained parent plan. A retained child that spawns again requires
+its own retained identity document, which the source proposal format does not
+carry.
 The verifier child must declare the result's tool. That verifier is authorized
 only when the source manifest retains its exact executable bytes and binds
 their digest to the result. Every other open verifier-authorization check

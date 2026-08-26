@@ -331,7 +331,18 @@ def capture_source_candidate(
     verification_log: str,
     verification_seq: int,
     verifier_executable: str,
+    execution_credential: Path | None = None,
 ) -> dict[str, Any]:
+    if execution_credential is not None:
+        plan_path = bundle / parent_plan
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        if "execution_credential" in plan:
+            raise ValueError("parent plan already carries execution_credential")
+        plan["execution_credential"] = str(execution_credential)
+        plan_path.write_text(
+            json.dumps(plan, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
     return checked_output(
         checker,
         [

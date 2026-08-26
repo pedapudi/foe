@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import pwd
 import re
 import shutil
 import subprocess
@@ -64,16 +65,35 @@ def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def model_config(route: str, reasoning_effort: str, service_tier: str = "priority") -> dict[str, str]:
+def model_config(
+    route: str,
+    reasoning_effort: str,
+    service_tier: str = "priority",
+    credential_home: Path | None = None,
+) -> dict[str, str]:
     provider, slash, model = route.partition("/")
     if not slash or not provider or not model:
         raise ValueError("model routes must have the form provider/model")
-    return {
+    answer = {
         "provider": provider,
         "model": model,
         "reasoning_effort": reasoning_effort,
         "service_tier": service_tier,
     }
+    home = credential_home or Path(pwd.getpwuid(os.getuid()).pw_dir)
+    conventional = home / ".config" / "foe" / "credentials" / f"{provider}.json"
+    if provider == "openai-codex":
+        answer["token_file"] = str(conventional)
+    elif provider in {"anthropic", "openai", "openai-compatible", "openrouter"}:
+        answer["api_key_file"] = str(conventional)
+    elif provider == "vertex":
+        if conventional.is_file():
+            values = json.loads(conventional.read_text(encoding="utf-8"))
+            for field in ("credentials_file", "project", "location"):
+                if isinstance(values.get(field), str):
+                    answer[field] = values[field]
+        answer.setdefault("credentials_file", str(conventional))
+    return answer
 
 
 def verify_evidence_identity(candidate: Path, binary: Path, evidence: Path) -> dict[str, str]:
@@ -1938,6 +1958,13 @@ def main(argv: list[str] | None = None) -> int:
             verification_log, verification_seq = find_accepted_verification(
                 episode, "check"
             )
+            planned_model = plan["program"].get("model", {})
+            execution_credential = (
+                Path(model["token_file"])
+                if model.get("provider") == "openai-codex"
+                and "token_file" not in planned_model
+                else None
+            )
             source_candidate = capture_source_candidate(
                 source_checker,
                 source_bundle,
@@ -1948,6 +1975,7 @@ def main(argv: list[str] | None = None) -> int:
                 verification_log,
                 verification_seq,
                 "candidate-check",
+                execution_credential,
             )
             source_candidate["bundle"] = str(source_bundle.relative_to(root))
             source_candidate["lineage_status"] = "pending-external-evaluation"

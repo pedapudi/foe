@@ -40,7 +40,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use foe_core::{Chunk, Executor, ModelRequestBody, Transport};
-use foe_program::ModelConfig;
+use foe_program::document::ResolvedProgram;
+use foe_program::workflow::WorkflowConfig;
+use foe_program::{ChildProgramDocument, ModelConfig};
 
 pub mod auth;
 #[cfg(feature = "exec")]
@@ -122,6 +124,44 @@ impl Plan {
             other => other.name(),
         }
     }
+}
+
+/// Resolves every model in a program tree against the provider table.
+/// The returned plan describes the root model when one is present.
+pub fn resolve_program(program: &mut ResolvedProgram) -> Result<Option<Plan>, TransportError> {
+    fn resolve_model(model: &mut ModelConfig) -> Result<Plan, TransportError> {
+        let resolved = plan(model)?;
+        *model = resolved.model.clone();
+        Ok(resolved)
+    }
+    fn resolve_child(child: &mut ChildProgramDocument) -> Result<(), TransportError> {
+        if let Some(model) = &mut child.model {
+            resolve_model(model)?;
+        }
+        child.programs.values_mut().try_for_each(resolve_child)?;
+        if let Some(workflow) = &mut child.workflow {
+            resolve_workflow(workflow)?;
+        }
+        Ok(())
+    }
+    fn resolve_workflow(workflow: &mut WorkflowConfig) -> Result<(), TransportError> {
+        for node in workflow.nodes.values_mut() {
+            if let Some(model) = &mut node.model {
+                resolve_child(model)?;
+            }
+            if let Some(workflow) = &mut node.workflow {
+                resolve_workflow(workflow)?;
+            }
+        }
+        Ok(())
+    }
+
+    let root = program.model.as_mut().map(resolve_model).transpose()?;
+    program.programs.values_mut().try_for_each(|child| resolve_program(child).map(|_| ()))?;
+    if let Some(workflow) = &mut program.workflow {
+        resolve_workflow(workflow)?;
+    }
+    Ok(root)
 }
 
 /// Every provider name this build knows, in table order.

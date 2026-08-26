@@ -552,11 +552,22 @@ bazel run //evals/terminal_bench:self-improve -- \
 ```
 
 The runner emits a version 3 program. Its default service tier is `priority`
-for diagnosis, implementation, and source audit. `--candidate-kind` can
+for diagnosis, implementation, and source audit. The model blocks explicitly
+name the credential file from Foe's per-provider convention under the passwd
+home directory. The retained plan and `episode/start.program` therefore carry
+the same runtime-resolved model block. `--candidate-kind` can
 restrict the diagnosis to `source-change`, `workflow-configuration`,
 `instruction-revision`, or `tool-definition`. The diagnosis verifier enforces
 the restriction before another model node can start. Every restricted run may
 return `insufficient-evidence`.
+
+The trusted source-candidate checker can capture evidence from runtime build
+`sha256:ff7d062a57acf865e22d7781fb7e9c05ac95863e5a255fc3145d4479e0eebb59`,
+whose plan output omitted the resolved OpenAI Codex token path. Capture adds
+the controller-observed absolute path to the canonical parent plan. The
+checker requires that path in every runtime-authored root and child program.
+It also verifies each workflow child's runtime-reserved leaf budget and
+recomputed identity before external evaluation may spend a model request.
 
 Automatic selection chooses only `source-change`, `workflow-configuration`,
 or `insufficient-evidence`. The Terminal-Bench runner can apply and evaluate

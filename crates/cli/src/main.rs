@@ -405,10 +405,10 @@ fn plan(options: &run::Options, json: bool, ancestry: Option<(PathBuf, PathBuf)>
         return printed(&builtins.map(|spec| tool_row(&spec, "built-in")).collect::<String>());
     }
     let config = run::load_program_document(options)?;
-    let program = foe_program::document::resolve(&config).map_err(|e| format!("config: {e}"))?;
+    let mut program = foe_program::document::resolve(&config).map_err(|e| format!("config: {e}"))?;
+    let transport = run::resolve_transports(&mut program)?;
     let identity = run::identity(&program)?;
     let value = program.to_value();
-    let transport = program.model.as_ref().map(run::describe_transport);
     let context = run::context_policy(&program)?.map(|policy| policy.describe());
     let authority = plan::authority(&program)?;
     let checked = ancestry

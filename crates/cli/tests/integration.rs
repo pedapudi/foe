@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const FOE: &str = env!("CARGO_BIN_EXE_foe");
+use foe_program::document::{resolve_node_program, ResolvedProgram};
 use foe_program::SCHEMA;
 const EXAMPLES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples");
 
@@ -362,6 +363,47 @@ fn node_starts(events: &[Value]) -> Vec<(String, u64)> {
         .filter(|e| e["type"] == "workflow/node-start")
         .map(|e| (e["data"]["node"].as_str().unwrap().to_string(), e["data"]["fire"].as_u64().unwrap()))
         .collect()
+}
+
+/// docs/config.md `model`: planning and execution apply the same transport
+/// resolution to the root and to every workflow model program.
+#[test]
+fn planned_root_and_workflow_child_equal_their_recorded_programs() {
+    let dir = scratch("planned-program-parity");
+    let transport = executable(
+        &dir,
+        "finish.sh",
+        r#"#!/bin/sh
+read -r request
+id=$(printf '%s' "$request" | sed 's/.*"request_id":"\([^"]*\)".*/\1/')
+printf '{"type":"model/chunk","request_id":"%s","chunk":{"kind":"text","delta":"done"}}\n' "$id"
+printf '{"type":"model/chunk","request_id":"%s","chunk":{"kind":"done","stop":"end","usage":{"input":1,"output":1,"cache_read":0}}}\n' "$id"
+"#,
+    );
+    let config = config(&dir, |value| {
+        value["tools"] = json!(["block"]);
+        value["model"] = json!({ "provider": "exec", "model": "fixture", "exec": transport });
+        value["budget"] = json!({ "model_calls": 2, "max_episodes": 2 });
+        value["workflow"] = json!({ "nodes": {
+            "work": { "model": node_program("work", &dir), "follows": ["task"], "terminal": true }
+        }});
+    });
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let plan: Value = serde_json::from_slice(
+        &Command::new(FOE).args(["plan", "--config"]).arg(&config_path).arg("--json").output().unwrap().stdout,
+    )
+    .unwrap();
+    let (logs, code) = headless_run(&dir, &config);
+    assert_eq!(code, 0);
+    assert_eq!(logs[0][0]["data"]["program"], plan["program"]);
+    let planned: ResolvedProgram = serde_json::from_value(plan["program"].clone()).unwrap();
+    let node = planned.workflow.as_ref().unwrap().nodes["work"].model.as_ref().unwrap();
+    let mut child = resolve_node_program("workflow.nodes.work.model", &planned, node).unwrap();
+    child.budget.max_depth = child.budget.max_depth.min(planned.budget.max_depth.saturating_sub(1));
+    child.budget.max_episodes = 1;
+    let child_log = logs.iter().find(|log| !log[0]["data"]["parent_id"].is_null()).unwrap();
+    assert_eq!(child_log[0]["data"]["program"], child.to_value());
 }
 
 /// docs/workflow.md "The graph", "Firing", "Choice points", and "Model

@@ -59,6 +59,23 @@ fn builtin_key_file_uses_the_providers_credential_option() {
     assert_eq!(openai.model.as_ref().unwrap().option("api_key_file"), Some(canonical.as_str()));
 }
 
+#[cfg(feature = "transport")]
+#[test]
+fn plan_resolves_credentials_for_root_and_workflow_models() {
+    let config =
+        builtin_program_document("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), None, None, None)
+            .unwrap();
+    let mut program = resolve(&config).unwrap();
+    let description = resolve_transports(&mut program).unwrap().unwrap();
+    assert!(description.contains("openai-codex/gpt-5.6-sol"));
+    let credential = program.model.as_ref().unwrap().option("token_file").unwrap();
+    assert!(credential.ends_with("/.config/foe/credentials/openai-codex.json"));
+    for (name, node) in &program.workflow.as_ref().unwrap().nodes {
+        let child = foe_program::document::resolve_node_program(name, &program, node.model.as_ref().unwrap()).unwrap();
+        assert_eq!(child.model.as_ref().unwrap().option("token_file"), Some(credential));
+    }
+}
+
 /// docs/design.md "The command line": a bare task reserves independent
 /// implementation and audit episodes, and the audit receives the task and
 /// implementation claim in a fresh context.

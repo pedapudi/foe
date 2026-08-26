@@ -24,6 +24,11 @@ same model, credential, verifier, service-tier, and sandbox options as the
 running form. The emitted object uses the configured-program plan shape and
 can be retained before an episode starts.
 
+Planning resolves the transport for the root model, named child programs,
+and explicit workflow model blocks. Execution applies the same resolution
+before it records `episode/start.program`. A child that inherits a model also
+inherits its ancestor's resolved credential option.
+
 `crates/program` implements this document: every rule stated here is a check
 there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a
 document into the program `episode/start.program` records.
@@ -483,7 +488,8 @@ A block may omit its credential field. The transport then reads
 with the home directory taken from the passwd database. An explicit
 `api_key_file`, `token_file`, or `credentials_file` replaces it. The path
 that was used is written into the block that `episode/start.program`
-records. Nothing is read from the environment.
+records. The resolved path also appears in the corresponding block from
+`foe plan`. Nothing is read from the environment.
 
 One block per provider:
 
