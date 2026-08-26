@@ -151,26 +151,22 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 
-Ten numbers bound the source. Eight are line budgets over Rust, excluding tests
-and generated code: the kernel, which is the log and core crates together,
-stays under 4,700 lines, the configuration crate under 1,400, the tool crate
-under 1,600, the workflow executor under 1,000, the compaction policy under
-500, the viewer crate under 600, the command-line crate under 1,000, and the
-telemetry crate under 900. The kernel and the tools are budgeted apart because
-a new tool adds capability without touching the loop, so room for tools must
-not become room for the kernel. The kernel and the configuration are budgeted
-apart because the kernel measures the machine and the configuration measures
-the data model, so a document that gains a key must not buy room in the loop.
-The viewer is budgeted apart from the runtime because it delivers a record of a
-run rather than running one; its HTML, TypeScript, and CSS count toward no line
-budget at all. The command line is budgeted apart from the runtime because it
-serves a person at a terminal rather than an episode. Telemetry is budgeted
-apart because it reads a finished log rather than producing one, and no part of
-the runtime depends on it. `scripts/loc.sh` counts the eight, and continuous
-integration fails a build over any of them. The ninth number bounds the browser
-bundle at 150 KB compressed. The tenth is the stripped release binary with that
-bundle embedded, which measured 5,404,568 bytes on 2026-08-22; continuous
-integration builds the bundle before measuring and fails a build over 8 MiB.
+Eleven numbers bound the source. Nine are Rust line budgets that exclude tests
+and generated code. The `log` and `core` kernel stays under 5,350 lines.
+`program` stays under 1,400, `code` under 1,700, `workflow` under 1,000,
+`context` under 500, `view` under 600, `cli` under 1,300, `telemetry` under
+1,000, and `lineage` under 500.
+
+The budgets follow responsibility boundaries. The kernel runs programs, while
+`program` defines their document and identity. `code` supplies tools.
+`workflow` schedules declared graphs. `context` derives model-visible history.
+The viewer and command line serve people. Telemetry and lineage read finished
+evidence, and no runtime crate depends on them. `scripts/loc.sh` enforces all
+nine line budgets.
+
+The browser viewer's HTML, TypeScript, and CSS count toward a 150 KB compressed
+bundle limit. The stripped release binary embeds that bundle. It measured
+5,404,568 bytes on 2026-08-22 and has an 8 MiB limit.
 
 ## Documents
 

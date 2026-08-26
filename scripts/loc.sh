@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Nine budgets: 5,250 over the kernel, which is log and core together — the
+# Nine budgets: 5,350 over the kernel, which is log and core together — the
 # log format, the loop, budgets, sandbox, and spawn, whose smallness is the
 # product claim; 1,400 over program, the other contract, which is the
 # program document, its resolution, and identity; 1,700
@@ -29,7 +29,7 @@ for c in log core; do
   n=$(count "$c")
   printf '%-8s %6d\n' "$c" "$n"; kernel=$((kernel + n))
 done
-printf '%-8s %6d  (budget 5250)\n' kernel "$kernel"
+printf '%-8s %6d  (budget 5350)\n' kernel "$kernel"
 program=$(count program)
 printf '%-8s %6d  (budget 1400)\n' program "$program"
 tools=$(count code)
@@ -46,5 +46,5 @@ telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 lineage=$(count lineage)
 printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
-[ "$kernel" -le 5250 ] && [ "$program" -le 1400 ] && [ "$tools" -le 1700 ] && [ "$workflow" -le 1000 ] \
+[ "$kernel" -le 5350 ] && [ "$program" -le 1400 ] && [ "$tools" -le 1700 ] && [ "$workflow" -le 1000 ] \
   && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]

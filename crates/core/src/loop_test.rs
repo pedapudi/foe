@@ -1,4 +1,4 @@
-use super::{learned_findings, parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
+use super::{completion_evidence_findings, parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::{Handles, Registry};
@@ -700,6 +700,22 @@ impl Tool for ProcessResult {
     }
 }
 
+struct LargeProcessResult(foe_program::ToolSpec);
+
+#[async_trait::async_trait]
+impl Tool for LargeProcessResult {
+    fn spec(&self) -> &foe_program::ToolSpec {
+        &self.0
+    }
+
+    async fn call(&self, _args: serde_json::Value, _ctx: &crate::CallCtx) -> crate::ToolValue {
+        crate::ToolValue::ok(
+            json!({ "exit_code": 1, "timed_out": false, "output": "x".repeat(SPILL_LIMIT) }),
+            "large exit 1",
+        )
+    }
+}
+
 struct LargeError(foe_program::ToolSpec);
 
 #[async_trait::async_trait]
@@ -874,10 +890,10 @@ fn learned_completion_requires_reconstructable_spilled_evidence() {
     let log = Log::create_or_open(&dir, None).unwrap();
     let registry = Registry::new(&program, vec![], vec![Box::new(Probe::new("p", Effect::Pure))]).unwrap();
     let candidate = json!({ "learned": [{ "claim": "the probe ran", "seq": evidence.seq }] });
-    assert!(learned_findings(&log, &registry, &candidate, false).is_empty());
+    assert!(completion_evidence_findings(&log, &registry, &candidate, false).is_empty());
     let EventData::ToolResult(result) = &evidence.data else { unreachable!() };
     std::fs::remove_file(dir.join("spill").join(result.spill.as_ref().unwrap())).unwrap();
-    assert!(learned_findings(&log, &registry, &candidate, false).contains("does not reconstruct"));
+    assert!(completion_evidence_findings(&log, &registry, &candidate, false).contains("does not reconstruct"));
 }
 
 /// docs/config.md `done_when`: spilling a result preserves whether the
@@ -903,7 +919,42 @@ async fn learned_completion_rejects_a_spilled_error() {
         Registry::new(&program, vec![], vec![Box::new(LargeError(crate::test_util::spec("bad", Effect::Pure)))])
             .unwrap();
     let candidate = json!({ "learned": [{ "claim": "the call succeeded", "seq": evidence.seq }] });
-    assert!(learned_findings(&log, &registry, &candidate, false).contains("does not name a successful tool/result"));
+    assert!(completion_evidence_findings(&log, &registry, &candidate, false)
+        .contains("does not name a successful tool/result"));
+}
+
+/// docs/config.md `done_when`: process status is checked in the archived
+/// canonical result when the event stores a spill locator.
+#[tokio::test]
+async fn acceptance_completion_rejects_a_spilled_nonzero_process_result() {
+    let fx = Fixture::new(
+        "loop-acceptance-spilled-process",
+        |value| value["tools"] = json!(["process"]),
+        vec![turn("run", vec![call("process", "process", "{}")]), turn("done", vec![])],
+    );
+    let dir = fx.dir.clone();
+    let program = fx.program.clone();
+    let (_, events) = fx.tool(LargeProcessResult(crate::test_util::spec("process", Effect::Execs))).run().await;
+    let result = events
+        .iter()
+        .find(|event| matches!(&event.data, EventData::ToolResult(result) if result.spill.is_some()))
+        .unwrap();
+    let log = Log::create_or_open(&dir, None).unwrap();
+    let registry = Registry::new(
+        &program,
+        vec![],
+        vec![Box::new(LargeProcessResult(crate::test_util::spec("process", Effect::Execs)))],
+    )
+    .unwrap();
+    let candidate = json!({
+        "learned": [{ "claim": "the process ran", "seq": result.seq }],
+        "acceptance_evidence": [{
+            "requirement": "the process succeeds", "status": "passed", "seq": result.seq
+        }],
+        "unresolved_risks": []
+    });
+    assert!(completion_evidence_findings(&log, &registry, &candidate, true)
+        .contains("cites an unsuccessful process result"));
 }
 
 #[tokio::test]

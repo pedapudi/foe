@@ -22,6 +22,7 @@ use foe_log::{
 use foe_program::document::{completion_evidence_required, ResolvedProgram};
 use foe_program::{harness_text as text, Effect};
 use serde_json::{json, Value};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -691,7 +692,7 @@ impl Episode {
         };
         let Some(candidate) = candidate else { return Ok(None) };
         if completion_evidence_required(self.p.program.done_when.as_ref()) {
-            let findings = learned_findings(
+            let findings = completion_evidence_findings(
                 &self.p.log,
                 &self.p.registry,
                 &candidate,
@@ -735,27 +736,94 @@ impl Episode {
     }
 }
 
-#[rustfmt::skip]
-fn acceptance_evidence_required(done: Option<&foe_program::DoneWhen>) -> bool { let Some(schema) = done.and_then(|d| d.returns.as_ref()) else { return false }; let required = |value: &Value, name: &str| value.as_array().is_some_and(|v| v.iter().any(|field| field == name)); completion_evidence_required(done) && required(&schema["required"], "acceptance_evidence") && schema["properties"]["acceptance_evidence"]["type"] == "array" && schema["properties"]["acceptance_evidence"]["items"]["properties"]["status"]["enum"] == json!(["passed", "unmet"]) && ["requirement", "status", "seq"].iter().all(|name| required(&schema["properties"]["acceptance_evidence"]["items"]["required"], name)) }
+fn schema_requires(schema: &Value, name: &str) -> bool {
+    schema.as_array().is_some_and(|fields| fields.iter().any(|field| field == name))
+}
 
-#[rustfmt::skip]
-fn learned_findings(log: &Log, registry: &Registry, candidate: &Value, acceptance_required: bool) -> String { let Some(learned) = candidate.get("learned").and_then(Value::as_array).filter(|v| !v.is_empty()) else { return "`value.learned` is a non-empty array".into() };
-    let acceptance = match candidate.get("acceptance_evidence").and_then(Value::as_array) { Some(v) if acceptance_required && !v.is_empty() => v.as_slice(), _ if !acceptance_required => &[], _ => return "`value.acceptance_evidence` is a non-empty array".into() };
+fn acceptance_evidence_required(done: Option<&foe_program::DoneWhen>) -> bool {
+    let Some(schema) = done.and_then(|done| done.returns.as_ref()) else { return false };
+    let item = &schema["properties"]["acceptance_evidence"]["items"];
+    completion_evidence_required(done)
+        && schema_requires(&schema["required"], "acceptance_evidence")
+        && schema["properties"]["acceptance_evidence"]["type"] == "array"
+        && item["properties"]["status"]["enum"] == json!(["passed", "unmet"])
+        && ["requirement", "status", "seq"].iter().all(|name| schema_requires(&item["required"], name))
+}
+
+fn canonical_result<'a>(log: &Log, result: &'a ToolResult) -> Option<Cow<'a, Value>> {
+    let Some(file) = result.spill.as_ref() else { return Some(Cow::Borrowed(&result.value)) };
+    if Path::new(file).file_name()? != std::ffi::OsStr::new(file) {
+        return None;
+    }
+    let bytes = std::fs::read(log.dir().join("spill").join(file)).ok()?;
+    if result.value != json!({ "spill": file, "bytes": bytes.len(), "is_error": false }) {
+        return None;
+    }
+    serde_json::from_slice(&bytes).ok().map(Cow::Owned)
+}
+
+fn completion_evidence_findings(
+    log: &Log,
+    registry: &Registry,
+    candidate: &Value,
+    acceptance_required: bool,
+) -> String {
+    let Some(learned) = candidate.get("learned").and_then(Value::as_array).filter(|items| !items.is_empty()) else {
+        return "`value.learned` is a non-empty array".into();
+    };
+    let acceptance = match candidate.get("acceptance_evidence").and_then(Value::as_array) {
+        Some(items) if acceptance_required && !items.is_empty() => items.as_slice(),
+        _ if !acceptance_required => &[],
+        _ => return "`value.acceptance_evidence` is a non-empty array".into(),
+    };
     log.with_events(|events| {
-        let last_change = events.iter().rev().find(|e| matches!(&e.data, EventData::ToolResult(r) if !r.synthetic && matches!(registry.effect(&r.name), Some(Effect::Writes | Effect::Execs)))); let mut requirements = BTreeSet::new();
+        let last_change = events.iter().rev().find(|event| {
+            matches!(&event.data, EventData::ToolResult(result) if !result.synthetic
+                && matches!(registry.effect(&result.name), Some(Effect::Writes | Effect::Execs)))
+        });
+        let mut requirements = BTreeSet::new();
         for (index, item) in acceptance.iter().enumerate() {
-            if !requirements.insert(item["requirement"].as_str().unwrap_or_default()) { return format!("`acceptance_evidence[{index}].requirement` duplicates another item") }
+            if !requirements.insert(item["requirement"].as_str().unwrap_or_default()) {
+                return format!("`acceptance_evidence[{index}].requirement` duplicates another item");
+            }
             let seq = item["seq"].as_u64().unwrap_or(u64::MAX);
-            if last_change.is_some_and(|change| seq < change.seq || seq == change.seq && matches!(&change.data, EventData::ToolResult(r) if registry.effect(&r.name) == Some(Effect::Writes))) { return format!("`acceptance_evidence[{index}].seq` does not observe the artifact after the last write or executable call") }
+            let stale = last_change.is_some_and(|change| {
+                seq < change.seq
+                    || seq == change.seq
+                        && matches!(&change.data, EventData::ToolResult(result)
+                            if registry.effect(&result.name) == Some(Effect::Writes))
+            });
+            if stale {
+                return format!(
+                    "`acceptance_evidence[{index}].seq` does not observe the artifact after the last write or executable call"
+                );
+            }
         }
-        if acceptance.iter().any(|item| item["status"] == "unmet") && candidate["unresolved_risks"].as_array().is_none_or(Vec::is_empty) { return "an unmet acceptance requirement must be reported in `unresolved_risks`".into() }
+        if acceptance.iter().any(|item| item["status"] == "unmet")
+            && candidate["unresolved_risks"].as_array().is_none_or(Vec::is_empty)
+        {
+            return "an unmet acceptance requirement must be reported in `unresolved_risks`".into();
+        }
         for (member, items) in [("acceptance_evidence", acceptance), ("learned", learned.as_slice())] {
             for (index, item) in items.iter().enumerate() {
                 let seq = item.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
-                let result = usize::try_from(seq).ok().and_then(|seq| events.get(seq)).and_then(|event| match &event.data { EventData::ToolResult(result) if !result.is_error && !result.synthetic => Some(result), _ => None });
-                let Some(result) = result else { return format!("`{member}[{index}].seq` {seq} does not name a successful tool/result") };
-                if member == "acceptance_evidence" && item["status"] == "passed" && (result.value["timed_out"] == true || result.value.get("exit_code").is_some_and(|code| code.as_i64() != Some(0))) { return format!("`acceptance_evidence[{index}].seq` cites an unsuccessful process result") }
-                if !result.spill.as_ref().is_none_or(|file| Path::new(file).file_name().is_some_and(|name| name == std::ffi::OsStr::new(file)) && std::fs::read(log.dir().join("spill").join(file)).is_ok_and(|bytes| result.value == json!({ "spill": file, "bytes": bytes.len(), "is_error": false }) && serde_json::from_slice::<Value>(&bytes).is_ok())) { return format!("`{member}[{index}].seq` {seq} does not reconstruct") }
+                let result = usize::try_from(seq).ok().and_then(|seq| events.get(seq)).and_then(|event| {
+                    match &event.data {
+                        EventData::ToolResult(result) if !result.is_error && !result.synthetic => Some(result),
+                        _ => None,
+                    }
+                });
+                let Some(result) = result else {
+                    return format!("`{member}[{index}].seq` {seq} does not name a successful tool/result");
+                };
+                let Some(value) = canonical_result(log, result) else {
+                    return format!("`{member}[{index}].seq` {seq} does not reconstruct");
+                };
+                let unsuccessful = value["timed_out"] == true
+                    || value.get("exit_code").is_some_and(|code| code.as_i64() != Some(0));
+                if member == "acceptance_evidence" && item["status"] == "passed" && unsuccessful {
+                    return format!("`acceptance_evidence[{index}].seq` cites an unsuccessful process result");
+                }
             }
         }
         String::new()

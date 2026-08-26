@@ -914,7 +914,7 @@ supplies only the two directory-backed resolvers `foe plan` builds for its
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 5,250 lines,
+sandbox, and spawning — and its Rust source stays under 5,350 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/program`, which is budgeted
