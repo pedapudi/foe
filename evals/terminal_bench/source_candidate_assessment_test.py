@@ -352,7 +352,11 @@ def write_source_bundle(root: Path):
 
 
 class SourceCandidateAssessmentTest(unittest.TestCase):
-    def assessment(self, root: Path):
+    def assessment(
+        self,
+        root: Path,
+        candidate_trials: list[tuple[str, bool]] | None = None,
+    ):
         bundle, manifest, candidate_identity, prior_diagnosis, content = write_source_bundle(root)
         bundle_identity = bytes_digest(canonical_json(manifest))
         parent = root / "parent-campaign"
@@ -377,7 +381,11 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             candidate,
             source_tree=CANDIDATE_TREE,
             runtime=SHA_TWO,
-            trials=[("ep-candidate-success", True), ("ep-candidate-failure", False)],
+            trials=(
+                candidate_trials
+                if candidate_trials is not None
+                else [("ep-candidate-success", True), ("ep-candidate-failure", False)]
+            ),
             source_candidate=source_candidate,
         )
         assessment = create_source_candidate_assessment(bundle, parent, candidate)
@@ -413,6 +421,21 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         self.assertEqual(len(contrast["success_references"]["parent"]), 1)
         self.assertEqual(len(contrast["success_references"]["candidate"]), 1)
         self.assertLessEqual(len(public_bytes), MAX_DIAGNOSTICS_BYTES)
+
+    def test_projection_accepts_a_candidate_with_only_failed_attempts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            assessment, _, _, _ = self.assessment(
+                Path(directory),
+                [
+                    ("ep-candidate-failure-one", False),
+                    ("ep-candidate-failure-two", False),
+                ],
+            )
+            projection = project_candidate_assessment_diagnostics(assessment)
+        contrast = projection["assessment_contrast"]
+        self.assertEqual(len(contrast["failed_attempts"]), 2)
+        self.assertEqual(contrast["success_references"]["candidate"], [])
+        validate_candidate_assessment_diagnostics(projection)
 
     def test_rejects_boolean_nonfinite_and_incomplete_trial_rewards(self):
         with tempfile.TemporaryDirectory() as directory:

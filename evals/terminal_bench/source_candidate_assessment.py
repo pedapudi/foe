@@ -1127,9 +1127,12 @@ def project_candidate_assessment_diagnostics(value: Any) -> dict[str, Any]:
     if not failures or len(failures) > MAX_ASSESSMENT_FAILURES:
         raise ValueError("candidate assessment has no bounded rejected-attempt set")
     for role in successes:
-        if not successes[role] or len(successes[role]) > MAX_ASSESSMENT_SUCCESSES_PER_ROLE:
+        if (
+            (role == "parent" and not successes[role])
+            or len(successes[role]) > MAX_ASSESSMENT_SUCCESSES_PER_ROLE
+        ):
             raise ValueError(
-                f"candidate assessment has no bounded {role} success-reference set"
+                f"candidate assessment has an invalid {role} success-reference set"
             )
     identities = assessment["identities"]
     prior_diagnosis_sha256 = digest(assessment["prior_diagnosis"])
@@ -1559,7 +1562,7 @@ def validate_candidate_assessment_diagnostics(value: Any) -> dict[str, Any]:
     for role, references in successes.items():
         if (
             not isinstance(references, list)
-            or not references
+            or (role == "parent" and not references)
             or len(references) > MAX_ASSESSMENT_SUCCESSES_PER_ROLE
         ):
             raise ValueError(f"assessment contrast has an invalid {role} success set")
