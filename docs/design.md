@@ -713,7 +713,15 @@ the evidence that would justify it.
 A task given with `--config` replaces the document's own `task`. A task given
 without `--config` uses a built-in coding workflow. An implementation episode
 changes the current directory. A fresh audit episode then checks the task and
-implementation claim, repairs defects, and produces the outcome.
+implementation claim, repairs defects, and produces the outcome. Its typed
+return maps every supplied requirement to a passed or unmet observation of the
+exact final artifacts. Returned requirement text must be unique. The runtime
+rejects observations at or before the last write-capable result, and those
+before the last executable result. The last successful executable can itself be
+an observation. This forces the audit to recheck after repairs and commands.
+Unmet items must be surfaced as unresolved risks. This gate is structural: the
+independent audit remains responsible for faithful requirement decomposition
+and semantic interpretation of each observation.
 
 The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
 fills its task, model, current-directory grants, executable inventory, sandbox

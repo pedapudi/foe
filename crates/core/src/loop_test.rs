@@ -668,6 +668,38 @@ fn learned_return_schema() -> serde_json::Value {
     })
 }
 
+fn acceptance_return_schema() -> serde_json::Value {
+    let mut schema = learned_return_schema();
+    schema["properties"]["acceptance_evidence"] = json!({
+        "type": "array", "minItems": 1,
+        "items": {
+            "type": "object",
+            "properties": {
+                "requirement": { "type": "string" },
+                "status": { "enum": ["passed", "unmet"] },
+                "seq": { "type": "integer", "minimum": 0 }
+            },
+            "required": ["requirement", "status", "seq"], "additionalProperties": false
+        }
+    });
+    schema["properties"]["unresolved_risks"] = json!({ "type": "array", "items": { "type": "string" } });
+    schema["required"] = json!(["learned", "acceptance_evidence", "unresolved_risks"]);
+    schema
+}
+
+struct ProcessResult(foe_program::ToolSpec);
+
+#[async_trait::async_trait]
+impl Tool for ProcessResult {
+    fn spec(&self) -> &foe_program::ToolSpec {
+        &self.0
+    }
+
+    async fn call(&self, _args: serde_json::Value, _ctx: &crate::CallCtx) -> crate::ToolValue {
+        crate::ToolValue::ok(json!({ "exit_code": 1, "timed_out": false }), "exit 1")
+    }
+}
+
 struct LargeError(foe_program::ToolSpec);
 
 #[async_trait::async_trait]
@@ -732,6 +764,93 @@ async fn learned_completion_rejects_a_foreign_event_then_runs_the_declared_verif
     assert_eq!(verified[0].status, VerificationStatus::Accepted);
 }
 
+/// docs/config.md `done_when`: the final-artifact gate rejects evidence at
+/// a write result or before the last executable, then accepts a later observation.
+#[tokio::test]
+async fn acceptance_completion_rechecks_after_a_named_write_tool() {
+    let stale = r#"{"value":{"learned":[{"claim":"the final state was read","seq":26}],"acceptance_evidence":[{"requirement":"the final state is valid","status":"passed","seq":10}],"unresolved_risks":[]}}"#;
+    let failed = r#"{"value":{"learned":[{"claim":"the final state was read","seq":26}],"acceptance_evidence":[{"requirement":"the final state is valid","status":"passed","seq":18}],"unresolved_risks":[]}}"#;
+    let fresh = r#"{"value":{"learned":[{"claim":"the final state was read","seq":26}],"acceptance_evidence":[{"requirement":"the final state is valid","status":"passed","seq":26}],"unresolved_risks":[]}}"#;
+    let fx = Fixture::new(
+        "loop-acceptance-evidence",
+        |v| {
+            v["tools"] = json!(["mutate", "inspect", "process"]);
+            v["done_when"] = json!({ "returns": acceptance_return_schema() });
+        },
+        vec![
+            turn("change", vec![call("write", "mutate", "{}")]),
+            turn("run", vec![call("failed-process", "process", "{}")]),
+            turn("inspect", vec![call("read", "inspect", "{}")]),
+            turn("stale", vec![call("stale-return", "return", stale)]),
+            turn("failed", vec![call("failed-return", "return", failed)]),
+            turn("fresh", vec![call("fresh-return", "return", fresh)]),
+        ],
+    );
+    let (outcome, events) = fx
+        .tool(Probe::new("mutate", Effect::Writes))
+        .tool(Probe::new("inspect", Effect::Reads))
+        .tool(ProcessResult(crate::test_util::spec("process", Effect::Execs)))
+        .run()
+        .await;
+    assert!(matches!(&events[10].data, EventData::ToolResult(result) if result.name == "mutate"));
+    assert!(matches!(&events[18].data, EventData::ToolResult(result) if result.name == "process"));
+    assert!(matches!(&events[26].data, EventData::ToolResult(result) if result.name == "inspect"));
+    assert_eq!(
+        outcome,
+        Outcome::Completed {
+            value: json!({
+                "learned": [{ "claim": "the final state was read", "seq": 26 }],
+                "acceptance_evidence": [{
+                    "requirement": "the final state is valid", "status": "passed", "seq": 26
+                }],
+                "unresolved_risks": []
+            })
+        }
+    );
+    assert!(events.iter().any(|event| {
+        matches!(&event.data, EventData::InboxItem(item) if item.source == InboxSource::System && format!("{:?}", item.content).contains("after the last write"))
+    }));
+    assert!(events.iter().any(|event| {
+        matches!(&event.data, EventData::InboxItem(item) if item.source == InboxSource::System && format!("{:?}", item.content).contains("unsuccessful process"))
+    }));
+}
+
+/// An unrelated optional return member keeps its schema-owned behavior even
+/// when it uses the built-in gate's property name.
+#[tokio::test]
+async fn optional_acceptance_evidence_does_not_activate_the_builtin_gate() {
+    let mut schema = learned_return_schema();
+    schema["properties"]["acceptance_evidence"] = json!({ "type": "object" });
+    let fx = Fixture::new(
+        "loop-optional-acceptance-evidence",
+        |v| {
+            v["tools"] = json!(["p"]);
+            v["done_when"] = json!({ "returns": schema });
+        },
+        vec![
+            turn("observe", vec![call("evidence", "p", "{}")]),
+            turn(
+                "return",
+                vec![call(
+                    "finish",
+                    "return",
+                    r#"{"value":{"learned":[{"claim":"observed","seq":10}],"acceptance_evidence":{"opaque":true}}}"#,
+                )],
+            ),
+        ],
+    );
+    let (outcome, _) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert_eq!(
+        outcome,
+        Outcome::Completed {
+            value: json!({
+                "learned": [{ "claim": "observed", "seq": 10 }],
+                "acceptance_evidence": { "opaque": true }
+            })
+        }
+    );
+}
+
 /// docs/config.md `done_when`: a cited spilled result remains evidence only
 /// while its canonical JSON can be reconstructed from the episode directory.
 #[test]
@@ -746,17 +865,19 @@ fn learned_completion_requires_reconstructable_spilled_evidence() {
         ],
     );
     let dir = fx.dir.clone();
+    let program = fx.program.clone();
     let (_, events) = runtime.block_on(fx.tool(Probe::new("p", Effect::Pure)).run());
     let evidence = events
         .iter()
         .find(|event| matches!(&event.data, EventData::ToolResult(result) if result.spill.is_some()))
         .unwrap();
     let log = Log::create_or_open(&dir, None).unwrap();
+    let registry = Registry::new(&program, vec![], vec![Box::new(Probe::new("p", Effect::Pure))]).unwrap();
     let candidate = json!({ "learned": [{ "claim": "the probe ran", "seq": evidence.seq }] });
-    assert!(learned_findings(&log, &candidate).is_empty());
+    assert!(learned_findings(&log, &registry, &candidate, false).is_empty());
     let EventData::ToolResult(result) = &evidence.data else { unreachable!() };
     std::fs::remove_file(dir.join("spill").join(result.spill.as_ref().unwrap())).unwrap();
-    assert!(learned_findings(&log, &candidate).contains("does not reconstruct"));
+    assert!(learned_findings(&log, &registry, &candidate, false).contains("does not reconstruct"));
 }
 
 /// docs/config.md `done_when`: spilling a result preserves whether the
@@ -769,6 +890,7 @@ async fn learned_completion_rejects_a_spilled_error() {
         vec![turn("observe", vec![call("bad-evidence", "bad", "{}")]), turn("done", vec![])],
     );
     let dir = fx.dir.clone();
+    let program = fx.program.clone();
     let (_, events) = fx.tool(LargeError(crate::test_util::spec("bad", Effect::Pure))).run().await;
     let evidence = events
         .iter()
@@ -777,8 +899,11 @@ async fn learned_completion_rejects_a_spilled_error() {
     let EventData::ToolResult(result) = &evidence.data else { unreachable!() };
     assert!(result.is_error, "spilling preserves the tool-owned error flag");
     let log = Log::create_or_open(&dir, None).unwrap();
+    let registry =
+        Registry::new(&program, vec![], vec![Box::new(LargeError(crate::test_util::spec("bad", Effect::Pure)))])
+            .unwrap();
     let candidate = json!({ "learned": [{ "claim": "the call succeeded", "seq": evidence.seq }] });
-    assert!(learned_findings(&log, &candidate).contains("does not name a successful tool/result"));
+    assert!(learned_findings(&log, &registry, &candidate, false).contains("does not name a successful tool/result"));
 }
 
 #[tokio::test]

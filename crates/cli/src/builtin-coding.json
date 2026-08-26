@@ -100,7 +100,7 @@
           "name": "audit-and-repair-task",
           "instructions": {
             "environment": "",
-            "role": "Independently determine whether the shared workspace satisfies the original task. Treat the implementation episode's completion claim and its cited `learned` observations as unverified. Independently reproduce or challenge every claim relevant to completion. Repair every defect you find. After the final edit, run the strongest task-relevant checks. Return at least one cited `learned` observation and report every path changed by either episode, including valid implementation changes that required no audit edit."
+            "role": "Independently determine whether the shared workspace satisfies the original task. Treat the implementation episode's completion claim and its cited `learned` observations as unverified. Derive one distinct `acceptance_evidence` item for every supplied requirement, including boundaries and cross-field relations. Inspect or check the exact final artifacts for each item and cite that tool result; do not infer acceptance from implementation-produced checks alone. A `passed` command result must exit zero without timing out. Repair every defect you find. After the last workspace write or executable call, revisit the whole map; earlier evidence is rejected, while that last command's successful result may itself be evidence. Mark a requirement `unmet` and describe it in `unresolved_risks` only when it cannot be repaired. Report every path changed by either episode, including valid implementation changes that required no audit edit."
           },
           "tools": ["read", "grep", "edit", "bash"],
           "grants": {
@@ -164,9 +164,24 @@
                     "required": ["claim", "seq"],
                     "additionalProperties": false
                   }
+                },
+                "acceptance_evidence": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 64,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "requirement": { "type": "string", "minLength": 1, "maxLength": 500 },
+                      "status": { "enum": ["passed", "unmet"] },
+                      "seq": { "type": "integer", "minimum": 0 }
+                    },
+                    "required": ["requirement", "status", "seq"],
+                    "additionalProperties": false
+                  }
                 }
               },
-              "required": ["summary", "changed_paths", "validation", "unresolved_risks", "learned"],
+              "required": ["summary", "changed_paths", "validation", "unresolved_risks", "learned", "acceptance_evidence"],
               "additionalProperties": false
             }
           },

@@ -89,8 +89,13 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
     assert!(audit.terminal);
     let audit_program = audit.model.as_ref().unwrap();
     assert_eq!(audit_program.budget.model_calls, BUILTIN_AUDIT_CALLS);
-    assert_eq!(audit_program.done_when.as_ref().unwrap().returns.as_ref().unwrap(), completion);
+    let audit_completion = audit_program.done_when.as_ref().unwrap().returns.as_ref().unwrap();
     assert_eq!(completion["properties"]["validation"]["minItems"], 1);
+    let evidence = &audit_completion["properties"]["acceptance_evidence"];
+    assert_eq!(evidence["minItems"], 1);
+    assert_eq!(evidence["items"]["required"], serde_json::json!(["requirement", "status", "seq"]));
+    assert_eq!(evidence["items"]["properties"]["status"]["enum"], serde_json::json!(["passed", "unmet"]));
+    assert!(audit_completion["required"].as_array().unwrap().contains(&serde_json::json!("acceptance_evidence")));
     // The `learned` completion evidence is bounded: one to eight claims,
     // each citing the successful tool result that supports it.
     let learned = &completion["properties"]["learned"];
@@ -100,7 +105,10 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
     assert_eq!(learned["items"]["additionalProperties"], serde_json::json!(false));
     assert!(completion["required"].as_array().unwrap().contains(&serde_json::json!("learned")));
     assert!(audit_program.instructions["role"].contains("every path changed by either episode"));
-    assert!(audit_program.instructions["role"].contains("reproduce or challenge every claim"));
+    assert!(audit_program.instructions["role"].contains("every supplied requirement"));
+    assert!(audit_program.instructions["role"].contains("exact final artifacts"));
+    assert!(audit_program.instructions["role"].contains("last workspace write or executable call"));
+    assert!(audit_program.instructions["role"].contains("exit zero without timing out"));
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available

@@ -413,6 +413,29 @@ these structural checks. An optional `learned` member remains an exported
 observation that the runtime does not require for completion. The built-in
 coding workflow requires one to eight observations from both episodes.
 
+The built-in terminal audit also requires `acceptance_evidence`. This standard
+array contains one object per supplied requirement. Each object has a distinct
+`requirement`, a `status` of `passed` or `unmet`, and an evidence `seq`. The
+schema requires both this array and the standard `learned` array, which
+activates the runtime gate without reserving optional return properties in
+other programs.
+
+Each sequence must name a reconstructable, non-error, non-synthetic tool
+result in the same audit episode. Evidence must follow the last result from a
+tool declared with the `writes` effect. It must also follow the last `execs`
+result, although that executable result can itself serve as the final
+observation. A `passed` executable result must report exit code zero and must
+not report a timeout. An `unmet` item requires a non-empty `unresolved_risks`
+array.
+
+Invalid final-artifact evidence returns a `system` inbox finding and continues
+the audit before any verifier runs. The audit instructions require the map to
+cover every supplied requirement and to be regenerated after repairs and
+commands. The runtime enforces unique returned requirement text, event
+identity, reconstruction, and freshness. The audit remains responsible for
+complete requirement decomposition and for deciding whether an observation
+semantically proves its requirement.
+
 Without `returns`, a non-error ordinary call to the declared verifier asks
 the runtime to verify the assistant text after the turn settles. Acceptance
 completes the episode without another model request. The ordinary call and
