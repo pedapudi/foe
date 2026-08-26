@@ -21,7 +21,7 @@ case.
 
 GPT-5.6 Sol with low reasoning is the primary coding model. Conditional
 escalation may use Sol with at most `xhigh` reasoning. Provider requests use
-the `priority` service tier. Token use, estimated cost, cache use, and latency
+the standard service tier. Token use, estimated cost, cache use, and latency
 are measurements. Task quality is the only candidate promotion metric until
 every quality gate passes.
 
@@ -80,7 +80,7 @@ preserve task quality.
 
 Planning estimates bound campaign exposure before each confirmed command.
 They do not reject a candidate that improves task quality. Development runs
-use the `priority` service tier and record it in the manifest. Foe records
+use the standard service tier and record it in the manifest. Foe records
 usage without enforcing token ceilings during ordinary quality runs.
 
 ## Confirmation-quality recovery
@@ -2041,3 +2041,163 @@ CTRF artifact. Additional tests cover missing and malformed verifier output,
 stale result metadata, changed verifier digests, symlinked artifacts, bounded
 status fields, ambiguous assertions, host-state normalization, and protected
 task groups. This qualification made no provider request.
+
+## Standard-tier acceptance-evidence source candidate evaluation
+
+An autonomous source-improvement run generated a proposal that requires the
+built-in terminal audit to cite final-artifact evidence for every supplied
+requirement. The proposal changed runtime code, a regression test, and the
+affected specifications. Its retained artifact binds the exact parent source
+tree and six changed-file digests. The source checker rejected that artifact
+because `cargo fmt --all -- --check` failed. The retained result therefore has
+`candidate_acceptance.accepted: false`, `source_candidate: null`, and
+`direct_implementation_required: true`.
+
+A direct mechanical formatting pass preserved the proposal's behavior and
+made the full source checker pass. The resulting source commit is `ecc1dd9`,
+its Git tree is
+`git-tree-sha1:88c933437ab04272fdbbfbfc1d6fdf3b41a41a60`, and its portable
+binary is
+`sha256:675a206b7371b756c35699c19dc1a3fb2715b5d6fc91dc5dfa634ecc8c36ea34`.
+The quality evaluation therefore measures a proposal that required direct
+mechanical repair. It does not establish an autonomously accepted source
+improvement. The implementation remains an evaluation candidate. Two dense
+production blocks use `rustfmt::skip`, and the kernel occupies its complete
+5,250-line allowance. Promotion requires task-quality evidence before source
+cleanup.
+
+Two standard-tier launch attempts found adapter defects before producing task
+quality evidence. The first runner still required the priority service tier.
+The second synthesized `foe plan TASK --model ...`, although `foe plan`
+accepts only a program document. The second attempt created no episode and
+reported no model usage. The retained directories are:
+
+- `target/terminal-bench-jobs/standard-acceptance-evidence-dna-activation-20260826T172633Z`;
+- `target/terminal-bench-jobs/standard-acceptance-evidence-dna-activation-fixed-20260826T172811Z`.
+
+The adapter now runs the built-in workflow through its supported command. It
+then reconstructs a program document from the root `episode/start` and invokes
+`foe plan --config` while the verifier and credential paths still exist. The
+adapter rejects a reconstructed plan whose program, task, or identity differs
+from the root start. Plan failures retain their exit status and standard
+error. The evaluation suite passes 180 Python tests and both Bazel evaluation
+targets after this repair.
+
+The first valid `dna-assembly` activation attempt received task score 1.0.
+It used GPT-5.6 Sol with low reasoning for implementation, high reasoning for
+the built-in audit, and the standard service tier. It used 51 model calls,
+755,286 input tokens, 487,936 cached-input tokens, and 27,789 output tokens.
+Estimated cost was $1.820354, and the execution group took 751.081 seconds.
+The trace passed 13,843 assertions across declared authority, hierarchical
+budgets, reconstructable evidence, typed outcomes, and workflow provenance.
+No infrastructure, credential, or conformance failure was recorded.
+
+The mechanism affected the result rather than only its reporting. The
+implementation child used 19 calls and returned a candidate with an unresolved
+`oligotm` validation risk. The audit child used 32 calls, installed the missing
+Primer3 utility, repaired the primer sequences, and ran a final independent
+check after its last edit. All eleven acceptance-evidence entries cite that
+final result at sequence 3,187. The unchanged task-owned grader then accepted
+the workspace. The verifier-governed lane supplies corrective findings during
+the run, so this result measures convergence under declared verification. It
+does not establish closed-book task quality by itself.
+
+The retained campaign is under
+`/home/sunil/git/foe-dna-assessment-feedback-source-improvement/target/terminal-bench-jobs/standard-acceptance-evidence-adapter-reconstruction-20260826T173536Z`.
+The campaign manifest SHA-256 is
+`aaafc2faccb32138f49314d49fc8d53be1b871c48805f5cf2b4e2552d2839714`.
+The retained plan equals the root program, task, and identity.
+
+Two unchanged activation repeats also received task score 1.0. They completed
+with zero trial errors and conformant traces. The first repeat used 30 model
+calls, 379,532 input tokens, 227,328 cached-input tokens, and 18,755 output
+tokens. Its estimated cost was $1.074847. The second used 35 model calls,
+763,965 input tokens, 498,688 cached-input tokens, and 26,171 output tokens.
+Its estimated cost was $1.784003.
+
+The two repeats are retained under
+`/home/sunil/git/foe-dna-assessment-feedback-source-improvement/target/terminal-bench-jobs/standard-acceptance-evidence-activation-repeat-20260826T174843Z`.
+Their campaign manifest SHA-256 is
+`0d90e4fd0edf44c32b79f8941c6ee7679467e3a90e8960ab9d2293a2fbcd42f8`.
+Across all three candidate attempts, the score is 3.0 of 3.0. The exact parent
+source tree supplied the diagnosis corpus and scored 1.0 of 3.0. Those parent
+attempts used the priority service tier, while the candidate attempts used the
+standard service tier.
+
+The acceptance-evidence mechanism activated in both repeats. In each case,
+the implementation returned a defective `primers.fasta`. The independent
+audit repaired the primer architecture, annealing regions, or junctions. It
+then cited one successful final-artifact check for all eleven requirements.
+The unchanged task-owned grader accepted both workspaces. The candidate has
+passed its frozen activation gate and advances to an unrelated transfer case.
+
+The unrelated `gpt2-codegolf` transfer case also received task score 1.0. The
+implementation child used 16 calls. It produced a compilable 3,860-byte C
+program and reported that its generated tokens were wrong. The audit then used
+its complete 60-call allowance to repair checkpoint layout, tokenization, and
+inference behavior. Its final call edited and compiled `gpt2.c`. The task-owned
+grader accepted that exact workspace.
+
+Foe reported `exhausted: model_calls` because the audit had no request left to
+run its checker after the final edit. The task score governs candidate quality,
+so the result qualifies as transfer. The inaccurate terminal outcome remains a
+completion-efficiency defect. The source-improvement workflow's separate
+16-call finalization child addresses the same failure mechanism for future
+source candidates.
+
+The transfer used 76 model calls, 3,081,993 input tokens, 2,514,432
+cached-input tokens, and 35,906 output tokens. Its estimated cost was
+$3.994137. The trace passed 37,942 assertions and recorded no conformance,
+credential, or infrastructure failure. The completion checker retained its
+SHA-256 digest
+`bd2c54625e4da5c491ff571a48594b6db1c71d8422308f8a8722e6c2bbef7b7b`.
+
+The transfer campaign is retained under
+`/home/sunil/git/foe-dna-assessment-feedback-source-improvement/target/terminal-bench-jobs/standard-acceptance-evidence-transfer-gpt2-20260826T180749Z`.
+Its campaign manifest SHA-256 is
+`467f1480c7481a7beb6003bfbcdfb10e9df6070cfaa4fe6bc605d9d0a1968340`.
+This result establishes task-quality transfer for the directly normalized
+proposal on an unrelated C inference scenario. It does not isolate an
+incremental transfer gain over the parent, which has also passed this task in
+an earlier built-in-workflow attempt. A new source-improvement run must pass
+its source checker without direct repair before the campaign counts an
+autonomous source improvement.
+
+Engineering review preserved the evaluated behavior while making its
+completion gate readable and correcting spilled-result validation. The gate
+now reads archived canonical process output before checking exit status. A
+regression test proves that a spilled nonzero process result cannot support a
+successful completion claim. The refactored candidate is commit `199e38a` with
+Git tree `git-tree-sha1:e456865ad62a99478af0438cae536c3b7808daf1`. Its
+portable binary is
+`sha256:4f3d545980fc12ce975441d09b5f1d094966c4406e46e847e6b2fb01fea6925a`.
+The full workspace tests, clippy checks, example suite, and line-budget check
+pass. The readable implementation requires a 5,350-line kernel allowance and
+occupies 5,316 lines.
+
+One standard-tier `dna-assembly` sanity run of the refactored candidate
+received task score 1.0 with no exception. Foe completed after 36 model calls
+and cited one successful final-artifact check for all eleven requirements. It
+used 531,849 input tokens, 331,264 cached-input tokens, and 27,666 output
+tokens. Estimated cost was $1.488166. The trace passed 7,124 assertions with no
+violation. The implementation child used nine calls, and the independent
+audit used 27 calls to install Primer3 and repair the candidate before its
+verifier-owned completion.
+
+The sanity run is retained under
+`/home/sunil/git/foe-final-artifact-evidence/target/terminal-bench-jobs/standard-final-artifact-current-main-dna-20260826T183754Z`.
+Its campaign manifest SHA-256 is
+`5dba8f3d57bfaa5cd416a5a7b5f92d67e9134a7882c8e6248ec3b40f251ca9d7`.
+This run confirms that the cleanup and spill correction preserve the
+activation-case quality result. It remains evidence for the directly
+normalized proposal because its source ancestry still contains the mechanical
+repair.
+
+The source-improvement workflow also reserves its final verification capacity.
+Its 60-call audit allocation is divided between a 44-call independent review
+and a fresh 16-call finalization child. A blocked or exhausted review
+contributes a typed empty handoff. The finalization child therefore still runs,
+checks the candidate before editing, repairs findings, and completes only
+through `done_when.verify`. The root call allowance remains unchanged. A
+provider-free generated program passes `foe plan` with five possible firings
+and the declared 44-plus-16 allocation.
