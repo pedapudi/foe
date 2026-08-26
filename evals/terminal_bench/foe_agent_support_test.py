@@ -12,10 +12,19 @@ from foe_agent_support import (
     estimate_usage_cost,
     fixed_executable_probe_command,
     read_episode_summary,
+    schema_probe_command,
 )
 
 
 class ProgramTest(unittest.TestCase):
+    def test_installers_share_the_supported_schema_probe(self):
+        self.assertEqual(
+            schema_probe_command("/opt/Foe Binary"),
+            "'/opt/Foe Binary' plan --schema >/dev/null",
+        )
+        with self.assertRaisesRegex(ValueError, "binary path must be absolute"):
+            schema_probe_command("foe")
+
     def test_fixed_path_probe_produces_validated_environment_facts(self):
         command = fixed_executable_probe_command()
         self.assertIn("test -x /usr/bin/python3", command)

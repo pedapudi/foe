@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+import shlex
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -72,6 +73,13 @@ def fixed_executable_probe_command() -> str:
             f"else echo '{name}=not found at {path}'; fi"
         )
     return "; ".join(commands)
+
+
+def schema_probe_command(binary: str = "/usr/local/bin/foe") -> str:
+    """Return the provider-free command that validates an installed Foe binary."""
+    if not PurePosixPath(binary).is_absolute():
+        raise ValueError("binary path must be absolute")
+    return f"{shlex.quote(binary)} plan --schema >/dev/null"
 
 
 def describe_container_environment(working_directory: str, probe_output: str) -> str:

@@ -22,6 +22,7 @@ from foe_agent_support import (
     fixed_executable_probe_command,
     read_episode_summary,
     replace_credential_state,
+    schema_probe_command,
 )
 
 
@@ -176,7 +177,7 @@ class FoeAgent(BaseInstalledAgent):
             command=(
                 f"{ownership}{checker_setup}chmod 755 {shlex.quote(REMOTE_BINARY)} && "
                 f"chmod {credential_mode} {shlex.quote(self._remote_credential)} && "
-                f"{shlex.quote(REMOTE_BINARY)} schema >/dev/null"
+                f"{schema_probe_command(REMOTE_BINARY)}"
             ),
         )
 

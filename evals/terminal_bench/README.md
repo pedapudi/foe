@@ -84,6 +84,8 @@ model request:
 bazel run //evals/terminal_bench:foe-install-check
 ```
 
+The adapter validates the installed command surface with `foe plan --schema`.
+
 ## Probe each task container without model spend
 
 The deterministic capability target runs Foe in the pinned `fix-git` task
