@@ -522,21 +522,6 @@ episode from 1.
 { "node": "derive", "fire": 1, "cause": "tool-error", "action": "retry", "target": "survey", "intervention": 1 }
 ```
 
-`workflow/node-skipped` — implemented. A node's `skip_when_verified`
-guard was satisfied, so the node did not fire: it contributes the named
-node's value to its successors, and a terminal node completes the
-workflow with that value. `verified_by` names the node whose result an
-authoritative verifier accepted, and `verification_seq` is the `seq` of
-the accepted `verification/result`: in this log when the named node
-declares a node-level `verify`, and in the named node's child episode log
-when its program declares `done_when.verify`. Successors name this event
-among their `inputs`. [workflow.md](workflow.md#the-conditional-audit-guard)
-specifies the guard.
-
-```json
-{ "node": "audit-and-repair-task", "verified_by": "implement-task", "verification_seq": 41 }
-```
-
 ### Compaction
 
 These events appear when an episode's `context` block enables compaction

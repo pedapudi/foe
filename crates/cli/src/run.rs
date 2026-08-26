@@ -43,18 +43,9 @@ const VIEWER_GRACE: Duration = Duration::from_secs(3);
 const BUILTIN_IMPLEMENTATION_CALLS: u64 = 60;
 const BUILTIN_AUDIT_CALLS: u64 = 60;
 
-/// Runtime-owned instructions for the built-in coding workflow. They name no
-/// path, so the program identity is the same in every directory.
-const BUILTIN_INSTRUCTION: &str = "Run the declared coding workflow against the task.";
-const BUILTIN_IMPLEMENTATION_INSTRUCTION: &str = "Implement the task in the current directory, which is the root \
-of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the \
-final change. In the completion value, report changed artifacts, commands and observed results, and unresolved \
-risks for an independent audit.";
-const BUILTIN_AUDIT_INSTRUCTION: &str = "Independently determine whether the shared workspace satisfies the \
-original task. Treat the implementation episode's completion claim as unverified. Inspect the artifacts and run \
-checks that distinguish plausible incorrect implementations. Repair every defect you find. After the final edit, \
-run the strongest available task-relevant checks. Complete with the workspace in the state the task requires. \
-Report every path changed by either episode, including valid implementation changes that required no audit edit.";
+/// Static behavior of the built-in coding workflow. Dynamic authority,
+/// environment, model, verifier, and task values are filled below.
+const BUILTIN_CONFIG: &str = include_str!("builtin-coding.json");
 const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
@@ -92,9 +83,13 @@ pub struct Options {
     pub task: Option<String>,
     pub config: Option<PathBuf>,
     pub model: Option<String>,
+    /// Provider service tier for the built-in coding workflow.
+    pub service_tier: Option<String>,
     pub key_file: Option<PathBuf>,
     /// An executable verifier for the built-in coding workflow.
     pub verify: Option<PathBuf>,
+    /// Kernel confinement mode for the built-in coding workflow.
+    pub sandbox: Option<String>,
     pub log_dir: Option<PathBuf>,
     pub no_open: bool,
     pub headless: bool,
@@ -266,7 +261,7 @@ fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
 fn load_config(options: &Options) -> Result<Config, String> {
     let Some(path) = &options.config else {
         let task = options.task.clone().ok_or(USAGE_BARE)?;
-        let model = match &options.model {
+        let mut model = match &options.model {
             Some(spec) => {
                 let (provider, model) =
                     spec.split_once('/').ok_or("--model takes PROVIDER/MODEL, for example anthropic/claude-opus-5")?;
@@ -274,12 +269,31 @@ fn load_config(options: &Options) -> Result<Config, String> {
             }
             None => default_model()?.ok_or(NO_DEFAULT_MODEL)?,
         };
-        return builtin_config(task, model, options.key_file.as_deref(), options.verify.as_deref());
+        if let Some(tier) = &options.service_tier {
+            if !matches!(tier.as_str(), "default" | "priority") {
+                return Err(format!("--service-tier {tier}: expected default or priority"));
+            }
+            model.options.insert("service_tier".into(), tier.clone());
+        }
+        return builtin_config(
+            task,
+            model,
+            options.key_file.as_deref(),
+            options.verify.as_deref(),
+            options.sandbox.as_deref(),
+        );
     };
-    if options.verify.is_some() {
-        return Err("--verify applies to the built-in coding workflow; a configuration document declares its own \
-                    done_when and skip_when_verified"
-            .into());
+    if options.verify.is_some() || options.sandbox.is_some() || options.service_tier.is_some() {
+        let option = if options.verify.is_some() {
+            "--verify"
+        } else if options.sandbox.is_some() {
+            "--sandbox"
+        } else {
+            "--service-tier"
+        };
+        return Err(format!(
+            "{option} applies to the built-in coding workflow; a configuration document declares its own behavior"
+        ));
     }
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut config = foe_config::config::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -321,22 +335,24 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// The built-in coding workflow. `--key-file` names the API key file
 /// explicitly; without it the provider's convention path is read.
 /// `verify` names an executable verifier: it becomes a `tool_defs` entry
-/// named `check` with execute authority on that file, the implementation
-/// episode declares `done_when.verify` on it, and the audit node gains
-/// `skip_when_verified`, so an accepted implementation skips the audit.
-/// Without it the workflow is unchanged: always audited.
+/// named `check` available to both episodes, and the terminal audit declares
+/// `done_when.verify` on it. The independent audit therefore always runs and
+/// its checked result alone can complete the workflow. Without a verifier the
+/// workflow remains an unconditional independent audit.
 fn builtin_config(
     task: String,
     mut model: ModelConfig,
     key_file: Option<&Path>,
     verify: Option<&Path>,
+    sandbox: Option<&str>,
 ) -> Result<Config, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
     let explicit_reasoning = model.option("reasoning_effort").is_some();
     apply_builtin_model_defaults(&mut model);
     if let Some(key_file) = key_file {
         let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
-        model.options.insert("api_key_file".to_string(), key_file.to_string_lossy().into_owned());
+        let option = credential_option(&model.provider);
+        model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
     }
     let mut audit_model = model.clone();
     if !explicit_reasoning
@@ -346,102 +362,54 @@ fn builtin_config(
         audit_model.options.insert("reasoning_effort".into(), "high".into());
     }
     let environment = builtin_environment(&cwd, Path::is_file);
-    let completion = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
-            "changed_paths": {
-                "type": "array", "items": { "type": "string", "maxLength": 512 }, "maxItems": 64
-            },
-            "validation": {
-                "type": "array", "items": { "type": "string", "maxLength": 1000 },
-                "minItems": 1, "maxItems": 32
-            },
-            "unresolved_risks": {
-                "type": "array", "items": { "type": "string", "maxLength": 1000 }, "maxItems": 16
-            },
-            "learned": {
-                "type": "array", "maxItems": 8,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "claim": { "type": "string", "minLength": 1, "maxLength": 300 },
-                        "seq": { "type": "integer", "minimum": 0 }
-                    },
-                    "required": ["claim", "seq"],
-                    "additionalProperties": false
-                }
-            }
-        },
-        "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
-        "additionalProperties": false
-    });
     let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });
-    let tools = serde_json::json!(["read", "grep", "edit", "bash"]);
-    let document = serde_json::json!({
-        "version": foe_config::config::CONFIG_VERSION,
-        "name": "coding",
-        "instructions": { "role": BUILTIN_INSTRUCTION },
-        "tools": tools,
-        "grants": grants,
-        "budget": {
-            "model_calls": BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS,
-            "max_episodes": 3,
-            "max_concurrent": 1
-        },
-        "model": model,
-        "workflow": {
-            "nodes": {
-                "implement-task": {
-                    "model": {
-                        "name": "implement-task",
-                        "instructions": {
-                            "environment": environment,
-                            "role": BUILTIN_IMPLEMENTATION_INSTRUCTION
-                        },
-                        "tools": tools,
-                        "grants": grants,
-                        "budget": { "model_calls": BUILTIN_IMPLEMENTATION_CALLS },
-                        "done_when": { "returns": completion }
-                    },
-                    "follows": ["task"]
-                },
-                "audit-and-repair-task": {
-                    "model": {
-                        "name": "audit-and-repair-task",
-                        "instructions": {
-                            "environment": environment,
-                            "role": BUILTIN_AUDIT_INSTRUCTION
-                        },
-                        "tools": tools,
-                        "grants": grants,
-                        "budget": { "model_calls": BUILTIN_AUDIT_CALLS },
-                        "done_when": { "returns": completion },
-                        "model": audit_model
-                    },
-                    "follows": ["task", "implement-task"],
-                    "terminal": true
-                }
-            },
-            "recovery": { "enabled": false }
-        },
-        "task": task,
-    });
+    let mut document: serde_json::Value =
+        serde_json::from_str(BUILTIN_CONFIG).map_err(|e| format!("built-in configuration template: {e}"))?;
+    document["version"] = serde_json::json!(foe_config::config::CONFIG_VERSION);
+    document["model"] = serde_json::json!(model);
+    document["grants"] = grants.clone();
+    document["budget"]["model_calls"] = serde_json::json!(BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS);
+    document["task"] = serde_json::json!(task);
+    for (node, calls) in
+        [("implement-task", BUILTIN_IMPLEMENTATION_CALLS), ("audit-and-repair-task", BUILTIN_AUDIT_CALLS)]
+    {
+        let program = &mut document["workflow"]["nodes"][node]["model"];
+        program["instructions"]["environment"] = serde_json::json!(environment);
+        program["grants"] = grants.clone();
+        program["budget"]["model_calls"] = serde_json::json!(calls);
+    }
+    document["workflow"]["nodes"]["audit-and-repair-task"]["model"]["model"] = serde_json::json!(audit_model);
+    if let Some(mode) = sandbox {
+        if !matches!(mode, "best-effort" | "required" | "off") {
+            return Err(format!("--sandbox {mode}: expected best-effort, required, or off"));
+        }
+        document["sandbox"] = serde_json::json!({ "mode": mode });
+    }
     if let Some(check) = verify {
         let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
         let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": cwd });
-        let mut document = document;
-        let implement = "implement-task";
         document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
-        let node_tools = &mut document["workflow"]["nodes"][implement]["model"]["tools"];
-        node_tools.as_array_mut().expect("a tool list").push(serde_json::json!("check"));
         document["tool_defs"] = serde_json::json!({ "check": def });
-        document["workflow"]["nodes"][implement]["model"]["tool_defs"] = serde_json::json!({ "check": def });
-        document["workflow"]["nodes"][implement]["model"]["done_when"]["verify"] = serde_json::json!("check");
-        document["workflow"]["nodes"]["audit-and-repair-task"]["skip_when_verified"] = serde_json::json!(implement);
+        for node in ["implement-task", "audit-and-repair-task"] {
+            let program = &mut document["workflow"]["nodes"][node]["model"];
+            program["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
+            program["tool_defs"] = serde_json::json!({ "check": def });
+        }
+        document["workflow"]["nodes"]["audit-and-repair-task"]["model"]["done_when"]["verify"] =
+            serde_json::json!("check");
         return serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"));
     }
     serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"))
+}
+
+#[cfg(feature = "transport")]
+fn credential_option(provider: &str) -> &'static str {
+    foe_transport::provider_info(provider).and_then(|value| value.auth.option_key()).unwrap_or("api_key_file")
+}
+
+#[cfg(not(feature = "transport"))]
+fn credential_option(_provider: &str) -> &'static str {
+    "api_key_file"
 }
 
 #[cfg(test)]

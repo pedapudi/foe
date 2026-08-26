@@ -17,10 +17,14 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert!(parse("login a b").is_err(), "login takes one provider");
     assert!(matches!(parse("view logs --serve --port 8080"), Ok(Command::View { serve: true, port: 8080, .. })));
     assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(run::Options { host: true, .. }))));
-    let Ok(Command::Run(options)) = parse("fix --model anthropic/m --key-file k --headless --no-open") else {
+    let Ok(Command::Run(options)) =
+        parse("fix --model anthropic/m --service-tier priority --key-file k --sandbox off --headless --no-open")
+    else {
         panic!()
     };
     assert_eq!((options.task.as_deref(), options.headless, options.no_open), (Some("fix"), true, true));
+    assert_eq!(options.sandbox.as_deref(), Some("off"));
+    assert_eq!(options.service_tier.as_deref(), Some("priority"));
     assert!(parse("plan --json").is_err(), "--json takes --config");
     assert!(parse("plan --schema --json").is_err(), "--schema stands alone");
     assert!(parse("plan --config c.json --evidence ev").is_err(), "verification takes --states and --evidence");
@@ -155,6 +159,31 @@ fn every_form_documents_every_option_it_accepts() {
             assert!(line.contains(&absent), "{} of `foe {}` is listed without `{absent}`", o.flag, form.name);
         }
     }
+}
+
+/// docs/design.md "The command line": `--verify` gates completion of the
+/// terminal audit, which remains unconditional.
+#[test]
+fn verifier_help_names_terminal_audit_completion() {
+    let text = help_of(&FORMS[0]);
+    assert!(text.contains("acceptance completes the built-in terminal audit"));
+    assert!(!text.contains("acceptance skips the audit episode"));
+}
+
+/// docs/design.md "The command line": a built-in run may select any
+/// sandbox mode that the configuration vocabulary defines.
+#[test]
+fn sandbox_help_names_every_supported_mode() {
+    let text = help_of(&FORMS[0]);
+    assert!(text.contains("kernel confinement mode: best-effort, required, or off"));
+}
+
+/// docs/design.md "The command line": a built-in run may request either
+/// service tier that the command-line vocabulary defines.
+#[test]
+fn service_tier_help_names_every_supported_value() {
+    let text = help_of(&FORMS[0]);
+    assert!(text.contains("request service tier: default or priority"));
 }
 
 /// `foe --help` and `foe help` are the same screen, and it names every

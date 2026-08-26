@@ -65,6 +65,8 @@ pub struct Responses {
     /// `reasoning.effort`, sent only when configured, because models
     /// without reasoning reject the field.
     reasoning_effort: Option<String>,
+    /// Request processing tier, sent only when configured.
+    service_tier: Option<String>,
 }
 
 impl Responses {
@@ -73,8 +75,9 @@ impl Responses {
         model: String,
         max_output_tokens: Option<u32>,
         reasoning_effort: Option<String>,
+        service_tier: Option<String>,
     ) -> Responses {
-        Responses { provider, model, max_tokens: max_output_tokens, reasoning_effort }
+        Responses { provider, model, max_tokens: max_output_tokens, reasoning_effort, service_tier }
     }
 }
 
@@ -83,7 +86,7 @@ impl Format for Responses {
         // The ChatGPT Codex backend shares the Responses event format but
         // rejects the public API's per-request output cap.
         let max_tokens = (self.provider != "openai-codex").then(|| req.max_output_tokens.or(self.max_tokens)).flatten();
-        request_body(&self.model, max_tokens, self.reasoning_effort.as_deref(), req)
+        request_body(&self.model, max_tokens, self.reasoning_effort.as_deref(), self.service_tier.as_deref(), req)
     }
 
     fn decoder(&self) -> Box<dyn Decoder> {
@@ -97,6 +100,7 @@ pub fn request_body(
     model: &str,
     max_tokens: Option<u32>,
     reasoning_effort: Option<&str>,
+    service_tier: Option<&str>,
     req: &ModelRequestBody,
 ) -> Value {
     let mut body = json!({
@@ -118,6 +122,9 @@ pub fn request_body(
     }
     if let Some(effort) = reasoning_effort {
         body["reasoning"] = json!({ "effort": effort, "summary": "auto" });
+    }
+    if let Some(tier) = service_tier {
+        body["service_tier"] = json!(tier);
     }
     body
 }
@@ -446,7 +453,7 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
             Url::parse(base).unwrap().join("/responses"),
             Vec::new(),
             Arc::new(ApiKey::new(KeyHeader::Bearer, "sk-test".into())),
-            Box::new(Responses::new("openai", "gpt-5".into(), Some(2048), None)),
+            Box::new(Responses::new("openai", "gpt-5".into(), Some(2048), None, None)),
         )
     }
 
@@ -640,20 +647,32 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
         let mut req = request();
         req.tools.clear();
         req.system = String::new();
-        let body = Responses::new("openai", "gpt-5".into(), None, Some("high".into())).body(&req);
+        let body = Responses::new("openai", "gpt-5".into(), None, Some("high".into()), None).body(&req);
         assert_eq!(body["reasoning"], json!({ "effort": "high", "summary": "auto" }));
         assert!(body.get("instructions").is_none());
         assert!(body.get("tools").is_none());
         assert!(body.get("max_output_tokens").is_none());
         req.max_output_tokens = Some(9);
-        assert_eq!(Responses::new("openai", "gpt-5".into(), Some(2048), None).body(&req)["max_output_tokens"], 9);
+        assert_eq!(Responses::new("openai", "gpt-5".into(), Some(2048), None, None).body(&req)["max_output_tokens"], 9);
+    }
+
+    #[test]
+    fn configured_service_tier_reaches_the_request_body() {
+        let req = request();
+        let priority =
+            Responses::new("openai-codex", "gpt-5.6-sol".into(), None, Some("low".into()), Some("priority".into()))
+                .body(&req);
+        assert_eq!(priority["service_tier"], "priority");
+
+        let automatic = Responses::new("openai", "gpt-5".into(), None, None, None).body(&req);
+        assert!(automatic.get("service_tier").is_none());
     }
 
     #[test]
     fn codex_backend_omits_the_output_cap_it_does_not_accept() {
         let mut req = request();
         req.max_output_tokens = Some(9);
-        let body = Responses::new("openai-codex", "gpt-5.6-sol".into(), Some(2048), None).body(&req);
+        let body = Responses::new("openai-codex", "gpt-5.6-sol".into(), Some(2048), None, None).body(&req);
         assert!(body.get("max_output_tokens").is_none());
     }
 }

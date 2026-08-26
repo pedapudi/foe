@@ -133,6 +133,14 @@ deferred is default adoption: the built-in coding workflow does not list
 the tool until the task-quality, cost, and simpler-alternative evidence
 that document names exists.
 
+## Conditional workflow audit skipping
+
+Conditional audit skipping would omit a review node after an earlier verifier
+accepted the implementation. Foe runs every declared review node. No event
+type or configuration key is reserved. A cost-sensitive deployment may
+propose this behavior after Foe passes its quality gates and paired held-out
+evaluation shows that skipping the review preserves task quality.
+
 ## Program lineage
 
 Program lineage relates immutable program states through content-addressed

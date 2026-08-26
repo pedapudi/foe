@@ -2316,18 +2316,6 @@ table.events td.type.error {
 /* A guard-skipped node stands in the run for a reason, so it keeps its
  * surface and full opacity where `unfired` loses both; the dashes say
  * nothing fired inside it, and the name takes the faint ink. */
-.wf-node.skipped {
-  cursor: pointer;
-}
-
-.wf-node.skipped .box {
-  stroke-dasharray: 3 3;
-}
-
-.wf-node.skipped .name {
-  fill: var(--v2-ink-faint);
-}
-
 .wf-node.good .box {
   fill: var(--v2-good-soft);
   stroke: var(--v2-good);

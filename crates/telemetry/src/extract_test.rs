@@ -310,26 +310,6 @@ fn provenance_is_reviewed_for_a_terminal_model_node_fed_by_a_model_node() {
 }
 
 #[test]
-fn provenance_is_verifier_for_a_terminal_skip() {
-    let events = vec![
-        event(0, 1000, start(review_program())),
-        node_start(1, "implement-task", vec![]),
-        node_end(2, "implement-task"),
-        event(
-            3,
-            1003,
-            EventData::WorkflowNodeSkipped(foe_log::WorkflowNodeSkipped {
-                node: "audit-and-repair-task".into(),
-                verified_by: "implement-task".into(),
-                verification_seq: 40,
-            }),
-        ),
-        completed(4),
-    ];
-    assert_eq!(extract(&events, "/logs").provenance, Some("verifier"));
-}
-
-#[test]
 fn provenance_is_model_report_when_nothing_verified_or_reviewed() {
     let plain = vec![event(0, 1000, start(serde_json::json!({}))), completed(1)];
     assert_eq!(extract(&plain, "/logs").provenance, Some("model-report"));
