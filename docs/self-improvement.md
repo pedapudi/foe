@@ -174,7 +174,9 @@ retained output.
 
 The adapter retains the rebuilt binary's actual `foe plan --json` report.
 The plan form resolves both configured programs and the built-in coding
-workflow without starting an episode.
+workflow without starting an episode. The retained report carries the exact
+task in a top-level field while its resolved program remains taskless. A
+controller supplies that field for a binary built before the field existed.
 After the episode, the trusted checker requires the root log to carry that
 planned program, task, and rebuilt binary digest. It then constructs and verifies
 lineage from the actual program identity. `campaign.json` records the source

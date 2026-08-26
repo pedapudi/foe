@@ -47,6 +47,19 @@ FIXED_EXECUTABLE_PATHS = (
     ("node", "/usr/bin/node"),
     ("go", "/usr/bin/go"),
 )
+
+
+def normalized_plan(plan: dict[str, Any], task: str) -> dict[str, Any]:
+    """Bind a retained plan to the exact controller-observed task."""
+    if not isinstance(plan, dict):
+        raise ValueError("installed Foe plan is an object")
+    if plan.get("task", task) != task:
+        raise ValueError("installed Foe reported a task different from the controller instruction")
+    if not isinstance(plan.get("program"), dict) or "task" in plan["program"]:
+        raise ValueError("installed Foe plan program must omit task")
+    return {**plan, "task": task}
+
+
 COMPLETION_SCHEMA = {
     "type": "object",
     "properties": {

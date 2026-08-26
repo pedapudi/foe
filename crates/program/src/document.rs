@@ -9,7 +9,7 @@ use crate::{
     contains, Budget, ChildProgramDocument, ContextConfig, DoneWhen, Grants, HostToolDef, ModelConfig, ProgramDocument,
     ProgramError, SandboxConfig, ToolDef,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -25,7 +25,8 @@ pub fn completion_evidence_required(done: Option<&DoneWhen>) -> bool {
 
 /// A program document with `task` removed, every path canonical, and child
 /// programs resolved recursively. What `episode/start.program` records.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ResolvedProgram {
     pub name: String,
     pub instructions: BTreeMap<String, String>,

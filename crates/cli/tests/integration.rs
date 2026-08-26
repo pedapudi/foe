@@ -1039,6 +1039,8 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
         assert_eq!(rehashed, identity, "{name}: the emitted identity document rehashes to the reported identity");
         assert_eq!(first["program"]["name"], json!(serde_json::from_str::<Value>(&text).unwrap()["name"]));
         assert!(first["program"].get("task").is_none(), "{name}: the program omits the task");
+        assert_eq!(first["task"], "first task", "{name}: the plan reports task outside the program");
+        assert_eq!(second["task"], "second task", "{name}: task remains independent of identity");
         if name == "workflow" {
             assert_eq!(first["workflow"]["terminal"], json!(["apply"]), "plan reports the workflow's terminal node");
             assert_eq!(first["workflow"]["cycles"], json!([]));

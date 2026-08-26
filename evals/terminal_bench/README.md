@@ -774,10 +774,13 @@ uses this frozen copy.
 
 The adapter retains the rebuilt binary's `foe plan --json` output before the
 first provider request. `foe plan TASK --json` resolves the built-in workflow
-with the same task and options as the running form. After the trial, the
-trusted checker requires the root episode to carry the same program identity,
-resolved program, and binary digest. It creates the child state from the actual
-identity document. The canonical ancestry checker must accept the transition.
+with the same task and options as the running form. The adapter requires a
+reported top-level task to equal the exact task instruction. It adds that
+field to output from an older binary while leaving `program` taskless. After
+the trial, the trusted checker requires the root episode to carry the same
+program identity, resolved program, task, and binary digest. It creates the
+child state from the actual identity document. The canonical ancestry checker
+must accept the transition.
 
 `campaign.json` records the controller source and build-output roots, the
 committed controller source tree, and the runner and checker paths and digests.

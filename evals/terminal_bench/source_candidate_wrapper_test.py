@@ -10,7 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from source_adoption import capture_source_candidate
+from source_adoption import capture_source_candidate, retain_parent_executables
 
 
 def canonical(value):
@@ -33,7 +33,8 @@ def git(repository, *arguments):
 def main():
     wrapper = Path(sys.argv[1]).resolve()
     checker = Path(sys.argv[2]).resolve()
-    controller_arguments = sys.argv[3:]
+    foe = Path(sys.argv[3]).resolve()
+    controller_arguments = sys.argv[4:]
     controller_source = Path(
         controller_arguments[controller_arguments.index("--controller-root") + 1]
     ).resolve()
@@ -63,15 +64,29 @@ def main():
 
         verifier = b"#!/bin/sh\nexit 0\n"
         verifier_digest = digest(verifier)
-        parent = {
-            "name": "source-improvement",
-            "tools": [{"name": "check", "exec_sha256": verifier_digest.removeprefix("sha256:")}],
-        }
-        parent_identity = digest(canonical(parent))
         bundle = root / "bundle"
         episode = bundle / "episode"
         episode.mkdir(parents=True)
         (bundle / "candidate-check").write_bytes(verifier)
+        config = {
+            "version": 3, "name": "source-improvement",
+            "instructions": {"role": "Improve Foe."}, "tools": ["check"],
+            "tool_defs": {"check": {
+                "exec": str(bundle / "candidate-check"), "description": "Judge the source candidate.",
+            }},
+            "grants": {"read": [str(bundle)]}, "budget": {"model_calls": 2},
+            "done_when": {"verify": "check"}, "task": "improve Foe",
+        }
+        config_path = bundle / "parent-config.json"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+        plan = json.loads(subprocess.run(
+            [str(foe), "plan", "--config", str(config_path), "--json"],
+            text=True, capture_output=True, check=True,
+        ).stdout)
+        if plan.get("task", config["task"]) != config["task"]:
+            raise RuntimeError("test Foe plan reported a different task")
+        plan["task"] = config["task"]
+        config_path.unlink()
         events = [
             {
                 "seq": 0,
@@ -82,13 +97,9 @@ def main():
                     "parent_id": None,
                     "fork_origin": None,
                     "team_id": None,
-                    "program": {
-                        "tools": ["check"],
-                        "tool_defs": {"check": {"exec": "/trusted/check"}},
-                        "done_when": {"verify": "check"},
-                    },
-                    "identity": parent_identity,
-                    "task": "improve Foe",
+                    "program": plan["program"],
+                    "identity": plan["identity"],
+                    "task": plan["task"],
                     "runtime": {"version": "0.1.0", "build": "unknown"},
                     "sandbox": {"mode": "off", "landlock_abi": 0},
                 },
@@ -117,13 +128,13 @@ def main():
             "\n".join(json.dumps(event) for event in events) + "\n",
             encoding="utf-8",
         )
-        planned_program = dict(events[0]["data"]["program"])
-        planned_program["task"] = events[0]["data"]["task"]
         (bundle / "parent-plan.json").write_bytes(canonical({
-            "identity": parent_identity,
-            "identity_document": parent,
-            "program": planned_program,
+            "identity": plan["identity"],
+            "identity_document": plan["identity_document"],
+            "program": plan["program"],
+            "task": plan["task"],
         }))
+        retain_parent_executables(bundle, plan["program"])
         (repository / "source.txt").write_text("after\n", encoding="utf-8")
         capture_source_candidate(
             checker,

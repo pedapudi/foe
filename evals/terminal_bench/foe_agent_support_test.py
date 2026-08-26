@@ -17,6 +17,7 @@ from foe_agent_support import (
     fixed_executable_probe_command,
     missing_builtin_workflow_options,
     missing_episode_diagnostic,
+    normalized_plan,
     parse_boolean,
     read_episode_summary,
     retained_artifacts_contain_credential,
@@ -25,6 +26,19 @@ from foe_agent_support import (
 
 
 class ProgramTest(unittest.TestCase):
+    def test_retained_plan_adds_or_checks_a_task_outside_program(self):
+        old = normalized_plan({"program": {"name": "p"}}, "full instruction")
+        self.assertEqual(old["task"], "full instruction")
+        current = normalized_plan(
+            {"program": {"name": "p"}, "task": "full instruction"},
+            "full instruction",
+        )
+        self.assertEqual(current, old)
+        with self.assertRaisesRegex(ValueError, "different from the controller instruction"):
+            normalized_plan({"program": {"name": "p"}, "task": "other"}, "full instruction")
+        with self.assertRaisesRegex(ValueError, "program must omit task"):
+            normalized_plan({"program": {"name": "p", "task": "full instruction"}}, "full instruction")
+
     def test_builtin_workflow_invocation_uses_the_command_line_surface(self):
         arguments = builtin_workflow_arguments(
             "repair it",

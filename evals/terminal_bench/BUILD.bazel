@@ -294,6 +294,7 @@ sh_test(
     args = [
         "$(rootpath :foe-source-candidate)",
         "$(rootpath //crates/lineage:source-adoption)",
+        "$(rootpath //:foe-portable)",
     ] + SOURCE_CONTROLLER_ARGS,
     data = [
         ":foe-source-candidate",
@@ -386,6 +387,7 @@ sh_test(
     name = "unit_tests",
     srcs = ["run_unit_tests.sh"],
     data = [
+        "//:foe-portable",
         "//crates/lineage:build-bundle",
         "//crates/lineage:check-ancestry",
         "//crates/lineage:source-adoption",

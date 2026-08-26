@@ -7,7 +7,11 @@ use foe_lineage::{
     ManifestFile, ProgramLineage, RetainedVerifier, StateDocument, MANIFEST_FILE,
 };
 use foe_log::fold;
-use foe_program::{identity::canonical, LineageParent};
+use foe_program::{
+    document::{resolve_node_program, ResolvedProgram},
+    identity::{canonical, compute_retained, sha256_hex},
+    LineageParent,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -75,7 +79,8 @@ struct SourceManifest {
 struct ParentPlan {
     identity: String,
     identity_document: Value,
-    program: Value,
+    program: ResolvedProgram,
+    task: String,
 }
 
 fn fail(key: &str, rule: impl AsRef<str>) -> String {
@@ -90,39 +95,71 @@ fn canonical_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
 fn read_parent_plan(bundle: &Path, path: &str) -> Result<ParentPlan, String> {
     let bytes = std::fs::read(bundle.join(path)).map_err(|e| fail("parent plan", e.to_string()))?;
     let plan: ParentPlan = serde_json::from_slice(&bytes).map_err(|e| fail("parent plan", e.to_string()))?;
-    if canonical_bytes(&plan)? != bytes || digest_of(canonical(&plan.identity_document).as_bytes()) != plan.identity {
-        return Err(fail("parent plan", "is canonical and binds identity to identity_document"));
+    if canonical_bytes(&plan)? != bytes || plan.task.trim().is_empty() {
+        return Err(fail("parent plan", "is canonical and carries a non-empty task"));
+    }
+    let mut configured = std::collections::BTreeMap::new();
+    collect_configured(bundle, &serde_json::to_value(&plan.program).map_err(|e| e.to_string())?, &mut configured)?;
+    let computed = compute_retained(&plan.program, &plan.identity_document, &configured).map_err(|e| e.to_string())?;
+    if computed.hash != plan.identity || computed.document != plan.identity_document {
+        return Err(fail("parent plan", "matches the identity and document recomputed from its resolved program"));
     }
     Ok(plan)
 }
 
 fn planned_start(plan: &ParentPlan) -> Result<(Value, String), String> {
-    let mut program = plan.program.clone();
-    let object = program.as_object_mut().ok_or_else(|| fail("parent plan program", "is an object"))?;
-    let task = object
-        .remove("task")
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .ok_or_else(|| fail("parent plan program.task", "is a string"))?;
-    Ok((program, task))
+    Ok((plan.program.to_value(), plan.task.clone()))
 }
 
-fn workflow_model<'a>(program: &'a Value, path: &str) -> Option<&'a Value> {
-    let mut workflow = program.get("workflow")?;
+fn collect_configured(
+    bundle: &Path,
+    value: &Value,
+    found: &mut std::collections::BTreeMap<PathBuf, String>,
+) -> Result<(), String> {
+    if let Some(definitions) = value.get("tool_defs").and_then(Value::as_object) {
+        for definition in definitions.values() {
+            let exec =
+                definition["exec"].as_str().ok_or_else(|| fail("parent plan tool_defs", "name executable paths"))?;
+            let retained = bundle.join("parent-executables").join(sha256_hex(exec.as_bytes()));
+            let metadata =
+                std::fs::symlink_metadata(&retained).map_err(|e| fail("parent executable", e.to_string()))?;
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(fail("parent executable", "is a retained regular file"));
+            }
+            let bytes = std::fs::read(&retained).map_err(|e| fail("parent executable", e.to_string()))?;
+            found.insert(PathBuf::from(exec), digest_of(&bytes).trim_start_matches("sha256:").to_string());
+        }
+    }
+    match value {
+        Value::Object(object) => object.values().try_for_each(|child| collect_configured(bundle, child, found)),
+        Value::Array(array) => array.iter().try_for_each(|child| collect_configured(bundle, child, found)),
+        _ => Ok(()),
+    }
+}
+
+fn workflow_model(program: &ResolvedProgram, path: &str) -> Result<Value, String> {
+    let mut workflow = program.workflow.as_ref().ok_or_else(|| fail("parent plan program", "declares a workflow"))?;
     let mut parts = path.split('/').peekable();
     while let Some(name) = parts.next() {
-        let node = workflow.get("nodes")?.get(name)?;
+        let node =
+            workflow.nodes.get(name).ok_or_else(|| fail("parent plan program", format!("declares node {name}")))?;
         if parts.peek().is_none() {
-            return node.get("model");
+            let child =
+                node.model.as_ref().ok_or_else(|| fail("parent plan program", format!("node {name} is a model")))?;
+            return resolve_node_program(path, program, child).map(|child| child.to_value()).map_err(|e| e.to_string());
         }
-        workflow = node.get("workflow")?;
+        workflow = node
+            .workflow
+            .as_ref()
+            .ok_or_else(|| fail("parent plan program", format!("node {name} holds a nested workflow")))?;
     }
-    None
+    Err(fail("parent plan program", "names a non-empty workflow path"))
 }
 
 fn verify_planned_children(
     bundle: &Path,
     manifest: &SourceManifest,
-    program: &Value,
+    program: &ResolvedProgram,
     events: &[foe_log::Event],
 ) -> Result<(), String> {
     for (child_id, node) in events.iter().filter_map(|event| match &event.data {
@@ -141,7 +178,7 @@ fn verify_planned_children(
                 break;
             }
         }
-        if found.as_ref() != workflow_model(program, node) {
+        if found != Some(workflow_model(program, node)?) {
             return Err(fail(
                 "proposal child log",
                 format!("{child_id} starts with the planned model program for {node}"),
@@ -496,7 +533,7 @@ fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), Strin
     if proposal_start.program != planned_program || proposal_start.task != planned_task {
         return Err(fail("proposal log", "starts with the retained plan's exact resolved program and task"));
     }
-    verify_planned_children(bundle, manifest, &planned_program, &proposal_events)?;
+    verify_planned_children(bundle, manifest, &plan.program, &proposal_events)?;
     let open = check_proposal(
         bundle,
         manifest.files.iter().map(|file| file.path.as_str()),
@@ -684,22 +721,18 @@ fn adopt(args: &[String]) -> Result<Value, String> {
     let identity_document =
         plan_object.get("identity_document").ok_or_else(|| fail("foe plan", "contains identity_document"))?;
     let planned_program = plan_object.get("program").ok_or_else(|| fail("foe plan", "contains program"))?;
+    let planned_task =
+        plan_object.get("task").and_then(Value::as_str).ok_or_else(|| fail("foe plan task", "is a string"))?;
     if digest_of(canonical(identity_document).as_bytes()) != identity {
         return Err(fail("foe plan identity", "is the canonical identity_document digest"));
     }
     let events = fold::read_all(Path::new(episode)).map_err(|e| fail("evaluated episode", e.to_string()))?;
     let state = fold::fold(&events).map_err(|e| fail("evaluated episode", e.to_string()))?;
     let start = state.start.as_ref().ok_or_else(|| fail("evaluated episode", "has episode/start"))?;
-    let mut normalized_program = planned_program.clone();
-    let planned_task = normalized_program
-        .as_object_mut()
-        .and_then(|object| object.remove("task"))
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .ok_or_else(|| fail("foe plan program.task", "is a string"))?;
     let runtime_identity =
         preflight["evaluated_pair"]["runtime_binary"].as_str().expect("preflight emits a runtime identity");
     if start.identity != identity
-        || start.program != normalized_program
+        || start.program != *planned_program
         || start.task != planned_task
         || start.runtime.build != runtime_identity
     {

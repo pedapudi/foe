@@ -217,10 +217,20 @@ A deleted entry records the removed base object. The checker accepts regular
 blobs with modes `100644` and `100755`. It rejects symbolic links, trees,
 submodules, special files, and symbolic links anywhere inside the bundle.
 
-The parent plan is the canonical `foe plan --json` identity, identity
-document, and resolved program. The checker recomputes the identity from the
-document. It requires the proposal root to record the plan's exact program
-and task before it validates any retained spawn edge.
+The parent plan contains exactly `identity`, `identity_document`, `program`,
+and `task`. The program is the taskless resolved program that
+`episode/start.program` records. The task is the exact controller-observed
+instruction. The trusted runner supplies it separately when an older binary
+does not report the top-level `task` field.
+
+The bundle retains every configured executable under `parent-executables/`.
+The checker deserializes the resolved program and recomputes its complete
+identity document with those retained executable bytes. It reconstructs
+built-in tool specifications from the root tool list in the claimed document;
+workflow tool ceilings require every child built-in to appear there. The
+recomputed document and identity must equal the retained values before the
+checker uses the program for child provenance. The proposal root must record
+the exact program and task before any retained spawn edge is accepted.
 
 The verification executable is the exact regular file that produced the
 accepted verifier result. Its manifest digest must equal the result's
@@ -508,7 +518,9 @@ adoption.
 The adapter retains `foe plan --json` immediately before the first provider
 request. For the built-in workflow it supplies the same task, model,
 credential, verifier, service tier, and sandbox mode to the plan and run
-forms. After the episode, the trusted checker recomputes the reported program
+forms. A controller normalizes older output by adding the exact task as the
+top-level `task` field. The `program` field remains taskless. After the
+episode, the trusted checker recomputes the reported program
 identity. It requires the root `episode/start` to carry the planned program,
 task, and identity. It also requires the runtime build digest to equal the
 evaluated binary digest.

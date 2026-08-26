@@ -22,7 +22,7 @@ from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256
 from foe_agent_support import build_program, estimate_usage_cost
 from instruction_candidate import create as create_instruction_candidate
 from run import Pricing, read_cases
-from source_adoption import PROTECTED_BUILD_NAMES, capture_source_candidate
+from source_adoption import PROTECTED_BUILD_NAMES, capture_source_candidate, retain_parent_executables
 from tool_candidate import create as create_tool_candidate
 from tool_candidate import validate_definition as validate_tool_definition
 from workflow_candidate import create as create_workflow_candidate
@@ -760,6 +760,10 @@ def validate_program(binary: Path, program: Path) -> dict[str, Any]:
     document = plan.get("identity_document") if isinstance(plan, dict) else None
     if not isinstance(document, dict) or digest_bytes(canonical_json(document)) != plan.get("identity"):
         raise ValueError("the resolved plan's identity document does not rehash to its identity")
+    task = json.loads(program.read_text(encoding="utf-8"))["task"]
+    if plan.get("task", task) != task:
+        raise ValueError("the resolved plan task differs from its program document")
+    plan["task"] = task
     return plan
 
 
@@ -1925,9 +1929,11 @@ def main(argv: list[str] | None = None) -> int:
                         "identity": plan["identity"],
                         "identity_document": plan["identity_document"],
                         "program": plan["program"],
+                        "task": plan["task"],
                     }
                 )
             )
+            retain_parent_executables(source_bundle, plan["program"])
             shutil.copy2(check, source_bundle / "candidate-check")
             verification_log, verification_seq = find_accepted_verification(
                 episode, "check"

@@ -387,7 +387,8 @@ fn open_browser(url: &str) {
 /// `--config`, lists the built-in tools the binary carries, one row per tool.
 /// `--json` prints one object with `identity`, `identity_document` — the
 /// canonical serialized form the identity hash is computed over — and
-/// `program`, which the Python package parses, `context` with the
+/// `program`, which the Python package parses, `task` as a separate value,
+/// `context` with the
 /// compaction policy in one line
 /// when the program compacts, and `workflow` when the program declares one:
 /// its cycles, the nodes sharing write roots, its terminal nodes, and how
@@ -426,7 +427,7 @@ fn plan(options: &run::Options, json: bool, ancestry: Option<(PathBuf, PathBuf)>
             })
         });
         let report = serde_json::json!({
-            "identity": identity.hash, "identity_document": identity.document, "program": value,
+            "identity": identity.hash, "identity_document": identity.document, "program": value, "task": config.task,
             "transport": transport, "workflow": workflow, "context": context, "authority": authority,
             "lineage": checked.as_ref().map(lineage::value),
         });
