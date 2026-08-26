@@ -10,7 +10,8 @@ use foe_log::fold;
 use foe_program::{
     document::{resolve_node_program, ResolvedProgram},
     identity::{canonical, compute_retained, sha256_hex},
-    LineageParent,
+    workflow::WorkflowConfig,
+    LineageParent, ToolDef,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -99,7 +100,7 @@ fn read_parent_plan(bundle: &Path, path: &str) -> Result<ParentPlan, String> {
         return Err(fail("parent plan", "is canonical and carries a non-empty task"));
     }
     let mut configured = std::collections::BTreeMap::new();
-    collect_configured(bundle, &serde_json::to_value(&plan.program).map_err(|e| e.to_string())?, &mut configured)?;
+    collect_configured(bundle, &plan.program, &mut configured)?;
     let computed = compute_retained(&plan.program, &plan.identity_document, &configured).map_err(|e| e.to_string())?;
     if computed.hash != plan.identity || computed.document != plan.identity_document {
         return Err(fail("parent plan", "matches the identity and document recomputed from its resolved program"));
@@ -113,28 +114,54 @@ fn planned_start(plan: &ParentPlan) -> Result<(Value, String), String> {
 
 fn collect_configured(
     bundle: &Path,
-    value: &Value,
+    program: &ResolvedProgram,
     found: &mut std::collections::BTreeMap<PathBuf, String>,
 ) -> Result<(), String> {
-    if let Some(definitions) = value.get("tool_defs").and_then(Value::as_object) {
-        for definition in definitions.values() {
-            let exec =
-                definition["exec"].as_str().ok_or_else(|| fail("parent plan tool_defs", "name executable paths"))?;
-            let retained = bundle.join("parent-executables").join(sha256_hex(exec.as_bytes()));
-            let metadata =
-                std::fs::symlink_metadata(&retained).map_err(|e| fail("parent executable", e.to_string()))?;
-            if metadata.file_type().is_symlink() || !metadata.is_file() {
-                return Err(fail("parent executable", "is a retained regular file"));
-            }
-            let bytes = std::fs::read(&retained).map_err(|e| fail("parent executable", e.to_string()))?;
-            found.insert(PathBuf::from(exec), digest_of(&bytes).trim_start_matches("sha256:").to_string());
+    collect_tool_defs(bundle, &program.tool_defs, found)?;
+    for child in program.programs.values() {
+        collect_configured(bundle, child, found)?;
+    }
+    if let Some(workflow) = &program.workflow {
+        collect_workflow_tools(bundle, program, workflow, found)?;
+    }
+    Ok(())
+}
+
+fn collect_workflow_tools(
+    bundle: &Path,
+    parent: &ResolvedProgram,
+    workflow: &WorkflowConfig,
+    found: &mut std::collections::BTreeMap<PathBuf, String>,
+) -> Result<(), String> {
+    for (name, node) in &workflow.nodes {
+        if let Some(model) = &node.model {
+            let child = resolve_node_program(name, parent, model).map_err(|e| e.to_string())?;
+            collect_configured(bundle, &child, found)?;
+        }
+        if let Some(inner) = &node.workflow {
+            collect_workflow_tools(bundle, parent, inner, found)?;
         }
     }
-    match value {
-        Value::Object(object) => object.values().try_for_each(|child| collect_configured(bundle, child, found)),
-        Value::Array(array) => array.iter().try_for_each(|child| collect_configured(bundle, child, found)),
-        _ => Ok(()),
+    Ok(())
+}
+
+fn collect_tool_defs(
+    bundle: &Path,
+    definitions: &std::collections::BTreeMap<String, ToolDef>,
+    found: &mut std::collections::BTreeMap<PathBuf, String>,
+) -> Result<(), String> {
+    for definition in definitions.values() {
+        let exec =
+            definition.exec.to_str().ok_or_else(|| fail("parent plan tool_defs", "use UTF-8 executable paths"))?;
+        let retained = bundle.join("parent-executables").join(sha256_hex(exec.as_bytes()));
+        let metadata = std::fs::symlink_metadata(&retained).map_err(|e| fail("parent executable", e.to_string()))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(fail("parent executable", "is a retained regular file"));
+        }
+        let bytes = std::fs::read(&retained).map_err(|e| fail("parent executable", e.to_string()))?;
+        found.insert(definition.exec.clone(), digest_of(&bytes).trim_start_matches("sha256:").to_string());
     }
+    Ok(())
 }
 
 fn workflow_model(program: &ResolvedProgram, path: &str) -> Result<Value, String> {

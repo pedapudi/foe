@@ -76,7 +76,7 @@ class SourceAdoptionTest(unittest.TestCase):
         bazel.chmod(0o755)
         return bazel
 
-    def plan(self, bundle, task, workflow=False):
+    def plan(self, bundle, task, workflow=False, schema_tool_defs=False):
         check = str((bundle / "candidate-check").resolve())
         child = lambda name, verify=False: {
             "name": name,
@@ -87,6 +87,14 @@ class SourceAdoptionTest(unittest.TestCase):
             "budget": {"model_calls": 2},
             **({"done_when": {"verify": "check"}} if verify else {}),
         }
+        done_when = {"verify": "check"}
+        if schema_tool_defs:
+            done_when["returns"] = {
+                "type": "object",
+                "properties": {"tool_defs": {"type": "string"}},
+                "required": ["tool_defs"],
+                "additionalProperties": False,
+            }
         config = {
             "version": 3,
             "name": "source-improvement",
@@ -95,7 +103,7 @@ class SourceAdoptionTest(unittest.TestCase):
             "tool_defs": {"check": {"exec": check, "description": "Judge the source candidate."}},
             "grants": {"read": [str(bundle)], "write": [str(bundle)]},
             "budget": {"model_calls": 12, "max_episodes": 4, "max_concurrent": 1},
-            "done_when": {"verify": "check"},
+            "done_when": done_when,
             "task": task,
         }
         if workflow:
@@ -277,7 +285,7 @@ class SourceAdoptionTest(unittest.TestCase):
         }))
         retain_parent_executables(bundle, plan["program"])
 
-    def fixture(self, root, critical_controller_files=False):
+    def fixture(self, root, critical_controller_files=False, schema_tool_defs=False):
         repository = root / "repository"
         repository.mkdir()
         self.git(repository, "init", "-q")
@@ -307,7 +315,7 @@ class SourceAdoptionTest(unittest.TestCase):
         bundle = root / "bundle"
         bundle.mkdir()
         (bundle / "candidate-check").write_bytes(verifier)
-        plan = self.plan(bundle, "propose one source change")
+        plan = self.plan(bundle, "propose one source change", schema_tool_defs=schema_tool_defs)
         self.write_episode(bundle / "episode", plan, verifier_sha256)
         self.write_parent_plan(bundle, plan)
         (repository / "changed.txt").write_text("after\n", encoding="utf-8")
@@ -334,6 +342,21 @@ class SourceAdoptionTest(unittest.TestCase):
         runtime = root / "foe"
         runtime.write_bytes(b"rebuilt foe")
         return repository, bundle, base, applied, runtime, captured
+
+    def test_result_schema_tool_defs_is_not_an_executable_map(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository, bundle, _, applied, runtime, _ = self.fixture(
+                root, schema_tool_defs=True
+            )
+            plan = json.loads((bundle / "parent-plan.json").read_text(encoding="utf-8"))
+            schema = plan["program"]["done_when"]["returns"]
+            self.assertIn("tool_defs", schema["properties"])
+            self.assertEqual(len(list((bundle / "parent-executables").iterdir())), 1)
+            verified = verify_source_candidate(
+                self.checker, bundle, repository, applied, runtime
+            )
+            self.assertEqual(verified["parent_program_identity"], plan["identity"])
 
     def test_candidate_controller_files_cannot_change_the_trusted_judgment(self):
         with tempfile.TemporaryDirectory() as directory:

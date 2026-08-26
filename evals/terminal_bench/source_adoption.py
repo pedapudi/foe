@@ -44,27 +44,34 @@ def retain_parent_executables(bundle: Path, program: dict[str, Any]) -> None:
     """Retain every configured executable needed to recompute program identity."""
     paths: set[str] = set()
 
-    def visit(value: Any) -> None:
-        if isinstance(value, dict):
-            definitions = value.get("tool_defs")
-            if isinstance(definitions, dict):
-                for definition in definitions.values():
-                    if isinstance(definition, dict) and isinstance(definition.get("exec"), str):
-                        paths.add(definition["exec"])
-            for child in value.values():
-                visit(child)
-        elif isinstance(value, list):
-            for child in value:
-                visit(child)
+    def visit_program(value: dict[str, Any]) -> None:
+        for definition in value.get("tool_defs", {}).values():
+            if isinstance(definition, dict) and isinstance(definition.get("exec"), str):
+                paths.add(definition["exec"])
+        for child in value.get("programs", {}).values():
+            if isinstance(child, dict):
+                visit_program(child)
+        workflow = value.get("workflow")
+        if isinstance(workflow, dict):
+            visit_workflow(workflow)
 
-    visit(program)
+    def visit_workflow(value: dict[str, Any]) -> None:
+        for node in value.get("nodes", {}).values():
+            if not isinstance(node, dict):
+                continue
+            if isinstance(node.get("model"), dict):
+                visit_program(node["model"])
+            if isinstance(node.get("workflow"), dict):
+                visit_workflow(node["workflow"])
+
+    visit_program(program)
     destination = bundle / "parent-executables"
     for value in sorted(paths):
-        source = Path(value)
+        source = Path(value).resolve(strict=True)
         if not source.is_file():
             raise ValueError(f"parent plan configured executable is not a file: {source}")
         destination.mkdir(parents=True, exist_ok=True)
-        name = hashlib.sha256(value.encode("utf-8")).hexdigest()
+        name = hashlib.sha256(str(source).encode("utf-8")).hexdigest()
         shutil.copyfile(source, destination / name)
 
 
