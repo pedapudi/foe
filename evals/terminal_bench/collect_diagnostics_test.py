@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
+import contextlib
 import hashlib
+import io
 import json
 import subprocess
 import tempfile
@@ -10,13 +12,48 @@ from pathlib import Path
 from collect_diagnostics import (
     EVALUATION_FIELDS,
     collect,
+    diagnostic_outcome,
+    encoded_evidence,
     evaluation_metadata,
     evaluation_summary,
     input_growth_landmarks,
+    main,
+    repeated_failure_contrasts,
 )
 
 
 class CollectDiagnosticsTest(unittest.TestCase):
+    def test_diagnostic_outcome_keeps_completion_claim_only_when_requested(self):
+        completion = {
+            "kind": "completed",
+            "value": {
+                "summary": "self-certified",
+                "changed_paths": ["artifact"],
+                "validation": ["checked a proxy"],
+                "unresolved_risks": ["public interface untested"],
+            },
+        }
+        self.assertEqual(
+            diagnostic_outcome(completion),
+            {"kind": "completed"},
+        )
+        self.assertEqual(
+            diagnostic_outcome(completion, True),
+            {
+                "kind": "completed",
+                "untrusted_completion_claim": {
+                    "summary": "self-certified",
+                    "changed_paths": ["artifact"],
+                    "validation": ["checked a proxy"],
+                    "unresolved_risks": ["public interface untested"],
+                },
+            },
+        )
+        self.assertEqual(
+            diagnostic_outcome({"kind": "blocked", "code": "stuck", "message": "details"}),
+            {"kind": "blocked", "code": "stuck", "message": "details"},
+        )
+
     def fixture(self, root: Path) -> tuple[Path, Path, Path, dict[str, str]]:
         source = root / "source"
         source.mkdir()
@@ -64,6 +101,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     "reasoning_effort": "low",
                     "service_tier": "default",
                     "token_limits": "measurement_only",
+                    "built_in_workflow": False,
                     "diagnosis_model": None,
                     "diagnosis_reasoning_effort": None,
                     "diagnosis_model_calls": None,
@@ -120,7 +158,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
             source, binary, run, identity = self.fixture(Path(directory))
             report = collect(source, binary, [run], {"example"})
         self.assertEqual(report["evaluated_foe"], identity)
-        self.assertEqual(report["schema_version"], 3)
+        self.assertEqual(report["schema_version"], 4)
         diagnosis = report["trajectory_diagnostics"][0]
         self.assertEqual(diagnosis["task"], "terminal-bench/example")
         self.assertEqual(diagnosis["evaluation"]["label"], "development")
@@ -144,6 +182,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     "model": "openai-codex/gpt-5.6-luna",
                     "reasoning_effort": "low",
                     "execution_configuration": {
+                        "built_in_workflow": False,
                         "service_tier": "default",
                         "token_policy": "measurement_only",
                         "implementation": {
@@ -159,6 +198,64 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 }
             ],
         )
+        encoded = encoded_evidence(report)
+        self.assertTrue(encoded.endswith("\n"))
+        self.assertNotIn("\n  ", encoded)
+
+    def test_repeated_failure_contrast_requires_two_matching_failures_and_a_success(self):
+        def report(episode: str, reward: float, check: str) -> dict:
+            return {
+                "task": "terminal-bench/example",
+                "evidence_identity": {"episode_id": episode},
+                "verifier_reward": reward,
+                "trial_error": None,
+                "outcome": {"kind": "completed"},
+                "artifact_outcome_mismatch": reward == 0,
+                "verifier_feedback": {
+                    "failures": (
+                        [{"name": check, "failure_class": "AssertionError"}]
+                        if reward == 0
+                        else []
+                    )
+                },
+            }
+
+        reports = [
+            report("ep_failed_one", 0.0, "test_public_interface"),
+            report("ep_failed_two", 0.0, "test_public_interface"),
+            report("ep_different_failure", 0.0, "test_file_layout"),
+            report("ep_success", 1.0, ""),
+        ]
+        self.assertEqual(
+            repeated_failure_contrasts(reports),
+            [
+                {
+                    "task": "terminal-bench/example",
+                    "failure_profile": {
+                        "outcome": {"kind": "completed"},
+                        "artifact_outcome_mismatch": True,
+                        "failed_verifier_checks": [
+                            {
+                                "name": "test_public_interface",
+                                "failure_class": "AssertionError",
+                            }
+                        ],
+                    },
+                    "failed_episode_ids": ["ep_failed_one", "ep_failed_two"],
+                    "successful_episode_ids": ["ep_success"],
+                }
+            ],
+        )
+
+        reports = [
+            report("ep_failed_one", 0.0, "test_public_interface"),
+            {
+                **report("ep_infrastructure_error", 0.0, "test_public_interface"),
+                "trial_error": {"type": "DockerError"},
+            },
+            report("ep_success", 1.0, ""),
+        ]
+        self.assertEqual(repeated_failure_contrasts(reports), [])
 
     def test_collector_rejects_a_different_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -169,6 +266,38 @@ class CollectDiagnosticsTest(unittest.TestCase):
             path.write_text(json.dumps(report), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "different runtime identity"):
                 collect(source, binary, [run], {"example"})
+
+    def test_collector_labels_failed_completion_evidence_as_untrusted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, binary, run, _ = self.fixture(Path(directory))
+            path = next(run.glob("*/*/agent/foe-diagnostics.json"))
+            diagnosis = json.loads(path.read_text(encoding="utf-8"))
+            diagnosis["artifact_outcome_mismatch"] = True
+            diagnosis["outcome"] = {
+                "kind": "completed",
+                "value": {
+                    "summary": "the task is complete",
+                    "changed_paths": ["answer.txt"],
+                    "validation": ["format is valid"],
+                    "unresolved_risks": ["behavior was not exercised"],
+                },
+            }
+            diagnosis["episodes"] = [
+                {
+                    "episode_id": "ep_child",
+                    "model_calls": 3,
+                    "outcome": diagnosis["outcome"],
+                }
+            ]
+            path.write_text(json.dumps(diagnosis), encoding="utf-8")
+            report = collect(source, binary, [run], {"example"})
+        compact = report["trajectory_diagnostics"][0]
+        self.assertEqual(compact["outcome"], {"kind": "completed"})
+        claim = compact["episodes"][0]["outcome"][
+            "untrusted_completion_claim"
+        ]
+        self.assertEqual(claim["validation"], ["format is valid"])
+        self.assertEqual(claim["unresolved_risks"], ["behavior was not exercised"])
 
     def test_input_growth_resets_when_a_second_child_starts_lower(self):
         rows = [
@@ -194,6 +323,16 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, f"string `{field}`"):
                     collect(source, binary, [run], {"example"})
 
+    def test_collector_requires_workflow_ownership_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, binary, run, _ = self.fixture(Path(directory))
+            manifest = run / "campaign.json"
+            value = json.loads(manifest.read_text(encoding="utf-8"))
+            del value["built_in_workflow"]
+            manifest.write_text(json.dumps(value), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "boolean `built_in_workflow`"):
+                collect(source, binary, [run], {"example"})
+
     def test_summary_keeps_an_independent_audit_separate_from_a_bare_episode(self):
         manifest = {
             "dataset": "terminal-bench/example@1",
@@ -202,6 +341,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
             "reasoning_effort": "low",
             "service_tier": "default",
             "token_limits": "measurement_only",
+            "built_in_workflow": False,
             "diagnosis_model": None,
             "diagnosis_reasoning_effort": None,
             "diagnosis_model_calls": None,
@@ -252,11 +392,87 @@ class CollectDiagnosticsTest(unittest.TestCase):
             },
         )
 
+    def test_summary_keeps_a_built_in_workflow_separate_from_a_bare_episode(self):
+        manifest = {
+            "dataset": "terminal-bench/example@1",
+            "label": "bare",
+            "model": "openai-codex/gpt-5.6-sol",
+            "reasoning_effort": "low",
+            "service_tier": "default",
+            "token_limits": "measurement_only",
+            "built_in_workflow": False,
+            "diagnosis_model": None,
+            "diagnosis_reasoning_effort": None,
+            "diagnosis_model_calls": None,
+            "unresolved_diagnosis_reasoning_effort": None,
+            "unresolved_diagnosis_model_calls": None,
+            "escalation_reasoning_effort": None,
+            "escalation_model_calls": None,
+            "completion_checker": None,
+        }
+        bare = evaluation_metadata(manifest, Path("bare/campaign.json"))
+        manifest.update({"label": "built-in", "built_in_workflow": True})
+        built_in = evaluation_metadata(manifest, Path("built-in/campaign.json"))
+        reports = [
+            {
+                "task": "terminal-bench/example",
+                "evaluation": bare,
+                "verifier_reward": 0.0,
+                "usage": {"model_calls": 3, "estimated_cost_usd": 0.1},
+            },
+            {
+                "task": "terminal-bench/example",
+                "evaluation": built_in,
+                "verifier_reward": 1.0,
+                "usage": {"model_calls": 8, "estimated_cost_usd": 0.3},
+            },
+        ]
+        summary = evaluation_summary(reports)
+        self.assertEqual(len(summary), 2)
+        self.assertEqual(
+            sorted(row["execution_configuration"]["built_in_workflow"] for row in summary),
+            [False, True],
+        )
+
     def test_collector_rejects_held_back_tasks(self):
         with tempfile.TemporaryDirectory() as directory:
             source, binary, run, _ = self.fixture(Path(directory))
-            with self.assertRaisesRegex(ValueError, "outside development evidence"):
+            with self.assertRaisesRegex(ValueError, "outside self-improvement evidence"):
                 collect(source, binary, [run], set())
+
+    def test_command_accepts_confirmation_and_rejects_held_back_tasks(self):
+        cases = Path(__file__).with_name("cases.json")
+        for task, expected_status in (
+            ("build-pov-ray", 0),
+            ("chess-best-move", 2),
+            ("protein-assembly", 2),
+        ):
+            with self.subTest(task=task), tempfile.TemporaryDirectory() as directory:
+                source, binary, run, _ = self.fixture(Path(directory))
+                diagnosis_path = next(run.glob("*/*/agent/foe-diagnostics.json"))
+                diagnosis = json.loads(diagnosis_path.read_text(encoding="utf-8"))
+                diagnosis["task"] = f"terminal-bench/{task}"
+                diagnosis_path.write_text(json.dumps(diagnosis), encoding="utf-8")
+                output = Path(directory) / "evidence.json"
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+                    io.StringIO()
+                ):
+                    status = main(
+                        [
+                            "--source-root",
+                            str(source),
+                            "--foe",
+                            str(binary),
+                            "--run-dir",
+                            str(run),
+                            "--cases",
+                            str(cases),
+                            "--output",
+                            str(output),
+                        ]
+                    )
+                self.assertEqual(status, expected_status)
+                self.assertEqual(output.exists(), expected_status == 0)
 
 
 if __name__ == "__main__":

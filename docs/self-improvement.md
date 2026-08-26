@@ -49,6 +49,30 @@ This structure keeps the interactive surface small. The author supplies a
 task, a checker, and a two-node workflow. The runtime reuses the ordinary
 program, tool, budget, episode, and workflow concepts.
 
+## Cross-trajectory evidence collection
+
+The Terminal-Bench runner retains a diagnostic report for every assessed
+attempt. The deterministic collector in
+[`collect_diagnostics.py`](../evals/terminal_bench/collect_diagnostics.py)
+combines reports produced by one source tree and runtime binary. Every input
+manifest must identify which workflow implementation owned the attempt.
+
+The [Terminal-Bench task registry](../evals/terminal_bench/cases.json) defines
+which tasks may supply self-improvement evidence. The eligible set contains
+development tasks, capability-search tasks, and opened confirmation tasks.
+Calibration tasks and the sealed holdout remain outside that set.
+
+Evidence schema 4 groups failures by task, typed outcome, artifact mismatch,
+and named failed verifier checks. A repeated failure contrast requires two
+failed episode identities with the same profile and one successful episode
+for the same task. Trial infrastructure failures cannot enter a contrast.
+
+The collector retains bounded outcomes, input-growth landmarks, resource
+usage, and execution-configuration summaries. A failed completed attempt may
+retain model-authored completion details under `untrusted_completion_claim`.
+The compact JSON document contains at most 24 diagnoses and 48 KiB so one
+workflow result can carry the complete evidence document.
+
 ## Acceptance conditions
 
 A successful attempt satisfies six independent conditions:

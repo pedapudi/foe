@@ -37,6 +37,14 @@ class CasesTest(unittest.TestCase):
         self.assertEqual(len(groups["confirmation"]), 8)
         self.assertEqual(len(groups["calibration"]), 20)
         self.assertEqual(len(groups["calibration_holdout"]), 8)
+        self.assertEqual(
+            groups["self_improvement_evidence"],
+            groups["development"]
+            + groups["capability_search"]
+            + groups["confirmation"],
+        )
+        held_back = set(groups["calibration"]) | set(groups["calibration_holdout"])
+        self.assertFalse(set(groups["self_improvement_evidence"]) & held_back)
         self.assertEqual(groups["provider_policy_incompatible"], ("vulnerable-secret",))
         self.assertEqual(groups["smoke"], ("fix-git",))
         self.assertGreater(

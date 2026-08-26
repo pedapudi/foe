@@ -278,9 +278,9 @@ unless `--hard-token-limits` is supplied for an explicit budget-boundary test.
 The spend preview estimates auxiliary episode tokens from the task's per-call
 planning average and prices each model route separately.
 
-## Run the staged task sets
+## Run the campaign task sets
 
-The development target contains six tasks with inspected trajectories:
+The development target contains twelve tasks with inspected trajectories:
 
 - `cancel-async-tasks`
 - `git-multibranch`
@@ -288,6 +288,12 @@ The development target contains six tasks with inspected trajectories:
 - `sqlite-db-truncate`
 - `sanitize-git-repo`
 - `large-scale-text-editing`
+- `gpt2-codegolf`
+- `fix-ocaml-gc`
+- `path-tracing-reverse`
+- `regex-chess`
+- `model-extraction-relu-logits`
+- `dna-assembly`
 
 Preview or run one attempt per development task:
 
@@ -303,8 +309,8 @@ bazel run //evals/terminal_bench:foe-development -- \
   --confirm-spend
 ```
 
-The capability-search target contains twelve development tasks. Opening a result
-makes that task development evidence:
+The capability-search target contains five inspected diagnostic tasks. These
+tasks supply additional evidence without contributing to a protected task score:
 
 ```sh
 bazel run //evals/terminal_bench:foe-capability-search
@@ -314,8 +320,9 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
   --confirm-spend
 ```
 
-The confirmation target contains four tasks that stay closed until a candidate
-and acceptance rule are frozen. Run two attempts per task:
+The confirmation target contains eight tasks. The [campaign record](campaign.md)
+gives their exposure state, acceptance rule, and stopping rule. Run two attempts
+per task:
 
 ```sh
 bazel run //evals/terminal_bench:foe-confirmation
@@ -325,8 +332,9 @@ bazel run //evals/terminal_bench:foe-confirmation -- \
   --confirm-spend
 ```
 
-The calibration targets remain closed until the development and confirmation
-criteria pass:
+The twenty calibration tasks remain closed until the development and
+confirmation criteria pass. The eight sealed-holdout tasks remain closed until
+the calibration result and its decision rule are recorded:
 
 ```sh
 bazel run //evals/terminal_bench:foe-calibration
@@ -343,7 +351,7 @@ request growth, replayed tool results, repeated calls, failures, verifier
 outcomes, final post-edit tool results, bounded verifier failure classes, and
 log sequence numbers across the episode tree.
 
-Collect diagnoses from one or more retained development runs. The command
+Collect diagnoses from one or more retained eligible runs. The command
 requires a clean source tree and the exact evaluated binary:
 
 ```sh
@@ -355,15 +363,24 @@ bazel run //evals/terminal_bench:collect-diagnostics -- \
 The collector labels every diagnosis with its dataset, run label, token
 policy, service tier, and complete execution configuration. The configuration
 identifies diagnosis, unresolved-diagnosis, implementation, independent-audit,
-and completion-verifier stages when present. It groups verified results by
-task and complete configuration so a diagnosis node can
-compare failed and successful mechanisms. The file keeps up to four
-input-growth landmarks and three entries from each ranked result list. Input
-growth resets at each episode boundary. The four-landmark limit applies to the
-complete episode tree. The collector accepts at most 24 diagnoses and 64 KiB
-of encoded evidence. It accepts only development and opened capability-search
-tasks from `cases.json`. Confirmation, calibration, and calibration-holdout
-evidence remains unavailable to self-improvement.
+and completion-verifier stages when present. It also records whether Foe's
+built-in workflow constructed the model episodes.
+
+The collector groups results by task and complete execution configuration. It
+groups failures by task, typed outcome, artifact mismatch, and named failed
+verifier checks. A repeated failure contrast requires two matching failed
+episodes and one successful episode for the same task. Trial infrastructure
+failures cannot enter a contrast.
+
+The file keeps up to four input-growth landmarks and three entries from each
+ranked result list. Input growth resets at each episode boundary. An artifact
+mismatch may retain bounded model-authored completion details under
+`untrusted_completion_claim`.
+
+The collector accepts at most 24 diagnoses and 48 KiB of compact JSON. The
+`self_improvement_evidence` group in `cases.json` contains development,
+capability-search, and opened confirmation tasks. Calibration and the sealed
+holdout remain outside the evidence set.
 
 Create a clean candidate worktree at the evaluated commit. Run the
 self-improvement workflow from that worktree:

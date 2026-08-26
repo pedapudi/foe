@@ -93,6 +93,7 @@ def verifier_feedback(path: Path | None) -> dict[str, Any] | None:
             failure_classes.add(failure_class)
         failures.append(
             {
+                "name": bounded_text(test.get("name")),
                 "status": test.get("status"),
                 "raw_status": test.get("raw_status"),
                 "failure_class": failure_class,

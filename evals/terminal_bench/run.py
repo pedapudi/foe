@@ -879,6 +879,7 @@ def main(argv: list[str] | None = None) -> int:
         "diagnosis_pricing": pricing[args.diagnosis_model].__dict__ if args.diagnosis_model else None,
         "planning_estimated_cost_usd": total_expected_cost,
         "token_limits": "hard" if args.hard_token_limits else "measurement_only",
+        "built_in_workflow": False,
         "install_only": args.install_only,
         "completion_checker": (
             {

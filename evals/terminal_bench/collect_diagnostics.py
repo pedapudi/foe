@@ -14,8 +14,17 @@ from foe_source_identity import evaluated_foe, require_evaluated_foe
 from run import read_cases
 
 MAX_DIAGNOSES = 24
-MAX_EVIDENCE_BYTES = 64 * 1024
+# The evidence enters a diagnosis child through one root workflow result.
+# Core exposes at most 50,000 rendered characters from that result, including
+# its status framing, and a child cannot retrieve bytes from its parent log.
+MAX_EVIDENCE_BYTES = 48 * 1024
 MAX_INPUT_GROWTH_LANDMARKS = 4
+MAX_OUTCOME_TEXT = 2_000
+MAX_COMPLETION_SUMMARY = 240
+MAX_COMPLETION_PATHS = 8
+MAX_COMPLETION_PATH = 160
+MAX_COMPLETION_OBSERVATIONS = 6
+MAX_COMPLETION_OBSERVATION = 240
 EVALUATION_FIELDS = (
     "dataset",
     "label",
@@ -52,6 +61,51 @@ def input_growth_landmarks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{**rows[index], "input_growth": deltas[index]} for index in selected]
 
 
+def bounded_strings(value: Any, count: int, length: int) -> list[str]:
+    """Return a bounded list of strings from one completion field."""
+    if not isinstance(value, list):
+        return []
+    return [item[:length] for item in value if isinstance(item, str)][:count]
+
+
+def diagnostic_outcome(outcome: Any, include_completion_claim: bool = False) -> dict[str, Any] | None:
+    """Keep typed status, actionable failures, and selected untrusted completion evidence."""
+    if not isinstance(outcome, dict):
+        return None
+    kind = outcome.get("kind")
+    if not isinstance(kind, str) or not kind:
+        return None
+    answer: dict[str, Any] = {"kind": kind}
+    for key in ("code", "limit", "message", "error"):
+        value = outcome.get(key)
+        if isinstance(value, str):
+            answer[key] = value[:MAX_OUTCOME_TEXT]
+    value = outcome.get("value")
+    if include_completion_claim and kind == "completed" and isinstance(value, dict):
+        claim = {
+            "summary": (
+                value.get("summary", "")[:MAX_COMPLETION_SUMMARY]
+                if isinstance(value.get("summary"), str)
+                else ""
+            ),
+            "changed_paths": bounded_strings(
+                value.get("changed_paths"), MAX_COMPLETION_PATHS, MAX_COMPLETION_PATH
+            ),
+            "validation": bounded_strings(
+                value.get("validation"),
+                MAX_COMPLETION_OBSERVATIONS,
+                MAX_COMPLETION_OBSERVATION,
+            ),
+            "unresolved_risks": bounded_strings(
+                value.get("unresolved_risks"),
+                MAX_COMPLETION_OBSERVATIONS,
+                MAX_COMPLETION_OBSERVATION,
+            ),
+        }
+        answer["untrusted_completion_claim"] = claim
+    return answer
+
+
 def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[str, Any]:
     """Return the complete execution setting required for causal comparison."""
     answer: dict[str, Any] = {}
@@ -68,6 +122,12 @@ def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[s
             "reasoning_effort": answer["reasoning_effort"],
         }
     }
+    built_in_workflow = manifest.get("built_in_workflow")
+    if not isinstance(built_in_workflow, bool):
+        raise ValueError(
+            f"Terminal-Bench manifest {manifest_path} has no boolean `built_in_workflow`"
+        )
+    configuration["built_in_workflow"] = built_in_workflow
     optional_stages = {
         "diagnosis": (
             ("model", "diagnosis_model", str),
@@ -168,6 +228,25 @@ def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dic
             "repeated_calls": report.get("repeated_calls", [])[:3],
         }
     )
+    mismatch = report.get("artifact_outcome_mismatch") is True
+    if "outcome" in answer:
+        answer["outcome"] = diagnostic_outcome(answer["outcome"])
+    answer["episodes"] = [
+        {
+            **episode,
+            "outcome": diagnostic_outcome(
+                episode.get("outcome"),
+                mismatch and isinstance(episode.get("model_calls"), int) and episode["model_calls"] > 0,
+            ),
+        }
+        for episode in answer.get("episodes", [])
+        if isinstance(episode, dict)
+    ]
+    answer["verification_timeline"] = [
+        {**entry, "outcome": diagnostic_outcome(entry.get("outcome"))}
+        for entry in answer.get("verification_timeline", [])
+        if isinstance(entry, dict)
+    ]
     return answer
 
 
@@ -206,6 +285,84 @@ def evaluation_summary(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [groups[key] for key in sorted(groups)]
 
 
+def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return task-specific failure profiles with repeated failures and a success."""
+    successes_by_task: dict[str, set[str]] = {}
+    failures: dict[tuple[str, str], dict[str, Any]] = {}
+    for report in reports:
+        task = report.get("task")
+        identity = report.get("evidence_identity")
+        episode_id = identity.get("episode_id") if isinstance(identity, dict) else None
+        reward = report.get("verifier_reward")
+        if not isinstance(task, str) or not isinstance(episode_id, str):
+            continue
+        if isinstance(reward, (int, float)) and reward > 0:
+            successes_by_task.setdefault(task, set()).add(episode_id)
+            continue
+        if report.get("trial_error") is not None:
+            continue
+        outcome = report.get("outcome")
+        outcome_profile = {
+            key: outcome[key]
+            for key in ("kind", "code", "limit")
+            if isinstance(outcome, dict) and isinstance(outcome.get(key), str)
+        }
+        feedback = report.get("verifier_feedback")
+        feedback = feedback if isinstance(feedback, dict) else {}
+        checks = []
+        for failure in feedback.get("failures", []):
+            if not isinstance(failure, dict):
+                continue
+            name = failure.get("name")
+            failure_class = failure.get("failure_class")
+            check = {}
+            if isinstance(name, str):
+                check["name"] = name
+            if isinstance(failure_class, str):
+                check["failure_class"] = failure_class
+            checks.append(check)
+        profile = {
+            "outcome": outcome_profile,
+            "artifact_outcome_mismatch": report.get("artifact_outcome_mismatch") is True,
+            "failed_verifier_checks": sorted(
+                checks,
+                key=lambda check: (check.get("name", ""), check.get("failure_class", "")),
+            ),
+        }
+        key = (task, json.dumps(profile, sort_keys=True, separators=(",", ":")))
+        group = failures.setdefault(
+            key,
+            {
+                "task": task,
+                "failure_profile": profile,
+                "failed_episode_ids": set(),
+            },
+        )
+        group["failed_episode_ids"].add(episode_id)
+
+    answer = []
+    for key in sorted(failures):
+        group = failures[key]
+        failed_episode_ids = sorted(group["failed_episode_ids"])
+        successful_episode_ids = sorted(successes_by_task.get(group["task"], set()))
+        if len(failed_episode_ids) < 2 or not successful_episode_ids:
+            continue
+        answer.append(
+            {
+                "task": group["task"],
+                "failure_profile": group["failure_profile"],
+                "failed_episode_ids": failed_episode_ids,
+                "successful_episode_ids": successful_episode_ids,
+            }
+        )
+    return answer
+
+
+def encoded_evidence(report: dict[str, Any]) -> str:
+    """Serialize the exact compact bytes the evidence tool returns."""
+    return json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
+
+
 def collect(
     source_root: Path,
     binary: Path,
@@ -237,7 +394,7 @@ def collect(
             task_name = task.rsplit("/", 1)[-1] if isinstance(task, str) else None
             if task_name not in eligible_tasks:
                 raise ValueError(
-                    f"trajectory diagnosis is outside development evidence: {path}"
+                    f"trajectory diagnosis is outside self-improvement evidence: {path}"
                 )
             evidence = report.get("evidence_identity")
             if not isinstance(evidence, dict) or evidence.get("runtime_build") != identity["runtime_binary"]:
@@ -247,13 +404,14 @@ def collect(
                 raise ValueError(f"self-improvement evidence exceeds {MAX_DIAGNOSES} trajectory diagnoses")
         runs.append({**evaluation, "diagnoses": len(diagnostic_paths)})
     answer = {
-        "schema_version": 3,
+        "schema_version": 4,
         "evaluated_foe": identity,
         "runs": runs,
         "evaluation_summary": evaluation_summary(reports),
+        "repeated_failure_contrasts": repeated_failure_contrasts(reports),
         "trajectory_diagnostics": reports,
     }
-    size = len(json.dumps(answer, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    size = len(encoded_evidence(answer).encode("utf-8"))
     if size > MAX_EVIDENCE_BYTES:
         raise ValueError(
             f"self-improvement evidence is {size} bytes; select fewer runs to stay within {MAX_EVIDENCE_BYTES} bytes"
@@ -275,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         _, groups, _, _ = read_cases(args.cases.resolve(strict=True))
-        eligible_tasks = set(groups["development"]) | set(groups["capability_search"])
+        eligible_tasks = set(groups["self_improvement_evidence"])
         report = collect(
             args.source_root.resolve(strict=True),
             args.foe.resolve(strict=True),
@@ -283,10 +441,7 @@ def main(argv: list[str] | None = None) -> int:
             eligible_tasks,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(report, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        args.output.write_text(encoded_evidence(report), encoding="utf-8")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"collect diagnostics: {error}", file=sys.stderr)
         return 2

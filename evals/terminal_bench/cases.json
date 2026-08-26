@@ -149,6 +149,33 @@
       "log-summary-date-ranges",
       "overfull-hbox"
     ],
+    "self_improvement_evidence": [
+      "cancel-async-tasks",
+      "git-multibranch",
+      "fix-git",
+      "sqlite-db-truncate",
+      "sanitize-git-repo",
+      "large-scale-text-editing",
+      "gpt2-codegolf",
+      "fix-ocaml-gc",
+      "path-tracing-reverse",
+      "regex-chess",
+      "model-extraction-relu-logits",
+      "dna-assembly",
+      "password-recovery",
+      "polyglot-rust-c",
+      "regex-log",
+      "write-compressor",
+      "feal-linear-cryptanalysis",
+      "build-pov-ray",
+      "caffe-cifar-10",
+      "configure-git-webserver",
+      "count-dataset-tokens",
+      "crack-7z-hash",
+      "dna-insert",
+      "log-summary-date-ranges",
+      "overfull-hbox"
+    ],
     "provider_policy_incompatible": [
       "vulnerable-secret"
     ],
