@@ -73,32 +73,38 @@ VERIFIER_CASE_DATA = [
 VERIFIER_CASES = [
     (
         "cancel-async-tasks",
+        "development",
         "cancel-async-tasks",
         "verifier_cases/cancel_async_tasks/check.py",
     ),
     (
         "dna-assembly",
+        "development",
         "dna-assembly",
         "verifier_cases/dna_assembly/check.pl",
     ),
     (
         "dna-insert",
+        "confirmation",
         "dna-insert",
         "verifier_cases/dna_insert/check.pl",
     ),
-    ("fix-git", "fix-git", "verifier_cases/fix_git/check.py"),
+    ("fix-git", "development", "fix-git", "verifier_cases/fix_git/check.py"),
     (
         "git-multibranch",
+        "development",
         "git-multibranch",
         "verifier_cases/git_multibranch/check.py",
     ),
     (
         "gpt2-codegolf",
+        "development",
         "gpt2-codegolf",
         "verifier_cases/gpt2_codegolf/check.sh",
     ),
     (
         "large-scale-text-editing",
+        "development",
         "large-scale-text-editing",
         "verifier_cases/large_scale_text_editing/check.py",
     ),
@@ -181,7 +187,7 @@ sh_binary(
         srcs = ["run.py"],
         args = COMMON_ARGS + [
             "--group",
-            "development",
+            group,
             "--task",
             task,
             "--completion-checker",
@@ -190,7 +196,7 @@ sh_binary(
         data = COMMON_DATA + [checker],
         visibility = ["//visibility:public"],
     )
-    for name, task, checker in VERIFIER_CASES
+    for name, group, task, checker in VERIFIER_CASES
 ]
 
 [
@@ -199,7 +205,7 @@ sh_binary(
         srcs = ["run.py"],
         args = COMMON_ARGS + [
             "--group",
-            "development",
+            group,
             "--task",
             task,
             "--completion-checker",
@@ -209,7 +215,7 @@ sh_binary(
         data = COMMON_DATA + [checker],
         visibility = ["//visibility:public"],
     )
-    for name, task, checker in VERIFIER_CASES
+    for name, group, task, checker in VERIFIER_CASES
 ]
 
 sh_binary(
