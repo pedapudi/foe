@@ -633,6 +633,11 @@ without `--config` uses a built-in coding workflow. An implementation episode
 changes the current directory. A fresh audit episode then checks the task and
 implementation claim, repairs defects, and produces the outcome.
 
+The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
+fills its task, model, current-directory grants, executable inventory, sandbox
+mode, credential path, and optional verifier before resolving it as an ordinary
+configuration document.
+
 Both episodes have `read`, `grep`, `edit`, and `bash`. Both may
 read and write the current directory. Each episode has a 60-call backstop.
 The root holds their additive 120-call allowance.

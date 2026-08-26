@@ -43,18 +43,9 @@ const VIEWER_GRACE: Duration = Duration::from_secs(3);
 const BUILTIN_IMPLEMENTATION_CALLS: u64 = 60;
 const BUILTIN_AUDIT_CALLS: u64 = 60;
 
-/// Runtime-owned instructions for the built-in coding workflow. They name no
-/// path, so the program identity is the same in every directory.
-const BUILTIN_INSTRUCTION: &str = "Run the declared coding workflow against the task.";
-const BUILTIN_IMPLEMENTATION_INSTRUCTION: &str = "Implement the task in the current directory, which is the root \
-of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the \
-final change. In the completion value, report changed artifacts, commands and observed results, and unresolved \
-risks for an independent audit.";
-const BUILTIN_AUDIT_INSTRUCTION: &str = "Independently determine whether the shared workspace satisfies the \
-original task. Treat the implementation episode's completion claim as unverified. Inspect the artifacts and run \
-checks that distinguish plausible incorrect implementations. Repair every defect you find. After the final edit, \
-run the strongest available task-relevant checks. Complete with the workspace in the state the task requires. \
-Report every path changed by either episode, including valid implementation changes that required no audit edit.";
+/// Static behavior of the built-in coding workflow. Dynamic authority,
+/// environment, model, verifier, and task values are filled below.
+const BUILTIN_CONFIG: &str = include_str!("builtin-coding.json");
 const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
@@ -297,87 +288,23 @@ fn builtin_config(
         audit_model.options.insert("reasoning_effort".into(), "high".into());
     }
     let environment = builtin_environment(&cwd, Path::is_file);
-    let completion = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
-            "changed_paths": {
-                "type": "array", "items": { "type": "string", "maxLength": 512 }, "maxItems": 64
-            },
-            "validation": {
-                "type": "array", "items": { "type": "string", "maxLength": 1000 },
-                "minItems": 1, "maxItems": 32
-            },
-            "unresolved_risks": {
-                "type": "array", "items": { "type": "string", "maxLength": 1000 }, "maxItems": 16
-            },
-            "learned": {
-                "type": "array", "maxItems": 8,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "claim": { "type": "string", "minLength": 1, "maxLength": 300 },
-                        "seq": { "type": "integer", "minimum": 0 }
-                    },
-                    "required": ["claim", "seq"],
-                    "additionalProperties": false
-                }
-            }
-        },
-        "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
-        "additionalProperties": false
-    });
     let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });
-    let tools = serde_json::json!(["read", "grep", "edit", "bash"]);
-    let mut document = serde_json::json!({
-        "version": foe_config::config::CONFIG_VERSION,
-        "name": "coding",
-        "instructions": { "role": BUILTIN_INSTRUCTION },
-        "tools": tools,
-        "grants": grants,
-        "budget": {
-            "model_calls": BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS,
-            "max_episodes": 3,
-            "max_concurrent": 1
-        },
-        "model": model,
-        "workflow": {
-            "nodes": {
-                "implement-task": {
-                    "model": {
-                        "name": "implement-task",
-                        "instructions": {
-                            "environment": environment,
-                            "role": BUILTIN_IMPLEMENTATION_INSTRUCTION
-                        },
-                        "tools": tools,
-                        "grants": grants,
-                        "budget": { "model_calls": BUILTIN_IMPLEMENTATION_CALLS },
-                        "done_when": { "returns": completion }
-                    },
-                    "follows": ["task"]
-                },
-                "audit-and-repair-task": {
-                    "model": {
-                        "name": "audit-and-repair-task",
-                        "instructions": {
-                            "environment": environment,
-                            "role": BUILTIN_AUDIT_INSTRUCTION
-                        },
-                        "tools": tools,
-                        "grants": grants,
-                        "budget": { "model_calls": BUILTIN_AUDIT_CALLS },
-                        "done_when": { "returns": completion },
-                        "model": audit_model
-                    },
-                    "follows": ["task", "implement-task"],
-                    "terminal": true
-                }
-            },
-            "recovery": { "enabled": false }
-        },
-        "task": task,
-    });
+    let mut document: serde_json::Value =
+        serde_json::from_str(BUILTIN_CONFIG).map_err(|e| format!("built-in configuration template: {e}"))?;
+    document["version"] = serde_json::json!(foe_config::config::CONFIG_VERSION);
+    document["model"] = serde_json::json!(model);
+    document["grants"] = grants.clone();
+    document["budget"]["model_calls"] = serde_json::json!(BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS);
+    document["task"] = serde_json::json!(task);
+    for (node, calls) in
+        [("implement-task", BUILTIN_IMPLEMENTATION_CALLS), ("audit-and-repair-task", BUILTIN_AUDIT_CALLS)]
+    {
+        let program = &mut document["workflow"]["nodes"][node]["model"];
+        program["instructions"]["environment"] = serde_json::json!(environment);
+        program["grants"] = grants.clone();
+        program["budget"]["model_calls"] = serde_json::json!(calls);
+    }
+    document["workflow"]["nodes"]["audit-and-repair-task"]["model"]["model"] = serde_json::json!(audit_model);
     if let Some(mode) = sandbox {
         if !matches!(mode, "best-effort" | "required" | "off") {
             return Err(format!("--sandbox {mode}: expected best-effort, required, or off"));
