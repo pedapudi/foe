@@ -36,6 +36,27 @@ from run import (
 )
 
 
+def retain_empty_verifier_report(trial: Path) -> None:
+    verifier = trial / "verifier"
+    verifier.mkdir()
+    (verifier / "ctrf.json").write_text(
+        json.dumps(
+            {
+                "results": {
+                    "summary": {
+                        "tests": 0,
+                        "passed": 0,
+                        "failed": 0,
+                        "skipped": 0,
+                    },
+                    "tests": [],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 class CasesTest(unittest.TestCase):
     def test_installation_credentials_do_not_open_campaign_oauth_state(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -63,6 +84,7 @@ class CasesTest(unittest.TestCase):
             trial = Path(directory) / "trial"
             episode = trial / "agent" / "foe-episode"
             episode.mkdir(parents=True)
+            retain_empty_verifier_report(trial)
             result = trial / "result.json"
             program = {
                 "name": "coding",
@@ -135,6 +157,7 @@ class CasesTest(unittest.TestCase):
                     {
                         "trial_name": "trial",
                         "exception_info": None,
+                        "verifier_result": {"rewards": {"reward": 1.0}},
                         "agent_result": {
                             "metadata": {
                                 "foe_outcome": {"kind": "completed", "value": "done"},
@@ -179,6 +202,7 @@ class CasesTest(unittest.TestCase):
                     {
                         "trial_name": "trial",
                         "exception_info": None,
+                        "verifier_result": {"rewards": {"reward": 1.0}},
                         "agent_result": {
                             "metadata": {
                                 "foe_outcome": {"kind": "completed", "value": "done"},
@@ -895,11 +919,13 @@ class CasesTest(unittest.TestCase):
             job = Path(directory)
             trial = job / "task__attempt"
             trial.mkdir()
+            retain_empty_verifier_report(trial)
             (trial / "result.json").write_text(
                 json.dumps(
                     {
                         "trial_name": "task__attempt",
                         "exception_info": None,
+                        "verifier_result": {"rewards": {"reward": 0.0}},
                         "agent_result": {
                             "metadata": {
                                 "foe_outcome": {
@@ -931,11 +957,13 @@ class CasesTest(unittest.TestCase):
             job = Path(directory)
             trial = job / "task__attempt"
             trial.mkdir()
+            retain_empty_verifier_report(trial)
             (trial / "result.json").write_text(
                 json.dumps(
                     {
                         "trial_name": "task__attempt",
                         "exception_info": None,
+                        "verifier_result": {"rewards": {"reward": 0.0}},
                         "agent_result": {
                             "metadata": {
                                 "foe_outcome": {"kind": "completed", "value": "done"},
@@ -954,7 +982,7 @@ class CasesTest(unittest.TestCase):
             ["task__attempt: the completion checker changed during the trial"],
         )
 
-    def test_job_integrity_rejects_a_changed_access_only_credential(self):
+    def test_job_integrity_rejects_a_missing_structured_verifier_report(self):
         with tempfile.TemporaryDirectory() as directory:
             job = Path(directory)
             trial = job / "task__attempt"
@@ -964,6 +992,37 @@ class CasesTest(unittest.TestCase):
                     {
                         "trial_name": "task__attempt",
                         "exception_info": None,
+                        "verifier_result": {"rewards": {"reward": 0.0}},
+                        "agent_result": {
+                            "metadata": {
+                                "foe_outcome": {"kind": "completed", "value": "done"},
+                                "foe_trace_conformant": True,
+                                "foe_usage_reported": True,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            integrity = read_job_integrity(job)
+        self.assertEqual(
+            integrity["infrastructure_failures"],
+            ["task__attempt: the task verifier produced no structured report"],
+        )
+        self.assertFalse(integrity["configuration_claim_valid"])
+
+    def test_job_integrity_rejects_a_changed_access_only_credential(self):
+        with tempfile.TemporaryDirectory() as directory:
+            job = Path(directory)
+            trial = job / "task__attempt"
+            trial.mkdir()
+            retain_empty_verifier_report(trial)
+            (trial / "result.json").write_text(
+                json.dumps(
+                    {
+                        "trial_name": "task__attempt",
+                        "exception_info": None,
+                        "verifier_result": {"rewards": {"reward": 0.0}},
                         "agent_result": {
                             "metadata": {
                                 "foe_outcome": {"kind": "completed", "value": "done"},
@@ -988,11 +1047,13 @@ class CasesTest(unittest.TestCase):
             job = Path(directory)
             trial = job / "task__attempt"
             trial.mkdir()
+            retain_empty_verifier_report(trial)
             (trial / "result.json").write_text(
                 json.dumps(
                     {
                         "trial_name": "task__attempt",
                         "exception_info": None,
+                        "verifier_result": {"rewards": {"reward": 0.0}},
                         "agent_result": {
                             "metadata": {
                                 "foe_outcome": {

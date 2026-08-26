@@ -9,6 +9,7 @@ import datetime as dt
 import fcntl
 import hashlib
 import json
+import math
 import os
 import pwd
 import re
@@ -28,7 +29,7 @@ from source_adoption import (
     freeze_source_candidate,
     verify_source_candidate,
 )
-from trajectory_diagnostics import diagnose_episode
+from trajectory_diagnostics import diagnose_episode, verifier_feedback
 from workflow_candidate import require_matching_run as require_matching_candidate_run
 from workflow_candidate import validate as validate_workflow_candidate
 
@@ -912,6 +913,24 @@ def read_job_integrity(
         if exception is not None:
             infrastructure_failures.append(f"{trial}: Harbor recorded a trial exception")
             continue
+        verifier = value.get("verifier_result")
+        rewards = verifier.get("rewards") if isinstance(verifier, dict) else None
+        reward = rewards.get("reward") if isinstance(rewards, dict) else None
+        if type(reward) not in (int, float) or not math.isfinite(reward):
+            infrastructure_failures.append(
+                f"{trial}: the task verifier recorded no finite numeric reward"
+            )
+        try:
+            report = verifier_feedback(path, artifact_root=path.parent)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            infrastructure_failures.append(
+                f"{trial}: the task verifier report is invalid: {error}"
+            )
+        else:
+            if report is None:
+                infrastructure_failures.append(
+                    f"{trial}: the task verifier produced no structured report"
+                )
         agent_result = value.get("agent_result")
         metadata = agent_result.get("metadata") if isinstance(agent_result, dict) else None
         if not isinstance(metadata, dict):
