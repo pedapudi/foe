@@ -10,7 +10,7 @@ fn sessions(name: &str, limit: usize) -> (LocalSessions, PathBuf) {
     let dir = scratch("session", name);
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
     let policy = Policy { exec: vec!["/bin/bash".into()], ..Policy::default() };
-    (LocalSessions::new(sandbox, policy, dir.join("spill"), limit), dir)
+    (LocalSessions::new(sandbox, policy, dir.join("spill"), limit, false), dir)
 }
 
 fn shell(cwd: &Path, command: &str) -> SessionRequest {
@@ -20,6 +20,7 @@ fn shell(cwd: &Path, command: &str) -> SessionRequest {
         args: vec!["-c".into(), command.into()],
         env: BTreeMap::new(),
         cwd: cwd.to_path_buf(),
+        lifetime: SessionLifetime::Episode,
     }
 }
 
@@ -54,6 +55,22 @@ fn a_session_outlives_calls_and_polls_return_only_new_output() {
     assert_eq!(subject(&status), format!("session 1: exit 7 after {}s", status.seconds));
 }
 
+/// docs/tools.md `session`: when more than the poll bound arrived, the poll
+/// returns the newest bounded bytes and the evidence file retains the stream.
+#[test]
+fn a_poll_of_large_output_keeps_the_newest_bytes() {
+    let dir = scratch("session", "bounded-output");
+    let path = dir.join("stream.stdout");
+    let mut bytes = vec![b'a'; crate::exec::CAPTURE_LIMIT];
+    bytes.extend_from_slice(b"newest");
+    std::fs::write(&path, &bytes).unwrap();
+    let output = Output { path: path.clone(), offset: Mutex::new(0) };
+
+    let taken = String::from_utf8(output.take()).unwrap();
+    assert!(taken.contains("newest\n[output beyond"), "the bounded poll includes the newest bytes: {taken:?}");
+    assert_eq!(std::fs::read(path).unwrap(), bytes, "the evidence file remains complete");
+}
+
 /// docs/tools.md "session": a session may bind a TCP port the policy's
 /// `bind_tcp` lists — filled from `grants.bind` — and the bound listener
 /// answers across calls while the session stays alive. The sandbox tests
@@ -77,7 +94,7 @@ fn a_session_serves_a_granted_bind_port_across_calls() {
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
     let policy =
         Policy { read: vec![dir.clone()], exec: vec!["/bin/bash".into()], bind_tcp: vec![port], ..Policy::default() };
-    let s = LocalSessions::new(sandbox, policy, dir.join("spill"), 4);
+    let s = LocalSessions::new(sandbox, policy, dir.join("spill"), 4, false);
     s.start(shell(&dir, "/usr/bin/python3 server.py")).unwrap();
     wait_for(|| {
         let (_, output) = s.take_output(1).unwrap();
@@ -146,11 +163,11 @@ fn stop_escalates_to_kill_when_the_grace_is_ignored() {
     assert_eq!(subject(&status), format!("session 1: killed after {}s", status.seconds));
 }
 
-/// docs/tools.md "session": settlement cleanup is unconditional. The
+/// docs/tools.md "session": settlement stops episode-lifetime sessions. The
 /// pattern of the executable-teardown tests: the session backgrounds a
 /// child, and killing the session's group ends that child too.
 #[test]
-fn no_process_survives_stop_all() {
+fn no_episode_process_survives_settlement() {
     let (s, dir) = sessions("teardown", 4);
     s.start(shell(&dir, "sleep 30 & echo $!; wait")).unwrap();
     let bytes = wait_for(|| {
@@ -158,15 +175,76 @@ fn no_process_survives_stop_all() {
         (!output.stdout.is_empty()).then_some(output.stdout)
     });
     let pid: u32 = String::from_utf8(bytes).unwrap().trim().parse().unwrap();
-    let stopped = s.stop_all();
+    let stopped = s.settle();
     assert_eq!(stopped.len(), 1);
-    assert!(!stopped[0].alive);
+    assert!(!stopped[0].status.alive);
+    assert!(!stopped[0].released_to_task);
     let gone = (0..200).any(|_| {
-        std::thread::sleep(POLL);
+        std::thread::sleep(std::time::Duration::from_millis(10));
         !Path::new(&format!("/proc/{pid}")).exists()
     });
     assert!(gone, "the backgrounded sleep was killed with the group");
-    assert!(s.stop_all().is_empty(), "a second settlement finds no survivor");
+    assert!(s.settle().is_empty(), "a second settlement finds no survivor");
+}
+
+/// docs/tools.md "session": liveness and settlement cover the process
+/// group even when its original leader has exited.
+#[test]
+fn a_session_group_outlives_its_leader_and_still_settles() {
+    let (s, dir) = sessions("leader-exit", 4);
+    s.start(shell(&dir, "sleep 30 & echo $!; exit 7")).unwrap();
+    let bytes = wait_for(|| {
+        let (_, output) = s.take_output(1).unwrap();
+        (!output.stdout.is_empty()).then_some(output.stdout)
+    });
+    let child: u32 = String::from_utf8(bytes).unwrap().trim().parse().unwrap();
+    let status = wait_for(|| {
+        let status = s.session(1).unwrap().status(1);
+        s.session(1).unwrap().ended.lock().unwrap().is_some().then_some(status)
+    });
+    assert!(status.alive, "the session remains alive while its process group has a member");
+    assert_eq!(status.exit_code, None, "a live group has no final exit status");
+    let settled = s.settle();
+    assert_eq!(settled.len(), 1);
+    assert!(!settled[0].status.alive);
+    assert_eq!(settled[0].status.exit_code, Some(7));
+    let gone = (0..200).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        !Path::new(&format!("/proc/{child}")).exists()
+    });
+    assert!(gone, "settlement killed the remaining process-group member");
+}
+
+/// docs/tools.md "session": task lifetime requires grants.task_session.
+/// Settlement records one ownership transfer and leaves the group alive for
+/// the enclosing task environment.
+#[test]
+fn a_task_session_requires_authority_and_survives_settlement() {
+    let (denied, dir) = sessions("task-denied", 4);
+    let mut req = shell(&dir, "sleep 30");
+    req.lifetime = SessionLifetime::Task;
+    let error = denied.start(req).unwrap_err().to_string();
+    assert!(error.contains("grants.task_session"), "{error}");
+
+    let dir = scratch("session", "task-release");
+    let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
+    let policy = Policy { exec: vec!["/bin/bash".into()], ..Policy::default() };
+    let sessions = LocalSessions::new(sandbox, policy, dir.join("spill"), 4, true);
+    let mut req = shell(&dir, "echo ready; sleep 30");
+    req.lifetime = SessionLifetime::Task;
+    sessions.start(req).unwrap();
+    wait_for(|| {
+        let (_, output) = sessions.take_output(1).unwrap();
+        output.stdout.ends_with(b"ready\n").then_some(())
+    });
+    let released = sessions.settle();
+    assert_eq!(released.len(), 1);
+    assert!(released[0].released_to_task);
+    assert!(released[0].status.alive);
+    assert_eq!(released[0].pid as i32, released[0].process_group);
+    assert!(Path::new(&format!("/proc/{}", released[0].pid)).exists());
+    assert!(sessions.settle().is_empty(), "ownership transfers once");
+    sessions.stop(1).unwrap();
 }
 
 /// `Sessions::take_exited` reports each session's end exactly once, whether
@@ -227,6 +305,7 @@ async fn settlement_records_the_implicit_stop_and_the_log_stays_valid() {
     assert!(result.synthetic);
     assert_eq!(result.name, SESSION_TOOL);
     assert_eq!(result.call_id, "session-1-settle");
+    assert!(result.value.get("lifetime").is_none(), "the default settlement value remains compatible");
     assert!(result.subject.as_deref().unwrap_or_default().starts_with("session 1: killed after"), "{result:?}");
     let item = events
         .iter()
@@ -240,5 +319,64 @@ async fn settlement_records_the_implicit_stop_and_the_log_stays_valid() {
     let foe_log::ContentBlock::Text { text } = &item.content[0] else { panic!() };
     assert!(text.starts_with("session 1: killed after"), "{text}");
     foe_log::fold::fold(&events).expect("the log is well-formed");
-    assert!(sessions.stop_all().is_empty(), "settlement left nothing alive");
+    assert!(sessions.settle().is_empty(), "settlement left nothing alive");
+}
+
+/// docs/log-format.md `tool/result`: settlement records a task-lifetime
+/// session as released while alive, with the process identity and the new
+/// owner. The release produces no exit inbox item.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn settlement_records_task_ownership_without_stopping_the_process() {
+    let dir = scratch("session", "task-release-log");
+    let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
+    let policy = Policy { exec: vec!["/bin/bash".into()], ..Policy::default() };
+    let sessions = Arc::new(LocalSessions::new(sandbox, policy, dir.join("spill"), 4, true));
+    let mut request = shell(&dir, "sleep 30 & echo $!; exit 7");
+    request.lifetime = SessionLifetime::Task;
+    sessions.start(request).unwrap();
+    let child: u32 = String::from_utf8(wait_for(|| {
+        let (_, output) = sessions.take_output(1).unwrap();
+        (!output.stdout.is_empty()).then_some(output.stdout)
+    }))
+    .unwrap()
+    .trim()
+    .parse()
+    .unwrap();
+    let status = wait_for(|| {
+        let status = sessions.session(1).unwrap().status(1);
+        sessions.session(1).unwrap().ended.lock().unwrap().is_some().then_some(status)
+    });
+    assert!(status.alive, "the released group remains alive after its leader exits");
+    let log_dir = dir.join("log");
+    std::fs::create_dir_all(&log_dir).unwrap();
+    let log = Arc::new(Log::create_or_open(&log_dir, None).unwrap());
+    log.append(EventData::EpisodeStart(start())).unwrap();
+    let pool = Arc::new(Mutex::new(Pool::new(parent_config().budget)));
+    crate::loop_::settle(&log, &pool, None, Some(sessions.clone())).await.unwrap();
+    log.append(EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::Value::Null } }).unwrap();
+
+    let events = log.events();
+    let result = events
+        .iter()
+        .find_map(|event| match &event.data {
+            EventData::ToolResult(result) => Some(result),
+            _ => None,
+        })
+        .expect("settlement recorded the task ownership transfer");
+    assert!(result.synthetic);
+    assert_eq!(result.value["lifetime"], "task");
+    assert_eq!(result.value["disposition"], "released_to_task_environment");
+    assert_eq!(result.value["alive"], true, "the log states the observed release state");
+    assert!(result.value["pid"].as_u64().is_some());
+    assert!(result.value["process_group"].as_i64().is_some());
+    assert!(Path::new(&format!("/proc/{child}")).exists(), "the released process-group member remains alive");
+    assert!(result.rendered.contains("released to task environment"));
+    assert!(!events.iter().any(|event| matches!(event.data, EventData::InboxItem(_))));
+    foe_log::fold::fold(&events).expect("the ownership record replays without the process");
+    assert_eq!(sessions.stop(1).unwrap().exit_code, Some(7));
+    let gone = (0..200).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        !Path::new(&format!("/proc/{child}")).exists()
+    });
+    assert!(gone, "the enclosing task environment can stop a released group after its leader exits");
 }

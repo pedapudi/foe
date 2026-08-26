@@ -192,9 +192,8 @@ pub struct ExecResult {
 }
 
 /// Supervises process sessions: processes that outlive the call that
-/// started them and end, at the latest, at episode settlement. The
-/// `session` tool reaches such processes only through this handle, as
-/// `bash` reaches processes only through [`Executor`].
+/// started them. The `session` tool reaches such processes only through
+/// this handle, as `bash` reaches processes only through [`Executor`].
 pub trait Sessions: Send + Sync {
     /// Starts a session in its own process group. An implementation bounds
     /// how many sessions may be alive at once.
@@ -210,9 +209,9 @@ pub trait Sessions: Send + Sync {
     /// Returns the final status; stopping an ended session returns its
     /// status again.
     fn stop(&self, id: u64) -> Result<SessionStatus, CapError>;
-    /// Stops every alive session, for the settlement that ends the episode.
-    /// Returns the final status of each session that was alive.
-    fn stop_all(&self) -> Vec<SessionStatus>;
+    /// Settles every alive session. Episode-lifetime sessions stop. A task-
+    /// lifetime session is released to the enclosing task environment.
+    fn settle(&self) -> Vec<SessionSettlement>;
     /// The final status of every session whose end no earlier call
     /// reported, each session's once per lifetime. The agent loop turns
     /// these into `session`-source inbox items. Default: no exit reports.
@@ -232,6 +231,27 @@ pub struct SessionRequest {
     pub args: Vec<String>,
     pub env: BTreeMap<String, String>,
     pub cwd: PathBuf,
+    pub lifetime: SessionLifetime,
+}
+
+/// How long the runtime owns a process session. Episode is the default.
+/// Task requires explicit program authority and transfers ownership at
+/// settlement to the environment that owns the foe invocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionLifetime {
+    Episode,
+    Task,
+}
+
+/// What settlement did with a process group that had a live member. The
+/// leader and group ids identify a released task session for external cleanup.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionSettlement {
+    pub status: SessionStatus,
+    pub pid: u32,
+    pub process_group: i32,
+    pub released_to_task: bool,
 }
 
 /// A session's state: whether the process group is alive, the exit code

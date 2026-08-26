@@ -50,13 +50,13 @@ sentence on first reading.
   `scripts/examples.sh` is the slow one and runs every example against a
   built binary. Continuous integration runs both. See docs/build.md
   "The two tiers of the test suite".
-- Line budget: the runtime, which is `log`, `core`, and `code` together,
-  stays under 6,000 lines of Rust excluding tests and generated code;
-  `workflow` stays under 1,000 on the same terms, `context` under 500,
-  `view` under 600, and `cli` under 1,300. The viewer is budgeted apart from
-  the runtime because it delivers a record of a run rather than running one,
-  and the command line apart from it because it serves a person at a
-  terminal rather than an episode. `scripts/loc.sh` counts every one of them.
+- Rust line budgets exclude tests, generated code, blank lines, and
+  comment-only lines. `log` and `core` form the kernel and stay under 5,250
+  lines together. `config` stays under 1,400, `code` under 1,600, `workflow`
+  under 1,000, `context` under 500, `view` under 600, `cli` under 1,300,
+  `telemetry` under 1,000, and `lineage` under 500. The viewer HTML,
+  TypeScript, and CSS use the compressed bundle limit in `docs/design.md`.
+  `scripts/loc.sh` enforces every Rust line budget.
 
 ## Commits
 

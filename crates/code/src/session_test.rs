@@ -1,6 +1,6 @@
 use super::*;
 use crate::testing::{ctx, ctx_with_sessions, Fixture};
-use foe_core::{CapError, Sessions};
+use foe_core::{CapError, SessionLifetime, SessionSettlement, Sessions};
 use std::sync::{Arc, Mutex};
 
 /// Answers from a scripted status and records every call.
@@ -46,7 +46,7 @@ impl Sessions for FakeSessions {
         self.calls.lock().unwrap().push(format!("stop {id}"));
         Ok(self.status.clone())
     }
-    fn stop_all(&self) -> Vec<SessionStatus> {
+    fn settle(&self) -> Vec<SessionSettlement> {
         Vec::new()
     }
 }
@@ -74,10 +74,27 @@ async fn start_runs_the_command_under_the_bash_contract() {
     assert_eq!(req.program, std::path::PathBuf::from("/bin/bash"));
     assert_eq!(req.args, ["-c", "postgres -D data"]);
     assert_eq!(req.name, "postgres");
+    assert_eq!(req.lifetime, SessionLifetime::Episode);
     assert_eq!(req.cwd, fx.root());
     assert_eq!(req.env["PATH"], "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
     assert_eq!(req.env["HOME"], fx.root().display().to_string());
     assert_eq!(req.env["LANG"], "C.UTF-8");
+}
+
+#[tokio::test]
+async fn start_passes_the_explicit_task_lifetime_to_the_capability() {
+    let fx = Fixture::new();
+    let fake = Arc::new(FakeSessions::new(alive(1, "server")));
+    let c = ctx_with_sessions(&fx, fake.clone());
+    let value = Session::new().call(json!({"action": "start", "command": "server", "lifetime": "task"}), &c).await;
+    assert!(!value.is_error, "{value:?}");
+    assert_eq!(value.value["lifetime"], "task");
+    assert_eq!(value.rendered.as_deref(), Some("[session 1: server · task lifetime started]\n"));
+    assert_eq!(fake.started.lock().unwrap()[0].lifetime, SessionLifetime::Task);
+
+    let invalid = Session::new().call(json!({"action": "poll", "session": 1, "lifetime": "task"}), &c).await;
+    assert!(invalid.is_error);
+    assert!(invalid.rendered.unwrap().contains("applies only to `start`"));
 }
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-use super::{parse, resolve, validate};
+use super::{completion_evidence_required, parse, resolve, validate};
 use crate::test_util::{config, config_value, program_with, tmp};
 use crate::ConfigError;
 use serde_json::{json, Value};
@@ -47,6 +47,34 @@ fn unknown_keys_and_wrong_types_are_parse_errors() {
     let mut value = config_value(&root);
     value["budget"]["model_calls"] = json!("ten");
     assert!(matches!(parse(&value.to_string()), Err(ConfigError::Parse(_))));
+}
+
+/// docs/config.md `done_when`: a required `learned` field activates the
+/// evidence contract only through its standard declared shape.
+#[test]
+fn required_learned_completion_has_the_evidence_shape() {
+    let root = tmp("config-completion-evidence");
+    let schema = json!({
+        "type": "object",
+        "properties": { "learned": {
+            "type": "array", "minItems": 1,
+            "items": {
+                "type": "object",
+                "properties": { "claim": { "type": "string" }, "seq": { "type": "integer", "minimum": 0 } },
+                "required": ["claim", "seq"]
+            }
+        } },
+        "required": ["learned"]
+    });
+    let program = program_with(&root, |value| value["done_when"] = json!({ "returns": schema })).unwrap();
+    assert!(completion_evidence_required(program.done_when.as_ref()));
+
+    let key = rejected(&root, |value| {
+        value["done_when"] = json!({ "returns": {
+            "type": "object", "properties": { "learned": { "type": "string" } }, "required": ["learned"]
+        } });
+    });
+    assert_eq!(key, "done_when.returns.properties.learned");
 }
 
 #[test]
@@ -230,6 +258,43 @@ fn a_childs_bind_ports_stay_within_its_parent() {
     let ConfigError::Invalid { key, rule } = error else { unreachable!() };
     assert_eq!(key, "programs.kid.grants.bind[1]");
     assert!(rule.contains("parent program"));
+}
+
+/// docs/config.md `grants`: a child or workflow model node may hold task-
+/// session authority only when its containing program holds it.
+#[test]
+fn task_session_authority_only_narrows_downward() {
+    let root = tmp("config-task-session-authority");
+    let child = |root: &std::path::Path| {
+        json!({ "kid": {
+            "name": "kid", "instructions": {"role": "work"}, "tools": ["block"],
+            "grants": {"read": [root], "task_session": true}, "budget": {"model_calls": 1}
+        }})
+    };
+    let key = rejected(&root, |v| {
+        v["grants"]["spawn"] = json!(["kid"]);
+        v["programs"] = child(&root);
+    });
+    assert_eq!(key, "programs.kid.grants.task_session");
+
+    let key = rejected(&root, |v| {
+        v["workflow"] = json!({ "nodes": { "serve": {
+            "model": {
+                "name": "serve", "instructions": {"role": "work"}, "tools": ["block"],
+                "grants": {"read": [root], "task_session": true}, "budget": {"model_calls": 1}
+            },
+            "terminal": true
+        } } });
+    });
+    assert_eq!(key, "workflow.nodes.serve.model.grants.task_session");
+
+    let program = program_with(&root, |v| {
+        v["grants"]["task_session"] = json!(true);
+        v["grants"]["spawn"] = json!(["kid"]);
+        v["programs"] = child(&root);
+    })
+    .unwrap();
+    assert!(program.programs["kid"].grants.task_session);
 }
 
 /// docs/workflow.md "Model nodes": a model node's program is validated like

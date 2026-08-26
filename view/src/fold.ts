@@ -168,8 +168,6 @@ export interface Summary {
   decisions: NodeDecision[];
   /** `verification/result` events, in seq order (docs/log-format.md). */
   verifications: Verification[];
-  /** `workflow/node-skipped` events: nodes a satisfied guard skipped. */
-  skips: NodeSkip[];
 }
 
 /** One authoritative verifier invocation, as its event records it. */
@@ -181,19 +179,6 @@ export interface Verification {
   /** How many finding strings the run returned. */
   findings: number;
   durationMs: number;
-}
-
-/** One node a satisfied `skip_when_verified` guard skipped. */
-export interface NodeSkip {
-  seq: number;
-  node: string;
-  verifiedBy: string;
-  /**
-   * Seq of the accepted `verification/result`: in this log when the named
-   * node declares a node-level verify, in its child episode's log when its
-   * program declares `done_when.verify`.
-   */
-  verificationSeq: number;
 }
 
 export function emptySummary(id: string): Summary {
@@ -222,7 +207,6 @@ export function emptySummary(id: string): Summary {
     firings: [],
     decisions: [],
     verifications: [],
-    skips: [],
   };
 }
 
@@ -508,22 +492,6 @@ export class EpisodeFold {
           ms,
         )} ms`;
         return this.note(ev, "verify", detail, status === "failed" ? "error" : "info", data);
-      }
-      case "workflow/node-skipped": {
-        const skip = {
-          seq: ev.seq,
-          node: str(data.node, "?"),
-          verifiedBy: str(data.verified_by, "?"),
-          verificationSeq: num(data.verification_seq),
-        };
-        s.skips.push(skip);
-        return this.note(
-          ev,
-          "node skipped",
-          `${skip.node} · verified by ${skip.verifiedBy} · verification seq ${skip.verificationSeq}`,
-          "info",
-          data,
-        );
       }
       case "workflow/node-start":
       case "workflow/node-end":
@@ -838,11 +806,10 @@ export interface Provenance {
 /**
  * Derives completion provenance from the fold, mirroring the derivation
  * documented in docs/telemetry.md "Completion provenance": `verifier` when
- * an authoritative `verification/result` accepted the completing value or
- * a terminal `workflow/node-skipped` stands on one, `reviewed` when the
- * completing terminal node is a model node fed another model node's
- * completion value, and `model-report` otherwise. Null unless the episode
- * completed.
+ * an authoritative `verification/result` accepted the completing value,
+ * `reviewed` when the completing terminal node is a model node fed another
+ * model node's completion value, and `model-report` otherwise. Null unless
+ * the episode completed.
  */
 export function completionProvenance(s: Summary): Provenance | null {
   if (s.outcome?.kind !== "completed") return null;
@@ -859,8 +826,6 @@ export function completionProvenance(s: Summary): Provenance | null {
   // The verifier a node's acceptance came from is configured: the node's
   // own `verify`, or its program's `done_when.verify`.
   const verifierOf = (name: string) => str(declared(name).verify) || str(obj(obj(declared(name).model).done_when).verify);
-  let skip: NodeSkip | null = null;
-  for (const candidate of s.skips) if (terminal(candidate.node)) skip = candidate;
   // The completing firing: the last errorless end of a terminal node, or
   // of any node when the graph completed through a branch with no
   // successors and flags no terminal.
@@ -872,9 +837,6 @@ export function completionProvenance(s: Summary): Provenance | null {
     if (terminal(f.node)) completing = f;
   }
   const end = completing ?? lastEnd;
-  if (skip !== null && (end === null || skip.seq > (end.endSeq ?? -1))) {
-    return { kind: "verifier", verifier: verifierOf(skip.verifiedBy) };
-  }
   if (end === null) return { kind: "model-report", verifier: "" };
   const judged =
     accepted.find((v) => v.seq > (end.endSeq ?? -1)) ??

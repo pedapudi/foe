@@ -13,7 +13,7 @@ use crate::inbox::Inbox;
 use crate::registry::{Handles, Registry};
 use crate::spawn::Router;
 use crate::{result_budget, ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
-use foe_config::config::Program;
+use foe_config::config::{completion_evidence_required, Program};
 use foe_config::harness_text as text;
 use foe_log::{
     fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
@@ -129,8 +129,8 @@ pub struct Params {
     /// ends the ones still running, so that no child outlives the episode
     /// that started it and no reservation stands unreturned.
     pub children: Option<Arc<Router>>,
-    /// The episode's process sessions. The teardown stops every surviving
-    /// session, so that no session outlives the episode that started it.
+    /// The episode's process sessions. Teardown stops episode-lifetime
+    /// sessions and releases explicitly authorized task-lifetime sessions.
     pub sessions: Option<Arc<dyn crate::Sessions>>,
     pub context: Option<Arc<dyn ContextPolicy>>,
 }
@@ -182,10 +182,11 @@ pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
 /// Closes every obligation the log opened, so that `episode/end` is valid.
 /// See docs/log-format.md "Open obligations".
 ///
-/// A process session still alive when the episode ends is stopped, and the
-/// termination is recorded as the ordinary result of that implicit stop: a
-/// `tool/result` with `synthetic: true` whose subject states the final
-/// status. Every session exit not yet reported is then posted as a
+/// Settlement records one synthetic `tool/result` for every process session
+/// still alive. It stops an episode-lifetime session. It records an observed-
+/// alive task-lifetime session as released to the enclosing task environment,
+/// with the process and process-group ids needed for cleanup. Every session
+/// exit not yet reported is then posted as a
 /// `session`-source inbox item, so the one-item-per-lifetime rule holds to
 /// the end of the log. A child still running is asked to end, and the `spawn/end` and
 /// `budget/release` its reservation owes are awaited for [`SETTLE_GRACE`].
@@ -199,8 +200,8 @@ pub async fn settle(
     sessions: Option<Arc<dyn crate::Sessions>>,
 ) -> Result<(), RuntimeError> {
     if let Some(sessions) = sessions {
-        let stopper = sessions.clone();
-        let stopped = tokio::task::spawn_blocking(move || stopper.stop_all())
+        let settler = sessions.clone();
+        let settled = tokio::task::spawn_blocking(move || settler.settle())
             .await
             .map_err(|e| RuntimeError::Protocol(format!("session settlement task failed: {e}")))?;
         let step = log.with_events(|events| {
@@ -213,16 +214,27 @@ pub async fn settle(
                 })
                 .unwrap_or(0)
         });
-        for status in stopped {
-            let subject = crate::session::subject(&status);
+        for settlement in settled {
+            let status = settlement.status;
+            let mut value = serde_json::json!({
+                "session": status.id, "name": status.name, "alive": status.alive,
+                "exit_code": status.exit_code, "seconds": status.seconds,
+            });
+            let subject = match settlement.released_to_task {
+                true => {
+                    value["lifetime"] = serde_json::json!("task");
+                    value["disposition"] = serde_json::json!("released_to_task_environment");
+                    value["pid"] = serde_json::json!(settlement.pid);
+                    value["process_group"] = serde_json::json!(settlement.process_group);
+                    format!("session {}: {} · released to task environment", status.id, status.name)
+                }
+                false => crate::session::subject(&status),
+            };
             log.append(EventData::ToolResult(ToolResult {
                 step,
                 call_id: format!("session-{}-settle", status.id),
                 name: crate::session::SESSION_TOOL.into(),
-                value: serde_json::json!({
-                    "session": status.id, "name": status.name, "alive": false,
-                    "exit_code": status.exit_code, "seconds": status.seconds,
-                }),
+                value,
                 rendered: subject.clone(),
                 is_error: false,
                 spill: None,
@@ -624,7 +636,7 @@ impl Episode {
         duration_ms: u64,
         synthetic: bool,
     ) -> Result<ToolResult, RuntimeError> {
-        let cite = learned_required(&self.p.program);
+        let cite = completion_evidence_required(self.p.program.done_when.as_ref());
         append_result(&self.p.log, &self.spill_dir, self.step, call, value, archive, duration_ms, synthetic, cite)
     }
 
@@ -678,7 +690,7 @@ impl Episode {
             (finished || verifier_called).then(|| Value::String(message.text.clone()))
         };
         let Some(candidate) = candidate else { return Ok(None) };
-        if learned_required(&self.p.program) {
+        if completion_evidence_required(self.p.program.done_when.as_ref()) {
             let findings = learned_findings(&self.p.log, &candidate);
             if !findings.is_empty() {
                 let message = text::fill(text::INVALID_ARGS, &[("name", text::RETURN_NAME), ("reason", &findings)]);
@@ -718,13 +730,6 @@ impl Episode {
     }
 }
 
-fn learned_required(p: &Program) -> bool {
-    p.done_when
-        .as_ref()
-        .and_then(|d| d.returns.as_ref()?.get("required")?.as_array())
-        .is_some_and(|r| r.iter().any(|f| f == "learned"))
-}
-
 fn learned_findings(log: &Log, candidate: &Value) -> String {
     let Some(items) = candidate.get("learned").and_then(Value::as_array).filter(|items| !items.is_empty()) else {
         return "`value.learned` is a non-empty array".into();
@@ -732,10 +737,11 @@ fn learned_findings(log: &Log, candidate: &Value) -> String {
     log.with_events(|events| {
         for (index, item) in items.iter().enumerate() {
             let seq = item.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
-            let result = events.iter().find(|event| event.seq == seq).and_then(|event| match &event.data {
-                EventData::ToolResult(result) if !result.is_error && !result.synthetic => Some(result),
-                _ => None,
-            });
+            let result =
+                usize::try_from(seq).ok().and_then(|seq| events.get(seq)).and_then(|event| match &event.data {
+                    EventData::ToolResult(result) if !result.is_error && !result.synthetic => Some(result),
+                    _ => None,
+                });
             let Some(result) = result else {
                 return format!("`learned[{index}].seq` {seq} does not name a successful tool/result");
             };
