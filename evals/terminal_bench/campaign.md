@@ -1,6 +1,9 @@
 # Foe capability campaign record
 
-This record defines the evaluation campaign that prepares Foe for a Terminal-Bench 2.1 submission. The campaign ends at a retained calibration result. A full 89-task benchmark run requires a separate decision.
+This record defines the evaluation campaign that prepares Foe for a
+Terminal-Bench 2.1 submission. The campaign ends with retained calibration and
+sealed-holdout dispositions. A full 89-task benchmark run requires a separate
+decision.
 
 Terminal-Bench 2.1 is pinned as `terminal-bench/terminal-bench-2-1@6`. The benchmark contains 89 container tasks and task-owned verifiers. Its maintainers require at least five trials per task for an official submission. [The Terminal-Bench 2.1 repository](https://github.com/harbor-framework/terminal-bench-2-1) specifies the submission protocol. [The release description](https://www.tbench.ai/news/terminal-bench-2-1) describes the task corrections and continuous validation.
 
@@ -18,10 +21,9 @@ case.
 
 GPT-5.6 Sol with low reasoning is the primary coding model. Conditional
 escalation may use Sol with at most `xhigh` reasoning. Provider requests use
-the standard service tier unless a recorded run explicitly selects another
-tier. Token use, estimated cost, cache use, and
-latency are measurements. Task quality is the only candidate promotion metric
-until every quality gate passes.
+the `priority` service tier. Token use, estimated cost, cache use, and latency
+are measurements. Task quality is the only candidate promotion metric until
+every quality gate passes.
 
 Candidate changes may affect Foe source, a general workflow configuration, an
 instruction section of the retained self-improvement program, or a declared
@@ -78,8 +80,121 @@ preserve task quality.
 
 Planning estimates bound campaign exposure before each confirmed command.
 They do not reject a candidate that improves task quality. Development runs
-use the standard service tier and record it in the manifest. Foe records
+use the `priority` service tier and record it in the manifest. Foe records
 usage without enforcing token ceilings during ordinary quality runs.
+
+## Confirmation-quality recovery
+
+The frozen candidate passed eleven of twelve closed-book development tasks.
+Its confirmation attempt was rejected after eight successes from eleven
+scored attempts. Five remaining attempts could raise the total only to
+thirteen, below the required fourteen successes from sixteen attempts.
+Calibration and sealed-holdout tasks remain unopened.
+
+The campaign returns to development before opening another protected task. A
+revised candidate must satisfy these conditions:
+
+1. Convert three reproducible harness-limited failures into task-owned grader
+   successes.
+2. Produce two accepted, identity-bound improvements through the declared
+   self-improvement workflow. One improvement must change Foe source, add a
+   regression test, and update every affected specification.
+3. Show at least two successes from three unchanged Terminal-Bench attempts
+   on each activation case.
+4. Transfer each accepted improvement to a development task absent from its
+   diagnosis corpus.
+5. Pass at least eleven of the twelve development tasks while preserving
+   every baseline success.
+6. Freeze one combined candidate before confirmation. The candidate must
+   produce at least fourteen successes from sixteen attempts and succeed at
+   least once on every confirmation task.
+
+The first new coverage after confirmation uses five tasks from the frozen
+calibration set:
+
+- `llm-inference-batching-scheduler`;
+- `modernize-scientific-stack`;
+- `multi-source-data-merger`;
+- `nginx-request-logging`;
+- `polyglot-c-py`.
+
+At least four of these five tasks must succeed on their first assessed
+attempt. This result decides whether to run the other fifteen calibration
+tasks. It does not replace the requirement for seventeen successes across the
+full calibration set. The sealed holdout stays closed until the calibration
+disposition and its candidate identity are recorded.
+
+## Evidence recording protocol
+
+One coordinator owns the campaign record. Workers return artifacts and typed
+results to the coordinator. They never edit this file concurrently. The
+coordinator appends a result and commits the record before making the next
+candidate or task-exposure decision.
+
+Every campaign objective records the following sections in order:
+
+1. The objective, terminal decision, promotion rule, retry rule, and
+   sequential stopping rule.
+2. The frozen evidence boundary, including the `cases.json` digest and the
+   exposure state of every task set.
+3. The source tree, binary, program, runner, checker, model, reasoning,
+   service-tier, sandbox, and allowance identities.
+4. Repository validation, micro evaluation, binary installation, container
+   capability probes, checker negative controls, and checker oracle controls.
+5. One row for every development, activation, transfer, confirmation,
+   calibration, and holdout attempt.
+6. Failure diagnoses, candidate generation, independent review, correction,
+   repository validation, and external task-quality disposition.
+7. Parallel execution measurements, cumulative resource accounting, an
+   evidence index, and the final goal disposition.
+
+Each attempt row records these fields:
+
+- start and end time in UTC;
+- run label, task, attempt number, evaluation lane, worker, host slot, and
+  concurrency cohort;
+- source-tree, binary, program, runner, checker, and candidate digests;
+- model, reasoning effort, service tier, token policy, model-call allowance,
+  and time allowance for every model stage;
+- Foe outcome, task-owned score, trace conformance, infrastructure status,
+  and credential-exposure scan;
+- model calls, input tokens, cached-input tokens, output tokens, estimated
+  cost, wall time, and usage completeness;
+- retained evidence path, evidence digest, and storage location.
+
+The record gives failed, blocked, exhausted, interrupted, and incomplete runs
+the same fields as successful runs. An infrastructure failure remains in the
+resource accounting even when it is excluded from a quality comparison. Raw
+episodes, workspaces, spill files, container artifacts, and credentials stay
+outside Git. Git retains the Markdown record, task registry, checker sources,
+runner changes, corpus manifests, and content digests.
+
+### Parallel execution
+
+The assessed runner currently executes one provider-backed trial at a time.
+It holds one exclusive lock on the OAuth credential state for the complete
+run. Starting another runner with a separate credential-state path would
+bypass that protection and could race token refresh. Assessed trials remain
+serial until the runner provides credential-safe concurrency.
+
+At most two workers may run provider-free capability probes or verifier
+controls within a task set that is already open. Workers may also analyze
+different retained trajectories in parallel. Development and sealed holdout
+never run concurrently because the candidate must be frozen before the
+holdout opens.
+
+Credential-safe assessed concurrency starts with at most two trials. An
+eight-gibibyte task runs alone. Two concurrent trials may declare at most
+eight gibibytes of memory in total. The scheduler starts a cohort only when
+the host has at least fourteen gibibytes of available memory and one hundred
+gibibytes of free disk. It stops admission after memory pressure, swap-out,
+an out-of-memory termination, or less than ten gibibytes of available memory.
+
+Every concurrent cohort records its cap, task membership, resource
+reservations, queue time, peak host resource use, provider throttling,
+makespan, and invalidated attempts. A matched serial cohort supplies the
+reference for any runtime claim. Concurrency remains identical between a
+baseline and candidate comparison.
 
 ## Task sets
 
