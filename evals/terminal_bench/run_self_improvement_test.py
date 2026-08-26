@@ -45,7 +45,7 @@ from workflow_candidate import create as create_workflow_candidate
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
-    def test_command_line_defaults_to_priority_service(self):
+    def test_command_line_defaults_to_the_campaign_model_and_service(self):
         args = self_improvement_parser().parse_args(
             [
                 "--foe",
@@ -58,7 +58,12 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "/tmp/cases.json",
             ]
         )
+        self.assertEqual(args.model, "openai-codex/gpt-5.6-sol")
+        self.assertEqual(args.reasoning_effort, "low")
+        self.assertEqual(args.diagnosis_model, "openai-codex/gpt-5.6-sol")
+        self.assertEqual(args.diagnosis_reasoning_effort, "low")
         self.assertEqual(args.service_tier, "priority")
+        self.assertIn("Task quality is the promotion metric", args.objective)
 
     def test_preview_does_not_create_the_requested_retained_directory(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -457,11 +457,11 @@ restrict the diagnosis to `source-change`, `workflow-configuration`,
 the restriction before another model node can start. Every restricted run may
 return `insufficient-evidence`.
 
-Luna produces the bounded diagnosis from the supplied digest. Its ordinary
-tools are `block` and the generated candidate validator, so it cannot inspect
-the candidate source or retained run directories. Its typed result contains
-one causal contrast, one intervention, and the controls and falsification
-condition needed to evaluate that intervention.
+GPT-5.6 Sol with low reasoning produces the bounded diagnosis from the supplied
+digest. Its ordinary tools are `block` and the generated candidate validator,
+so it cannot inspect the candidate source or retained run directories. Its
+typed result contains one causal contrast, one intervention, and the controls
+and falsification condition needed to evaluate that intervention.
 
 The diagnosis node's completion verifier is a generated executable declared
 through `done_when.verify`. The runner writes it before the episode; it

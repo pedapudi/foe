@@ -679,9 +679,9 @@ and repair allowances are added to the implementation allowance.
    retained run, source identity, and runtime identity. It includes request
    growth, replayed results, final validation activity, verifier failures, and
    cited log sequences.
-7. Run identity-bound self-improvement. Use a bounded cheaper model for
-   diagnosis only when it preserves the diagnosis contract. Use Sol `low` for
-   implementation and at most Sol `xhigh` for conditional escalation.
+7. Run identity-bound self-improvement. Use Sol `low` for diagnosis and
+   implementation. Use Sol `xhigh` for the independent source audit and at
+   most Sol `xhigh` for conditional escalation.
 8. Validate each generated candidate outside the self-improvement episode.
    Implement the diagnosed change directly when the generated candidate is
    absent, invalid, or unsupported. Repair and repeat the self-improvement

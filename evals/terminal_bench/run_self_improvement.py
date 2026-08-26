@@ -1411,14 +1411,14 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--candidate", type=Path, required=True)
     answer.add_argument("--evidence", type=Path, required=True)
     answer.add_argument("--cases", type=Path, required=True)
-    answer.add_argument("--model", default="openai-codex/gpt-5.6-terra")
+    answer.add_argument("--model", default="openai-codex/gpt-5.6-sol")
     answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
     answer.add_argument(
         "--reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
-        default="high",
+        default="low",
     )
-    answer.add_argument("--diagnosis-model", default="openai-codex/gpt-5.6-luna")
+    answer.add_argument("--diagnosis-model", default="openai-codex/gpt-5.6-sol")
     answer.add_argument(
         "--diagnosis-reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
@@ -1428,9 +1428,10 @@ def parser() -> argparse.ArgumentParser:
         "--objective",
         default=(
             "Use the identity-bound failed and successful trajectory contrast to implement one general Foe "
-            "improvement that raises verified task completion in the lower-cost evaluated configuration. "
-            "Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat "
-            "higher-cost successful settings as diagnostic contrasts. Preserve correctness and benchmark independence."
+            "improvement that raises task-owned verified completion across activation and transfer cases. "
+            "Preserve the model route, reasoning effort, task allowances, token policy, and task set. "
+            "Task quality is the promotion metric. Record tokens, cost, cache use, and latency as measurements. "
+            "Preserve correctness and benchmark independence."
         ),
     )
     answer.add_argument(
