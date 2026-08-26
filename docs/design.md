@@ -956,18 +956,20 @@ the crate depends on `log` alone, and an installation that never enables
 telemetry carries none of its behavior.
 See [docs/telemetry.md](telemetry.md).
 
-Lineage is budgeted apart on the same terms: `crates/lineage` under 500
+Lineage is budgeted apart on the same terms: `crates/lineage` under 525
 lines. It is separate because it reads finished evidence rather than
 producing any: it consumes the configuration contract and the log contract
 to verify how one program state descends from another, and nothing in the
 runtime depends on it. A claim that gains a check must not buy room inside
 either contract. See [lineage-identity.md](lineage-identity.md).
 
-The external source-adoption evaluator stays under 850 Rust lines. It retains
+The external source-adoption evaluator stays under 925 Rust lines. It retains
 and checks the planned root program and each named workflow child's program
-before source changes can enter an external campaign. Its separate budget
-covers validation of Git objects, retained source bytes,
-external evaluation plans, and adoption evidence for a campaign. The runtime
+before source changes can enter an external campaign. It authenticates the
+transport-resolved root and the runtime-reserved child programs against the
+planned graph. Its separate budget covers validation of Git objects,
+retained source bytes, external evaluation plans, and adoption evidence for
+a campaign. The runtime
 does not link it. Its separate ceiling keeps this production evaluator visible
 without charging campaign-specific Git and build checks to the general
 lineage library.

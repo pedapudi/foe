@@ -47,6 +47,25 @@ from workflow_candidate import create as create_workflow_candidate
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
+    def test_source_program_carries_the_runtime_resolved_credential(self):
+        retained_plan_model = {
+            "model": "gpt-5.6-sol",
+            "provider": "openai-codex",
+            "reasoning_effort": "low",
+            "service_tier": "priority",
+        }
+        retained_start_model = {
+            **retained_plan_model,
+            "token_file": "/home/operator/.config/foe/credentials/openai-codex.json",
+        }
+        configured = model_config(
+            "openai-codex/gpt-5.6-sol",
+            "low",
+            credential_home=Path("/home/operator"),
+        )
+        self.assertNotEqual(retained_plan_model, retained_start_model)
+        self.assertEqual(configured, retained_start_model)
+
     def test_command_line_defaults_to_the_campaign_model_and_service(self):
         args = self_improvement_parser().parse_args(
             [
@@ -156,8 +175,12 @@ class SelfImprovementConfigTest(unittest.TestCase):
             evidence,
             Path("/tmp/check"),
             Path("/tmp/diagnosis-validator"),
-            model_config("openai-codex/gpt-5.6-terra", "high"),
-            model_config("openai-codex/gpt-5.6-luna", "high"),
+            model_config(
+                "openai-codex/gpt-5.6-terra", "high", credential_home=Path("/home/controller")
+            ),
+            model_config(
+                "openai-codex/gpt-5.6-luna", "high", credential_home=Path("/home/controller")
+            ),
             [Path("/opt/toolchain")],
             [Path("/repo/.git")],
             [Path("/opt/cargo-cache")],
@@ -287,6 +310,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(implementation["budget"]["model_calls"], 60)
         self.assertEqual(audit["budget"]["model_calls"], 60)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
+        credential = "/home/controller/.config/foe/credentials/openai-codex.json"
+        self.assertEqual(config["model"]["token_file"], credential)
+        self.assertEqual(diagnosis["model"]["token_file"], credential)
+        self.assertEqual(audit["model"]["token_file"], credential)
 
     def test_source_candidate_requires_evidence_for_source_owned_behavior(self):
         config = build_config(

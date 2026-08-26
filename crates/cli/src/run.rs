@@ -416,22 +416,22 @@ fn credential_option(_provider: &str) -> &'static str {
 #[path = "run_test.rs"]
 mod tests;
 
-/// One line naming the transport a `model` block resolves to, for `foe plan`.
+/// Resolves every declared model as execution does and returns the root
+/// transport description for `foe plan`.
 #[cfg(feature = "transport")]
-pub fn describe_transport(model: &ModelConfig) -> String {
-    foe_transport::plan(model).map(|plan| plan.describe()).unwrap_or_else(|e| e.to_string())
+pub fn resolve_transports(program: &mut ResolvedProgram) -> Result<Option<String>, String> {
+    foe_transport::resolve_program(program).map(|plan| plan.map(|plan| plan.describe())).map_err(|e| e.to_string())
 }
 
 #[cfg(not(feature = "transport"))]
-pub fn describe_transport(model: &ModelConfig) -> String {
-    format!("{}/{}: this binary was built without the transport feature", model.provider, model.model)
+pub fn resolve_transports(program: &mut ResolvedProgram) -> Result<Option<String>, String> {
+    Ok(program.model.as_ref().map(|_| "this binary was built without the transport feature".into()))
 }
 
-/// Resolves the `model` block into a transport before the process restricts
-/// itself. The block is rewritten with the credential path it resolved to,
-/// so the record names the credential that ran; the path joins the sandbox
-/// policy as a readable file; and an `exec` provider's program joins it as
-/// an executable, run through the episode's own executor.
+/// Builds the resolved `model` block before the process restricts itself.
+/// Its credential path joins the sandbox policy as a readable file. An
+/// `exec` provider's program joins the policy as an executable and runs
+/// through the episode's own executor.
 #[cfg(feature = "transport")]
 fn built_in_transport(
     model: &mut ModelConfig,
@@ -448,7 +448,6 @@ fn built_in_transport(
         Arc::new(LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel))
             as Arc<dyn foe_core::Executor>
     });
-    *model = plan.model.clone();
     foe_transport::build_planned(&plan, executor).map_err(|e| e.to_string())
 }
 
@@ -464,6 +463,7 @@ fn built_in_transport(
 pub fn run(options: Options) -> Result<ExitCode, String> {
     let config = load_program_document(&options)?;
     let mut program = resolve(&config).map_err(|e| format!("config: {e}"))?;
+    resolve_transports(&mut program)?;
     let identity = identity(&program)?;
     let (log_dir, lineage) = episode_directory(&options, &identity.hash, &config.task)?;
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;

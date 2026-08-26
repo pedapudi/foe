@@ -54,9 +54,9 @@ sentence on first reading.
   comment-only lines. `log` and `core` form the kernel and stay under 5,250
   lines together. `program` stays under 1,500, `code` under 1,700, `workflow`
   under 1,000, `context` under 500, `view` under 600, `cli` under 1,300,
-  `telemetry` under 1,000, and `lineage` under 500. The viewer HTML,
+  `telemetry` under 1,000, and `lineage` under 525. The viewer HTML,
   TypeScript, and CSS use the compressed bundle limit in `docs/design.md`.
-  The external source-adoption evaluator stays under 850. `scripts/loc.sh`
+  The external source-adoption evaluator stays under 925. `scripts/loc.sh`
   enforces every Rust line budget.
 
 ## Commits

@@ -216,6 +216,21 @@ candidate, completed adoptions, checker digests, and evaluated source and
 binary pair. Adoption failure sets `direct_implementation_required`,
 invalidates the task record, and makes the campaign exit unsuccessfully.
 
+The source-improvement controller writes Foe's conventional credential path
+into every model block before planning or execution. Transport construction
+therefore adds no credential option between the retained plan and the root or
+child episode starts.
+
+A source bundle may retain an `execution_credential` beside the parent plan
+when its authenticated runtime omitted that resolved option from plan output.
+The checker accepts this field only for runtime build
+`sha256:ff7d062a57acf865e22d7781fb7e9c05ac95863e5a255fc3145d4479e0eebb59`
+and an absolute OpenAI Codex `token_file`. Every episode start must carry the
+retained path and the runtime named by the parent identity document. The
+checker also verifies the workflow node, its runtime-effective leaf budget,
+and the recomputed child identity. The content-addressed episode logs retain
+the resulting root and child programs.
+
 ## Acceptance conditions
 
 A successful example attempt satisfies six independent conditions:

@@ -7,8 +7,8 @@
 # over tools, which is code — the tool surface, which grows a tool at a time
 # without touching the kernel; 1,000 over workflow; 500 over context; 600
 # over view; 1,300 over cli; 1,000
-# over telemetry; 500 over lineage, which reads finished evidence about how
-# program states relate and is part of neither contract; and 850 over the
+# over telemetry; 525 over lineage, which reads finished evidence about how
+# program states relate and is part of neither contract; and 925 over the
 # source-adoption evaluator used by external campaigns. The kernel is budgeted apart
 # from program because the kernel measures the machine and program measures the
 # data model; a document that gains a key must not buy room in the loop. The
@@ -46,9 +46,9 @@ printf '%-8s %6d  (budget 1300)\n' cli "$cli"
 telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 lineage=$(count lineage)
-printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
+printf '%-8s %6d  (budget 525)\n' lineage "$lineage"
 source_adoption=$(grep -cvE '^\s*$|^\s*//' crates/lineage/examples/source_adoption.rs || true)
-printf '%-15s %6d  (budget 850)\n' source_adoption "$source_adoption"
+printf '%-15s %6d  (budget 925)\n' source_adoption "$source_adoption"
 [ "$kernel" -le 5250 ] && [ "$program" -le 1500 ] && [ "$tools" -le 1700 ] && [ "$workflow" -le 1000 ] \
   && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ] \
-  && [ "$lineage" -le 500 ] && [ "$source_adoption" -le 850 ]
+  && [ "$lineage" -le 525 ] && [ "$source_adoption" -le 925 ]

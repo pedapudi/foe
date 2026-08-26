@@ -100,7 +100,7 @@ def main():
                     "program": plan["program"],
                     "identity": plan["identity"],
                     "task": plan["task"],
-                    "runtime": {"version": "0.1.0", "build": "unknown"},
+                    "runtime": plan["identity_document"]["runtime"],
                     "sandbox": {"mode": "off", "landlock_abi": 0},
                 },
             },

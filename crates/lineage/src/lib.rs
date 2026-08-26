@@ -42,6 +42,13 @@ pub struct RetainedVerifier<'a> {
     pub executable_sha256: &'a str,
 }
 
+/// Source-capture evidence that a trusted caller authenticates before the
+/// generic proposal check uses runtime-effective child identities.
+pub struct ProposalEvidence<'a> {
+    pub verifier: RetainedVerifier<'a>,
+    pub effective_children: &'a BTreeMap<String, String>,
+}
+
 fn invalid(key: impl Into<String>, rule: impl Into<String>) -> LineageError {
     LineageError::Invalid { key: key.into(), rule: rule.into() }
 }
@@ -364,7 +371,9 @@ fn check_transition(
 /// Verifies that an accepted result belongs to the retained proposal tree
 /// and was produced by a verifier authorized by the parent program. The
 /// caller supplies every retained file name so missing spawn-path logs
-/// cannot be recovered from ambient filesystem state.
+/// cannot be recovered from ambient filesystem state. Effective child
+/// identities are accepted only through source evidence whose caller has
+/// authenticated the runtime transformation for every retained child.
 pub fn check_proposal<'a>(
     dir: &Path,
     files: impl Iterator<Item = &'a str>,
@@ -372,7 +381,7 @@ pub fn check_proposal<'a>(
     verification_log: &str,
     verification_seq: u64,
     parent_document: &Value,
-    retained_verifier: Option<RetainedVerifier<'_>>,
+    evidence: Option<ProposalEvidence<'_>>,
 ) -> Result<Vec<String>, LineageError> {
     let mut logs = BTreeMap::new();
     for path in files.filter(|path| *path == "episode.jsonl" || path.ends_with("/episode.jsonl")) {
@@ -406,10 +415,15 @@ pub fn check_proposal<'a>(
             "equals the proposal root log's program identity",
         ));
     }
-    verify_provenance(proposal_log, &logs, parent_document)?;
+    verify_provenance(
+        proposal_log,
+        &logs,
+        parent_document,
+        evidence.as_ref().map(|evidence| evidence.effective_children),
+    )?;
     let start = verifier_state.start.as_ref().expect("a checked log has episode/start");
     let mut report = AncestryReport { chain: Vec::new(), unverifiable: Vec::new() };
-    check_verifier(result, start, parent_document, retained_verifier, &mut report)?;
+    check_verifier(result, start, parent_document, evidence.as_ref(), &mut report)?;
     Ok(report.unverifiable)
 }
 
@@ -420,6 +434,7 @@ fn verify_provenance(
     root: &str,
     logs: &BTreeMap<String, (Vec<Event>, State)>,
     parent_document: &Value,
+    effective_children: Option<&BTreeMap<String, String>>,
 ) -> Result<(), LineageError> {
     let key = "program_lineage.verification_log";
     if logs[root].1.start.as_ref().expect("a checked log has episode/start").parent_id.is_some()
@@ -456,7 +471,9 @@ fn verify_provenance(
             if *parent_path != root {
                 return Err(invalid(key, format!("{child_path} lacks its spawning parent's identity document")));
             }
-            if workflow_child_identity(parent_document, program) != Some(start.identity.as_str()) {
+            let declared = workflow_child_identity(parent_document, program);
+            let effective = effective_children.and_then(|children| children.get(child_id)).map(String::as_str);
+            if declared != Some(start.identity.as_str()) && effective != Some(start.identity.as_str()) {
                 return Err(invalid(key, format!("{} has the identity of workflow node {program}", start.id)));
             }
         }
@@ -484,13 +501,14 @@ fn check_verifier(
     result: &foe_log::VerificationResult,
     start: &foe_log::EpisodeStart,
     parent_document: &Value,
-    retained: Option<RetainedVerifier<'_>>,
+    evidence: Option<&ProposalEvidence<'_>>,
     report: &mut AncestryReport,
 ) -> Result<(), LineageError> {
     let parent_identity = digest_of(canonical(parent_document).as_bytes());
     let mut reachable = BTreeSet::new();
     reachable.insert(parent_identity.clone());
     program_hashes(parent_document, &mut reachable);
+    reachable.extend(evidence.into_iter().flat_map(|evidence| evidence.effective_children.values()).cloned());
     if !reachable.contains(&start.identity) {
         return Err(invalid(
             "verification_log episode/start.identity",
@@ -528,7 +546,8 @@ fn check_verifier(
                 "equals the executable hash the parent program declares",
             ));
         }
-    } else if !retained
+    } else if !evidence
+        .map(|evidence| evidence.verifier)
         .is_some_and(|binding| binding.tool == result.tool && binding.executable_sha256 == result.verifier_identity)
     {
         report.unverifiable.push(format!(

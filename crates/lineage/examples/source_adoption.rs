@@ -4,18 +4,18 @@
 
 use foe_lineage::{
     build_manifest, check_ancestry, check_proposal, digest_of, require_manifest_path, state_identity, AdoptionRecord,
-    ManifestFile, ProgramLineage, RetainedVerifier, StateDocument, MANIFEST_FILE,
+    ManifestFile, ProgramLineage, ProposalEvidence, RetainedVerifier, StateDocument, MANIFEST_FILE,
 };
 use foe_log::fold;
 use foe_program::{
     document::{resolve_node_program, ResolvedProgram},
     identity::{canonical, compute_retained, sha256_hex},
-    workflow::WorkflowConfig,
+    workflow::{node_program, WorkflowConfig},
     LineageParent, ToolDef,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -23,6 +23,10 @@ use std::process::{Command, ExitCode, Stdio};
 
 const SOURCE_MANIFEST: &str = "source-candidate-manifest.json";
 const ADOPTION_RECORD: &str = "adoption-record.json";
+// Retained source evidence still names this build and requires its plan/run
+// credential-resolution compatibility.
+const UNRESOLVED_CODEX_CREDENTIAL_BUILD: &str =
+    "sha256:ff7d062a57acf865e22d7781fb7e9c05ac95863e5a255fc3145d4479e0eebb59";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -82,6 +86,8 @@ struct ParentPlan {
     identity_document: Value,
     program: ResolvedProgram,
     task: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    execution_credential: Option<PathBuf>,
 }
 
 fn fail(key: &str, rule: impl AsRef<str>) -> String {
@@ -105,11 +111,61 @@ fn read_parent_plan(bundle: &Path, path: &str) -> Result<ParentPlan, String> {
     if computed.hash != plan.identity || computed.document != plan.identity_document {
         return Err(fail("parent plan", "matches the identity and document recomputed from its resolved program"));
     }
+    if let Some(credential) = &plan.execution_credential {
+        if plan.identity_document["runtime"]["build"] != UNRESOLVED_CODEX_CREDENTIAL_BUILD || !credential.is_absolute()
+        {
+            return Err(fail(
+                "parent plan execution_credential",
+                "names the controller-resolved openai-codex token path for its supported runtime",
+            ));
+        }
+    }
     Ok(plan)
 }
 
-fn planned_start(plan: &ParentPlan) -> Result<(Value, String), String> {
-    Ok((plan.program.to_value(), plan.task.clone()))
+fn runtime_matches_plan(plan: &ParentPlan, runtime: &foe_log::RuntimeInfo) -> bool {
+    serde_json::to_value(runtime).is_ok_and(|actual| actual == plan.identity_document["runtime"])
+}
+
+fn execution_program(plan: &ParentPlan, planned: &Value) -> Option<Value> {
+    if plan.identity_document["runtime"]["build"] != UNRESOLVED_CODEX_CREDENTIAL_BUILD {
+        return None;
+    }
+    let credential = plan.execution_credential.as_ref()?;
+    let mut expected = planned.as_object()?.clone();
+    let mut expected_model = expected.get("model").and_then(Value::as_object).cloned()?;
+    if !credential.is_absolute()
+        || expected_model.get("provider").and_then(Value::as_str) != Some("openai-codex")
+        || expected_model.contains_key("token_file")
+    {
+        return None;
+    }
+    expected_model.insert("token_file".into(), Value::String(credential.to_string_lossy().into_owned()));
+    expected.insert("model".into(), Value::Object(expected_model));
+    Some(Value::Object(expected))
+}
+
+fn execution_program_matches_plan(plan: &ParentPlan, planned: &Value, actual: &Value) -> bool {
+    if plan.execution_credential.is_some() {
+        execution_program(plan, planned).as_ref() == Some(actual)
+    } else {
+        planned == actual
+    }
+}
+
+fn child_program_matches_plan(plan: &ParentPlan, planned: &Value, actual: &Value) -> bool {
+    let mut expected: ResolvedProgram =
+        match serde_json::from_value(execution_program(plan, planned).unwrap_or_else(|| planned.clone())) {
+            Ok(value) => value,
+            Err(_) => return false,
+        };
+    if !expected.programs.is_empty() || expected.workflow.is_some() || !expected.grants.spawn.is_empty() {
+        return false;
+    }
+    let root_depth = plan.program.budget.max_depth.saturating_sub(1);
+    expected.budget.max_depth = expected.budget.max_depth.min(root_depth);
+    expected.budget.max_episodes = 1;
+    expected.to_value() == *actual
 }
 
 fn collect_configured(
@@ -171,9 +227,10 @@ fn workflow_model(program: &ResolvedProgram, path: &str) -> Result<Value, String
         let node =
             workflow.nodes.get(name).ok_or_else(|| fail("parent plan program", format!("declares node {name}")))?;
         if parts.peek().is_none() {
-            let child =
-                node.model.as_ref().ok_or_else(|| fail("parent plan program", format!("node {name} is a model")))?;
-            return resolve_node_program(path, program, child).map(|child| child.to_value()).map_err(|e| e.to_string());
+            node.model.as_ref().ok_or_else(|| fail("parent plan program", format!("node {name} is a model")))?;
+            return resolve_node_program(path, program, &node_program(node))
+                .map(|child| child.to_value())
+                .map_err(|e| e.to_string());
         }
         workflow = node
             .workflow
@@ -186,9 +243,13 @@ fn workflow_model(program: &ResolvedProgram, path: &str) -> Result<Value, String
 fn verify_planned_children(
     bundle: &Path,
     manifest: &SourceManifest,
+    plan: &ParentPlan,
     program: &ResolvedProgram,
     events: &[foe_log::Event],
-) -> Result<(), String> {
+) -> Result<BTreeMap<String, String>, String> {
+    let mut identities = BTreeMap::new();
+    let mut configured = BTreeMap::new();
+    collect_configured(bundle, &plan.program, &mut configured)?;
     for (child_id, node) in events.iter().filter_map(|event| match &event.data {
         foe_log::EventData::SpawnStart { child_id, program, .. } => Some((child_id, program)),
         _ => None,
@@ -201,18 +262,27 @@ fn verify_planned_children(
             )
             .map_err(|e| fail("proposal child log", e.to_string()))?;
             if state.start.as_ref().is_some_and(|start| start.id == *child_id) {
-                found = state.start.map(|start| start.program);
+                found = state.start;
                 break;
             }
         }
-        if found != Some(workflow_model(program, node)?) {
+        let planned = workflow_model(program, node)?;
+        if !found.as_ref().is_some_and(|actual| {
+            runtime_matches_plan(plan, &actual.runtime)
+                && child_program_matches_plan(plan, &planned, &actual.program)
+                && serde_json::from_value::<ResolvedProgram>(actual.program.clone())
+                    .ok()
+                    .and_then(|program| compute_retained(&program, &plan.identity_document, &configured).ok())
+                    .is_some_and(|identity| identity.hash == actual.identity)
+        }) {
             return Err(fail(
                 "proposal child log",
                 format!("{child_id} starts with the planned model program for {node}"),
             ));
         }
+        identities.insert(child_id.clone(), found.expect("a checked child has a start").identity);
     }
-    Ok(())
+    Ok(identities)
 }
 
 fn checker_digest() -> Result<String, String> {
@@ -551,16 +621,22 @@ fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), Strin
     if plan.identity != manifest.parent_program_identity {
         return Err(fail("parent plan identity", "equals parent_program_identity"));
     }
-    let (planned_program, planned_task) = planned_start(&plan)?;
+    let planned_program = plan.program.to_value();
     let proposal_events =
         fold::read_all(bundle.join(&manifest.proposal_log).parent().expect("a log path has a parent"))
             .map_err(|e| fail("proposal log", e.to_string()))?;
     let proposal_state = fold::fold(&proposal_events).map_err(|e| fail("proposal log", e.to_string()))?;
     let proposal_start = proposal_state.start.as_ref().ok_or_else(|| fail("proposal log", "has episode/start"))?;
-    if proposal_start.program != planned_program || proposal_start.task != planned_task {
-        return Err(fail("proposal log", "starts with the retained plan's exact resolved program and task"));
+    if !runtime_matches_plan(&plan, &proposal_start.runtime)
+        || !execution_program_matches_plan(&plan, &planned_program, &proposal_start.program)
+        || proposal_start.task != plan.task
+    {
+        return Err(fail(
+            "proposal log",
+            "starts with the retained plan's authenticated execution program, runtime, and task",
+        ));
     }
-    verify_planned_children(bundle, manifest, &plan.program, &proposal_events)?;
+    let effective_children = verify_planned_children(bundle, manifest, &plan, &plan.program, &proposal_events)?;
     let open = check_proposal(
         bundle,
         manifest.files.iter().map(|file| file.path.as_str()),
@@ -568,9 +644,12 @@ fn verify_proposal(bundle: &Path, manifest: &SourceManifest) -> Result<(), Strin
         &manifest.verification_log,
         manifest.verification_seq,
         &plan.identity_document,
-        Some(RetainedVerifier {
-            tool: &manifest.verification_tool,
-            executable_sha256: &manifest.verification_executable_sha256,
+        Some(ProposalEvidence {
+            verifier: RetainedVerifier {
+                tool: &manifest.verification_tool,
+                executable_sha256: &manifest.verification_executable_sha256,
+            },
+            effective_children: &effective_children,
         }),
     )
     .map_err(|e| e.to_string())?;

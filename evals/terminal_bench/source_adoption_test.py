@@ -27,6 +27,14 @@ def sha256(value):
 
 
 class SourceAdoptionTest(unittest.TestCase):
+    FROZEN_RUNTIME = {
+        "version": "0.1.0",
+        "build": "sha256:ff7d062a57acf865e22d7781fb7e9c05ac95863e5a255fc3145d4479e0eebb59",
+    }
+    FROZEN_CREDENTIAL = Path(
+        "/home/operator/.config/foe/credentials/openai-codex.json"
+    )
+
     @classmethod
     def setUpClass(cls):
         cls.repository = Path(__file__).resolve().parents[2]
@@ -76,7 +84,10 @@ class SourceAdoptionTest(unittest.TestCase):
         bazel.chmod(0o755)
         return bazel
 
-    def plan(self, bundle, task, workflow=False, schema_tool_defs=False):
+    def plan(
+        self, bundle, task, workflow=False, schema_tool_defs=False,
+        frozen_default_credential=False,
+    ):
         check = str((bundle / "candidate-check").resolve())
         child = lambda name, verify=False: {
             "name": name,
@@ -106,6 +117,13 @@ class SourceAdoptionTest(unittest.TestCase):
             "done_when": done_when,
             "task": task,
         }
+        if frozen_default_credential:
+            config["model"] = {
+                "provider": "openai-codex",
+                "model": "gpt-5.6-sol",
+                "reasoning_effort": "low",
+                "service_tier": "priority",
+            }
         if workflow:
             config["workflow"] = {"nodes": {
                 "diagnose-runtime": {"model": child("diagnose-foe-from-trajectory-measurements")},
@@ -128,9 +146,63 @@ class SourceAdoptionTest(unittest.TestCase):
         if plan.get("task", task) != task:
             raise ValueError("test Foe plan reported a different task")
         plan["task"] = task
+        if frozen_default_credential:
+            plan = self.frozen_runtime_plan(bundle, plan)
         return plan
 
-    def write_episode(self, directory, plan, verifier_sha256):
+    def resolved_child_program(self, plan, node_name):
+        child = json.loads(
+            json.dumps(plan["program"]["workflow"]["nodes"][node_name]["model"])
+        )
+        for definition in child["tool_defs"].values():
+            definition.setdefault("cwd", child["grants"]["read"][0])
+        child["sandbox"] = plan["program"]["sandbox"]
+        if "model" not in child and "model" in plan["program"]:
+            child["model"] = plan["program"]["model"]
+        return child
+
+    def frozen_runtime_plan(self, bundle, plan):
+        workflow = plan["program"].get("workflow", {}).get("nodes", {})
+        for name, node in workflow.items():
+            if "model" not in node:
+                continue
+            child_config = self.resolved_child_program(plan, name)
+            child_config.update(version=3, task=plan["task"])
+            path = bundle / f"{name}-identity-config.json"
+            path.write_text(json.dumps(child_config), encoding="utf-8")
+            result = subprocess.run(
+                [str(self.foe), "plan", "--config", str(path), "--json"],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            path.unlink()
+            child_plan = json.loads(result.stdout)
+            self.assertEqual(
+                child_plan["program"], self.resolved_child_program(plan, name)
+            )
+            child_plan["identity_document"]["runtime"] = self.FROZEN_RUNTIME
+            plan["identity_document"]["workflow"]["nodes"][name]["model"] = sha256(
+                canonical(child_plan["identity_document"])
+            )
+        plan["identity_document"]["runtime"] = self.FROZEN_RUNTIME
+        plan["identity"] = sha256(canonical(plan["identity_document"]))
+
+        def remove_credential(program):
+            program.get("model", {}).pop("token_file", None)
+            for child in program.get("programs", {}).values():
+                remove_credential(child)
+            for node in program.get("workflow", {}).get("nodes", {}).values():
+                if isinstance(node.get("model"), dict):
+                    remove_credential(node["model"])
+
+        remove_credential(plan["program"])
+        return plan
+
+    def write_episode(self, directory, plan, verifier_sha256, frozen_default_credential=False):
+        program = json.loads(json.dumps(plan["program"]))
+        if frozen_default_credential:
+            program["model"]["token_file"] = str(self.FROZEN_CREDENTIAL)
         events = [
             {
                 "seq": 0,
@@ -141,10 +213,10 @@ class SourceAdoptionTest(unittest.TestCase):
                     "parent_id": None,
                     "fork_origin": None,
                     "team_id": None,
-                    "program": plan["program"],
+                    "program": program,
                     "identity": plan["identity"],
                     "task": plan["task"],
-                    "runtime": {"version": "0.1.0", "build": "unknown"},
+                    "runtime": plan["identity_document"]["runtime"],
                     "sandbox": {"mode": "off", "landlock_abi": 0},
                 },
             },
@@ -175,41 +247,40 @@ class SourceAdoptionTest(unittest.TestCase):
         )
 
     def write_workflow_episode(
-        self, directory, plan, verifier_sha256,
+        self, directory, plan, verifier_sha256, frozen_default_credential=False,
     ):
-        identities = plan["identity_document"]["workflow"]["nodes"]
         programs = {
             "ep_diagnosis": (
                 "diagnose-runtime",
                 "diagnose-foe-from-trajectory-measurements",
-                identities["diagnose-runtime"]["model"],
             ),
             "ep_implementation": (
                 "implement-runtime-improvement",
                 "implement-foe-improvement",
-                identities["implement-runtime-improvement"]["model"],
             ),
             "ep_audit": (
                 "audit-runtime-improvement",
                 "audit-and-repair-foe-improvement",
-                identities["audit-runtime-improvement"]["model"],
             ),
         }
+        root_program = json.loads(json.dumps(plan["program"]))
+        if frozen_default_credential:
+            root_program["model"]["token_file"] = str(self.FROZEN_CREDENTIAL)
         root = [
             {
                 "seq": 0, "time": 0, "type": "episode/start",
                 "data": {
                     "id": "ep_root", "parent_id": None, "fork_origin": None,
                     "team_id": None,
-                    "program": plan["program"],
+                    "program": root_program,
                     "identity": plan["identity"], "task": plan["task"],
-                    "runtime": {"version": "0.1.0", "build": "unknown"},
+                    "runtime": plan["identity_document"]["runtime"],
                     "sandbox": {"mode": "off", "landlock_abi": 0},
                 },
             },
         ]
         sequence = 1
-        for child_id, (node, _, _) in programs.items():
+        for child_id, (node, _) in programs.items():
             root.extend([
                 {
                     "seq": sequence, "time": sequence, "type": "spawn/start",
@@ -232,21 +303,45 @@ class SourceAdoptionTest(unittest.TestCase):
         (directory / "episode.jsonl").write_text(
             "\n".join(json.dumps(event) for event in root) + "\n", encoding="utf-8"
         )
-        for child_id, (_, program_name, identity) in programs.items():
+        for child_id, (_, program_name) in programs.items():
             node = plan["program"]["workflow"]["nodes"][programs[child_id][0]]["model"]
             child_program = json.loads(json.dumps(node))
             for definition in child_program["tool_defs"].values():
                 definition.setdefault("cwd", child_program["grants"]["read"][0])
             child_program["sandbox"] = plan["program"]["sandbox"]
             if "model" not in child_program and "model" in plan["program"]:
-                child_program["model"] = plan["program"]["model"]
+                child_program["model"] = json.loads(
+                    json.dumps(plan["program"]["model"])
+                )
+            if frozen_default_credential:
+                child_program["model"]["token_file"] = str(self.FROZEN_CREDENTIAL)
+            child_program["budget"]["max_depth"] = min(
+                child_program["budget"]["max_depth"],
+                plan["program"]["budget"]["max_depth"] - 1,
+            )
+            child_program["budget"]["max_episodes"] = 1
+            child_config = {**child_program, "version": 3, "task": plan["task"]}
+            identity_path = directory.parent / f"{child_id}-effective-config.json"
+            identity_path.write_text(json.dumps(child_config), encoding="utf-8")
+            child_plan = json.loads(
+                subprocess.run(
+                    [str(self.foe), "plan", "--config", str(identity_path), "--json"],
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                ).stdout
+            )
+            identity_path.unlink()
+            self.assertEqual(child_plan["program"], child_program)
+            child_plan["identity_document"]["runtime"] = plan["identity_document"]["runtime"]
+            identity = sha256(canonical(child_plan["identity_document"]))
             child = [{
                 "seq": 0, "time": 0, "type": "episode/start",
                 "data": {
                     "id": child_id, "parent_id": "ep_root", "fork_origin": None,
                     "team_id": "ep_root", "program": child_program,
                     "identity": identity, "task": plan["task"],
-                    "runtime": {"version": "0.1.0", "build": "unknown"},
+                    "runtime": plan["identity_document"]["runtime"],
                     "sandbox": {"mode": "off", "landlock_abi": 0},
                 },
             }]
@@ -285,7 +380,10 @@ class SourceAdoptionTest(unittest.TestCase):
         }))
         retain_parent_executables(bundle, plan["program"])
 
-    def fixture(self, root, critical_controller_files=False, schema_tool_defs=False):
+    def fixture(
+        self, root, critical_controller_files=False, schema_tool_defs=False,
+        frozen_default_credential=False,
+    ):
         repository = root / "repository"
         repository.mkdir()
         self.git(repository, "init", "-q")
@@ -315,8 +413,18 @@ class SourceAdoptionTest(unittest.TestCase):
         bundle = root / "bundle"
         bundle.mkdir()
         (bundle / "candidate-check").write_bytes(verifier)
-        plan = self.plan(bundle, "propose one source change", schema_tool_defs=schema_tool_defs)
-        self.write_episode(bundle / "episode", plan, verifier_sha256)
+        plan = self.plan(
+            bundle,
+            "propose one source change",
+            schema_tool_defs=schema_tool_defs,
+            frozen_default_credential=frozen_default_credential,
+        )
+        self.write_episode(
+            bundle / "episode",
+            plan,
+            verifier_sha256,
+            frozen_default_credential=frozen_default_credential,
+        )
         self.write_parent_plan(bundle, plan)
         (repository / "changed.txt").write_text("after\n", encoding="utf-8")
         (repository / "changed.txt").chmod(0o755)
@@ -335,6 +443,7 @@ class SourceAdoptionTest(unittest.TestCase):
             "episode/episode.jsonl",
             1,
             "candidate-check",
+            self.FROZEN_CREDENTIAL if frozen_default_credential else None,
         )
         self.git(repository, "add", "-A")
         self.git(repository, "commit", "-qm", "candidate")
@@ -342,6 +451,40 @@ class SourceAdoptionTest(unittest.TestCase):
         runtime = root / "foe"
         runtime.write_bytes(b"rebuilt foe")
         return repository, bundle, base, applied, runtime, captured
+
+    def test_frozen_default_credential_resolution_matches_the_retained_plan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository, bundle, _, applied, runtime, captured = self.fixture(
+                root, frozen_default_credential=True
+            )
+            plan = json.loads((bundle / "parent-plan.json").read_text(encoding="utf-8"))
+            start = json.loads(
+                (bundle / "episode/episode.jsonl").read_text(encoding="utf-8").splitlines()[0]
+            )["data"]
+            self.assertNotIn("token_file", plan["program"]["model"])
+            self.assertEqual(
+                start["program"]["model"]["token_file"],
+                str(self.FROZEN_CREDENTIAL),
+            )
+            self.assertEqual(
+                plan["execution_credential"],
+                str(self.FROZEN_CREDENTIAL),
+            )
+            verified = verify_source_candidate(
+                self.checker, bundle, repository, applied, runtime
+            )
+            self.assertEqual(verified["source_candidate_identity"], captured["source_candidate_identity"])
+            log = bundle / "episode/episode.jsonl"
+            events = [json.loads(line) for line in log.read_text().splitlines()]
+            events[0]["data"]["program"]["model"].pop("token_file")
+            log.write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n",
+                encoding="utf-8",
+            )
+            self.update_retained_file(bundle, "episode/episode.jsonl")
+            with self.assertRaisesRegex(ValueError, "authenticated execution program"):
+                verify_source_candidate(self.checker, bundle, repository, applied, runtime)
 
     def test_result_schema_tool_defs_is_not_an_executable_map(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -386,9 +529,15 @@ class SourceAdoptionTest(unittest.TestCase):
             bundle = root / "bundle"
             bundle.mkdir()
             (bundle / "candidate-check").write_bytes(verifier)
-            plan = self.plan(bundle, "improve Foe", workflow=True)
+            plan = self.plan(
+                bundle, "improve Foe", workflow=True,
+                frozen_default_credential=True,
+            )
             diagnosis_identity = plan["identity_document"]["workflow"]["nodes"]["diagnose-runtime"]["model"]
-            self.write_workflow_episode(bundle / "episode", plan, sha256(verifier))
+            self.write_workflow_episode(
+                bundle / "episode", plan, sha256(verifier),
+                frozen_default_credential=True,
+            )
             self.write_parent_plan(bundle, plan)
             captured = capture_source_candidate(
                 self.checker,
@@ -400,6 +549,7 @@ class SourceAdoptionTest(unittest.TestCase):
                 "episode/children/ep_audit/episode.jsonl",
                 1,
                 "candidate-check",
+                self.FROZEN_CREDENTIAL,
             )
             self.git(repository, "add", "-A")
             self.git(repository, "commit", "-qm", "candidate")
@@ -414,6 +564,30 @@ class SourceAdoptionTest(unittest.TestCase):
             )
             root_log = bundle / "episode/episode.jsonl"
             original_root_log = root_log.read_bytes()
+            audit_log = bundle / "episode/children/ep_audit/episode.jsonl"
+            original_audit_log = audit_log.read_bytes()
+            audit_events = [json.loads(line) for line in audit_log.read_text().splitlines()]
+            audit_events[0]["data"]["program"]["model"]["token_file"] = "/tmp/substituted-token.json"
+            audit_log.write_text(
+                "\n".join(json.dumps(event) for event in audit_events) + "\n",
+                encoding="utf-8",
+            )
+            self.update_retained_file(bundle, "episode/children/ep_audit/episode.jsonl")
+            with self.assertRaisesRegex(ValueError, "planned model program for audit-runtime-improvement"):
+                verify_source_candidate(self.checker, bundle, repository, applied, runtime)
+            audit_log.write_bytes(original_audit_log)
+            self.update_retained_file(bundle, "episode/children/ep_audit/episode.jsonl")
+            root_events = [json.loads(line) for line in root_log.read_text().splitlines()]
+            root_events[0]["data"]["runtime"]["build"] = "sha256:" + "0" * 64
+            root_log.write_text(
+                "\n".join(json.dumps(event) for event in root_events) + "\n",
+                encoding="utf-8",
+            )
+            self.update_retained_file(bundle, "episode/episode.jsonl")
+            with self.assertRaisesRegex(ValueError, "authenticated execution program, runtime, and task"):
+                verify_source_candidate(self.checker, bundle, repository, applied, runtime)
+            root_log.write_bytes(original_root_log)
+            self.update_retained_file(bundle, "episode/episode.jsonl")
             events = [json.loads(line) for line in root_log.read_text().splitlines()]
             spawn = next(
                 event
@@ -433,8 +607,6 @@ class SourceAdoptionTest(unittest.TestCase):
                 )
             root_log.write_bytes(original_root_log)
             self.update_retained_file(bundle, "episode/episode.jsonl")
-            audit_log = bundle / "episode/children/ep_audit/episode.jsonl"
-            original_audit_log = audit_log.read_bytes()
             events = [json.loads(line) for line in root_log.read_text().splitlines()]
             spawn = next(
                 event for event in events
