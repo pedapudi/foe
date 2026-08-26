@@ -18,6 +18,8 @@ COMMON_ARGS = [
     "priority",
 ]
 
+SCORED_WORKFLOW_ARGS = COMMON_ARGS + ["--built-in-workflow"]
+
 SOURCE_CONTROLLER_ARGS = [
     "--foe",
     "$(rootpath //:foe-portable)",
@@ -243,19 +245,7 @@ sh_binary(
 sh_binary(
     name = "foe-development",
     srcs = ["run.py"],
-    args = COMMON_ARGS + ["--group", "development"],
-    data = COMMON_DATA,
-    visibility = ["//visibility:public"],
-)
-
-sh_binary(
-    name = "foe-built-in-development",
-    srcs = ["run.py"],
-    args = COMMON_ARGS + [
-        "--group",
-        "development",
-        "--built-in-workflow",
-    ],
+    args = SCORED_WORKFLOW_ARGS + ["--group", "development"],
     data = COMMON_DATA,
     visibility = ["//visibility:public"],
 )
@@ -271,7 +261,7 @@ sh_binary(
 sh_binary(
     name = "foe-confirmation",
     srcs = ["run.py"],
-    args = COMMON_ARGS + ["--group", "confirmation"],
+    args = SCORED_WORKFLOW_ARGS + ["--group", "confirmation"],
     data = COMMON_DATA,
     visibility = ["//visibility:public"],
 )
@@ -324,7 +314,7 @@ sh_test(
 sh_binary(
     name = "foe-calibration",
     srcs = ["run.py"],
-    args = COMMON_ARGS + ["--group", "calibration"],
+    args = SCORED_WORKFLOW_ARGS + ["--group", "calibration"],
     data = COMMON_DATA,
     visibility = ["//visibility:public"],
 )
@@ -332,7 +322,7 @@ sh_binary(
 sh_binary(
     name = "foe-calibration-holdout",
     srcs = ["run.py"],
-    args = COMMON_ARGS + ["--group", "calibration_holdout"],
+    args = SCORED_WORKFLOW_ARGS + ["--group", "calibration_holdout"],
     data = COMMON_DATA,
     visibility = ["//visibility:public"],
 )

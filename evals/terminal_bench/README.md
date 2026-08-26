@@ -255,12 +255,12 @@ sandbox mode, data-flow edges, and completion ownership.
 
 ## Run the built-in workflow on closed-book tasks
 
-The closed-book built-in target runs Foe's implementation and terminal-audit
-episodes on the frozen twelve-task development set:
+The primary scored targets run Foe's implementation and terminal-audit
+episodes. The development target uses the frozen twelve-task development set:
 
 ```sh
-bazel run //evals/terminal_bench:foe-built-in-development
-bazel run //evals/terminal_bench:foe-built-in-development -- \
+bazel run //evals/terminal_bench:foe-development
+bazel run //evals/terminal_bench:foe-development -- \
   --label built-in-development \
   --confirm-spend
 ```
@@ -475,7 +475,8 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
 
 The confirmation target contains eight tasks. The [campaign record](campaign.md)
 gives their exposure state, acceptance rule, and stopping rule. Run two attempts
-per task:
+per task. This target uses the same built-in implementation and terminal-audit
+workflow as the development target:
 
 ```sh
 bazel run //evals/terminal_bench:foe-confirmation
@@ -487,7 +488,8 @@ bazel run //evals/terminal_bench:foe-confirmation -- \
 
 The twenty calibration tasks remain closed until the development and
 confirmation criteria pass. The eight sealed-holdout tasks remain closed until
-the calibration result and its decision rule are recorded:
+the calibration result and its decision rule are recorded. Both targets use
+the built-in workflow:
 
 ```sh
 bazel run //evals/terminal_bench:foe-calibration
