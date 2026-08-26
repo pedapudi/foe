@@ -579,6 +579,65 @@ bazel run //evals/terminal_bench:self-improve -- \
   --confirm-spend
 ```
 
+Create private feedback after an externally evaluated source candidate has a
+failed trial:
+
+```sh
+bazel run //evals/terminal_bench:foe-source-candidate-assessment -- create \
+  --source-bundle /path/to/candidate-campaign/source-candidate-bundle \
+  --parent-campaign /path/to/parent-campaign \
+  --candidate-campaign /path/to/candidate-campaign \
+  --assessment /private/path/source-candidate-assessment.json \
+  --diagnostics /private/path/candidate-assessment-diagnostics.json
+```
+
+The private assessment retains raw campaign fields, trial fields, and verifier
+reports for evaluator audit. Canonical identities bind the parent and candidate
+evaluations, both source trees, the source bundle, the rejected source
+candidate, the prior typed diagnosis, and the exact verified source patch.
+Assessment construction requires complete,
+conformant campaigns and source adoptions. It rejects symbolic links, escaped
+paths, trial errors, Boolean or nonfinite rewards, and conflicting identities.
+
+The diagnostics file is a reproducible view of the private assessment. It
+contains complete bounded failure loci and final validation timelines. It
+also contains qualified parent and candidate success references. The view
+excludes task text, task names, task checksums, rewards, campaign labels,
+absolute artifact paths, and unstructured grader prose. Its canonical JSON
+must fit within 48 KiB.
+
+Pass the private assessment to a later source-generation run:
+
+```sh
+bazel run //evals/terminal_bench:self-improve -- \
+  --candidate /path/to/clean/parent-source \
+  --evidence "$PWD/target/foe-trajectory-evidence.json" \
+  --candidate-assessment /private/path/source-candidate-assessment.json \
+  --cargo /absolute/path/to/toolchain/bin/cargo \
+  --cargo-home /absolute/path/to/cargo-home \
+  --candidate-kind source-change \
+  --keep "$PWD/target/foe-self-improvement" \
+  --confirm-spend
+```
+
+The runner re-derives and validates the bounded diagnostics. The existing
+trajectory tool node supplies them only to the fresh diagnosis node. The
+implementation node receives the task and revised typed diagnosis. The audit
+receives those values and the implementation handoff. Neither coding node can
+read the assessment artifacts.
+
+The revised diagnosis cites the assessment contrast, rejected candidate,
+prior diagnosis, every failed attempt, every failed verifier, every failure
+locus, and all qualified successes. It chooses `retain`, `narrow`, `replace`,
+or `insufficient-evidence`. The generated diagnosis verifier checks these
+citations before source implementation starts.
+
+Assessment diagnostics and a canonical generation-context record enter a
+later accepted source bundle before source capture. These files bind the
+feedback to the later diagnosis without participating in the source-candidate
+identity. The runner rejects a later source candidate whose identity equals
+the rejected source candidate.
+
 The runner emits a version 3 program. Its default service tier is `priority`
 for diagnosis, implementation, and source audit. The model blocks explicitly
 name the credential file from Foe's per-provider convention under the passwd

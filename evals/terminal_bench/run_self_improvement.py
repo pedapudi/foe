@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -24,6 +25,15 @@ from foe_agent_support import build_program, estimate_usage_cost
 from instruction_candidate import create as create_instruction_candidate
 from run import Pricing, read_cases
 from source_adoption import PROTECTED_BUILD_NAMES, capture_source_candidate, retain_parent_executables
+from source_candidate_assessment import (
+    assessment_revision_schema,
+    bind_generation_evidence,
+    generation_context,
+    load_source_candidate_assessment,
+    require_assessment_isolation,
+    require_novel_source_candidate,
+    validate_candidate_assessment_diagnostics,
+)
 from tool_candidate import create as create_tool_candidate
 from tool_candidate import validate_definition as validate_tool_definition
 from workflow_candidate import create as create_workflow_candidate
@@ -47,7 +57,10 @@ LINE_BUDGET_ROW = re.compile(r"^(\w+)\s+(\d+)\s+\(budget (\d+)\)$")
 DIAGNOSIS_VALIDATOR_TOOL = "validate-candidate"
 DIAGNOSIS_VALIDATOR_MODULES = (
     "instruction_candidate.py",
+    "source_adoption.py",
+    "source_candidate_assessment.py",
     "tool_candidate.py",
+    "trajectory_diagnostics.py",
     "workflow_candidate.py",
 )
 LINEAGE_SCHEMA_VERSION = 1
@@ -1133,6 +1146,7 @@ def write_diagnosis_validator(
     supported_audits: list[dict[str, Any]],
     failure_contrasts: list[dict[str, Any]],
     requested_candidate_kind: str,
+    candidate_assessment_diagnostics: dict[str, Any] | None = None,
 ) -> None:
     """Write the diagnosis node's completion verifier.
 
@@ -1147,7 +1161,13 @@ def write_diagnosis_validator(
     """
     for name in DIAGNOSIS_VALIDATOR_MODULES:
         (path.parent / name).write_bytes((Path(__file__).resolve().parent / name).read_bytes())
+    encoded_assessment = (
+        base64.b64encode(canonical_json(candidate_assessment_diagnostics)).decode("ascii")
+        if candidate_assessment_diagnostics is not None
+        else None
+    )
     script = f'''#!/usr/bin/python3
+import base64
 import json
 import pathlib
 import sys
@@ -1159,6 +1179,7 @@ from tool_candidate import create as create_tool_candidate
 from tool_candidate import validate_definition
 from workflow_candidate import create as create_workflow_candidate
 from workflow_candidate import validate_independent_audit
+from source_candidate_assessment import validate_revised_diagnosis
 
 identity = {identity!r}
 evidence_sha256 = {evidence_sha256!r}
@@ -1167,6 +1188,12 @@ supported_audits = {supported_audits!r}
 failure_contrasts = {failure_contrasts!r}
 expected_branch = {expected_candidate_branch(requested_candidate_kind)!r}
 automatic_selection = {requested_candidate_kind == "auto"!r}
+candidate_assessment_base64 = {encoded_assessment!r}
+candidate_assessment_diagnostics = (
+    json.loads(base64.b64decode(candidate_assessment_base64))
+    if candidate_assessment_base64 is not None
+    else None
+)
 program = {str(program)!r}
 
 findings = []
@@ -1233,6 +1260,7 @@ def require_failure_coverage(candidate, contrast):
 
 try:
     candidate = json.load(sys.stdin)
+    validate_revised_diagnosis(candidate, candidate_assessment_diagnostics)
     branch = candidate.get("branch") if isinstance(candidate, dict) else None
     if automatic_selection and branch not in (
         "implement-source", "configure-workflow", "insufficient-evidence"
@@ -1303,7 +1331,10 @@ def build_config(
     development_read_roots: list[Path],
     objective: str,
     requested_candidate_kind: str,
+    candidate_assessment_diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if candidate_assessment_diagnostics is not None:
+        validate_candidate_assessment_diagnostics(candidate_assessment_diagnostics)
     diagnosis_read_roots = [str(evidence.parent)]
     development_reads = [str(path) for path in [*source_metadata_roots, *development_read_roots]]
     implementation_read_roots = [str(candidate), *development_reads]
@@ -1364,6 +1395,18 @@ def build_config(
             "an evaluator change. A reasoning-effort difference without a workflow contrast establishes model "
             "capability rather than a Foe defect."
         )
+    assessment_instruction = (
+        "The supplied candidate_assessment_diagnostics describe an externally rejected source "
+        "candidate and the prior typed diagnosis that produced it. Contrast the verified patch "
+        "with every bounded failed verifier locus and final validation timeline. Cite the assessment "
+        "contrast, rejected candidate identity, prior diagnosis digest, every failed attempt, every "
+        "verifier-report digest, every locus digest, and all qualified success episode references in "
+        "assessment_revision. Choose retain when the prior mechanism remains supported, narrow when "
+        "only a qualified subset remains supported, replace when the contrast falsifies the mechanism, "
+        "or insufficient-evidence when the bounded evidence cannot distinguish those dispositions."
+        if candidate_assessment_diagnostics is not None
+        else None
+    )
     diagnosis = {
         "name": "diagnose-foe-from-trajectory-measurements",
         "instructions": {
@@ -1372,6 +1415,7 @@ def build_config(
             "evidence": "For a candidate-producing disposition, select one object from repeated_failure_contrasts and return its contrast_sha256 as failure_contrast_sha256. For every failed attempt, cite its episode identity, verifier-report digest, and every failure-locus digest in causal_contrast.failed, then explain that attempt's locus. State one shared mechanism that accounts for every cited locus. An insufficient-evidence disposition omits failure_contrast_sha256, may leave causal_contrast.failed empty, and explains the missing shared mechanism in causal_contrast.difference. Diagnose only one task-specific contrast. Do not combine failure profiles or tasks. Choose insufficient-evidence when the loci do not support one shared mechanism. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
             "sufficiency": sufficiency,
+            **({"candidate_assessment": assessment_instruction} if assessment_instruction else {}),
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block", DIAGNOSIS_VALIDATOR_TOOL],
@@ -1481,6 +1525,11 @@ def build_config(
                         "required": ["name", "description", "executable", "executable_sha256"],
                         "additionalProperties": False,
                     },
+                    **(
+                        {"assessment_revision": assessment_revision_schema()}
+                        if candidate_assessment_diagnostics is not None
+                        else {}
+                    ),
                 },
                 "required": [
                     "limitation",
@@ -1490,6 +1539,11 @@ def build_config(
                     "activation_path",
                     "preserved_controls",
                     "falsification_condition",
+                    *(
+                        ["assessment_revision"]
+                        if candidate_assessment_diagnostics is not None
+                        else []
+                    ),
                 ],
                 "additionalProperties": False,
             }
@@ -1739,6 +1793,11 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--foe", type=Path, required=True)
     answer.add_argument("--candidate", type=Path, required=True)
     answer.add_argument("--evidence", type=Path, required=True)
+    answer.add_argument(
+        "--candidate-assessment",
+        type=Path,
+        help="private evaluator-owned assessment of one rejected source candidate",
+    )
     answer.add_argument("--cases", type=Path, required=True)
     answer.add_argument("--model", default="openai-codex/gpt-5.6-sol")
     answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
@@ -1848,6 +1907,22 @@ def main(argv: list[str] | None = None) -> int:
         base_configuration = failed_base_configuration(evidence)
         supported_audits = supported_independent_audits(evidence, base_configuration)
         failure_contrasts = supported_failure_contrasts(evidence)
+        candidate_assessment_diagnostics = None
+        if args.candidate_assessment is not None:
+            if args.candidate_kind != "source-change":
+                raise ValueError(
+                    "candidate assessment feedback requires --candidate-kind source-change"
+                )
+            _, candidate_assessment_diagnostics = (
+                load_source_candidate_assessment(args.candidate_assessment)
+            )
+            if (
+                candidate_assessment_diagnostics["identities"]["parent_source_tree"]
+                != identity["source_tree"]
+            ):
+                raise ValueError(
+                    "candidate assessment parent source tree differs from the evaluated evidence"
+                )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"self-improvement: {error}", file=sys.stderr)
         return 2
@@ -1871,6 +1946,10 @@ def main(argv: list[str] | None = None) -> int:
         "token_limits": "measurement_only",
         "requested_candidate_kind": args.candidate_kind,
     }
+    if candidate_assessment_diagnostics is not None:
+        preview["candidate_assessment_diagnostics_identity"] = (
+            candidate_assessment_diagnostics["diagnostics_identity"]
+        )
     if validator_identity is not None:
         preview["candidate_validator"] = {"rust_toolchain": validator_identity}
     root, temporary = prepare_output_root(
@@ -1885,9 +1964,41 @@ def main(argv: list[str] | None = None) -> int:
     }
     cargo_target = prepare_validation_directories(candidate)
     source_metadata = git_metadata_root(candidate)
+    toolchain = cargo.parent.parent
+    rustup_home = toolchain.parent.parent if toolchain.parent.name == "toolchains" else None
+    development_read_roots = [
+        cargo_home,
+        *(path for path in [rustup_home] if path is not None),
+        *(path.resolve() for path in SYSTEM_DEVELOPMENT_READ_DIRS if path.is_dir()),
+    ]
+    if args.candidate_assessment is not None:
+        try:
+            require_assessment_isolation(
+                args.candidate_assessment,
+                root,
+                [candidate, source_metadata, *development_read_roots],
+            )
+        except ValueError as error:
+            print(f"self-improvement: {error}", file=sys.stderr)
+            if not args.confirm_spend:
+                remove_preview_validation_directories(
+                    candidate, existing_validation_directories
+                )
+            if temporary:
+                temporary.cleanup()
+            return 2
     write_candidate_check(check, candidate, cargo, cargo_home, cargo_target)
     episode_evidence = root / "trajectory-evidence.json"
-    episode_evidence.write_bytes(evidence.read_bytes())
+    if candidate_assessment_diagnostics is None:
+        episode_evidence.write_bytes(evidence.read_bytes())
+    else:
+        write_json(
+            episode_evidence,
+            {
+                "trajectory_diagnostics": json.loads(evidence.read_text(encoding="utf-8")),
+                "candidate_assessment_diagnostics": candidate_assessment_diagnostics,
+            },
+        )
     validator = root / "diagnosis-validator"
     write_diagnosis_validator(
         validator,
@@ -1898,15 +2009,9 @@ def main(argv: list[str] | None = None) -> int:
         supported_audits,
         failure_contrasts,
         args.candidate_kind,
+        candidate_assessment_diagnostics,
     )
-    toolchain = cargo.parent.parent
-    rustup_home = toolchain.parent.parent if toolchain.parent.name == "toolchains" else None
     execute_roots = [toolchain, cargo_home / "bin", cargo_target]
-    development_read_roots = [
-        cargo_home,
-        *(path for path in [rustup_home] if path is not None),
-        *(path.resolve() for path in SYSTEM_DEVELOPMENT_READ_DIRS if path.is_dir()),
-    ]
     program_document = build_config(
         candidate,
         episode_evidence,
@@ -1919,6 +2024,7 @@ def main(argv: list[str] | None = None) -> int:
         development_read_roots,
         args.objective,
         args.candidate_kind,
+        candidate_assessment_diagnostics,
     )
     program = root / "program.json"
     write_json(program, program_document)
@@ -2093,6 +2199,21 @@ def main(argv: list[str] | None = None) -> int:
             )
             retain_parent_executables(source_bundle, plan["program"])
             shutil.copy2(check, source_bundle / "candidate-check")
+            if candidate_assessment_diagnostics is not None:
+                if not isinstance(outcome_value, dict):
+                    raise ValueError(
+                        "assessment-guided source generation has no typed diagnosis"
+                    )
+                candidate_generation_context = generation_context(
+                    candidate_assessment_diagnostics,
+                    outcome_value,
+                    evidence_digest(evidence),
+                )
+                bind_generation_evidence(
+                    source_bundle,
+                    candidate_assessment_diagnostics,
+                    candidate_generation_context,
+                )
             verification_log, verification_seq = find_accepted_verification(
                 episode, "check"
             )
@@ -2114,6 +2235,9 @@ def main(argv: list[str] | None = None) -> int:
                 verification_seq,
                 "candidate-check",
                 execution_credential,
+            )
+            require_novel_source_candidate(
+                source_candidate, candidate_assessment_diagnostics
             )
             source_candidate["bundle"] = str(source_bundle.relative_to(root))
             source_candidate["lineage_status"] = "pending-external-evaluation"

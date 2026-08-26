@@ -487,6 +487,15 @@ tree as artifact evidence. Source evidence capture failure rejects the
 candidate and makes the runner exit unsuccessfully. Successful capture marks
 lineage as pending external evaluation.
 
+An assessment-guided source candidate also retains the bounded external
+assessment diagnostics and a canonical generation-context record. The context
+identifies the rejected source candidate, assessment contrast, revised typed
+diagnosis, disposition, trajectory evidence, and generation parent. Both
+files participate in the source-bundle identity and later adoption evidence.
+The source-candidate identity continues to cover only the base source tree and
+exact source entries. Capture rejects a generated identity that equals the
+externally rejected source-candidate identity.
+
 Instruction revisions and tool definitions can be retained as explicit
 proposals. The Terminal-Bench runner has no application path for either
 kind. Automatic selection therefore chooses only source changes, workflow

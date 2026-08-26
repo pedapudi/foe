@@ -98,6 +98,16 @@ sh_binary(
 )
 
 sh_binary(
+    name = "foe-source-candidate-assessment",
+    srcs = ["source_candidate_assessment.py"],
+    data = [
+        "source_adoption.py",
+        "trajectory_diagnostics.py",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
     name = "foe-capability-probes",
     srcs = ["run_capability_probes.py"],
     args = [
@@ -377,6 +387,7 @@ sh_binary(
         "instruction_candidate.py",
         "run.py",
         "source_adoption.py",
+        "source_candidate_assessment.py",
         "tool_candidate.py",
         "trajectory_diagnostics.py",
         "workflow_candidate.py",
@@ -411,6 +422,8 @@ sh_test(
         "run_self_improvement_test.py",
         "source_adoption.py",
         "source_adoption_test.py",
+        "source_candidate_assessment.py",
+        "source_candidate_assessment_test.py",
         "run_verifier_controls.py",
         "run_verifier_controls_test.py",
         "tool_candidate.py",

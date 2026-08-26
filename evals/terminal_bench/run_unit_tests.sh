@@ -13,6 +13,7 @@ python3 -m py_compile \
   instruction_candidate.py \
   run_self_improvement.py \
   source_adoption.py \
+  source_candidate_assessment.py \
   tool_candidate.py \
   run_verifier_controls.py \
   verifier_control_agent.py \
@@ -28,6 +29,7 @@ python3 -m unittest -v \
   instruction_candidate_test.py \
   run_self_improvement_test.py \
   source_adoption_test.py \
+  source_candidate_assessment_test.py \
   tool_candidate_test.py \
   run_test.py \
   run_verifier_controls_test.py \

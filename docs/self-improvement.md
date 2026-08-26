@@ -136,6 +136,54 @@ diagnosis verifier rejects a missing or substituted citation. The diagnosis
 returns insufficient evidence when the loci do not support one shared
 mechanism.
 
+An external source-candidate assessment can guide one later generation. The
+evaluator constructs the private assessment from the retained source bundle,
+a completed parent campaign, and a completed candidate campaign. The
+assessment binds the parent and candidate evaluations, source trees, source
+bundle, source candidate, and proposal program. Canonical SHA-256 identities
+cover each evaluator-owned object. The assessment also
+retains the prior typed diagnosis, exact candidate source entries and bytes,
+the private campaign and trial records, and each exact raw verifier report.
+
+The evaluator derives one bounded candidate-assessment diagnostics projection
+from the private assessment. The projection contains the prior typed
+diagnosis, the verified candidate patch, complete candidate failure loci, final
+validation timelines, and qualified parent and candidate success references.
+It contains no raw task text, task name, task checksum, numeric reward,
+campaign label, absolute artifact path, or unstructured grader prose. A
+normalized failure locus may carry its bounded location, assertion, and
+concise message.
+
+The projection is limited to 48 KiB. Construction rejects symbolic links,
+escaped paths, incomplete campaigns, errored or nonconformant trials, Boolean
+or nonfinite rewards, conflicting identities, and an incomplete source
+adoption set. A candidate failure is eligible only when every failed test has
+one unique bounded locus. Its final validation timelines must contain every
+selected result without omission or truncation.
+
+Supplying a private assessment does not add a workflow node. The existing
+trajectory tool node returns a document that contains both trajectory
+diagnostics and the validated assessment projection. Only the fresh diagnosis
+node follows that tool result. The implementation node still receives the
+task and typed diagnosis. The audit node still receives the task, diagnosis,
+and implementation handoff. Neither coding node has a read grant for the
+assessment files.
+
+A revised diagnosis cites the assessment contrast, rejected source-candidate
+identity, prior diagnosis digest, every failed attempt, every failed verifier,
+and every failure locus. It also cites every qualified parent and candidate
+success. Its disposition is `retain`, `narrow`, `replace`, or
+`insufficient-evidence`. The diagnosis verifier enforces those citations
+before source implementation can start.
+
+Source evidence for a later generation contains the bounded diagnostics and
+a canonical generation-context record. The context binds the revised
+diagnosis, disposition, assessment contrast, rejected candidate, trajectory
+evidence, and generation parent. These auxiliary files change the source
+bundle identity. The source-candidate identity remains a hash of the base
+tree and exact source entries. After source capture, the runner rejects a
+candidate whose source-candidate identity equals the rejected identity.
+
 An explicit request can produce an instruction-revision or tool-definition
 proposal. The Terminal-Bench runner cannot apply either kind to an evaluation
 program. Automatic selection excludes them until an application path can bind

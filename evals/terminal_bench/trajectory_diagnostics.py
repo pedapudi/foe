@@ -227,25 +227,14 @@ def require_confined_regular_file(path: Path, root: Path, label: str) -> Path:
     return resolved
 
 
-def verifier_feedback(
-    path: Path | None, *, artifact_root: Path | None = None
-) -> dict[str, Any] | None:
-    """Return bounded failure classes from Harbor's structured verifier report."""
-    if path is None:
-        return None
-    root = artifact_root if artifact_root is not None else path.parent
-    path = require_confined_regular_file(path, root, "Terminal-Bench result")
-    report_path = path.parent / "verifier" / "ctrf.json"
-    if not report_path.is_file():
-        return None
-    report_path = require_confined_regular_file(
-        report_path, root, "Terminal-Bench verifier report"
-    )
-    encoded = report_path.read_bytes()
+def verifier_feedback_from_bytes(
+    encoded: bytes, label: str = "verifier/ctrf.json"
+) -> dict[str, Any]:
+    """Return bounded failure classes from one retained CTRF document."""
     value = json.loads(encoded)
     results = value.get("results") if isinstance(value, dict) else None
     if not isinstance(results, dict):
-        raise ValueError(f"verifier report has no object `results`: {report_path}")
+        raise ValueError(f"verifier report has no object `results`: {label}")
     summary = results.get("summary")
     summary = summary if isinstance(summary, dict) else {}
     tests = results.get("tests")
@@ -326,6 +315,23 @@ def verifier_feedback(
             "ambiguous_failed_tests": ambiguous,
         },
     }
+
+
+def verifier_feedback(
+    path: Path | None, *, artifact_root: Path | None = None
+) -> dict[str, Any] | None:
+    """Return bounded failure classes from Harbor's structured verifier report."""
+    if path is None:
+        return None
+    root = artifact_root if artifact_root is not None else path.parent
+    path = require_confined_regular_file(path, root, "Terminal-Bench result")
+    report_path = path.parent / "verifier" / "ctrf.json"
+    if not report_path.is_file():
+        return None
+    report_path = require_confined_regular_file(
+        report_path, root, "Terminal-Bench verifier report"
+    )
+    return verifier_feedback_from_bytes(report_path.read_bytes(), str(report_path))
 
 
 def trial_facts(
