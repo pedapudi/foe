@@ -107,6 +107,9 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
     assert!(audit_program.instructions["role"].contains("every path changed by either episode"));
     assert!(audit_program.instructions["role"].contains("every supplied requirement"));
     assert!(audit_program.instructions["role"].contains("exact final artifacts"));
+    assert!(audit_program.instructions["role"].contains("align the complete final value"));
+    assert!(audit_program.instructions["role"].contains("every contiguous matching extension"));
+    assert!(audit_program.instructions["role"].contains("every interpretation consistent"));
     assert!(audit_program.instructions["role"].contains("last workspace write or executable call"));
     assert!(audit_program.instructions["role"].contains("exit zero without timing out"));
 }

@@ -719,6 +719,11 @@ exact final artifacts. Returned requirement text must be unique. The runtime
 rejects observations at or before the last write-capable result, and those
 before the last executable result. The last successful executable can itself be
 an observation. This forces the audit to recheck after repairs and commands.
+For requirements that measure how a final value matches supplied input, the
+audit derives the measured region by aligning the complete value to that input.
+The audit includes contiguous matches across intended structural boundaries.
+It tests every interpretation consistent with the task and inputs unless
+evidence establishes one interpretation uniquely.
 Unmet items must be surfaced as unresolved risks. This gate is structural: the
 independent audit remains responsible for faithful requirement decomposition
 and semantic interpretation of each observation.
