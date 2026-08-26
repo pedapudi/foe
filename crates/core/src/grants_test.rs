@@ -1,10 +1,17 @@
 use super::{RootReader, RootWriter};
 use crate::test_util::tmp;
 use crate::{CapError, Reader, Writer};
+use std::io::Read as _;
 use std::path::PathBuf;
 
 fn roots(dir: &std::path::Path) -> Vec<PathBuf> {
     vec![std::fs::canonicalize(dir).unwrap()]
+}
+
+fn read(reader: &RootReader, path: &std::path::Path) -> Result<Vec<u8>, CapError> {
+    let mut bytes = Vec::new();
+    reader.open(path)?.read_to_end(&mut bytes)?;
+    Ok(bytes)
 }
 
 /// docs/config.md `grants`: a read through a link that leaves every granted
@@ -17,7 +24,7 @@ fn a_link_that_leaves_every_root_reads_nothing_and_receives_no_write() {
     std::fs::write(outside.join("secret"), "s").unwrap();
     std::os::unix::fs::symlink(outside.join("secret"), inside.join("link")).unwrap();
     let reader = RootReader::new(roots(&inside)).unwrap();
-    assert!(reader.read(&inside.join("link")).is_err());
+    assert!(read(&reader, &inside.join("link")).is_err());
     let writer = RootWriter::new(roots(&inside)).unwrap();
     writer.write(&inside.join("link"), b"x").unwrap();
     assert_eq!(std::fs::read(outside.join("secret")).unwrap(), b"s", "the link's target is untouched");
@@ -30,7 +37,7 @@ fn relative_paths_resolve_against_the_first_root() {
     let dir = tmp("grants-rel");
     std::fs::write(dir.join("a.txt"), "a").unwrap();
     let reader = RootReader::new(roots(&dir)).unwrap();
-    assert_eq!(reader.read(std::path::Path::new("a.txt")).unwrap(), b"a");
+    assert_eq!(read(&reader, std::path::Path::new("a.txt")).unwrap(), b"a");
     assert!(reader.metadata(std::path::Path::new("../")).is_err());
 }
 
@@ -81,12 +88,12 @@ fn replacing_a_directory_component_with_a_link_redirects_nothing() {
     std::fs::write(outside.join("value"), "outside").unwrap();
     let reader = RootReader::new(roots(&inside)).unwrap();
     let writer = RootWriter::new(roots(&inside)).unwrap();
-    assert_eq!(reader.read(&slot.join("value")).unwrap(), b"inside");
+    assert_eq!(read(&reader, &slot.join("value")).unwrap(), b"inside");
 
     std::fs::rename(&slot, inside.join("held")).unwrap();
     std::os::unix::fs::symlink(&outside, &slot).unwrap();
 
-    assert!(reader.read(&slot.join("value")).is_err(), "a read must not follow the link out of the root");
+    assert!(read(&reader, &slot.join("value")).is_err(), "a read must not follow the link out of the root");
     assert!(reader.metadata(&slot).is_err());
     assert!(writer.write(&slot.join("value"), b"changed").is_err());
     assert_eq!(std::fs::read(outside.join("value")).unwrap(), b"outside", "nothing outside the root was written");
@@ -102,4 +109,24 @@ fn metadata_answers_for_a_directory_inside_the_roots() {
     assert!(reader.metadata(&dir.join("sub")).unwrap().is_dir());
     assert!(reader.metadata(&dir).unwrap().is_dir());
     assert!(reader.metadata(&dir.join("absent")).is_err());
+}
+
+/// docs/tools.md `grep`: directory enumeration remains attached to the root
+/// descriptor when the pathname that originally named the root is replaced.
+#[test]
+fn directory_enumeration_cannot_be_redirected_after_the_root_opens() {
+    let inside = tmp("grants-enumerate-inside");
+    let outside = tmp("grants-enumerate-outside");
+    std::fs::write(inside.join("safe.txt"), "safe").unwrap();
+    std::fs::write(outside.join("secret.txt"), "secret").unwrap();
+    let reader = RootReader::new(roots(&inside)).unwrap();
+
+    let held = inside.with_extension("held");
+    std::fs::rename(&inside, &held).unwrap();
+    std::os::unix::fs::symlink(&outside, &inside).unwrap();
+
+    let entries = reader.read_dir(&inside).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].path, inside.join("safe.txt"));
+    assert_eq!(read(&reader, &entries[0].path).unwrap(), b"safe");
 }
