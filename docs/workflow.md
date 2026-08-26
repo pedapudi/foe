@@ -123,7 +123,7 @@ The ten remaining fields apply to a node of any kind.
 | `branches` | object | a choice point; see below |
 | `max_fires` | integer | how many times this node may fire in one episode; default 1 for an acyclic position, required for a node on a cycle |
 | `terminal` | boolean | completing this node completes the workflow; at least one node is terminal |
-| `empty` | any JSON | the value this node contributes when recovery skips it; without it, skip is not offered |
+| `empty` | any JSON | the value this node contributes when recovery skips it, or when this model node's child ends blocked or exhausted; without it, both paths remain strict |
 | `recovery` | object | widens what this node's recovery decision reads; its one key is `follows`, a list of further node names. See "Recovery" below |
 
 `branches` is the one key whose own keys an author invents: each is a label
@@ -196,6 +196,13 @@ happens within.
 A model node that feeds a tool node declares `done_when.returns` so that
 the tool node's bindings have a shape to bind to. A model node that feeds
 only other model nodes may leave the shape open; its text is its output.
+
+A model node that declares `empty` is optional. When its child ends blocked
+or exhausted, the node contributes `empty` and its successors continue. The
+`workflow/node-end` records the child's outcome as its error and records the
+declared value as its output. A failed child still enters recovery because a
+runtime failure supplies no usable partial result. A model node without
+`empty` retains the child's blocked or exhausted outcome as a failure.
 
 ### Choice points
 
@@ -371,7 +378,7 @@ proceed, and it is the second place agency lives.
 |---|---|
 | the node's tool call errored, timed out, or produced output that violated the tool's own schema | yes, except for settled failures |
 | the node's `verify` findings remain after `retries` | yes |
-| a model node ended `blocked` | yes, with the code |
+| a model node ended `blocked` or `exhausted` | no when it declares `empty`; otherwise yes, with the code or limit |
 | a model node ended `failed` | yes |
 | the workflow's `done_when` findings remain | yes, at the terminal node |
 | a tool node's bound argument is absent from its predecessor's value | yes |
@@ -444,6 +451,11 @@ applied action is the `workflow/recovery` event. A `skip` records the
 `empty` value as the node's output: successors name the recovery event as
 their input, and when the empty value carries a `branch` field the label it
 names is the one chosen.
+
+The blocked-or-exhausted substitution of a model node's `empty` value is
+mechanical. It consumes no recovery intervention and records no
+`workflow/recovery` event. Successors name that node's `workflow/node-end`
+as their input.
 
 The recovery request draws from the workflow episode's input and output
 allowances. Its output cap does not exceed the allowance that remains when

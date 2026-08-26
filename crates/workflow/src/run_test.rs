@@ -1,5 +1,6 @@
-use super::{run, WorkflowParams};
+use super::{empty_after_child, run, Trouble, WorkflowParams};
 use foe_config::config::resolve;
+use foe_config::workflow::Node;
 use foe_config::{Config, Effect, ToolSpec};
 use foe_core::budget::Pool;
 use foe_core::loop_::{Log, Params};
@@ -85,6 +86,40 @@ fn recover(args: Value) -> Vec<Chunk> {
         Chunk::ToolCallEnd { id: "tc_r".into() },
         Chunk::Done { stop: StopReason::Tool, usage: Usage { input: 10, output: 5, cache_read: 0 } },
     ]
+}
+
+/// docs/workflow.md "Recovery": `empty` makes a model node optional when
+/// its child ends blocked or exhausted. Other node kinds and failed child
+/// outcomes retain strict failure handling.
+#[test]
+fn only_blocked_or_exhausted_optional_model_children_contribute_empty() {
+    let node: Node = serde_json::from_value(json!({
+        "model": { "name": "optional", "instructions": { "r": "work" }, "tools": ["block"],
+                   "grants": { "read": ["/p"] }, "budget": { "model_calls": 2 } },
+        "empty": { "facts": [] }
+    }))
+    .unwrap();
+    let exhausted = Trouble::recoverable(
+        "exhausted: model_calls",
+        "the child spent its budget",
+        Outcome::Exhausted { limit: foe_log::ExhaustedLimit::ModelCalls },
+    );
+    assert_eq!(empty_after_child(&node, &exhausted), Some(json!({ "facts": [] })));
+    let blocked = Trouble::recoverable(
+        "blocked: goal-unreachable",
+        "no viable input",
+        Outcome::Blocked { code: BlockedCode::GoalUnreachable, message: "no viable input".into() },
+    );
+    assert!(empty_after_child(&node, &blocked).is_some());
+    let failed = Trouble::recoverable("failed", "transport", Outcome::Failed { error: "transport".into() });
+    assert!(empty_after_child(&node, &failed).is_none());
+    let refused = Trouble::settled(Outcome::Exhausted { limit: foe_log::ExhaustedLimit::Episodes });
+    assert!(empty_after_child(&node, &refused).is_none(), "a child that never started produced no partial value");
+    let mut required = node.clone();
+    required.empty = None;
+    assert!(empty_after_child(&required, &exhausted).is_none(), "strict propagation is the default");
+    let tool: Node = serde_json::from_value(json!({ "tool": "probe", "empty": [] })).unwrap();
+    assert!(empty_after_child(&tool, &exhausted).is_none());
 }
 
 struct Fixture {
