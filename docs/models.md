@@ -150,15 +150,19 @@ The convention file's shape depends on the credential kind.
 | kind | contents of `~/.config/foe/credentials/<provider>.json` |
 |---|---|
 | API key | `{ "api_key": "..." }` |
-| OAuth token | `{ "access": "...", "refresh": "...", "expires": N, "account_id": "..." }`, with `expires` in milliseconds since the Unix epoch |
+| OAuth token | `{ "access": "...", "refresh": "...", "expires": N, "account_id": "..." }`, with `expires` in milliseconds since the Unix epoch; `refresh` may be omitted |
 | Google credentials | `{ "credentials_file": "/abs/path", "project": "...", "location": "..." }`, pointing at the file Google's tools wrote |
 
 A file named explicitly by `api_key_file` may hold the bare key instead of
-the JSON object; trailing whitespace is removed. An OAuth token within
-sixty seconds of expiry is refreshed at the provider's token endpoint
-before the request, and the file is rewritten atomically with mode 0600. A
-Google access token is minted from the credentials file and cached in memory
-until sixty seconds before it expires; nothing is written back.
+the JSON object; trailing whitespace is removed. When an OAuth token file
+contains `refresh`, Foe renews the token at the provider's token endpoint after
+the access token enters the sixty-second refresh window. Foe rewrites the token
+file atomically with mode 0600. When an OAuth token file omits `refresh`, Foe
+cannot renew the access token. This access-only credential works until the
+access token enters the same refresh window. Foe then returns an error before
+sending the model request. A Google access token is minted from the credentials
+file and cached in memory until sixty seconds before it expires; nothing is
+written back.
 
 The credential file is the one file outside the grants that an episode may
 read. The sandbox adds it as a readable file so that a child episode, which
