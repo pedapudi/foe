@@ -549,13 +549,13 @@ class SourceAdoptionTest(unittest.TestCase):
                         "candidate-check",
                     )
 
-    def test_malformed_manifest_and_base_tree_fail_without_python_traceback(self):
+    def test_raw_bundle_cannot_claim_a_capture_checker_and_bad_base_has_no_traceback(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             repository, bundle, _, applied, runtime, _ = self.fixture(root)
             path = bundle / "source-candidate-manifest.json"
             value = json.loads(path.read_text())
-            value["unexpected"] = True
+            value["capture_checker_sha256"] = "sha256:" + "0" * 64
             path.write_bytes(canonical(value))
             with self.assertRaisesRegex(ValueError, "unknown field"):
                 verify_source_candidate(self.checker, bundle, repository, applied, runtime)

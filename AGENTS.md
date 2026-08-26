@@ -56,7 +56,8 @@ sentence on first reading.
   under 1,000, `context` under 500, `view` under 600, `cli` under 1,300,
   `telemetry` under 1,000, and `lineage` under 500. The viewer HTML,
   TypeScript, and CSS use the compressed bundle limit in `docs/design.md`.
-  `scripts/loc.sh` enforces every Rust line budget.
+  The external source-adoption evaluator stays under 750. `scripts/loc.sh`
+  enforces every Rust line budget.
 
 ## Commits
 

@@ -47,15 +47,6 @@ def source_bundle_path(path: Path) -> tuple[Path, dict[str, str] | None]:
         if not isinstance(value, str) or pattern.fullmatch(value) is None:
             raise ValueError(f"source candidate record {retained} is invalid")
         expected[checked] = value
-    capture_checker = candidate.get(
-        "capture_checker_sha256", candidate.get("checker_sha256")
-    )
-    if (
-        not isinstance(capture_checker, str)
-        or DIGEST.fullmatch(capture_checker) is None
-    ):
-        raise ValueError("source candidate record capture checker identity is invalid")
-    expected["capture_checker_sha256"] = capture_checker
     return resolved.absolute(), expected
 
 
@@ -92,8 +83,6 @@ def checked_output(checker: Path, arguments: list[str], fields: set[str]) -> dic
             raise ValueError(f"source candidate checker output {field} is invalid")
     if "base_source_tree" in value and SOURCE_TREE.fullmatch(value.get("base_source_tree", "")) is None:
         raise ValueError("source candidate checker output base_source_tree is invalid")
-    if "capture_checker_sha256" in value and DIGEST.fullmatch(value.get("capture_checker_sha256", "")) is None:
-        raise ValueError("source candidate checker output capture_checker_sha256 is invalid")
     if "evaluated_pair" in value:
         pair = value["evaluated_pair"]
         if (
@@ -104,7 +93,7 @@ def checked_output(checker: Path, arguments: list[str], fields: set[str]) -> dic
         ):
             raise ValueError("source candidate checker output evaluated_pair is invalid")
     if "provenance" in value and value["provenance"] != (
-        "source and binary digests computed and recorded as one evaluated pair"
+        "source and binary digests computed independently; no build attestation"
     ):
         raise ValueError("source candidate checker output provenance is invalid")
     return value
@@ -125,7 +114,6 @@ PREFLIGHT_FIELDS = {
     "source_candidate_identity",
     "base_source_tree",
     "parent_program_identity",
-    "capture_checker_sha256",
     "checker_sha256",
     "evaluated_pair",
     "provenance",

@@ -653,9 +653,12 @@ cannot consume the self-improvement episode.
 
 The candidate checker repeats formatting, workspace tests, Clippy, and line
 counts under the supplied Cargo cache. It rejects a line count above the
-recorded baseline ceiling. The coding child uses this checker as the line-count
-authority because the repository script reports only absolute limits. Its only
-generated-file write authority is the candidate's private
+recorded baseline ceiling. Automatic source candidates cannot change Cargo,
+Bazel, module, toolchain, package, or build-script metadata. The checker
+compares that metadata with the trusted baseline and rescans repository
+status, source bytes, and build metadata after validation. The coding child
+uses this checker as the line-count authority because the repository script
+reports only absolute limits. Its only generated-file write authority is the candidate's private
 `target/foe-self-improvement-check` directory. Read grants
 cover Cargo and Rustup metadata and installed C headers. Execute grants cover
 the pinned toolchain and candidate build directory. They also cover Cargo's
@@ -753,14 +756,16 @@ treating candidate-controlled build products as controller evidence.
 The argument may also name the `source-candidate-bundle` directory. Before
 provider spend, the trusted checker validates the manifest and its regular
 files. It compares the recorded Git objects, modes, bytes, and deletions with
-the clean candidate tree. It computes and records the source-tree and rebuilt
-binary digest pair. The pair is a recorded computation rather than a build
-attestation.
+the clean candidate tree. It computes and records the source-tree and supplied
+binary digest pair. The pair has no build attestation. A quality run can guide
+development. Promotion requires a controller-built binary from the accepted
+source tree.
 
 The controller rejects a source result whose recorded bundle, candidate,
-base-tree, parent-program, or capture-checker identity differs from the
-bundle. It also rejects proposal trees with unrelated verification episodes
-or unauthorized verifiers. A source-audit child must declare the accepted
+base-tree, or parent-program identity differs from the bundle. A raw bundle
+cannot claim a capture-checker identity. The campaign records the trusted
+checker it actually invokes. The controller also rejects proposal trees with
+unrelated verification episodes or unauthorized verifiers. A source-audit child must declare the accepted
 verifier tool. Its recorded verifier identity must equal the retained
 candidate checker's digest. A confirmed campaign copies the validated bundle
 into its run directory before provider spend. Later adoption uses this frozen

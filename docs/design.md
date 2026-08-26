@@ -956,6 +956,13 @@ to verify how one program state descends from another, and nothing in the
 runtime depends on it. A claim that gains a check must not buy room inside
 either contract. See [lineage-identity.md](lineage-identity.md).
 
+The external source-adoption evaluator stays under 750 Rust lines. It is
+budgeted apart because it validates Git objects, retained source bytes,
+external evaluation plans, and adoption evidence for a campaign. The runtime
+does not link it. Its separate ceiling keeps this production evaluator visible
+without charging campaign-specific Git and build checks to the general
+lineage library.
+
 Rust outside every line budget, in the built-in transport, is bounded by the
 size of the binary it compiles into. Continuous integration enforces every
 budget as a test.

@@ -146,10 +146,20 @@ root and committed tree identity. It separately records the trusted build root
 that contains the checker, along with runner and checker paths and digests. It
 validates proposal-tree provenance and verifier authorization before provider
 spend. Source evidence retains the generated candidate checker as a regular
-file. Its digest must equal the
-accepted result recorded by the source-audit child, whose program must declare
+file. Its digest must equal the accepted result recorded by the source-audit
+child, whose program must declare
 that checker. A confirmed campaign freezes the validated source bundle under
 its run directory and uses that copy for every later adoption check.
+
+Automatic source candidates cannot change Cargo, Bazel, module, toolchain,
+package, or build-script metadata. The candidate checker compares that
+metadata with its trusted baseline before validation. It rescans repository
+status, source bytes, and build metadata after all validation commands.
+
+The supplied candidate binary and source tree form an independently computed
+pair. Source evaluation does not attest that the binary was built from that
+tree. Its quality result can guide development. Promotion requires the
+controller to build the evaluated binary from the accepted source tree.
 
 The adapter retains the rebuilt binary's actual `foe plan --json` report.
 The plan form resolves both configured programs and the built-in coding

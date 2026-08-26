@@ -190,6 +190,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertEqual(implementation["tools"][:4], ["read", "grep", "edit", "bash"])
         self.assertEqual(audit["tools"][:4], ["read", "grep", "edit", "bash"])
+        self.assertIn("build-script metadata", implementation["instructions"]["build_metadata"])
+        self.assertIn("build-script metadata", audit["instructions"]["build_metadata"])
         self.assertEqual(diagnosis["tools"], ["block", DIAGNOSIS_VALIDATOR_TOOL])
         self.assertEqual(diagnosis["done_when"]["verify"], DIAGNOSIS_VALIDATOR_TOOL)
         self.assertEqual(diagnosis["done_when"]["retries"], 2)
@@ -604,7 +606,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "generated self-improvement program is invalid"):
                 validate_program(Path("/bin/false"), program)
 
-    def test_candidate_check_validates_the_baseline_and_preserves_an_existing_line_overage(self):
+    def test_candidate_check_preserves_line_overages_and_rejects_build_metadata_bypasses(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             candidate = root / "candidate"
@@ -619,6 +621,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "The value is one. Existing terminal-bench/reference.\n",
                 encoding="utf-8",
             )
+            manifest = candidate / "Cargo.toml"
+            lock = candidate / "Cargo.lock"
+            manifest.write_text("[workspace]\nmembers = []\n", encoding="utf-8")
+            lock.write_text("version = 4\n", encoding="utf-8")
             loc = candidate / "scripts/loc.sh"
             loc.write_text("#!/bin/sh\nprintf 'cli 2 (budget 1)\\n'\nexit 1\n", encoding="utf-8")
             subprocess.run(["git", "init", "--quiet", str(candidate)], check=True)
@@ -664,6 +670,16 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 [str(check)], text=True, capture_output=True, check=True
             )
             cargo_calls = calls.read_text(encoding="utf-8").splitlines()
+            manifest.write_text("[workspace]\nmembers = [\"dummy\"]\n", encoding="utf-8")
+            lock.write_text("version = 4\n", encoding="utf-8")
+            dummy_workspace = check_candidate(check, candidate)
+            dummy_workspace_calls = calls.read_text(encoding="utf-8").splitlines()
+            manifest.write_text("[workspace]\nmembers = []\n", encoding="utf-8")
+            cargo.write_text(
+                f"#!/bin/sh\nprintf 'rewritten by validation\\n' > {lock}\nexit 0\n",
+                encoding="utf-8",
+            )
+            cargo_rewrite = check_candidate(check, candidate)
         self.assertEqual(ceilings, {"cli": 2})
         self.assertTrue(baseline["accepted"], baseline)
         self.assertTrue(accepted["accepted"], accepted)
@@ -677,6 +693,17 @@ class SelfImprovementConfigTest(unittest.TestCase):
             "--skip session::tests::a_session_serves_a_granted_bind_port_across_calls",
         )
         self.assertEqual(cargo_calls[8], "test -p foe --bin foe -- --skip login::tests::")
+        self.assertFalse(dummy_workspace["accepted"])
+        self.assertEqual(dummy_workspace_calls, cargo_calls)
+        self.assertIn(
+            "cannot change build metadata: Cargo.toml",
+            " ".join(dummy_workspace["findings"]),
+        )
+        self.assertFalse(cargo_rewrite["accepted"])
+        self.assertIn(
+            "validation changed the source tree or build metadata",
+            " ".join(cargo_rewrite["findings"]),
+        )
 
     def test_episode_measurement_prices_each_model_route(self):
         with tempfile.TemporaryDirectory() as directory:

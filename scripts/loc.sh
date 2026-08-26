@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Nine budgets: 5,250 over the kernel, which is log and core together — the
+# Ten budgets: 5,250 over the kernel, which is log and core together — the
 # log format, the loop, budgets, sandbox, and spawn, whose smallness is the
 # product claim; 1,400 over program, the other contract, which is the
 # program document, its resolution, and identity; 1,700
@@ -8,7 +8,8 @@
 # without touching the kernel; 1,000 over workflow; 500 over context; 600
 # over view; 1,300 over cli; 1,000
 # over telemetry; 500 over lineage, which reads finished evidence about how
-# program states relate and is part of neither contract. The kernel is budgeted apart
+# program states relate and is part of neither contract; and 750 over the
+# source-adoption evaluator used by external campaigns. The kernel is budgeted apart
 # from program because the kernel measures the machine and program measures the
 # data model; a document that gains a key must not buy room in the loop. The
 # viewer
@@ -46,5 +47,8 @@ telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 lineage=$(count lineage)
 printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
+source_adoption=$(grep -cvE '^\s*$|^\s*//' crates/lineage/examples/source_adoption.rs || true)
+printf '%-15s %6d  (budget 750)\n' source_adoption "$source_adoption"
 [ "$kernel" -le 5250 ] && [ "$program" -le 1400 ] && [ "$tools" -le 1700 ] && [ "$workflow" -le 1000 ] \
-  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]
+  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ] \
+  && [ "$lineage" -le 500 ] && [ "$source_adoption" -le 750 ]

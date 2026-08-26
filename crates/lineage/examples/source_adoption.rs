@@ -67,7 +67,6 @@ struct SourceManifest {
     verification_tool: String,
     verification_executable: String,
     verification_executable_sha256: String,
-    capture_checker_sha256: String,
     files: Vec<ManifestFile>,
 }
 
@@ -310,8 +309,6 @@ fn checked_manifest(bundle: &Path) -> Result<(SourceManifest, String), String> {
         .map_err(|e| e.to_string())?;
     foe_lineage::require_digest("source manifest parent_program_identity", &manifest.parent_program_identity)
         .map_err(|e| e.to_string())?;
-    foe_lineage::require_digest("source manifest capture_checker_sha256", &manifest.capture_checker_sha256)
-        .map_err(|e| e.to_string())?;
     parse_tree(&manifest.base_source_tree)?;
     require_manifest_path("source manifest parent_identity_document", &manifest.parent_identity_document)
         .map_err(|e| e.to_string())?;
@@ -460,7 +457,6 @@ fn capture(args: &[String]) -> Result<Value, String> {
         verification_tool,
         verification_executable: verifier.clone(),
         verification_executable_sha256: verifier_sha256,
-        capture_checker_sha256: checker_digest()?,
         files: walk_files(bundle, SOURCE_MANIFEST)?,
     };
     let bytes = canonical_bytes(&manifest)?;
@@ -545,10 +541,9 @@ fn preflight_value(bundle: &Path, source: &Path, applied: &str, runtime: &Path) 
         "source_candidate_identity": manifest.candidate_identity,
         "base_source_tree": manifest.base_source_tree,
         "parent_program_identity": manifest.parent_program_identity,
-        "capture_checker_sha256": manifest.capture_checker_sha256,
         "checker_sha256": checker_digest()?,
         "evaluated_pair": evaluated_pair(runtime, applied)?,
-        "provenance": "source and binary digests computed and recorded as one evaluated pair",
+        "provenance": "source and binary digests computed independently; no build attestation",
     }))
 }
 

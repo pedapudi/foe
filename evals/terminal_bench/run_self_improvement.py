@@ -39,7 +39,22 @@ AUDIT_SECONDS = 3_600
 SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + AUDIT_SECONDS
 LOOP_THRESHOLD = 8
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
-ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel.lock")
+PROTECTED_BUILD_NAMES = (
+    "BUILD",
+    "BUILD.bazel",
+    "Cargo.lock",
+    "Cargo.toml",
+    "MODULE.bazel",
+    "MODULE.bazel.lock",
+    "WORKSPACE",
+    "WORKSPACE.bazel",
+    "build.rs",
+    "package-lock.json",
+    "package.json",
+    "pnpm-lock.yaml",
+    "rust-toolchain",
+    "rust-toolchain.toml",
+)
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
 SYSTEM_DEVELOPMENT_READ_DIRS = (Path("/usr/include"), Path("/usr/local/include"))
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
@@ -611,10 +626,26 @@ def source_hashes(root: Path) -> dict[str, str]:
         for path in sorted((root / directory).rglob("*")):
             if path.is_file():
                 answer[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
-    for name in ALLOWED_ROOT_FILES:
-        path = root / name
-        if path.is_file():
-            answer[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return answer
+
+
+def build_metadata_hashes(root: Path) -> dict[str, str]:
+    """Hash tracked and untracked files that can change the trusted build graph."""
+    result = subprocess.run(
+        ["/usr/bin/git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        capture_output=True,
+        check=True,
+    )
+    answer = {}
+    for value in result.stdout.split(b"\0"):
+        if not value:
+            continue
+        name = value.decode("utf-8")
+        base = name.rsplit("/", 1)[-1]
+        if base in PROTECTED_BUILD_NAMES or base.endswith(".bzl"):
+            path = root / name
+            answer[name] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "absent"
     return answer
 
 
@@ -761,6 +792,7 @@ def git_metadata_root(candidate: Path) -> Path:
 
 def write_candidate_check(path: Path, candidate: Path, cargo: Path, cargo_home: Path, cargo_target: Path) -> None:
     baseline = source_hashes(candidate)
+    baseline_build_metadata = build_metadata_hashes(candidate)
     baseline_benchmark_identifiers = {
         name: (candidate / name).read_text(encoding="utf-8", errors="replace").count("terminal-bench/")
         for name in baseline
@@ -778,9 +810,10 @@ import sys
 
 root = pathlib.Path({str(candidate)!r})
 baseline = {baseline!r}
+baseline_build_metadata = {baseline_build_metadata!r}
 baseline_benchmark_identifiers = {baseline_benchmark_identifiers!r}
 allowed_directories = {ALLOWED_DIRECTORIES!r}
-allowed_root_files = {ALLOWED_ROOT_FILES!r}
+protected_build_names = {PROTECTED_BUILD_NAMES!r}
 cargo = {str(cargo)!r}
 cargo_home = {str(cargo_home)!r}
 cargo_target = {str(cargo_target)!r}
@@ -792,23 +825,48 @@ full_validation = baseline_validation or sys.argv[1:] == ["--full"]
 if sys.argv[1:] not in ([], ["--baseline"], ["--full"]):
     print("candidate checker accepts only --baseline or --full")
     raise SystemExit(0)
-current = {{}}
-for directory in allowed_directories:
-    for item in sorted((root / directory).rglob("*")):
-        if item.is_file():
-            current[item.relative_to(root).as_posix()] = hashlib.sha256(item.read_bytes()).hexdigest()
-for name in allowed_root_files:
-    item = root / name
-    if item.is_file():
-        current[name] = hashlib.sha256(item.read_bytes()).hexdigest()
+def source_hashes():
+    answer = {{}}
+    for directory in allowed_directories:
+        for item in sorted((root / directory).rglob("*")):
+            if item.is_file():
+                answer[item.relative_to(root).as_posix()] = hashlib.sha256(item.read_bytes()).hexdigest()
+    return answer
+
+def repository_status():
+    output = subprocess.run(
+        [
+            "/usr/bin/git", "status", "--porcelain=v1", "-z",
+            "--untracked-files=all", "--no-renames",
+        ],
+        cwd=root,
+        capture_output=True,
+        check=True,
+    ).stdout
+    return [value.decode("utf-8") for value in output.split(b"\\0") if value]
+
+def build_metadata_hashes():
+    listed = subprocess.run(
+        ["/usr/bin/git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        capture_output=True,
+        check=True,
+    ).stdout
+    answer = {{}}
+    for value in listed.split(b"\\0"):
+        if not value:
+            continue
+        name = value.decode("utf-8")
+        base = name.rsplit("/", 1)[-1]
+        if base in protected_build_names or base.endswith(".bzl"):
+            item = root / name
+            answer[name] = hashlib.sha256(item.read_bytes()).hexdigest() if item.is_file() else "absent"
+    return answer
+
+current = source_hashes()
 changed = sorted(name for name in set(baseline) | set(current) if baseline.get(name) != current.get(name))
-status = subprocess.run(
-    ["/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all"],
-    cwd=root,
-    text=True,
-    capture_output=True,
-    check=True,
-).stdout.splitlines()
+status = repository_status()
+current_build_metadata = build_metadata_hashes()
 all_changed = [line[3:] for line in status if len(line) > 3]
 findings = []
 if not baseline_validation:
@@ -821,6 +879,16 @@ if not baseline_validation:
         findings.append("the candidate contains no Rust regression test")
     if not any(name.startswith("docs/") and name.endswith(".md") for name in changed):
         findings.append("the candidate does not update an affected specification")
+    protected_changes = sorted(
+        name
+        for name in set(baseline_build_metadata) | set(current_build_metadata)
+        if baseline_build_metadata.get(name) != current_build_metadata.get(name)
+    )
+    if protected_changes:
+        findings.append(
+            "automatic source candidates cannot change build metadata: "
+            + ", ".join(protected_changes)
+        )
 for name in changed:
     item = root / name
     if not item.is_file():
@@ -924,6 +992,11 @@ if not findings:
         if result.returncode not in (0, 1):
             detail = result.stderr.strip() or f"exit status {{result.returncode}}"
             findings.append("candidate line-budget check failed: " + detail)
+    post_status = repository_status()
+    post_source = source_hashes()
+    post_build_metadata = build_metadata_hashes()
+    if post_status != status or post_source != current or post_build_metadata != current_build_metadata:
+        findings.append("candidate validation changed the source tree or build metadata")
 print("\\n".join(findings))
 '''
     path.write_text(script, encoding="utf-8")
@@ -1285,6 +1358,7 @@ def build_config(
         "instructions": {
             "role": "Implement the supplied typed diagnosis as a candidate for independent source audit.",
             "scope": "Inspect source before editing. Change runtime source, a regression test, and each affected specification. Preserve reconstructable logs, declared authority, typed outcomes, and explicit completion semantics.",
+            "build_metadata": "Do not change Cargo, Bazel, module, toolchain, package, or build-script metadata. Automatic source candidates preserve the trusted build graph.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Do not encode benchmark identifiers, fixture values, or grader rules. Refuse an intervention that changes only a built-in default overridden by the explicit evaluated program.",
             "validation": "Treat the diagnosis as a hypothesis that source and tests must support. Run the candidate check after implementation and use its findings to correct the candidate. Return a typed handoff for a fresh audit, including unresolved architectural risks. Use the check tool as the authority for baseline-relative line budgets because scripts/loc.sh alone cannot distinguish an existing overage from candidate growth.",
         },
@@ -1306,6 +1380,7 @@ def build_config(
             "evidence": "Treat the diagnosis and implementation handoff as unverified hypotheses. Inspect the current diff, the owning source, existing tests, and affected specifications. Reject a proposed mechanism whose source lifecycle cannot produce the claimed task-visible behavior.",
             "architecture": "Trace every proposed tool, authority, process, and mutable resource from creation through model-node return, workflow settlement, and external evaluation. Preserve existing default interfaces unless the source design and general task-quality evidence require a change.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Remove benchmark-specific behavior and refuse changes whose benefit depends on hidden evaluator knowledge.",
+            "build_metadata": "Reject and revert changes to Cargo, Bazel, module, toolchain, package, or build-script metadata.",
             "validation": "Run the candidate check after the final repair. Use its findings to continue until formatting, relevant tests, Clippy, scope, and baseline-relative line budgets pass. Report remaining semantic risks before the authoritative check.",
         },
         "tools": [*CODING_TOOLS, "check"],

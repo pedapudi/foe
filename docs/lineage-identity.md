@@ -181,7 +181,6 @@ A source artifact manifest has this canonical form:
   "verification_tool": "check",
   "verification_executable": "candidate-check",
   "verification_executable_sha256": "sha256:…",
-  "capture_checker_sha256": "sha256:…",
   "files": [
     {
       "path": "candidate-check",
@@ -477,8 +476,10 @@ The result records digests of both trusted lineage executables.
 The Terminal-Bench evaluation runner accepts source evidence explicitly.
 Before provider spend, the trusted source-adoption checker validates the
 source manifest and every retained file. It compares the manifest with the
-clean candidate tree and computes the source-tree and rebuilt-binary digest
-pair. This pair is a recorded computation. It is not a build attestation.
+clean candidate tree and computes the source-tree and supplied-binary digest
+pair. The pair records two independently supplied inputs and provides no
+build attestation. Promotion requires a controller-built binary from the
+accepted source tree.
 
 The evaluation command runs from an immutable controller checkout. Its
 runner and source checker are separate from the writable candidate checkout.
@@ -487,10 +488,12 @@ changes to lineage, log, program, Cargo, or Bazel files cannot alter the
 controller's judgment.
 
 When source evidence comes from a retained self-improvement result, preflight
-requires its source-bundle, source-candidate, base-tree, parent-program, and
-capture-checker identities to match the bundle. A confirmed campaign copies
-the validated bundle into its run directory before provider spend. It
-validates the copy and uses only that copy during adoption.
+requires its source-bundle, source-candidate, base-tree, and parent-program
+identities to match the bundle. A raw source bundle carries no capture-checker
+claim because the bundle cannot authenticate who created it. A confirmed
+campaign records the checker it actually invokes, copies the validated bundle
+into its run directory before provider spend, and uses only that copy during
+adoption.
 
 The adapter retains `foe plan --json` immediately before the first provider
 request. For the built-in workflow it supplies the same task, model,
@@ -507,8 +510,8 @@ must accept the resulting state. Adoption failure invalidates the assessed
 trial and makes the campaign exit unsuccessfully.
 
 `campaign.json` records the source-bundle, source-candidate, adoption,
-evidence, program, state, and parent identities. It records the capture and
-evaluation checker digests and the evaluated source and binary pair. Each
+evidence, program, state, and parent identities. It records the evaluation
+checker digest and the evaluated source and binary pair. Each
 task-specific program may have a distinct program identity. Transfer-task
 identity remains variable.
 
@@ -562,4 +565,9 @@ accepted:
 - an unrelated retained verifier that attempts to close the child verifier's
   authorization check;
 - the generated source-candidate target with its checker outside the
-  controller source root and inside the declared build-output root.
+  controller source root and inside the declared build-output root;
+- an automatic source candidate that changes a Cargo manifest or another
+  protected build file;
+- a validation command that rewrites `Cargo.lock` after the initial source
+  scan;
+- a raw source bundle that claims a capture-checker digest.
