@@ -254,7 +254,7 @@ def build_program(
     output_tokens: int | None,
     seconds: int,
     reasoning_effort: str,
-    service_tier: str = "priority",
+    service_tier: str = "default",
     environment_facts: str | None = None,
     completion_checker: str | None = None,
     diagnosis_model_name: str | None = None,

@@ -52,7 +52,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             "model": "gpt-5.6-sol",
             "provider": "openai-codex",
             "reasoning_effort": "low",
-            "service_tier": "priority",
+            "service_tier": "default",
         }
         retained_start_model = {
             **retained_plan_model,
@@ -89,7 +89,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(args.reasoning_effort, "low")
         self.assertEqual(args.diagnosis_model, "openai-codex/gpt-5.6-sol")
         self.assertEqual(args.diagnosis_reasoning_effort, "low")
-        self.assertEqual(args.service_tier, "priority")
+        self.assertEqual(args.service_tier, "default")
         self.assertIn("Task quality is the promotion metric", args.objective)
 
     def test_preview_does_not_create_the_requested_retained_directory(self):

@@ -61,7 +61,7 @@ class FoeAgent(BaseInstalledAgent):
         long_context_input_multiplier: float | str,
         long_context_output_multiplier: float | str,
         reasoning_effort: str = "low",
-        service_tier: str = "priority",
+        service_tier: str = "default",
         diagnosis_model: str | None = None,
         diagnosis_reasoning_effort: str = "high",
         diagnosis_model_calls: int | str = 20,
@@ -178,10 +178,6 @@ class FoeAgent(BaseInstalledAgent):
                 )
             if self._reasoning_effort != "low":
                 raise ValueError("the built-in workflow requires low primary reasoning")
-            if self._service_tier != "priority":
-                raise ValueError(
-                    "the built-in evaluation workflow requires priority service"
-                )
             if self._input_tokens is not None or self._output_tokens is not None:
                 raise ValueError("the built-in workflow owns its token allowances")
         super().__init__(*args, **kwargs)

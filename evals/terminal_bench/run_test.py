@@ -136,7 +136,11 @@ class CasesTest(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual(
-                built_in_program_failures(result, completion_checker=True),
+                built_in_program_failures(
+                    result,
+                    completion_checker=True,
+                    service_tier="priority",
+                ),
                 [],
             )
             program["workflow"]["nodes"]["audit-and-repair-task"]["model"][
@@ -174,6 +178,7 @@ class CasesTest(unittest.TestCase):
                 Path(directory),
                 built_in_workflow=True,
                 completion_checker=True,
+                service_tier="priority",
             )
             self.assertTrue(integrity["configuration_claim_valid"])
             self.assertEqual(integrity["built_in_audit_reasoning_effort"], "xhigh")
@@ -195,7 +200,11 @@ class CasesTest(unittest.TestCase):
             )
             self.assertIn(
                 "built-in profile implementation.verify: expected None, recorded 'check'",
-                built_in_program_failures(result, completion_checker=True),
+                built_in_program_failures(
+                    result,
+                    completion_checker=True,
+                    service_tier="priority",
+                ),
             )
             result.write_text(
                 json.dumps(
@@ -219,6 +228,7 @@ class CasesTest(unittest.TestCase):
                 Path(directory),
                 built_in_workflow=True,
                 completion_checker=True,
+                service_tier="priority",
             )
             self.assertFalse(integrity["configuration_claim_valid"])
             record = {
@@ -323,7 +333,7 @@ class CasesTest(unittest.TestCase):
         self.assertNotIn("input_tokens=120000", command)
         self.assertNotIn("output_tokens=20000", command)
         self.assertIn("input_per_million=4.0", command)
-        self.assertIn("service_tier=priority", command)
+        self.assertIn("service_tier=default", command)
         self.assertIn("credential_mode=mutable", command)
         self.assertIn("--install-only", command)
 

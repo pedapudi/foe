@@ -201,7 +201,7 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
 Equivalent targets end in `foe-verifier-fix-git` and
 `foe-verifier-large-scale-text-editing`. Additional targets cover
 `dna-assembly`, `git-multibranch`, and `gpt2-codegolf`. These targets use the
-`priority` service tier and low reasoning. They construct an adapter-owned
+standard service tier and low reasoning. They construct an adapter-owned
 single-episode program with the public checker as its completion verifier.
 
 Targets beginning with `foe-built-in-verifier-` invoke the coding workflow
@@ -227,7 +227,7 @@ Every `foe-verifier-` suffix has a corresponding
 runner-defined diagnosis, escalation, workflow candidates, and hard token
 allowances. They require `openai-codex/gpt-5.6-sol`, because the built-in
 workflow supplies the evaluated low-to-high reasoning policy for that model.
-They also require the `priority` service tier. The binary owns both model
+They use the runner's selected service tier. The binary owns both model
 stages and their call backstops. The adapter retains the exact command-line
 arguments in `foe-invocation.json`. The
 adapter-generated execution path retains its resolved input in
@@ -334,11 +334,11 @@ time allowance ends. [`cases.json`](cases.json) records each multiplier's
 base timeout from the pinned task metadata.
 
 The default route is `openai-codex/gpt-5.6-sol` with low reasoning effort.
-Every model node requests the `priority` service tier by default. OpenAI calls
-this setting Fast mode. The documented target is 1.5 times Standard speed, and
-GPT-5.6 consumes 2.5 times the Standard ChatGPT credits. The runner records
-the requested tier and credit multiplier beside its token-derived cost
-estimate. Use `--service-tier default` for a Standard run. See the
+Every model node requests the standard service tier by default. The runner
+records the requested tier and credit multiplier beside its token-derived cost
+estimate. Use `--service-tier priority` to request Fast mode. OpenAI documents
+Fast mode as targeting 1.5 times Standard speed while GPT-5.6 consumes 2.5
+times the Standard ChatGPT credits. See the
 [OpenAI speed documentation](https://developers.openai.com/codex/speed).
 
 Luna and Terra are available for inexpensive development diagnosis:
@@ -638,7 +638,7 @@ feedback to the later diagnosis without participating in the source-candidate
 identity. The runner rejects a later source candidate whose identity equals
 the rejected source candidate.
 
-The runner emits a version 3 program. Its default service tier is `priority`
+The runner emits a version 3 program. Its default service tier is `default`
 for diagnosis, implementation, and source audit. The model blocks explicitly
 name the credential file from Foe's per-provider convention under the passwd
 home directory. The retained plan and `episode/start.program` therefore carry
@@ -850,7 +850,7 @@ bazel run //evals/terminal_bench:foe-source-candidate -- \
   --source-adoption /absolute/path/to/self-improvement/result.json \
   --controller-bazel /absolute/path/to/bazel \
   --built-in-workflow \
-  --service-tier priority \
+  --service-tier default \
   --confirm-spend
 ```
 

@@ -634,7 +634,7 @@ def harbor_command(
     credential_mode: str = "mutable",
     model: str,
     reasoning_effort: str,
-    service_tier: str = "priority",
+    service_tier: str = "default",
     diagnosis_model: str | None,
     diagnosis_reasoning_effort: str,
     diagnosis_model_calls: int,
@@ -657,8 +657,6 @@ def harbor_command(
             )
         if reasoning_effort != "low":
             raise ValueError("the built-in workflow requires low primary reasoning")
-        if service_tier != "priority":
-            raise ValueError("the built-in evaluation workflow requires priority service")
         if any(
             stage_enabled
             for stage_enabled in (
@@ -771,6 +769,7 @@ def built_in_program_failures(
     result_path: Path,
     *,
     completion_checker: bool,
+    service_tier: str,
 ) -> list[str]:
     """Validate the resolved built-in workflow recorded by one trial."""
     episode_path = result_path.parent / "agent" / "foe-episode" / "episode.jsonl"
@@ -831,7 +830,7 @@ def built_in_program_failures(
         ),
         "audit.verify": mapping(audit_program.get("done_when")).get("verify"),
     }
-    sol_low = ("openai-codex", "gpt-5.6-sol", "low", "priority")
+    sol_low = ("openai-codex", "gpt-5.6-sol", "low", service_tier)
     expected = {
         "root.name": "coding",
         "root.model": sol_low,
@@ -855,13 +854,13 @@ def built_in_program_failures(
         len(audit_model) == 4
         and audit_model[0:2] == ("openai-codex", "gpt-5.6-sol")
         and audit_model[2] in REASONING_EFFORTS
-        and audit_model[3] == "priority"
+        and audit_model[3] == service_tier
     ):
         expected["audit.model"] = (
             "openai-codex",
             "gpt-5.6-sol",
             "low|medium|high|xhigh",
-            "priority",
+            service_tier,
         )
     return [
         f"built-in profile {key}: expected {expected[key]!r}, recorded {value!r}"
@@ -896,6 +895,7 @@ def read_job_integrity(
     *,
     built_in_workflow: bool | None = None,
     completion_checker: bool = False,
+    service_tier: str = "default",
 ) -> dict[str, list[str]]:
     """Record runtime, trace, and resource diagnostics beside task quality."""
     infrastructure_failures = []
@@ -958,6 +958,7 @@ def read_job_integrity(
                 for failure in built_in_program_failures(
                     path,
                     completion_checker=completion_checker,
+                    service_tier=service_tier,
                 )
             )
             try:
@@ -1062,6 +1063,7 @@ def task_record(
     install_only: bool,
     built_in_workflow: bool,
     completion_checker: bool,
+    service_tier: str,
     worker: int,
     execution_group: str,
     credential_mode: str,
@@ -1098,6 +1100,7 @@ def task_record(
                     run_dir / task.name,
                     built_in_workflow=built_in_workflow,
                     completion_checker=completion_checker,
+                    service_tier=service_tier,
                 )
             )
             if source_adoption_path is not None:
@@ -1174,7 +1177,7 @@ def parser() -> argparse.ArgumentParser:
         help="maximum assessed tasks to run at once",
     )
     answer.add_argument("--model", default=DEFAULT_MODEL)
-    answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
+    answer.add_argument("--service-tier", choices=("default", "priority"), default="default")
     answer.add_argument(
         "--reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
@@ -1257,8 +1260,6 @@ def main(argv: list[str] | None = None) -> int:
                 )
             if args.reasoning_effort != "low":
                 raise ValueError("--built-in-workflow requires --reasoning-effort low")
-            if args.service_tier != "priority":
-                raise ValueError("--built-in-workflow requires --service-tier priority")
             if any(
                 stage_enabled
                 for stage_enabled in (
@@ -2124,6 +2125,7 @@ def main(argv: list[str] | None = None) -> int:
                                     install_only=args.install_only,
                                     built_in_workflow=args.built_in_workflow,
                                     completion_checker=completion_checker is not None,
+                                    service_tier=args.service_tier,
                                     worker=worker,
                                     execution_group=execution_group,
                                     credential_mode=credential_mode,
@@ -2231,6 +2233,7 @@ def main(argv: list[str] | None = None) -> int:
                         install_only=args.install_only,
                         built_in_workflow=args.built_in_workflow,
                         completion_checker=completion_checker is not None,
+                        service_tier=args.service_tier,
                         worker=started["worker"],
                         execution_group=started["execution_group"],
                         credential_mode=started["credential_mode"],

@@ -90,7 +90,7 @@ def write_json(path: Path, value: Any) -> None:
 def model_config(
     route: str,
     reasoning_effort: str,
-    service_tier: str = "priority",
+    service_tier: str = "default",
     credential_home: Path | None = None,
 ) -> dict[str, str]:
     provider, slash, model = route.partition("/")
@@ -1820,7 +1820,7 @@ def parser() -> argparse.ArgumentParser:
     )
     answer.add_argument("--cases", type=Path, required=True)
     answer.add_argument("--model", default="openai-codex/gpt-5.6-sol")
-    answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
+    answer.add_argument("--service-tier", choices=("default", "priority"), default="default")
     answer.add_argument(
         "--reasoning-effort",
         choices=("low", "medium", "high", "xhigh"),
