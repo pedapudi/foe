@@ -794,7 +794,7 @@ impl crate::Sessions for FakeSessions {
     fn stop(&self, _id: u64) -> Result<crate::SessionStatus, crate::CapError> {
         Err(crate::CapError::Invalid("unused".into()))
     }
-    fn stop_all(&self) -> Vec<crate::SessionStatus> {
+    fn settle(&self) -> Vec<crate::SessionSettlement> {
         Vec::new()
     }
     fn take_exited(&self) -> Vec<crate::SessionStatus> {

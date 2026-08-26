@@ -228,6 +228,7 @@ fn resolve_section(
         execute: roots("grants.execute", &s.grants.execute)?,
         spawn: s.grants.spawn.clone(),
         bind: s.grants.bind.clone(),
+        task_session: s.grants.task_session,
     };
     if let Some(parent) = parent {
         for (field, own, theirs) in [
@@ -245,6 +246,7 @@ fn resolve_section(
         if let Some(i) = grants.bind.iter().position(|port| !parent.bind.contains(port)) {
             return Err(invalid(key(&format!("grants.bind[{i}]")), "is a bind port of the parent program"));
         }
+        require(!grants.task_session || parent.task_session, key("grants.task_session"), "is granted by the parent")?;
     }
     let mut tool_defs = BTreeMap::new();
     for (name, def) in &s.tool_defs {
@@ -320,6 +322,7 @@ fn within_ceiling(prefix: &str, node: &Program, ceiling: &Program) -> Result<(),
     for (i, name) in node.grants.spawn.iter().enumerate() {
         bounded(ceiling.grants.spawn.contains(name), key(&format!("grants.spawn[{i}]")))?;
     }
+    bounded(!node.grants.task_session || ceiling.grants.task_session, key("grants.task_session"))?;
     // `max_episodes` and `max_concurrent` are absent here. The pool clamps
     // a child's episode share when it reserves, and `max_concurrent` counts
     // one episode's own direct children rather than the tree's, so neither

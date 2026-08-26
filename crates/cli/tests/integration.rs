@@ -602,6 +602,79 @@ fn child_events(dir: &Path, child_id: &str) -> Vec<Value> {
     std::fs::read_to_string(file).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
 }
 
+/// docs/tools.md `session`: a workflow child may release an explicitly
+/// authorized task-lifetime process to the enclosing task environment.
+/// The process and its output survive both child settlement and the root
+/// foe invocation.
+#[test]
+fn a_workflow_child_can_release_a_task_lifetime_session() {
+    struct ProcessGroup(i64);
+    impl Drop for ProcessGroup {
+        fn drop(&mut self) {
+            let _ = Command::new("/bin/kill").args(["-TERM", "--", &format!("-{}", self.0)]).status();
+        }
+    }
+
+    let dir = scratch("workflow-task-session");
+    let mut config = config(&dir, |c| {
+        c["tools"] = json!(["session", "block"]);
+        c["grants"] = json!({ "read": [dir], "write": [dir], "task_session": true });
+        c["budget"] = json!({ "model_calls": 4 });
+    });
+    config["workflow"] = json!({ "nodes": {
+        "serve": {
+            "model": {
+                "name": "serve", "instructions": { "role": "Start the service." },
+                "tools": ["session", "block"],
+                "grants": { "read": [dir], "write": [dir], "task_session": true },
+                "budget": { "model_calls": 2 }
+            },
+            "follows": ["task"], "terminal": true
+        }
+    }});
+    let args = serde_json::to_string(&json!({
+        "action": "start",
+        "command": "printf 'before\\n'; /bin/sleep 0.3; printf 'after\\n'; printf 'warning\\n' >&2; exec /bin/sleep 30",
+        "lifetime": "task"
+    }))
+    .unwrap();
+    let mut start = vec![text("starting")];
+    start.extend(call("tc_start", "session", &args));
+    start.push(done("tool"));
+    let finish = vec![text("service started"), done("end")];
+    let (events, code) = host_run(&dir, &config, vec![start, finish], |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+
+    let node = events.iter().find(|event| event["type"] == "workflow/node-start").unwrap();
+    let child_id = node["data"]["child_id"].as_str().unwrap();
+    let child = child_events(&dir, child_id);
+    let release = child
+        .iter()
+        .find(|event| {
+            event["type"] == "tool/result"
+                && event["data"]["synthetic"] == true
+                && event["data"]["value"]["disposition"] == "released_to_task_environment"
+        })
+        .expect("child settlement recorded the task-environment release");
+    let pid = release["data"]["value"]["pid"].as_u64().unwrap();
+    let process_group = release["data"]["value"]["process_group"].as_i64().unwrap();
+    let _cleanup = ProcessGroup(process_group);
+    assert_eq!(pid as i64, process_group);
+    assert!(Path::new(&format!("/proc/{pid}")).exists(), "the process survived the root foe invocation");
+
+    let spill = dir.join("log/children").join(child_id).join("spill");
+    let outputs: Vec<_> = std::fs::read_dir(spill).unwrap().flatten().map(|entry| entry.path()).collect();
+    let stdout = outputs.iter().find(|path| path.extension().is_some_and(|ext| ext == "stdout")).unwrap();
+    let stderr = outputs.iter().find(|path| path.extension().is_some_and(|ext| ext == "stderr")).unwrap();
+    let continued = (0..100).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::fs::read_to_string(stdout).is_ok_and(|text| text == "before\nafter\n")
+            && std::fs::read_to_string(stderr).is_ok_and(|text| text == "warning\n")
+    });
+    assert!(continued, "stdout and stderr remained writable after child settlement and foe exit");
+    assert_eq!(child.last().unwrap()["type"], "episode/end");
+}
+
 /// docs/design.md "The command line": an accepted implementation cannot
 /// skip the independent audit. The audit fires, its authoritative verifier
 /// evidence is retained in its child log, and its checked value completes.

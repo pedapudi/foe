@@ -257,8 +257,12 @@ the episode was interrupted receives a result with `synthetic: true` and
 output length limit is `is_error: true` with `synthetic: false`, because the
 runtime produced that result in the ordinary course of the step. At episode
 settlement the runtime also writes one result with `synthetic: true` for
-each process session it stopped: the ordinary result of the implicit stop,
-whose `call_id` names no call and which therefore closes nothing; see
+each surviving process session. An episode-lifetime result records the
+implicit stop. A task-lifetime result records that the process group had a
+live member when ownership passed to the enclosing task
+environment. The group leader may already have exited. The result carries
+`lifetime: "task"`, `disposition: "released_to_task_environment"`, `pid`,
+and `process_group`. Its `call_id` names no call, so it closes nothing; see
 [Open obligations](#open-obligations).
 
 `tool/rendering-archive` — implemented. The turn budget shortened one tool
@@ -615,9 +619,9 @@ message given up on. An undelivered message may therefore stand at
 
 One closing-shaped event is exempt from the first rule: a `tool/result`
 with `synthetic: true` whose call id names no call closes nothing and
-opens nothing. It is the runtime's account of work it settled itself — the
-implicit stop of a process session surviving at settlement — and only the
-runtime writes synthetic results. The second rule still binds it: a call
+opens nothing. It is the runtime's account of work it settled itself: the
+implicit stop or task-environment release of a process session surviving at
+settlement. Only the runtime writes synthetic results. The second rule still binds it: a call
 already closed cannot be closed again.
 
 A log that stops without `episode/end` is a different record from a log

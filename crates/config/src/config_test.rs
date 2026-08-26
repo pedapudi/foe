@@ -232,6 +232,43 @@ fn a_childs_bind_ports_stay_within_its_parent() {
     assert!(rule.contains("parent program"));
 }
 
+/// docs/config.md `grants`: a child or workflow model node may hold task-
+/// session authority only when its containing program holds it.
+#[test]
+fn task_session_authority_only_narrows_downward() {
+    let root = tmp("config-task-session-authority");
+    let child = |root: &std::path::Path| {
+        json!({ "kid": {
+            "name": "kid", "instructions": {"role": "work"}, "tools": ["block"],
+            "grants": {"read": [root], "task_session": true}, "budget": {"model_calls": 1}
+        }})
+    };
+    let key = rejected(&root, |v| {
+        v["grants"]["spawn"] = json!(["kid"]);
+        v["programs"] = child(&root);
+    });
+    assert_eq!(key, "programs.kid.grants.task_session");
+
+    let key = rejected(&root, |v| {
+        v["workflow"] = json!({ "nodes": { "serve": {
+            "model": {
+                "name": "serve", "instructions": {"role": "work"}, "tools": ["block"],
+                "grants": {"read": [root], "task_session": true}, "budget": {"model_calls": 1}
+            },
+            "terminal": true
+        } } });
+    });
+    assert_eq!(key, "workflow.nodes.serve.model.grants.task_session");
+
+    let program = program_with(&root, |v| {
+        v["grants"]["task_session"] = json!(true);
+        v["grants"]["spawn"] = json!(["kid"]);
+        v["programs"] = child(&root);
+    })
+    .unwrap();
+    assert!(program.programs["kid"].grants.task_session);
+}
+
 /// docs/workflow.md "Model nodes": a model node's program is validated like
 /// any other, so its `done_when.returns` is checked at its own dotted key.
 #[test]

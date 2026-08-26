@@ -584,6 +584,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         policy.clone(),
         log_dir.join("spill"),
         foe_code::SESSION_MAX_ALIVE,
+        program.grants.task_session,
     ));
     let host_tools = if host { protocol.tools(&program) } else { Vec::new() };
     let parent = start.parent_id.is_some().then_some(&protocol);
