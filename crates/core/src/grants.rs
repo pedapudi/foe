@@ -16,7 +16,7 @@
 //! process itself where no Landlock is available, which `sandbox.mode`
 //! `best-effort` permits and `off` requires.
 
-use crate::{CapError, Reader, Writer};
+use crate::{CapError, ReadEntry, Reader, Writer};
 use cap_std::ambient_authority;
 use cap_std::fs::{Dir, OpenOptions};
 use std::io::Write as _;
@@ -77,6 +77,19 @@ impl Reader for RootReader {
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError> {
         let (i, rest) = locate(&self.roots, path)?;
         Ok(self.dirs[i].open(rest)?.into_std().metadata()?)
+    }
+
+    fn read_dir(&self, path: &Path) -> Result<Vec<ReadEntry>, CapError> {
+        let (i, rest) = locate(&self.roots, path)?;
+        let dir = self.dirs[i].open_dir(rest)?;
+        dir.entries()?
+            .map(|entry| {
+                let entry = entry?;
+                let kind = entry.file_type()?;
+                Ok(ReadEntry { path: path.join(entry.file_name()), is_file: kind.is_file(), is_dir: kind.is_dir() })
+            })
+            .collect::<Result<_, std::io::Error>>()
+            .map_err(Into::into)
     }
 
     fn roots(&self) -> &[PathBuf] {

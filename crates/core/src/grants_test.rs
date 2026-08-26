@@ -103,3 +103,23 @@ fn metadata_answers_for_a_directory_inside_the_roots() {
     assert!(reader.metadata(&dir).unwrap().is_dir());
     assert!(reader.metadata(&dir.join("absent")).is_err());
 }
+
+/// docs/tools.md `grep`: directory enumeration remains attached to the root
+/// descriptor when the pathname that originally named the root is replaced.
+#[test]
+fn directory_enumeration_cannot_be_redirected_after_the_root_opens() {
+    let inside = tmp("grants-enumerate-inside");
+    let outside = tmp("grants-enumerate-outside");
+    std::fs::write(inside.join("safe.txt"), "safe").unwrap();
+    std::fs::write(outside.join("secret.txt"), "secret").unwrap();
+    let reader = RootReader::new(roots(&inside)).unwrap();
+
+    let held = inside.with_extension("held");
+    std::fs::rename(&inside, &held).unwrap();
+    std::os::unix::fs::symlink(&outside, &inside).unwrap();
+
+    let entries = reader.read_dir(&inside).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].path, inside.join("safe.txt"));
+    assert_eq!(reader.read(&entries[0].path).unwrap(), b"safe");
+}

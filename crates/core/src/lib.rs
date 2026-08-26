@@ -136,15 +136,25 @@ pub struct CallCtx {
     pub deadline: Option<std::time::Instant>,
 }
 
-/// Filesystem reads bounded to the read roots. Every path is canonicalized
-/// and checked before use; a path outside the roots is an error.
+/// Filesystem reads bounded to descriptor-held read roots. A path outside
+/// those roots is an error.
 pub trait Reader: Send + Sync {
     /// Opens a file through the descriptor-bound root. Streaming consumers
     /// use this operation so their memory does not grow with the file size.
     fn open(&self, path: &Path) -> Result<Box<dyn std::io::Read + Send>, CapError>;
     fn read(&self, path: &Path) -> Result<Vec<u8>, CapError>;
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError>;
+    /// Enumerates one directory through the same descriptor-bound root.
+    fn read_dir(&self, path: &Path) -> Result<Vec<ReadEntry>, CapError>;
     fn roots(&self) -> &[PathBuf];
+}
+
+/// One entry observed through a [`Reader`]. Other file types, including
+/// symbolic links, have both type fields false.
+pub struct ReadEntry {
+    pub path: PathBuf,
+    pub is_file: bool,
+    pub is_dir: bool,
 }
 
 /// Filesystem writes bounded to the write roots. `write` replaces the file

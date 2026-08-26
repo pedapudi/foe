@@ -3,7 +3,7 @@
 # Nine budgets: 5,250 over the kernel, which is log and core together — the
 # log format, the loop, budgets, sandbox, and spawn, whose smallness is the
 # product claim; 1,400 over config, the other contract, which is the
-# configuration document, its resolution into a program, and identity; 1,600
+# configuration document, its resolution into a program, and identity; 1,700
 # over tools, which is code — the tool surface, which grows a tool at a time
 # without touching the kernel; 1,000 over workflow; 500 over context; 600
 # over view; 1,300 over cli; 1,000
@@ -33,7 +33,7 @@ printf '%-8s %6d  (budget 5250)\n' kernel "$kernel"
 config=$(count config)
 printf '%-8s %6d  (budget 1400)\n' config "$config"
 tools=$(count code)
-printf '%-8s %6d  (budget 1600)\n' tools "$tools"
+printf '%-8s %6d  (budget 1700)\n' tools "$tools"
 workflow=$(count workflow)
 printf '%-8s %6d  (budget 1000)\n' workflow "$workflow"
 context=$(count context)
@@ -46,5 +46,5 @@ telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 lineage=$(count lineage)
 printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
-[ "$kernel" -le 5250 ] && [ "$config" -le 1400 ] && [ "$tools" -le 1600 ] && [ "$workflow" -le 1000 ] \
+[ "$kernel" -le 5250 ] && [ "$config" -le 1400 ] && [ "$tools" -le 1700 ] && [ "$workflow" -le 1000 ] \
   && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]

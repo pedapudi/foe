@@ -4,7 +4,7 @@
 //! executor doubles are unused when the `exec` feature is off.
 #![allow(dead_code)]
 
-use foe_core::{CallCtx, CapError, ExecRequest, ExecResult, Executor, Reader, Writer};
+use foe_core::{CallCtx, CapError, ExecRequest, ExecResult, Executor, ReadEntry, Reader, Writer};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -82,6 +82,16 @@ impl Reader for Bounded {
     }
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError> {
         Ok(std::fs::metadata(self.check(path)?)?)
+    }
+    fn read_dir(&self, path: &Path) -> Result<Vec<ReadEntry>, CapError> {
+        std::fs::read_dir(self.check(path)?)?
+            .map(|entry| {
+                let entry = entry?;
+                let kind = entry.file_type()?;
+                Ok(ReadEntry { path: path.join(entry.file_name()), is_file: kind.is_file(), is_dir: kind.is_dir() })
+            })
+            .collect::<Result<_, std::io::Error>>()
+            .map_err(Into::into)
     }
     fn roots(&self) -> &[PathBuf] {
         &self.roots

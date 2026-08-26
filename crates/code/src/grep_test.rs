@@ -1,5 +1,8 @@
 use super::*;
 use crate::testing::{ctx, Fixture};
+use foe_core::{CapError, ReadEntry, Reader};
+use std::path::Path;
+use std::sync::Arc;
 
 async fn grep(fx: &Fixture, args: serde_json::Value) -> ToolValue {
     let v = Grep::new().call(args, &ctx(fx)).await;
@@ -15,6 +18,36 @@ fn tree() -> Fixture {
     fx.write("build/out.rs", "fn alpha() {}\n");
     fx.write(".gitignore", "build/\n");
     fx
+}
+
+struct FailingReader {
+    inner: Arc<dyn Reader>,
+    fail_open: Option<PathBuf>,
+    fail_dir: Option<PathBuf>,
+}
+
+impl Reader for FailingReader {
+    fn open(&self, path: &Path) -> Result<Box<dyn std::io::Read + Send>, CapError> {
+        if self.fail_open.as_deref() == Some(path) {
+            return Err(CapError::Invalid(format!("{}: planted open failure", path.display())));
+        }
+        self.inner.open(path)
+    }
+    fn read(&self, path: &Path) -> Result<Vec<u8>, CapError> {
+        self.inner.read(path)
+    }
+    fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError> {
+        self.inner.metadata(path)
+    }
+    fn read_dir(&self, path: &Path) -> Result<Vec<ReadEntry>, CapError> {
+        if self.fail_dir.as_deref() == Some(path) {
+            return Err(CapError::Invalid(format!("{}: planted traversal failure", path.display())));
+        }
+        self.inner.read_dir(path)
+    }
+    fn roots(&self) -> &[PathBuf] {
+        self.inner.roots()
+    }
 }
 
 #[tokio::test]
@@ -38,6 +71,47 @@ async fn matches_are_sorted_by_path_then_line_and_honor_gitignore() {
     assert_eq!(v.value["complete"], true, "a search under the collection limit is complete");
     assert!(v.value["searched_files"].as_u64().unwrap() >= 3, "{}", v.value["searched_files"]);
     assert!(!r.contains("build/out.rs"));
+}
+
+/// docs/tools.md `grep`: failures in descriptor-backed enumeration and file
+/// opens make the result incomplete and remain distinguishable in its value.
+#[tokio::test]
+async fn traversal_and_open_failures_are_never_reported_as_complete() {
+    let fx = Fixture::new();
+    fx.write("good.txt", "needle\n");
+    fx.write("bad.txt", "needle\n");
+    let mut c = ctx(&fx);
+    let inner = c.reader.take().unwrap();
+    c.reader = Some(Arc::new(FailingReader { inner, fail_open: Some(fx.root().join("bad.txt")), fail_dir: None }));
+    let value = Grep::new().call(json!({"pattern": "needle"}), &c).await;
+    assert_eq!(value.value["matches"], 1);
+    assert_eq!(value.value["failed_files"], 1);
+    assert_eq!(value.value["traversal_failures"], 0);
+    assert_eq!(value.value["complete"], false);
+    assert!(value.value["first_failure"].as_str().unwrap().contains("planted open failure"));
+
+    let mut c = ctx(&fx);
+    let inner = c.reader.take().unwrap();
+    c.reader = Some(Arc::new(FailingReader { inner, fail_open: None, fail_dir: Some(fx.root()) }));
+    let value = Grep::new().call(json!({"pattern": "needle"}), &c).await;
+    assert_eq!(value.value["failed_files"], 0);
+    assert_eq!(value.value["traversal_failures"], 1);
+    assert_eq!(value.value["complete"], false);
+    assert!(value.rendered.unwrap().contains("planted traversal failure"));
+}
+
+#[tokio::test]
+async fn nested_ignore_files_apply_from_the_directory_that_contains_them() {
+    let fx = Fixture::new();
+    fx.write("src/.gitignore", "generated/\n");
+    fx.write("src/kept.txt", "needle\n");
+    fx.write("src/generated/ignored.txt", "needle\n");
+    fx.write("other/generated/kept.txt", "needle\n");
+    let value = grep(&fx, json!({"pattern": "needle"})).await;
+    let rendered = value.rendered.unwrap();
+    assert!(rendered.contains("src/kept.txt"), "{rendered}");
+    assert!(rendered.contains("other/generated/kept.txt"), "{rendered}");
+    assert!(!rendered.contains("src/generated/ignored.txt"), "{rendered}");
 }
 
 /// docs/tools.md `grep`: file content is streamed through the reader, so a
