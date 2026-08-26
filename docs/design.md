@@ -335,6 +335,14 @@ A program author declares a schema only when the output has a known shape.
 A verifier is a tool, so an author who can check a result without being able
 to describe its shape declares the verifier alone.
 
+In an agent-loop episode, a return schema that requires `learned` also
+requires evidence citations. Each claim cites the sequence of a successful
+tool result in the same episode. The runtime checks that the result exists
+and that its canonical value remains reconstructable. A configured verifier
+then judges semantic correctness. Without a verifier, semantic judgment
+remains with the program's model or a successor such as an independent
+audit.
+
 For a verifier without a return schema, a non-error ordinary call to the
 declared verifier also signals completion. The runtime invokes the verifier
 again after every tool effect in the turn has settled. Acceptance completes
@@ -724,13 +732,13 @@ validation observations, and unresolved risks. The audit receives that value
 and the original task in a fresh context. The shared directory carries the
 artifacts themselves.
 
-Both completion schemas accept one optional `learned` array of at most
-eight observations. Each observation is an object with a one-sentence
-`claim` and a `seq` citing the event in this episode's own log that is the
-claim's evidence. This is the standard exit through which an episode
-reports what it observed, for a launching parent to collect; foe itself
-acts on none of it. [config.md](config.md#done_when) states the convention
-for any program.
+Both completion schemas require one to eight `learned` observations. Each
+observation is a one-sentence claim and the sequence of a successful tool
+result in that episode's log. The runtime checks the citation and preserves
+the completed value as the typed handoff. The audit receives the
+implementation observations and independently reproduces or challenges the
+claims that bear on completion. [config.md](config.md#done_when) specifies
+the contract for any program.
 
 The model is the one named by `--model`, or the default model when `--model`
 is absent. The default model is the `model` block in

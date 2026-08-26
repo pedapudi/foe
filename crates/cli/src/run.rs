@@ -48,13 +48,13 @@ const BUILTIN_AUDIT_CALLS: u64 = 60;
 const BUILTIN_INSTRUCTION: &str = "Run the declared coding workflow against the task.";
 const BUILTIN_IMPLEMENTATION_INSTRUCTION: &str = "Implement the task in the current directory, which is the root \
 of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the \
-final change. In the completion value, report changed artifacts, commands and observed results, and unresolved \
-risks for an independent audit.";
+final change. Each tool result begins with its log sequence as `[seq N]`. Return at least one `learned` claim \
+whose `seq` cites such a result. Also report changed artifacts, validation, and unresolved risks.";
 const BUILTIN_AUDIT_INSTRUCTION: &str = "Independently determine whether the shared workspace satisfies the \
-original task. Treat the implementation episode's completion claim as unverified. Inspect the artifacts and run \
-checks that distinguish plausible incorrect implementations. Repair every defect you find. After the final edit, \
-run the strongest available task-relevant checks. Complete with the workspace in the state the task requires. \
-Report every path changed by either episode, including valid implementation changes that required no audit edit.";
+original task. Treat the implementation episode's completion claim and its cited `learned` observations as \
+unverified. Independently reproduce or challenge every claim relevant to completion. Repair every defect you find. \
+After the final edit, run the strongest task-relevant checks. Return at least one cited `learned` observation and \
+report every path changed by either episode, including valid implementation changes that required no audit edit.";
 const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
@@ -361,7 +361,7 @@ fn builtin_config(
                 "type": "array", "items": { "type": "string", "maxLength": 1000 }, "maxItems": 16
             },
             "learned": {
-                "type": "array", "maxItems": 8,
+                "type": "array", "minItems": 1, "maxItems": 8,
                 "items": {
                     "type": "object",
                     "properties": {
@@ -373,7 +373,7 @@ fn builtin_config(
                 }
             }
         },
-        "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
+        "required": ["summary", "changed_paths", "validation", "unresolved_risks", "learned"],
         "additionalProperties": false
     });
     let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });

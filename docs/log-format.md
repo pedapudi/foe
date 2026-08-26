@@ -235,6 +235,12 @@ the notice. The cut is applied before the event is appended, so the
 rendering in the log is the rendering every request carries, and no earlier
 event is ever rewritten. A reader that wants the whole result reads
 `value`.
+
+When `done_when.returns` requires `learned`, `rendered` starts with
+`[seq N]`, where N is this event's `seq`. A `learned` observation cites that
+number. The prefix is runtime metadata and lies outside any complete
+tool-owned rendering stored by `tool/rendering-archive`.
+
 `subject` is one line the tool writes after it has run, naming what the
 call acted on and what came of it. It differs from `rendered` in who reads
 it: `rendered` is what the model received, and `subject` is what a person
