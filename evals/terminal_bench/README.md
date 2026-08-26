@@ -55,13 +55,16 @@ trial. The original login file remains unchanged. The runner holds a file lock
 for the complete campaign so local campaigns cannot race a token refresh. The
 private copy stays outside Harbor job directories and Foe episode directories.
 
-A parallel pair receives two private, read-only access leases. Each lease
+A parallel pair receives two private access-only credentials. Each file
 contains the access token and expiry. The account identifier is included when
-present. Each lease omits the rotating refresh token. Foe fails locally if a
-lease reaches its sixty-second refresh margin. The adapter uses a distinct
-remote path for each lease, verifies the downloaded bytes, and removes the
-remote file after the trial. A changed lease invalidates the trial as
-infrastructure evidence.
+present. Each file omits the rotating refresh token. Its file mode prevents an
+accidental write. The task identity may own the file and can change its mode,
+so the mode does not provide an integrity boundary. Foe fails locally if the
+credential reaches its sixty-second refresh margin. The adapter uses a
+distinct remote path for each credential. It compares the bytes after the
+trial and removes the remote file. A changed credential invalidates the trial
+as infrastructure evidence. A task from untrusted provenance can read or
+transmit the access token during its validity window.
 
 The task container must receive the provider credential because Foe calls the
 model from that container. Use the pinned Terminal-Bench dataset for these
@@ -581,11 +584,14 @@ mode, credential expiry bounds, admission fallbacks, host resource snapshots,
 and each group's timestamps and makespan. Concurrent tasks retain distinct
 Harbor job names and result paths.
 
-An interrupt terminates every active Harbor process group before the runner
-writes the manifest. A process-start failure also terminates workers that
-already started. Completed and partially retained task records remain in the
-manifest. Tasks scheduled after the interrupted or failed execution receive an
-explicit `not_started` record. The runner exits unsuccessfully.
+The runner writes the manifest atomically after every execution group. A
+terminal interrupt terminates every active Harbor process group and removes
+the temporary access-only credentials. A process-start failure also terminates
+workers that already started. The runner updates the manifest during error and
+interrupt cleanup. Completed and partially retained task records remain in the
+manifest. A task whose Harbor process started retains that status even when its
+result is incomplete. Tasks whose processes did not start receive an explicit
+`not_started` record. The runner exits unsuccessfully.
 
 The adapter runs `foe plan` against the task-specific program inside the task
 container before its first provider request. An invalid program is a setup
