@@ -14,6 +14,8 @@ BASE = {
     "reasoning_effort": "low",
     "service_tier": "default",
     "token_policy": "measurement_only",
+    "workflow_ownership": "evaluation-runner",
+    "completion_governance": "model-report",
 }
 EXECUTABLE = "#!/bin/sh\nexit 0\n"
 

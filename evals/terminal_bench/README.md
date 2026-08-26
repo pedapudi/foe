@@ -558,6 +558,11 @@ restrict the diagnosis to `source-change`, `workflow-configuration`,
 the restriction before another model node can start. Every restricted run may
 return `insufficient-evidence`.
 
+Automatic selection chooses only `source-change`, `workflow-configuration`,
+or `insufficient-evidence`. The Terminal-Bench runner can apply and evaluate
+the first two kinds. An explicit instruction or tool run can retain a typed
+proposal, but no Terminal-Bench application path exists for that proposal.
+
 GPT-5.6 Sol with low reasoning produces the bounded diagnosis from the supplied
 digest. Its ordinary tools are `block` and the generated candidate validator,
 so it cannot inspect the candidate source or retained run directories. Its
@@ -577,13 +582,11 @@ implementation node's candidate check, and an abstention proposes nothing.
 The diagnosis chooses `implement-source` when failed and successful
 trajectories isolate an activated source mechanism. It chooses
 `configure-workflow` when an independent audit stage supplies a repeated
-quality gain. It chooses `revise-instructions` when the repeated causal
-difference is procedural guidance that one instruction section of the
-retained program document can carry. It chooses `define-tool` when one
-missing executable tool explains the gap. It chooses `insufficient-evidence`
-when the contrast identifies only model capability or requires semantic task
-knowledge absent from the log. That choice ends the workflow before a coding
-episode and sets `direct_implementation_required`.
+quality gain. An explicit run can choose `revise-instructions` or `define-tool`
+to retain a proposal for a future application mechanism. The diagnosis chooses
+`insufficient-evidence` when the contrast identifies only model capability or
+requires semantic task knowledge absent from the log. That choice ends the
+workflow before a coding episode and sets `direct_implementation_required`.
 
 When the diagnosis chooses `implement-source`, the configured coding model
 acts with `read`, `grep`, `edit`, and `bash`. The diagnosis node's branch edge
@@ -613,8 +616,8 @@ evidence.
 
 When the diagnosis chooses `revise-instructions`, the runner validates the
 typed revision against the retained `program.json`: the named section key
-resolves to exactly one instruction section, and the old text occurs exactly
-once in it. It writes `instruction-candidate.json` beside the retained
+resolves to one instruction section, and the old text occurs once in it. It
+writes `instruction-candidate.json` beside the retained
 result, with the same identity and evidence bindings a workflow candidate
 carries.
 
@@ -632,9 +635,12 @@ safety backstops. Each model child ends as blocked after eight consecutive
 identical tool calls or assistant turns.
 
 The diagnosis preserves the primary model route, reasoning effort, task
-allowances, token policy, service tier, and task set. Verified task quality is
-the promotion metric. Tokens, cost, cache use, latency, outcome accuracy, and
-conformance remain recorded diagnostics.
+allowances, token policy, service tier, and task set. A workflow candidate
+binds the primary model, reasoning effort, service tier, token policy,
+workflow owner, and completion-governance mode. Task identity remains variable
+so the evaluation can measure transfer. Verified task quality is the promotion
+metric. Tokens, cost, cache use, latency, outcome accuracy, and conformance
+remain recorded diagnostics.
 
 `--cargo` must name the pinned toolchain binary. A Rustup proxy is refused
 because its result depends on process environment and may download a
@@ -676,8 +682,9 @@ The runner validates the artifact after Foe exits. A valid artifact remains
 accepted when the episode exhausted its reporting budget after producing the
 files. A source candidate binds the base Git tree and every changed file
 digest. A workflow candidate binds the independent-audit setting and preserved
-controls. `direct_implementation_required` is true when deterministic
-validation finds an error or the workflow produces no candidate.
+controls. Candidate acceptance also requires successful lineage adoption.
+An adoption failure sets `direct_implementation_required` and makes the
+self-improvement process exit unsuccessfully.
 
 The candidate checker establishes repository conformance. Quality promotion
 uses only the unchanged task-owned Terminal-Bench grader, which runs outside
@@ -685,15 +692,15 @@ the candidate's authority. Tokens, estimated cost, cache use, and latency are
 recorded without deciding candidate acceptance.
 
 The runner records every accepted candidate as a lineage transition under
-the retained run directory's `lineage/` tree. It writes the evidence
-bundle — the episode tree, the adoption's state document as the child
-identity document, and an artifact manifest over the retained candidate
-files — and completes the bundle through the lineage crate's
-`build-bundle` binary, invoked with the pinned toolchain, which writes the
-adoption record and canonical manifest and prints the bundle's content
-address. The record cites the accepted diagnosis-validator result for a
-workflow, instruction, or tool candidate, and the accepted candidate-check
-result for a source candidate. The parent state is the evaluated
+the retained run directory's `lineage/` tree. Its evidence bundle contains
+the episode tree, child identity document, and artifact manifest. The runner
+completes the bundle through the lineage crate's `build-bundle` binary. The
+pinned toolchain invokes the binary, which writes the adoption record and
+canonical manifest and prints the bundle's content address. A source bundle
+also retains the bytes of each present changed file and records every
+deletion. The record cites the accepted diagnosis validator for a workflow,
+instruction, or tool candidate. It cites the accepted candidate check for a
+source candidate. The parent state is the evaluated
 program's identity document, retained from the resolved plan. The parent
 and child state documents land in `lineage/states/` and the bundle in
 `lineage/evidence/`, the layout the checker's resolvers read. The result's
@@ -713,8 +720,27 @@ bazel run //evals/terminal_bench:foe-development -- \
 ```
 
 The requested model, primary reasoning effort, service tier, and token policy
-must match the candidate. The current Foe source tree and binary must also
-match its recorded identity.
+must match the candidate. Workflow ownership and completion governance must
+also match. Task identity may vary. The current Foe source tree and binary
+must match the candidate's recorded identity.
+
+Apply an accepted source candidate from its clean worktree with:
+
+```sh
+bazel run //evals/terminal_bench:foe-development -- \
+  --source-adoption /absolute/path/to/self-improvement/result.json \
+  --service-tier priority \
+  --confirm-spend
+```
+
+The argument may also name the content-addressed evidence directory inside a
+retained `lineage/` tree. Before provider spend, the canonical ancestry
+checker validates the transition. The runner also verifies every retained
+changed-file digest against the clean candidate tree. The Bazel target
+supplies the rebuilt binary and the same source tree in one action graph.
+`campaign.json` records the adoption, evidence, candidate, and child program
+identities. It also records the source tree and runtime binary digest used for
+evaluation.
 
 Capability conversion still requires a separate benchmark rerun. Candidate
 promotion remains outside the workflow. The workflow mechanism and evidence

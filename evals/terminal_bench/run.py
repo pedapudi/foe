@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from source_adoption import verify_source_adoption
 from trajectory_diagnostics import diagnose_episode
 from workflow_candidate import require_matching_run as require_matching_candidate_run
 from workflow_candidate import validate as validate_workflow_candidate
@@ -1010,6 +1011,7 @@ def parser() -> argparse.ArgumentParser:
     answer = argparse.ArgumentParser(description=__doc__)
     answer.add_argument("--foe", type=Path, required=True)
     answer.add_argument("--source-root", type=Path, required=True)
+    answer.add_argument("--ancestry-checker", type=Path, required=True)
     answer.add_argument("--agent-module", type=Path, required=True)
     answer.add_argument("--trace-evaluator", type=Path, required=True)
     answer.add_argument("--cases", type=Path, required=True)
@@ -1051,6 +1053,11 @@ def parser() -> argparse.ArgumentParser:
         "--workflow-candidate",
         type=Path,
         help="identity-bound workflow configuration produced by self-improvement",
+    )
+    answer.add_argument(
+        "--source-adoption",
+        type=Path,
+        help="accepted source-change result or lineage evidence bundle applied to this Foe build",
     )
     answer.add_argument("--label", default="baseline")
     answer.add_argument("--jobs-dir", type=Path, default=Path("target/terminal-bench-jobs"))
@@ -1174,8 +1181,13 @@ def main(argv: list[str] | None = None) -> int:
             )
         if args.workflow_candidate is not None and args.install_only:
             raise ValueError("--workflow-candidate cannot be used with --install-only")
+        if args.source_adoption is not None and args.install_only:
+            raise ValueError("--source-adoption cannot be used with --install-only")
+        if args.source_adoption is not None and args.workflow_candidate is not None:
+            raise ValueError("--source-adoption and --workflow-candidate evaluate different candidates")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
+        ancestry_checker = args.ancestry_checker.resolve(strict=True)
         agent_module = args.agent_module.resolve(strict=True)
         trace_evaluator = args.trace_evaluator.resolve(strict=True)
         completion_checker = (
@@ -1206,12 +1218,31 @@ def main(argv: list[str] | None = None) -> int:
             if args.workflow_candidate is not None
             else None
         )
+        source_adoption_path = (
+            args.source_adoption.resolve(strict=True)
+            if args.source_adoption is not None
+            else None
+        )
         evaluated_source = None
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"terminal-bench eval: {error}", file=sys.stderr)
         return 2
 
     runtime_digest = digest(foe)
+    source_adoption = None
+    if source_adoption_path is not None:
+        try:
+            evaluated_source = source_tree(source_root)
+            source_adoption = verify_source_adoption(
+                source_adoption_path,
+                source_root,
+                evaluated_source,
+                f"sha256:{runtime_digest}",
+                ancestry_checker,
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            print(f"terminal-bench eval: {error}", file=sys.stderr)
+            return 2
     workflow_candidate = None
     if workflow_candidate_path is not None:
         try:
@@ -1230,6 +1261,14 @@ def main(argv: list[str] | None = None) -> int:
                 reasoning_effort=args.reasoning_effort,
                 service_tier=args.service_tier,
                 token_policy="hard" if args.hard_token_limits else "measurement_only",
+                workflow_ownership=(
+                    "foe-built-in" if args.built_in_workflow else "evaluation-runner"
+                ),
+                completion_governance=(
+                    "declared-verifier"
+                    if completion_checker is not None
+                    else "model-report"
+                ),
             )
             args.escalation_reasoning_effort = audit["reasoning_effort"]
             args.escalation_model_calls = audit["model_calls"]
@@ -1344,6 +1383,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"workflow      {workflow_candidate['digest']}")
     elif args.built_in_workflow:
         print("workflow      built-in implementation and terminal audit")
+    if source_adoption is not None:
+        print(f"adoption      {source_adoption['adoption_identity']}")
+        print(f"candidate     {source_adoption['candidate_identity']}")
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; workers {args.workers}")
     print("planning      calls      input     output  est. cost  seconds  task")
@@ -1521,6 +1563,7 @@ def main(argv: list[str] | None = None) -> int:
                 else None
             ),
             "workflow_candidate": workflow_candidate,
+            "source_adoption": source_adoption,
             "foe_sha256": runtime_digest,
             "evaluated_foe": (
                 {

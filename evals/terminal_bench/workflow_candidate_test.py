@@ -18,6 +18,8 @@ class WorkflowCandidateTest(unittest.TestCase):
                 "reasoning_effort": "low",
                 "service_tier": "default",
                 "token_policy": "measurement_only",
+                "workflow_ownership": "evaluation-runner",
+                "completion_governance": "model-report",
             },
             {"reasoning_effort": "high", "model_calls": 60},
         )
@@ -32,6 +34,8 @@ class WorkflowCandidateTest(unittest.TestCase):
                 reasoning_effort="low",
                 service_tier="default",
                 token_policy="measurement_only",
+                workflow_ownership="evaluation-runner",
+                completion_governance="model-report",
             ),
             {"reasoning_effort": "high", "model_calls": 60},
         )
@@ -49,6 +53,32 @@ class WorkflowCandidateTest(unittest.TestCase):
                 reasoning_effort="high",
                 service_tier="default",
                 token_policy="measurement_only",
+                workflow_ownership="evaluation-runner",
+                completion_governance="model-report",
+            )
+
+    def test_activation_controls_bind_ownership_and_completion_without_a_task(self):
+        candidate = self.fixture()
+        self.assertNotIn("task", candidate["base_configuration"])
+        with self.assertRaisesRegex(ValueError, "base configuration"):
+            require_matching_run(
+                candidate,
+                model="openai-codex/gpt-5.6-sol",
+                reasoning_effort="low",
+                service_tier="default",
+                token_policy="measurement_only",
+                workflow_ownership="foe-built-in",
+                completion_governance="model-report",
+            )
+        with self.assertRaisesRegex(ValueError, "base configuration"):
+            require_matching_run(
+                candidate,
+                model="openai-codex/gpt-5.6-sol",
+                reasoning_effort="low",
+                service_tier="default",
+                token_policy="measurement_only",
+                workflow_ownership="evaluation-runner",
+                completion_governance="declared-verifier",
             )
 
     def test_candidate_accepts_a_sha256_git_tree_identity(self):
@@ -63,6 +93,8 @@ class WorkflowCandidateTest(unittest.TestCase):
                 "reasoning_effort": "low",
                 "service_tier": "default",
                 "token_policy": "measurement_only",
+                "workflow_ownership": "evaluation-runner",
+                "completion_governance": "model-report",
             },
             {"reasoning_effort": "high", "model_calls": 60},
         )

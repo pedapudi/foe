@@ -13,6 +13,7 @@ from run_self_improvement import (
     build_config,
     candidate_outcome_value,
     candidate_artifact_identity,
+    candidate_disposition,
     canonical_json,
     check_baseline,
     check_candidate,
@@ -27,11 +28,13 @@ from run_self_improvement import (
     prepare_output_root,
     prepare_validation_directories,
     record_adoption,
+    require_successful_adoption,
     revised_program_document,
     remove_preview_validation_directories,
     rust_toolchain_identity,
     supported_independent_audits,
     supported_failure_contrasts,
+    source_adoption_artifacts,
     tool_candidate_from_outcome,
     validate_program,
     workflow_candidate_from_outcome,
@@ -126,6 +129,37 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotEqual(first["files"]["crates/core/src/lib.rs"], second["files"]["crates/core/src/lib.rs"])
         self.assertNotEqual(first["digest"], second["digest"])
 
+    def test_source_adoption_retains_every_present_changed_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            changed = root / "crates/core/src/lib.rs"
+            changed.parent.mkdir(parents=True)
+            changed.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
+            artifact = candidate_artifact_identity(
+                root,
+                "git-tree-sha1:" + "1" * 40,
+                ["crates/core/src/lib.rs", "docs/removed.md"],
+            )
+            retained, manifest = source_adoption_artifacts(root, artifact)
+            changed_bytes = changed.read_bytes()
+        self.assertEqual(retained["candidate-files/crates/core/src/lib.rs"], changed_bytes)
+        self.assertEqual(manifest["candidate_identity"], artifact["digest"])
+        self.assertEqual(manifest["files"][1], {"path": "docs/removed.md", "sha256": "absent"})
+
+    def test_lineage_adoption_failure_rejects_the_candidate(self):
+        def fail():
+            raise ValueError("injected bundle failure")
+
+        adoption, acceptance = require_successful_adoption(
+            {"accepted": True, "findings": [], "exit_code": 0}, fail
+        )
+        self.assertEqual(adoption, {"error": "injected bundle failure"})
+        self.assertFalse(acceptance["accepted"])
+        self.assertIn("lineage adoption failed: injected bundle failure", acceptance["findings"])
+        direct_implementation_required, process_exit = candidate_disposition(acceptance, 0)
+        self.assertTrue(direct_implementation_required)
+        self.assertNotEqual(process_exit, 0)
+
     def test_workflow_uses_typed_handoff_and_a_full_coding_surface(self):
         root = Path("/tmp/candidate")
         evidence = Path("/tmp/evidence.json")
@@ -163,8 +197,6 @@ class SelfImprovementConfigTest(unittest.TestCase):
             {
                 "implement-source": ["implement-runtime-improvement"],
                 "configure-workflow": [],
-                "revise-instructions": [],
-                "define-tool": [],
                 "insufficient-evidence": [],
             },
         )
@@ -240,8 +272,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("tool_definition", returns["properties"])
         self.assertNotIn("instruction_revision", returns["required"])
         self.assertNotIn("tool_definition", returns["required"])
-        self.assertIn("revise-instructions", diagnosis["instructions"]["sufficiency"])
-        self.assertIn("define-tool", diagnosis["instructions"]["sufficiency"])
+        self.assertIn("require application support", diagnosis["instructions"]["sufficiency"])
         self.assertIn("must not branch on", diagnosis["instructions"]["controls"])
         self.assertEqual(
             implementation["grants"]["write"],
@@ -372,6 +403,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "reasoning_effort": "low",
                 "service_tier": "default",
                 "token_policy": "measurement_only",
+                "workflow_ownership": "evaluation-runner",
+                "completion_governance": "model-report",
             },
         )
         self.assertEqual(audits, [{"reasoning_effort": "high", "model_calls": 60}])
@@ -430,6 +463,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "reasoning_effort": "low",
                 "service_tier": "default",
                 "token_policy": "measurement_only",
+                "workflow_ownership": "evaluation-runner",
+                "completion_governance": "model-report",
             }
             supported = [{"reasoning_effort": "high", "model_calls": 60}]
             candidate = workflow_candidate_from_outcome(
@@ -462,6 +497,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "reasoning_effort": "low",
                 "service_tier": "default",
                 "token_policy": "measurement_only",
+                "workflow_ownership": "evaluation-runner",
+                "completion_governance": "model-report",
             }
             documents = {
                 "program.json": {
@@ -519,6 +556,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "reasoning_effort": "low",
                 "service_tier": "default",
                 "token_policy": "measurement_only",
+                "workflow_ownership": "evaluation-runner",
+                "completion_governance": "model-report",
             }
             executable = "#!/bin/sh\nexit 0\n"
             definition = {
@@ -681,6 +720,8 @@ BASE_CONFIGURATION = {
     "reasoning_effort": "low",
     "service_tier": "default",
     "token_policy": "measurement_only",
+    "workflow_ownership": "evaluation-runner",
+    "completion_governance": "model-report",
 }
 EVIDENCE_SHA256 = "sha256:" + "3" * 64
 SUPPORTED_AUDIT = {"reasoning_effort": "high", "model_calls": 60}
@@ -823,6 +864,29 @@ class DiagnosisValidatorTest(unittest.TestCase):
                     "failure_contrast": FAILURE_CONTRAST,
                     "independent_audit": {"reasoning_effort": "xhigh", "model_calls": 120},
                 },
+                {"branch": "implement-source", "failure_contrast": FAILURE_CONTRAST},
+                {
+                    "branch": "implement-source",
+                    "failure_contrast": {
+                        **FAILURE_CONTRAST,
+                        "task": "terminal-bench/different-task",
+                    },
+                },
+                {"branch": "insufficient-evidence"},
+                {"branch": "unknown", "failure_contrast": FAILURE_CONTRAST},
+                {"branch": "implement-source"},
+            ]
+        )
+        self.assertEqual(judged[0], "")
+        self.assertIn("repeated successful", judged[1])
+        self.assertEqual(judged[2], "")
+        self.assertIn("one supported repeated failure contrast", judged[3])
+        self.assertEqual(judged[4], "")
+        self.assertIn("automatic selection permits only", judged[5])
+        self.assertIn("one supported repeated failure contrast", judged[6])
+
+        instructions = self.judgments(
+            [
                 {
                     "branch": "revise-instructions",
                     "failure_contrast": FAILURE_CONTRAST,
@@ -833,6 +897,14 @@ class DiagnosisValidatorTest(unittest.TestCase):
                     "failure_contrast": FAILURE_CONTRAST,
                     "instruction_revision": {**REVISION, "old_text": "absent text"},
                 },
+            ],
+            "instruction-revision",
+        )
+        self.assertEqual(instructions[0], "")
+        self.assertIn("exactly once", instructions[1])
+
+        tools = self.judgments(
+            [
                 {
                     "branch": "define-tool",
                     "failure_contrast": FAILURE_CONTRAST,
@@ -853,30 +925,11 @@ class DiagnosisValidatorTest(unittest.TestCase):
                         "executable_sha256": "sha256:" + "0" * 64,
                     },
                 },
-                {"branch": "implement-source", "failure_contrast": FAILURE_CONTRAST},
-                {
-                    "branch": "implement-source",
-                    "failure_contrast": {
-                        **FAILURE_CONTRAST,
-                        "task": "terminal-bench/different-task",
-                    },
-                },
-                {"branch": "insufficient-evidence"},
-                {"branch": "unknown", "failure_contrast": FAILURE_CONTRAST},
-                {"branch": "implement-source"},
-            ]
+            ],
+            "tool-definition",
         )
-        self.assertEqual(judged[0], "")
-        self.assertIn("repeated successful", judged[1])
-        self.assertEqual(judged[2], "")
-        self.assertIn("exactly once", judged[3])
-        self.assertEqual(judged[4], "")
-        self.assertIn("does not match the executable content", judged[5])
-        self.assertEqual(judged[6], "")
-        self.assertIn("one supported repeated failure contrast", judged[7])
-        self.assertEqual(judged[8], "")
-        self.assertIn("no supported candidate branch", judged[9])
-        self.assertIn("one supported repeated failure contrast", judged[10])
+        self.assertEqual(tools[0], "")
+        self.assertIn("does not match the executable content", tools[1])
 
 
 class LineageAdoptionTest(unittest.TestCase):
@@ -980,6 +1033,7 @@ class LineageAdoptionTest(unittest.TestCase):
             retained,
             tool,
             [str(self.build_bundle)],
+            [str(self.check_ancestry_binary)],
             artifacts=artifacts,
         )
 
@@ -1088,17 +1142,15 @@ class LineageAdoptionTest(unittest.TestCase):
             candidate = candidate_artifact_identity(
                 tree, EVALUATED_FOE["source_tree"], ["crates/core/src/lib.rs"]
             )
+            retained, artifacts = source_adoption_artifacts(tree, candidate)
             record = self.record(
                 root,
                 "source-change",
                 candidate,
-                {},
+                retained,
                 "check",
                 self.check_sha256,
-                artifacts=[
-                    {"path": name, "sha256": value}
-                    for name, value in sorted(candidate["files"].items())
-                ],
+                artifacts=artifacts,
             )
             state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
             self.assertEqual(
@@ -1107,7 +1159,35 @@ class LineageAdoptionTest(unittest.TestCase):
             )
             self.assertEqual(record["verification_log"], "episode/episode.jsonl")
             self.assertEqual(record["verification_seq"], 1)
+            bundle = Path(record["evidence_directory"])
+            self.assertEqual(
+                (bundle / "candidate-files/crates/core/src/lib.rs").read_bytes(),
+                changed.read_bytes(),
+            )
             self.check_ancestry(root, record)
+
+    def test_source_change_adoption_rejects_bytes_that_contradict_the_artifact_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tree = root / "tree"
+            changed = tree / "crates/core/src/lib.rs"
+            changed.parent.mkdir(parents=True)
+            changed.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
+            candidate = candidate_artifact_identity(
+                tree, EVALUATED_FOE["source_tree"], ["crates/core/src/lib.rs"]
+            )
+            retained, artifacts = source_adoption_artifacts(tree, candidate)
+            retained["candidate-files/crates/core/src/lib.rs"] = b"different\n"
+            with self.assertRaisesRegex(ValueError, "retained bytes with the changed-file digest"):
+                self.record(
+                    root,
+                    "source-change",
+                    candidate,
+                    retained,
+                    "check",
+                    self.check_sha256,
+                    artifacts=artifacts,
+                )
 
     def test_missing_verification_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:

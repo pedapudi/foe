@@ -90,6 +90,25 @@ def verify_evidence_identity(candidate: Path, binary: Path, evidence: Path) -> d
     return identity
 
 
+def evaluation_base_configuration(configuration: dict[str, Any]) -> dict[str, str | None] | None:
+    """Return the controls that determine candidate activation."""
+    implementation = configuration.get("implementation")
+    if not isinstance(implementation, dict):
+        return None
+    return {
+        "model": implementation.get("model"),
+        "reasoning_effort": implementation.get("reasoning_effort"),
+        "service_tier": configuration.get("service_tier"),
+        "token_policy": configuration.get("token_policy"),
+        "workflow_ownership": (
+            "foe-built-in" if configuration.get("built_in_workflow") is True else "evaluation-runner"
+        ),
+        "completion_governance": (
+            "declared-verifier" if "completion_verifier" in configuration else "model-report"
+        ),
+    }
+
+
 def failed_base_configuration(evidence: Path) -> dict[str, str]:
     """Return the one failed configuration a candidate must preserve."""
     report = json.loads(evidence.read_text(encoding="utf-8"))
@@ -111,15 +130,9 @@ def failed_base_configuration(evidence: Path) -> dict[str, str]:
             or "independent_audit" in configuration
         ):
             continue
-        implementation = configuration.get("implementation")
-        if not isinstance(implementation, dict):
+        candidate = evaluation_base_configuration(configuration)
+        if candidate is None:
             continue
-        candidate = {
-            "model": implementation.get("model"),
-            "reasoning_effort": implementation.get("reasoning_effort"),
-            "service_tier": configuration.get("service_tier"),
-            "token_policy": configuration.get("token_policy"),
-        }
         candidates[json.dumps(candidate, sort_keys=True)] = candidate
     if len(candidates) != 1:
         raise ValueError(
@@ -153,16 +166,8 @@ def supported_independent_audits(
             or not isinstance(configuration, dict)
         ):
             continue
-        implementation = configuration.get("implementation")
         audit = configuration.get("independent_audit")
-        observed_base = {
-            "model": implementation.get("model") if isinstance(implementation, dict) else None,
-            "reasoning_effort": (
-                implementation.get("reasoning_effort") if isinstance(implementation, dict) else None
-            ),
-            "service_tier": configuration.get("service_tier"),
-            "token_policy": configuration.get("token_policy"),
-        }
+        observed_base = evaluation_base_configuration(configuration)
         if observed_base != base_configuration or not isinstance(audit, dict):
             continue
         if audit.get("model") != base_configuration["model"]:
@@ -425,26 +430,28 @@ def record_adoption(
     retained: dict[str, bytes],
     verification_tool: str,
     bundle_builder: list[str],
+    ancestry_checker: list[str],
     builder_cwd: Path | None = None,
     builder_env: dict[str, str] | None = None,
-    artifacts: list[dict[str, str]] | None = None,
+    artifacts: Any = None,
 ) -> dict[str, Any]:
     """Record one accepted candidate as a lineage transition under `root`.
 
-    Writes the evidence bundle — the episode tree, the state document as
-    the child identity document, and the artifact manifest over the
-    retained candidate files — completes it through the lineage crate's
-    `build-bundle` binary, which writes the adoption record and canonical
-    manifest, and writes the parent and child state documents where the
-    checker's resolvers read them: `root/lineage/states/<hex>.json` by
-    state identity and `root/lineage/evidence/<hex>` by content address.
+    Writes an evidence bundle containing the episode tree, child identity
+    document, and artifact manifest over retained candidate files. It completes
+    the bundle through `build-bundle`, writes the state documents, and requires
+    the lineage ancestry checker to accept the resulting transition.
+    Resolver inputs live at `root/lineage/states/<hex>.json` by state identity
+    and `root/lineage/evidence/<hex>` by content address.
     """
     build = root / "lineage" / "bundle-build"
     shutil.copytree(episode, build / "episode")
     identity_bytes = canonical_json(state_document)
     (build / "child-identity.json").write_bytes(identity_bytes)
     for name, content in sorted(retained.items()):
-        (build / name).write_bytes(content)
+        retained_path = build / name
+        retained_path.parent.mkdir(parents=True, exist_ok=True)
+        retained_path.write_bytes(content)
     if artifacts is None:
         artifacts = [{"path": name, "sha256": digest_bytes(content)} for name, content in sorted(retained.items())]
     (build / "artifact-manifest.json").write_bytes(canonical_json(artifacts))
@@ -489,6 +496,18 @@ def record_adoption(
     child_state_identity = state_identity(child_identity, claim)
     child_state = states / (child_state_identity.removeprefix("sha256:") + ".json")
     write_json(child_state, {"identity_document": state_document, "program_lineage": claim})
+    checked = subprocess.run(
+        [*ancestry_checker, str(child_state), str(states), str(evidence_dir.parent)],
+        cwd=builder_cwd,
+        env=builder_env,
+        text=True,
+        capture_output=True,
+        timeout=1_800,
+        check=False,
+    )
+    if checked.returncode != 0:
+        detail = checked.stderr.strip() or checked.stdout.strip() or f"exit status {checked.returncode}"
+        raise ValueError(f"lineage ancestry check failed: {detail}")
     return {
         "evidence": address,
         "program_identity": child_identity,
@@ -615,6 +634,55 @@ def candidate_artifact_identity(
     value = {"base_source_tree": base_source_tree, "files": files}
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     return {**value, "digest": "sha256:" + hashlib.sha256(encoded).hexdigest()}
+
+
+def source_adoption_artifacts(
+    candidate: Path, artifact: dict[str, Any]
+) -> tuple[dict[str, bytes], dict[str, Any]]:
+    """Return reconstructable source bytes and their canonical patch manifest."""
+    retained = {}
+    files = []
+    for name, sha256 in sorted(artifact["files"].items()):
+        entry = {"path": name, "sha256": sha256}
+        if sha256 != "absent":
+            content_path = f"candidate-files/{name}"
+            content = (candidate / name).read_bytes()
+            if digest_bytes(content) != sha256:
+                raise ValueError(f"source candidate file changed after acceptance: {name}")
+            retained[content_path] = content
+            entry["content"] = content_path
+        files.append(entry)
+    manifest = {
+        "schema_version": 1,
+        "candidate_identity": artifact["digest"],
+        "base_source_tree": artifact["base_source_tree"],
+        "files": files,
+    }
+    return retained, manifest
+
+
+def require_successful_adoption(
+    acceptance: dict[str, Any], recorder: Any
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Make lineage adoption part of candidate acceptance."""
+    if not acceptance["accepted"]:
+        return None, acceptance
+    try:
+        return recorder(), acceptance
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        finding = f"lineage adoption failed: {error}"
+        return {"error": str(error)}, {
+            **acceptance,
+            "accepted": False,
+            "findings": [*acceptance["findings"], finding],
+            "exit_code": None,
+        }
+
+
+def candidate_disposition(acceptance: dict[str, Any], episode_exit: int) -> tuple[bool, int]:
+    """Return whether direct work is required and the process exit status."""
+    accepted = acceptance["accepted"]
+    return not accepted, 0 if accepted else episode_exit or 3
 
 
 def rust_toolchain_identity(cargo: Path) -> dict[str, str]:
@@ -897,12 +965,19 @@ base_configuration = {base_configuration!r}
 supported_audits = {supported_audits!r}
 failure_contrasts = {failure_contrasts!r}
 expected_branch = {expected_candidate_branch(requested_candidate_kind)!r}
+automatic_selection = {requested_candidate_kind == "auto"!r}
 program = {str(program)!r}
 
 findings = []
 try:
     candidate = json.load(sys.stdin)
     branch = candidate.get("branch") if isinstance(candidate, dict) else None
+    if automatic_selection and branch not in (
+        "implement-source", "configure-workflow", "insufficient-evidence"
+    ):
+        raise ValueError(
+            "automatic selection permits only source-change and workflow-configuration candidates"
+        )
     if expected_branch is not None and branch not in (expected_branch, "insufficient-evidence"):
         raise ValueError(
             f"requested candidate kind requires branch {{expected_branch}}, received {{branch}}"
@@ -1013,9 +1088,8 @@ def build_config(
         sufficiency = (
             "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. "
             "Choose `configure-workflow` when a repeated quality gain is caused by exactly one independent "
-            "audit setting; the runner binds that setting directly from the evidence. Choose `revise-instructions` "
-            "when a procedural difference belongs in one instruction section of the retained program document. "
-            "Choose `define-tool` when one missing executable tool explains the gap. Choose "
+            "audit setting; the runner binds that setting directly from the evidence. Instruction revisions and "
+            "tool definitions require application support before automatic selection may choose them. Choose "
             "`insufficient-evidence` when the intervention requires semantic knowledge absent from the log or "
             "an evaluator change. A reasoning-effort difference without a workflow contrast establishes model "
             "capability rather than a Foe defect."
@@ -1278,9 +1352,17 @@ def build_config(
                     "branches": {
                         "implement-source": ["implement-runtime-improvement"],
                         "configure-workflow": [],
-                        "revise-instructions": [],
-                        "define-tool": [],
                         "insufficient-evidence": [],
+                        **(
+                            {"revise-instructions": []}
+                            if requested_candidate_kind == "instruction-revision"
+                            else {}
+                        ),
+                        **(
+                            {"define-tool": []}
+                            if requested_candidate_kind == "tool-definition"
+                            else {}
+                        ),
                     },
                 },
                 "implement-runtime-improvement": {
@@ -1739,6 +1821,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         acceptance = {"accepted": False, "findings": [finding], "exit_code": None}
         candidate_kind = "no-candidate"
+    artifact_accepted = acceptance["accepted"]
     adoption = None
     if acceptance["accepted"] and candidate_kind != "no-candidate":
         retained: dict[str, bytes] = {}
@@ -1753,10 +1836,6 @@ def main(argv: list[str] | None = None) -> int:
             retained["tool-candidate-executable"] = tool_executable_path.read_bytes()
         else:
             verification_tool = "check"
-            artifacts = [
-                {"path": name, "sha256": value}
-                for name, value in sorted(artifact_identity["files"].items())
-            ]
         toolchain_environment = {
             "CARGO_HOME": str(cargo_home),
             "CARGO_TARGET_DIR": str(cargo_target),
@@ -1769,23 +1848,36 @@ def main(argv: list[str] | None = None) -> int:
             toolchain_environment["RUSTUP_HOME"] = str(rustup_home)
             toolchain_environment["RUSTUP_TOOLCHAIN"] = toolchain.name
         (cargo_target / "tmp").mkdir(parents=True, exist_ok=True)
-        try:
-            adoption = record_adoption(
+
+        def record_candidate_adoption() -> dict[str, Any]:
+            candidate_retained, candidate_artifacts = retained, artifacts
+            if candidate_kind == "source-change":
+                candidate_retained, candidate_artifacts = source_adoption_artifacts(
+                    candidate, artifact_identity
+                )
+            return record_adoption(
                 root,
                 episode,
                 adoption_state_document(
                     candidate_kind, artifact_identity, program_document, base_configuration
                 ),
                 plan["identity_document"],
-                retained,
+                candidate_retained,
                 verification_tool,
                 [str(cargo), "run", "--quiet", "-p", "foe-lineage", "--bin", "build-bundle", "--"],
+                [str(cargo), "run", "--quiet", "-p", "foe-lineage", "--example", "check_ancestry", "--"],
                 builder_cwd=candidate,
                 builder_env=toolchain_environment,
-                artifacts=artifacts,
+                artifacts=candidate_artifacts,
             )
-        except (OSError, ValueError, subprocess.SubprocessError) as error:
-            adoption = {"error": str(error)}
+
+        adoption, acceptance = require_successful_adoption(
+            acceptance,
+            record_candidate_adoption,
+        )
+    direct_implementation_required, process_exit = candidate_disposition(
+        acceptance, result.returncode
+    )
     record = {
         **preview,
         "evaluated_foe": identity,
@@ -1806,14 +1898,14 @@ def main(argv: list[str] | None = None) -> int:
         "tool_candidate_executable": str(tool_executable_path) if tool_executable_path else None,
         "candidate_acceptance": acceptance,
         "adoption": adoption,
-        "artifact_outcome_mismatch": acceptance["accepted"] and result.returncode != 0,
-        "direct_implementation_required": not acceptance["accepted"],
+        "artifact_outcome_mismatch": artifact_accepted and result.returncode != 0,
+        "direct_implementation_required": direct_implementation_required,
     }
     write_json(root / "result.json", record)
     print(json.dumps(record, indent=2, sort_keys=True))
     if temporary:
         temporary.cleanup()
-    return 0 if acceptance["accepted"] else result.returncode or 3
+    return process_exit
 
 
 if __name__ == "__main__":

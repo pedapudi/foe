@@ -87,9 +87,9 @@ successful identifiers must be disjoint.
 The runner copies the report into the retained run directory before creating
 the program. The resulting version 3 program contains three model nodes:
 
-1. A diagnosis node receives only the task and bounded trajectory report. It
-   chooses a source, workflow-configuration, instruction, or executable-tool
-   candidate. It may instead report insufficient evidence.
+1. A diagnosis node receives only the task and bounded trajectory report. In
+   automatic mode, it chooses a source or workflow-configuration candidate.
+   It may instead report insufficient evidence.
 2. A source implementation node receives the typed diagnosis and task. It
    returns a typed summary of changed paths, validation, and unresolved risks.
 3. A fresh audit node receives the task, diagnosis, and implementation
@@ -104,6 +104,19 @@ terminal audit ends after the source files have been produced, the runner can
 recover the typed diagnosis from its child episode and apply the source checker
 to the artifact.
 
+An explicit request can produce an instruction-revision or tool-definition
+proposal. The Terminal-Bench runner cannot apply either kind to an evaluation
+program. Automatic selection excludes them until an application path can bind
+the applied program to the proposal.
+
+A workflow candidate preserves the controls that determine its activation.
+The binding covers the primary model, reasoning effort, service tier, token
+policy, workflow owner, and completion-governance mode. The workflow owner
+distinguishes Foe's built-in workflow from a graph created by the evaluation
+runner. Completion governance distinguishes a declared verifier from a model
+completion report. The binding omits task identity so a candidate can be
+evaluated on transfer tasks under the same controls.
+
 The default OpenAI service tier is `priority` for all three model nodes. A
 preview constructs and validates the complete program without creating the
 requested retained directory or sending a model request. It removes any empty
@@ -115,9 +128,16 @@ Terminal-Bench task quality. The unchanged task-owned Terminal-Bench grader
 remains the sole authority for promotion based on quality. Tokens, estimated
 cost, cache use, and latency are recorded as diagnostics.
 
+Source and workflow candidates have external Terminal-Bench application
+paths. A source evaluation requires an explicit lineage adoption record or
+evidence bundle. Before any provider request, the runner verifies the retained
+source bytes, the clean candidate tree, and the evaluated binary digest. Its
+`campaign.json` records the adoption, evidence, candidate, and child program
+identities with the evaluated source and binary identities.
+
 ## Acceptance conditions
 
-A successful attempt satisfies six independent conditions:
+A successful example attempt satisfies six independent conditions:
 
 1. The fresh source produces at least one evaluator finding.
 2. The final source produces no evaluator findings.
@@ -137,6 +157,14 @@ The routine example uses a fast structural checker because it copies only the
 three affected files. Candidate promotion needs a complete build and test
 run. The measured candidates were therefore overlaid onto complete source
 archives and compiled after the model-backed attempts.
+
+The Terminal-Bench self-improvement runner has one additional acceptance
+condition. It must complete a valid lineage adoption after the artifact check.
+The source adoption retains the bytes of every present changed file and marks
+deletions explicitly. The ancestry checker compares those bytes with the
+artifact manifest and child identity document. Adoption failure rejects the
+candidate, sets `direct_implementation_required`, and makes the process exit
+unsuccessfully.
 
 ## Measured result
 
@@ -376,6 +404,8 @@ Every self-improvement evaluation should retain the following evidence:
 
 - the initial and final evaluator findings;
 - the candidate diff and the immutable source revision it started from;
+- the lineage adoption, evidence, candidate, and child program identities;
+- the retained bytes or explicit deletion of every changed file;
 - root and child outcomes;
 - provider-reported input, output, and cache-read tokens per response;
 - model requests, tool calls, rendered tool-result sizes, and tool errors;
@@ -406,8 +436,10 @@ Use the following sequence for a bounded self-improvement task:
 6. Keep model-call and token ceilings above observed successful variance.
 7. Re-run an external grader after the episode.
 8. Compile and test the candidate in a complete disposable source tree.
-9. Inspect trace conformance and resource use.
-10. Promote the patch through a separate review step.
+9. Complete and verify the lineage adoption bundle.
+10. Inspect trace conformance and resource use.
+11. Evaluate the adopted candidate against unchanged external tasks.
+12. Promote the patch through a separate review step.
 
 Improvements may add capability, simplify implementation, or remove behavior
 that harms task quality. A bound, retry rule, or completion condition is a

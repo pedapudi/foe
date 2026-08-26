@@ -76,11 +76,18 @@ def validate_independent_audit(value: Any) -> dict[str, Any]:
 
 def validate_base_configuration(value: Any) -> dict[str, str]:
     """Return the evaluation settings a workflow candidate preserves."""
-    required = {"model", "reasoning_effort", "service_tier", "token_policy"}
+    required = {
+        "model",
+        "reasoning_effort",
+        "service_tier",
+        "token_policy",
+        "workflow_ownership",
+        "completion_governance",
+    }
     if not isinstance(value, dict) or set(value) != required:
         raise ValueError(
             "workflow candidate base_configuration must contain model, reasoning_effort, "
-            "service_tier, and token_policy"
+            "service_tier, token_policy, workflow_ownership, and completion_governance"
         )
     if not isinstance(value.get("model"), str) or "/" not in value["model"]:
         raise ValueError("workflow candidate base_configuration.model is invalid")
@@ -90,6 +97,10 @@ def validate_base_configuration(value: Any) -> dict[str, str]:
         raise ValueError("workflow candidate base_configuration.service_tier is invalid")
     if value.get("token_policy") not in ("measurement_only", "hard"):
         raise ValueError("workflow candidate base_configuration.token_policy is invalid")
+    if value.get("workflow_ownership") not in ("foe-built-in", "evaluation-runner"):
+        raise ValueError("workflow candidate base_configuration.workflow_ownership is invalid")
+    if value.get("completion_governance") not in ("declared-verifier", "model-report"):
+        raise ValueError("workflow candidate base_configuration.completion_governance is invalid")
     return {key: value[key] for key in sorted(required)}
 
 
@@ -149,6 +160,8 @@ def require_matching_run(
     reasoning_effort: str,
     service_tier: str,
     token_policy: str,
+    workflow_ownership: str,
+    completion_governance: str,
 ) -> dict[str, Any]:
     """Return the audit setting after checking the preserved run controls."""
     observed = {
@@ -156,6 +169,8 @@ def require_matching_run(
         "reasoning_effort": reasoning_effort,
         "service_tier": service_tier,
         "token_policy": token_policy,
+        "workflow_ownership": workflow_ownership,
+        "completion_governance": completion_governance,
     }
     if candidate["base_configuration"] != validate_base_configuration(observed):
         raise ValueError("workflow candidate base configuration differs from the requested run")
