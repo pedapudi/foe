@@ -110,6 +110,10 @@ fn every_workflow_rule_names_its_node() {
         ),
         ("workflow.nodes.manifest.", Box::new(|v| v["workflow"]["nodes"]["manifest"] = json!({ "follows": [] }))),
         ("workflow.nodes.task.", Box::new(|v| v["workflow"]["nodes"]["task"] = json!({ "tool": "list" }))),
+        (
+            "workflow.nodes.outer/inner.",
+            Box::new(|v| v["workflow"]["nodes"]["outer/inner"] = json!({ "tool": "list" })),
+        ),
         ("workflow.nodes.propose.", Box::new(|v| v["workflow"]["nodes"]["propose"]["args"] = json!({}))),
         ("workflow.nodes.propose.max_fires", Box::new(|v| v["workflow"]["nodes"]["propose"]["max_fires"] = json!(0))),
         ("workflow.nodes.survey.max_fires", Box::new(|v| v["workflow"]["nodes"]["survey"]["max_fires"] = json!(null))),

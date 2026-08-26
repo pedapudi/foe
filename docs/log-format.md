@@ -492,7 +492,8 @@ and a version 2 reader will render it.
 These events appear in the log of an episode whose configuration declares
 a `workflow`, which [workflow.md](workflow.md) specifies. Each firing of a
 model node is a child episode under `children/` with its own log. A node
-inside a nested workflow node is named by its path, `outer/inner`.
+inside a nested workflow node is named by its path, `outer/inner`. A declared
+node name contains no `/`, so each path has one decomposition.
 
 `workflow/node-start` — implemented. One firing of a node begins. `fire`
 counts the node's firings from 1. `inputs` lists the `seq` of the events

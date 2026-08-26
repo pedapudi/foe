@@ -163,9 +163,9 @@ class SourceAdoptionTest(unittest.TestCase):
                         "workflow": {
                             "nodes": {
                                 "collect-trajectory-diagnostics": {"tool": "evidence"},
-                                "diagnose-runtime": {"model": {"name": "diagnosis"}},
-                                "implement-runtime-improvement": {"model": {"name": "implementation"}},
-                                "audit-runtime-improvement": {"model": {"name": "audit"}},
+                                "diagnose-runtime": {"model": {"name": "diagnose-foe-from-trajectory-measurements"}},
+                                "implement-runtime-improvement": {"model": {"name": "implement-foe-improvement"}},
+                                "audit-runtime-improvement": {"model": audit_program},
                             }
                         }
                     },
@@ -237,6 +237,16 @@ class SourceAdoptionTest(unittest.TestCase):
         retained.update(bytes=path.stat().st_size, sha256=sha256(path.read_bytes()))
         manifest_path.write_bytes(canonical(manifest))
 
+    def write_parent_plan(self, bundle, parent):
+        start = json.loads((bundle / "episode/episode.jsonl").read_text().splitlines()[0])["data"]
+        program = dict(start["program"])
+        program["task"] = start["task"]
+        (bundle / "parent-plan.json").write_bytes(canonical({
+            "identity": sha256(canonical(parent)),
+            "identity_document": parent,
+            "program": program,
+        }))
+
     def fixture(self, root, critical_controller_files=False):
         repository = root / "repository"
         repository.mkdir()
@@ -271,9 +281,9 @@ class SourceAdoptionTest(unittest.TestCase):
         parent_identity = sha256(canonical(parent))
         bundle = root / "bundle"
         bundle.mkdir()
-        (bundle / "parent-identity.json").write_bytes(canonical(parent))
         (bundle / "candidate-check").write_bytes(verifier)
         self.write_episode(bundle / "episode", parent_identity, verifier_sha256)
+        self.write_parent_plan(bundle, parent)
         (repository / "changed.txt").write_text("after\n", encoding="utf-8")
         (repository / "changed.txt").chmod(0o755)
         (repository / "deleted.txt").unlink()
@@ -286,7 +296,7 @@ class SourceAdoptionTest(unittest.TestCase):
             bundle,
             repository,
             base,
-            "parent-identity.json",
+            "parent-plan.json",
             "episode/episode.jsonl",
             "episode/episode.jsonl",
             1,
@@ -341,18 +351,18 @@ class SourceAdoptionTest(unittest.TestCase):
             parent_identity = sha256(canonical(parent))
             bundle = root / "bundle"
             bundle.mkdir()
-            (bundle / "parent-identity.json").write_bytes(canonical(parent))
             (bundle / "candidate-check").write_bytes(verifier)
             self.write_workflow_episode(
                 bundle / "episode", parent_identity, diagnosis_identity,
                 implementation_identity, audit_identity, sha256(verifier)
             )
+            self.write_parent_plan(bundle, parent)
             captured = capture_source_candidate(
                 self.checker,
                 bundle,
                 repository,
                 base,
-                "parent-identity.json",
+                "parent-plan.json",
                 "episode/episode.jsonl",
                 "episode/children/ep_audit/episode.jsonl",
                 1,
@@ -384,12 +394,36 @@ class SourceAdoptionTest(unittest.TestCase):
                 encoding="utf-8",
             )
             self.update_retained_file(bundle, "episode/episode.jsonl")
-            with self.assertRaisesRegex(ValueError, "identity of workflow node diagnose-runtime"):
+            with self.assertRaisesRegex(ValueError, "planned model program for diagnose-runtime"):
                 verify_source_candidate(
                     self.checker, bundle, repository, applied, runtime
                 )
             root_log.write_bytes(original_root_log)
             self.update_retained_file(bundle, "episode/episode.jsonl")
+            audit_log = bundle / "episode/children/ep_audit/episode.jsonl"
+            original_audit_log = audit_log.read_bytes()
+            events = [json.loads(line) for line in root_log.read_text().splitlines()]
+            spawn = next(
+                event for event in events
+                if event["type"] == "spawn/start" and event["data"]["child_id"] == "ep_audit"
+            )
+            spawn["data"]["program"] = "diagnose-runtime"
+            root_log.write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8"
+            )
+            audit_events = [json.loads(line) for line in audit_log.read_text().splitlines()]
+            audit_events[0]["data"]["identity"] = diagnosis_identity
+            audit_log.write_text(
+                "\n".join(json.dumps(event) for event in audit_events) + "\n", encoding="utf-8"
+            )
+            self.update_retained_file(bundle, "episode/episode.jsonl")
+            self.update_retained_file(bundle, "episode/children/ep_audit/episode.jsonl")
+            with self.assertRaisesRegex(ValueError, "planned model program for diagnose-runtime"):
+                verify_source_candidate(self.checker, bundle, repository, applied, runtime)
+            root_log.write_bytes(original_root_log)
+            audit_log.write_bytes(original_audit_log)
+            self.update_retained_file(bundle, "episode/episode.jsonl")
+            self.update_retained_file(bundle, "episode/children/ep_audit/episode.jsonl")
             events = [json.loads(line) for line in root_log.read_text().splitlines()]
             for event in events:
                 if event["type"] in ("spawn/start", "spawn/end") and event["data"]["child_id"] == "ep_audit":
@@ -399,7 +433,7 @@ class SourceAdoptionTest(unittest.TestCase):
                 encoding="utf-8",
             )
             self.update_retained_file(bundle, "episode/episode.jsonl")
-            with self.assertRaisesRegex(ValueError, "has no unique retained child"):
+            with self.assertRaisesRegex(ValueError, "ep_unretained starts with the planned model program"):
                 verify_source_candidate(
                     self.checker, bundle, repository, applied, runtime
                 )
@@ -680,16 +714,16 @@ class SourceAdoptionTest(unittest.TestCase):
                     bundle = root / "bundle"
                     bundle.mkdir()
                     parent = {"name": "parent"}
-                    (bundle / "parent-identity.json").write_bytes(canonical(parent))
                     self.write_episode(bundle / "episode", sha256(canonical(parent)), sha256(b"check"))
-                    (bundle / "candidate-check").symlink_to(bundle / "parent-identity.json")
+                    self.write_parent_plan(bundle, parent)
+                    (bundle / "candidate-check").symlink_to(bundle / "parent-plan.json")
                 with self.assertRaisesRegex(ValueError, "symbolic link"):
                     capture_source_candidate(
                         self.checker,
                         bundle,
                         repository,
                         base,
-                        "parent-identity.json",
+                        "parent-plan.json",
                         "episode/episode.jsonl",
                         "episode/episode.jsonl",
                         1,
@@ -727,7 +761,7 @@ class SourceAdoptionTest(unittest.TestCase):
                     bundle,
                     repository,
                     "git-tree-sha1:" + blob,
-                    "parent-identity.json",
+                    "parent-plan.json",
                     "episode/episode.jsonl",
                     "episode/episode.jsonl",
                     1,
@@ -868,6 +902,31 @@ class SourceAdoptionTest(unittest.TestCase):
                 },
             )
             retained_campaign = json.loads(campaign.read_text(encoding="utf-8"))
+            evaluated_log = agent / "foe-episode/episode.jsonl"
+            evaluated_events = [json.loads(line) for line in evaluated_log.read_text().splitlines()]
+            evaluated_events[0]["data"]["task"] = "different transfer task"
+            evaluated_log.write_text(
+                "\n".join(json.dumps(event) for event in evaluated_events) + "\n",
+                encoding="utf-8",
+            )
+            task_rejected = task_record(
+                task=Task("activation-task", 10, 1, 1, 60, 60, 1, 1024),
+                run_dir=run_dir, harbor_exit_code=0, install_only=False,
+                built_in_workflow=False, completion_checker=False, worker=1,
+                execution_group="activation-task", credential_mode="mutable",
+                started_at="2026-08-26T00:00:00Z", ended_at="2026-08-26T00:01:00Z",
+                elapsed_seconds=60, source_adoption_path=bundle,
+                source_checker=self.checker, source_root=repository,
+                evaluated_source=applied, foe=runtime,
+                source_preflight=verify_source_candidate(
+                    self.checker, bundle, repository, applied, runtime
+                ),
+            )
+            evaluated_events[0]["data"]["task"] = "transfer task"
+            evaluated_log.write_text(
+                "\n".join(json.dumps(event) for event in evaluated_events) + "\n",
+                encoding="utf-8",
+            )
             bad_plan = json.loads((agent / "foe-plan.json").read_text(encoding="utf-8"))
             bad_plan["identity"] = "sha256:" + "0" * 64
             (agent / "foe-plan.json").write_text(json.dumps(bad_plan), encoding="utf-8")
@@ -908,9 +967,14 @@ class SourceAdoptionTest(unittest.TestCase):
             retained_campaign["source_build"]["output"]["sha256"],
             sha256(b"after\n"),
         )
+        self.assertIn("protected_build_graph", retained_campaign["source_build"])
+        self.assertNotIn("toolchain_definition", retained_campaign["source_build"])
         self.assertFalse(rejected["configuration_claim_valid"])
         self.assertTrue(rejected["direct_implementation_required"])
         self.assertIn("foe plan identity", rejected["result_error"])
+        self.assertFalse(task_rejected["configuration_claim_valid"])
+        self.assertTrue(task_rejected["direct_implementation_required"])
+        self.assertIn("planned identity, resolved program, task", task_rejected["result_error"])
 
 
 if __name__ == "__main__":

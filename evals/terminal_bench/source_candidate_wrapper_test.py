@@ -71,7 +71,6 @@ def main():
         bundle = root / "bundle"
         episode = bundle / "episode"
         episode.mkdir(parents=True)
-        (bundle / "parent-identity.json").write_bytes(canonical(parent))
         (bundle / "candidate-check").write_bytes(verifier)
         events = [
             {
@@ -118,13 +117,20 @@ def main():
             "\n".join(json.dumps(event) for event in events) + "\n",
             encoding="utf-8",
         )
+        planned_program = dict(events[0]["data"]["program"])
+        planned_program["task"] = events[0]["data"]["task"]
+        (bundle / "parent-plan.json").write_bytes(canonical({
+            "identity": parent_identity,
+            "identity_document": parent,
+            "program": planned_program,
+        }))
         (repository / "source.txt").write_text("after\n", encoding="utf-8")
         capture_source_candidate(
             checker,
             bundle,
             repository,
             base,
-            "parent-identity.json",
+            "parent-plan.json",
             "episode/episode.jsonl",
             "episode/episode.jsonl",
             1,

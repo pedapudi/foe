@@ -134,7 +134,7 @@ The bundle contains these files:
 
 Source evidence exists before the descendant program identity is known. It
 therefore uses a separate content-addressed source-candidate manifest. The
-manifest retains the parent identity document, proposal episode tree,
+manifest retains the parent plan, proposal episode tree,
 accepted verification coordinates, verifier executable, and every source
 entry. It also lists every retained regular file by path, length, and
 SHA-256 digest.
@@ -173,7 +173,7 @@ A source artifact manifest has this canonical form:
       }
     }
   ],
-  "parent_identity_document": "parent-identity.json",
+  "parent_plan": "parent-plan.json",
   "parent_program_identity": "sha256:…",
   "proposal_log": "episode/episode.jsonl",
   "verification_log": "episode/children/ep_audit/episode.jsonl",
@@ -203,7 +203,7 @@ A source artifact manifest has this canonical form:
       "sha256": "sha256:…"
     },
     {
-      "path": "parent-identity.json",
+      "path": "parent-plan.json",
       "bytes": 892,
       "sha256": "sha256:…"
     }
@@ -216,6 +216,11 @@ the applied Git blob, file mode, SHA-256 digest, and retained content path.
 A deleted entry records the removed base object. The checker accepts regular
 blobs with modes `100644` and `100755`. It rejects symbolic links, trees,
 submodules, special files, and symbolic links anywhere inside the bundle.
+
+The parent plan is the canonical `foe plan --json` identity, identity
+document, and resolved program. The checker recomputes the identity from the
+document. It requires the proposal root to record the plan's exact program
+and task before it validates any retained spawn edge.
 
 The verification executable is the exact regular file that produced the
 accepted verifier result. Its manifest digest must equal the result's
@@ -504,9 +509,9 @@ The adapter retains `foe plan --json` immediately before the first provider
 request. For the built-in workflow it supplies the same task, model,
 credential, verifier, service tier, and sandbox mode to the plan and run
 forms. After the episode, the trusted checker recomputes the reported program
-identity. It requires the root `episode/start` to carry the planned program
-and identity. It also requires the runtime build digest to equal the evaluated
-binary digest.
+identity. It requires the root `episode/start` to carry the planned program,
+task, and identity. It also requires the runtime build digest to equal the
+evaluated binary digest.
 
 The checker then creates the child state from the actual plan identity
 document. It places the exact source manifest in the lineage evidence bundle
@@ -522,12 +527,18 @@ complete log digest, source-tree identity, and output digest. Each task-specific
 program may have a distinct program identity. Transfer-task identity remains
 variable.
 
+The `source_build.protected_build_graph` object carries the digest and file
+list of the protected Cargo, Bazel, module, package, toolchain, and build-script
+metadata used for the controller build.
+
 Source preflight uses the canonical proposal checker before provider spend.
 The checker requires one retained proposal root and complete retained parent
-chains. Every recorded spawn names a retained child whose identity resolves
+chains. The retained plan binds that root's identity, exact resolved program,
+and task. Every recorded spawn names a retained child whose identity resolves
 from that spawn's program. Nested workflow paths are resolved through the
-parent identity document. A retained child that spawns again requires its own
-retained identity document, which the source proposal format does not carry.
+identity document inside the retained parent plan. A retained child that
+spawns again requires its own retained identity document, which the source
+proposal format does not carry.
 The verifier child must declare the result's tool. That verifier is authorized
 only when the source manifest retains its exact executable bytes and binds
 their digest to the result. Every other open verifier-authorization check
