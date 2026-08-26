@@ -377,7 +377,7 @@ ranked result list. Input growth resets at each episode boundary. An artifact
 mismatch may retain bounded model-authored completion details under
 `untrusted_completion_claim`.
 
-The collector accepts at most 24 diagnoses and 48 KiB of compact JSON. The
+The collector accepts at most 12 diagnoses and 48 KiB of compact JSON. The
 `self_improvement_evidence` group in `cases.json` contains development,
 capability-search, and opened confirmation tasks. Calibration and the sealed
 holdout remain outside the evidence set.

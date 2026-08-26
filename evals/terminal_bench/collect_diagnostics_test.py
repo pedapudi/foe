@@ -13,6 +13,8 @@ from collect_diagnostics import (
     EVALUATION_FIELDS,
     collect,
     diagnostic_outcome,
+    compact_result,
+    compact_terminal_timelines,
     encoded_evidence,
     evaluation_metadata,
     evaluation_summary,
@@ -23,6 +25,51 @@ from collect_diagnostics import (
 
 
 class CollectDiagnosticsTest(unittest.TestCase):
+    def test_result_compaction_keeps_causal_fields_without_transport_details(self):
+        row = {
+            "call_id": "call_not_needed_by_the_optimizer",
+            "canonical_characters": 9_000,
+            "episode_id": "ep_child",
+            "seq": 41,
+            "step": 5,
+            "tool": "bash",
+            "subject": "x" * 400,
+            "exit_code": 1,
+            "is_error": False,
+            "timed_out": False,
+            "truncated": True,
+            "rendered_characters": 8_000,
+            "replayed_characters": 32_000,
+            "replayed_requests": 4,
+        }
+        compact = compact_result(row, replay=True)
+        self.assertEqual(compact["episode_id"], "ep_child")
+        self.assertEqual(compact["replayed_characters"], 32_000)
+        self.assertEqual(len(compact["subject"]), 180)
+        self.assertTrue(compact["truncated"])
+        self.assertNotIn("call_id", compact)
+        self.assertNotIn("canonical_characters", compact)
+        self.assertNotIn("is_error", compact)
+
+    def test_terminal_timeline_excludes_a_different_child_claim(self):
+        terminal = {"kind": "completed", "value": {"summary": "audited"}}
+        implementation = {"kind": "completed", "value": {"summary": "implemented"}}
+        timelines = [
+            {
+                "episode_id": "ep_implementation",
+                "outcome": implementation,
+                "results": [{"seq": 7, "tool": "return"}],
+            },
+            {
+                "episode_id": "ep_audit",
+                "outcome": terminal,
+                "results": [{"seq": 11, "tool": "bash", "exit_code": 0}],
+            },
+        ]
+        compact = compact_terminal_timelines(timelines, terminal)
+        self.assertEqual([row["episode_id"] for row in compact], ["ep_audit"])
+        self.assertEqual(compact[0]["results"], [{"seq": 11, "tool": "bash", "exit_code": 0}])
+
     def test_diagnostic_outcome_keeps_completion_claim_only_when_requested(self):
         completion = {
             "kind": "completed",
@@ -292,12 +339,10 @@ class CollectDiagnosticsTest(unittest.TestCase):
             path.write_text(json.dumps(diagnosis), encoding="utf-8")
             report = collect(source, binary, [run], {"example"})
         compact = report["trajectory_diagnostics"][0]
-        self.assertEqual(compact["outcome"], {"kind": "completed"})
-        claim = compact["episodes"][0]["outcome"][
-            "untrusted_completion_claim"
-        ]
+        claim = compact["outcome"]["untrusted_completion_claim"]
         self.assertEqual(claim["validation"], ["format is valid"])
         self.assertEqual(claim["unresolved_risks"], ["behavior was not exercised"])
+        self.assertEqual(compact["episodes"][0]["outcome"], {"kind": "completed"})
 
     def test_input_growth_resets_when_a_second_child_starts_lower(self):
         rows = [

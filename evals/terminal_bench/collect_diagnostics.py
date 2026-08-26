@@ -13,18 +13,20 @@ sys.path.append(str(Path(__file__).resolve().parent.parent / "harness_bench"))
 from foe_source_identity import evaluated_foe, require_evaluated_foe
 from run import read_cases
 
-MAX_DIAGNOSES = 24
+MAX_DIAGNOSES = 12
 # The evidence enters a diagnosis child through one root workflow result.
 # Core exposes at most 50,000 rendered characters from that result, including
 # its status framing, and a child cannot retrieve bytes from its parent log.
 MAX_EVIDENCE_BYTES = 48 * 1024
 MAX_INPUT_GROWTH_LANDMARKS = 4
 MAX_OUTCOME_TEXT = 2_000
-MAX_COMPLETION_SUMMARY = 240
-MAX_COMPLETION_PATHS = 8
-MAX_COMPLETION_PATH = 160
-MAX_COMPLETION_OBSERVATIONS = 6
-MAX_COMPLETION_OBSERVATION = 240
+MAX_COMPLETION_SUMMARY = 180
+MAX_COMPLETION_PATHS = 6
+MAX_COMPLETION_PATH = 120
+MAX_COMPLETION_OBSERVATIONS = 4
+MAX_COMPLETION_OBSERVATION = 180
+MAX_RESULT_SUBJECT = 180
+MAX_TERMINAL_TIMELINES = 2
 EVALUATION_FIELDS = (
     "dataset",
     "label",
@@ -103,6 +105,62 @@ def diagnostic_outcome(outcome: Any, include_completion_claim: bool = False) -> 
             ),
         }
         answer["untrusted_completion_claim"] = claim
+    return answer
+
+
+def compact_result(row: Any, *, replay: bool = False) -> dict[str, Any] | None:
+    """Keep a result locator, its outcome, and optional replay measurements."""
+    if not isinstance(row, dict):
+        return None
+    answer = {
+        key: row[key]
+        for key in ("episode_id", "seq", "step", "tool", "exit_code")
+        if row.get(key) is not None
+    }
+    subject = row.get("subject")
+    if isinstance(subject, str) and subject:
+        answer["subject"] = subject[:MAX_RESULT_SUBJECT]
+    for key in ("is_error", "timed_out", "truncated"):
+        if row.get(key) is True:
+            answer[key] = True
+    if replay:
+        for key in ("rendered_characters", "replayed_characters", "replayed_requests"):
+            if isinstance(row.get(key), int):
+                answer[key] = row[key]
+    return answer
+
+
+def compact_terminal_timelines(
+    value: Any,
+    terminal_outcome: Any,
+) -> list[dict[str, Any]]:
+    """Keep result evidence from the episode that supplied the root outcome."""
+    if not isinstance(value, list):
+        return []
+    entries = [entry for entry in value if isinstance(entry, dict)]
+    selected = [
+        entry
+        for entry in entries
+        if entry.get("outcome") == terminal_outcome and entry.get("results")
+    ]
+    if not selected:
+        selected = [entry for entry in entries if entry.get("results")][-1:]
+    answer = []
+    for entry in selected[:MAX_TERMINAL_TIMELINES]:
+        results = [
+            compact
+            for row in entry.get("results", [])
+            if (compact := compact_result(row)) is not None
+        ]
+        answer.append(
+            {
+                "episode_id": entry.get("episode_id"),
+                "last_edit_seq": entry.get("last_edit_seq"),
+                "results": results,
+                "omitted_results": entry.get("omitted_results", 0),
+                "outcome": diagnostic_outcome(entry.get("outcome")),
+            }
+        )
     return answer
 
 
@@ -223,30 +281,34 @@ def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dic
             "evaluation": evaluation,
             "usage": compact_usage,
             "input_growth_landmarks": input_growth_landmarks(request_rows(report, usage)),
-            "largest_replayed_results": report.get("largest_replayed_results", [])[:3],
-            "tool_failures": report.get("tool_failures", [])[:3],
+            "largest_replayed_results": [
+                compact
+                for row in report.get("largest_replayed_results", [])[:3]
+                if (compact := compact_result(row, replay=True)) is not None
+            ],
+            "tool_failures": [
+                compact
+                for row in report.get("tool_failures", [])[:3]
+                if (compact := compact_result(row, replay=True)) is not None
+            ],
             "repeated_calls": report.get("repeated_calls", [])[:3],
         }
     )
     mismatch = report.get("artifact_outcome_mismatch") is True
+    terminal_outcome = answer.get("outcome")
     if "outcome" in answer:
-        answer["outcome"] = diagnostic_outcome(answer["outcome"])
+        answer["outcome"] = diagnostic_outcome(answer["outcome"], mismatch)
     answer["episodes"] = [
         {
             **episode,
-            "outcome": diagnostic_outcome(
-                episode.get("outcome"),
-                mismatch and isinstance(episode.get("model_calls"), int) and episode["model_calls"] > 0,
-            ),
+            "outcome": diagnostic_outcome(episode.get("outcome")),
         }
         for episode in answer.get("episodes", [])
         if isinstance(episode, dict)
     ]
-    answer["verification_timeline"] = [
-        {**entry, "outcome": diagnostic_outcome(entry.get("outcome"))}
-        for entry in answer.get("verification_timeline", [])
-        if isinstance(entry, dict)
-    ]
+    answer["verification_timeline"] = compact_terminal_timelines(
+        answer.get("verification_timeline"), terminal_outcome
+    )
     return answer
 
 

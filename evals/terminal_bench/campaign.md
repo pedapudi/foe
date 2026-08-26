@@ -1855,3 +1855,35 @@ The report is retained at
 `target/terminal-bench-verifier-controls/controls-20260826T071720Z/verifier-controls.json`
 in the campaign worktree. The report records Harbor exit code zero, the
 negative-control finding, the accepted oracle, and the task-owned reward.
+
+## Cross-trajectory evidence-capacity qualification
+
+The identity-bound collector ran against seven retained diagnoses from source
+tree `git-tree-sha1:2fbeddc6173fe764824960931884815a37dd443a` and runtime
+binary
+`sha256:f3d38553a3b3766bf928b1b4686cc802b532ab3691aff52459160427275d28cb`.
+The corpus contains two `build-pov-ray` attempts, one
+`configure-git-webserver` attempt, three `dna-assembly` attempts, and one
+`dna-insert` attempt. Every task belongs to the explicit
+`self_improvement_evidence` group.
+
+The first schema-4 encoding required 71,964 bytes and was rejected by the
+48 KiB handoff limit. The nominal 24-diagnosis count bound therefore did not
+bound a real corpus. The collector now retains one failed completion claim per
+attempt, keeps verification results from the episode that supplied the root
+outcome, and removes transport-only fields from result summaries. The count
+limit is twelve diagnoses.
+
+The same seven diagnoses now encode to 45,081 bytes. The evidence document has
+SHA-256 digest
+`0abed0224dd2d9ccd4428196565ac3b0c8464504b83edf73679dcce69fe00f57`.
+It is retained at
+`target/terminal-bench-diagnostics/opened-confirmation-and-dna-evidence.json`
+in the campaign worktree.
+
+The document contains no repeated failure contrast. `build-pov-ray` supplies
+one success and one failure. The three `dna-assembly` attempts all failed and
+supply no matching success. This result validates evidence transport while
+correctly withholding autonomous candidate generation. A subsequent
+self-improvement input must contain two matching failures and one same-task
+success before the workflow can spend a model call.

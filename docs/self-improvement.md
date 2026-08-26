@@ -70,7 +70,7 @@ for the same task. Trial infrastructure failures cannot enter a contrast.
 The collector retains bounded outcomes, input-growth landmarks, resource
 usage, and execution-configuration summaries. A failed completed attempt may
 retain model-authored completion details under `untrusted_completion_claim`.
-The compact JSON document contains at most 24 diagnoses and 48 KiB so one
+The compact JSON document contains at most 12 diagnoses and 48 KiB so one
 workflow result can carry the complete evidence document.
 
 ## Acceptance conditions
