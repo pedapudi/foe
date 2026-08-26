@@ -382,6 +382,14 @@ The collector accepts at most 12 diagnoses and 48 KiB of compact JSON. The
 capability-search, and opened confirmation tasks. Calibration and the sealed
 holdout remain outside the evidence set.
 
+The self-improvement runner requires a `repeated_failure_contrasts` list in
+the evidence file. Each entry contains one task, a failure profile, at least
+two unique failed episode identifiers, and at least one unique successful
+episode identifier. The two identifier sets must be disjoint. The failure
+profile contains the typed outcome, artifact-outcome mismatch flag, and
+failed verifier checks. This field is the interface between cross-trajectory
+collection and candidate selection.
+
 Create a clean candidate worktree at the evaluated commit. Run the
 self-improvement workflow from that worktree:
 
@@ -391,9 +399,17 @@ bazel run //evals/terminal_bench:self-improve -- \
   --evidence "$PWD/target/foe-trajectory-evidence.json" \
   --cargo /absolute/path/to/toolchain/bin/cargo \
   --cargo-home /absolute/path/to/cargo-home \
+  --candidate-kind auto \
   --keep "$PWD/target/foe-self-improvement" \
   --confirm-spend
 ```
+
+The runner emits a version 3 program. Its default service tier is `priority`
+for diagnosis, implementation, and source audit. `--candidate-kind` can
+restrict the diagnosis to `source-change`, `workflow-configuration`,
+`instruction-revision`, or `tool-definition`. The diagnosis verifier enforces
+the restriction before another model node can start. Every restricted run may
+return `insufficient-evidence`.
 
 Luna produces the bounded diagnosis from the supplied digest. Its ordinary
 tools are `block` and the generated candidate validator, so it cannot inspect
@@ -431,6 +447,16 @@ coding child locates the affected implementation, test, and specification
 files. Its write authority covers runtime crates, specifications, and examples.
 It cannot write evaluation code or benchmark material.
 
+The implementation node returns a typed handoff with its summary, changed
+paths, validation, and unresolved risks. A fresh source-audit node receives
+the task, diagnosis, and handoff. The audit uses the same model route and
+service tier as implementation with `xhigh` reasoning. It can inspect and
+repair the source through the full coding tool surface. Its candidate checker
+owns terminal completion through `done_when.verify`, with four correction
+attempts. If the audit ends after producing an artifact, the runner recovers
+the diagnosis from its child episode and applies the external source checker
+to the candidate.
+
 When the diagnosis chooses `configure-workflow`, the runner validates the
 typed independent-audit setting. It writes `workflow-candidate.json` beside
 the retained result. The candidate digest binds the setting to the evaluated
@@ -454,9 +480,9 @@ matches the content and the description is nonempty, writes
 digest under the same identity and evidence bindings.
 
 The diagnosis prompt targets four requests and has a 20-call, 1,800-second
-loop backstop. The implementation has 28-call and 3,600-second safety
-backstops. Each model child ends as blocked after eight consecutive identical
-tool calls or assistant turns.
+loop backstop. Implementation and audit each have 60-call, 3,600-second
+safety backstops. Each model child ends as blocked after eight consecutive
+identical tool calls or assistant turns.
 
 The diagnosis preserves the primary model route, reasoning effort, task
 allowances, token policy, service tier, and task set. Verified task quality is
@@ -488,9 +514,12 @@ whose tests bind loopback servers. It also skips nested sandbox tests that
 cannot expand the checker's existing Landlock domain. The runner repeats
 validation after the episode with the complete workspace test suite.
 
-The no-spend form generates the complete workflow document. It runs that
-document through `foe plan`. A schema, authority, or construction error
-therefore fails before the runner reports that the workflow is ready.
+The no-spend form generates the complete workflow document in a temporary
+directory. It runs that document through `foe plan`. A schema, authority, or
+construction error therefore fails before the runner reports that the
+workflow is ready. The requested retained directory is created only after
+`--confirm-spend` is supplied. A preview removes the empty candidate validation
+directories it created while resolving program grants.
 
 The coding child receives read-only access to the candidate worktree's Git
 metadata. This access lets `git status`, `git diff`, and the independent
@@ -502,6 +531,11 @@ files. A source candidate binds the base Git tree and every changed file
 digest. A workflow candidate binds the independent-audit setting and preserved
 controls. `direct_implementation_required` is true when deterministic
 validation finds an error or the workflow produces no candidate.
+
+The candidate checker establishes repository conformance. Quality promotion
+uses only the unchanged task-owned Terminal-Bench grader, which runs outside
+the candidate's authority. Tokens, estimated cost, cache use, and latency are
+recorded without deciding candidate acceptance.
 
 The runner records every accepted candidate as a lineage transition under
 the retained run directory's `lineage/` tree. It writes the evidence

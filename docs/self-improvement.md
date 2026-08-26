@@ -25,9 +25,11 @@ source copy and never grants the episode write access to the repository
 checkout.
 
 The two-node workflow is implemented. The three-run result supports
-repeatability for the stated task. Automatic selection of an improvement,
-invention of an evaluator, promotion into the checkout, and general
-reliability across unrelated tasks remain unsupported.
+repeatability for the stated task. The Terminal-Bench evaluation runner also
+implements an identity-bound workflow that proposes one improvement from
+repeated failed and successful trajectory contrasts. Automatic promotion into
+the checkout and general reliability across unrelated tasks remain
+unsupported.
 
 ## Workflow structure
 
@@ -72,6 +74,46 @@ usage, and execution-configuration summaries. A failed completed attempt may
 retain model-authored completion details under `untrusted_completion_claim`.
 The compact JSON document contains at most 12 diagnoses and 48 KiB so one
 workflow result can carry the complete evidence document.
+
+## Identity-bound candidate workflow
+
+The [Terminal-Bench evaluation runner](../evals/terminal_bench/) accepts a
+bounded trajectory report produced outside the candidate's authority. The
+report identifies the evaluated source tree and runtime binary. Each eligible
+contrast names one task, at least two failed episode identifiers, at least one
+successful episode identifier, and the common failure profile. Failed and
+successful identifiers must be disjoint.
+
+The runner copies the report into the retained run directory before creating
+the program. The resulting version 3 program contains three model nodes:
+
+1. A diagnosis node receives only the task and bounded trajectory report. It
+   chooses a source, workflow-configuration, instruction, or executable-tool
+   candidate. It may instead report insufficient evidence.
+2. A source implementation node receives the typed diagnosis and task. It
+   returns a typed summary of changed paths, validation, and unresolved risks.
+3. A fresh audit node receives the task, diagnosis, and implementation
+   handoff. It uses `xhigh` reasoning, repairs the candidate, and owns terminal
+   completion through the candidate checker.
+
+The diagnosis verifier enforces a requested candidate kind before an
+implementation episode can start. It accepts an insufficient-evidence result
+for every requested kind. The source checker runs from outside the candidate's
+writable directories and remains the authority for source acceptance. If the
+terminal audit ends after the source files have been produced, the runner can
+recover the typed diagnosis from its child episode and apply the source checker
+to the artifact.
+
+The default OpenAI service tier is `priority` for all three model nodes. A
+preview constructs and validates the complete program without creating the
+requested retained directory or sending a model request. It removes any empty
+candidate validation directories that it created for grant resolution. A
+confirmed run retains those private directories for execution.
+
+The candidate checker establishes repository conformance. It does not assess
+Terminal-Bench task quality. The unchanged task-owned Terminal-Bench grader
+remains the sole authority for promotion based on quality. Tokens, estimated
+cost, cache use, and latency are recorded as diagnostics.
 
 ## Acceptance conditions
 

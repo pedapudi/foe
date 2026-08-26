@@ -29,10 +29,13 @@ from workflow_candidate import validate_independent_audit
 
 
 DIAGNOSIS_CALLS = 20
-IMPLEMENTATION_CALLS = 28
+IMPLEMENTATION_CALLS = 60
+AUDIT_CALLS = 60
+AUDIT_REASONING_EFFORT = "xhigh"
 DIAGNOSIS_SECONDS = 1_800
 IMPLEMENTATION_SECONDS = 3_600
-SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS
+AUDIT_SECONDS = 3_600
+SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + AUDIT_SECONDS
 LOOP_THRESHOLD = 8
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
 ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel.lock")
@@ -171,15 +174,94 @@ def supported_independent_audits(
             }
         )
         supported[json.dumps(setting, sort_keys=True)] = setting
-    if not supported:
-        raise ValueError(
-            "self-improvement evidence has no repeated successful independent-audit setting"
-        )
     return [supported[key] for key in sorted(supported)]
 
 
 def evidence_digest(evidence: Path) -> str:
     return "sha256:" + hashlib.sha256(evidence.read_bytes()).hexdigest()
+
+
+def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
+    """Return repeated task-specific contrasts that may activate a candidate."""
+    report = json.loads(evidence.read_text(encoding="utf-8"))
+    contrasts = report.get("repeated_failure_contrasts")
+    if not isinstance(contrasts, list):
+        raise ValueError("self-improvement evidence has no repeated_failure_contrasts list")
+    answer = []
+    for index, contrast in enumerate(contrasts):
+        if not isinstance(contrast, dict):
+            raise ValueError(f"repeated failure contrast {index} is not an object")
+        if set(contrast) != {
+            "task",
+            "failure_profile",
+            "failed_episode_ids",
+            "successful_episode_ids",
+        }:
+            raise ValueError(f"repeated failure contrast {index} has an invalid shape")
+        task = contrast["task"]
+        profile = contrast["failure_profile"]
+        failed = contrast["failed_episode_ids"]
+        successful = contrast["successful_episode_ids"]
+        if not isinstance(task, str) or not task or not isinstance(profile, dict):
+            raise ValueError(f"repeated failure contrast {index} has no task or failure profile")
+        if set(profile) != {
+            "outcome",
+            "artifact_outcome_mismatch",
+            "failed_verifier_checks",
+        }:
+            raise ValueError(f"repeated failure contrast {index} has an invalid failure profile")
+        outcome = profile["outcome"]
+        mismatch = profile["artifact_outcome_mismatch"]
+        checks = profile["failed_verifier_checks"]
+        if (
+            not isinstance(outcome, dict)
+            or not set(outcome).issubset({"kind", "code", "limit"})
+            or not isinstance(outcome.get("kind"), str)
+            or not outcome["kind"]
+            or not all(isinstance(value, str) for value in outcome.values())
+        ):
+            raise ValueError(f"repeated failure contrast {index} has an invalid outcome")
+        if not isinstance(mismatch, bool):
+            raise ValueError(f"repeated failure contrast {index} has an invalid mismatch flag")
+        if not isinstance(checks, list) or not all(
+            isinstance(check, dict)
+            and set(check) == {"name", "failure_class"}
+            and all(isinstance(value, str) and value for value in check.values())
+            for check in checks
+        ):
+            raise ValueError(f"repeated failure contrast {index} has invalid verifier checks")
+        if (
+            not isinstance(failed, list)
+            or len(failed) < 2
+            or not all(isinstance(value, str) and value for value in failed)
+        ):
+            raise ValueError(f"repeated failure contrast {index} has fewer than two failed episodes")
+        if (
+            not isinstance(successful, list)
+            or not successful
+            or not all(isinstance(value, str) and value for value in successful)
+        ):
+            raise ValueError(f"repeated failure contrast {index} has no successful episode")
+        if len(set(failed)) != len(failed) or len(set(successful)) != len(successful):
+            raise ValueError(f"repeated failure contrast {index} repeats an episode identity")
+        if set(failed).intersection(successful):
+            raise ValueError(f"repeated failure contrast {index} reuses an episode across outcomes")
+        answer.append(contrast)
+    return answer
+
+
+def expected_candidate_branch(candidate_kind: str) -> str | None:
+    branches = {
+        "auto": None,
+        "source-change": "implement-source",
+        "workflow-configuration": "configure-workflow",
+        "instruction-revision": "revise-instructions",
+        "tool-definition": "define-tool",
+    }
+    try:
+        return branches[candidate_kind]
+    except KeyError as error:
+        raise ValueError(f"unsupported candidate kind {candidate_kind}") from error
 
 
 def digest_bytes(data: bytes) -> str:
@@ -466,14 +548,15 @@ def workflow_candidate_from_outcome(
     evidence: Path,
     base_configuration: dict[str, str],
 ) -> dict[str, Any]:
-    """Validate a diagnosis result and bind its observed audit setting."""
+    """Bind a workflow diagnosis to the sole supported audit setting."""
     if not isinstance(outcome_value, dict) or outcome_value.get("branch") != "configure-workflow":
         raise ValueError("self-improvement outcome did not select configure-workflow")
-    audit = validate_independent_audit(outcome_value.get("independent_audit"))
-    if audit not in supported_audits:
+    if len(supported_audits) != 1:
         raise ValueError(
-            "workflow candidate independent_audit was not a repeated successful evidence setting"
+            "workflow candidate evidence must contain exactly one repeated successful "
+            "independent-audit setting"
         )
+    audit = supported_audits[0]
     return create_workflow_candidate(
         identity,
         evidence_digest(evidence),
@@ -540,6 +623,26 @@ def rust_toolchain_identity(cargo: Path) -> dict[str, str]:
     return binaries
 
 
+def validation_directories(candidate: Path) -> tuple[Path, Path, Path]:
+    target = candidate / "target"
+    return target, target / "foe-self-improvement-check", target / "test-scratch"
+
+
+def prepare_validation_directories(candidate: Path) -> Path:
+    """Create the generated and scratch directories used by candidate checks."""
+    _, cargo_target, test_scratch = validation_directories(candidate)
+    cargo_target.mkdir(parents=True, exist_ok=True)
+    test_scratch.mkdir(parents=True, exist_ok=True)
+    return cargo_target
+
+
+def remove_preview_validation_directories(candidate: Path, existing: set[Path]) -> None:
+    """Remove empty validation directories that a preview created."""
+    for path in reversed(validation_directories(candidate)):
+        if path not in existing:
+            path.rmdir()
+
+
 def validate_program(binary: Path, program: Path) -> dict[str, Any]:
     """Construct the generated program without making a model request.
 
@@ -579,6 +682,10 @@ def git_metadata_root(candidate: Path) -> Path:
 
 def write_candidate_check(path: Path, candidate: Path, cargo: Path, cargo_home: Path, cargo_target: Path) -> None:
     baseline = source_hashes(candidate)
+    baseline_benchmark_identifiers = {
+        name: (candidate / name).read_text(encoding="utf-8", errors="replace").count("terminal-bench/")
+        for name in baseline
+    }
     line_ceilings = line_budget_ceilings(candidate)
     toolchain = cargo.parent.parent
     rustup_home = toolchain.parent.parent if toolchain.parent.name == "toolchains" else None
@@ -592,6 +699,7 @@ import sys
 
 root = pathlib.Path({str(candidate)!r})
 baseline = {baseline!r}
+baseline_benchmark_identifiers = {baseline_benchmark_identifiers!r}
 allowed_directories = {ALLOWED_DIRECTORIES!r}
 allowed_root_files = {ALLOWED_ROOT_FILES!r}
 cargo = {str(cargo)!r}
@@ -639,8 +747,8 @@ for name in changed:
     if not item.is_file():
         continue
     text = item.read_text(encoding="utf-8", errors="replace")
-    if "terminal-bench/" in text:
-        findings.append(f"{{name}} contains a benchmark task identifier")
+    if text.count("terminal-bench/") > baseline_benchmark_identifiers.get(name, 0):
+        findings.append(f"{{name}} adds a benchmark task identifier")
     if any(line.endswith((" ", "\\t")) for line in text.splitlines()):
         findings.append(f"{{name}} contains trailing whitespace")
 if not findings:
@@ -660,22 +768,31 @@ if not findings:
     test_command = [cargo, "test", "--workspace"]
     if not full_validation:
         # Executable tools cannot bind TCP listeners. The CLI unit tests use
-        # loopback servers, as do the transport and viewer tests. Nested
-        # sandbox tests cannot expand an existing Landlock domain. The
-        # post-episode check runs the omitted packages and skipped group.
+        # loopback servers, as do the transport, viewer, and session tests.
+        # Nested sandbox tests cannot expand an existing Landlock domain. The
+        # post-episode check runs the omitted packages and skipped groups.
         test_command.extend(
             [
                 "--exclude", "foe",
                 "--exclude", "foe-transport",
                 "--exclude", "foe-view",
                 "--", "--skip", "sandbox::tests::",
+                "--skip", "session::tests::a_session_serves_a_granted_bind_port_across_calls",
             ]
         )
     commands = [
         [cargo, "fmt", "--all", "--", "--check"],
         test_command,
-        [cargo, "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
     ]
+    if not full_validation:
+        # The command-line unit tests cover the built-in workflow that source
+        # improvement most often changes. Only login tests need loopback
+        # listeners, so keep every other command-line invariant in the
+        # completion gate.
+        commands.append(
+            [cargo, "test", "-p", "foe", "--bin", "foe", "--", "--skip", "login::tests::"]
+        )
+    commands.append([cargo, "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"])
     for command in commands:
         try:
             result = subprocess.run(
@@ -741,6 +858,8 @@ def write_diagnosis_validator(
     evidence_sha256: str,
     base_configuration: dict[str, str],
     supported_audits: list[dict[str, Any]],
+    failure_contrasts: list[dict[str, Any]],
+    requested_candidate_kind: str,
 ) -> None:
     """Write the diagnosis node's completion verifier.
 
@@ -772,12 +891,23 @@ identity = {identity!r}
 evidence_sha256 = {evidence_sha256!r}
 base_configuration = {base_configuration!r}
 supported_audits = {supported_audits!r}
+failure_contrasts = {failure_contrasts!r}
+expected_branch = {expected_candidate_branch(requested_candidate_kind)!r}
 program = {str(program)!r}
 
 findings = []
 try:
     candidate = json.load(sys.stdin)
     branch = candidate.get("branch") if isinstance(candidate, dict) else None
+    if expected_branch is not None and branch not in (expected_branch, "insufficient-evidence"):
+        raise ValueError(
+            f"requested candidate kind requires branch {{expected_branch}}, received {{branch}}"
+        )
+    if branch not in ("insufficient-evidence", None):
+        if candidate.get("failure_contrast") not in failure_contrasts:
+            raise ValueError(
+                "candidate does not select one supported repeated failure contrast"
+            )
     if branch == "configure-workflow":
         audit = validate_independent_audit(candidate.get("independent_audit"))
         if audit not in supported_audits:
@@ -823,6 +953,7 @@ def build_config(
     source_metadata_roots: list[Path],
     development_read_roots: list[Path],
     objective: str,
+    requested_candidate_kind: str,
 ) -> dict[str, Any]:
     diagnosis_read_roots = [str(evidence.parent)]
     development_reads = [str(path) for path in [*source_metadata_roots, *development_read_roots]]
@@ -831,6 +962,7 @@ def build_config(
     write_roots = [
         *(str(candidate / directory) for directory in ALLOWED_DIRECTORIES),
         str(candidate / "target" / "foe-self-improvement-check"),
+        str(candidate / "target" / "test-scratch"),
     ]
     execute = [str(path) for path in execute_roots]
     check_tool = {
@@ -842,16 +974,56 @@ def build_config(
     validator_tool = {
         "exec": str(validator),
         "description": "Validate the returned typed diagnosis: an identity-bound workflow, instruction, or tool candidate is checked against the retained evidence and the preserved run controls. The tool prints findings and prints nothing when the diagnosis is valid.",
+        "cwd": str(evidence.parent),
         "timeout_seconds": 60,
     }
+    if requested_candidate_kind == "source-change":
+        sufficiency = (
+            "Choose `implement-source` when the trajectories support the general intervention named "
+            "by the objective and the objective identifies behavior owned by Foe source. Choose "
+            "`insufficient-evidence` when the evidence does not support that intervention, the source "
+            "ownership claim is absent, or the change requires semantic task knowledge. Do not choose "
+            "`configure-workflow`; this run evaluates whether a proven intervention can become source-owned behavior."
+        )
+    elif requested_candidate_kind == "workflow-configuration":
+        sufficiency = (
+            "Choose `configure-workflow` when a repeated quality gain is caused by exactly one independent "
+            "audit setting. Choose `insufficient-evidence` when the evidence does not isolate that setting. "
+            "Do not choose `implement-source`; this run evaluates a configuration candidate."
+        )
+    elif requested_candidate_kind == "instruction-revision":
+        sufficiency = (
+            "Choose `revise-instructions` when the evidence supports one general procedural change to an "
+            "instruction section of the retained program document `program.json`. Choose "
+            "`insufficient-evidence` when the evidence does not isolate that instruction change. Do not "
+            "choose another candidate branch; this run evaluates an instruction revision."
+        )
+    elif requested_candidate_kind == "tool-definition":
+        sufficiency = (
+            "Choose `define-tool` when one missing executable tool explains the verified quality gap and "
+            "the evidence supports its complete general definition. Choose `insufficient-evidence` when "
+            "the evidence does not isolate that tool. Do not choose another candidate branch; this run "
+            "evaluates a tool definition."
+        )
+    else:
+        sufficiency = (
+            "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. "
+            "Choose `configure-workflow` when a repeated quality gain is caused by exactly one independent "
+            "audit setting; the runner binds that setting directly from the evidence. Choose `revise-instructions` "
+            "when a procedural difference belongs in one instruction section of the retained program document. "
+            "Choose `define-tool` when one missing executable tool explains the gap. Choose "
+            "`insufficient-evidence` when the intervention requires semantic knowledge absent from the log or "
+            "an evaluator change. A reasoning-effort difference without a workflow contrast establishes model "
+            "capability rather than a Foe defect."
+        )
     diagnosis = {
         "name": "diagnose-foe-from-trajectory-measurements",
         "instructions": {
             "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
-            "evidence": "Compare the failed and successful settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
+            "evidence": "Select one object from repeated_failure_contrasts and copy it unchanged into failure_contrast. Diagnose only that task-specific contrast. Do not combine failure profiles or tasks. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
-            "sufficiency": "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. Choose `configure-workflow` when a repeated quality gain is caused by an independent audit stage, and return the observed successful audit setting. Choose `revise-instructions` when the repeated causal difference is procedural guidance that one instruction section of the retained program document `program.json` can carry, and return the exact revision. Choose `define-tool` when one missing executable tool explains the gap, and return its complete definition. Choose `insufficient-evidence` when the intervention requires semantic knowledge absent from the log, an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort difference without a workflow contrast establishes model capability rather than a Foe defect.",
+            "sufficiency": sufficiency + " Choose `insufficient-evidence` when repeated_failure_contrasts is empty.",
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block", DIAGNOSIS_VALIDATOR_TOOL],
@@ -893,6 +1065,61 @@ def build_config(
                     "activation_path": {"type": "string", "minLength": 1},
                     "preserved_controls": {"type": "string", "minLength": 1},
                     "falsification_condition": {"type": "string", "minLength": 1},
+                    "failure_contrast": {
+                        "type": "object",
+                        "properties": {
+                            "task": {"type": "string", "minLength": 1},
+                            "failure_profile": {
+                                "type": "object",
+                                "properties": {
+                                    "outcome": {
+                                        "type": "object",
+                                        "properties": {
+                                            "kind": {"type": "string"},
+                                            "code": {"type": "string"},
+                                            "limit": {"type": "string"},
+                                        },
+                                        "additionalProperties": False,
+                                    },
+                                    "artifact_outcome_mismatch": {"type": "boolean"},
+                                    "failed_verifier_checks": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {"type": "string"},
+                                                "failure_class": {"type": "string"},
+                                            },
+                                            "additionalProperties": False,
+                                        },
+                                    },
+                                },
+                                "required": [
+                                    "outcome",
+                                    "artifact_outcome_mismatch",
+                                    "failed_verifier_checks",
+                                ],
+                                "additionalProperties": False,
+                            },
+                            "failed_episode_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 2,
+                            },
+                            "successful_episode_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 1,
+                            },
+                        },
+                        "required": [
+                            "task",
+                            "failure_profile",
+                            "failed_episode_ids",
+                            "successful_episode_ids",
+                        ],
+                        "additionalProperties": False,
+                    },
                     "independent_audit": {
                         "type": "object",
                         "properties": {
@@ -945,13 +1172,36 @@ def build_config(
             }
         },
     }
+    implementation_handoff = {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string", "minLength": 1},
+            "changed_paths": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 24,
+            },
+            "validation": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 16,
+            },
+            "unresolved_risks": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 8,
+            },
+        },
+        "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
+        "additionalProperties": False,
+    }
     implementation = {
         "name": "implement-foe-improvement",
         "instructions": {
-            "role": "Act as a fully capable Foe coding agent and implement the supplied typed diagnosis.",
+            "role": "Implement the supplied typed diagnosis as a candidate for independent source audit.",
             "scope": "Inspect source before editing. Change runtime source, a regression test, and each affected specification. Preserve reconstructable logs, declared authority, typed outcomes, and explicit completion semantics.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Do not encode benchmark identifiers, fixture values, or grader rules. Refuse an intervention that changes only a built-in default overridden by the explicit evaluated program.",
-            "validation": "The candidate check runs formatting, the Rust workspace tests, Clippy, and baseline-relative line budgets under the declared toolchain. Run it after implementation and use its findings to correct the candidate. Use the check tool as the authority for line counts because scripts/loc.sh alone cannot distinguish an existing overage from candidate growth. State expected accuracy, cost, latency, and compatibility effects in the final result.",
+            "validation": "Treat the diagnosis as a hypothesis that source and tests must support. Run the candidate check after implementation and use its findings to correct the candidate. Return a typed handoff for a fresh audit, including unresolved architectural risks. Use the check tool as the authority for baseline-relative line budgets because scripts/loc.sh alone cannot distinguish an existing overage from candidate growth.",
         },
         "tools": [*CODING_TOOLS, "check"],
         "tool_defs": {"check": check_tool},
@@ -961,26 +1211,54 @@ def build_config(
             "seconds": IMPLEMENTATION_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
         },
-        "done_when": {"verify": "check", "retries": 2},
+        "done_when": {"returns": implementation_handoff},
+    }
+    audit_model = {**implementation_model, "reasoning_effort": AUDIT_REASONING_EFFORT}
+    audit = {
+        "name": "audit-and-repair-foe-improvement",
+        "instructions": {
+            "role": "Independently audit the source candidate, repair every defect, and let the candidate checker decide completion.",
+            "evidence": "Treat the diagnosis and implementation handoff as unverified hypotheses. Inspect the current diff, the owning source, existing tests, and affected specifications. Reject a proposed mechanism whose source lifecycle cannot produce the claimed task-visible behavior.",
+            "architecture": "Trace every proposed tool, authority, process, and mutable resource from creation through model-node return, workflow settlement, and external evaluation. Preserve existing default interfaces unless the source design and general task-quality evidence require a change.",
+            "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Remove benchmark-specific behavior and refuse changes whose benefit depends on hidden evaluator knowledge.",
+            "validation": "Run the candidate check after the final repair. Use its findings to continue until formatting, relevant tests, Clippy, scope, and baseline-relative line budgets pass. Report remaining semantic risks before the authoritative check.",
+        },
+        "tools": [*CODING_TOOLS, "check"],
+        "tool_defs": {"check": check_tool},
+        "grants": {"read": implementation_read_roots, "write": write_roots, "execute": execute},
+        "budget": {
+            "model_calls": AUDIT_CALLS,
+            "seconds": AUDIT_SECONDS,
+            "loop_threshold": LOOP_THRESHOLD,
+        },
+        "model": audit_model,
+        "done_when": {"verify": "check", "retries": 4},
     }
     return {
         "version": 3,
         "name": "identity-bound-trajectory-self-improvement",
-        "instructions": {"role": "Run the declared diagnosis and implementation workflow."},
-        "tools": [*CODING_TOOLS, "block", "evidence", "check"],
+        "instructions": {"role": "Run the declared diagnosis, implementation, and independent source-audit workflow."},
+        "tools": [
+            *CODING_TOOLS,
+            "block",
+            "evidence",
+            "check",
+            DIAGNOSIS_VALIDATOR_TOOL,
+        ],
         "tool_defs": {
             "evidence": {
                 "exec": "/usr/bin/cat",
                 "description": "Return identity-bound trajectory diagnoses without modifying them.",
             },
             "check": check_tool,
+            DIAGNOSIS_VALIDATOR_TOOL: validator_tool,
         },
         "grants": {"read": root_read_roots, "write": write_roots, "execute": execute},
         "budget": {
-            "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS,
+            "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS + AUDIT_CALLS,
             "seconds": SECONDS,
             "max_depth": 1,
-            "max_episodes": 3,
+            "max_episodes": 4,
             "max_concurrent": 1,
             "loop_threshold": LOOP_THRESHOLD,
         },
@@ -1004,6 +1282,10 @@ def build_config(
                 "implement-runtime-improvement": {
                     "model": implementation,
                     "follows": ["task", "diagnose-runtime"],
+                },
+                "audit-runtime-improvement": {
+                    "model": audit,
+                    "follows": ["task", "diagnose-runtime", "implement-runtime-improvement"],
                     "terminal": True,
                 },
             },
@@ -1093,6 +1375,32 @@ def measure_episode(root: Path, pricing: dict[str, Pricing]) -> dict[str, Any]:
     }
 
 
+def workflow_node_value(root: Path, node: str) -> dict[str, Any] | None:
+    """Return the last recorded object value produced by one workflow node."""
+    path = root / "episode.jsonl"
+    if not path.is_file():
+        return None
+    value = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        event = json.loads(line)
+        data = event.get("data", {})
+        if (
+            event.get("type") == "workflow/node-end"
+            and data.get("node") == node
+            and isinstance(data.get("value"), dict)
+        ):
+            value = data["value"]
+    return value
+
+
+def candidate_outcome_value(root: Path, outcome: Any) -> dict[str, Any] | None:
+    """Recover the diagnosis when a later terminal child owns the root outcome."""
+    value = outcome.get("value") if isinstance(outcome, dict) else None
+    if isinstance(value, dict) and isinstance(value.get("branch"), str):
+        return value
+    return workflow_node_value(root, "diagnose-runtime")
+
+
 def parser() -> argparse.ArgumentParser:
     answer = argparse.ArgumentParser(description=__doc__)
     answer.add_argument("--foe", type=Path, required=True)
@@ -1122,6 +1430,18 @@ def parser() -> argparse.ArgumentParser:
         ),
     )
     answer.add_argument(
+        "--candidate-kind",
+        choices=(
+            "auto",
+            "source-change",
+            "workflow-configuration",
+            "instruction-revision",
+            "tool-definition",
+        ),
+        default="auto",
+        help="kind of improvement the evidence must support",
+    )
+    answer.add_argument(
         "--cargo",
         type=Path,
         help="absolute path to the pinned toolchain's cargo binary, rather than a rustup proxy",
@@ -1130,6 +1450,21 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--keep", type=Path)
     answer.add_argument("--confirm-spend", action="store_true")
     return answer
+
+
+def prepare_output_root(
+    keep: Path | None,
+    workspace: str | None,
+    confirmed: bool,
+) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+    """Create a retained root only for a confirmed run."""
+    if confirmed and keep:
+        root = keep if keep.is_absolute() or not workspace else Path(workspace) / keep
+        root = root.resolve()
+        root.mkdir(parents=True, exist_ok=False)
+        return root, None
+    temporary = tempfile.TemporaryDirectory(prefix="foe-trajectory-self-improvement-")
+    return Path(temporary.name), temporary
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1165,6 +1500,7 @@ def main(argv: list[str] | None = None) -> int:
         identity = verify_evidence_identity(candidate, binary, evidence)
         base_configuration = failed_base_configuration(evidence)
         supported_audits = supported_independent_audits(evidence, base_configuration)
+        failure_contrasts = supported_failure_contrasts(evidence)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"self-improvement: {error}", file=sys.stderr)
         return 2
@@ -1173,30 +1509,34 @@ def main(argv: list[str] | None = None) -> int:
         "evaluation": "identity-bound-trajectory-self-improvement",
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
+        "source_audit_reasoning_effort": AUDIT_REASONING_EFFORT,
         "service_tier": args.service_tier,
         "chatgpt_credit_multiplier": (
             FAST_SERVICE_CREDIT_MULTIPLIER if args.service_tier == "priority" else 1.0
         ),
         "diagnosis_model": args.diagnosis_model,
         "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort,
-        "maximum": {"model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS, "seconds": SECONDS},
+        "maximum": {
+            "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS + AUDIT_CALLS,
+            "seconds": SECONDS,
+        },
+        "quality_authority": "unchanged task-owned Terminal-Bench grader",
         "token_limits": "measurement_only",
+        "requested_candidate_kind": args.candidate_kind,
     }
     if validator_identity is not None:
         preview["candidate_validator"] = {"rust_toolchain": validator_identity}
-    temporary: tempfile.TemporaryDirectory[str] | None = None
-    if args.keep:
-        workspace = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
-        root = args.keep if args.keep.is_absolute() or not workspace else Path(workspace) / args.keep
-        root = root.resolve()
-        root.mkdir(parents=True, exist_ok=False)
-    else:
-        temporary = tempfile.TemporaryDirectory(prefix="foe-trajectory-self-improvement-")
-        root = Path(temporary.name)
+    root, temporary = prepare_output_root(
+        args.keep,
+        os.environ.get("BUILD_WORKSPACE_DIRECTORY"),
+        args.confirm_spend,
+    )
     check = root / "candidate-check"
     assert cargo is not None and cargo_home is not None
-    cargo_target = candidate / "target" / "foe-self-improvement-check"
-    cargo_target.mkdir(parents=True, exist_ok=True)
+    existing_validation_directories = {
+        path for path in validation_directories(candidate) if path.is_dir()
+    }
+    cargo_target = prepare_validation_directories(candidate)
     source_metadata = git_metadata_root(candidate)
     write_candidate_check(check, candidate, cargo, cargo_home, cargo_target)
     episode_evidence = root / "trajectory-evidence.json"
@@ -1209,6 +1549,8 @@ def main(argv: list[str] | None = None) -> int:
         evidence_digest(evidence),
         base_configuration,
         supported_audits,
+        failure_contrasts,
+        args.candidate_kind,
     )
     toolchain = cargo.parent.parent
     rustup_home = toolchain.parent.parent if toolchain.parent.name == "toolchains" else None
@@ -1229,6 +1571,7 @@ def main(argv: list[str] | None = None) -> int:
         [source_metadata],
         development_read_roots,
         args.objective,
+        args.candidate_kind,
     )
     program = root / "program.json"
     write_json(program, program_document)
@@ -1236,12 +1579,15 @@ def main(argv: list[str] | None = None) -> int:
         plan = validate_program(binary, program)
     except ValueError as error:
         print(f"self-improvement: {error}", file=sys.stderr)
+        if not args.confirm_spend:
+            remove_preview_validation_directories(candidate, existing_validation_directories)
         if temporary:
             temporary.cleanup()
         return 2
     print(json.dumps(preview, indent=2, sort_keys=True))
     if not args.confirm_spend:
         print("No model requests were made. Add --confirm-spend after reviewing the plan.")
+        remove_preview_validation_directories(candidate, existing_validation_directories)
         if temporary:
             temporary.cleanup()
         return 0
@@ -1277,14 +1623,25 @@ def main(argv: list[str] | None = None) -> int:
     changed = [line[3:] for line in changed_status if len(line) > 3]
     usage = measure_episode(episode, pricing)
     outcome = usage.get("outcome")
-    outcome_value = outcome.get("value") if isinstance(outcome, dict) else None
+    outcome_value = candidate_outcome_value(episode, outcome)
     branch = outcome_value.get("branch") if isinstance(outcome_value, dict) else None
+    expected_branch = expected_candidate_branch(args.candidate_kind)
     workflow_candidate = None
     workflow_candidate_path = None
     instruction_candidate_path = None
     tool_candidate_path = None
     tool_executable_path = None
-    if branch == "configure-workflow":
+    if expected_branch is not None and branch != expected_branch:
+        artifact_identity = candidate_artifact_identity(candidate, identity["source_tree"], changed)
+        acceptance = {
+            "accepted": False,
+            "findings": [
+                f"requested candidate kind {args.candidate_kind} produced branch {branch or 'absent'}"
+            ],
+            "exit_code": None,
+        }
+        candidate_kind = "no-candidate"
+    elif branch == "configure-workflow":
         findings = []
         if changed:
             findings.append("workflow configuration candidate also changed source files")

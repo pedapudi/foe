@@ -11,6 +11,7 @@ from run_self_improvement import (
     DIAGNOSIS_VALIDATOR_TOOL,
     adoption_state_document,
     build_config,
+    candidate_outcome_value,
     candidate_artifact_identity,
     canonical_json,
     check_baseline,
@@ -22,10 +23,15 @@ from run_self_improvement import (
     line_budget_ceilings,
     measure_episode,
     model_config,
+    parser as self_improvement_parser,
+    prepare_output_root,
+    prepare_validation_directories,
     record_adoption,
     revised_program_document,
+    remove_preview_validation_directories,
     rust_toolchain_identity,
     supported_independent_audits,
+    supported_failure_contrasts,
     tool_candidate_from_outcome,
     validate_program,
     workflow_candidate_from_outcome,
@@ -39,6 +45,53 @@ from workflow_candidate import create as create_workflow_candidate
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
+    def test_command_line_defaults_to_priority_service(self):
+        args = self_improvement_parser().parse_args(
+            [
+                "--foe",
+                "/tmp/foe",
+                "--candidate",
+                "/tmp/candidate",
+                "--evidence",
+                "/tmp/evidence.json",
+                "--cases",
+                "/tmp/cases.json",
+            ]
+        )
+        self.assertEqual(args.service_tier, "priority")
+
+    def test_preview_does_not_create_the_requested_retained_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            requested = Path(directory) / "retained"
+            root, temporary = prepare_output_root(requested, None, False)
+            self.assertNotEqual(root, requested)
+            self.assertFalse(requested.exists())
+            self.assertIsNotNone(temporary)
+            temporary.cleanup()
+
+    def test_confirmed_run_creates_the_requested_retained_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            requested = Path(directory) / "retained"
+            root, temporary = prepare_output_root(requested, None, True)
+            self.assertEqual(root, requested)
+            self.assertTrue(requested.is_dir())
+            self.assertIsNone(temporary)
+
+    def test_validation_directories_exist_before_program_construction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cargo_target = prepare_validation_directories(root)
+            self.assertTrue(cargo_target.is_dir())
+            self.assertTrue((root / "target" / "test-scratch").is_dir())
+
+    def test_preview_removes_validation_directories_it_created(self):
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory) / "candidate"
+            candidate.mkdir()
+            prepare_validation_directories(candidate)
+            remove_preview_validation_directories(candidate, set())
+            self.assertFalse((candidate / "target").exists())
+
     def test_rust_toolchain_identity_hashes_every_validation_binary(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -70,9 +123,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
 
     def test_workflow_uses_typed_handoff_and_a_full_coding_surface(self):
         root = Path("/tmp/candidate")
+        evidence = Path("/tmp/evidence.json")
         config = build_config(
             root,
-            Path("/tmp/evidence.json"),
+            evidence,
             Path("/tmp/check"),
             Path("/tmp/diagnosis-validator"),
             model_config("openai-codex/gpt-5.6-terra", "high"),
@@ -81,10 +135,12 @@ class SelfImprovementConfigTest(unittest.TestCase):
             [Path("/repo/.git")],
             [Path("/opt/cargo-cache")],
             "Raise verified completion.",
+            "auto",
         )
         nodes = config["workflow"]["nodes"]
         diagnosis = nodes["diagnose-runtime"]["model"]
         implementation = nodes["implement-runtime-improvement"]["model"]
+        audit = nodes["audit-runtime-improvement"]["model"]
         self.assertEqual(
             nodes["implement-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime"],
@@ -92,6 +148,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn(
             "collect-trajectory-diagnostics",
             nodes["implement-runtime-improvement"]["follows"],
+        )
+        self.assertEqual(
+            nodes["audit-runtime-improvement"]["follows"],
+            ["task", "diagnose-runtime", "implement-runtime-improvement"],
         )
         self.assertEqual(
             nodes["diagnose-runtime"]["branches"],
@@ -104,14 +164,24 @@ class SelfImprovementConfigTest(unittest.TestCase):
             },
         )
         self.assertEqual(implementation["tools"][:4], ["read", "grep", "edit", "bash"])
+        self.assertEqual(audit["tools"][:4], ["read", "grep", "edit", "bash"])
         self.assertEqual(diagnosis["tools"], ["block", DIAGNOSIS_VALIDATOR_TOOL])
         self.assertEqual(diagnosis["done_when"]["verify"], DIAGNOSIS_VALIDATOR_TOOL)
         self.assertEqual(diagnosis["done_when"]["retries"], 2)
+        self.assertEqual(
+            diagnosis["tool_defs"][DIAGNOSIS_VALIDATOR_TOOL]["cwd"],
+            str(evidence.parent),
+        )
         self.assertEqual(
             diagnosis["tool_defs"][DIAGNOSIS_VALIDATOR_TOOL]["exec"], "/tmp/diagnosis-validator"
         )
         self.assertEqual(diagnosis["grants"]["read"], ["/tmp"])
         self.assertIn("block", config["tools"])
+        self.assertIn(DIAGNOSIS_VALIDATOR_TOOL, config["tools"])
+        self.assertEqual(
+            config["tool_defs"][DIAGNOSIS_VALIDATOR_TOOL]["exec"],
+            "/tmp/diagnosis-validator",
+        )
         self.assertNotIn("input_tokens", config["budget"])
         self.assertNotIn("output_tokens", implementation["budget"])
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
@@ -132,14 +202,26 @@ class SelfImprovementConfigTest(unittest.TestCase):
             ],
         )
         self.assertIn("falsification_condition", returns["required"])
+        self.assertIn("failure_contrast", returns["properties"])
         self.assertNotIn("required_paths", returns["properties"])
         self.assertNotIn("runtime_activation", returns["properties"])
         self.assertNotIn("implementation_files", returns["properties"])
         self.assertNotIn("model", implementation)
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
         self.assertIn("baseline-relative line budgets", implementation["instructions"]["validation"])
+        self.assertIn("Treat the diagnosis as a hypothesis", implementation["instructions"]["validation"])
+        self.assertIn("source lifecycle", audit["instructions"]["evidence"])
+        self.assertIn("workflow settlement", audit["instructions"]["architecture"])
+        self.assertEqual(audit["model"]["reasoning_effort"], "xhigh")
+        self.assertEqual(audit["model"]["service_tier"], "priority")
+        self.assertEqual(audit["done_when"], {"verify": "check", "retries": 4})
+        self.assertEqual(
+            implementation["done_when"]["returns"]["required"],
+            ["summary", "changed_paths", "validation", "unresolved_risks"],
+        )
         self.assertEqual(config["model"]["reasoning_effort"], "high")
         self.assertEqual(config["model"]["service_tier"], "priority")
+        self.assertEqual(config["version"], 3)
         self.assertEqual(
             diagnosis["budget"],
             {"model_calls": 20, "seconds": 1800, "loop_threshold": 8},
@@ -161,6 +243,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             [
                 *(str(root / directory) for directory in ("crates", "docs", "examples")),
                 str(root / "target" / "foe-self-improvement-check"),
+                str(root / "target" / "test-scratch"),
             ],
         )
         self.assertEqual(
@@ -170,7 +253,69 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(implementation["grants"]["execute"], ["/opt/toolchain"])
         self.assertEqual(config["task"], "Raise verified completion.")
         self.assertEqual(config["budget"]["loop_threshold"], 8)
+        self.assertEqual(config["budget"]["model_calls"], 140)
+        self.assertEqual(config["budget"]["max_episodes"], 4)
+        self.assertEqual(implementation["budget"]["model_calls"], 60)
+        self.assertEqual(audit["budget"]["model_calls"], 60)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
+
+    def test_source_candidate_requires_evidence_for_source_owned_behavior(self):
+        config = build_config(
+            Path("/tmp/candidate"),
+            Path("/tmp/evidence.json"),
+            Path("/tmp/check"),
+            Path("/tmp/diagnosis-validator"),
+            model_config("openai-codex/gpt-5.6-sol", "low"),
+            model_config("openai-codex/gpt-5.6-luna", "low"),
+            [Path("/opt/toolchain")],
+            [Path("/repo/.git")],
+            [Path("/opt/cargo-cache")],
+            "Promote a verified intervention into built-in behavior.",
+            "source-change",
+        )
+        sufficiency = config["workflow"]["nodes"]["diagnose-runtime"]["model"][
+            "instructions"
+        ]["sufficiency"]
+        self.assertIn("objective identifies behavior owned by Foe source", sufficiency)
+        self.assertIn("Choose `insufficient-evidence`", sufficiency)
+        self.assertIn("Do not choose `configure-workflow`", sufficiency)
+
+    def test_diagnosis_value_survives_a_blocked_terminal_child(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            events = [
+                {
+                    "seq": 1,
+                    "type": "workflow/node-end",
+                    "data": {
+                        "node": "diagnose-runtime",
+                        "value": {"branch": "implement-source", "intervention": "change source"},
+                    },
+                },
+                {
+                    "seq": 2,
+                    "type": "workflow/node-end",
+                    "data": {
+                        "node": "implement-runtime-improvement",
+                        "value": None,
+                        "error": "verification failed",
+                    },
+                },
+                {
+                    "seq": 3,
+                    "type": "episode/end",
+                    "data": {"outcome": {"kind": "blocked", "code": "verification-unsatisfiable"}},
+                },
+            ]
+            (root / "episode.jsonl").write_text(
+                "".join(json.dumps(event) + "\n" for event in events), encoding="utf-8"
+            )
+            value = candidate_outcome_value(
+                root,
+                {"kind": "completed", "value": {"summary": "audit completed"}},
+            )
+        self.assertEqual(value["branch"], "implement-source")
+        self.assertEqual(value["intervention"], "change source")
 
     def test_failed_base_configuration_excludes_the_successful_audit_setting(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -226,7 +371,48 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertEqual(audits, [{"reasoning_effort": "high", "model_calls": 60}])
 
-    def test_workflow_candidate_accepts_only_an_observed_successful_setting(self):
+    def test_source_diagnosis_does_not_require_an_independent_audit_setting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text(
+                json.dumps(
+                    {
+                        "evaluation_summary": [
+                            {
+                                "attempts": 1,
+                                "verified_successes": 0,
+                                "execution_configuration": {
+                                    "implementation": {
+                                        "model": "openai-codex/gpt-5.6-sol",
+                                        "reasoning_effort": "low",
+                                    },
+                                    "service_tier": "priority",
+                                    "token_policy": "measurement_only",
+                                },
+                            },
+                            {
+                                "attempts": 1,
+                                "verified_successes": 1,
+                                "execution_configuration": {
+                                    "implementation": {
+                                        "model": "openai-codex/gpt-5.6-sol",
+                                        "reasoning_effort": "xhigh",
+                                    },
+                                    "service_tier": "priority",
+                                    "token_policy": "measurement_only",
+                                },
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            configuration = failed_base_configuration(evidence)
+            audits = supported_independent_audits(evidence, configuration)
+        self.assertEqual(configuration["reasoning_effort"], "low")
+        self.assertEqual(audits, [])
+
+    def test_workflow_candidate_uses_the_only_observed_successful_setting(self):
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "evidence.json"
             evidence.write_text("{}\n", encoding="utf-8")
@@ -242,25 +428,16 @@ class SelfImprovementConfigTest(unittest.TestCase):
             }
             supported = [{"reasoning_effort": "high", "model_calls": 60}]
             candidate = workflow_candidate_from_outcome(
-                {
-                    "branch": "configure-workflow",
-                    "independent_audit": supported[0],
-                },
+                {"branch": "configure-workflow"},
                 supported,
                 identity,
                 evidence,
                 base,
             )
-            with self.assertRaisesRegex(ValueError, "not a repeated successful"):
+            with self.assertRaisesRegex(ValueError, "exactly one repeated successful"):
                 workflow_candidate_from_outcome(
-                    {
-                        "branch": "configure-workflow",
-                        "independent_audit": {
-                            "reasoning_effort": "xhigh",
-                            "model_calls": 120,
-                        },
-                    },
-                    supported,
+                    {"branch": "configure-workflow"},
+                    [*supported, {"reasoning_effort": "xhigh", "model_calls": 120}],
                     identity,
                     evidence,
                     base,
@@ -384,7 +561,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
             specification = candidate / "docs/design.md"
             implementation.write_text("pub fn value() -> u8 { 1 }\n", encoding="utf-8")
             regression.write_text("#[test]\nfn value_is_one() {}\n", encoding="utf-8")
-            specification.write_text("The value is one.\n", encoding="utf-8")
+            specification.write_text(
+                "The value is one. Existing terminal-bench/reference.\n",
+                encoding="utf-8",
+            )
             loc = candidate / "scripts/loc.sh"
             loc.write_text("#!/bin/sh\nprintf 'cli 2 (budget 1)\\n'\nexit 1\n", encoding="utf-8")
             subprocess.run(["git", "init", "--quiet", str(candidate)], check=True)
@@ -421,7 +601,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
             baseline = check_baseline(check, candidate)
             implementation.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
             regression.write_text("#[test]\nfn value_is_two() {}\n", encoding="utf-8")
-            specification.write_text("The value is two.\n", encoding="utf-8")
+            specification.write_text(
+                "The value is two. Existing terminal-bench/reference.\n",
+                encoding="utf-8",
+            )
             accepted = check_candidate(check, candidate)
             sandboxed = subprocess.run(
                 [str(check)], text=True, capture_output=True, check=True
@@ -431,12 +614,15 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertTrue(baseline["accepted"], baseline)
         self.assertTrue(accepted["accepted"], accepted)
         self.assertEqual(sandboxed.stdout, "\n")
-        self.assertEqual(len(cargo_calls), 9)
+        self.assertEqual(len(cargo_calls), 10)
         self.assertEqual(cargo_calls[1], "test --workspace")
         self.assertEqual(
             cargo_calls[7],
-            "test --workspace --exclude foe --exclude foe-transport --exclude foe-view -- --skip sandbox::tests::",
+            "test --workspace --exclude foe --exclude foe-transport --exclude foe-view "
+            "-- --skip sandbox::tests:: "
+            "--skip session::tests::a_session_serves_a_granted_bind_port_across_calls",
         )
+        self.assertEqual(cargo_calls[8], "test -p foe --bin foe -- --skip login::tests::")
 
     def test_episode_measurement_prices_each_model_route(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -493,6 +679,18 @@ BASE_CONFIGURATION = {
 }
 EVIDENCE_SHA256 = "sha256:" + "3" * 64
 SUPPORTED_AUDIT = {"reasoning_effort": "high", "model_calls": 60}
+FAILURE_CONTRAST = {
+    "task": "terminal-bench/example",
+    "failure_profile": {
+        "outcome": {"kind": "completed"},
+        "artifact_outcome_mismatch": True,
+        "failed_verifier_checks": [
+            {"name": "test_public_interface", "failure_class": "AssertionError"}
+        ],
+    },
+    "failed_episode_ids": ["ep_failed_one", "ep_failed_two"],
+    "successful_episode_ids": ["ep_success"],
+}
 PROGRAM_DOCUMENT = {
     "instructions": {"role": "Run the declared workflow."},
     "workflow": {
@@ -512,7 +710,7 @@ REVISION = {
 
 
 class DiagnosisValidatorTest(unittest.TestCase):
-    def judgments(self, values):
+    def judgments(self, values, requested_candidate_kind="auto"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             program = root / "program.json"
@@ -525,6 +723,8 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 EVIDENCE_SHA256,
                 BASE_CONFIGURATION,
                 [SUPPORTED_AUDIT],
+                [FAILURE_CONTRAST],
+                requested_candidate_kind,
             )
             results = []
             for value in values:
@@ -538,22 +738,92 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 results.append(result.stdout.strip())
         return results
 
+    def test_supported_failure_contrasts_require_repetition_and_a_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text(
+                json.dumps({"repeated_failure_contrasts": [FAILURE_CONTRAST]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(supported_failure_contrasts(evidence), [FAILURE_CONTRAST])
+            invalid = {
+                **FAILURE_CONTRAST,
+                "failed_episode_ids": ["ep_failed_one"],
+            }
+            evidence.write_text(
+                json.dumps({"repeated_failure_contrasts": [invalid]}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "fewer than two failed episodes"):
+                supported_failure_contrasts(evidence)
+
+    def test_supported_failure_contrasts_validate_nested_fields_and_disjoint_episodes(self):
+        malformed_profile = {
+            **FAILURE_CONTRAST,
+            "failure_profile": {
+                **FAILURE_CONTRAST["failure_profile"],
+                "failed_verifier_checks": [{"name": "test_public_interface"}],
+            },
+        }
+        overlapping_episodes = {
+            **FAILURE_CONTRAST,
+            "successful_episode_ids": ["ep_failed_one"],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text(
+                json.dumps({"repeated_failure_contrasts": [malformed_profile]}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "invalid verifier checks"):
+                supported_failure_contrasts(evidence)
+            evidence.write_text(
+                json.dumps({"repeated_failure_contrasts": [overlapping_episodes]}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "reuses an episode across outcomes"):
+                supported_failure_contrasts(evidence)
+
+    def test_requested_candidate_kind_is_enforced_by_the_diagnosis_verifier(self):
+        judged = self.judgments(
+            [
+                {"branch": "implement-source", "failure_contrast": FAILURE_CONTRAST},
+                {"branch": "configure-workflow", "failure_contrast": FAILURE_CONTRAST},
+                {"branch": "insufficient-evidence"},
+            ],
+            "source-change",
+        )
+        self.assertEqual(judged[0], "")
+        self.assertIn("requires branch implement-source", judged[1])
+        self.assertEqual(judged[2], "")
+
     def test_validator_accepts_each_valid_diagnosis_and_reports_findings(self):
         executable = "#!/bin/sh\nexit 0\n"
         judged = self.judgments(
             [
-                {"branch": "configure-workflow", "independent_audit": SUPPORTED_AUDIT},
                 {
                     "branch": "configure-workflow",
+                    "failure_contrast": FAILURE_CONTRAST,
+                    "independent_audit": SUPPORTED_AUDIT,
+                },
+                {
+                    "branch": "configure-workflow",
+                    "failure_contrast": FAILURE_CONTRAST,
                     "independent_audit": {"reasoning_effort": "xhigh", "model_calls": 120},
                 },
-                {"branch": "revise-instructions", "instruction_revision": REVISION},
                 {
                     "branch": "revise-instructions",
+                    "failure_contrast": FAILURE_CONTRAST,
+                    "instruction_revision": REVISION,
+                },
+                {
+                    "branch": "revise-instructions",
+                    "failure_contrast": FAILURE_CONTRAST,
                     "instruction_revision": {**REVISION, "old_text": "absent text"},
                 },
                 {
                     "branch": "define-tool",
+                    "failure_contrast": FAILURE_CONTRAST,
                     "tool_definition": {
                         "name": "check-layout",
                         "description": "Verify the workspace layout.",
@@ -563,6 +833,7 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 },
                 {
                     "branch": "define-tool",
+                    "failure_contrast": FAILURE_CONTRAST,
                     "tool_definition": {
                         "name": "check-layout",
                         "description": "Verify the workspace layout.",
@@ -570,9 +841,17 @@ class DiagnosisValidatorTest(unittest.TestCase):
                         "executable_sha256": "sha256:" + "0" * 64,
                     },
                 },
-                {"branch": "implement-source"},
+                {"branch": "implement-source", "failure_contrast": FAILURE_CONTRAST},
+                {
+                    "branch": "implement-source",
+                    "failure_contrast": {
+                        **FAILURE_CONTRAST,
+                        "task": "terminal-bench/different-task",
+                    },
+                },
                 {"branch": "insufficient-evidence"},
-                {"branch": "unknown"},
+                {"branch": "unknown", "failure_contrast": FAILURE_CONTRAST},
+                {"branch": "implement-source"},
             ]
         )
         self.assertEqual(judged[0], "")
@@ -582,8 +861,10 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertEqual(judged[4], "")
         self.assertIn("does not match the executable content", judged[5])
         self.assertEqual(judged[6], "")
-        self.assertEqual(judged[7], "")
-        self.assertIn("no supported candidate branch", judged[8])
+        self.assertIn("one supported repeated failure contrast", judged[7])
+        self.assertEqual(judged[8], "")
+        self.assertIn("no supported candidate branch", judged[9])
+        self.assertIn("one supported repeated failure contrast", judged[10])
 
 
 class LineageAdoptionTest(unittest.TestCase):
@@ -595,17 +876,19 @@ class LineageAdoptionTest(unittest.TestCase):
     ancestry claim with the crate's `check_ancestry` example.
     """
 
-    # Keep the runfiles path under Bazel so declared binary dependencies are
-    # addressable. Direct test execution uses the checkout path unchanged.
+    # Preserve the Bazel runfiles path so the declared Rust binaries remain
+    # reachable through their runfile symlinks.
     repository = Path(__file__).absolute().parents[2]
     validator_sha256 = "a" * 64
     check_sha256 = "b" * 64
 
     @classmethod
     def setUpClass(cls):
-        cls.build_bundle = cls.repository / "crates" / "lineage" / "build-bundle"
-        cls.check_ancestry_binary = cls.repository / "crates" / "lineage" / "check-ancestry"
-        if cls.build_bundle.is_file() and cls.check_ancestry_binary.is_file():
+        bazel_build_bundle = cls.repository / "crates" / "lineage" / "build-bundle"
+        bazel_check_ancestry = cls.repository / "crates" / "lineage" / "check-ancestry"
+        if bazel_build_bundle.is_file() and bazel_check_ancestry.is_file():
+            cls.build_bundle = bazel_build_bundle
+            cls.check_ancestry_binary = bazel_check_ancestry
             return
         subprocess.run(
             ["cargo", "build", "--quiet", "-p", "foe-lineage", "--bins", "--examples"],
