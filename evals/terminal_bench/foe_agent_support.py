@@ -155,7 +155,8 @@ def build_program(
     limits.update({key: value for key, value in optional_limits.items() if value is not None})
     coding_tools = ["read", "grep", "edit", "bash"]
     check_tool_defs: dict[str, Any] = {}
-    completion_contract: dict[str, Any] = {"returns": COMPLETION_SCHEMA}
+    typed_completion: dict[str, Any] = {"returns": COMPLETION_SCHEMA}
+    completion_contract = typed_completion
     if completion_checker is not None:
         coding_tools.append("check")
         check_tool_defs["check"] = {
@@ -167,9 +168,11 @@ def build_program(
             ),
             "timeout_seconds": 300,
         }
-        completion_contract.update(
-            {"verify": "check", "retries": COMPLETION_CHECK_RETRIES}
-        )
+        completion_contract = {
+            **typed_completion,
+            "verify": "check",
+            "retries": COMPLETION_CHECK_RETRIES,
+        }
     program = {
         "version": 3,
         "name": "terminal-bench-coding",
@@ -301,7 +304,12 @@ def build_program(
                     "seconds": implementation_seconds,
                     "loop_threshold": EVALUATION_LOOP_THRESHOLD,
                 },
-                "done_when": completion_contract,
+                "done_when": (
+                    typed_completion
+                    if completion_checker is not None
+                    and escalation_reasoning_effort is not None
+                    else completion_contract
+                ),
                 "model": {
                     "provider": provider,
                     "model": model,

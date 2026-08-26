@@ -181,6 +181,12 @@ adapter also downloads the checker after the episode and compares its digest
 with the source digest. A changed checker invalidates the trial as
 infrastructure evidence.
 
+When a configured workflow adds an audit-and-repair model, the implementation
+episode returns its typed result without owning the completion condition. The
+terminal audit owns `done_when.verify`. Both episodes retain the checker tool,
+so the implementation may use it before handoff. A failed implementation check
+cannot prevent the audit from inspecting and repairing the shared workspace.
+
 ## Preview and run one assessed task
 
 Every model-backed target prints planning token estimates and an estimated
