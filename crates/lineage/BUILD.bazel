@@ -15,6 +15,17 @@ rust_binary(
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )
 
+rust_binary(
+    name = "check-ancestry",
+    srcs = ["examples/check_ancestry.rs"],
+    crate_root = "examples/check_ancestry.rs",
+    edition = crate_edition(),
+    version = "0.1.0",
+    visibility = ["//visibility:public"],
+    deps = [":foe_lineage"] + all_crate_deps(normal = True),
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)
+
 rust_library(
     name = "foe_lineage",
     srcs = glob(["src/**/*.rs"]),
