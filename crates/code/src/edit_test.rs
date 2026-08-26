@@ -205,3 +205,19 @@ async fn expected_version_refuses_a_stale_edit() {
     assert_eq!(fx.read("a.txt"), "two\n");
     assert_eq!(fx.writes(), 1);
 }
+
+/// docs/tools.md `edit`: the canonical prefix and the bare digest identify
+/// the same observed file version.
+#[tokio::test]
+async fn expected_version_accepts_the_bare_read_digest() {
+    let fx = Fixture::new();
+    fx.write("a.txt", "one\n");
+    let observed = crate::file_version(b"one\n");
+    let value = edit(
+        &fx,
+        json!({"path": "a.txt", "expected_version": observed.trim_start_matches("sha256:"), "edits": [replace("one", "two")]}),
+    )
+    .await;
+    assert!(!value.is_error, "{value:?}");
+    assert_eq!(value.value["previous_version"], observed);
+}

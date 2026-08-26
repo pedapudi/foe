@@ -56,7 +56,7 @@ impl Edit {
                     "type": "object",
                     "properties": {
                         "path": {"type": "string", "description": "File path, absolute or relative to the first read root."},
-                        "expected_version": {"type": "string", "description": "Optional sha256 version returned by read; the edit is refused when the current bytes differ."},
+                        "expected_version": {"type": "string", "description": "Optional SHA-256 version returned by read; its sha256: prefix may be omitted. The edit is refused when the current bytes differ."},
                         "edits": {
                             "type": "array",
                             "minItems": 1,
@@ -136,7 +136,8 @@ impl Tool for Edit {
             Err(e) => return ToolValue::error(format!("edit: {shown}: {e}")),
         }
         let previous_version = file_version(&raw_bytes);
-        if a.expected_version.as_ref().is_some_and(|expected| expected != &previous_version) {
+        let expected = a.expected_version.as_deref().map(|v| v.strip_prefix("sha256:").unwrap_or(v));
+        if expected.is_some_and(|v| Some(v) != previous_version.strip_prefix("sha256:")) {
             return ToolValue::error(format!(
                 "edit: {shown} has version {previous_version}, which differs from expected_version {}",
                 a.expected_version.as_deref().unwrap_or_default()

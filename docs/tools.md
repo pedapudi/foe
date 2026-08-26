@@ -276,11 +276,13 @@ rendering.
 
 ### `edit`
 
-`expected_version` is optional. When present, `edit` hashes the current raw
-bytes before matching or writing and refuses a different version. A
-successful edit records the versions before and after the write. The check
-detects changes that `edit` observes before mutation. An external writer can
-still race the interval between that observation and the atomic replacement.
+`expected_version` is optional. It accepts the `sha256:` version returned by
+`read` or the same 64 hexadecimal digits without the prefix. When present,
+`edit` hashes the current raw bytes before matching or writing and refuses a
+different version. A successful edit records the versions before and after
+the write. The check detects changes that `edit` observes before mutation. An
+external writer can still race the interval between that observation and the
+atomic replacement.
 
 Every `old_text` is located in the file as it was before the call. The
 edits are therefore independent of each other's results, and their order in
