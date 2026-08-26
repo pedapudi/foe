@@ -1832,3 +1832,26 @@ Task-derived checkers remain research evidence. Author-supplied public
 completion checkers remain the primary development mechanism because their
 meaning can be validated before provider spend. The unchanged task-owned
 grader remains the quality authority for every assessed result.
+
+## GPT-2 public completion-checker qualification
+
+The author-supplied GPT-2 completion checker ran inside the pinned
+`terminal-bench/terminal-bench-2-1@6` task container on 2026-08-26. This
+qualification made no provider request. It tested the checker before the
+checker is used to govern a model episode.
+
+The negative control ran against the untouched task workspace. The checker
+rejected it because `/app/gpt2.c` did not exist. The author oracle then wrote
+an implementation into a fresh workspace. The public checker accepted the
+implementation, and the unchanged task-owned grader awarded `1.0`.
+
+The checker has SHA-256 digest
+`bd2c54625e4da5c491ff571a48594b6db1c71d8422308f8a8722e6c2bbef7b7b`.
+The oracle has SHA-256 digest
+`07f852548f74bb4a7707123e1bae638ea1c5983f0584ecb11472db18b2fa582b`.
+The qualification report has SHA-256 digest
+`4966271be09fb87cc45bc94101f0c39597e455d7715cb0b38e1038cb99552f4b`.
+The report is retained at
+`target/terminal-bench-verifier-controls/controls-20260826T071720Z/verifier-controls.json`
+in the campaign worktree. The report records Harbor exit code zero, the
+negative-control finding, the accepted oracle, and the task-owned reward.
