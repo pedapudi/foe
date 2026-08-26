@@ -222,6 +222,7 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
                                     "name": "test_result[param-secret]",
                                     "status": huge,
                                     "raw_status": huge,
+                                    "message": huge,
                                     "trace": "> assert result\n/tests/test.py:1: AssertionError",
                                 }
                             ]
@@ -235,6 +236,8 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
         self.assertEqual(failure["name"], "test_result[<parameter>]")
         self.assertEqual(len(failure["status"]), 64)
         self.assertEqual(len(failure["raw_status"]), 64)
+        self.assertEqual(len(failure["message"]), 320)
+        self.assertEqual(len(failure["locus"]["message"]), 200)
 
     def test_verifier_summary_cannot_hide_omitted_failed_tests(self):
         with tempfile.TemporaryDirectory() as directory:
