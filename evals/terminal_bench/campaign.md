@@ -108,6 +108,9 @@ revised candidate must satisfy these conditions:
 6. Freeze one combined candidate before confirmation. The candidate must
    produce at least fourteen successes from sixteen attempts and succeed at
    least once on every confirmation task.
+7. Provide credential-safe execution of two independent assessed trials. A
+   matched batch must reduce makespan by at least one third while preserving
+   task scores, trace conformance, credential isolation, and complete evidence.
 
 The first new coverage after confirmation uses five tasks from the frozen
 calibration set:
@@ -177,6 +180,14 @@ run. Starting another runner with a separate credential-state path would
 bypass that protection and could race token refresh. Assessed trials remain
 serial until the runner provides credential-safe concurrency.
 
+The concurrency implementation uses one campaign coordinator. It gives each
+trial an isolated job directory and credential view. A trial cannot overwrite
+newer credential state or expose credential contents through retained
+evidence. A deterministic rotating-token test must exercise simultaneous
+refresh before a provider-backed parallel trial. Runner tests must also cover
+unique output paths, complete result collection, cancellation, and a worker
+failure while another worker completes.
+
 At most two workers may run provider-free capability probes or verifier
 controls within a task set that is already open. Workers may also analyze
 different retained trajectories in parallel. Development and sealed holdout
@@ -195,6 +206,14 @@ reservations, queue time, peak host resource use, provider throttling,
 makespan, and invalidated attempts. A matched serial cohort supplies the
 reference for any runtime claim. Concurrency remains identical between a
 baseline and candidate comparison.
+
+The first assessed concurrency qualification uses four already-open
+development tasks selected from recorded resource metadata before execution.
+It runs the same frozen binary and program once serially and once with two
+workers. The parallel cohort must produce the same task scores and integrity
+classifications. Its makespan must be no more than two thirds of the serial
+makespan. Failure returns assessed execution to one worker while the
+concurrency defect is corrected and qualified again.
 
 ## Task sets
 
