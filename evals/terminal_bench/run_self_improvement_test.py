@@ -669,6 +669,26 @@ class SelfImprovementConfigTest(unittest.TestCase):
             sandboxed = subprocess.run(
                 [str(check)], text=True, capture_output=True, check=True
             )
+            implementation.unlink()
+            deleted_implementation = check_candidate(check, candidate)
+            implementation.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
+            specification.unlink()
+            deleted_specification = check_candidate(check, candidate)
+            specification.write_text(
+                "The value is two. Existing terminal-bench/reference.\n",
+                encoding="utf-8",
+            )
+            regression.unlink()
+            deleted_test = check_candidate(check, candidate)
+            regression.symlink_to(implementation)
+            symlink_test = check_candidate(check, candidate)
+            regression.unlink()
+            regression.write_text("#[test]\nfn value_is_one() {}\n", encoding="utf-8")
+            renamed_test = regression.with_name("renamed_test.rs")
+            regression.rename(renamed_test)
+            renamed_unchanged_test = check_candidate(check, candidate)
+            renamed_test.rename(regression)
+            regression.write_text("#[test]\nfn value_is_two() {}\n", encoding="utf-8")
             cargo_calls = calls.read_text(encoding="utf-8").splitlines()
             manifest.write_text("[workspace]\nmembers = [\"dummy\"]\n", encoding="utf-8")
             lock.write_text("version = 4\n", encoding="utf-8")
@@ -693,6 +713,15 @@ class SelfImprovementConfigTest(unittest.TestCase):
             "--skip session::tests::a_session_serves_a_granted_bind_port_across_calls",
         )
         self.assertEqual(cargo_calls[8], "test -p foe --bin foe -- --skip login::tests::")
+        for rejected, finding in (
+            (deleted_implementation, "no Rust implementation change"),
+            (deleted_specification, "does not update an affected specification"),
+            (deleted_test, "no Rust regression test"),
+            (symlink_test, "no Rust regression test"),
+            (renamed_unchanged_test, "no Rust regression test"),
+        ):
+            self.assertFalse(rejected["accepted"])
+            self.assertIn(finding, " ".join(rejected["findings"]))
         self.assertFalse(dummy_workspace["accepted"])
         self.assertEqual(dummy_workspace_calls, cargo_calls)
         self.assertIn(

@@ -17,6 +17,8 @@ COMMON_ARGS = [
 ]
 
 SOURCE_CONTROLLER_ARGS = [
+    "--foe",
+    "$(rootpath //:foe-portable)",
     "--controller-root",
     "$(rootpath //:Cargo.toml)",
     "--controller-artifact-root",
@@ -266,13 +268,14 @@ sh_binary(
 
 # Run this target from an immutable controller checkout. Its source files and
 # Bazel-built checker occupy separate trusted roots. The caller supplies the
-# candidate binary, source tree, and adoption evidence.
+# candidate source, adoption evidence, and an absolute trusted Bazel executable.
 sh_binary(
     name = "foe-source-candidate",
     srcs = ["run.py"],
     args = SOURCE_CONTROLLER_ARGS,
     data = [
         "//:Cargo.toml",
+        "//:foe-portable",
         "//crates/lineage:source-adoption",
         "//evals:score-trace",
         "cases.json",
@@ -295,6 +298,7 @@ sh_test(
     data = [
         ":foe-source-candidate",
         "//:Cargo.toml",
+        "//:foe-portable",
         "//crates/lineage:source-adoption",
         "//evals:score-trace",
         "cases.json",

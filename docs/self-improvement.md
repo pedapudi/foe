@@ -141,25 +141,36 @@ retained source bytes, Git blobs, modes, deletions, clean candidate tree, and
 rebuilt binary digest.
 
 Source evaluation runs from a separate controller checkout. The candidate
-binary and source tree are explicit inputs. The controller records its source
-root and committed tree identity. It separately records the trusted build root
-that contains the checker, along with runner and checker paths and digests. It
+source tree is an explicit input. The controller records its source root and
+committed tree identity. It separately records the trusted build root that
+contains the checker, along with runner and checker paths and digests. It
 validates proposal-tree provenance and verifier authorization before provider
 spend. Source evidence retains the generated candidate checker as a regular
 file. Its digest must equal the accepted result recorded by the source-audit
-child, whose program must declare
-that checker. A confirmed campaign freezes the validated source bundle under
-its run directory and uses that copy for every later adoption check.
+child, whose program must declare that checker. A confirmed campaign freezes
+the validated source bundle under its run directory and uses that copy for
+every later adoption check.
+
+The proposal tree contains one root episode. Every retained child keeps its
+complete parent chain to that root. Each `spawn/start` program resolves to the
+recorded child identity through the parent identity document. Workflow paths
+resolve through nested workflow nodes. The source proposal format carries only
+the root identity document, so a retained child cannot start another retained
+episode.
 
 Automatic source candidates cannot change Cargo, Bazel, module, toolchain,
 package, or build-script metadata. The candidate checker compares that
 metadata with its trusted baseline before validation. It rescans repository
 status, source bytes, and build metadata after all validation commands.
 
-The supplied candidate binary and source tree form an independently computed
-pair. Source evaluation does not attest that the binary was built from that
-tree. Its quality result can guide development. Promotion requires the
-controller to build the evaluated binary from the accepted source tree.
+A no-spend preview may pair the source tree with a caller-supplied binary for
+diagnosis. A confirmed campaign builds `//:foe-portable` from the clean,
+accepted tree with the controller's Bazel executable and the protected build
+graph. The candidate cannot change Cargo, Bazel, module, toolchain, package,
+or build-script metadata. The campaign retains the command, Bazel path,
+version, and digest, protected build-graph digest, complete build-log digest,
+source-tree identity, and output digest. Evaluation and adoption use only the
+retained output.
 
 The adapter retains the rebuilt binary's actual `foe plan --json` report.
 The plan form resolves both configured programs and the built-in coding
@@ -204,7 +215,11 @@ manifest retains regular bytes, Git object types, file modes, blob identities,
 and deletions. Evidence capture failure rejects the candidate and makes the
 self-improvement process exit unsuccessfully. Successful capture authorizes
 external evaluation. Promotion requires the external evaluation to complete
-lineage from the rebuilt binary's actual program identity.
+lineage from the rebuilt binary's actual program identity. The required
+implementation, regression test, and specification are regular files that
+exist after the change. Each is added or content-modified relative to the base
+tree. A deletion, symbolic link, type change, unchanged file, or rename-away
+does not satisfy the requirement.
 
 ## Measured result
 
@@ -446,7 +461,7 @@ Every self-improvement evaluation should retain the following evidence:
 - the candidate diff and the immutable source revision it started from;
 - the source-bundle and source-candidate identities;
 - each completed adoption, evidence, program, state, and parent identity;
-- the capture and evaluation checker digests;
+- the evaluation checker digest and controller-build record;
 - the retained Git object, mode, bytes, or deletion for every changed file;
 - root and child outcomes;
 - provider-reported input, output, and cache-read tokens per response;

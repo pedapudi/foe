@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from source_adoption import (
+    build_source_candidate,
     capture_source_candidate,
     freeze_source_candidate,
     verify_source_candidate,
@@ -52,6 +53,20 @@ class SourceAdoptionTest(unittest.TestCase):
             check=True,
         )
         return result.stdout.strip()
+
+    def controller_bazel(self, root):
+        bazel = root / "controller-bazel"
+        bazel.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = --version ]; then echo 'bazel 9.2.0'; exit 0; fi\n"
+            "test \"$1\" = build || exit 2\n"
+            "mkdir -p bazel-bin\n"
+            "cp changed.txt bazel-bin/foe-portable\n"
+            "echo 'built //:foe-portable from changed.txt'\n",
+            encoding="utf-8",
+        )
+        bazel.chmod(0o755)
+        return bazel
 
     def write_episode(self, directory, parent_identity, verifier_sha256):
         events = [
@@ -190,7 +205,7 @@ class SourceAdoptionTest(unittest.TestCase):
                 "seq": 0, "time": 0, "type": "episode/start",
                 "data": {
                     "id": child_id, "parent_id": "ep_root", "fork_origin": None,
-                    "team_id": None, "program": child_program,
+                    "team_id": "ep_root", "program": child_program,
                     "identity": identity, "task": "improve Foe",
                     "runtime": {"version": "0.1.0", "build": "unknown"},
                     "sandbox": {"mode": "off", "landlock_abi": 0},
@@ -214,20 +229,29 @@ class SourceAdoptionTest(unittest.TestCase):
                 "\n".join(json.dumps(event) for event in child) + "\n", encoding="utf-8"
             )
 
+    def update_retained_file(self, bundle, relative):
+        path = bundle / relative
+        manifest_path = bundle / "source-candidate-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        retained = next(item for item in manifest["files"] if item["path"] == relative)
+        retained.update(bytes=path.stat().st_size, sha256=sha256(path.read_bytes()))
+        manifest_path.write_bytes(canonical(manifest))
+
     def fixture(self, root, critical_controller_files=False):
         repository = root / "repository"
         repository.mkdir()
         self.git(repository, "init", "-q")
         self.git(repository, "config", "user.name", "Foe Test")
         self.git(repository, "config", "user.email", "foe@example.invalid")
+        (repository / ".gitignore").write_text("/bazel-*\n", encoding="utf-8")
+        (repository / "BUILD.bazel").write_text("# trusted build graph\n", encoding="utf-8")
+        (repository / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
         (repository / "changed.txt").write_text("before\n", encoding="utf-8")
         (repository / "deleted.txt").write_text("remove\n", encoding="utf-8")
         controller_files = [
             "crates/lineage/src/lib.rs",
             "crates/log/src/lib.rs",
             "crates/program/src/lib.rs",
-            "Cargo.toml",
-            "BUILD.bazel",
         ]
         if critical_controller_files:
             for name in controller_files:
@@ -285,7 +309,7 @@ class SourceAdoptionTest(unittest.TestCase):
             )
         self.assertEqual(verified["checker_sha256"], sha256(self.checker.read_bytes()))
 
-    def test_workflow_child_verifier_is_closed_by_its_retained_executable(self):
+    def test_workflow_child_verifier_and_spawn_node_are_bound(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             repository = root / "repository"
@@ -345,6 +369,42 @@ class SourceAdoptionTest(unittest.TestCase):
             self.assertEqual(
                 verified["source_bundle_identity"], captured["source_bundle_identity"]
             )
+            root_log = bundle / "episode/episode.jsonl"
+            original_root_log = root_log.read_bytes()
+            events = [json.loads(line) for line in root_log.read_text().splitlines()]
+            spawn = next(
+                event
+                for event in events
+                if event["type"] == "spawn/start"
+                and event["data"]["child_id"] == "ep_audit"
+            )
+            spawn["data"]["program"] = "diagnose-runtime"
+            root_log.write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n",
+                encoding="utf-8",
+            )
+            self.update_retained_file(bundle, "episode/episode.jsonl")
+            with self.assertRaisesRegex(ValueError, "identity of workflow node diagnose-runtime"):
+                verify_source_candidate(
+                    self.checker, bundle, repository, applied, runtime
+                )
+            root_log.write_bytes(original_root_log)
+            self.update_retained_file(bundle, "episode/episode.jsonl")
+            events = [json.loads(line) for line in root_log.read_text().splitlines()]
+            for event in events:
+                if event["type"] in ("spawn/start", "spawn/end") and event["data"]["child_id"] == "ep_audit":
+                    event["data"]["child_id"] = "ep_unretained"
+            root_log.write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n",
+                encoding="utf-8",
+            )
+            self.update_retained_file(bundle, "episode/episode.jsonl")
+            with self.assertRaisesRegex(ValueError, "has no unique retained child"):
+                verify_source_candidate(
+                    self.checker, bundle, repository, applied, runtime
+                )
+            root_log.write_bytes(original_root_log)
+            self.update_retained_file(bundle, "episode/episode.jsonl")
             manifest_path = bundle / "source-candidate-manifest.json"
             manifest_bytes = manifest_path.read_bytes()
             manifest = json.loads(manifest_bytes)
@@ -366,10 +426,55 @@ class SourceAdoptionTest(unittest.TestCase):
             manifest = json.loads((bundle / "source-candidate-manifest.json").read_text())
         self.assertEqual(verified["source_bundle_identity"], captured["source_bundle_identity"])
         self.assertEqual(verified["source_candidate_identity"], captured["source_candidate_identity"])
+        self.assertNotIn("checker_sha256", captured)
         entries = {entry["path"]: entry for entry in manifest["entries"]}
         self.assertEqual(entries["changed.txt"]["applied"]["mode"], "100755")
         self.assertEqual(entries["deleted.txt"]["status"], "deleted")
         self.assertEqual(verified["evaluated_pair"]["source_tree"], applied)
+
+    def test_controller_build_supplies_the_only_promotable_binary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository, bundle, _, applied, _, _ = self.fixture(root)
+            known_good = root / "known-good-foe"
+            known_good.write_bytes(b"unrelated known-good binary")
+            built, build = build_source_candidate(
+                self.controller_bazel(root),
+                repository,
+                applied,
+                root / "controller-build",
+            )
+            preflight = verify_source_candidate(
+                self.checker, bundle, repository, applied, built
+            )
+            with self.assertRaisesRegex(ValueError, "changed after campaign preflight"):
+                freeze_source_candidate(
+                    self.checker,
+                    bundle,
+                    repository,
+                    applied,
+                    known_good,
+                    root / "swapped-bundle",
+                    preflight,
+                )
+            frozen, retained = freeze_source_candidate(
+                self.checker,
+                bundle,
+                repository,
+                applied,
+                built,
+                root / "frozen-bundle",
+                preflight,
+            )
+            self.assertEqual(built.read_bytes(), b"after\n")
+            self.assertEqual(build["source_tree"], applied)
+            self.assertEqual(build["output"]["sha256"], sha256(b"after\n"))
+            self.assertEqual(
+                build["log"]["sha256"],
+                sha256(b"built //:foe-portable from changed.txt\n"),
+            )
+            self.assertEqual(retained, preflight)
+            self.assertEqual(frozen.name, "frozen-bundle")
 
     def test_preflight_rejects_changed_retained_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -383,6 +488,22 @@ class SourceAdoptionTest(unittest.TestCase):
             root = Path(directory)
             repository, bundle, _, applied, runtime, captured = self.fixture(root)
             retained = root / "result.json"
+            retained.write_text(
+                json.dumps(
+                    {
+                        "source_candidate": {
+                            **captured,
+                            "bundle": str(bundle),
+                            "checker_sha256": "sha256:" + "0" * 64,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "unauthenticated capture checker"):
+                verify_source_candidate(
+                    self.checker, retained, repository, applied, runtime
+                )
             captured.update(
                 {
                     "bundle": str(bundle),
@@ -457,6 +578,8 @@ class SourceAdoptionTest(unittest.TestCase):
                     str(self.repository),
                     "--controller-artifact-root",
                     str(self.checker.parent),
+                    "--controller-bazel",
+                    "/bin/true",
                     "--source-adoption",
                     str(bundle),
                     "--agent-module",
@@ -478,6 +601,12 @@ class SourceAdoptionTest(unittest.TestCase):
             unrelated = bundle / "unrelated"
             self.write_episode(unrelated, captured["parent_program_identity"], sha256(b"trusted verifier"))
             log = unrelated / "episode.jsonl"
+            events = [json.loads(line) for line in log.read_text().splitlines()]
+            events[0]["data"]["id"] = "ep_unrelated"
+            log.write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n",
+                encoding="utf-8",
+            )
             manifest_path = bundle / "source-candidate-manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest["verification_log"] = "unrelated/episode.jsonl"
@@ -490,7 +619,7 @@ class SourceAdoptionTest(unittest.TestCase):
             )
             manifest["files"].sort(key=lambda item: item["path"])
             manifest_path.write_bytes(canonical(manifest))
-            with self.assertRaisesRegex(ValueError, "proposal episode tree"):
+            with self.assertRaisesRegex(ValueError, "reaches every retained episode"):
                 verify_source_candidate(self.checker, bundle, repository, applied, runtime)
             status = run_terminal_bench(
                 [
@@ -499,6 +628,7 @@ class SourceAdoptionTest(unittest.TestCase):
                     "--source-checker", str(self.checker),
                     "--controller-root", str(self.repository),
                     "--controller-artifact-root", str(self.checker.parent),
+                    "--controller-bazel", "/bin/true",
                     "--source-adoption", str(bundle),
                     "--agent-module", str(Path(__file__).with_name("foe_agent.py")),
                     "--trace-evaluator", "/bin/true",
@@ -507,6 +637,23 @@ class SourceAdoptionTest(unittest.TestCase):
                 ]
             )
         self.assertEqual(status, 2)
+
+    def test_proposal_root_cannot_name_an_unretained_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository, bundle, _, applied, runtime, _ = self.fixture(root)
+            log = bundle / "episode/episode.jsonl"
+            events = [json.loads(line) for line in log.read_text().splitlines()]
+            events[0]["data"]["parent_id"] = "ep_unretained"
+            log.write_text(
+                "\n".join(json.dumps(event) for event in events) + "\n",
+                encoding="utf-8",
+            )
+            self.update_retained_file(bundle, "episode/episode.jsonl")
+            with self.assertRaisesRegex(ValueError, "sole retained root episode"):
+                verify_source_candidate(
+                    self.checker, bundle, repository, applied, runtime
+                )
 
     def test_capture_rejects_source_and_bundle_symlinks(self):
         for kind in ("source", "bundle"):
@@ -590,7 +737,13 @@ class SourceAdoptionTest(unittest.TestCase):
     def test_external_evaluation_completes_lineage_from_actual_plan_and_episode(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            repository, bundle, _, applied, runtime, captured = self.fixture(root)
+            repository, bundle, _, applied, _, captured = self.fixture(root)
+            runtime, source_build = build_source_candidate(
+                self.controller_bazel(root),
+                repository,
+                applied,
+                root / "controller-build",
+            )
             identity_document = {"name": "evaluated-program", "tools": []}
             identity = sha256(canonical(identity_document))
             program = {"name": "evaluated-program", "task": "transfer task"}
@@ -711,6 +864,7 @@ class SourceAdoptionTest(unittest.TestCase):
                         self.checker, bundle, repository, applied, runtime
                     ),
                     "source_adoptions": record["source_adoptions"],
+                    "source_build": source_build,
                 },
             )
             retained_campaign = json.loads(campaign.read_text(encoding="utf-8"))
@@ -749,6 +903,10 @@ class SourceAdoptionTest(unittest.TestCase):
         )
         self.assertEqual(
             retained_campaign["source_adoptions"][0]["program_identity"], identity
+        )
+        self.assertEqual(
+            retained_campaign["source_build"]["output"]["sha256"],
+            sha256(b"after\n"),
         )
         self.assertFalse(rejected["configuration_claim_valid"])
         self.assertTrue(rejected["direct_implementation_required"])

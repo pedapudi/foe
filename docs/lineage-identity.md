@@ -350,15 +350,20 @@ steps:
    canonical child identity document.
 10. Require the proposal tree's root log program identity to equal
    `parent.program_identity`.
-11. Require `verification_log` to be the root log or a descendant linked by
-    valid spawn or workflow provenance.
-12. Resolve `parent.state_identity` and require its program identity to
+11. Require one retained root with no parent or team. Require every retained
+    child to keep its complete parent chain under `children/<id>` and to name
+    its parent as its team.
+12. Require every retained spawn edge to name exactly one retained child. The
+    program named by `spawn/start` must resolve through the parent identity
+    document to that child's identity. Nested workflow paths resolve one node
+    at a time.
+13. Resolve `parent.state_identity` and require its program identity to
     equal `parent.program_identity`.
-13. Require the verifier episode's program identity to be reachable in the
+14. Require the verifier episode's program identity to be reachable in the
     parent state's program tree.
-14. Require the recorded verifier identity to match the verifier declared by
+15. Require the recorded verifier identity to match the verifier declared by
     the verifier episode's program.
-15. Repeat from the parent while rejecting a repeated state identity as a
+16. Repeat from the parent while rejecting a repeated state identity as a
     cycle.
 
 The check establishes a complete chain from the state to a chosen root. It
@@ -476,16 +481,16 @@ The result records digests of both trusted lineage executables.
 The Terminal-Bench evaluation runner accepts source evidence explicitly.
 Before provider spend, the trusted source-adoption checker validates the
 source manifest and every retained file. It compares the manifest with the
-clean candidate tree and computes the source-tree and supplied-binary digest
-pair. The pair records two independently supplied inputs and provides no
-build attestation. Promotion requires a controller-built binary from the
-accepted source tree.
+clean candidate tree. A caller-supplied binary participates only in no-spend
+diagnosis. A confirmed campaign builds the portable binary from the accepted
+tree under controller authority and uses that retained output for every task.
 
 The evaluation command runs from an immutable controller checkout. Its
 runner and source checker are separate from the writable candidate checkout.
-The command records both executable paths and content digests. Candidate
-changes to lineage, log, program, Cargo, or Bazel files cannot alter the
-controller's judgment.
+The command records both executable paths and content digests. The controller
+also supplies the Bazel executable that builds the candidate. Candidate
+changes to lineage, log, program, Cargo, Bazel, module, toolchain, package, or
+build-script files cannot alter judgment or the protected build graph.
 
 When source evidence comes from a retained self-improvement result, preflight
 requires its source-bundle, source-candidate, base-tree, and parent-program
@@ -511,18 +516,22 @@ trial and makes the campaign exit unsuccessfully.
 
 `campaign.json` records the source-bundle, source-candidate, adoption,
 evidence, program, state, and parent identities. It records the evaluation
-checker digest and the evaluated source and binary pair. Each
-task-specific program may have a distinct program identity. Transfer-task
-identity remains variable.
+checker digest and the evaluated source and binary pair. It also records the
+controller build command, Bazel identity, protected build-graph identity,
+complete log digest, source-tree identity, and output digest. Each task-specific
+program may have a distinct program identity. Transfer-task identity remains
+variable.
 
 Source preflight uses the canonical proposal checker before provider spend.
-The checker requires the verification episode to descend from the retained
-proposal root through recorded spawn events. It also requires the parent
-identity document to reach the child program identity. The child must declare
-the result's verifier tool. A configured child verifier is authorized only
-when the source manifest retains its exact executable bytes and binds their
-digest to that result. Every other open verifier-authorization check prevents
-external evaluation.
+The checker requires one retained proposal root and complete retained parent
+chains. Every recorded spawn names a retained child whose identity resolves
+from that spawn's program. Nested workflow paths are resolved through the
+parent identity document. A retained child that spawns again requires its own
+retained identity document, which the source proposal format does not carry.
+The verifier child must declare the result's tool. That verifier is authorized
+only when the source manifest retains its exact executable bytes and binds
+their digest to the result. Every other open verifier-authorization check
+prevents external evaluation.
 
 The controller source checkout and its trusted build output are separate
 roots. The evaluation runner must resolve under the source root. The source
@@ -570,4 +579,11 @@ accepted:
   protected build file;
 - a validation command that rewrites `Cargo.lock` after the initial source
   scan;
-- a raw source bundle that claims a capture-checker digest.
+- a raw source bundle that claims a capture-checker digest;
+- an unretained parent or child on a proposal spawn path;
+- a spawn whose workflow-node name resolves to a different child identity;
+- deletion, type change, symbolic linking, or rename-away of the only
+  implementation, regression-test, or specification evidence;
+- substitution of a caller-supplied binary for the controller-built output;
+- a controller build whose source tree, protected build graph, or checkout
+  changes during the build.

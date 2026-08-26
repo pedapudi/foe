@@ -732,15 +732,15 @@ must match the candidate. Workflow ownership and completion governance must
 also match. Task identity may vary. The current Foe source tree and binary
 must match the candidate's recorded identity.
 
-Build the candidate binary in its clean worktree. Then run the source
-evaluation target from a separate immutable controller checkout:
+Run the source evaluation target from a separate immutable controller
+checkout. Name an absolute Bazel executable outside the candidate tree:
 
 ```sh
 cd /absolute/path/to/controller-checkout
 bazel run //evals/terminal_bench:foe-source-candidate -- \
-  --foe /absolute/path/to/candidate/bazel-bin/foe-portable \
   --source-root /absolute/path/to/candidate/Cargo.toml \
   --source-adoption /absolute/path/to/self-improvement/result.json \
+  --controller-bazel /absolute/path/to/bazel \
   --built-in-workflow \
   --service-tier priority \
   --confirm-spend
@@ -756,20 +756,21 @@ treating candidate-controlled build products as controller evidence.
 The argument may also name the `source-candidate-bundle` directory. Before
 provider spend, the trusted checker validates the manifest and its regular
 files. It compares the recorded Git objects, modes, bytes, and deletions with
-the clean candidate tree. It computes and records the source-tree and supplied
-binary digest pair. The pair has no build attestation. A quality run can guide
-development. Promotion requires a controller-built binary from the accepted
-source tree.
+the clean candidate tree. The target's default binary supplies only the
+no-spend diagnostic preflight. A confirmed campaign builds `//:foe-portable`
+from the clean accepted tree with the named controller Bazel executable. It
+retains and evaluates only that output.
 
 The controller rejects a source result whose recorded bundle, candidate,
 base-tree, or parent-program identity differs from the bundle. A raw bundle
 cannot claim a capture-checker identity. The campaign records the trusted
-checker it actually invokes. The controller also rejects proposal trees with
-unrelated verification episodes or unauthorized verifiers. A source-audit child must declare the accepted
-verifier tool. Its recorded verifier identity must equal the retained
-candidate checker's digest. A confirmed campaign copies the validated bundle
-into its run directory before provider spend. Later adoption uses this frozen
-copy.
+checker it actually invokes. The controller also rejects incomplete proposal
+trees, spawn programs that do not resolve to their child identity, unrelated
+verification episodes, and unauthorized verifiers. A source-audit child must
+declare the accepted verifier tool. Its recorded verifier identity must equal
+the retained candidate checker's digest. A confirmed campaign copies the
+validated bundle into its run directory before provider spend. Later adoption
+uses this frozen copy.
 
 The adapter retains the rebuilt binary's `foe plan --json` output before the
 first provider request. `foe plan TASK --json` resolves the built-in workflow
@@ -780,11 +781,14 @@ identity document. The canonical ancestry checker must accept the transition.
 
 `campaign.json` records the controller source and build-output roots, the
 committed controller source tree, and the runner and checker paths and digests.
-It records the source candidate and one completed adoption per
-trial. Each adoption includes the adoption, evidence, program, state, and
-parent identities. It also records the checker digest and evaluated source
-and binary pair. A failed adoption invalidates the trial and makes the campaign
-exit unsuccessfully. The task record sets `direct_implementation_required`.
+It records the source candidate and one completed adoption per trial. The
+source-build record contains the command, Bazel path, version, and digest,
+protected build-graph identity, complete build-log digest, source-tree
+identity, and output digest. Each adoption includes the adoption, evidence,
+program, state, and parent identities. It also records the checker digest and
+evaluated source and binary pair. A failed adoption invalidates the trial and
+makes the campaign exit unsuccessfully. The task record sets
+`direct_implementation_required`.
 
 Capability conversion still requires a separate benchmark rerun. Candidate
 promotion remains outside the workflow. The workflow mechanism and evidence

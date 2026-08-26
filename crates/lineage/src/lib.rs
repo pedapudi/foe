@@ -169,7 +169,7 @@ pub fn verify_bundle(dir: &Path) -> Result<(Manifest, String), LineageError> {
 }
 
 /// Builds the manifest of `dir`: every file below it except the manifest
-/// itself, in byte order. The caller writes [`manifest_bytes`] to
+/// itself, in byte order. The caller writes [`canonical_bytes`] to
 /// [`MANIFEST_FILE`]; the digest of those bytes is the bundle's address.
 pub fn build_manifest(dir: &Path, proposal_log: &str, adoption_record: &str) -> Result<Manifest, LineageError> {
     let mut files = Vec::new();
@@ -202,12 +202,12 @@ pub fn build_manifest(dir: &Path, proposal_log: &str, adoption_record: &str) -> 
         proposal_log: proposal_log.into(),
         adoption_record: adoption_record.into(),
     };
-    check_manifest(&manifest_bytes(&manifest)?)
+    check_manifest(&canonical_bytes(&manifest)?)
 }
 
-/// The canonical bytes of a manifest: what [`MANIFEST_FILE`] holds.
-pub fn manifest_bytes(manifest: &Manifest) -> Result<Vec<u8>, LineageError> {
-    Ok(canonical(&serde_json::to_value(manifest)?).into_bytes())
+/// The canonical bytes of a lineage record.
+pub fn canonical_bytes(value: &impl Serialize) -> Result<Vec<u8>, LineageError> {
+    Ok(canonical(&serde_json::to_value(value)?).into_bytes())
 }
 
 /// The adoption record: written into the bundle by its builder, binding
@@ -234,12 +234,6 @@ pub struct AdoptionRecord {
     pub verification_seq: u64,
 }
 
-/// The canonical bytes of an adoption record: what the file named by
-/// `Manifest::adoption_record` holds.
-pub fn record_bytes(record: &AdoptionRecord) -> Result<Vec<u8>, LineageError> {
-    Ok(canonical(&serde_json::to_value(record)?).into_bytes())
-}
-
 // ---- ancestry ---------------------------------------------------------------
 
 /// A state document: the canonical identity document paired with the
@@ -250,11 +244,6 @@ pub struct StateDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub program_lineage: Option<ProgramLineage>,
 }
-
-/// Retrieves a state document by state identity.
-pub type StateResolver<'a> = &'a dyn Fn(&str) -> Result<StateDocument, String>;
-/// Retrieves an evidence bundle directory by content address.
-pub type EvidenceResolver<'a> = &'a dyn Fn(&str) -> Result<PathBuf, String>;
 
 /// One state of a verified chain.
 #[derive(Debug, Clone, Serialize)]
@@ -281,8 +270,8 @@ pub struct AncestryReport {
 /// is reported in `unverifiable` rather than failed.
 pub fn check_ancestry(
     state: &StateDocument,
-    states: StateResolver,
-    evidence: EvidenceResolver,
+    states: &dyn Fn(&str) -> Result<StateDocument, String>,
+    evidence: &dyn Fn(&str) -> Result<PathBuf, String>,
 ) -> Result<AncestryReport, LineageError> {
     let mut current = state.clone();
     let mut seen = BTreeSet::new();
@@ -318,7 +307,7 @@ fn check_transition(
     claim: &ProgramLineage,
     child_identity: &str,
     parent_document: &Value,
-    evidence: EvidenceResolver,
+    evidence: &dyn Fn(&str) -> Result<PathBuf, String>,
     report: &mut AncestryReport,
 ) -> Result<(), LineageError> {
     let dir = evidence(&claim.evidence)
@@ -333,7 +322,7 @@ fn check_transition(
     // input, so the pairing is attested as strongly as the bundle itself.
     let bytes = std::fs::read(dir.join(&manifest.adoption_record))?;
     let record: AdoptionRecord = serde_json::from_slice(&bytes)?;
-    if record_bytes(&record)? != bytes {
+    if canonical_bytes(&record)? != bytes {
         return Err(invalid("adoption_record", "is the canonical serialization of its object"));
     }
     if record.schema_version != 1 {
@@ -417,50 +406,72 @@ pub fn check_proposal<'a>(
             "equals the proposal root log's program identity",
         ));
     }
-    verify_provenance(proposal_log, verification_log, &logs)?;
+    verify_provenance(proposal_log, &logs, parent_document)?;
     let start = verifier_state.start.as_ref().expect("a checked log has episode/start");
     let mut report = AncestryReport { chain: Vec::new(), unverifiable: Vec::new() };
     check_verifier(result, start, parent_document, retained_verifier, &mut report)?;
     Ok(report.unverifiable)
 }
 
-/// Requires `log` to be `root` or a descendant reached through recorded
-/// spawn provenance: each `children/<id>/episode.jsonl` hop is announced by
-/// a `spawn/start` naming `<id>` in the log above it, and the child's
-/// `episode/start` names that episode as its parent.
-fn verify_provenance(root: &str, log: &str, logs: &BTreeMap<String, (Vec<Event>, State)>) -> Result<(), LineageError> {
-    if log == root {
-        return Ok(());
-    }
+/// Requires one retained root and one identity-bound spawn edge for every
+/// retained child. Each child log names the spawning episode as its parent
+/// and team and occupies that episode's `children/<id>` directory.
+fn verify_provenance(
+    root: &str,
+    logs: &BTreeMap<String, (Vec<Event>, State)>,
+    parent_document: &Value,
+) -> Result<(), LineageError> {
     let key = "program_lineage.verification_log";
-    let base = root.strip_suffix("episode.jsonl").unwrap_or_default();
-    let Some(rest) = log.strip_prefix(base).and_then(|r| r.strip_suffix("/episode.jsonl")) else {
-        return Err(invalid(key, "lies in the proposal episode tree"));
-    };
-    let parts: Vec<&str> = rest.split('/').collect();
-    if !parts.len().is_multiple_of(2) || parts.iter().step_by(2).any(|c| *c != "children") {
-        return Err(invalid(key, "descends through children/<id> directories"));
+    if logs[root].1.start.as_ref().expect("a checked log has episode/start").parent_id.is_some()
+        || logs[root].1.start.as_ref().expect("a checked log has episode/start").team_id.is_some()
+    {
+        return Err(invalid("evidence.manifest.proposal_log", "is the sole retained root episode"));
     }
-    let mut above = root.to_string();
-    let mut prefix = base.to_string();
-    for id in parts.iter().skip(1).step_by(2) {
-        let (parent_events, parent_state) = &logs[&above];
-        let spawned =
-            parent_events.iter().any(|e| matches!(&e.data, EventData::SpawnStart { child_id, .. } if child_id == id));
-        if !spawned {
-            return Err(invalid(key, format!("{id} is spawned by the log above it")));
+    let mut children = BTreeMap::new();
+    for (path, (_, state)) in logs {
+        let start = state.start.as_ref().expect("a checked log has episode/start");
+        if children.insert(start.id.as_str(), path.as_str()).is_some() {
+            return Err(invalid(key, format!("episode id {} is unique in the retained tree", start.id)));
         }
-        prefix = format!("{prefix}children/{id}/");
-        let child_path = format!("{prefix}episode.jsonl");
-        let (_, child_state) =
-            logs.get(&child_path).ok_or_else(|| invalid(key, "every log on its spawn path is retained"))?;
-        let child_start = child_state.start.as_ref().ok_or_else(|| invalid(key, "has episode/start"))?;
-        if child_start.parent_id.as_deref() != parent_state.start.as_ref().map(|s| s.id.as_str()) {
-            return Err(invalid(key, format!("{id} names the episode above it as its parent")));
-        }
-        above = child_path;
     }
-    Ok(())
+    children.remove(logs[root].1.start.as_ref().expect("a checked log has episode/start").id.as_str());
+    for (parent_path, (events, state)) in logs {
+        let parent_id = &state.start.as_ref().expect("a checked log has episode/start").id;
+        for (child_id, program) in events.iter().filter_map(|event| match &event.data {
+            EventData::SpawnStart { child_id, program, .. } => Some((child_id, program)),
+            _ => None,
+        }) {
+            let child_path = children
+                .remove(child_id.as_str())
+                .ok_or_else(|| invalid(key, format!("{parent_id} has no unique retained child {child_id}")))?;
+            let start = logs[child_path].1.start.as_ref().expect("a checked log has episode/start");
+            let expected =
+                format!("{}children/{child_id}/episode.jsonl", parent_path.strip_suffix("episode.jsonl").unwrap());
+            if *child_path != expected
+                || start.parent_id.as_ref() != Some(parent_id)
+                || start.team_id.as_ref() != Some(parent_id)
+            {
+                return Err(invalid(key, format!("{child_path} descends from its recorded parent and team")));
+            }
+            if *parent_path != root {
+                return Err(invalid(key, format!("{child_path} lacks its spawning parent's identity document")));
+            }
+            if workflow_child_identity(parent_document, program) != Some(start.identity.as_str()) {
+                return Err(invalid(key, format!("{} has the identity of workflow node {program}", start.id)));
+            }
+        }
+    }
+    children
+        .is_empty()
+        .then_some(())
+        .ok_or_else(|| invalid(key, "reaches every retained episode through one spawn edge"))
+}
+
+fn workflow_child_identity<'a>(document: &'a Value, program: &str) -> Option<&'a str> {
+    if let Some(identity) = document["programs"][program].as_str() {
+        return Some(identity);
+    }
+    program.split('/').try_fold(document, |parent, name| parent["workflow"]["nodes"].get(name))?["model"].as_str()
 }
 
 /// The verifier episode runs a program of the parent state's tree, and the

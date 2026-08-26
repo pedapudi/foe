@@ -143,6 +143,8 @@ def main():
                 str(repository / "Cargo.toml"),
                 "--source-adoption",
                 str(bundle),
+                "--controller-bazel",
+                "/bin/true",
                 *controller_arguments,
                 "--harbor",
                 "/bin/true",

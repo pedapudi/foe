@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from source_adoption import (
+    build_source_candidate,
     complete_source_adoption,
     freeze_source_candidate,
     verify_source_candidate,
@@ -1086,6 +1087,11 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         help="trusted controller build output; required with --source-adoption",
     )
+    answer.add_argument(
+        "--controller-bazel",
+        type=Path,
+        help="trusted Bazel executable that builds source candidates",
+    )
     answer.add_argument("--agent-module", type=Path, required=True)
     answer.add_argument("--trace-evaluator", type=Path, required=True)
     answer.add_argument("--cases", type=Path, required=True)
@@ -1265,6 +1271,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--source-adoption requires --controller-root")
         if args.source_adoption is not None and args.controller_artifact_root is None:
             raise ValueError("--source-adoption requires --controller-artifact-root")
+        if args.source_adoption is not None and args.controller_bazel is None:
+            raise ValueError("--source-adoption requires --controller-bazel")
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
         source_checker = (
@@ -1286,6 +1294,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         if controller_artifact_root is not None and controller_artifact_root.is_file():
             controller_artifact_root = controller_artifact_root.parent
+        controller_bazel = (
+            args.controller_bazel.resolve(strict=True)
+            if args.controller_bazel is not None
+            else None
+        )
         agent_module = args.agent_module.resolve(strict=True)
         trace_evaluator = args.trace_evaluator.resolve(strict=True)
         completion_checker = (
@@ -1301,6 +1314,7 @@ def main(argv: list[str] | None = None) -> int:
             assert controller_root is not None
             assert controller_artifact_root is not None
             assert source_checker is not None
+            assert controller_bazel is not None
             runner_path = Path(__file__).resolve(strict=True)
             for name, root in (
                 ("source checkout", controller_root),
@@ -1314,6 +1328,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("controller runner is outside --controller-root")
             if not source_checker.is_relative_to(controller_artifact_root):
                 raise ValueError("controller source checker is outside --controller-artifact-root")
+            if controller_bazel.is_relative_to(candidate_repository):
+                raise ValueError("--controller-bazel must remain outside the candidate source")
         jobs_dir = (
             (workspace / args.jobs_dir).resolve()
             if not args.jobs_dir.is_absolute()
@@ -1368,11 +1384,16 @@ def main(argv: list[str] | None = None) -> int:
                 "path": str(source_checker),
                 "sha256": digest(source_checker),
             },
+            "bazel": {
+                "path": str(controller_bazel),
+                "sha256": digest(controller_bazel),
+            },
         }
         if source_adoption_path is not None
         else None
     )
     source_adoption = None
+    source_build = None
     if source_adoption_path is not None:
         try:
             evaluated_source = source_tree(source_root)
@@ -1605,6 +1626,21 @@ def main(argv: list[str] | None = None) -> int:
         try:
             assert source_checker is not None
             assert evaluated_source is not None
+            assert controller_bazel is not None
+            foe, source_build = build_source_candidate(
+                controller_bazel,
+                candidate_repository,
+                evaluated_source,
+                run_dir / "controller-build",
+            )
+            runtime_digest = digest(foe)
+            source_adoption = verify_source_candidate(
+                source_checker,
+                source_adoption_path,
+                source_root,
+                evaluated_source,
+                foe,
+            )
             source_adoption_path, source_adoption = freeze_source_candidate(
                 source_checker,
                 source_adoption_path,
@@ -1724,6 +1760,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "workflow_candidate": workflow_candidate,
             "source_candidate": source_adoption,
+            "source_build": source_build,
             "controller": controller,
             "source_adoptions": [
                 adoption

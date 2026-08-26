@@ -22,7 +22,7 @@ from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256
 from foe_agent_support import build_program, estimate_usage_cost
 from instruction_candidate import create as create_instruction_candidate
 from run import Pricing, read_cases
-from source_adoption import capture_source_candidate
+from source_adoption import PROTECTED_BUILD_NAMES, capture_source_candidate
 from tool_candidate import create as create_tool_candidate
 from tool_candidate import validate_definition as validate_tool_definition
 from workflow_candidate import create as create_workflow_candidate
@@ -39,22 +39,6 @@ AUDIT_SECONDS = 3_600
 SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + AUDIT_SECONDS
 LOOP_THRESHOLD = 8
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
-PROTECTED_BUILD_NAMES = (
-    "BUILD",
-    "BUILD.bazel",
-    "Cargo.lock",
-    "Cargo.toml",
-    "MODULE.bazel",
-    "MODULE.bazel.lock",
-    "WORKSPACE",
-    "WORKSPACE.bazel",
-    "build.rs",
-    "package-lock.json",
-    "package.json",
-    "pnpm-lock.yaml",
-    "rust-toolchain",
-    "rust-toolchain.toml",
-)
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
 SYSTEM_DEVELOPMENT_READ_DIRS = (Path("/usr/include"), Path("/usr/local/include"))
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
@@ -865,6 +849,16 @@ def build_metadata_hashes():
 
 current = source_hashes()
 changed = sorted(name for name in set(baseline) | set(current) if baseline.get(name) != current.get(name))
+removed_digests = {{baseline[name] for name in baseline if name not in current}}
+def material_regular_change(name):
+    item = root / name
+    return (
+        name in current
+        and baseline.get(name) != current[name]
+        and item.is_file()
+        and not item.is_symlink()
+        and (name in baseline or current[name] not in removed_digests)
+    )
 status = repository_status()
 current_build_metadata = build_metadata_hashes()
 all_changed = [line[3:] for line in status if len(line) > 3]
@@ -873,11 +867,20 @@ if not baseline_validation:
     outside = sorted(set(all_changed) - set(changed))
     if outside:
         findings.append("changes outside the runtime, documentation, and example surface: " + ", ".join(outside))
-    if not any(name.startswith("crates/") and name.endswith(".rs") and not name.endswith("_test.rs") for name in changed):
+    if not any(
+        material_regular_change(name)
+        and name.startswith("crates/")
+        and name.endswith(".rs")
+        and not name.endswith("_test.rs")
+        for name in changed
+    ):
         findings.append("the candidate contains no Rust implementation change")
-    if not any(name.endswith("_test.rs") for name in changed):
+    if not any(material_regular_change(name) and name.endswith("_test.rs") for name in changed):
         findings.append("the candidate contains no Rust regression test")
-    if not any(name.startswith("docs/") and name.endswith(".md") for name in changed):
+    if not any(
+        material_regular_change(name) and name.startswith("docs/") and name.endswith(".md")
+        for name in changed
+    ):
         findings.append("the candidate does not update an affected specification")
     protected_changes = sorted(
         name

@@ -3,8 +3,8 @@
 //! checkout builds this evaluator outside the writable candidate tree.
 
 use foe_lineage::{
-    build_manifest, check_ancestry, check_proposal, digest_of, manifest_bytes, record_bytes, require_manifest_path,
-    state_identity, AdoptionRecord, ManifestFile, ProgramLineage, RetainedVerifier, StateDocument, MANIFEST_FILE,
+    build_manifest, check_ancestry, check_proposal, digest_of, require_manifest_path, state_identity, AdoptionRecord,
+    ManifestFile, ProgramLineage, RetainedVerifier, StateDocument, MANIFEST_FILE,
 };
 use foe_log::fold;
 use foe_program::{identity::canonical, LineageParent};
@@ -219,6 +219,32 @@ fn candidate_identity(base: &str, entries: &[SourceEntry]) -> Result<String, Str
     Ok(digest_of(canonical(&body).as_bytes()))
 }
 
+fn protected_build_path(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    name.ends_with(".bzl")
+        || matches!(
+            name,
+            ".bazelignore"
+                | ".bazelrc"
+                | ".bazelversion"
+                | "BUILD"
+                | "BUILD.bazel"
+                | "Cargo.lock"
+                | "Cargo.toml"
+                | "MODULE.bazel"
+                | "MODULE.bazel.lock"
+                | "WORKSPACE"
+                | "WORKSPACE.bazel"
+                | "build.rs"
+                | "package-lock.json"
+                | "package.json"
+                | "pnpm-lock.yaml"
+                | "REPO.bazel"
+                | "rust-toolchain"
+                | "rust-toolchain.toml"
+        )
+}
+
 fn source_entries(root: &Path, base: &str, bundle: &Path) -> Result<Vec<SourceEntry>, String> {
     let mut entries = Vec::new();
     for path in changed_worktree_paths(root, base)? {
@@ -355,6 +381,9 @@ fn checked_manifest(bundle: &Path) -> Result<(SourceManifest, String), String> {
     }
     for entry in &manifest.entries {
         require_manifest_path("source entry path", entry.path()).map_err(|e| e.to_string())?;
+        if protected_build_path(entry.path()) {
+            return Err(fail("source entry path", format!("{} preserves protected build metadata", entry.path())));
+        }
         if let SourceEntry::Present { content, sha256, applied, .. } = entry {
             require_manifest_path("source entry content", content).map_err(|e| e.to_string())?;
             let file = manifest
@@ -469,7 +498,6 @@ fn capture(args: &[String]) -> Result<Value, String> {
         "source_candidate_identity": manifest.candidate_identity,
         "base_source_tree": manifest.base_source_tree,
         "parent_program_identity": manifest.parent_program_identity,
-        "checker_sha256": checker_digest()?,
     }))
 }
 
@@ -621,11 +649,11 @@ fn adopt(args: &[String]) -> Result<Value, String> {
         verification_log: source_manifest.verification_log.clone(),
         verification_seq: source_manifest.verification_seq,
     };
-    let record_data = record_bytes(&record).map_err(|e| e.to_string())?;
+    let record_data = canonical_bytes(&record)?;
     std::fs::write(build.join(ADOPTION_RECORD), &record_data).map_err(|e| fail(ADOPTION_RECORD, e.to_string()))?;
     let evidence_manifest =
         build_manifest(&build, &source_manifest.proposal_log, ADOPTION_RECORD).map_err(|e| e.to_string())?;
-    let evidence_bytes = manifest_bytes(&evidence_manifest).map_err(|e| e.to_string())?;
+    let evidence_bytes = canonical_bytes(&evidence_manifest)?;
     std::fs::write(build.join(MANIFEST_FILE), &evidence_bytes).map_err(|e| fail(MANIFEST_FILE, e.to_string()))?;
     let evidence_identity = digest_of(&evidence_bytes);
     let evidence_root = lineage.join("evidence");

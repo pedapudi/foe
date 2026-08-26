@@ -14,10 +14,158 @@ from typing import Any
 
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 SOURCE_TREE = re.compile(r"git-tree-(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})")
+PROTECTED_BUILD_NAMES = (
+    ".bazelignore",
+    ".bazelrc",
+    ".bazelversion",
+    "BUILD",
+    "BUILD.bazel",
+    "Cargo.lock",
+    "Cargo.toml",
+    "MODULE.bazel",
+    "MODULE.bazel.lock",
+    "WORKSPACE",
+    "WORKSPACE.bazel",
+    "build.rs",
+    "package-lock.json",
+    "package.json",
+    "pnpm-lock.yaml",
+    "REPO.bazel",
+    "rust-toolchain",
+    "rust-toolchain.toml",
+)
 
 
-def checker_digest(checker: Path) -> str:
-    return "sha256:" + hashlib.sha256(checker.read_bytes()).hexdigest()
+def file_digest(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def build_graph(candidate: Path) -> dict[str, str]:
+    """Identify the protected files that define the candidate build."""
+    listed = subprocess.run(
+        ["/usr/bin/git", "ls-files", "--cached", "-z"],
+        cwd=candidate,
+        capture_output=True,
+        check=True,
+    ).stdout
+    files = {}
+    for value in listed.split(b"\0"):
+        if not value:
+            continue
+        name = value.decode("utf-8")
+        base = name.rsplit("/", 1)[-1]
+        if base not in PROTECTED_BUILD_NAMES and not base.endswith(".bzl"):
+            continue
+        path = candidate / name
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"protected build metadata is not a regular file: {name}")
+        files[name] = file_digest(path)
+    if not files:
+        raise ValueError("candidate source contains no protected build metadata")
+    return files
+
+
+def clean_source_tree(candidate: Path) -> str:
+    """Identify a committed candidate tree whose checkout has no source changes."""
+    def git(*arguments: str) -> str:
+        result = subprocess.run(
+            ["/usr/bin/git", "-C", str(candidate), *arguments],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
+            raise ValueError(f"cannot identify candidate source: git {' '.join(arguments)}: {detail}")
+        return result.stdout.strip()
+
+    status = git("status", "--porcelain=v1", "--untracked-files=all")
+    if status:
+        raise ValueError(f"candidate source changed during controller build:\n{status}")
+    algorithm = git("rev-parse", "--show-object-format")
+    tree = git("rev-parse", "HEAD^{tree}")
+    return f"git-tree-{algorithm}:{tree}"
+
+
+def build_source_candidate(
+    bazel: Path,
+    candidate: Path,
+    source_tree: str,
+    destination: Path,
+) -> tuple[Path, dict[str, Any]]:
+    """Build and retain the candidate binary under a recorded trusted command."""
+    bazel = bazel.resolve(strict=True)
+    if not bazel.is_file():
+        raise ValueError(f"controller Bazel executable is not a file: {bazel}")
+    if clean_source_tree(candidate) != source_tree:
+        raise ValueError("controller build source differs from the accepted candidate tree")
+    before = build_graph(candidate)
+    graph_bytes = json.dumps(before, sort_keys=True, separators=(",", ":")).encode()
+    command = [str(bazel), "build", "--color=no", "--noshow_progress", "//:foe-portable"]
+    version = subprocess.run(
+        [str(bazel), "--version"],
+        cwd=candidate,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if version.returncode != 0:
+        detail = version.stderr.strip() or version.stdout.strip() or f"exit status {version.returncode}"
+        raise ValueError(f"controller Bazel version failed: {detail}")
+    destination.mkdir(parents=True, exist_ok=False)
+    log = destination / "build.log"
+    try:
+        result = subprocess.run(
+            command,
+            cwd=candidate,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=3_600,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        log.write_bytes(error.stdout or b"")
+        raise ValueError(f"controller build timed out; partial log: {log}") from error
+    log.write_bytes(result.stdout)
+    if result.returncode != 0:
+        raise ValueError(f"controller build failed with exit status {result.returncode}; log: {log}")
+    if build_graph(candidate) != before or clean_source_tree(candidate) != source_tree:
+        raise ValueError("controller build changed the accepted source or protected build metadata")
+    output = candidate / "bazel-bin/foe-portable"
+    if not output.is_file():
+        raise ValueError(f"controller build produced no portable Foe binary: {output}")
+    retained = destination / "foe-portable"
+    shutil.copyfile(output, retained)
+    retained.chmod(0o555)
+    record = {
+        "schema_version": 1,
+        "source_tree": source_tree,
+        "command": command,
+        "bazel": {
+            "path": str(bazel),
+            "sha256": file_digest(bazel),
+            "version": version.stdout.strip(),
+        },
+        "toolchain_definition": {
+            "sha256": "sha256:" + hashlib.sha256(graph_bytes).hexdigest(),
+            "files": before,
+        },
+        "log": {
+            "path": "build.log",
+            "bytes": len(result.stdout),
+            "sha256": file_digest(log),
+        },
+        "output": {
+            "path": "foe-portable",
+            "bytes": retained.stat().st_size,
+            "sha256": file_digest(retained),
+        },
+    }
+    (destination / "build.json").write_text(
+        json.dumps(record, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return retained, record
 
 
 def source_bundle_path(path: Path) -> tuple[Path, dict[str, str] | None]:
@@ -29,6 +177,8 @@ def source_bundle_path(path: Path) -> tuple[Path, dict[str, str] | None]:
     bundle = candidate.get("bundle") if isinstance(candidate, dict) else None
     if not isinstance(bundle, str) or not bundle:
         raise ValueError("source candidate record has no source evidence bundle")
+    if "checker_sha256" in candidate:
+        raise ValueError("source candidate record cannot claim an unauthenticated capture checker")
     resolved = Path(bundle)
     if not resolved.is_absolute():
         resolved = path.parent / resolved
@@ -71,7 +221,7 @@ def checked_output(checker: Path, arguments: list[str], fields: set[str]) -> dic
     if value.get("schema_version") != 1:
         raise ValueError("source candidate checker output is not schema 1")
     observed_checker = value.get("checker_sha256")
-    if observed_checker != checker_digest(checker):
+    if "checker_sha256" in fields and observed_checker != file_digest(checker):
         raise ValueError("source candidate checker reported a different executable digest")
     for field in (
         "source_bundle_identity",
@@ -79,7 +229,7 @@ def checked_output(checker: Path, arguments: list[str], fields: set[str]) -> dic
         "parent_program_identity",
         "checker_sha256",
     ):
-        if DIGEST.fullmatch(value.get(field, "")) is None:
+        if field in fields and DIGEST.fullmatch(value.get(field, "")) is None:
             raise ValueError(f"source candidate checker output {field} is invalid")
     if "base_source_tree" in value and SOURCE_TREE.fullmatch(value.get("base_source_tree", "")) is None:
         raise ValueError("source candidate checker output base_source_tree is invalid")
@@ -105,7 +255,6 @@ CAPTURE_FIELDS = {
     "source_candidate_identity",
     "base_source_tree",
     "parent_program_identity",
-    "checker_sha256",
 }
 
 PREFLIGHT_FIELDS = {

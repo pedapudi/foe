@@ -1,5 +1,5 @@
 use super::{
-    build_manifest, check_ancestry, digest_of, manifest_bytes, record_bytes, state_identity, validate, AdoptionRecord,
+    build_manifest, canonical_bytes, check_ancestry, digest_of, state_identity, validate, AdoptionRecord,
     AncestryReport, LineageParent, ProgramLineage, StateDocument, MANIFEST_FILE,
 };
 use foe_log::append::Writer;
@@ -71,6 +71,23 @@ fn validation_names_the_key_and_the_rule() {
     let mut claim: ProgramLineage = serde_json::from_value(claim_value()).unwrap();
     claim.verification_log = "/episode.jsonl".into();
     assert!(validate(&claim).is_err(), "an absolute path is refused");
+}
+
+#[test]
+fn workflow_spawn_paths_resolve_the_exact_model_identity() {
+    let worker = digest('1');
+    let audit = digest('2');
+    let document = json!({
+        "programs": { "worker": worker.clone() },
+        "workflow": { "nodes": {
+            "outer": { "workflow": { "nodes": {
+                "audit": { "model": audit.clone() }
+            } } }
+        } }
+    });
+    assert_eq!(super::workflow_child_identity(&document, "worker"), Some(worker.as_str()));
+    assert_eq!(super::workflow_child_identity(&document, "outer/audit"), Some(audit.as_str()));
+    assert_eq!(super::workflow_child_identity(&document, "outer/missing"), None);
 }
 
 #[test]
@@ -158,7 +175,7 @@ fn start(id: &str, parent: Option<&str>, identity: &str, program: Value) -> Even
         id: id.into(),
         parent_id: parent.map(str::to_string),
         fork_origin: None,
-        team_id: None,
+        team_id: parent.map(str::to_string),
         program,
         identity: identity.into(),
         task: "propose a descendant".into(),
@@ -213,13 +230,13 @@ fn write_candidate_files(dir: &Path, child: &Identity, log: &str, seq: u64) -> A
 /// returns the ancestry claim naming that verification.
 fn seal(dir: &Path, proposal: &str, log: &str, seq: u64, f: &Fixture, child: &Identity) -> ProgramLineage {
     let record = write_candidate_files(dir, child, log, seq);
-    std::fs::write(dir.join("adoption-record.json"), record_bytes(&record).unwrap()).unwrap();
+    std::fs::write(dir.join("adoption-record.json"), canonical_bytes(&record).unwrap()).unwrap();
     let manifest = build_manifest(dir, proposal, "adoption-record.json").unwrap();
     seal_manifest(dir, manifest, log, seq, f)
 }
 
 fn seal_manifest(dir: &Path, manifest: super::Manifest, log: &str, seq: u64, f: &Fixture) -> ProgramLineage {
-    let bytes = manifest_bytes(&manifest).unwrap();
+    let bytes = canonical_bytes(&manifest).unwrap();
     std::fs::write(dir.join(MANIFEST_FILE), &bytes).unwrap();
     ProgramLineage {
         parent: LineageParent {
@@ -304,7 +321,7 @@ fn an_adoption_record_that_contradicts_the_claim_or_the_candidate_is_rejected() 
         );
         let mut record = write_candidate_files(&dir, &child, "episode/episode.jsonl", 1);
         edit(&mut record);
-        std::fs::write(dir.join("adoption-record.json"), record_bytes(&record).unwrap()).unwrap();
+        std::fs::write(dir.join("adoption-record.json"), canonical_bytes(&record).unwrap()).unwrap();
         let manifest = build_manifest(&dir, "episode/episode.jsonl", "adoption-record.json").unwrap();
         let claim = seal_manifest(&dir, manifest, "episode/episode.jsonl", 1, &f);
         let state = StateDocument { identity_document: child.document.clone(), program_lineage: Some(claim.clone()) };
