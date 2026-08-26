@@ -290,7 +290,8 @@ A process session normally ends at episode settlement. A program with the
 `task_session` grant may request task lifetime when it starts a session.
 Settlement then records the process and process-group identities and
 transfers cleanup responsibility to the environment that owns the foe
-invocation. The process retains its sandbox restrictions after foe exits.
+invocation. Every remaining group member retains its sandbox restrictions
+after foe exits.
 
 Ending a child that a model meant to keep is a poor answer, so a parent
 that means to wait says so: the `wait` tool returns once every child it

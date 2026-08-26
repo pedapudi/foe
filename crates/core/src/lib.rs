@@ -244,8 +244,8 @@ pub enum SessionLifetime {
     Task,
 }
 
-/// What settlement did with a process that was alive. The process and
-/// process-group ids identify a released task process for external cleanup.
+/// What settlement did with a process group that had a live member. The
+/// leader and group ids identify a released task session for external cleanup.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionSettlement {
     pub status: SessionStatus,

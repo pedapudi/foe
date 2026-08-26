@@ -330,9 +330,9 @@ without the handles it needs.
 ### `session`
 
 One tool drives every process session, selected by `action`. A session is
-a process that outlives the call that started it. The default lifetime ends
-with the episode. An explicitly authorized task lifetime transfers the
-process to the environment that owns the foe invocation.
+the process group that begins with the shell process started by the call.
+The default lifetime ends with the episode. An explicitly authorized task
+lifetime transfers the group to the environment that owns the foe invocation.
 
 `start` takes `command` and runs `/bin/bash -c COMMAND` exactly as `bash`
 does: the first read root as the working directory, the same fixed
@@ -341,20 +341,23 @@ The process runs in its own process group. The result carries the session
 id, a small integer counted from 1, and the selected lifetime.
 At most 8 sessions may be alive at once, a constant in the crate; a start
 beyond the bound is an error naming it. A session has no timeout. An
-episode-lifetime session lives until `stop`, its own exit, or episode
-settlement. The episode's wall-clock budget bounds it by ending the episode.
+episode-lifetime session lives until `stop`, its process group becomes empty,
+or episode settlement. The episode's wall-clock budget bounds it by ending
+the episode.
 
 `lifetime` on `start` is `episode` or `task`, and defaults to `episode`.
 Task lifetime requires `grants.task_session`. Every session's output streams
 append directly to files under the episode's `spill/` directory. The files
-remain writable when a task-lifetime process survives foe. Standard input
-remains a pipe and closes when the episode process exits.
+remain writable when a task-lifetime session survives foe. Standard input
+remains a pipe and closes when the episode's Foe process exits.
 
 `poll` takes `session` and returns what both streams produced since the
-last poll, with the process's state: `alive`, and once the process has
-ended, `exit_code` — null when a signal ended it — and `seconds` from the
-start to the end. The rendering opens with the status line and then shows
-the tail of the new output under the collection-and-spill rule of `bash`:
+last poll, with the group's state. `alive` remains true while any member of
+the original process group exists, including after the leader exits. Once
+the group is empty, `exit_code` is the leader's status, or null when a signal
+ended it, and `seconds` measures the group lifetime. The rendering opens with
+the status line and then shows the tail of the new output under the
+collection-and-spill rule of `bash`:
 the last 2,000 lines or 51,200 characters, the whole text saved to
 `CALL_ID-session.txt` under `spill/` when a cut happens. Each poll reads at
 most 1 MiB of new bytes from each stream's per-session file. A notice names
@@ -368,11 +371,12 @@ group. `stop` takes `session`, sends SIGTERM to the group, waits two
 seconds, sends SIGKILL, and returns the final status; the grace bound is
 the constant the executable teardown uses.
 
-A session's end is also posted to the episode's inbox: when the runtime
-observes that the process has ended — before it derives a request, while a
-turn's tool calls run, or at settlement — it appends one `inbox/item` with
+A session's end is also posted to the episode's inbox. When the runtime
+observes that the process group is empty, it appends one `inbox/item` with
 source `session` whose text is the subject line: the id, the exit status,
-and the lifetime. One item per session lifetime, on exit only; output
+and the lifetime. The runtime checks before deriving a request, while a
+turn's tool calls run, and at settlement. One item per session lifetime,
+on exit only; output
 reaches the model through `poll` alone. The item lets a `wait` on a
 session condition return when the process ends, and it enters the next
 request like any inbox item. [log-format.md](log-format.md#inbox)
@@ -384,9 +388,10 @@ synthetic `tool/result` whose subject states the final status.
 
 The runtime leaves a surviving task-lifetime session running. Its synthetic
 settlement result states `released_to_task_environment` and records the
-leader PID, process-group ID, and observed-alive state. The runtime no longer
-supervises the process after that record. The enclosing task environment
-must clean up the process group when the task ends. A container, process
+leader PID, process-group ID, and observed-alive state of the group. The
+leader may already have exited. The runtime no longer supervises the group
+after that record. The enclosing task environment must clean up the process
+group when the task ends. A container, process
 namespace, or cgroup that is destroyed after grading provides that cleanup.
 The explicit grant accepts this cleanup obligation on a host without such
 an environment. [log-format.md](log-format.md#open-obligations) specifies

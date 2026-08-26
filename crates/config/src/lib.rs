@@ -171,7 +171,7 @@ pub struct Grants {
     /// a grant; it follows the model transport and per-tool declarations.
     #[serde(default)]
     pub bind: Vec<u16>,
-    /// Whether a process session may survive the episode so that the
+    /// Whether a process group may survive the episode so that the
     /// enclosing task environment can inspect and clean it up.
     #[serde(default)]
     pub task_session: bool,

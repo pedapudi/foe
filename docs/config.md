@@ -266,11 +266,11 @@ A `bind` grant lets a server the episode starts listen on the named ports;
 outbound reach: connecting stays tied to the model transport and to each
 tool definition's `network` field.
 
-A `task_session` grant permits a session process to survive episode
+A `task_session` grant permits a session process group to survive episode
 settlement. The `session` call must also request `lifetime: "task"`. At
-settlement the runtime transfers process ownership to the environment that
-owns the foe invocation. [tools.md](tools.md#session) specifies the lifecycle
-and the cleanup requirement.
+settlement the runtime transfers cleanup responsibility to the environment
+that owns the foe invocation. [tools.md](tools.md#session) specifies the
+lifecycle and the cleanup requirement.
 
 The runtime opens each granted directory once when the episode starts, and
 every read and write below it names a path relative to that open directory.

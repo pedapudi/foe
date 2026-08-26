@@ -12,7 +12,8 @@
 use crate::exec::{end_group, CAPTURE_LIMIT};
 use crate::sandbox::{Policy, Sandbox};
 use crate::{CapError, SessionLifetime, SessionOutput, SessionRequest, SessionSettlement, SessionStatus, Sessions};
-use nix::sys::signal::Signal;
+use nix::errno::Errno;
+use nix::sys::signal::{killpg, Signal};
 use nix::unistd::Pid;
 use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -84,9 +85,9 @@ struct Session {
     stdout: Output,
     stderr: Output,
     started: Instant,
-    /// The exit code and the elapsed whole seconds, recorded once when the
-    /// process is reaped. The code is `None` for a process a signal ended.
-    ended: Mutex<Option<(Option<i32>, u64)>>,
+    /// The group leader's exit code and the observed group-end time. The
+    /// group may remain alive after the leader is reaped.
+    ended: Mutex<Option<(Option<i32>, Option<u64>)>>,
     /// Set when `take_exited` has reported the end, so each session's exit
     /// is reported once per lifetime.
     reported: AtomicBool,
@@ -98,15 +99,21 @@ struct Session {
 impl Session {
     /// Reaps the process when it has exited and returns the session's state.
     fn status(&self, id: u64) -> SessionStatus {
+        let elapsed = self.started.elapsed().as_secs();
         let mut ended = self.ended.lock().unwrap();
         if ended.is_none() {
             if let Ok(Some(status)) = self.child.lock().unwrap().try_wait() {
-                *ended = Some((status.code(), self.started.elapsed().as_secs()));
+                *ended = Some((status.code(), None));
             }
         }
-        let (alive, exit_code, seconds) = match *ended {
-            Some((code, seconds)) => (false, code, seconds),
-            None => (true, None, self.started.elapsed().as_secs()),
+        let alive = ended.as_ref().is_none_or(|(_, seconds)| seconds.is_none())
+            && !matches!(killpg(self.group, None), Err(Errno::ESRCH));
+        if !alive {
+            ended.get_or_insert((None, None)).1.get_or_insert(elapsed);
+        }
+        let (exit_code, seconds) = match *ended {
+            Some((code, Some(seconds))) => (code, seconds),
+            _ => (None, elapsed),
         };
         SessionStatus { id, name: self.name.clone(), alive, exit_code, seconds }
     }
@@ -115,14 +122,12 @@ impl Session {
     /// reap. Ending the whole group is what keeps a process the session
     /// started from surviving it.
     fn stop(&self, id: u64) -> Result<SessionStatus, CapError> {
-        {
+        if self.status(id).alive {
             let mut ended = self.ended.lock().unwrap();
-            if ended.is_none() {
-                let mut child = self.child.lock().unwrap();
-                end_group(self.group, &mut child)?;
-                let status = child.wait()?;
-                *ended = Some((status.code(), self.started.elapsed().as_secs()));
-            }
+            let mut child = self.child.lock().unwrap();
+            end_group(self.group, &mut child)?;
+            let status = child.wait()?;
+            *ended = Some((status.code(), Some(self.started.elapsed().as_secs())));
         }
         Ok(self.status(id))
     }

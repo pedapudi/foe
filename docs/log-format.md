@@ -258,8 +258,9 @@ output length limit is `is_error: true` with `synthetic: false`, because the
 runtime produced that result in the ordinary course of the step. At episode
 settlement the runtime also writes one result with `synthetic: true` for
 each surviving process session. An episode-lifetime result records the
-implicit stop. A task-lifetime result records that the process was alive
-when ownership passed to the enclosing task environment. The latter carries
+implicit stop. A task-lifetime result records that the process group had a
+live member when ownership passed to the enclosing task
+environment. The group leader may already have exited. The result carries
 `lifetime: "task"`, `disposition: "released_to_task_environment"`, `pid`,
 and `process_group`. Its `call_id` names no call, so it closes nothing; see
 [Open obligations](#open-obligations).

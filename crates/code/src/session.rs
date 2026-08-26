@@ -58,8 +58,8 @@ impl Session {
                      environment, network closed, in its own process group; at most {SESSION_MAX_ALIVE} \
                      may be alive. `poll` returns new bounded output and final status. `write` sends \
                      input; `signal` signals the group; `stop` terminates, escalating after {grace}s. \
-                     Default `episode` lifetime ends at settlement. `task` transfers ownership to the \
-                     task environment and requires grants.task_session."
+                     Default `episode` lifetime ends at settlement. `task` transfers cleanup of the \
+                     process group to the task environment and requires grants.task_session."
                 ),
                 instruction: Some(
                     "Use session for a process that must outlive one bash call, such as a server under \
