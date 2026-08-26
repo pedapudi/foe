@@ -376,7 +376,11 @@ def repeated_failure_contrasts(reports: list[dict[str, Any]]) -> list[dict[str, 
             if not isinstance(failure, dict):
                 continue
             name = failure.get("name")
-            failure_class = failure.get("failure_class")
+            failure_class = (
+                failure.get("failure_class")
+                or failure.get("raw_status")
+                or failure.get("status")
+            )
             check = {}
             if isinstance(name, str):
                 check["name"] = name

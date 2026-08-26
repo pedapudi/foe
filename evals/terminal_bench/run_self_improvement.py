@@ -247,6 +247,10 @@ def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
         if set(failed).intersection(successful):
             raise ValueError(f"repeated failure contrast {index} reuses an episode across outcomes")
         answer.append(contrast)
+    if not answer:
+        raise ValueError(
+            "self-improvement evidence has no validated repeated failure contrast"
+        )
     return answer
 
 
@@ -1023,7 +1027,7 @@ def build_config(
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
             "evidence": "Select one object from repeated_failure_contrasts and copy it unchanged into failure_contrast. Diagnose only that task-specific contrast. Do not combine failure profiles or tasks. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
             "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
-            "sufficiency": sufficiency + " Choose `insufficient-evidence` when repeated_failure_contrasts is empty.",
+            "sufficiency": sufficiency,
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block", DIAGNOSIS_VALIDATOR_TOOL],

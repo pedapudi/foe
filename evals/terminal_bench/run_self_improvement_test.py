@@ -746,6 +746,13 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual(supported_failure_contrasts(evidence), [FAILURE_CONTRAST])
+
+            evidence.write_text(
+                json.dumps({"repeated_failure_contrasts": []}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "no validated repeated failure contrast"):
+                supported_failure_contrasts(evidence)
             invalid = {
                 **FAILURE_CONTRAST,
                 "failed_episode_ids": ["ep_failed_one"],

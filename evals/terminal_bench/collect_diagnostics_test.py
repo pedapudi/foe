@@ -304,6 +304,20 @@ class CollectDiagnosticsTest(unittest.TestCase):
         ]
         self.assertEqual(repeated_failure_contrasts(reports), [])
 
+        reports = [
+            report("ep_failed_one", 0.0, "test_public_interface"),
+            report("ep_failed_two", 0.0, "test_public_interface"),
+            report("ep_success", 1.0, ""),
+        ]
+        for failed in reports[:2]:
+            failed["verifier_feedback"]["failures"][0]["failure_class"] = None
+            failed["verifier_feedback"]["failures"][0]["raw_status"] = "call_failed"
+        contrast = repeated_failure_contrasts(reports)[0]
+        self.assertEqual(
+            contrast["failure_profile"]["failed_verifier_checks"],
+            [{"name": "test_public_interface", "failure_class": "call_failed"}],
+        )
+
     def test_collector_rejects_a_different_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             source, binary, run, _ = self.fixture(Path(directory))
