@@ -135,7 +135,7 @@ fn tcp_connect_is_denied_from_abi_4() {
 #[test]
 fn network_policy_can_read_resolver_configuration() {
     let Some(s) = sandbox() else { return };
-    let config: Config = serde_json::from_value(serde_json::json!({
+    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
         "version": 3, "name": "network", "instructions": {"role": "x"}, "tools": [],
         "grants": {"read": [], "write": []}, "budget": {"model_calls": 1},
         "model": {"provider": "openai", "model": "m"}, "task": "t"
@@ -178,7 +178,7 @@ fn a_bind_grant_reaches_a_narrowed_executable() {
     let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = probe.local_addr().unwrap().port();
     drop(probe);
-    let config: Config = serde_json::from_value(serde_json::json!({
+    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
         "version": 3, "name": "server", "instructions": {"role": "x"}, "tools": [],
         "grants": {"read": [], "bind": [port]}, "budget": {"model_calls": 1}, "task": "t"
     }))
@@ -201,7 +201,7 @@ fn a_bind_grant_reaches_a_narrowed_executable() {
 
 #[test]
 fn episode_policy_follows_grants_and_tool_defs() {
-    let config: Config = serde_json::from_value(serde_json::json!({
+    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
         "version": 3, "name": "p", "instructions": {"r": "x"}, "tools": ["ruff"],
         "tool_defs": {"ruff": {"exec": "/usr/bin/ruff", "description": "d"}},
         "grants": {"read": ["/src"], "write": ["/src/out"], "execute": ["/opt/toolchain"], "bind": [8080]},
@@ -224,7 +224,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert!(p.read_files.is_empty(), "an episode that opens no connection reads no resolver file");
     let mut with_children = config.clone();
     with_children.grants.spawn = vec!["survey".into()];
-    with_children.model = Some(foe_config::ModelConfig::new("anthropic", "m"));
+    with_children.model = Some(foe_program::ModelConfig::new("anthropic", "m"));
     let mut p = Policy::for_episode(&with_children, Path::new("/logs/ep"));
     assert_eq!(p.read_files, resolver, "the credential file is appended by the binary after resolution");
     if let Ok(binary) = std::env::current_exe() {
@@ -246,7 +246,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
 /// cannot run the tool its own configuration names.
 #[test]
 fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
-    let config: Config = serde_json::from_value(serde_json::json!({
+    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
         "version": 3, "name": "p", "instructions": {"r": "x"}, "tools": ["own"],
         "tool_defs": {"own": {"exec": "/usr/bin/own", "description": "d"}},
         "grants": {"read": ["/src"], "spawn": ["kid"]},
@@ -290,7 +290,7 @@ fn a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved() {
     let tool = dir.join("tool");
     std::fs::write(&tool, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&tool, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-    let config: Config = serde_json::from_value(serde_json::json!({
+    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
         "version": 3, "name": "p", "instructions": {"r": "x"}, "tools": ["block"],
         "grants": {"read": [dir], "spawn": ["kid"]}, "budget": {"model_calls": 1},
         "programs": {"kid": {

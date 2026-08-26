@@ -1,8 +1,8 @@
-use super::spawner_config;
-use foe_config::Config;
+use super::spawner_document;
+use foe_program::ProgramDocument;
 use serde_json::json;
 
-fn config() -> Config {
+fn config() -> ProgramDocument {
     serde_json::from_value(json!({
         "version": 3, "name": "wf", "instructions": { "r": "x" }, "tools": ["block"],
         "grants": { "read": ["/p"], "spawn": ["helper"] }, "budget": { "model_calls": 10 }, "task": "t",
@@ -27,8 +27,8 @@ fn config() -> Config {
 /// program, so the spawner's configuration lists every model node under
 /// its path beside the declared programs.
 #[test]
-fn the_spawner_configuration_lists_model_nodes_as_programs() {
-    let spawner = spawner_config(&config());
+fn the_spawner_document_lists_model_nodes_as_programs() {
+    let spawner = spawner_document(&config());
     let programs: Vec<&String> = spawner.programs.keys().collect();
     assert_eq!(programs, ["helper", "inner/draft", "plan"]);
     assert_eq!(spawner.grants.spawn, ["helper", "inner/draft", "plan"]);

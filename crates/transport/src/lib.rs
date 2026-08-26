@@ -39,8 +39,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use foe_config::ModelConfig;
 use foe_core::{Chunk, Executor, ModelRequestBody, Transport};
+use foe_program::ModelConfig;
 
 pub mod auth;
 #[cfg(feature = "exec")]

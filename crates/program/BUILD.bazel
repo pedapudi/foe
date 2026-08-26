@@ -2,10 +2,10 @@ load("@crates//:defs.bzl", "all_crate_deps", "crate_edition")
 load("@rules_rust//rust:defs.bzl", "rust_library")
 
 rust_library(
-    name = "foe_config",
+    name = "foe_program",
     srcs = glob(["src/**/*.rs"]),
     compile_data = ["src/schema.json"],
-    crate_name = "foe_config",
+    crate_name = "foe_program",
     crate_root = "src/lib.rs",
     edition = crate_edition(),
     version = "0.1.0",

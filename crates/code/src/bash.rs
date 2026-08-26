@@ -7,8 +7,8 @@
 //! rather than as a tool error.
 
 use crate::{parse_args, shell_environment, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES, SHELL};
-use foe_config::{Effect, ToolSpec};
 use foe_core::{fitting, CallCtx, ExecRequest, Tool, ToolValue, SUBJECT_MAX};
+use foe_program::{Effect, ToolSpec};
 use serde::Deserialize;
 use serde_json::json;
 use std::fmt::Write;

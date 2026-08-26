@@ -1,6 +1,6 @@
 use super::Pool;
-use foe_config::Budget;
 use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
+use foe_program::Budget;
 
 pub fn budget() -> Budget {
     Budget {

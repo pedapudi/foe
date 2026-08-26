@@ -1,9 +1,9 @@
 use super::{model_nodes, node_program};
-use crate::config::resolve;
+use crate::document::resolve;
 use crate::identity::compute;
 use crate::test_util::{config_value, program_with, tmp};
 use crate::workflow::MAX_POSSIBLE_FIRINGS;
-use crate::{Config, ConfigError};
+use crate::{ProgramDocument, ProgramError};
 use foe_log::RuntimeInfo;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -47,9 +47,9 @@ fn rejected(value: Value) -> String {
 }
 
 fn rejection(value: Value) -> (String, String) {
-    let config: Config = serde_json::from_value(value).expect("the document parses");
+    let config: ProgramDocument = serde_json::from_value(value).expect("the document parses");
     match resolve(&config) {
-        Err(ConfigError::Invalid { key, rule }) => {
+        Err(ProgramError::Invalid { key, rule }) => {
             assert!(!rule.is_empty());
             (key, rule)
         }
@@ -62,7 +62,7 @@ fn rejection(value: Value) -> (String, String) {
 #[test]
 fn follows_and_branches_define_inputs_and_cycles() {
     let root = tmp("workflow-edges");
-    let config: Config = serde_json::from_value(with_graph(&root, |v| {
+    let config: ProgramDocument = serde_json::from_value(with_graph(&root, |v| {
         v["workflow"]["nodes"]["derive"]["follows"] = json!(["propose", "manifest"]);
     }))
     .unwrap();
@@ -135,7 +135,7 @@ fn every_workflow_rule_names_its_node() {
         assert_eq!(rejected(with_graph(&root, edit)), key);
     }
     let unknown = with_graph(&root, |v| v["workflow"]["recovery"] = json!({ "surprise": 1 }));
-    assert!(serde_json::from_value::<Config>(unknown).is_err(), "unknown keys are refused");
+    assert!(serde_json::from_value::<ProgramDocument>(unknown).is_err(), "unknown keys are refused");
 }
 
 /// docs/workflow.md "Identity": the labels, the edges, the bindings, the
@@ -147,7 +147,7 @@ fn identity_hashes_the_graph_and_the_recovery_texts() {
     let hash = |edit: &dyn Fn(&mut Value)| {
         let mut value = with_graph(&root, |_| {});
         edit(&mut value);
-        let config: Config = serde_json::from_value(value).unwrap();
+        let config: ProgramDocument = serde_json::from_value(value).unwrap();
         compute(&resolve(&config).unwrap(), &[], &runtime).unwrap()
     };
     let base = hash(&|_| {});
@@ -212,7 +212,7 @@ fn a_graph_declares_how_many_firings_it_can_perform() {
 
 /// A graph whose nodes declare branches, at the top level and inside a
 /// nested workflow node.
-fn branching_config() -> Config {
+fn branching_config() -> ProgramDocument {
     serde_json::from_value(json!({
         "version": 3, "name": "wf", "instructions": { "r": "x" }, "tools": ["block"],
         "grants": { "read": ["/p"], "spawn": ["helper"] }, "budget": { "model_calls": 10 }, "task": "t",

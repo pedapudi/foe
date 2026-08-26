@@ -9,7 +9,7 @@ to find the relevant specification, report, or guide.
 | [design.md](design.md) | the guarantees foe makes and the structure that delivers each |
 | [evaluation.md](evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [self-improvement.md](self-improvement.md) | how foe evaluates and improves a disposable copy of its own source, including measured results and operating guidance |
-| [config.md](config.md) | what a configuration document may contain and what each key means |
+| [config.md](config.md) | what a program document may contain and what each key means |
 | [models.md](models.md) | which model providers exist, where their credentials live, how `foe login` sets them up, and how a program of your own answers model requests |
 | [log-format.md](log-format.md) | what an episode log contains and how a model request is derived from it |
 | [protocol.md](protocol.md) | how a process that launched foe exchanges lines with it |

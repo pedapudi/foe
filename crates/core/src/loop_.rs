@@ -13,14 +13,14 @@ use crate::inbox::Inbox;
 use crate::registry::{Handles, Registry};
 use crate::spawn::Router;
 use crate::{result_budget, ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
-use foe_config::config::{completion_evidence_required, Program};
-use foe_config::harness_text as text;
 use foe_log::{
     fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
     Event, EventData, ExhaustedLimit, HeaderReason, InboxItem, InboxSource, LogError, Message, ModelRequest, Outcome,
     RequestHeader, RetryCause, StopReason, ThinkingBlock, ToolCall, ToolResult, ToolSchema, Usage, VerificationResult,
     VerificationStatus, SUMMARY_REQUEST_PREFIX,
 };
+use foe_program::document::{completion_evidence_required, ResolvedProgram};
+use foe_program::harness_text as text;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -118,7 +118,7 @@ impl Log {
 pub struct Params {
     pub log: Arc<Log>,
     pub start: EpisodeStart,
-    pub program: Program,
+    pub program: ResolvedProgram,
     pub registry: Arc<Registry>,
     pub handles: Handles,
     pub transport: Arc<dyn Transport>,
@@ -1113,7 +1113,7 @@ fn close_open(text: &str) -> String {
 }
 
 fn signature(name: &str, args: &Value, result: &Value) -> String {
-    format!("{name} {} -> {}", foe_config::identity::canonical(args), foe_config::identity::canonical(result))
+    format!("{name} {} -> {}", foe_program::identity::canonical(args), foe_program::identity::canonical(result))
 }
 
 /// The two forms of lack of progress in docs/design.md "Blocking conditions

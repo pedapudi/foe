@@ -302,7 +302,7 @@ async def start_config(
 
     log_path = Path(os.fspath(log_dir))
     log_path.mkdir(parents=True, exist_ok=True)
-    config_dir = tempfile.mkdtemp(prefix="foe-config-")
+    config_dir = tempfile.mkdtemp(prefix="foe-program-")
     config_path = Path(config_dir) / "config.json"
     config_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
     try:

@@ -1,10 +1,10 @@
 [package]
-name = "foe-config"
+name = "foe-program"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The program contract: the configuration document, its resolution into a program, tool specifications, and identity"
+description = "The program contract: the program document, its resolution, tool specifications, and identity"
 
 [dependencies]
 foe-log = { path = "../log" }

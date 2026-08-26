@@ -1,5 +1,4 @@
 use super::{done_when_line, files, first_kept, projected, prompt, steps, tokens, Policy};
-use foe_config::{ContextConfig, DoneWhen};
 use foe_core::context::{Answer, ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use foe_core::RuntimeError;
 use foe_log::{
@@ -7,6 +6,7 @@ use foe_log::{
     EpisodeStart, Event, EventData, InboxItem, InboxSource, Message, ModelRequest, Outcome, RuntimeInfo, SandboxInfo,
     SandboxMode, StopReason, ToolCall, ToolResult, Usage,
 };
+use foe_program::{ContextConfig, DoneWhen};
 use serde_json::json;
 
 fn text(s: &str) -> Vec<ContentBlock> {
@@ -246,7 +246,7 @@ async fn summarize_builds_the_state_from_events_and_the_narrative_from_the_model
         panic!("a summary")
     };
     let (system, user) = call.asked.unwrap();
-    assert_eq!(system, foe_config::harness_text::COMPACTION_INSTRUCTION);
+    assert_eq!(system, foe_program::harness_text::COMPACTION_INSTRUCTION);
     assert!(user.starts_with("# Transcript\n\n[user]\nfix the parser\n\n[assistant]\nreading\n[call read"));
     assert!(user.contains("[result read error]\ngone"), "the span runs to the cut");
     assert!(!user.contains("yyyy"), "nothing after the cut is summarized");

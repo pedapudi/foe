@@ -1,6 +1,6 @@
-# Configuration
+# Program document
 
-An episode is configured by one JSON document. This document specifies every
+An episode is defined by one JSON program document. This specification states every
 key, the domain of every value, and every default. The Python package
 generates this document; a person may also write it by hand.
 
@@ -19,7 +19,7 @@ validate a document and offer completions. `foe plan --config FILE` prints
 the resolved program, its identity, and every tool definition the program's
 reachable tree can invoke, without running anything.
 
-`crates/config` implements this document: every rule stated here is a check
+`crates/program` implements this document: every rule stated here is a check
 there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a
 document into the program `episode/start.program` records.
 
@@ -543,7 +543,7 @@ lineage.
 ### `programs`
 
 Object mapping program name to a nested configuration. Optional. Each value
-is a full configuration document without `version`, `task`, or `sandbox`.
+is a full program document without `version`, `task`, or `sandbox`.
 The `model` block is optional and follows the inheritance rule above. A name
 listed in `grants.spawn` must appear here.
 

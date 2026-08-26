@@ -9,8 +9,6 @@
 
 #![forbid(unsafe_code)]
 
-use foe_config::harness_text as text;
-use foe_config::{ContextConfig, DoneWhen};
 use foe_core::context::{Answer, ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use foe_core::RuntimeError;
 use foe_log::fold::{derive_span, render_continuation};
@@ -18,6 +16,8 @@ use foe_log::{
     ChildSummary, CompactedFiles, CompactionSummary, ContentBlock, ContinuationState, Covered, Event, EventData,
     InboxSource, Message, Usage, SUMMARY_REQUEST_PREFIX,
 };
+use foe_program::harness_text as text;
+use foe_program::{ContextConfig, DoneWhen};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One `context` block resolved against the model: the window in tokens

@@ -3,7 +3,7 @@
 //! executor lives in the `foe-workflow` crate; this module holds what the
 //! document, validation, and identity need.
 
-use crate::{ChildProgram, ConfigError, DoneWhen};
+use crate::{ChildProgramDocument, DoneWhen, ProgramError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -72,7 +72,7 @@ pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub args: Option<Map<String, Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<ChildProgram>,
+    pub model: Option<ChildProgramDocument>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow: Option<WorkflowConfig>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -179,9 +179,9 @@ pub fn check(
     prefix: &str,
     wf: &WorkflowConfig,
     tools: &[String],
-    program: &mut dyn FnMut(&str, &ChildProgram) -> Result<(), ConfigError>,
-) -> Result<(), ConfigError> {
-    let invalid = |key: String, rule: String| ConfigError::Invalid { key, rule };
+    program: &mut dyn FnMut(&str, &ChildProgramDocument) -> Result<(), ProgramError>,
+) -> Result<(), ProgramError> {
+    let invalid = |key: String, rule: String| ProgramError::Invalid { key, rule };
     let firings = wf.possible_firings();
     if firings > MAX_POSSIBLE_FIRINGS {
         let rule = format!("describes {firings} possible firings; the runtime permits at most {MAX_POSSIBLE_FIRINGS}");
@@ -248,7 +248,7 @@ pub fn model_nodes<'a>(wf: &'a WorkflowConfig, prefix: &str) -> Vec<(String, &'a
 /// `branch` added to its `done_when.returns` as a required enum over the
 /// labels when the node declares `branches`. See docs/workflow.md "Choice
 /// points".
-pub fn node_program(node: &Node) -> ChildProgram {
+pub fn node_program(node: &Node) -> ChildProgramDocument {
     let mut program = node.model.clone().expect("a model node");
     if node.branches.is_empty() {
         return program;

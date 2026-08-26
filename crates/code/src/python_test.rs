@@ -258,14 +258,14 @@ mod episode {
                        \x20       fail(data[\"value\"][\"error\"])\n\
                        \x20   missing = call_tool(\"read\", {\"path\": \"missing.txt\"})\n\
                        \x20   return {\"lines\": len(data[\"value\"][\"content\"].splitlines()), \"missing\": missing[\"is_error\"]}\n";
-        let config: foe_config::Config = serde_json::from_value(json!({
+        let config: foe_program::ProgramDocument = serde_json::from_value(json!({
             "version": 3, "name": "compose", "instructions": { "role": "compose" },
             "tools": ["python", "read"],
             "grants": { "read": [root], "write": [root] },
             "budget": { "model_calls": 4 }, "task": "count the lines"
         }))
         .unwrap();
-        let resolved = foe_config::config::resolve(&config).unwrap();
+        let resolved = foe_program::document::resolve(&config).unwrap();
         let registry = Arc::new(Registry::new(&resolved, vec![], crate::all()).unwrap());
         let args = json!({ "program": program }).to_string();
         let turn = vec![

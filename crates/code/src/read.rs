@@ -8,8 +8,8 @@
 //! buffer boundary.
 
 use crate::{display, parse_args, resolve, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES, READ_BUFFER_BYTES};
-use foe_config::{Effect, ToolSpec};
 use foe_core::{CallCtx, Tool, ToolValue};
+use foe_program::{Effect, ToolSpec};
 use serde::Deserialize;
 use serde_json::json;
 use std::fmt::Write;
