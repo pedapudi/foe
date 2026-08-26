@@ -680,32 +680,35 @@ candidate checker operate when the candidate is a linked Git worktree.
 
 The runner validates the artifact after Foe exits. A valid artifact remains
 accepted when the episode exhausted its reporting budget after producing the
-files. A source candidate binds the base Git tree and every changed file
-digest. A workflow candidate binds the independent-audit setting and preserved
-controls. Candidate acceptance also requires successful lineage adoption.
-An adoption failure sets `direct_implementation_required` and makes the
-self-improvement process exit unsuccessfully.
+files. A source candidate binds the base Git tree and complete changed Git
+entries. Each entry retains object type, mode, blob identity, bytes, or a
+deletion. A workflow candidate binds the independent-audit setting and
+preserved controls.
+
+Workflow acceptance requires successful lineage adoption. An adoption failure
+sets `direct_implementation_required` and makes the self-improvement process
+exit unsuccessfully. Source artifact acceptance requires successful evidence
+capture by the trusted source checker. External evaluation completes source
+lineage after a rebuilt binary exists.
 
 The candidate checker establishes repository conformance. Quality promotion
 uses only the unchanged task-owned Terminal-Bench grader, which runs outside
 the candidate's authority. Tokens, estimated cost, cache use, and latency are
 recorded without deciding candidate acceptance.
 
-The runner records every accepted candidate as a lineage transition under
-the retained run directory's `lineage/` tree. Its evidence bundle contains
-the episode tree, child identity document, and artifact manifest. The runner
-completes the bundle through the lineage crate's `build-bundle` binary. The
-pinned toolchain invokes the binary, which writes the adoption record and
-canonical manifest and prints the bundle's content address. A source bundle
-also retains the bytes of each present changed file and records every
-deletion. The record cites the accepted diagnosis validator for a workflow,
-instruction, or tool candidate. It cites the accepted candidate check for a
-source candidate. The parent state is the evaluated
-program's identity document, retained from the resolved plan. The parent
-and child state documents land in `lineage/states/` and the bundle in
-`lineage/evidence/`, the layout the checker's resolvers read. The result's
-`adoption` member records the addresses, identities, and verification
-coordinates.
+The self-improvement runner records accepted workflow candidates under the
+retained run directory's `lineage/` tree. Its evidence bundle contains the
+episode tree, child identity document, and artifact manifest. Trusted
+`build-bundle` and ancestry-checker binaries come from the invoking Bazel
+action. The candidate source cannot replace them. The result records their
+content digests and the structured ancestry report must begin with the
+adopted program identity.
+
+An accepted source candidate retains a `source-candidate-bundle` directory.
+Its manifest binds the parent identity, proposal verification, source objects,
+and every retained file. The result reports
+`pending-external-evaluation` because source bytes cannot determine a Foe
+program identity.
 [`docs/lineage-identity.md`](../../docs/lineage-identity.md) "Harness
 adoptions" states the one state-document rule: every adoption materializes
 the program document that will run under it.
@@ -733,14 +736,24 @@ bazel run //evals/terminal_bench:foe-development -- \
   --confirm-spend
 ```
 
-The argument may also name the content-addressed evidence directory inside a
-retained `lineage/` tree. Before provider spend, the canonical ancestry
-checker validates the transition. The runner also verifies every retained
-changed-file digest against the clean candidate tree. The Bazel target
-supplies the rebuilt binary and the same source tree in one action graph.
-`campaign.json` records the adoption, evidence, candidate, and child program
-identities. It also records the source tree and runtime binary digest used for
-evaluation.
+The argument may also name the `source-candidate-bundle` directory. Before
+provider spend, the trusted checker validates the manifest and its regular
+files. It compares the recorded Git objects, modes, bytes, and deletions with
+the clean candidate tree. It computes and records the source-tree and rebuilt
+binary digest pair. The pair is a recorded computation rather than a build
+attestation.
+
+The adapter retains the rebuilt binary's `foe plan --json` output before the
+first provider request. After the trial, the trusted checker requires the root
+episode to carry the same program identity, resolved program, and binary
+digest. It creates the child state from the actual identity document and
+requires the canonical ancestry checker to accept the transition.
+
+`campaign.json` records the source candidate and one completed adoption per
+trial. Each adoption includes the adoption, evidence, program, state, and
+parent identities. It also records the checker digest and evaluated source
+and binary pair. A failed adoption invalidates the trial and makes the campaign
+exit unsuccessfully. The task record sets `direct_implementation_required`.
 
 Capability conversion still requires a separate benchmark rerun. Candidate
 promotion remains outside the workflow. The workflow mechanism and evidence
@@ -776,9 +789,9 @@ replaced before a repeated result is complete.
 
 The Harbor trial's `agent/foe-episode/` directory is the complete native Foe
 episode tree. It contains `episode.jsonl`, child episodes, spill values, and
-renderings. The neighboring files include the generated Foe program, Foe
-standard output, Foe standard error, the typed process exit status, and the
-runtime conformance report. The adapter sums provider-reported input, output,
+renderings. The neighboring files include the generated Foe program, plan
+report, Foe standard output, Foe standard error, the typed process exit status,
+and the runtime conformance report. The adapter sums provider-reported input, output,
 and cache-read tokens into the Harbor agent context. It also records Foe's
 outcome and conformance status as Harbor agent metadata. Cost estimation uses
 the provider-reported uncached-input, cached-input, and output usage for each

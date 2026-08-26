@@ -363,8 +363,9 @@ fn check_transition(
     let listed = |digest: &str| manifest.files.iter().find(|f| f.sha256 == digest);
     let identity_file = listed(&record.identity_document_sha256)
         .ok_or_else(|| invalid("adoption_record.identity_document_sha256", "equals the digest of a retained file"))?;
-    let artifact_file = listed(&record.artifact_manifest_sha256)
-        .ok_or_else(|| invalid("adoption_record.artifact_manifest_sha256", "equals the digest of a retained file"))?;
+    if listed(&record.artifact_manifest_sha256).is_none() {
+        return Err(invalid("adoption_record.artifact_manifest_sha256", "equals the digest of a retained file"));
+    }
     let document: Value = serde_json::from_slice(&std::fs::read(dir.join(&identity_file.path))?)?;
     if digest_of(canonical(&document).as_bytes()) != record.program_identity {
         return Err(invalid(
@@ -375,7 +376,6 @@ fn check_transition(
     if record.program_identity != child_identity {
         return Err(invalid("adoption_record.program_identity", "equals the descendant state's program identity"));
     }
-    check_source_artifacts(&dir, &manifest, &document, artifact_file)?;
     // The proposal tree descends from the named parent.
     let (_, root_state) = logs
         .get(&manifest.proposal_log)
@@ -392,55 +392,6 @@ fn check_transition(
     let (_, verifier_state) = &logs[&claim.verification_log];
     let verifier_start = verifier_state.start.as_ref().expect("a checked log has episode/start");
     check_verifier(result, verifier_start, parent_document, report)
-}
-
-/// A source adoption retains a content-addressed patch: the base Git tree,
-/// each changed path, and the bytes of every path that remains present.
-fn check_source_artifacts(
-    dir: &Path,
-    bundle: &Manifest,
-    document: &Value,
-    artifact_file: &ManifestFile,
-) -> Result<(), LineageError> {
-    let Some(base) = document["runtime"]["source_tree"].as_str() else { return Ok(()) };
-    let declared = document["runtime"]["files"]
-        .as_object()
-        .ok_or_else(|| invalid("identity_document.runtime.files", "is an object for a source adoption"))?;
-    let bytes = std::fs::read(dir.join(&artifact_file.path))?;
-    let value: Value = serde_json::from_slice(&bytes)?;
-    if canonical(&value).as_bytes() != bytes || value["schema_version"] != 1 || value["base_source_tree"] != base {
-        return Err(invalid("source artifact manifest", "is canonical schema 1 and names the adopted base tree"));
-    }
-    let mut observed = BTreeMap::new();
-    for (index, entry) in value["files"].as_array().into_iter().flatten().enumerate() {
-        let key = format!("source artifact manifest.files[{index}]");
-        let path = entry["path"].as_str().ok_or_else(|| invalid(&key, "has a string path"))?;
-        let digest = entry["sha256"].as_str().ok_or_else(|| invalid(&key, "has a string sha256"))?;
-        require_manifest_path(&format!("{key}.path"), path)?;
-        if digest == "absent" {
-            if entry.get("content").is_some() {
-                return Err(invalid(key, "omits content for a deleted path"));
-            }
-        } else {
-            let content = entry["content"].as_str().ok_or_else(|| invalid(&key, "names retained content"))?;
-            if !bundle.files.iter().any(|file| file.path == content && file.sha256 == digest) {
-                return Err(invalid(key, "names retained bytes with the changed-file digest"));
-            }
-        }
-        if observed.insert(path, digest).is_some() {
-            return Err(invalid(key, "does not repeat a changed path"));
-        }
-    }
-    let expected: BTreeMap<_, _> =
-        declared.iter().filter_map(|(path, value)| value.as_str().map(|v| (path.as_str(), v))).collect();
-    if expected.len() != declared.len()
-        || observed != expected
-        || value["candidate_identity"]
-            != digest_of(canonical(&json!({"base_source_tree": base, "files": declared})).as_bytes())
-    {
-        return Err(invalid("source artifact manifest", "matches the child state and its candidate identity"));
-    }
-    Ok(())
 }
 
 /// Requires `log` to be `root` or a descendant reached through recorded

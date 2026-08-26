@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from source_adoption import verify_source_adoption
+from source_adoption import complete_source_adoption, verify_source_candidate
 from trajectory_diagnostics import diagnose_episode
 from workflow_candidate import require_matching_run as require_matching_candidate_run
 from workflow_candidate import validate as validate_workflow_candidate
@@ -975,6 +975,11 @@ def task_record(
     started_at: str,
     ended_at: str,
     elapsed_seconds: float,
+    source_adoption_path: Path | None = None,
+    source_checker: Path | None = None,
+    source_root: Path | None = None,
+    evaluated_source: str | None = None,
+    foe: Path | None = None,
 ) -> dict[str, Any]:
     job_result_path = run_dir / task.name / "result.json"
     record: dict[str, Any] = {
@@ -1001,9 +1006,32 @@ def task_record(
                     completion_checker=completion_checker,
                 )
             )
+            if source_adoption_path is not None:
+                if None in (source_checker, source_root, evaluated_source, foe):
+                    raise ValueError("source adoption finalization lacks a trusted checker or evaluated pair")
+                adoptions = []
+                for plan in sorted((run_dir / task.name).glob("*/agent/foe-plan.json")):
+                    trial = plan.parent.parent.name
+                    adoptions.append(
+                        complete_source_adoption(
+                            source_checker,
+                            source_adoption_path,
+                            source_root,
+                            evaluated_source,
+                            foe,
+                            plan,
+                            plan.parent / "foe-episode",
+                            run_dir / "source-lineage" / task.name / trial,
+                        )
+                    )
+                if not adoptions:
+                    raise ValueError("source adoption found no retained Foe plan")
+                record["source_adoptions"] = adoptions
     except (OSError, ValueError, json.JSONDecodeError) as error:
         record["result_error"] = str(error)
         record["configuration_claim_valid"] = False
+        if source_adoption_path is not None:
+            record["direct_implementation_required"] = True
     return record
 
 
@@ -1011,7 +1039,11 @@ def parser() -> argparse.ArgumentParser:
     answer = argparse.ArgumentParser(description=__doc__)
     answer.add_argument("--foe", type=Path, required=True)
     answer.add_argument("--source-root", type=Path, required=True)
-    answer.add_argument("--ancestry-checker", type=Path, required=True)
+    answer.add_argument(
+        "--source-checker",
+        type=Path,
+        help="trusted source evidence and lineage checker; required with --source-adoption",
+    )
     answer.add_argument("--agent-module", type=Path, required=True)
     answer.add_argument("--trace-evaluator", type=Path, required=True)
     answer.add_argument("--cases", type=Path, required=True)
@@ -1185,9 +1217,19 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--source-adoption cannot be used with --install-only")
         if args.source_adoption is not None and args.workflow_candidate is not None:
             raise ValueError("--source-adoption and --workflow-candidate evaluate different candidates")
+        if args.source_adoption is not None and args.source_checker is None:
+            raise ValueError("--source-adoption requires --source-checker")
+        if args.source_adoption is not None and args.built_in_workflow:
+            raise ValueError(
+                "--source-adoption requires a retained explicit program plan; built-in workflow evaluation does not retain one"
+            )
         foe = args.foe.resolve(strict=True)
         source_root = args.source_root.resolve(strict=True)
-        ancestry_checker = args.ancestry_checker.resolve(strict=True)
+        source_checker = (
+            args.source_checker.resolve(strict=True)
+            if args.source_checker is not None
+            else None
+        )
         agent_module = args.agent_module.resolve(strict=True)
         trace_evaluator = args.trace_evaluator.resolve(strict=True)
         completion_checker = (
@@ -1233,12 +1275,13 @@ def main(argv: list[str] | None = None) -> int:
     if source_adoption_path is not None:
         try:
             evaluated_source = source_tree(source_root)
-            source_adoption = verify_source_adoption(
+            assert source_checker is not None
+            source_adoption = verify_source_candidate(
+                source_checker,
                 source_adoption_path,
                 source_root,
                 evaluated_source,
-                f"sha256:{runtime_digest}",
-                ancestry_checker,
+                foe,
             )
         except (OSError, ValueError, json.JSONDecodeError) as error:
             print(f"terminal-bench eval: {error}", file=sys.stderr)
@@ -1384,8 +1427,8 @@ def main(argv: list[str] | None = None) -> int:
     elif args.built_in_workflow:
         print("workflow      built-in implementation and terminal audit")
     if source_adoption is not None:
-        print(f"adoption      {source_adoption['adoption_identity']}")
-        print(f"candidate     {source_adoption['candidate_identity']}")
+        print(f"source bundle {source_adoption['source_bundle_identity']}")
+        print(f"candidate     {source_adoption['source_candidate_identity']}")
     print(f"foe           sha256:{runtime_digest}")
     print(f"attempts      {args.attempts} per task; workers {args.workers}")
     print("planning      calls      input     output  est. cost  seconds  task")
@@ -1563,7 +1606,12 @@ def main(argv: list[str] | None = None) -> int:
                 else None
             ),
             "workflow_candidate": workflow_candidate,
-            "source_adoption": source_adoption,
+            "source_candidate": source_adoption,
+            "source_adoptions": [
+                adoption
+                for record in records
+                for adoption in record.get("source_adoptions", [])
+            ],
             "foe_sha256": runtime_digest,
             "evaluated_foe": (
                 {
@@ -1851,6 +1899,11 @@ def main(argv: list[str] | None = None) -> int:
                                     started_at=started_at,
                                     ended_at=ended_at,
                                     elapsed_seconds=elapsed,
+                                    source_adoption_path=source_adoption_path,
+                                    source_checker=source_checker,
+                                    source_root=source_root,
+                                    evaluated_source=evaluated_source,
+                                    foe=foe,
                                 )
                                 record["execution_status"] = "started"
                                 if execution_error is not None:
@@ -1952,6 +2005,11 @@ def main(argv: list[str] | None = None) -> int:
                         started_at=started["started_at"],
                         ended_at=ended_at,
                         elapsed_seconds=elapsed,
+                        source_adoption_path=source_adoption_path,
+                        source_checker=source_checker,
+                        source_root=source_root,
+                        evaluated_source=evaluated_source,
+                        foe=foe,
                     )
                     record["execution_status"] = "started"
                     record["campaign_stop_reason"] = reason

@@ -34,7 +34,6 @@ from run_self_improvement import (
     rust_toolchain_identity,
     supported_independent_audits,
     supported_failure_contrasts,
-    source_adoption_artifacts,
     tool_candidate_from_outcome,
     validate_program,
     workflow_candidate_from_outcome,
@@ -59,6 +58,12 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "/tmp/evidence.json",
                 "--cases",
                 "/tmp/cases.json",
+                "--bundle-builder",
+                "/tmp/build-bundle",
+                "--ancestry-checker",
+                "/tmp/check-ancestry",
+                "--source-checker",
+                "/tmp/source-adoption",
             ]
         )
         self.assertEqual(args.model, "openai-codex/gpt-5.6-sol")
@@ -128,23 +133,6 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(first["files"]["docs/deleted.md"], "absent")
         self.assertNotEqual(first["files"]["crates/core/src/lib.rs"], second["files"]["crates/core/src/lib.rs"])
         self.assertNotEqual(first["digest"], second["digest"])
-
-    def test_source_adoption_retains_every_present_changed_file(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            changed = root / "crates/core/src/lib.rs"
-            changed.parent.mkdir(parents=True)
-            changed.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
-            artifact = candidate_artifact_identity(
-                root,
-                "git-tree-sha1:" + "1" * 40,
-                ["crates/core/src/lib.rs", "docs/removed.md"],
-            )
-            retained, manifest = source_adoption_artifacts(root, artifact)
-            changed_bytes = changed.read_bytes()
-        self.assertEqual(retained["candidate-files/crates/core/src/lib.rs"], changed_bytes)
-        self.assertEqual(manifest["candidate_identity"], artifact["digest"])
-        self.assertEqual(manifest["files"][1], {"path": "docs/removed.md", "sha256": "absent"})
 
     def test_lineage_adoption_failure_rejects_the_candidate(self):
         def fail():
@@ -361,6 +349,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
                     {
                         "evaluation_summary": [
                             {
+                                "task": "activation-task",
                                 "attempts": 3,
                                 "verified_successes": 0,
                                 "execution_configuration": {
@@ -373,6 +362,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
                                 },
                             },
                             {
+                                "task": "activation-task",
                                 "attempts": 2,
                                 "verified_successes": 2,
                                 "execution_configuration": {
@@ -384,6 +374,24 @@ class SelfImprovementConfigTest(unittest.TestCase):
                                         "model": "openai-codex/gpt-5.6-sol",
                                         "reasoning_effort": "high",
                                         "model_calls": 60,
+                                    },
+                                    "service_tier": "default",
+                                    "token_policy": "measurement_only",
+                                },
+                            },
+                            {
+                                "task": "transfer-task",
+                                "attempts": 2,
+                                "verified_successes": 2,
+                                "execution_configuration": {
+                                    "implementation": {
+                                        "model": "openai-codex/gpt-5.6-sol",
+                                        "reasoning_effort": "low",
+                                    },
+                                    "independent_audit": {
+                                        "model": "openai-codex/gpt-5.6-sol",
+                                        "reasoning_effort": "xhigh",
+                                        "model_calls": 80,
                                     },
                                     "service_tier": "default",
                                     "token_policy": "measurement_only",
@@ -417,6 +425,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
                     {
                         "evaluation_summary": [
                             {
+                                "task": "activation-task",
                                 "attempts": 1,
                                 "verified_successes": 0,
                                 "execution_configuration": {
@@ -429,6 +438,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
                                 },
                             },
                             {
+                                "task": "transfer-task",
                                 "attempts": 1,
                                 "verified_successes": 1,
                                 "execution_configuration": {
@@ -1021,20 +1031,19 @@ class LineageAdoptionTest(unittest.TestCase):
             "\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8"
         )
 
-    def record(self, root: Path, kind, candidate, retained, tool, exec_sha256, artifacts=None):
+    def record(self, root: Path, kind, candidate, retained, tool, exec_sha256):
         parent = self.parent_document()
         episode = root / "episode"
         self.write_episode(episode, digest_bytes(canonical_json(parent)), tool, exec_sha256)
         return record_adoption(
             root,
             episode,
-            adoption_state_document(kind, candidate, PROGRAM_DOCUMENT, BASE_CONFIGURATION),
+            adoption_state_document(kind, candidate, PROGRAM_DOCUMENT),
             parent,
             retained,
             tool,
             [str(self.build_bundle)],
             [str(self.check_ancestry_binary)],
-            artifacts=artifacts,
         )
 
     def check_ancestry(self, root: Path, record):
@@ -1131,63 +1140,6 @@ class LineageAdoptionTest(unittest.TestCase):
             )
             self.assertIn("check-layout", state["identity_document"]["tools"])
             self.check_ancestry(root, record)
-
-    def test_source_change_adoption_cites_the_candidate_check(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            tree = root / "tree"
-            changed = tree / "crates/core/src/lib.rs"
-            changed.parent.mkdir(parents=True)
-            changed.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
-            candidate = candidate_artifact_identity(
-                tree, EVALUATED_FOE["source_tree"], ["crates/core/src/lib.rs"]
-            )
-            retained, artifacts = source_adoption_artifacts(tree, candidate)
-            record = self.record(
-                root,
-                "source-change",
-                candidate,
-                retained,
-                "check",
-                self.check_sha256,
-                artifacts=artifacts,
-            )
-            state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
-            self.assertEqual(
-                state["identity_document"]["runtime"],
-                {"source_tree": EVALUATED_FOE["source_tree"], "files": candidate["files"]},
-            )
-            self.assertEqual(record["verification_log"], "episode/episode.jsonl")
-            self.assertEqual(record["verification_seq"], 1)
-            bundle = Path(record["evidence_directory"])
-            self.assertEqual(
-                (bundle / "candidate-files/crates/core/src/lib.rs").read_bytes(),
-                changed.read_bytes(),
-            )
-            self.check_ancestry(root, record)
-
-    def test_source_change_adoption_rejects_bytes_that_contradict_the_artifact_manifest(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            tree = root / "tree"
-            changed = tree / "crates/core/src/lib.rs"
-            changed.parent.mkdir(parents=True)
-            changed.write_text("pub fn value() -> u8 { 2 }\n", encoding="utf-8")
-            candidate = candidate_artifact_identity(
-                tree, EVALUATED_FOE["source_tree"], ["crates/core/src/lib.rs"]
-            )
-            retained, artifacts = source_adoption_artifacts(tree, candidate)
-            retained["candidate-files/crates/core/src/lib.rs"] = b"different\n"
-            with self.assertRaisesRegex(ValueError, "retained bytes with the changed-file digest"):
-                self.record(
-                    root,
-                    "source-change",
-                    candidate,
-                    retained,
-                    "check",
-                    self.check_sha256,
-                    artifacts=artifacts,
-                )
 
     def test_missing_verification_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:

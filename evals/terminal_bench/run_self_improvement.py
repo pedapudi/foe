@@ -22,6 +22,7 @@ from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256
 from foe_agent_support import build_program, estimate_usage_cost
 from instruction_candidate import create as create_instruction_candidate
 from run import Pricing, read_cases
+from source_adoption import capture_source_candidate
 from tool_candidate import create as create_tool_candidate
 from tool_candidate import validate_definition as validate_tool_definition
 from workflow_candidate import create as create_workflow_candidate
@@ -147,11 +148,28 @@ def failed_base_configuration(evidence: Path) -> dict[str, str]:
 def supported_independent_audits(
     evidence: Path, base_configuration: dict[str, str]
 ) -> list[dict[str, Any]]:
-    """Return repeated successful audit settings that preserve the base run."""
+    """Return audits that reverse a same-task baseline failure under fixed controls."""
     report = json.loads(evidence.read_text(encoding="utf-8"))
     summaries = report.get("evaluation_summary")
     if not isinstance(summaries, list):
         raise ValueError("self-improvement evidence has no evaluation_summary list")
+    activation_tasks = {
+        summary.get("task")
+        for summary in summaries
+        if isinstance(summary, dict)
+        and isinstance(summary.get("task"), str)
+        and isinstance(summary.get("execution_configuration"), dict)
+        and "independent_audit" not in summary["execution_configuration"]
+        and evaluation_base_configuration(summary["execution_configuration"])
+        == base_configuration
+        and type(summary.get("attempts")) is int
+        and type(summary.get("verified_successes")) is int
+        and summary["verified_successes"] < summary["attempts"]
+    }
+    if not activation_tasks:
+        raise ValueError(
+            "self-improvement evidence has no task-specific baseline failure for the preserved controls"
+        )
     supported: dict[str, dict[str, Any]] = {}
     for summary in summaries:
         if not isinstance(summary, dict):
@@ -164,6 +182,7 @@ def supported_independent_audits(
             or attempts < 2
             or successes != attempts
             or not isinstance(configuration, dict)
+            or summary.get("task") not in activation_tasks
         ):
             continue
         audit = configuration.get("independent_audit")
@@ -326,7 +345,6 @@ def development_program_document(
     base_configuration: dict[str, str],
     audit: dict[str, Any] | None = None,
     tool: dict[str, str] | None = None,
-    runtime: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The development program document an adoption produces.
 
@@ -334,8 +352,7 @@ def development_program_document(
     directory, and per-task allowances — are fixed to the declared values
     so the document is stable across launches. `audit` adds the
     independent-audit stage, `tool` adds a tool_defs entry carrying the
-    executable's content hash, and `runtime` names the produced runtime of
-    a source adoption.
+    executable's content hash.
     """
     document = build_program(
         DEVELOPMENT_TASK_INSTRUCTION,
@@ -361,8 +378,6 @@ def development_program_document(
                 "exec_sha256": tool["executable_sha256"].removeprefix("sha256:"),
             },
         }
-    if runtime is not None:
-        document["runtime"] = runtime
     return document
 
 
@@ -370,7 +385,6 @@ def adoption_state_document(
     candidate_kind: str,
     candidate: dict[str, Any],
     program_document: dict[str, Any],
-    base_configuration: dict[str, str],
 ) -> dict[str, Any]:
     """The state document an adoption of `candidate` creates.
 
@@ -378,9 +392,9 @@ def adoption_state_document(
     state document is the program document that will run under the
     adoption. An instruction revision yields the revised self-improvement
     program document; the other kinds yield the development program
-    document the adoption produces — with the audit stage applied, with
-    the defined tool declared, or with the changed source named as the
-    produced runtime until the rebuilt binary's hash attaches.
+    document the adoption produces, with the audit stage applied or the
+    defined tool declared. A source candidate has no program identity until
+    its rebuilt binary resolves the external evaluation program.
     """
     if candidate_kind == "instruction-revision":
         return revised_program_document(program_document, candidate["revision"])
@@ -390,11 +404,6 @@ def adoption_state_document(
         )
     if candidate_kind == "tool-definition":
         return development_program_document(candidate["base_configuration"], tool=candidate["tool"])
-    if candidate_kind == "source-change":
-        return development_program_document(
-            base_configuration,
-            runtime={"source_tree": candidate["base_source_tree"], "files": candidate["files"]},
-        )
     raise ValueError(f"candidate kind {candidate_kind} has no adoption state document")
 
 
@@ -431,9 +440,6 @@ def record_adoption(
     verification_tool: str,
     bundle_builder: list[str],
     ancestry_checker: list[str],
-    builder_cwd: Path | None = None,
-    builder_env: dict[str, str] | None = None,
-    artifacts: Any = None,
 ) -> dict[str, Any]:
     """Record one accepted candidate as a lineage transition under `root`.
 
@@ -452,8 +458,7 @@ def record_adoption(
         retained_path = build / name
         retained_path.parent.mkdir(parents=True, exist_ok=True)
         retained_path.write_bytes(content)
-    if artifacts is None:
-        artifacts = [{"path": name, "sha256": digest_bytes(content)} for name, content in sorted(retained.items())]
+    artifacts = [{"path": name, "sha256": digest_bytes(content)} for name, content in sorted(retained.items())]
     (build / "artifact-manifest.json").write_bytes(canonical_json(artifacts))
     verification_log, verification_seq = find_accepted_verification(episode, verification_tool)
     result = subprocess.run(
@@ -466,8 +471,6 @@ def record_adoption(
             verification_log,
             str(verification_seq),
         ],
-        cwd=builder_cwd,
-        env=builder_env,
         text=True,
         capture_output=True,
         timeout=1_800,
@@ -498,8 +501,6 @@ def record_adoption(
     write_json(child_state, {"identity_document": state_document, "program_lineage": claim})
     checked = subprocess.run(
         [*ancestry_checker, str(child_state), str(states), str(evidence_dir.parent)],
-        cwd=builder_cwd,
-        env=builder_env,
         text=True,
         capture_output=True,
         timeout=1_800,
@@ -508,6 +509,20 @@ def record_adoption(
     if checked.returncode != 0:
         detail = checked.stderr.strip() or checked.stdout.strip() or f"exit status {checked.returncode}"
         raise ValueError(f"lineage ancestry check failed: {detail}")
+    try:
+        ancestry = json.loads(checked.stdout)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"lineage ancestry checker output is not JSON: {error}") from error
+    if (
+        not isinstance(ancestry, dict)
+        or set(ancestry) != {"chain", "unverifiable"}
+        or not isinstance(ancestry.get("chain"), list)
+        or ancestry["chain"][0:1] != [child_identity]
+        or not isinstance(ancestry.get("unverifiable"), list)
+    ):
+        raise ValueError("lineage ancestry checker output does not start with the adopted program")
+    builder_path = Path(bundle_builder[0])
+    checker_path = Path(ancestry_checker[0])
     return {
         "evidence": address,
         "program_identity": child_identity,
@@ -519,6 +534,8 @@ def record_adoption(
         "state": str(child_state),
         "parent_state": str(parent_state),
         "evidence_directory": str(evidence_dir),
+        "bundle_builder_sha256": digest_bytes(builder_path.read_bytes()),
+        "ancestry_checker_sha256": digest_bytes(checker_path.read_bytes()),
     }
 
 
@@ -636,29 +653,19 @@ def candidate_artifact_identity(
     return {**value, "digest": "sha256:" + hashlib.sha256(encoded).hexdigest()}
 
 
-def source_adoption_artifacts(
-    candidate: Path, artifact: dict[str, Any]
-) -> tuple[dict[str, bytes], dict[str, Any]]:
-    """Return reconstructable source bytes and their canonical patch manifest."""
-    retained = {}
-    files = []
-    for name, sha256 in sorted(artifact["files"].items()):
-        entry = {"path": name, "sha256": sha256}
-        if sha256 != "absent":
-            content_path = f"candidate-files/{name}"
-            content = (candidate / name).read_bytes()
-            if digest_bytes(content) != sha256:
-                raise ValueError(f"source candidate file changed after acceptance: {name}")
-            retained[content_path] = content
-            entry["content"] = content_path
-        files.append(entry)
-    manifest = {
-        "schema_version": 1,
-        "candidate_identity": artifact["digest"],
-        "base_source_tree": artifact["base_source_tree"],
-        "files": files,
-    }
-    return retained, manifest
+def changed_source_paths(candidate: Path) -> list[str]:
+    """Return tracked and untracked changes without interpreting status prefixes."""
+    commands = (
+        ["/usr/bin/git", "diff", "--name-only", "--no-renames", "-z", "HEAD", "--"],
+        ["/usr/bin/git", "ls-files", "--others", "--exclude-standard", "-z"],
+    )
+    paths = set()
+    for command in commands:
+        result = subprocess.run(command, cwd=candidate, capture_output=True, check=True)
+        for value in result.stdout.split(b"\0"):
+            if value:
+                paths.add(value.decode("utf-8"))
+    return sorted(paths)
 
 
 def require_successful_adoption(
@@ -1534,6 +1541,9 @@ def parser() -> argparse.ArgumentParser:
         help="absolute path to the pinned toolchain's cargo binary, rather than a rustup proxy",
     )
     answer.add_argument("--cargo-home", type=Path, help="absolute Cargo cache used by candidate validation")
+    answer.add_argument("--bundle-builder", type=Path, required=True)
+    answer.add_argument("--ancestry-checker", type=Path, required=True)
+    answer.add_argument("--source-checker", type=Path, required=True)
     answer.add_argument("--keep", type=Path)
     answer.add_argument("--confirm-spend", action="store_true")
     return answer
@@ -1584,6 +1594,16 @@ def main(argv: list[str] | None = None) -> int:
         candidate = args.candidate.resolve(strict=True)
         evidence = args.evidence.resolve(strict=True)
         binary = args.foe.resolve(strict=True)
+        bundle_builder = args.bundle_builder.resolve(strict=True)
+        ancestry_checker = args.ancestry_checker.resolve(strict=True)
+        source_checker = args.source_checker.resolve(strict=True)
+        for label, executable in (
+            ("--bundle-builder", bundle_builder),
+            ("--ancestry-checker", ancestry_checker),
+            ("--source-checker", source_checker),
+        ):
+            if not executable.is_file():
+                raise ValueError(f"{label} must name a trusted executable file")
         identity = verify_evidence_identity(candidate, binary, evidence)
         base_configuration = failed_base_configuration(evidence)
         supported_audits = supported_independent_audits(evidence, base_configuration)
@@ -1700,14 +1720,7 @@ def main(argv: list[str] | None = None) -> int:
         timeout=SECONDS + 30,
         check=False,
     )
-    changed_status = subprocess.run(
-        ["/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all"],
-        cwd=candidate,
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout.splitlines()
-    changed = [line[3:] for line in changed_status if len(line) > 3]
+    changed = changed_source_paths(candidate)
     usage = measure_episode(episode, pricing)
     outcome = usage.get("outcome")
     outcome_value = candidate_outcome_value(episode, outcome)
@@ -1823,9 +1836,42 @@ def main(argv: list[str] | None = None) -> int:
         candidate_kind = "no-candidate"
     artifact_accepted = acceptance["accepted"]
     adoption = None
-    if acceptance["accepted"] and candidate_kind != "no-candidate":
+    source_candidate = None
+    if acceptance["accepted"] and candidate_kind == "source-change":
+        source_bundle = root / "source-candidate-bundle"
+        try:
+            shutil.copytree(episode, source_bundle / "episode")
+            (source_bundle / "parent-identity.json").write_bytes(
+                canonical_json(plan["identity_document"])
+            )
+            verification_log, verification_seq = find_accepted_verification(
+                episode, "check"
+            )
+            source_candidate = capture_source_candidate(
+                source_checker,
+                source_bundle,
+                candidate,
+                identity["source_tree"],
+                "parent-identity.json",
+                "episode/episode.jsonl",
+                verification_log,
+                verification_seq,
+            )
+            source_candidate["bundle"] = str(source_bundle.relative_to(root))
+            source_candidate["lineage_status"] = "pending-external-evaluation"
+            artifact_identity = source_candidate
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            acceptance = {
+                **acceptance,
+                "accepted": False,
+                "findings": [
+                    *acceptance["findings"],
+                    f"source evidence capture failed: {error}",
+                ],
+                "exit_code": None,
+            }
+    elif acceptance["accepted"] and candidate_kind != "no-candidate":
         retained: dict[str, bytes] = {}
-        artifacts = None
         verification_tool = DIAGNOSIS_VALIDATOR_TOOL
         if candidate_kind == "workflow-configuration":
             retained["workflow-candidate.json"] = workflow_candidate_path.read_bytes()
@@ -1834,41 +1880,19 @@ def main(argv: list[str] | None = None) -> int:
         elif candidate_kind == "tool-definition":
             retained["tool-candidate.json"] = tool_candidate_path.read_bytes()
             retained["tool-candidate-executable"] = tool_executable_path.read_bytes()
-        else:
-            verification_tool = "check"
-        toolchain_environment = {
-            "CARGO_HOME": str(cargo_home),
-            "CARGO_TARGET_DIR": str(cargo_target),
-            "HOME": str(candidate),
-            "LANG": "C.UTF-8",
-            "PATH": f"{cargo.parent}:/usr/local/bin:/usr/bin:/bin",
-            "TMPDIR": str(cargo_target / "tmp"),
-        }
-        if rustup_home is not None:
-            toolchain_environment["RUSTUP_HOME"] = str(rustup_home)
-            toolchain_environment["RUSTUP_TOOLCHAIN"] = toolchain.name
-        (cargo_target / "tmp").mkdir(parents=True, exist_ok=True)
 
         def record_candidate_adoption() -> dict[str, Any]:
-            candidate_retained, candidate_artifacts = retained, artifacts
-            if candidate_kind == "source-change":
-                candidate_retained, candidate_artifacts = source_adoption_artifacts(
-                    candidate, artifact_identity
-                )
             return record_adoption(
                 root,
                 episode,
                 adoption_state_document(
-                    candidate_kind, artifact_identity, program_document, base_configuration
+                    candidate_kind, artifact_identity, program_document
                 ),
                 plan["identity_document"],
-                candidate_retained,
+                retained,
                 verification_tool,
-                [str(cargo), "run", "--quiet", "-p", "foe-lineage", "--bin", "build-bundle", "--"],
-                [str(cargo), "run", "--quiet", "-p", "foe-lineage", "--example", "check_ancestry", "--"],
-                builder_cwd=candidate,
-                builder_env=toolchain_environment,
-                artifacts=candidate_artifacts,
+                [str(bundle_builder)],
+                [str(ancestry_checker)],
             )
 
         adoption, acceptance = require_successful_adoption(
@@ -1892,6 +1916,7 @@ def main(argv: list[str] | None = None) -> int:
         "changed_files": changed,
         "candidate_kind": candidate_kind,
         "candidate_artifact": artifact_identity,
+        "source_candidate": source_candidate,
         "workflow_candidate": str(workflow_candidate_path) if workflow_candidate_path else None,
         "instruction_candidate": str(instruction_candidate_path) if instruction_candidate_path else None,
         "tool_candidate": str(tool_candidate_path) if tool_candidate_path else None,

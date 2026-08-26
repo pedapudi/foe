@@ -117,6 +117,12 @@ runner. Completion governance distinguishes a declared verifier from a model
 completion report. The binding omits task identity so a candidate can be
 evaluated on transfer tasks under the same controls.
 
+The evidence that creates a workflow candidate is task-specific. A successful
+audit must reverse a baseline failure on the same activation task. The model,
+primary effort, service tier, token policy, workflow owner, and completion
+governance must remain equal. Success on a transfer task supplies later
+evidence and cannot establish the initial causal contrast.
+
 The default OpenAI service tier is `priority` for all three model nodes. A
 preview constructs and validates the complete program without creating the
 requested retained directory or sending a model request. It removes any empty
@@ -129,11 +135,18 @@ remains the sole authority for promotion based on quality. Tokens, estimated
 cost, cache use, and latency are recorded as diagnostics.
 
 Source and workflow candidates have external Terminal-Bench application
-paths. A source evaluation requires an explicit lineage adoption record or
-evidence bundle. Before any provider request, the runner verifies the retained
-source bytes, the clean candidate tree, and the evaluated binary digest. Its
-`campaign.json` records the adoption, evidence, candidate, and child program
-identities with the evaluated source and binary identities.
+paths. The runner accepts source-candidate evidence rather than a proposed
+child program identity. Before provider spend, a trusted checker verifies the
+retained source bytes, Git blobs, modes, deletions, clean candidate tree, and
+rebuilt binary digest.
+
+The adapter retains the rebuilt binary's actual `foe plan --json` report.
+After the episode, the trusted checker requires the root log to carry that
+planned program and the rebuilt binary digest. It then constructs and verifies
+lineage from the actual program identity. `campaign.json` records the source
+candidate, completed adoptions, checker digests, and evaluated source and
+binary pair. Adoption failure sets `direct_implementation_required`,
+invalidates the task record, and makes the campaign exit unsuccessfully.
 
 ## Acceptance conditions
 
@@ -159,12 +172,16 @@ run. The measured candidates were therefore overlaid onto complete source
 archives and compiled after the model-backed attempts.
 
 The Terminal-Bench self-improvement runner has one additional acceptance
-condition. It must complete a valid lineage adoption after the artifact check.
-The source adoption retains the bytes of every present changed file and marks
-deletions explicitly. The ancestry checker compares those bytes with the
-artifact manifest and child identity document. Adoption failure rejects the
-candidate, sets `direct_implementation_required`, and makes the process exit
-unsuccessfully.
+condition for a workflow candidate. It must complete a valid lineage adoption
+after the artifact check. Adoption failure rejects the candidate, sets
+`direct_implementation_required`, and makes the process exit unsuccessfully.
+
+A source candidate first earns artifact acceptance. Its content-addressed
+manifest retains regular bytes, Git object types, file modes, blob identities,
+and deletions. Evidence capture failure rejects the candidate and makes the
+self-improvement process exit unsuccessfully. Successful capture authorizes
+external evaluation. Promotion requires the external evaluation to complete
+lineage from the rebuilt binary's actual program identity.
 
 ## Measured result
 
@@ -404,8 +421,10 @@ Every self-improvement evaluation should retain the following evidence:
 
 - the initial and final evaluator findings;
 - the candidate diff and the immutable source revision it started from;
-- the lineage adoption, evidence, candidate, and child program identities;
-- the retained bytes or explicit deletion of every changed file;
+- the source-bundle and source-candidate identities;
+- each completed adoption, evidence, program, state, and parent identity;
+- the capture and evaluation checker digests;
+- the retained Git object, mode, bytes, or deletion for every changed file;
 - root and child outcomes;
 - provider-reported input, output, and cache-read tokens per response;
 - model requests, tool calls, rendered tool-result sizes, and tool errors;
@@ -436,10 +455,11 @@ Use the following sequence for a bounded self-improvement task:
 6. Keep model-call and token ceilings above observed successful variance.
 7. Re-run an external grader after the episode.
 8. Compile and test the candidate in a complete disposable source tree.
-9. Complete and verify the lineage adoption bundle.
+9. Capture the accepted source candidate as content-addressed evidence.
 10. Inspect trace conformance and resource use.
-11. Evaluate the adopted candidate against unchanged external tasks.
-12. Promote the patch through a separate review step.
+11. Evaluate the rebuilt candidate against unchanged external tasks.
+12. Complete lineage from each actual evaluation program and episode.
+13. Promote the patch through a separate review step.
 
 Improvements may add capability, simplify implementation, or remove behavior
 that harms task quality. A bound, retry rule, or completion condition is a
