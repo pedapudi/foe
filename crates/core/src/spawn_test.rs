@@ -28,7 +28,7 @@ impl ChildObserver for Seen {
 
 pub(crate) fn parent_config() -> Config {
     serde_json::from_value(serde_json::json!({
-        "version": 2, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
+        "version": 3, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
         "grants": {"read": ["/src"], "spawn": ["worker"]},
         "budget": {"model_calls": 20, "max_depth": 2},
         "sandbox": {"mode": "off"},

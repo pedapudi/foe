@@ -85,7 +85,7 @@ fn every_rule_names_its_key() {
     std::fs::create_dir_all(root.join("child")).unwrap();
     type Case<'a> = (&'a str, Box<dyn FnOnce(&mut Value)>);
     let cases: Vec<Case> = vec![
-        ("version", Box::new(|v| v["version"] = json!(1))),
+        ("version", Box::new(|v| v["version"] = json!(2))),
         ("name", Box::new(|v| v["name"] = json!(" "))),
         ("task", Box::new(|v| v["task"] = json!(""))),
         ("instructions", Box::new(|v| v["instructions"] = json!({}))),

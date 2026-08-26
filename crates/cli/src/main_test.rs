@@ -37,7 +37,7 @@ fn every_form_parses_and_foreign_options_are_refused() {
 #[test]
 fn the_schema_is_json_and_names_every_key_of_the_document() {
     let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
-    assert_eq!(schema["properties"]["version"]["const"], 2);
+    assert_eq!(schema["properties"]["version"]["const"], 3);
     let keys: Vec<&str> = schema["properties"].as_object().unwrap().keys().map(String::as_str).collect();
     let expected = [
         "budget",

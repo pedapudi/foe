@@ -163,7 +163,7 @@ def build_program(
             {"verify": "check", "retries": COMPLETION_CHECK_RETRIES}
         )
     program = {
-        "version": 2,
+        "version": 3,
         "name": "terminal-bench-coding",
         "instructions": {"environment": environment_facts, "role": CODING_INSTRUCTION},
         "tools": coding_tools,

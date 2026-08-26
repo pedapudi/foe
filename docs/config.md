@@ -78,7 +78,7 @@ episode.
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "name": "fix-parser-test",
 
   "instructions": {
@@ -129,7 +129,7 @@ episode.
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "name": "hello",
   "instructions": { "role": "You are a coding agent." },
   "tools": ["read", "grep", "edit", "bash"],
@@ -150,7 +150,7 @@ is omitted.
 ### `version`
 
 Integer. Required. The configuration format version. This document describes
-version 2.
+version 3.
 
 ### `name`
 

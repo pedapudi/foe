@@ -586,7 +586,7 @@ declaration that [workflow.md](workflow.md) specifies. The run comes from
 | what is drawn | where it comes from |
 |---|---|
 | a box per declared node, with its name and its kind | `workflow.nodes` |
-| an edge per declared edge | each node's `follows` and `followed_by`, the built-in `task` source, and each `branches` label's successors |
+| an edge per declared edge | each node's `follows`, the built-in `task` source, and each `branches` label's successors |
 | a label per declared branch label | each node's `branches` |
 | a mark per firing, along the bottom of its node's box | `workflow/node-start` |
 | a fire count on the box | the number of `workflow/node-start` events for that node |

@@ -36,7 +36,7 @@ fn call(id: &str, name: &str, args: &str) -> Vec<Value> {
 
 fn config(dir: &Path, edit: impl FnOnce(&mut Value)) -> Value {
     let mut value = json!({
-        "version": 2,
+        "version": 3,
         "name": "test",
         "instructions": { "role": "You are under test." },
         "tools": ["read"],

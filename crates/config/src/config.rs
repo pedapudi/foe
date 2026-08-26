@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// The configuration format version this crate accepts.
-pub const CONFIG_VERSION: u32 = 2;
+pub const CONFIG_VERSION: u32 = 3;
 
 /// Whether the completion schema makes the standard `learned` observation
 /// channel an evidence requirement.

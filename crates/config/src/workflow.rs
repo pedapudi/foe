@@ -77,8 +77,6 @@ pub struct Node {
     pub workflow: Option<WorkflowConfig>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub follows: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub followed_by: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verify: Option<String>,
     #[serde(default = "crate::u32_default::<2>")]
@@ -118,20 +116,10 @@ impl WorkflowConfig {
         })
     }
 
-    /// The data inputs of every node: the `task` source first when the node
-    /// follows it, then its other `follows`, then every node whose
-    /// `followed_by` names it, in name order, each listed once.
+    /// The data inputs of every node, with the `task` source first.
     pub fn inputs(&self) -> BTreeMap<String, Vec<String>> {
         let mut inputs: BTreeMap<String, Vec<String>> =
             self.nodes.iter().map(|(name, node)| (name.clone(), node.follows.clone())).collect();
-        for (source, node) in &self.nodes {
-            for target in &node.followed_by {
-                let list = inputs.entry(target.clone()).or_default();
-                if !list.contains(source) {
-                    list.push(source.clone());
-                }
-            }
-        }
         inputs.values_mut().for_each(|list| list.sort_by_key(|name| name != TASK_SOURCE));
         inputs
     }
@@ -219,7 +207,6 @@ pub fn check(
             false => Err(invalid(key(field), format!("names a tool in tools; `{tool}` is absent"))),
         };
         node.follows.iter().filter(|t| *t != TASK_SOURCE).try_for_each(|t| names("follows", t))?;
-        node.followed_by.iter().try_for_each(|t| names("followed_by", t))?;
         for (label, list) in &node.branches {
             list.iter().try_for_each(|t| names(&format!("branches.{label}"), t))?;
         }

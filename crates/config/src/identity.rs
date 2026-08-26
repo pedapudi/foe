@@ -102,7 +102,6 @@ fn workflow_document(
         let key = format!("{prefix}.nodes.{name}");
         let mut entry = serde_json::to_value(node)?;
         let fields = entry.as_object_mut().expect("a node serializes to an object");
-        fields.remove("followed_by");
         fields.insert("follows".into(), json!(inputs[name]));
         fields.insert("max_fires".into(), json!(node.max_fires.unwrap_or(1)));
         if let Some(child) = &node.model {

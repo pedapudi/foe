@@ -25,7 +25,7 @@
 //! `{"type": "redacted_thinking", "data": ...}` when the signature carries
 //! the [`REDACTED_MARKER`]. The API accepts a replayed block only for the
 //! model route that produced it. The runtime fixes `model` for the whole
-//! episode in configuration version 2, so every block in the history came
+//! episode in configuration version 3, so every block in the history came
 //! from this transport's route and is replayed whenever present. A block
 //! without a signature is skipped because the API rejects it.
 //!

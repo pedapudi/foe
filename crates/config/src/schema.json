@@ -8,8 +8,8 @@
   "required": ["version", "name", "instructions", "tools", "grants", "budget", "task"],
   "properties": {
     "version": {
-      "description": "The configuration format version. This schema describes version 2.",
-      "const": 2
+      "description": "The configuration format version. This schema describes version 3.",
+      "const": 3
     },
     "name": {
       "description": "A short name for the program. Shown in the viewer and written into the log. Participates in identity.",
@@ -231,7 +231,6 @@
         "model": { "$ref": "#/$defs/child_program" },
         "workflow": { "$ref": "#/$defs/workflow" },
         "follows": { "description": "Nodes whose outputs this node receives.", "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "followed_by": { "description": "The same edges written from the other end.", "type": "array", "items": { "type": "string", "minLength": 1 } },
         "verify": { "description": "A tool in tools run on the node's output; findings re-fire the node.", "type": "string", "minLength": 1 },
         "retries": { "description": "How many times verify findings re-fire the node.", "type": "integer", "minimum": 0, "default": 2 },
         "branches": {

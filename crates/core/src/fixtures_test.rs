@@ -23,7 +23,7 @@ pub fn tmp(name: &str) -> PathBuf {
 /// only tool and the host transport.
 pub fn config_value(root: &Path) -> Value {
     json!({
-        "version": 2,
+        "version": 3,
         "name": "fixture",
         "instructions": { "10-role": "You are a test agent.", "05-first": "Be brief." },
         "tools": ["block"],

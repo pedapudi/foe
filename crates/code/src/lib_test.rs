@@ -59,7 +59,7 @@ fn the_assembled_system_prompt_never_mentions_the_subject() {
     let root = std::env::temp_dir().join("foe-subject-prompt");
     std::fs::create_dir_all(&root).unwrap();
     let config: foe_config::Config = serde_json::from_value(serde_json::json!({
-        "version": 2,
+        "version": 3,
         "name": "subject-prohibition",
         "instructions": { "10-role": "You fix failing tests." },
         "tools": super::all().iter().map(|t| t.spec().name.clone()).collect::<Vec<_>>(),

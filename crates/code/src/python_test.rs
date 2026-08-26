@@ -259,7 +259,7 @@ mod episode {
                        \x20   missing = call_tool(\"read\", {\"path\": \"missing.txt\"})\n\
                        \x20   return {\"lines\": len(data[\"value\"][\"content\"].splitlines()), \"missing\": missing[\"is_error\"]}\n";
         let config: foe_config::Config = serde_json::from_value(json!({
-            "version": 2, "name": "compose", "instructions": { "role": "compose" },
+            "version": 3, "name": "compose", "instructions": { "role": "compose" },
             "tools": ["python", "read"],
             "grants": { "read": [root], "write": [root] },
             "budget": { "model_calls": 4 }, "task": "count the lines"
