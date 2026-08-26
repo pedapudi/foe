@@ -21,6 +21,7 @@ from source_candidate_assessment import (
     project_candidate_assessment_diagnostics,
     require_assessment_isolation,
     require_novel_source_candidate,
+    require_source_candidate_excludes_assessment_literals,
     validate_candidate_assessment_diagnostics,
     validate_revised_diagnosis,
 )
@@ -640,6 +641,79 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             self.assertNotIn(planted.encode(), generated_source)
         self.assertTrue((evidence / ASSESSMENT_DIAGNOSTICS_FILE).name)
         self.assertTrue((evidence / GENERATION_CONTEXT_FILE).name)
+
+    def test_revised_diagnosis_cannot_copy_failure_details_into_the_handoff(self):
+        with tempfile.TemporaryDirectory() as directory:
+            assessment, rejected_identity, _, _ = self.assessment(Path(directory))
+            projection = project_candidate_assessment_diagnostics(assessment)
+        contrast = projection["assessment_contrast"]
+        failure = contrast["failed_attempts"][0]
+        locus = failure["failed_verifiers"][0]["failure_loci"][0]
+        diagnosis = {
+            "branch": "implement-source",
+            "intervention": locus["assertion"],
+            "assessment_revision": {
+                "assessment_contrast_sha256": projection[
+                    "assessment_contrast_sha256"
+                ],
+                "rejected_source_candidate_identity": rejected_identity,
+                "prior_diagnosis_sha256": projection["prior_diagnosis_sha256"],
+                "disposition": "replace",
+                "failed_attempts": [
+                    {
+                        "episode_id": failure["episode_id"],
+                        "verifier_report_sha256s": [
+                            row["verifier_report_sha256"]
+                            for row in failure["failed_verifiers"]
+                        ],
+                        "locus_sha256s": [
+                            item["locus_sha256"]
+                            for row in failure["failed_verifiers"]
+                            for item in row["failure_loci"]
+                        ],
+                    }
+                ],
+                "parent_success_episode_ids": [
+                    row["episode_id"]
+                    for row in contrast["success_references"]["parent"]
+                ],
+                "candidate_success_episode_ids": [
+                    row["episode_id"]
+                    for row in contrast["success_references"]["candidate"]
+                ],
+                "explanation": "The assessment supports a general source change.",
+            },
+        }
+        with self.assertRaisesRegex(ValueError, "task-specific assessment detail"):
+            validate_revised_diagnosis(diagnosis, projection)
+
+    def test_source_candidate_cannot_embed_assessment_details(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assessment, _, _, _ = self.assessment(root)
+            projection = project_candidate_assessment_diagnostics(assessment)
+            candidate = root / "candidate"
+            candidate.mkdir()
+            changed = candidate / "src.rs"
+            changed.write_text(
+                f'const ASSESSMENT: &str = "{projection["diagnostics_identity"]}";\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "evaluator-owned assessment"):
+                require_source_candidate_excludes_assessment_literals(
+                    candidate,
+                    ["src.rs"],
+                    projection,
+                )
+            changed.write_text(
+                "pub fn assessment_guided_behavior() -> bool { true }\n",
+                encoding="utf-8",
+            )
+            require_source_candidate_excludes_assessment_literals(
+                candidate,
+                ["src.rs"],
+                projection,
+            )
 
     def test_program_exposes_projection_only_to_the_existing_diagnosis_node(self):
         with tempfile.TemporaryDirectory() as directory:

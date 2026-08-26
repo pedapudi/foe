@@ -176,6 +176,14 @@ success. Its disposition is `retain`, `narrow`, `replace`, or
 `insufficient-evidence`. The diagnosis verifier enforces those citations
 before source implementation can start.
 
+The diagnosis verifier also confines task-specific assessment details to the
+diagnosis episode. It rejects a typed handoff that copies a retained failure
+location, assertion, or message into its explanatory fields. Source acceptance
+then scans every changed file for assessment identities, verifier identities,
+failure-locus identities, and retained failure text. A match rejects the
+candidate before source evidence capture. The implementation child receives
+the generalized diagnosis and its opaque citations.
+
 Source evidence for a later generation contains the bounded diagnostics and
 a canonical generation-context record. The context binds the revised
 diagnosis, disposition, assessment contrast, rejected candidate, trajectory

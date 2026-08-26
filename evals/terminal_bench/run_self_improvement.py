@@ -32,6 +32,7 @@ from source_candidate_assessment import (
     load_source_candidate_assessment,
     require_assessment_isolation,
     require_novel_source_candidate,
+    require_source_candidate_excludes_assessment_literals,
     validate_candidate_assessment_diagnostics,
 )
 from tool_candidate import create as create_tool_candidate
@@ -2170,6 +2171,19 @@ def main(argv: list[str] | None = None) -> int:
             "findings": ["source candidate contains no changed files"],
             "exit_code": None,
         }
+        if acceptance["accepted"]:
+            try:
+                require_source_candidate_excludes_assessment_literals(
+                    candidate,
+                    changed,
+                    candidate_assessment_diagnostics,
+                )
+            except (OSError, UnicodeDecodeError, ValueError) as error:
+                acceptance = {
+                    "accepted": False,
+                    "findings": [str(error)],
+                    "exit_code": None,
+                }
         candidate_kind = "source-change"
     else:
         artifact_identity = candidate_artifact_identity(candidate, identity["source_tree"], changed)

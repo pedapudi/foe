@@ -1700,6 +1700,82 @@ def validate_revised_diagnosis(
             or set(observed_success) != expected
         ):
             raise ValueError(f"revised diagnosis must cite every qualified {role} success")
+    require_generalized_revised_diagnosis(diagnosis, diagnostics)
+
+
+def assessment_failure_literals(diagnostics: dict[str, Any]) -> set[str]:
+    """Return assessment details that must remain inside the diagnosis episode."""
+    literals = set()
+    for failure in diagnostics["assessment_contrast"]["failed_attempts"]:
+        for verifier in failure["failed_verifiers"]:
+            for locus in verifier["failure_loci"]:
+                for field in ("location", "assertion", "message"):
+                    value = locus.get(field)
+                    if isinstance(value, str) and len(value.strip()) >= 12:
+                        literals.add(" ".join(value.split()).casefold())
+    return literals
+
+
+def diagnosis_explanations(value: Any, field: str | None = None) -> list[str]:
+    """Return prose fields while excluding required opaque citations."""
+    if isinstance(value, dict):
+        return [
+            text
+            for key, item in value.items()
+            if not any(
+                marker in key
+                for marker in ("sha256", "identity", "episode_id")
+            )
+            for text in diagnosis_explanations(item, key)
+        ]
+    if isinstance(value, list):
+        return [text for item in value for text in diagnosis_explanations(item, field)]
+    return [value] if isinstance(value, str) else []
+
+
+def require_generalized_revised_diagnosis(
+    diagnosis: dict[str, Any], diagnostics: dict[str, Any]
+) -> None:
+    """Keep task-specific verifier details out of the implementation handoff."""
+    prose = [" ".join(value.split()).casefold() for value in diagnosis_explanations(diagnosis)]
+    for literal in assessment_failure_literals(diagnostics):
+        if any(literal in value for value in prose):
+            raise ValueError(
+                "revised diagnosis copies a task-specific assessment detail into its handoff"
+            )
+
+
+def require_source_candidate_excludes_assessment_literals(
+    candidate: Path,
+    changed_paths: list[str],
+    diagnostics: dict[str, Any] | None,
+) -> None:
+    """Reject source changes that embed evaluator-owned assessment details."""
+    if diagnostics is None:
+        return
+    validate_candidate_assessment_diagnostics(diagnostics)
+    forbidden = {
+        diagnostics["assessment_identity"],
+        diagnostics["diagnostics_identity"],
+        diagnostics["assessment_contrast_sha256"],
+        diagnostics["identities"]["source_candidate_identity"],
+        *assessment_failure_literals(diagnostics),
+    }
+    for failure in diagnostics["assessment_contrast"]["failed_attempts"]:
+        for verifier in failure["failed_verifiers"]:
+            forbidden.add(verifier["verifier_report_sha256"])
+            forbidden.update(
+                locus["locus_sha256"] for locus in verifier["failure_loci"]
+            )
+    for relative in changed_paths:
+        path = candidate / relative
+        if not path.is_file():
+            continue
+        text = " ".join(path.read_text(encoding="utf-8").split()).casefold()
+        if any(value.casefold() in text for value in forbidden):
+            raise ValueError(
+                f"source candidate {relative} contains evaluator-owned assessment details"
+            )
 
 
 def generation_context(
