@@ -2923,6 +2923,14 @@ h6.md-h {
   color: var(--v2-bad);
 }
 
+/* An expression no renderer typeset, shown as its own source. Mono like an
+   invalid one, but not the bad colour: with no renderer installed the
+   expression is fine and the build simply does not typeset it. */
+.math.untypeset {
+  font-family: var(--v2-mono);
+  color: var(--v2-ink-soft);
+}
+
 /* ---- code blocks ---- */
 
 .code-block {

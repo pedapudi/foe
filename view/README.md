@@ -17,6 +17,13 @@ so in two modes, described below, and both modes run the same code.
 
 ## The one dependency
 
+Temml is installed by `main.ts` and reached through the seam in
+`src/render/math.ts`, which is the only module `markup.ts` knows about. A
+build that omits that one call omits Temml from the bundle, because nothing
+else imports it, and every expression is then shown as its own source in
+mono. An embedder with its own converter installs that instead, through
+`setMathRenderer`.
+
 `vendor/temml.min.js` is Temml, an MIT-licensed converter from TeX to
 MathML, and it is the only third-party code in the bundle.
 

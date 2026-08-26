@@ -4,6 +4,7 @@
 import { App } from "./app.js";
 import { loadSettings } from "./chrome.js";
 import { h } from "./dom.js";
+import { installTemmlRenderer } from "./render/temml-math.js";
 import { start } from "./source.js";
 import type { Config } from "./source.js";
 
@@ -14,6 +15,10 @@ declare global {
 }
 
 function boot(): void {
+  // The one call that puts Temml in the bundle. A build that drops it
+  // shows every expression as its own source and carries no third-party
+  // code; see render/math.ts.
+  installTemmlRenderer();
   const root = document.getElementById("app") ?? document.body;
   loadSettings(root);
   const config = window.__FOE__;

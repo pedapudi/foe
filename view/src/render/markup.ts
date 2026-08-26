@@ -10,10 +10,10 @@ import { h } from "../dom.js";
 import type { Child } from "../dom.js";
 import { isKnownLanguage, tokenize } from "./highlight.js";
 import { hasMath, parseMarkdown } from "./markdown.js";
+import { renderMath } from "./math.js";
 import type { Align, Block, Inline } from "./markdown.js";
 import { resultShape } from "./shape.js";
 import { parseUnifiedDiff } from "./unified-diff.js";
-import temml from "../../vendor/temml.min.js";
 
 /** Renders assistant text and any other Markdown the log holds. */
 export function renderMarkdown(text: string): HTMLElement {
@@ -114,38 +114,11 @@ function withChildren(el: HTMLElement, children: Inline[]): HTMLElement {
 
 // ---- mathematics ----
 
-/**
- * Converted expressions, keyed by their source and mode. A conversation
- * redraws whenever its episode gains an event, and every redraw rebuilds
- * the rows it changed, so an expression is converted once and cloned
- * afterwards.
- */
-const converted = new Map<string, HTMLElement>();
+// The renderer and its fallback live in math.ts, which decides what
+// converts an expression; this module only places the result.
+export { renderMath };
 
-/**
- * Converts one TeX expression to MathML, which browsers lay out natively,
- * so the page ships no math font. Temml runs only for a text that carries
- * a mathematics delimiter, because only such a text yields a math node,
- * and only for an expression not already converted. An expression Temml
- * rejects is shown as its source in mono.
- */
-export function renderMath(tex: string, display: boolean): HTMLElement {
-  const key = `${display ? "d" : "i"}:${tex}`;
-  const cached = converted.get(key);
-  if (cached) return cached.cloneNode(true) as HTMLElement;
-  const host = h("span", { class: display ? "math display" : "math inline" });
-  try {
-    temml.render(tex, host, { displayMode: display, throwOnError: true });
-  } catch {
-    host.className = "math invalid";
-    host.title = "this expression is not valid TeX";
-    host.textContent = display ? `$$${tex}$$` : `$${tex}$`;
-  }
-  converted.set(key, host);
-  return host.cloneNode(true) as HTMLElement;
-}
-
-/** True when a text carries a mathematics delimiter, so Temml is needed. */
+/** True when a text carries a mathematics delimiter, so math is needed. */
 export { hasMath };
 
 // ---- code ----
