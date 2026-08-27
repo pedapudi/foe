@@ -3246,3 +3246,39 @@ The retained campaign manifest has SHA-256 digest
 It records cancellation, the exact rebuilt source and binary pair, and two
 completed source adoptions. Raw episodes and task workspaces remain in the
 local evidence worktree.
+
+## Cross-version feedback for a rejected source candidate
+
+The rejected completion-falsification candidate recreated the mechanism of an
+earlier rejected completion-audit candidate on a different parent source tree.
+The self-improvement controller already had an identity-bound assessment of
+the earlier candidate. A source-tree equality check prevented the diagnosis
+from using that assessment with the frozen release.
+
+The controller now allows the assessed parent and generation parent to
+differ. The existing assessment remains the only feedback format. Its verified
+patch is historical evidence for the diagnosis and remains unavailable to
+coding nodes. The diagnosis still cites every assessed failure and success,
+chooses a typed disposition, and generalizes its implementation handoff. The
+generation context records both source-tree identities. Exact rejected
+candidate identity and assessment-literal checks remain unchanged.
+
+This consolidation avoids a second negative-memory schema, citation format,
+and source-bundle binding. A no-spend plan must re-derive the private
+assessment and expose the source-tree relationship before provider spend. The
+plan must also select GPT-5.6 Sol, measurement-only token accounting, xhigh as
+the maximum review effort, and the priority service tier.
+
+The no-spend plan re-derived assessment diagnostics with identity
+`sha256:dfbee599eb2697cdcd121cc79c33292ac899f8de1d93fb04999524235fba88e1`.
+It recorded assessed parent tree
+`git-tree-sha1:cb1efa794591cbbe9733ec86a7779bfbe0ff9ecd` and generation parent
+tree `git-tree-sha1:df82cf9c80eaefedc06fdd7a25aab35bf045af29` as separate values. It
+selected the required models, effort ceiling, token policy, and priority
+service tier. No model request was made.
+
+The controller and documentation changes do not alter the frozen release,
+task registry, model-visible evaluated program, or task semantics. Completed
+release qualification therefore remains valid. The next provider spend is one
+identity-bound source-generation workflow. A resulting candidate receives
+only its affected activation gate before any transfer or qualification work.

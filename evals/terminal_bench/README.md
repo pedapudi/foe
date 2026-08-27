@@ -677,6 +677,13 @@ feedback to the later diagnosis without participating in the source-candidate
 identity. The runner rejects a later source candidate whose identity equals
 the rejected source candidate.
 
+The assessed parent source tree may differ from the generation parent. The
+diagnosis then treats the verified patch as historical evidence of the
+rejected mechanism. It cannot assume that patch locations or bytes apply to
+the generation parent. The generation context records both source-tree
+identities. The coding-node isolation and source-candidate identity rejection
+remain unchanged.
+
 The runner emits a version 3 program. The campaign Bazel target supplies the
 `priority` service tier for diagnosis, implementation, review, and
 finalization. A direct invocation of `run_self_improvement.py` defaults to

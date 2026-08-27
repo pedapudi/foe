@@ -814,7 +814,9 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             require_novel_source_candidate(
                 {"source_candidate_identity": "sha256:" + "9" * 64}, projection
             )
-            context = generation_context(projection, diagnosis, SHA_THREE)
+            context = generation_context(
+                projection, diagnosis, SHA_THREE, CANDIDATE_TREE
+            )
             evidence = root / "new-source-bundle"
             evidence.mkdir()
             bind_generation_evidence(evidence, projection, context)
@@ -826,6 +828,9 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             self.assertNotIn(planted.encode(), generated_source)
         self.assertTrue((evidence / ASSESSMENT_DIAGNOSTICS_FILE).name)
         self.assertTrue((evidence / GENERATION_CONTEXT_FILE).name)
+        self.assertEqual(context["schema_version"], 2)
+        self.assertEqual(context["assessed_parent_source_tree"], PARENT_TREE)
+        self.assertEqual(context["generation_parent_source_tree"], CANDIDATE_TREE)
 
     def test_revised_diagnosis_cannot_copy_failure_details_into_the_handoff(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -963,6 +968,10 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         )
         self.assertIn(
             "External task quality decides",
+            diagnosis["instructions"]["candidate_assessment"],
+        )
+        self.assertIn(
+            "historical evidence of the rejected mechanism",
             diagnosis["instructions"]["candidate_assessment"],
         )
         self.assertEqual(

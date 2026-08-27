@@ -2196,17 +2196,20 @@ def generation_context(
     diagnostics: dict[str, Any],
     diagnosis: dict[str, Any],
     trajectory_evidence_sha256: str,
+    generation_parent_source_tree: str,
 ) -> dict[str, Any]:
     """Return the canonical context record retained with a generated candidate."""
     validate_candidate_assessment_diagnostics(diagnostics)
     validate_revised_diagnosis(diagnosis, diagnostics)
     require_digest(trajectory_evidence_sha256, "trajectory evidence digest")
+    require_source_tree(generation_parent_source_tree, "generation parent source tree")
     body = {
-        "schema_version": 1,
+        "schema_version": 2,
         "assessment_diagnostics_identity": diagnostics["diagnostics_identity"],
         "assessment_contrast_sha256": diagnostics["assessment_contrast_sha256"],
         "rejected_source_candidate_identity": diagnostics["identities"]["source_candidate_identity"],
-        "generation_parent_source_tree": diagnostics["identities"]["parent_source_tree"],
+        "assessed_parent_source_tree": diagnostics["identities"]["parent_source_tree"],
+        "generation_parent_source_tree": generation_parent_source_tree,
         "revised_diagnosis_sha256": digest(diagnosis),
         "assessment_disposition": diagnosis["assessment_revision"]["disposition"],
         "trajectory_evidence_sha256": trajectory_evidence_sha256,

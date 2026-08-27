@@ -244,6 +244,13 @@ bundle identity. The source-candidate identity remains a hash of the base
 tree and exact source entries. After source capture, the runner rejects a
 candidate whose source-candidate identity equals the rejected identity.
 
+The assessed parent source tree may differ from the generation parent source
+tree. In that case, the diagnosis treats the verified patch as historical
+evidence of the rejected mechanism. Coding nodes still receive only the
+revised typed diagnosis and opaque assessment citations. The generation
+context records both source-tree identities. Source capture still rejects the
+assessed source-candidate identity.
+
 An explicit request can produce an instruction-revision or tool-definition
 proposal. The Terminal-Bench runner cannot apply either kind to an evaluation
 program. Automatic selection excludes them until an application path can bind

@@ -1419,6 +1419,9 @@ def build_config(
         "The supplied candidate_assessment_diagnostics describe an externally rejected source "
         "candidate and the prior typed diagnosis that produced it. Contrast the verified patch "
         "with every bounded failed verifier locus, final validation timeline, and terminal audit report. "
+        "The assessed parent source tree may differ from the generation parent. Treat the verified patch "
+        "as historical evidence of the rejected mechanism and do not assume that its source locations or "
+        "bytes apply to the generation parent. "
         "Compare each audit claim and named validation method with the external failure operands. Cite the assessment "
         "contrast, rejected candidate identity, prior diagnosis digest, every failed attempt, every "
         "verifier-report digest, every locus digest, and all qualified success episode references in "
@@ -1426,7 +1429,9 @@ def build_config(
         "only a qualified subset remains supported, replace when the contrast falsifies the mechanism, "
         "or insufficient-evidence when the bounded evidence cannot distinguish those dispositions. A replace "
         "disposition may propose one distinct general and falsifiable source hypothesis after the assessment "
-        "rejects the prior mechanism. Opaque identities belong in the revised diagnosis, but its prose must "
+        "rejects the prior mechanism. A renamed stage, additional review, or paraphrased instruction remains "
+        "the prior mechanism when it relies on the same acceptance signal. Opaque identities belong in the "
+        "revised diagnosis, but its prose must "
         "generalize the evidence without copying a failure location, assertion, observed operand, message, or "
         "terminal audit sentence. The coding children receive this prose without the assessment. External task "
         "quality decides whether that hypothesis is promoted."
@@ -2080,13 +2085,6 @@ def main(argv: list[str] | None = None) -> int:
             _, candidate_assessment_diagnostics = (
                 load_source_candidate_assessment(args.candidate_assessment)
             )
-            if (
-                candidate_assessment_diagnostics["identities"]["parent_source_tree"]
-                != identity["source_tree"]
-            ):
-                raise ValueError(
-                    "candidate assessment parent source tree differs from the evaluated evidence"
-                )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"self-improvement: {error}", file=sys.stderr)
         return 2
@@ -2114,6 +2112,12 @@ def main(argv: list[str] | None = None) -> int:
         preview["candidate_assessment_diagnostics_identity"] = (
             candidate_assessment_diagnostics["diagnostics_identity"]
         )
+        preview["candidate_assessment_parent"] = {
+            "assessed_source_tree": candidate_assessment_diagnostics["identities"][
+                "parent_source_tree"
+            ],
+            "generation_source_tree": identity["source_tree"],
+        }
     if validator_identity is not None:
         preview["candidate_validator"] = {"rust_toolchain": validator_identity}
     root, temporary = prepare_output_root(
@@ -2397,6 +2401,7 @@ def main(argv: list[str] | None = None) -> int:
                     candidate_assessment_diagnostics,
                     outcome_value,
                     evidence_digest(evidence),
+                    identity["source_tree"],
                 )
                 bind_generation_evidence(
                     source_bundle,
