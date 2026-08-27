@@ -68,6 +68,11 @@ pub const PYTHON_DIAGNOSTIC_MAX_CHARS: usize = 4_096;
 #[cfg(feature = "exec")]
 pub(crate) const SHELL: &str = "/bin/bash";
 
+/// A literal NUL cannot cross the operating system's process-argument
+/// boundary. Shell source can create the byte after the process starts.
+#[cfg(feature = "exec")]
+pub(crate) const SHELL_COMMAND_NUL_ERROR: &str = "command contains U+0000; process arguments cannot contain NUL. Use shell syntax such as printf '\\0' to create a NUL byte in a process stream.";
+
 /// The complete environment of the shell, identical for `bash` and
 /// `session`. The runtime sets exactly what it is given and inherits
 /// nothing, so the shell needs a search path to find programs; `HOME` is

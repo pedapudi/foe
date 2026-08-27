@@ -11,7 +11,7 @@
 //! settlement. With explicit authority, a task-lifetime session is released
 //! to the environment that owns the foe invocation.
 
-use crate::{parse_args, process_output, shell_environment, SESSION_MAX_ALIVE, SHELL};
+use crate::{parse_args, process_output, shell_environment, SESSION_MAX_ALIVE, SHELL, SHELL_COMMAND_NUL_ERROR};
 
 use foe_core::exec::TERM_GRACE;
 use foe_core::session::{subject, SESSION_TOOL};
@@ -113,6 +113,9 @@ impl Tool for Session {
                 let Some(command) = a.command else {
                     return ToolValue::error("session: `start` requires `command`");
                 };
+                if command.contains('\0') {
+                    return ToolValue::error(format!("session: {SHELL_COMMAND_NUL_ERROR}"));
+                }
                 let Some(cwd) = ctx.reader.as_ref().and_then(|r| r.roots().first().cloned()) else {
                     return ToolValue::error("session: no read root to use as the working directory");
                 };

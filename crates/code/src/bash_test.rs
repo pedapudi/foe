@@ -78,6 +78,25 @@ async fn missing_handles_are_errors() {
     assert!(v.rendered.unwrap().contains("executor"));
 }
 
+/// docs/tools.md `bash`: a literal NUL is rejected before the executor sees
+/// it, while shell syntax that writes a NUL byte remains a valid command.
+#[tokio::test]
+async fn literal_nul_commands_explain_the_valid_shell_spelling() {
+    let fx = Fixture::new();
+    let exec = Arc::new(FakeExecutor::new(result(0, "", "")));
+    let c = ctx_with_executor(&fx, exec.clone());
+    let v = Bash::new().call(json!({"command": "printf 'a\0b'"}), &c).await;
+    assert!(v.is_error);
+    let error = v.rendered.unwrap();
+    assert!(error.contains("command contains U+0000"));
+    assert!(error.contains("printf '\\0'"));
+    assert!(exec.last().is_none(), "the invalid process argument never reaches the executor");
+
+    let v = Bash::new().call(json!({"command": "printf '\\0'"}), &c).await;
+    assert!(!v.is_error, "{v:?}");
+    assert_eq!(exec.last().unwrap().args, ["-c", "printf '\\0'"]);
+}
+
 #[tokio::test]
 async fn a_real_non_zero_exit_is_a_result() {
     let fx = Fixture::new();
