@@ -261,10 +261,16 @@ class SelfImprovementConfigTest(unittest.TestCase):
             Path("/tmp/check"),
             Path("/tmp/diagnosis-validator"),
             model_config(
-                "openai-codex/gpt-5.6-terra", "high", credential_home=Path("/home/controller")
+                "openai-codex/gpt-5.6-terra",
+                "high",
+                "priority",
+                credential_home=Path("/home/controller"),
             ),
             model_config(
-                "openai-codex/gpt-5.6-luna", "high", credential_home=Path("/home/controller")
+                "openai-codex/gpt-5.6-luna",
+                "high",
+                "priority",
+                credential_home=Path("/home/controller"),
             ),
             [Path("/opt/toolchain")],
             [Path("/repo/.git")],
@@ -275,7 +281,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         nodes = config["workflow"]["nodes"]
         diagnosis = nodes["diagnose-runtime"]["model"]
         implementation = nodes["implement-runtime-improvement"]["model"]
-        audit = nodes["audit-runtime-improvement"]["model"]
+        review = nodes["review-runtime-improvement"]["model"]
         finalization = nodes["finalize-runtime-improvement"]["model"]
         self.assertEqual(
             nodes["implement-runtime-improvement"]["follows"],
@@ -286,7 +292,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             nodes["implement-runtime-improvement"]["follows"],
         )
         self.assertEqual(
-            nodes["audit-runtime-improvement"]["follows"],
+            nodes["review-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime", "implement-runtime-improvement"],
         )
         self.assertEqual(
@@ -295,11 +301,12 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "task",
                 "diagnose-runtime",
                 "implement-runtime-improvement",
-                "audit-runtime-improvement",
+                "review-runtime-improvement",
             ],
         )
         self.assertTrue(nodes["finalize-runtime-improvement"]["terminal"])
-        self.assertIn("unresolved_risks", nodes["audit-runtime-improvement"]["empty"])
+        self.assertIn("unresolved_risks", nodes["review-runtime-improvement"]["empty"])
+        self.assertIn("findings", nodes["review-runtime-improvement"]["empty"])
         self.assertEqual(
             nodes["diagnose-runtime"]["branches"],
             {
@@ -309,9 +316,11 @@ class SelfImprovementConfigTest(unittest.TestCase):
             },
         )
         self.assertEqual(implementation["tools"][:4], ["read", "grep", "edit", "bash"])
-        self.assertEqual(audit["tools"][:4], ["read", "grep", "edit", "bash"])
+        self.assertEqual(review["tools"], ["read", "grep", "bash", "check"])
+        self.assertNotIn("edit", review["tools"])
+        self.assertEqual(finalization["tools"][:4], ["read", "grep", "edit", "bash"])
         self.assertIn("build-script metadata", implementation["instructions"]["build_metadata"])
-        self.assertIn("build-script metadata", audit["instructions"]["build_metadata"])
+        self.assertIn("build-script metadata", review["instructions"]["build_metadata"])
         self.assertEqual(diagnosis["tools"], ["block", DIAGNOSIS_VALIDATOR_TOOL])
         self.assertEqual(diagnosis["done_when"]["verify"], DIAGNOSIS_VALIDATOR_TOOL)
         self.assertEqual(diagnosis["done_when"]["retries"], 2)
@@ -362,11 +371,15 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("reasoning settings", implementation["instructions"]["independence"])
         self.assertIn("baseline-relative line budgets", implementation["instructions"]["validation"])
         self.assertIn("Treat the diagnosis as a hypothesis", implementation["instructions"]["validation"])
-        self.assertIn("source lifecycle", audit["instructions"]["evidence"])
-        self.assertIn("workflow settlement", audit["instructions"]["architecture"])
-        self.assertEqual(audit["model"]["reasoning_effort"], "xhigh")
-        self.assertEqual(audit["model"]["service_tier"], "default")
-        self.assertEqual(audit["done_when"], {"returns": implementation["done_when"]["returns"]})
+        self.assertIn("source lifecycle", review["instructions"]["evidence"])
+        self.assertIn("workflow settlement", review["instructions"]["architecture"])
+        self.assertIn("without editing", review["instructions"]["validation"])
+        self.assertEqual(review["model"]["reasoning_effort"], "xhigh")
+        self.assertEqual(review["model"]["service_tier"], "priority")
+        self.assertEqual(
+            review["done_when"]["returns"]["required"],
+            ["summary", "findings", "validation", "unresolved_risks"],
+        )
         self.assertEqual(finalization["done_when"], {"verify": "check", "retries": 4})
         self.assertIn("Run the candidate check first", finalization["instructions"]["correction"])
         self.assertEqual(
@@ -374,7 +387,9 @@ class SelfImprovementConfigTest(unittest.TestCase):
             ["summary", "changed_paths", "validation", "unresolved_risks"],
         )
         self.assertEqual(config["model"]["reasoning_effort"], "high")
-        self.assertEqual(config["model"]["service_tier"], "default")
+        self.assertEqual(config["model"]["service_tier"], "priority")
+        self.assertEqual(diagnosis["model"]["service_tier"], "priority")
+        self.assertEqual(finalization["model"]["service_tier"], "priority")
         self.assertEqual(config["version"], 3)
         self.assertEqual(
             diagnosis["budget"],
@@ -410,13 +425,21 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(config["budget"]["model_calls"], 140)
         self.assertEqual(config["budget"]["max_episodes"], 5)
         self.assertEqual(implementation["budget"]["model_calls"], 60)
-        self.assertEqual(audit["budget"]["model_calls"], 44)
-        self.assertEqual(finalization["budget"]["model_calls"], 16)
+        self.assertEqual(review["budget"]["model_calls"], 20)
+        self.assertEqual(finalization["budget"]["model_calls"], 40)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
+        self.assertEqual(
+            review["grants"]["write"],
+            [
+                str(root / "target" / "foe-self-improvement-check"),
+                str(root / "target" / "test-scratch"),
+            ],
+        )
+        self.assertEqual(finalization["grants"]["write"], implementation["grants"]["write"])
         credential = "/home/controller/.config/foe/credentials/openai-codex.json"
         self.assertEqual(config["model"]["token_file"], credential)
         self.assertEqual(diagnosis["model"]["token_file"], credential)
-        self.assertEqual(audit["model"]["token_file"], credential)
+        self.assertEqual(review["model"]["token_file"], credential)
         self.assertEqual(finalization["model"]["token_file"], credential)
 
     def test_source_candidate_is_a_falsifiable_hypothesis_until_external_evaluation(self):

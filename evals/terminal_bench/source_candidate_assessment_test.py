@@ -945,16 +945,16 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         self.assertEqual(
             sorted(nodes),
             [
-                "audit-runtime-improvement",
                 "collect-trajectory-diagnostics",
                 "diagnose-runtime",
                 "finalize-runtime-improvement",
                 "implement-runtime-improvement",
+                "review-runtime-improvement",
             ],
         )
         diagnosis = nodes["diagnose-runtime"]["model"]
         implementation = nodes["implement-runtime-improvement"]["model"]
-        audit = nodes["audit-runtime-improvement"]["model"]
+        review = nodes["review-runtime-improvement"]["model"]
         finalization = nodes["finalize-runtime-improvement"]["model"]
         self.assertIn("assessment_revision", diagnosis["done_when"]["returns"]["required"])
         self.assertIn(
@@ -970,7 +970,7 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             ["task", "diagnose-runtime"],
         )
         self.assertEqual(
-            nodes["audit-runtime-improvement"]["follows"],
+            nodes["review-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime", "implement-runtime-improvement"],
         )
         self.assertEqual(
@@ -979,15 +979,15 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
                 "task",
                 "diagnose-runtime",
                 "implement-runtime-improvement",
-                "audit-runtime-improvement",
+                "review-runtime-improvement",
             ],
         )
-        for model_input in (implementation, audit, finalization, config["task"]):
+        for model_input in (implementation, review, finalization, config["task"]):
             encoded = canonical_json(model_input)
             for planted in (PRIVATE_TASK, PRIVATE_GRADER, PRIVATE_CAMPAIGN):
                 self.assertNotIn(planted.encode(), encoded)
         self.assertNotIn("/private", implementation["grants"]["read"])
-        self.assertNotIn("/private", audit["grants"]["read"])
+        self.assertNotIn("/private", review["grants"]["read"])
         self.assertNotIn("/private", finalization["grants"]["read"])
 
     def test_generated_validator_loads_the_bounded_assessment_projection(self):

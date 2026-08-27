@@ -43,16 +43,16 @@ from workflow_candidate import validate_independent_audit
 
 DIAGNOSIS_CALLS = 20
 IMPLEMENTATION_CALLS = 60
-AUDIT_REVIEW_CALLS = 44
-AUDIT_FINALIZATION_CALLS = 16
-AUDIT_CALLS = AUDIT_REVIEW_CALLS + AUDIT_FINALIZATION_CALLS
-AUDIT_REASONING_EFFORT = "xhigh"
+SOURCE_REVIEW_CALLS = 20
+FINALIZATION_CALLS = 40
+SOURCE_ACCEPTANCE_CALLS = SOURCE_REVIEW_CALLS + FINALIZATION_CALLS
+SOURCE_REVIEW_REASONING_EFFORT = "xhigh"
 DIAGNOSIS_SECONDS = 1_800
 IMPLEMENTATION_SECONDS = 3_600
-AUDIT_REVIEW_SECONDS = 2_700
-AUDIT_FINALIZATION_SECONDS = 900
-AUDIT_SECONDS = AUDIT_REVIEW_SECONDS + AUDIT_FINALIZATION_SECONDS
-SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + AUDIT_SECONDS
+SOURCE_REVIEW_SECONDS = 1_200
+FINALIZATION_SECONDS = 2_400
+SOURCE_ACCEPTANCE_SECONDS = SOURCE_REVIEW_SECONDS + FINALIZATION_SECONDS
+SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + SOURCE_ACCEPTANCE_SECONDS
 LOOP_THRESHOLD = 8
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
@@ -1356,6 +1356,10 @@ def build_config(
         str(candidate / "target" / "foe-self-improvement-check"),
         str(candidate / "target" / "test-scratch"),
     ]
+    validation_write_roots = [
+        str(candidate / "target" / "foe-self-improvement-check"),
+        str(candidate / "target" / "test-scratch"),
+    ]
     execute = [str(path) for path in execute_roots]
     check_tool = {
         "exec": str(check),
@@ -1601,6 +1605,29 @@ def build_config(
         "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
         "additionalProperties": False,
     }
+    review_handoff = {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string", "minLength": 1},
+            "findings": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 16,
+            },
+            "validation": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 16,
+            },
+            "unresolved_risks": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 8,
+            },
+        },
+        "required": ["summary", "findings", "validation", "unresolved_risks"],
+        "additionalProperties": False,
+    }
     implementation = {
         "name": "implement-foe-improvement",
         "instructions": {
@@ -1608,7 +1635,7 @@ def build_config(
             "scope": "Inspect source before editing. Change runtime source, a regression test, and each affected specification. Preserve reconstructable logs, declared authority, typed outcomes, and explicit completion semantics.",
             "build_metadata": "Do not change Cargo, Bazel, module, toolchain, package, or build-script metadata. Automatic source candidates preserve the trusted build graph.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Do not encode benchmark identifiers, fixture values, or grader rules. Refuse an intervention that changes only a built-in default overridden by the explicit evaluated program.",
-            "validation": "Treat the diagnosis as a hypothesis that source and tests must support. Run the candidate check after implementation and use its findings to correct the candidate. Return a typed handoff for a fresh audit, including unresolved architectural risks. Use the check tool as the authority for baseline-relative line budgets because scripts/loc.sh alone cannot distinguish an existing overage from candidate growth.",
+            "validation": "Treat the diagnosis as a hypothesis that source and tests must support. Run the candidate check after implementation and use its findings to correct the candidate. Return a typed handoff for a fresh review, including unresolved architectural risks. Use the check tool as the authority for baseline-relative line budgets because scripts/loc.sh alone cannot distinguish an existing overage from candidate growth.",
         },
         "tools": [*CODING_TOOLS, "check"],
         "tool_defs": {"check": check_tool},
@@ -1620,41 +1647,49 @@ def build_config(
         },
         "done_when": {"returns": implementation_handoff},
     }
-    audit_model = {**implementation_model, "reasoning_effort": AUDIT_REASONING_EFFORT}
-    audit = {
-        "name": "audit-and-repair-foe-improvement",
+    review_model = {
+        **implementation_model,
+        "reasoning_effort": SOURCE_REVIEW_REASONING_EFFORT,
+    }
+    review = {
+        "name": "review-foe-improvement",
         "instructions": {
-            "role": "Independently audit the source candidate, repair every defect, and let the candidate checker decide completion.",
+            "role": "Independently review the source candidate and return bounded findings for verifier-owned finalization.",
             "evidence": "Treat the diagnosis and implementation handoff as unverified hypotheses. Inspect the current diff, the owning source, existing tests, and affected specifications. Reject a proposed mechanism whose source lifecycle cannot produce the claimed task-visible behavior.",
             "architecture": "Trace every proposed tool, authority, process, and mutable resource from creation through model-node return, workflow settlement, and external evaluation. Preserve existing default interfaces unless the source design and general task-quality evidence require a change.",
             "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Remove benchmark-specific behavior and refuse changes whose benefit depends on hidden evaluator knowledge.",
-            "build_metadata": "Reject and revert changes to Cargo, Bazel, module, toolchain, package, or build-script metadata.",
-            "validation": "Run the candidate check after the final repair. Use its findings to continue until formatting, relevant tests, Clippy, scope, and baseline-relative line budgets pass. Report remaining semantic risks before the authoritative check.",
+            "build_metadata": "Report changes to Cargo, Bazel, module, toolchain, package, or build-script metadata as findings.",
+            "validation": "Run the candidate check first. Inspect the source without editing it. Return one concise finding for each defect that finalization must repair. Return an empty findings list only after the checker passes and the source mechanism supports the claimed task-visible behavior.",
         },
-        "tools": [*CODING_TOOLS, "check"],
+        "tools": ["read", "grep", "bash", "check"],
         "tool_defs": {"check": check_tool},
-        "grants": {"read": implementation_read_roots, "write": write_roots, "execute": execute},
+        "grants": {
+            "read": implementation_read_roots,
+            "write": validation_write_roots,
+            "execute": execute,
+        },
         "budget": {
-            "model_calls": AUDIT_REVIEW_CALLS,
-            "seconds": AUDIT_REVIEW_SECONDS,
+            "model_calls": SOURCE_REVIEW_CALLS,
+            "seconds": SOURCE_REVIEW_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
         },
-        "model": audit_model,
-        "done_when": {"returns": implementation_handoff},
+        "model": review_model,
+        "done_when": {"returns": review_handoff},
     }
     finalization = {
-        **audit,
+        **implementation,
         "name": "finalize-foe-improvement",
         "instructions": {
-            "role": "Finalize the independently reviewed source candidate under the candidate checker's authority.",
-            "evidence": "Treat the diagnosis, implementation handoff, and review handoff as unverified. Inspect the current diff and affected source, tests, and specifications before accepting them.",
+            "role": "Own every source repair after independent review and finalize the candidate under the candidate checker's authority.",
+            "evidence": "Treat the diagnosis, implementation handoff, and read-only review findings as unverified. Inspect the current diff and affected source, tests, and specifications before accepting them.",
             "correction": "Run the candidate check first. Repair every reported defect. Run it again after the final edit. The declared verifier owns completion, so return only after the current candidate passes.",
-            "independence": audit["instructions"]["independence"],
-            "build_metadata": audit["instructions"]["build_metadata"],
+            "independence": review["instructions"]["independence"],
+            "build_metadata": "Reject and revert changes to Cargo, Bazel, module, toolchain, package, or build-script metadata.",
         },
+        "model": review_model,
         "budget": {
-            "model_calls": AUDIT_FINALIZATION_CALLS,
-            "seconds": AUDIT_FINALIZATION_SECONDS,
+            "model_calls": FINALIZATION_CALLS,
+            "seconds": FINALIZATION_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
         },
         "done_when": {"verify": "check", "retries": 4},
@@ -1662,7 +1697,7 @@ def build_config(
     return {
         "version": 3,
         "name": "identity-bound-trajectory-self-improvement",
-        "instructions": {"role": "Run the declared diagnosis, implementation, review, and verifier-owned finalization workflow."},
+        "instructions": {"role": "Run the declared diagnosis, implementation, read-only review, and verifier-owned finalization workflow."},
         "tools": [
             *CODING_TOOLS,
             "block",
@@ -1680,7 +1715,7 @@ def build_config(
         },
         "grants": {"read": root_read_roots, "write": write_roots, "execute": execute},
         "budget": {
-            "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS + AUDIT_CALLS,
+            "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS + SOURCE_ACCEPTANCE_CALLS,
             "seconds": SECONDS,
             "max_depth": 1,
             "max_episodes": 5,
@@ -1716,15 +1751,15 @@ def build_config(
                     "model": implementation,
                     "follows": ["task", "diagnose-runtime"],
                 },
-                "audit-runtime-improvement": {
-                    "model": audit,
+                "review-runtime-improvement": {
+                    "model": review,
                     "follows": ["task", "diagnose-runtime", "implement-runtime-improvement"],
                     "empty": {
-                        "summary": "The independent review spent its allowance before returning a handoff.",
-                        "changed_paths": [],
+                        "summary": "The independent source review spent its allowance before returning findings.",
+                        "findings": [],
                         "validation": [],
                         "unresolved_risks": [
-                            "The finalization child must inspect the candidate without a completed review handoff."
+                            "Finalization must inspect the candidate without completed review findings."
                         ],
                     },
                 },
@@ -1734,7 +1769,7 @@ def build_config(
                         "task",
                         "diagnose-runtime",
                         "implement-runtime-improvement",
-                        "audit-runtime-improvement",
+                        "review-runtime-improvement",
                     ],
                     "terminal": True,
                 },
@@ -2049,7 +2084,7 @@ def main(argv: list[str] | None = None) -> int:
         "evaluation": "identity-bound-trajectory-self-improvement",
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
-        "source_audit_reasoning_effort": AUDIT_REASONING_EFFORT,
+        "source_review_reasoning_effort": SOURCE_REVIEW_REASONING_EFFORT,
         "service_tier": args.service_tier,
         "chatgpt_credit_multiplier": (
             FAST_SERVICE_CREDIT_MULTIPLIER if args.service_tier == "priority" else 1.0
@@ -2057,7 +2092,7 @@ def main(argv: list[str] | None = None) -> int:
         "diagnosis_model": args.diagnosis_model,
         "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort,
         "maximum": {
-            "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS + AUDIT_CALLS,
+            "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS + SOURCE_ACCEPTANCE_CALLS,
             "seconds": SECONDS,
         },
         "quality_authority": "unchanged task-owned Terminal-Bench grader",

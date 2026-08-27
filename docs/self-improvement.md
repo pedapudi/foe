@@ -125,11 +125,11 @@ the program. The resulting version 3 program contains four model nodes:
 2. A source implementation node receives the typed diagnosis and task. It
    returns a typed summary of changed paths, validation, and unresolved risks.
 3. A fresh review node receives the task, diagnosis, and implementation
-   handoff. It uses `xhigh` reasoning and can repair the candidate. Its
-   44-request allowance cannot consume the finalization allowance. When it
-   exhausts, a declared empty handoff lets the workflow continue.
-4. A fresh finalization node receives every typed handoff. It has 16 reserved
-   requests, runs the candidate checker before review, repairs remaining
+   handoff. It uses `xhigh` reasoning and has no source-write authority. It
+   returns bounded findings within 20 requests. When it exhausts, a declared
+   empty handoff lets the workflow continue.
+4. A fresh finalization node receives every typed handoff. It has 40 reserved
+   requests, runs the candidate checker before editing, repairs remaining
    findings, and owns terminal completion through that checker.
 
 The diagnosis verifier enforces a requested candidate kind before an

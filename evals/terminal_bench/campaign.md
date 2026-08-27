@@ -2704,3 +2704,45 @@ isolates the closed-book limitation: structural evidence checks improve
 provenance, while semantic correctness requires either a trusted verifier or
 a model-generated check that independently captures the task's true
 acceptance rule.
+
+## Autonomous source-review capacity failure and workflow repair
+
+An identity-bound source-improvement attempt used the repeated `dna-insert`
+contrast and retained assessment feedback for a rejected source candidate. All
+model requests used GPT-5.6 Sol. The attempt used the default service tier, so
+it does not contribute to the priority-tier campaign gates.
+
+Diagnosis completed in one model call. Initial source implementation completed
+in 47 calls and produced changes to runtime source, regression tests, and two
+specifications. The mutating source reviewer then spent its complete 44-call
+allowance. The verifier-owned finalizer spent its complete 16-call allowance
+and ended exhausted. The external source checker rejected the artifact because
+the kernel contained 5,361 lines against an allowed 5,350 lines. No other
+acceptance finding remained.
+
+The attempt used 108 model calls, 7,178,220 input tokens, 5,788,160 cached-input
+tokens, and 48,969 output tokens. Its estimated cost was $8.854884, and it ran
+for 1,279.629 seconds. The retained directory is
+`target/dna-joint-decomposition-actionable-confinement-self-improvement`.
+The candidate remains rejected.
+
+This failure identifies a workflow-owned capacity defect. Source repair had
+two owners after implementation. The reviewer could consume most acceptance
+capacity while continuing to mutate the candidate. The finalizer then had too
+little capacity to satisfy the authoritative checker.
+
+The repaired workflow preserves the 140-call root allowance and the existing
+five-episode bound. Its independent reviewer has no source-write authority. It
+returns bounded findings within 20 calls and can write only validation output.
+The finalizer is the sole source-repair owner after review and has 40 reserved
+calls. A blocked or exhausted review still contributes its declared empty
+handoff, so finalization retains its complete allowance.
+
+A no-spend preview validated the repaired program against source tree
+`git-tree-sha1:cb1efa794591cbbe9733ec86a7779bfbe0ff9ecd` and runtime binary
+`sha256:b6910a230b5c935e2140f767a8e15fe0cadb90a51190b4c0cd2d7a78b8073c72`.
+The preview selected GPT-5.6 Sol with low reasoning for diagnosis and
+implementation, xhigh reasoning for review and finalization, and the priority
+service tier. It made no model request. An autonomous source-improvement run
+must establish whether the repaired ownership structure produces an accepted
+candidate.
