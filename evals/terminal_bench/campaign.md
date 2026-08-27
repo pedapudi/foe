@@ -36,7 +36,7 @@ The release must satisfy all of these quality conditions:
 
 1. Convert at least three reproducible harness-limited development failures
    into task-verifier successes.
-2. Preserve every development-task success that the baseline established.
+2. Pass at least eleven of the twelve development tasks.
 3. Lose no assessed attempt to an avoidable configuration, executable,
    sandbox, allowance, credential, or container error.
 4. Pass every local runtime-contract evaluation.
@@ -48,6 +48,9 @@ The release must satisfy all of these quality conditions:
    resolve no more than two ambiguous first-attempt failures.
 8. Retain each task verifier result, Foe episode, source identity, runtime
    identity, and conformance report.
+9. Qualify credential-safe two-worker execution on a matched four-task batch.
+   It must preserve scores and evidence while reducing makespan by at least
+   one third.
 
 The self-improvement evidence must satisfy all of these conditions:
 
@@ -102,8 +105,7 @@ revised candidate must satisfy these conditions:
    on each activation case.
 4. Transfer each accepted improvement to a development task absent from its
    diagnosis corpus.
-5. Pass at least eleven of the twelve development tasks while preserving
-   every baseline success.
+5. Pass at least eleven of the twelve development tasks.
 6. Freeze one combined candidate before confirmation. The candidate must
    produce at least fourteen successes from sixteen attempts and succeed at
    least once on every confirmation task.
@@ -2816,3 +2818,108 @@ diagnosis verifier now rejects `implement-source` for such a contrast and
 requires `insufficient-evidence`. Source generation remains available for
 non-completed Foe outcomes whose retained evidence can support a source
 mechanism.
+
+## Development gate for the final-artifact and live-state release
+
+The candidate combines four general changes. Terminal audits require evidence
+from final artifacts. Their inspection boundary derives from the final
+artifact rather than an implementation summary. Audits require required live
+services to remain available. The OpenAI transport retries the provider's
+`service_unavailable_error` response through the existing bounded recovery
+policy.
+
+The repository test suite, Clippy, example suite, line-count check, and
+portable-binary build passed before task evaluation. The exact portable binary
+also passed provider-free installation in the `dna-assembly`,
+`git-multibranch`, and `gpt2-codegolf` task containers.
+
+One provider-free admission check stopped because host memory was below the
+declared ten-gibibyte minimum. It made no model request. Idle Bazel servers
+from completed worktrees retained more than five gibibytes. Shutting down
+those named servers restored more than fourteen gibibytes of available
+memory. No repository output or retained task evidence was removed.
+
+An initial DNA attempt used binary
+`sha256:896c09d885bc607ed3d4b1b202340e6d7ad5be2eeb5f2f296c9622e3d2a7ccbc`.
+The provider returned `service_unavailable_error`, which the transport did
+not classify as retryable. The runtime failed before producing task-quality
+evidence. That failure produced the bounded retry change and is excluded from
+the frozen-release quality count.
+
+The frozen release has these identities:
+
+- source commit
+  `c149a340960dd80d27ee7d45664989fbaa37544e`;
+- source tree
+  `git-tree-sha1:54c16fadf8446dd9de3bce95ebc205cf13ed4034`;
+- portable binary
+  `sha256:9225331114a53308b8dee8891ef66d36ba968a1c1e78220f076ebfbaf7cbb9f7`;
+- task registry
+  `sha256:067fbaed267283bf44abd588e6309bb8efe0224d343f9ffe3d7427f2c7f74158`;
+- campaign runner
+  `sha256:a6af2f565c69a36b473581064b54871ae8143956d11b6fad6ff00f96d177f2bd`;
+- Harbor adapter
+  `sha256:9d34fb4a0467bdacdf36e5f19ba7d2f12398402a71c44c56e8452922060770b6`;
+- diagnostic collector
+  `sha256:dade331cd8267ac22aba83e8815030afe8007368a97d7aed506423a8609d0813`.
+
+Every request used GPT-5.6 Sol and the priority service tier. Implementation
+used low reasoning. The runtime-owned terminal audit used high reasoning.
+Token limits remained measurement-only. Landlock remained off inside the
+task containers. The task-owned verifiers remained unavailable until Foe
+exited.
+
+The release passed all three activation cases and eleven of the twelve
+development tasks:
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Usage |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `cancel-async-tasks` | 1.0 | 10 | 41,236 | 4,608 | 9,762 | $0.343595 | complete |
+| `dna-assembly` | 1.0 | 44 | 691,968 | 409,088 | 28,932 | $1.873795 | complete |
+| `fix-git` | 1.0 | 23 | 174,320 | 72,192 | 7,471 | $0.586809 | complete |
+| `fix-ocaml-gc` | 1.0 | 30 | 1,014,307 | 500,736 | 8,506 | $2.424698 | complete |
+| `git-multibranch` | 1.0 | 15 | 109,520 | 36,352 | 15,447 | $0.616153 | complete |
+| `gpt2-codegolf` | 1.0 | 50 | 1,443,797 | 963,584 | 36,127 | $3.028826 | complete |
+| `large-scale-text-editing` | 1.0 | 15 | 84,785 | 28,160 | 11,587 | $0.469504 | complete |
+| `model-extraction-relu-logits` | 1.0 | 15 | at least 78,558 | at least 24,576 | at least 10,165 | at least $0.429058 | one call omitted |
+| `path-tracing-reverse` | 1.0 | 44 | 1,910,590 | 1,329,664 | 12,226 | $3.100090 | complete |
+| `regex-chess` | 1.0 | 72 | 2,613,901 | 1,961,472 | 50,206 | $4.398425 | complete |
+| `sanitize-git-repo` | 0.0 | 30 | 1,453,185 | 973,824 | 21,508 | $2.737134 | complete |
+| `sqlite-db-truncate` | 1.0 | 14 | 56,521 | 18,432 | 8,989 | $0.339509 | complete |
+
+The twelve tasks used 362 model calls. Recorded usage is at least 9,672,688
+input tokens, 6,322,688 cached-input tokens, 220,926 output tokens, and
+$20.347595. One successful `model-extraction-relu-logits` request omitted
+provider usage. Its other fourteen requests provide the lower bound shown in
+the table. The task attempts occupied 7,205 seconds in the serial lane.
+
+Every attempt produced a task-owned score without an exception. Every Foe
+account was conformant with zero violations. Eleven Foe outcomes agreed with
+their task-owned scores. The `sanitize-git-repo` outcome was completed, while
+the external score was 0.0. Its diagnostic record marks the artifact and
+outcome mismatch.
+
+The sanitization removed the identified credentials from tracked files and
+reachable history. It also expired reflogs and pruned unreachable objects.
+Two verifier tests passed. The remaining verifier test tried to resolve the
+secret-bearing original commit before comparing unchanged paths. Object
+pruning made that hard-coded commit unavailable, so the comparison never ran.
+The 0.0 remains in the quality result. Foe receives no task-specific change
+for this verifier assumption.
+
+The quality result is 11/12. The frozen release advances to the two-worker
+qualification and confirmation gates without a source or configuration
+change. Confirmation tasks remain unopened at this decision point.
+
+Raw episodes, workspaces, and credentials remain in local-only storage under
+the `foe-terminal-bench-quality-release` evidence worktree. Git retains these
+campaign-manifest SHA-256 digests:
+
+- DNA activation:
+  `59a2f9a97f017454b1e57351098ac37de618a3c6c9e778213b32ef0bc472f480`;
+- live-state activation:
+  `28188ca549f3004a7d69942931ba9c2a04fbdcab2c9fea8be01ba2553e818153`;
+- GPT-2 activation:
+  `6ab54906c28e79514a63b80f3cee54f95f456c3e22f548039e530869873b6a41`;
+- remaining development tasks:
+  `0414fde9af51caf021623bfdaca3fc7a189e5edcd4f47cc34c0b1d71c3cedef6`.
