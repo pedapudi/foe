@@ -224,3 +224,19 @@ async fn expected_version_accepts_a_matching_bare_digest_and_refuses_it_when_sta
     assert_eq!(fx.read("a.txt"), "two\n");
     assert_eq!(fx.writes(), 1);
 }
+
+/// docs/tools.md `edit`: omitting the algorithm prefix does not make a
+/// partial digest authoritative.
+#[tokio::test]
+async fn expected_version_refuses_a_truncated_bare_digest_without_writing() {
+    let fx = Fixture::new();
+    fx.write("a.txt", "one\n");
+    let observed = crate::file_version(b"one\n");
+    let truncated = &observed.trim_start_matches("sha256:")[..32];
+    let value =
+        edit(&fx, json!({"path": "a.txt", "expected_version": truncated, "edits": [replace("one", "two")]})).await;
+    assert!(value.is_error);
+    assert!(value.rendered.unwrap().contains("differs from expected_version"));
+    assert_eq!(fx.read("a.txt"), "one\n");
+    assert_eq!(fx.writes(), 0);
+}
