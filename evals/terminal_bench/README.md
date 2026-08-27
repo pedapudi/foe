@@ -782,7 +782,7 @@ It uses the same model route and service tier as implementation with `xhigh`
 reasoning. It can read the source and write only to validation-output
 directories. It returns bounded findings within 20 requests. A review that ends
 blocked or exhausted contributes a finding that requires finalization to
-perform the missing semantic review. The finalization child has 40 reserved
+perform the missing semantic review. The finalization child has 60 reserved
 requests and sole source-repair authority after implementation. It inspects the
 current source, runs the candidate checker first, and repairs remaining
 findings. Its typed return copies each independent-review finding exactly once
