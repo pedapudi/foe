@@ -2579,3 +2579,128 @@ properties under one jointly consistent decomposition. Measurements from
 different candidate decompositions cannot establish that the final value
 satisfies the combined requirements. A repeated closed-book attempt is needed
 before this result counts as a reproducible activation failure.
+
+## Fresh execution evidence and decomposition experiments
+
+The fresh-execution evidence candidate binds every passed requirement to
+successful executable results produced after the final write. A configured
+verifier requires one successful preflight result. A run without a configured
+verifier requires two executable results from separate turns. The runtime
+reconstructs each cited call from the episode log before allowing completion.
+
+The candidate is commit `ada29bd`. Its Git tree is
+`git-tree-sha1:52c5ee22c9fc5b60b70d1d0572979ed9c7964942`. The evaluated
+binary is
+`sha256:da256fa374979df27450a5a048df725e01ca7dfff10d4d2850dbc695d303a700`.
+Workspace tests, clippy checks, examples, formatting, and line budgets pass.
+
+Two priority-tier closed-book `dna-insert` attempts produced different task
+scores. Both used the unchanged task-owned grader.
+
+| Attempt | Score | Calls | Input | Cache read | Output | Estimated cost | Trace assertions |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| First | 1.0 | 22 | 185,366 | 87,040 | 14,078 | $0.709680 | 16,877 |
+| Repeat | 0.0 | 28 | 278,583 | 146,944 | 13,508 | $0.855494 | 7,997 |
+
+Both traces had zero conformance violations. The repeated audit cited two
+fresh executable checks. Both checks encoded the same decomposition of the
+primer pair. The task-owned grader used one complete decomposition and found
+a melting-temperature difference above five degrees Celsius. Fresh execution
+evidence established provenance without establishing semantic independence.
+
+The attempts are retained under:
+
+- `/home/sunil/git/foe-dna-evidence-boundary-direct-candidate/target/terminal-bench-jobs/priority-evidence-boundary-dna-insert-first-20260827T012543Z`;
+- `/home/sunil/git/foe-dna-evidence-boundary-direct-candidate/target/terminal-bench-jobs/priority-evidence-boundary-dna-insert-repeat-20260827T013224Z`.
+
+Their campaign manifest SHA-256 digests are
+`8f925922dd5a59fba9be73e008d8c6679e1cee8e127effc554594ca869f993e0`
+and
+`fee8e92d6f50639b0b8064ef7d077f2275e33737915d25f56668205fccd473aa`.
+The candidate fails the repeatability gate and remains rejected for
+promotion.
+
+One priority-tier variant raised the audit from high to xhigh reasoning. It
+received score 0.0 after 28 calls. The run used 297,941 input tokens, 152,064
+cached-input tokens, and 22,458 output tokens. Its estimated cost was
+$1.093494. The trace passed 9,651 assertions with zero violations. Increasing
+reasoning effort left the shared-decomposition defect intact.
+
+The xhigh attempt is retained under
+`/home/sunil/git/foe-dna-evidence-boundary-xhigh-audit-candidate/target/terminal-bench-jobs/priority-evidence-boundary-xhigh-audit-dna-insert-20260827T014336Z`.
+Its campaign manifest SHA-256 is
+`28c7dfb186963db340edd490e1a416cae4fc556544019c5ed1955f9301b3f609`.
+
+A three-review-stage experiment then added a fresh xhigh terminal challenge.
+The challenge received the original task and the audit's typed acceptance map.
+It found three supported insertion boundaries. It still measured the forward
+and reverse regions independently and accepted an artifact that failed the
+task-owned grader. The attempt received score 0.0 after 39 calls. It used
+453,770 input tokens, 201,728 cached-input tokens, and 35,283 output tokens.
+Its estimated cost was $1.794519. The trace passed 13,099 assertions with zero
+violations.
+
+The three-stage experiment is retained under
+`/home/sunil/git/foe-terminal-evidence-challenge-candidate/target/terminal-bench-jobs/priority-terminal-evidence-challenge-dna-insert-20260827T020138Z`.
+Its campaign manifest SHA-256 is
+`61c366e5924353f2e0fbbd638ceaf8b03ff0f01bdc0459fab56c3fb1291422bf`.
+Commit `f938b3d` identifies the rejected candidate.
+
+A smaller experiment retained two workflow stages and strengthened the audit
+contract. It required each interpretation to partition one complete
+consumer-visible value and derive every dependent measurement from that
+partition. The audit instead selected maximal forward and reverse binding
+regions independently. The task-owned grader measured a 5.828321-degree
+difference and awarded score 0.0.
+
+The attempt used 25 calls, 270,661 input tokens, 137,216 cached-input tokens,
+and 17,662 output tokens. Its estimated cost was $0.941906. The trace passed
+12,344 assertions with zero violations. The retained directory is
+`/home/sunil/git/foe-joint-consumer-decomposition-candidate/target/terminal-bench-jobs/priority-joint-consumer-decomposition-dna-insert-20260827T022055Z`.
+Its campaign manifest SHA-256 is
+`b56a134882a5397e9e59c57c5c56178ad8ce6d6d5c3ff76222fe90cd5a583cee`.
+Commit `346acf4` identifies the rejected candidate.
+
+These experiments reject further task-specific prompt specialization. The
+models found the ambiguity and built substantial checks, but their checks
+continued to share an incorrect semantic decomposition. The next experiment
+uses the qualified public checker through `done_when.verify` and measures
+corrective convergence separately from standard closed-book quality.
+
+## Verifier-governed `dna-insert` correction
+
+The qualified public `dna-insert` checker requires one shared interpretation
+for the inserted sequence and both annealing regions. Its SHA-256 is
+`34b6d43b3cc9eda9ef0111911751847c17ba26ee124cb6bc7a2d2e74c6f4e22b`.
+The checker passes its author oracle and the unchanged task-owned grader also
+accepts that oracle. The checker fails an untouched workspace.
+The qualification report is retained at
+`target/terminal-bench-verifier-controls/controls-20260826T234648Z/verifier-controls.json`.
+Its SHA-256 is
+`2f7d24d0b20b8340769947ef93cdc2ceb0fda24ab70676bec669fd14c605c0ed`.
+
+One priority-tier run supplied the checker to the fresh-execution evidence
+candidate through the terminal audit's `done_when.verify`. Four typed returns
+were rejected before completion. The recorded findings covered unsuccessful
+checker evidence and evidence that no longer ended at the latest executable
+or write result. The audit continued repairing the artifact after each
+rejection. Its final authoritative verification recorded no finding.
+
+The unchanged task-owned grader awarded score 1.0 without an exception. The
+run used 60 model calls, 1,095,778 input tokens, 759,808 cached-input tokens,
+and 30,596 output tokens. Its estimated cost was $2.259723. The trace passed
+28,003 assertions with zero violations. Foe completed on the final available
+model call because completion is checked before budget exhaustion.
+
+The retained directory is
+`/home/sunil/git/foe-dna-evidence-boundary-direct-candidate/target/terminal-bench-jobs/priority-evidence-boundary-dna-insert-done-when-20260827T023046Z`.
+Its campaign manifest SHA-256 is
+`787a128c8ac9ac9e5ede3be82ca0a38242e57bced247acedc81488ab3edb2537`.
+
+This result establishes corrective convergence under a declared semantic
+checker. It remains outside standard Terminal-Bench scoring because the
+checker changes the information available during execution. The result also
+isolates the closed-book limitation: structural evidence checks improve
+provenance, while semantic correctness requires either a trusted verifier or
+a model-generated check that independently captures the task's true
+acceptance rule.
