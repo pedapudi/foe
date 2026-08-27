@@ -68,7 +68,9 @@ mod sse;
 #[cfg(test)]
 mod testserver;
 
-use auth::{Auth, AuthKind};
+#[cfg(feature = "http")]
+use auth::Auth;
+use auth::AuthKind;
 #[cfg(feature = "http")]
 use format::{Decoder, Format};
 #[cfg(feature = "http")]
