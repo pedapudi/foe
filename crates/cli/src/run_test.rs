@@ -101,6 +101,16 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
     assert!(completion["required"].as_array().unwrap().contains(&serde_json::json!("learned")));
     assert!(audit_program.instructions["role"].contains("every path changed by either episode"));
     assert!(audit_program.instructions["role"].contains("reproduce or challenge every claim"));
+    let role = &audit_program.instructions["role"];
+    assert!(role.contains("reproduce a specific unmet requirement"));
+    assert!(role.contains("smallest repair that resolves the reproduced defect"));
+    assert!(role.contains("default mutation scope is current filesystem content"));
+    assert!(role.contains("version-control history, commits, refs, object databases, reflogs"));
+    assert!(role.contains("implementation-declared or code-derived assumption"));
+    assert!(role.contains("varied controlled inputs through the same interfaces"));
+    assert!(role.contains("bounds, thresholds, sample counts, ranges, scales, distributions"));
+    assert!(role.contains("changing only shape or count does not establish numerical generalization"));
+    assert!(role.contains("Restricted answer data cannot establish generalization"));
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available

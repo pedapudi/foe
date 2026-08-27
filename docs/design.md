@@ -737,6 +737,25 @@ and only its accepted terminal verification can complete the workflow.
 Without `--verify`, the independent audit still always runs and completes
 under its typed return contract.
 
+The terminal audit reproduces a specific unmet requirement before changing
+the workspace. It preserves artifacts and state that the observation does not
+implicate. Each repair is limited to the reproduced defect.
+
+For tasks naming files, directories, or repositories, the default mutation
+scope is current filesystem content. The audit preserves version-control
+history, commits, refs, object databases, reflogs, provenance, and prior
+versions unless the task explicitly names that state.
+
+The audit treats every implementation-declared or code-derived assumption,
+limitation, and unresolved risk as unverified. General behavior is validated
+on varied controlled inputs through the interfaces available to the final
+artifact when the environment permits. The audit derives algorithm-sensitive
+bounds, thresholds, sample counts, ranges, scales, distributions, and
+near-degenerate cases. It varies each relevant condition because changing
+only shape or count does not establish numerical generalization. Restricted
+answer data cannot establish generalization. The audit uses invariant
+reasoning when it cannot construct another instance.
+
 `--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
 workflow. The default is `best-effort`. A program document declares
 its own `sandbox.mode`, so `--sandbox` cannot accompany `--config`.
