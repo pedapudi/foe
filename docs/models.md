@@ -291,6 +291,17 @@ all of them. A row exists only when both of its features are enabled, so
 | OAuth token file | `auth/token_file.rs` | a token file, refreshed at the provider's token endpoint | `token-file` |
 | Google credentials | `auth/google.rs` | application default credentials or a service account key, exchanged for an access token | `google` |
 
+One feature stands outside the table. The HTTP client and the TLS stack it
+links, which are `rustls` and the roots compiled in beside it, sit behind
+the `http` feature. Every wire format implies that feature, and so does
+every credential source, because each source speaks to its provider to
+verify a key or to refresh a token. The default feature set enables all of
+them, so a default build carries the client as it did before. What remains
+with the feature off is `exec`, which reaches a model through a program
+over standard input and output and opens no socket. An embedder that cannot
+ship a TLS stack builds the crate with `--no-default-features --features
+exec`.
+
 Adding a provider that speaks an existing format with an existing source is
 one row in `crates/transport/src/providers.rs`. A provider that serves the
 Chat Completions API at `https://api.example.com/v1` with a bearer key,

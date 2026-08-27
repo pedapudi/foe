@@ -35,17 +35,32 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "http")]
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use foe_core::{Chunk, Executor, ModelRequestBody, Transport};
+#[cfg(feature = "http")]
+use foe_core::{Chunk, ModelRequestBody};
+use foe_core::{Executor, Transport};
 use foe_program::ModelConfig;
+
+/// Longest silence tolerated between bytes of a response. Providers keep a
+/// stream alive with periodic events, and a model that is thinking with its
+/// reasoning hidden may send nothing for minutes, so the limit is generous.
+/// The episode's wall-clock budget, enforced by the runtime, bounds the
+/// whole request.
+///
+/// Here rather than in `http`, because the `exec` transport honours the
+/// same limit and builds without the HTTP client.
+#[cfg(any(feature = "http", feature = "exec"))]
+pub(crate) const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
 pub mod auth;
 #[cfg(feature = "exec")]
 pub mod exec;
 pub mod format;
+#[cfg(feature = "http")]
 mod http;
 pub mod paths;
 pub mod providers;
@@ -54,7 +69,9 @@ mod sse;
 mod testserver;
 
 use auth::{Auth, AuthKind};
+#[cfg(feature = "http")]
 use format::{Decoder, Format};
+#[cfg(feature = "http")]
 use http::Url;
 #[allow(unused_imports)]
 use providers::{Provider, Verify, WireFormat};
@@ -209,6 +226,7 @@ pub fn plan_with_home(config: &ModelConfig, home: &Path) -> Result<Plan, Transpo
         #[allow(unreachable_patterns)]
         _ => None,
     };
+    #[cfg(feature = "http")]
     if let Some(url) = model.option("base_url") {
         Url::parse(url).map_err(|reason| TransportError::BaseUrl { url: url.to_string(), reason })?;
     }
@@ -239,14 +257,14 @@ pub fn build_planned(plan: &Plan, executor: Option<Arc<dyn Executor>>) -> Result
 }
 
 /// The table holds only `exec` rows in a build without a wire format.
-#[cfg(not(any(feature = "messages", feature = "chat", feature = "responses", feature = "google")))]
+#[cfg(not(feature = "http"))]
 fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
     unreachable!("provider {} has no wire format in this build", plan.provider.name)
 }
 
 /// Builds the HTTP client of a plan: the credential source, the wire
 /// format, and the URL the provider row implies.
-#[cfg(any(feature = "messages", feature = "chat", feature = "responses", feature = "google"))]
+#[cfg(feature = "http")]
 fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
     let provider = plan.provider;
     let model = &plan.model;
@@ -349,7 +367,7 @@ fn vertex_route(
 
 /// Opens the credential source a plan names. The only place a secret is
 /// read.
-#[cfg(any(feature = "messages", feature = "chat", feature = "responses", feature = "google"))]
+#[cfg(feature = "http")]
 fn open_auth(plan: &Plan) -> Result<Arc<dyn Auth>, TransportError> {
     let provider = plan.provider;
     let Some(key) = provider.auth.option_key() else {
@@ -381,6 +399,7 @@ fn open_auth(plan: &Plan) -> Result<Arc<dyn Auth>, TransportError> {
 
 /// One cheap authenticated request that proves a credential works, for
 /// `foe login`. Returns a sentence for the person on failure.
+#[cfg(feature = "http")]
 pub fn verify_credential(provider: &Provider, base_url: Option<&str>, auth: &dyn Auth) -> Result<(), String> {
     let headers = auth.headers().map_err(|e| e.to_string())?;
     match provider.verify {
@@ -410,6 +429,7 @@ pub fn verify_credential(provider: &Provider, base_url: Option<&str>, auth: &dyn
 
 /// A wire format, a credential source, and a URL: one provider as the
 /// runtime drives it.
+#[cfg(feature = "http")]
 pub struct Client {
     route: foe_log::ModelRoute,
     provider: &'static str,
@@ -419,6 +439,7 @@ pub struct Client {
     format: Box<dyn Format>,
 }
 
+#[cfg(feature = "http")]
 impl Client {
     /// `provider` prefixes every error message and is the route's provider.
     pub fn new(
@@ -438,6 +459,7 @@ impl Client {
     }
 }
 
+#[cfg(feature = "http")]
 #[async_trait::async_trait]
 impl Transport for Client {
     fn route(&self) -> foe_log::ModelRoute {
@@ -456,6 +478,7 @@ impl Transport for Client {
 }
 
 /// One HTTP request, ready to send once the credential headers are added.
+#[cfg(feature = "http")]
 struct Exchange {
     /// The provider name used as the prefix of every error message.
     provider: &'static str,
@@ -464,6 +487,7 @@ struct Exchange {
     body: Vec<u8>,
 }
 
+#[cfg(feature = "http")]
 fn is_terminal(chunk: &Chunk) -> bool {
     matches!(chunk, Chunk::Done { .. } | Chunk::Error { .. })
 }
@@ -471,6 +495,7 @@ fn is_terminal(chunk: &Chunk) -> bool {
 /// Forwards chunks from the blocking request to the caller's sink. Ensures
 /// the sequence ends with exactly one terminal chunk even if the worker
 /// fails.
+#[cfg(feature = "http")]
 async fn deliver(
     exchange: Exchange,
     auth: Arc<dyn Auth>,
@@ -497,11 +522,13 @@ async fn deliver(
 
 /// The sending side of the chunk channel. Drops everything after the first
 /// terminal chunk and after the receiver has gone away.
+#[cfg(feature = "http")]
 struct Outbox {
     tx: tokio::sync::mpsc::UnboundedSender<Chunk>,
     closed: bool,
 }
 
+#[cfg(feature = "http")]
 impl Outbox {
     fn push(&mut self, chunk: Chunk) {
         if self.closed {
@@ -517,6 +544,7 @@ impl Outbox {
 /// Adds the credential headers, sends the request, and drives the decoder
 /// until a terminal chunk. Runs on a blocking thread, so a token refresh
 /// may block here.
+#[cfg(feature = "http")]
 fn perform(exchange: Exchange, auth: Arc<dyn Auth>, mut decoder: Box<dyn Decoder>, mut out: Outbox) {
     let provider = exchange.provider;
     let credential = match auth.headers() {
@@ -563,6 +591,7 @@ fn perform(exchange: Exchange, auth: Arc<dyn Auth>, mut decoder: Box<dyn Decoder
 }
 
 /// Largest error body read for its message.
+#[cfg(feature = "http")]
 const MAX_ERROR_BODY: u64 = 64 * 1024;
 
 /// Classifies a non-2xx response. The providers send a JSON body of the
@@ -570,6 +599,7 @@ const MAX_ERROR_BODY: u64 = 64 * 1024;
 /// when present and the raw body otherwise.
 /// https://docs.anthropic.com/en/api/errors
 /// https://platform.openai.com/docs/guides/error-codes
+#[cfg(feature = "http")]
 fn status_error(provider: &str, response: &mut http::Response) -> Chunk {
     let status = response.status;
     // OpenAI sends `retry-after-ms` beside the standard `retry-after`;
@@ -591,6 +621,7 @@ fn status_error(provider: &str, response: &mut http::Response) -> Chunk {
 /// The human-readable part of an error body: the structured fields of the
 /// provider conventions, an OAuth `error`/`error_description` pair, or a
 /// whitespace-collapsed snippet of whatever arrived.
+#[cfg(feature = "http")]
 pub(crate) fn describe_error_body(text: &str) -> String {
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
         let error = value.get("error").unwrap_or(&value);

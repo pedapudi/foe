@@ -10,6 +10,7 @@ rust_library(
         "exec",
         "gemini",
         "google",
+        "http",
         "messages",
         "responses",
         "token-file",
