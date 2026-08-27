@@ -45,13 +45,17 @@ DIAGNOSIS_CALLS = 20
 IMPLEMENTATION_CALLS = 60
 SOURCE_REVIEW_CALLS = 20
 FINALIZATION_CALLS = 60
-SOURCE_ACCEPTANCE_CALLS = SOURCE_REVIEW_CALLS + FINALIZATION_CALLS
+FINAL_REVIEW_CALLS = 20
+SOURCE_ACCEPTANCE_CALLS = SOURCE_REVIEW_CALLS + FINALIZATION_CALLS + FINAL_REVIEW_CALLS
 SOURCE_REVIEW_REASONING_EFFORT = "xhigh"
 DIAGNOSIS_SECONDS = 1_800
 IMPLEMENTATION_SECONDS = 3_600
 SOURCE_REVIEW_SECONDS = 1_200
 FINALIZATION_SECONDS = 3_600
-SOURCE_ACCEPTANCE_SECONDS = SOURCE_REVIEW_SECONDS + FINALIZATION_SECONDS
+FINAL_REVIEW_SECONDS = 1_200
+SOURCE_ACCEPTANCE_SECONDS = (
+    SOURCE_REVIEW_SECONDS + FINALIZATION_SECONDS + FINAL_REVIEW_SECONDS
+)
 SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + SOURCE_ACCEPTANCE_SECONDS
 LOOP_THRESHOLD = 8
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
@@ -1737,10 +1741,27 @@ def build_config(
         },
         "done_when": {"verify": "check", "retries": 4, "returns": finalization_handoff},
     }
+    final_review = {
+        **review,
+        "name": "assess-finalized-foe-improvement",
+        "instructions": {
+            "role": "Independently assess the finalized source candidate. No source writer follows this assessment.",
+            "evidence": "Treat the diagnosis, implementation, first review, and finalization dispositions as unverified. Inspect the complete final diff, owning source, tests, and affected specifications.",
+            "architecture": review["instructions"]["architecture"],
+            "independence": review["instructions"]["independence"],
+            "build_metadata": review["instructions"]["build_metadata"],
+            "validation": "Run the candidate check first. Return one concise finding for every remaining semantic or mechanical defect. Return empty findings and unresolved risks only when the final source mechanism supports the claimed task-visible behavior without relying on the finalizer's assertions.",
+        },
+        "budget": {
+            "model_calls": FINAL_REVIEW_CALLS,
+            "seconds": FINAL_REVIEW_SECONDS,
+            "loop_threshold": LOOP_THRESHOLD,
+        },
+    }
     return {
         "version": 3,
         "name": "identity-bound-trajectory-self-improvement",
-        "instructions": {"role": "Run the declared diagnosis, implementation, read-only review, and verifier-owned finalization workflow."},
+        "instructions": {"role": "Run the declared diagnosis, implementation, read-only review, verifier-owned finalization, and final read-only assessment workflow."},
         "tools": [
             *CODING_TOOLS,
             "block",
@@ -1824,6 +1845,26 @@ def build_config(
                         "implement-runtime-improvement",
                         "review-runtime-improvement",
                     ],
+                },
+                "assess-finalized-runtime-improvement": {
+                    "model": final_review,
+                    "follows": [
+                        "task",
+                        "diagnose-runtime",
+                        "implement-runtime-improvement",
+                        "review-runtime-improvement",
+                        "finalize-runtime-improvement",
+                    ],
+                    "empty": {
+                        "summary": "The final independent source review spent its allowance before returning findings.",
+                        "findings": [
+                            "The final independent source review did not complete."
+                        ],
+                        "validation": [],
+                        "unresolved_risks": [
+                            "The finalized candidate lacks an independent semantic disposition."
+                        ],
+                    },
                     "terminal": True,
                 },
             },
@@ -1978,6 +2019,26 @@ def source_review_resolution_findings(
     for finding in resolutions.keys() - expected_set:
         findings.append(f"source finalization reported an unexpected review finding: {finding}")
     return findings
+
+
+def final_source_review_findings(review: dict[str, Any] | None) -> list[str]:
+    """Require the read-only review of the finalized source to accept it."""
+    if review is None:
+        return ["the final independent source review returned no typed value"]
+    reported = review.get("findings")
+    risks = review.get("unresolved_risks")
+    if not isinstance(reported, list) or not all(
+        isinstance(item, str) and item for item in reported
+    ):
+        return ["the final independent source review returned invalid findings"]
+    if not isinstance(risks, list) or not all(
+        isinstance(item, str) and item for item in risks
+    ):
+        return ["the final independent source review returned invalid unresolved risks"]
+    return [
+        *(f"final independent source review finding: {finding}" for finding in reported),
+        *(f"final independent source review risk: {risk}" for risk in risks),
+    ]
 
 
 def parser() -> argparse.ArgumentParser:
@@ -2431,12 +2492,17 @@ def main(argv: list[str] | None = None) -> int:
         }
         review_value = workflow_node_value(episode, "review-runtime-improvement")
         finalization_value = workflow_node_value(episode, "finalize-runtime-improvement")
-        resolution_findings = source_review_resolution_findings(
-            review_value, finalization_value
+        final_review_value = workflow_node_value(
+            episode, "assess-finalized-runtime-improvement"
         )
+        resolution_findings = [
+            *source_review_resolution_findings(review_value, finalization_value),
+            *final_source_review_findings(final_review_value),
+        ]
         source_review_resolution = {
             "review": review_value,
             "finalization": finalization_value,
+            "final_review": final_review_value,
             "findings": resolution_findings,
         }
         if acceptance["accepted"] and resolution_findings:

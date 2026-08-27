@@ -790,6 +790,14 @@ and marks it `fixed` or `unresolved`. Missing, duplicated, unexpected, and
 unresolved findings reject the source candidate after the episode. A passing
 repository check does not resolve a semantic review finding. Finalization owns
 terminal completion through `done_when.verify`, with four correction attempts.
+
+A final read-only assessment follows finalization. It receives the complete
+typed workflow history and inspects the resulting source with `xhigh`
+reasoning. It can write only to validation-output directories. Any finding,
+unresolved risk, missing typed return, or exhausted assessment rejects the
+candidate. This stage prevents the source-repair child from certifying changes
+that it made after the first independent review. It reserves 20 model requests
+and 1,200 seconds as loop backstops.
 If finalization ends after producing an artifact, the runner recovers the
 diagnosis from its child episode and applies the review-resolution check and
 external source checker to the candidate.

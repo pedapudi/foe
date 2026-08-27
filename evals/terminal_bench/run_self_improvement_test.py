@@ -19,6 +19,7 @@ from run_self_improvement import (
     check_candidate,
     digest_bytes,
     failed_base_configuration,
+    final_source_review_findings,
     find_accepted_verification,
     instruction_candidate_from_outcome,
     line_budget_ceilings,
@@ -284,6 +285,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         implementation = nodes["implement-runtime-improvement"]["model"]
         review = nodes["review-runtime-improvement"]["model"]
         finalization = nodes["finalize-runtime-improvement"]["model"]
+        final_review = nodes["assess-finalized-runtime-improvement"]["model"]
         self.assertEqual(
             nodes["implement-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime"],
@@ -313,7 +315,18 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "review-runtime-improvement",
             ],
         )
-        self.assertTrue(nodes["finalize-runtime-improvement"]["terminal"])
+        self.assertNotIn("terminal", nodes["finalize-runtime-improvement"])
+        self.assertTrue(nodes["assess-finalized-runtime-improvement"]["terminal"])
+        self.assertEqual(
+            nodes["assess-finalized-runtime-improvement"]["follows"],
+            [
+                "task",
+                "diagnose-runtime",
+                "implement-runtime-improvement",
+                "review-runtime-improvement",
+                "finalize-runtime-improvement",
+            ],
+        )
         self.assertIn("unresolved_risks", nodes["review-runtime-improvement"]["empty"])
         self.assertIn("findings", nodes["review-runtime-improvement"]["empty"])
         self.assertEqual(len(nodes["review-runtime-improvement"]["empty"]["findings"]), 1)
@@ -451,11 +464,12 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(implementation["grants"]["execute"], ["/opt/toolchain"])
         self.assertEqual(config["task"], "Raise verified completion.")
         self.assertEqual(config["budget"]["loop_threshold"], 8)
-        self.assertEqual(config["budget"]["model_calls"], 160)
+        self.assertEqual(config["budget"]["model_calls"], 180)
         self.assertEqual(config["budget"]["max_episodes"], 5)
         self.assertEqual(implementation["budget"]["model_calls"], 60)
         self.assertEqual(review["budget"]["model_calls"], 20)
         self.assertEqual(finalization["budget"]["model_calls"], 60)
+        self.assertEqual(final_review["budget"]["model_calls"], 20)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
         self.assertEqual(
             review["grants"]["write"],
@@ -465,11 +479,13 @@ class SelfImprovementConfigTest(unittest.TestCase):
             ],
         )
         self.assertEqual(finalization["grants"]["write"], implementation["grants"]["write"])
+        self.assertEqual(final_review["grants"]["write"], review["grants"]["write"])
         credential = "/home/controller/.config/foe/credentials/openai-codex.json"
         self.assertEqual(config["model"]["token_file"], credential)
         self.assertEqual(diagnosis["model"]["token_file"], credential)
         self.assertEqual(review["model"]["token_file"], credential)
         self.assertEqual(finalization["model"]["token_file"], credential)
+        self.assertEqual(final_review["model"]["token_file"], credential)
 
     def test_source_candidate_is_a_falsifiable_hypothesis_until_external_evaluation(self):
         config = build_config(
@@ -583,6 +599,32 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn(
             "source finalization reported an unexpected review finding: Unreviewed claim.",
             findings,
+        )
+
+    def test_final_source_review_must_return_no_findings_or_unresolved_risks(self):
+        self.assertEqual(
+            final_source_review_findings(None),
+            ["the final independent source review returned no typed value"],
+        )
+        self.assertEqual(
+            final_source_review_findings(
+                {"findings": [], "unresolved_risks": []}
+            ),
+            [],
+        )
+        self.assertEqual(
+            final_source_review_findings(
+                {
+                    "findings": ["The repaired mechanism is still advisory."],
+                    "unresolved_risks": [
+                        "The regression does not exercise settlement."
+                    ],
+                }
+            ),
+            [
+                "final independent source review finding: The repaired mechanism is still advisory.",
+                "final independent source review risk: The regression does not exercise settlement.",
+            ],
         )
 
     def test_failed_base_configuration_excludes_the_successful_audit_setting(self):

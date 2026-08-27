@@ -950,6 +950,7 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         self.assertEqual(
             sorted(nodes),
             [
+                "assess-finalized-runtime-improvement",
                 "collect-trajectory-diagnostics",
                 "diagnose-runtime",
                 "finalize-runtime-improvement",
