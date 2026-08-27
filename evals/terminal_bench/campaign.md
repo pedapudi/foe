@@ -3858,3 +3858,35 @@ Python compilation pass with this allowance. Campaign commit `49f8df1`
 contains the allowance, regression expectation, and operator documentation.
 The next autonomous attempt uses the same evidence, parent source identity,
 models, and standard service tier. Only the finalization backstop changes.
+
+The 60-request finalization attempt is also rejected. Its implementation
+introduced a model-declared derivation graph. Independent review found that
+the runtime checked graph shape without recomputing claims, allowed graph
+branches unrelated to a conclusion, lost freshness after later verification
+or settlement changes, and activated the graph only through one return schema.
+The finalization child attempted a broader runtime evaluator and consumed all
+60 reserved requests without returning typed finding dispositions.
+
+The full workflow used 127 model calls over 1,899.581 seconds. It consumed
+9,770,321 input tokens, 8,195,584 cached-input tokens, and 81,609 output tokens
+at an estimated cost of $11.209362. The external repository checker also
+reported 5,505 kernel lines against the historical candidate allowance of
+5,350. No source candidate was adopted, and no Terminal-Bench activation was
+run.
+
+This result rejects another allowance increase. The graph proposal requires a
+general language for machine-evaluable semantic claims, which exceeds the
+observed failure and adds substantial kernel surface. More correction capacity
+would preserve the same mis-scoped hypothesis. A smaller workflow-level
+intervention should test whether a second fresh audit catches variable false
+acceptance before any runtime semantic language is considered.
+
+The attempt exposed one further self-improvement defect. Independent review
+examined the implementation diff before finalization, while finalization made
+substantial unreviewed changes and then judged its own finding dispositions.
+The workflow now ends with a separate read-only assessment of the finalized
+diff. That assessment uses `xhigh` reasoning, cannot write source, runs the
+repository checker, and rejects every finding, unresolved risk, missing typed
+return, or exhaustion. Campaign commit `660d633` contains the workflow stage,
+acceptance gate, tests, and operator documentation. This repair affects future
+self-improvement attempts and does not change the evaluated 11/12 release.
