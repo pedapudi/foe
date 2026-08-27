@@ -3833,3 +3833,28 @@ against the same identity-bound evidence and parent. Campaign commit
 documentation. The repair changes no evaluated Foe runtime, so the 11/12
 development result remains valid. The next provider-backed action is one
 rerun of the autonomous workflow with this review-resolution contract.
+
+The review-resolution rerun exercised the stronger gate and rejected its
+candidate before external task evaluation. Independent review identified four
+semantic defects in the implementation's model-declared artifact identity and
+derivation graph. The finalization child replaced that design with
+runtime-owned audit state and added source, tests, and specification changes.
+It then exhausted its 40-request allowance before formatting the source and
+returning the required typed finding dispositions. The external repository
+checker found an unformatted Rust diff. The retained result records no adopted
+source candidate.
+
+The rejected run used 82 model calls over 1,331.510 seconds. It consumed
+5,383,743 input tokens, 4,129,792 cached-input tokens, and 60,011 output tokens
+at an estimated cost of $7.867941. Its substantive correction reached the
+candidate checker immediately before exhaustion. A fixed 40-request
+finalization ceiling therefore acted as a quality limit rather than a loop
+backstop.
+
+Source finalization now reserves 60 model requests and 3,600 seconds. The root
+workflow reserves the corresponding 160 requests. Token use remains measured
+without constraining admission. The Terminal-Bench evaluation unit suite and
+Python compilation pass with this allowance. Campaign commit `49f8df1`
+contains the allowance, regression expectation, and operator documentation.
+The next autonomous attempt uses the same evidence, parent source identity,
+models, and standard service tier. Only the finalization backstop changes.
