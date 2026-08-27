@@ -210,10 +210,11 @@ comparison.
 The first assessed concurrency qualification uses four already-open
 development tasks selected from recorded resource metadata before execution.
 It runs the same frozen binary and program once serially and once with two
-workers. The parallel cohort must produce the same task scores and integrity
-classifications. Its makespan must be no more than two thirds of the serial
-makespan. Failure returns assessed execution to one worker while the
-concurrency defect is corrected and qualified again.
+workers. The parallel command uses `--require-parallel`, so failed admission
+stops without making a model request. The parallel cohort must produce the
+same task scores and integrity classifications. Its makespan must be no more
+than two thirds of the serial makespan. Failure returns assessed execution to
+one worker while the concurrency defect is corrected and qualified again.
 
 ## Task sets
 
