@@ -797,7 +797,9 @@ reasoning. It can write only to validation-output directories. Any finding,
 unresolved risk, missing typed return, or exhausted assessment rejects the
 candidate. This stage prevents the source-repair child from certifying changes
 that it made after the first independent review. It reserves 20 model requests
-and 1,200 seconds as loop backstops.
+and 1,200 seconds as loop backstops. The root episode allowance is derived from
+the declared model-node count, including the root, so adding a review stage
+cannot prevent that stage from starting.
 If finalization ends after producing an artifact, the runner recovers the
 diagnosis from its child episode and applies the review-resolution check and
 external source checker to the candidate.

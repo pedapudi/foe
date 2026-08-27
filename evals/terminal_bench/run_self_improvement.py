@@ -1758,7 +1758,7 @@ def build_config(
             "loop_threshold": LOOP_THRESHOLD,
         },
     }
-    return {
+    program = {
         "version": 3,
         "name": "identity-bound-trajectory-self-improvement",
         "instructions": {"role": "Run the declared diagnosis, implementation, read-only review, verifier-owned finalization, and final read-only assessment workflow."},
@@ -1782,7 +1782,7 @@ def build_config(
             "model_calls": DIAGNOSIS_CALLS + IMPLEMENTATION_CALLS + SOURCE_ACCEPTANCE_CALLS,
             "seconds": SECONDS,
             "max_depth": 1,
-            "max_episodes": 5,
+            "max_episodes": 0,
             "max_concurrent": 1,
             "loop_threshold": LOOP_THRESHOLD,
         },
@@ -1874,6 +1874,10 @@ def build_config(
         "sandbox": {"mode": "best-effort"},
         "task": objective,
     }
+    program["budget"]["max_episodes"] = 1 + sum(
+        "model" in node for node in program["workflow"]["nodes"].values()
+    )
+    return program
 
 
 def run_candidate_check(check: Path, candidate: Path, mode: str) -> dict[str, Any]:

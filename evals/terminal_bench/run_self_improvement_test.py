@@ -465,7 +465,15 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(config["task"], "Raise verified completion.")
         self.assertEqual(config["budget"]["loop_threshold"], 8)
         self.assertEqual(config["budget"]["model_calls"], 180)
-        self.assertEqual(config["budget"]["max_episodes"], 5)
+        self.assertEqual(config["budget"]["max_episodes"], 6)
+        self.assertEqual(
+            config["budget"]["max_episodes"],
+            1
+            + sum(
+                "model" in node
+                for node in config["workflow"]["nodes"].values()
+            ),
+        )
         self.assertEqual(implementation["budget"]["model_calls"], 60)
         self.assertEqual(review["budget"]["model_calls"], 20)
         self.assertEqual(finalization["budget"]["model_calls"], 60)
