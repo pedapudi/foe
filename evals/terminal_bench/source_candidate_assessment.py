@@ -33,6 +33,9 @@ MAX_DIAGNOSTICS_BYTES = 48 * 1024
 MAX_ASSESSMENT_FAILURES = 12
 MAX_ASSESSMENT_SUCCESSES_PER_ROLE = 12
 MAX_FINAL_VALIDATION_TIMELINES = 24
+MAX_TERMINAL_AUDIT_REPORT_BYTES = 12 * 1024
+MAX_TERMINAL_AUDIT_ITEMS = 16
+MAX_TERMINAL_AUDIT_TEXT = 2 * 1024
 MAX_SOURCE_DIFF_BYTES = 24 * 1024
 SOURCE_MANIFEST = "source-candidate-manifest.json"
 ASSESSMENT_DIAGNOSTICS_FILE = "candidate-assessment-diagnostics.json"
@@ -1142,6 +1145,124 @@ def bounded_outcome(value: Any) -> dict[str, str]:
     return validate_bounded_outcome(projected, "assessment trial")
 
 
+def stable_terminal_audit_text(value: Any, label: str) -> str:
+    """Return complete audit prose without host-specific absolute paths."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} is not non-empty audit text")
+    collapsed = " ".join(value.split())
+    collapsed = VOLATILE_PATH.sub("<absolute-path>", collapsed)
+    collapsed = re.sub(
+        r"(?<![A-Za-z0-9._-])/(?:[A-Za-z0-9._-]+)(?:/[A-Za-z0-9._-]+)*",
+        "<absolute-path>",
+        collapsed,
+    )
+    if len(collapsed.encode("utf-8")) > MAX_TERMINAL_AUDIT_TEXT:
+        raise ValueError(f"{label} exceeds the terminal audit text bound")
+    return collapsed
+
+
+def bounded_terminal_audit_report(trial: dict[str, Any]) -> dict[str, Any]:
+    """Project the terminal audit's typed report without evaluator-owned data."""
+    outcome = trial["diagnostics"].get("outcome")
+    value = outcome.get("value") if isinstance(outcome, dict) else None
+    expected = {
+        "acceptance_evidence",
+        "changed_paths",
+        "learned",
+        "summary",
+        "unresolved_risks",
+        "validation",
+    }
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValueError("assessment trial has no typed terminal audit report")
+
+    acceptance = value["acceptance_evidence"]
+    if (
+        not isinstance(acceptance, list)
+        or not acceptance
+        or len(acceptance) > MAX_TERMINAL_AUDIT_ITEMS
+    ):
+        raise ValueError("assessment trial has unbounded terminal acceptance evidence")
+    projected_acceptance = []
+    for index, item_value in enumerate(acceptance):
+        item = require_exact_fields(
+            item_value,
+            {"requirement", "seq", "status"},
+            f"terminal acceptance evidence {index}",
+        )
+        if item["status"] not in ("passed", "unmet"):
+            raise ValueError("terminal acceptance evidence has an invalid status")
+        projected_acceptance.append(
+            {
+                "requirement": stable_terminal_audit_text(
+                    item["requirement"], f"terminal acceptance evidence {index} requirement"
+                ),
+                "seq": require_nonnegative_integer(
+                    item["seq"], f"terminal acceptance evidence {index} sequence"
+                ),
+                "status": item["status"],
+            }
+        )
+
+    learned = value["learned"]
+    if (
+        not isinstance(learned, list)
+        or not learned
+        or len(learned) > MAX_TERMINAL_AUDIT_ITEMS
+    ):
+        raise ValueError("assessment trial has unbounded learned audit evidence")
+    projected_learned = []
+    for index, item_value in enumerate(learned):
+        item = require_exact_fields(
+            item_value, {"claim", "seq"}, f"terminal learned evidence {index}"
+        )
+        projected_learned.append(
+            {
+                "claim": stable_terminal_audit_text(
+                    item["claim"], f"terminal learned evidence {index} claim"
+                ),
+                "seq": require_nonnegative_integer(
+                    item["seq"], f"terminal learned evidence {index} sequence"
+                ),
+            }
+        )
+
+    changed_paths = value["changed_paths"]
+    if (
+        not isinstance(changed_paths, list)
+        or len(changed_paths) > MAX_TERMINAL_AUDIT_ITEMS
+    ):
+        raise ValueError("assessment trial has unbounded changed paths")
+    projected_paths = [
+        require_relative_path(path, f"terminal changed path {index}")
+        for index, path in enumerate(changed_paths)
+    ]
+    if len(projected_paths) != len(set(projected_paths)):
+        raise ValueError("terminal changed paths are not unique")
+
+    def text_list(field: str) -> list[str]:
+        items = value[field]
+        if not isinstance(items, list) or len(items) > MAX_TERMINAL_AUDIT_ITEMS:
+            raise ValueError(f"assessment trial has unbounded terminal {field}")
+        return [
+            stable_terminal_audit_text(item, f"terminal {field} {index}")
+            for index, item in enumerate(items)
+        ]
+
+    projected = {
+        "report_sha256": digest(value),
+        "acceptance_evidence": projected_acceptance,
+        "changed_paths": projected_paths,
+        "learned": projected_learned,
+        "summary": stable_terminal_audit_text(value["summary"], "terminal audit summary"),
+        "unresolved_risks": text_list("unresolved_risks"),
+        "validation": text_list("validation"),
+    }
+    if len(canonical_json(projected)) > MAX_TERMINAL_AUDIT_REPORT_BYTES:
+        raise ValueError("assessment trial terminal audit report exceeds its byte bound")
+    return validate_terminal_audit_report(projected, "assessment trial terminal audit report")
+
+
 def bounded_timelines(trial: dict[str, Any]) -> list[dict[str, Any]]:
     diagnostic = trial["diagnostics"]
     timelines = diagnostic.get("verification_timeline")
@@ -1265,6 +1386,7 @@ def project_candidate_assessment_diagnostics(value: Any) -> dict[str, Any]:
                         ),
                         "failed_verifiers": [verifier],
                         "final_validation_timelines": bounded_timelines(trial),
+                        "terminal_audit_report": bounded_terminal_audit_report(trial),
                     }
                 )
     if not failures or len(failures) > MAX_ASSESSMENT_FAILURES:
@@ -1497,6 +1619,91 @@ def validate_final_timelines(
     return value
 
 
+def validate_terminal_audit_report(value: Any, label: str) -> dict[str, Any]:
+    report = require_exact_fields(
+        value,
+        {
+            "report_sha256",
+            "acceptance_evidence",
+            "changed_paths",
+            "learned",
+            "summary",
+            "unresolved_risks",
+            "validation",
+        },
+        label,
+    )
+    require_digest(report["report_sha256"], f"{label} source report")
+    acceptance = report["acceptance_evidence"]
+    if (
+        not isinstance(acceptance, list)
+        or not acceptance
+        or len(acceptance) > MAX_TERMINAL_AUDIT_ITEMS
+    ):
+        raise ValueError(f"{label} has unbounded acceptance evidence")
+    for index, item_value in enumerate(acceptance):
+        item = require_exact_fields(
+            item_value,
+            {"requirement", "seq", "status"},
+            f"{label} acceptance evidence {index}",
+        )
+        requirement = stable_terminal_audit_text(
+            item["requirement"], f"{label} acceptance evidence {index} requirement"
+        )
+        if requirement != item["requirement"]:
+            raise ValueError(f"{label} acceptance evidence is not normalized")
+        require_nonnegative_integer(
+            item["seq"], f"{label} acceptance evidence {index} sequence"
+        )
+        if item["status"] not in ("passed", "unmet"):
+            raise ValueError(f"{label} acceptance evidence has an invalid status")
+
+    learned = report["learned"]
+    if (
+        not isinstance(learned, list)
+        or not learned
+        or len(learned) > MAX_TERMINAL_AUDIT_ITEMS
+    ):
+        raise ValueError(f"{label} has unbounded learned evidence")
+    for index, item_value in enumerate(learned):
+        item = require_exact_fields(
+            item_value, {"claim", "seq"}, f"{label} learned evidence {index}"
+        )
+        claim = stable_terminal_audit_text(
+            item["claim"], f"{label} learned evidence {index} claim"
+        )
+        if claim != item["claim"]:
+            raise ValueError(f"{label} learned evidence is not normalized")
+        require_nonnegative_integer(
+            item["seq"], f"{label} learned evidence {index} sequence"
+        )
+
+    paths = report["changed_paths"]
+    if not isinstance(paths, list) or len(paths) > MAX_TERMINAL_AUDIT_ITEMS:
+        raise ValueError(f"{label} has unbounded changed paths")
+    checked_paths = [
+        require_relative_path(path, f"{label} changed path {index}")
+        for index, path in enumerate(paths)
+    ]
+    if len(checked_paths) != len(set(checked_paths)):
+        raise ValueError(f"{label} changed paths are not unique")
+
+    summary = stable_terminal_audit_text(report["summary"], f"{label} summary")
+    if summary != report["summary"]:
+        raise ValueError(f"{label} summary is not normalized")
+    for field in ("unresolved_risks", "validation"):
+        items = report[field]
+        if not isinstance(items, list) or len(items) > MAX_TERMINAL_AUDIT_ITEMS:
+            raise ValueError(f"{label} has unbounded {field}")
+        for index, item in enumerate(items):
+            normalized = stable_terminal_audit_text(item, f"{label} {field} {index}")
+            if normalized != item:
+                raise ValueError(f"{label} {field} is not normalized")
+    if len(canonical_json(report)) > MAX_TERMINAL_AUDIT_REPORT_BYTES:
+        raise ValueError(f"{label} exceeds its byte bound")
+    return report
+
+
 def validate_reference_core(value: dict[str, Any], label: str) -> None:
     require_nonnegative_integer(value["comparison_ordinal"], f"{label} comparison ordinal")
     if value["comparison_ordinal"] == 0:
@@ -1520,10 +1727,22 @@ def validate_failure_reference(value: Any, index: int) -> dict[str, Any]:
             "outcome",
             "failed_verifiers",
             "final_validation_timelines",
+            "terminal_audit_report",
         },
         label,
     )
     validate_reference_core(failure, label)
+    report = validate_terminal_audit_report(failure["terminal_audit_report"], label)
+    retained_sequences = {
+        result["seq"]
+        for timeline in failure["final_validation_timelines"]
+        for result in timeline["results"]
+    }
+    cited_sequences = {
+        item["seq"] for item in (*report["acceptance_evidence"], *report["learned"])
+    }
+    if not cited_sequences.issubset(retained_sequences):
+        raise ValueError(f"{label} terminal report cites an omitted validation result")
     verifiers = failure["failed_verifiers"]
     if not isinstance(verifiers, list) or not verifiers:
         raise ValueError(f"{label} omits a failed verifier")
@@ -1871,6 +2090,18 @@ def validate_revised_diagnosis(
 def assessment_failure_literals(diagnostics: dict[str, Any]) -> set[str]:
     """Return assessment details that must remain inside the diagnosis episode."""
     literals = set()
+
+    def retain_prose(value: Any) -> None:
+        if isinstance(value, dict):
+            for field, item in value.items():
+                if field not in ("report_sha256", "seq", "status", "changed_paths"):
+                    retain_prose(item)
+        elif isinstance(value, list):
+            for item in value:
+                retain_prose(item)
+        elif isinstance(value, str) and len(value.strip()) >= 12:
+            literals.add(" ".join(value.split()).casefold())
+
     for failure in diagnostics["assessment_contrast"]["failed_attempts"]:
         for verifier in failure["failed_verifiers"]:
             for locus in verifier["failure_loci"]:
@@ -1883,6 +2114,7 @@ def assessment_failure_literals(diagnostics: dict[str, Any]) -> set[str]:
                     value = locus.get(field)
                     if isinstance(value, str) and len(value.strip()) >= 12:
                         literals.add(" ".join(value.split()).casefold())
+        retain_prose(failure["terminal_audit_report"])
     return literals
 
 

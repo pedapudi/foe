@@ -1411,7 +1411,8 @@ def build_config(
     assessment_instruction = (
         "The supplied candidate_assessment_diagnostics describe an externally rejected source "
         "candidate and the prior typed diagnosis that produced it. Contrast the verified patch "
-        "with every bounded failed verifier locus and final validation timeline. Cite the assessment "
+        "with every bounded failed verifier locus, final validation timeline, and terminal audit report. "
+        "Compare each audit claim and named validation method with the external failure operands. Cite the assessment "
         "contrast, rejected candidate identity, prior diagnosis digest, every failed attempt, every "
         "verifier-report digest, every locus digest, and all qualified success episode references in "
         "assessment_revision. Choose retain when the prior mechanism remains supported, narrow when "

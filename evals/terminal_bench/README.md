@@ -611,11 +611,15 @@ conformant campaigns and source adoptions. It rejects symbolic links, escaped
 paths, trial errors, Boolean or nonfinite rewards, and conflicting identities.
 
 The diagnostics file is a reproducible view of the private assessment. It
-contains complete bounded failure loci and final validation timelines. It
-also contains qualified parent and candidate success references. The view
-excludes task text, task names, task checksums, rewards, campaign labels,
-absolute artifact paths, and unstructured grader prose. Its canonical JSON
-must fit within 48 KiB.
+contains complete bounded failure loci, final validation timelines, and the
+terminal audit's typed completion report for each rejected attempt. The report
+preserves acceptance claims, learned observations, validation methods, and
+unresolved risks. Host-specific absolute paths are replaced with a stable
+placeholder. The view also contains qualified parent and candidate success
+references. It excludes task text, task names, task checksums, rewards,
+campaign labels, absolute artifact paths, and unstructured grader prose. Its
+canonical JSON must fit within 48 KiB. Each terminal audit report must fit
+within 12 KiB.
 
 Pass the private assessment to a later source-generation run:
 
@@ -639,9 +643,10 @@ read the assessment artifacts.
 
 The revised diagnosis cites the assessment contrast, rejected candidate,
 prior diagnosis, every failed attempt, every failed verifier, every failure
-locus, and all qualified successes. It chooses `retain`, `narrow`, `replace`,
-or `insufficient-evidence`. The generated diagnosis verifier checks these
-citations before source implementation starts.
+locus, and all qualified successes. It compares the terminal audit's claims
+and named validation methods with the external failure operands. It chooses
+`retain`, `narrow`, `replace`, or `insufficient-evidence`. The generated
+diagnosis verifier checks these citations before source implementation starts.
 
 Assessment diagnostics and a canonical generation-context record enter a
 later accepted source bundle before source capture. These files bind the

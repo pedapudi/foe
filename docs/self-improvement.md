@@ -167,7 +167,11 @@ event's episode, program, and runtime identities match the trial diagnostics.
 The evaluator derives one bounded candidate-assessment diagnostics projection
 from the private assessment. The projection contains the prior typed
 diagnosis, the verified candidate patch, complete candidate failure loci, final
-validation windows, and qualified parent and candidate success references.
+validation windows, the terminal audit's typed completion report for every
+rejected attempt, and qualified parent and candidate success references. Each
+report preserves acceptance claims, learned observations, validation methods,
+and unresolved risks. Host-specific absolute paths become a stable
+placeholder.
 The projected patch carries ordered source entries, a unified diff with five
 context lines, and the digest of the private full-content patch. Complete file
 contents remain in the private assessment.
@@ -177,7 +181,8 @@ normalized failure locus may carry its bounded location, source assertion,
 concrete rewritten assertion, and concise message. The rewritten assertion
 does not participate in the stable locus identity.
 
-The projection is limited to 48 KiB. Construction rejects symbolic links,
+The projection is limited to 48 KiB, and each terminal audit report is limited
+to 12 KiB. Construction rejects symbolic links,
 escaped paths, incomplete campaigns, errored or nonconformant trials, Boolean
 or nonfinite rewards, conflicting identities, and an incomplete source
 adoption set. A candidate failure is eligible only when every failed test has

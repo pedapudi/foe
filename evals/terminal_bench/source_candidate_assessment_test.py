@@ -12,6 +12,7 @@ from source_candidate_assessment import (
     ASSESSMENT_DIAGNOSTICS_FILE,
     GENERATION_CONTEXT_FILE,
     MAX_DIAGNOSTICS_BYTES,
+    MAX_TERMINAL_AUDIT_TEXT,
     bind_generation_evidence,
     bytes_digest,
     canonical_json,
@@ -99,6 +100,30 @@ def timeline(episode_id: str, outcome: str = "completed"):
     ]
 
 
+def terminal_audit_value():
+    return {
+        "acceptance_evidence": [
+            {
+                "requirement": "The final artifact satisfies its measured constraint.",
+                "seq": 7,
+                "status": "passed",
+            }
+        ],
+        "changed_paths": ["artifact.txt"],
+        "learned": [
+            {
+                "claim": "The terminal audit measured 4.5 against a limit of 5.",
+                "seq": 7,
+            }
+        ],
+        "summary": "The terminal audit accepted the final artifact.",
+        "unresolved_risks": [],
+        "validation": [
+            "A project-owned check at /workspace/bin/check measured the final artifact."
+        ],
+    }
+
+
 def diagnostics(episode_id: str, runtime: str, success: bool):
     failures = []
     total = 0
@@ -130,7 +155,7 @@ def diagnostics(episode_id: str, runtime: str, success: bool):
             "task_checksum": "private-task-checksum",
         },
         "task": "private-task-name",
-        "outcome": {"kind": "completed"},
+        "outcome": {"kind": "completed", "value": terminal_audit_value()},
         "verifier_reward": 1.0 if success else 0.0,
         "trial_error": None,
         "artifact_outcome_mismatch": False,
@@ -177,7 +202,10 @@ def trial_result(task: str, checksum: str, success: bool):
         "agent_result": {
             "metadata": {
                 "foe_trace_conformant": True,
-                "foe_outcome": {"kind": "completed"},
+                "foe_outcome": {
+                    "kind": "completed",
+                    "value": terminal_audit_value(),
+                },
             }
         },
     }
@@ -491,6 +519,13 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         )
         contrast = projection["assessment_contrast"]
         self.assertEqual(len(contrast["failed_attempts"]), 1)
+        terminal_report = contrast["failed_attempts"][0]["terminal_audit_report"]
+        self.assertEqual(
+            terminal_report["learned"][0]["claim"],
+            "The terminal audit measured 4.5 against a limit of 5.",
+        )
+        self.assertIn("<absolute-path>", terminal_report["validation"][0])
+        self.assertNotIn("/workspace", terminal_report["validation"][0])
         self.assertRegex(
             contrast["failed_attempts"][0]["failed_verifiers"][0]["failure_loci"][0][
                 "locus_sha256"
@@ -671,6 +706,20 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         reidentify_projection(incomplete)
         with self.assertRaisesRegex(ValueError, "incomplete bounded validation window"):
             validate_candidate_assessment_diagnostics(incomplete)
+        oversized_report = copy.deepcopy(projection)
+        oversized_report["assessment_contrast"]["failed_attempts"][0][
+            "terminal_audit_report"
+        ]["summary"] = "x" * (MAX_TERMINAL_AUDIT_TEXT + 1)
+        reidentify_projection(oversized_report)
+        with self.assertRaisesRegex(ValueError, "terminal audit text bound"):
+            validate_candidate_assessment_diagnostics(oversized_report)
+        omitted_citation = copy.deepcopy(projection)
+        omitted_citation["assessment_contrast"]["failed_attempts"][0][
+            "terminal_audit_report"
+        ]["learned"][0]["seq"] = 999
+        reidentify_projection(omitted_citation)
+        with self.assertRaisesRegex(ValueError, "omitted validation result"):
+            validate_candidate_assessment_diagnostics(omitted_citation)
 
         bounded = copy.deepcopy(assessment)
         timeline = bounded["evaluations"]["candidate"]["trials"][1][
