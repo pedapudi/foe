@@ -3600,3 +3600,87 @@ activation attempts on `sanitize-git-repo` and
 `model-extraction-relu-logits` before any confirmation task. Previously
 qualified task results remain attached to the frozen binary that produced
 them and are not rerun during the focused activation gate.
+
+## Scoped repair and numerical transfer
+
+The two development failures produced one general terminal-audit candidate.
+The audit must reproduce a defect before changing the workspace and limit its
+repair to that evidence. It must also challenge assumptions that govern
+transfer beyond the supplied instance. The change affects only the built-in
+audit instructions, their specification, and regression assertions.
+
+The first candidate used source commit
+`d80c5bcf8340fb34d314bc917fbae035c2296b75`, source tree
+`git-tree-sha1:0a4a210a255f34f20ec5be86c773cf7354ec6212`, and portable binary
+`sha256:3e4b6bea34c6974852d097bd00fb8cd737bf4f830ddfa729871543780792d4ec`.
+It failed both activation tasks.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sanitize-git-repo` | 0.0 | 22 | 850,153 | 433,664 | 23,954 | $2.318502 | 761.711 |
+| `model-extraction-relu-logits` | 0.0 | 22 | 135,286 | 53,248 | 10,998 | $0.569411 | 293.728 |
+
+The sanitize audit still interpreted the repository as all 108 reachable Git
+commits. It removed the baseline commit required by the unchanged-file test.
+The model-extraction audit did exercise controlled models with 1, 3, 7, and
+25 hidden units. The hidden verifier missed one row, compared with three on
+the predecessor. Width variation did not cover the numerical conditions that
+control breakpoint discovery.
+
+The retained manifests have SHA-256 digests
+`bae84d552d8133957fd6360c588b46d2ff039b378a82308ee9a320b1981d011d`
+and
+`673a94a4fee00f7059db2d653b7b5ca524e75505d95d574a6833c64f6176265c`.
+The result is retained as negative and partial-credit evidence. It is not a
+promotable candidate.
+
+The revised audit gives file, directory, and repository tasks a default
+mutation scope of current filesystem content. Version-control history changes
+require task language that explicitly names history, commits, refs, object
+databases, reflogs, provenance, or prior versions. Transfer checks derive
+algorithm-sensitive bounds, thresholds, sample counts, ranges, scales,
+distributions, and near-degenerate cases. Varying only shape or count does not
+establish numerical generalization.
+
+The revised candidate used source commit
+`18dce062f19045e2713d1c7c8c7657653cf005d3`, source tree
+`git-tree-sha1:5f9fa88548a1964539b7d4eb22eecc57bb44faa3`, and portable binary
+`sha256:f17fa16aaf7670348e7caa82d4f5f1dee32ed6825ac78949f0ec4af2d87263af`.
+Both activation tasks passed their unchanged task-owned verifiers.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sanitize-git-repo` | 1.0 | 18 | 571,848 | 225,280 | 18,887 | $1.854124 | 618.281 |
+| `model-extraction-relu-logits` | 1.0 | 17 | 92,471 | 22,528 | 10,717 | $0.503123 | 278.700 |
+
+The passing sanitize audit preserved Git history. It marked history-wide
+cleanup as unmet, reported the remaining exposure, and verified only the
+three contaminated working-tree files. This trajectory directly activates
+the filesystem-scope rule.
+
+The passing model-extraction artifact recovered every hidden row used by the
+task-owned verifier. Its terminal audit did not report a numerical stress
+matrix. The score is valid quality evidence, while attribution to the transfer
+instruction remains unproven. A repeated activation or a transfer case must
+establish reliability before making that causal claim.
+
+The passing manifests have SHA-256 digests
+`90de764fe30d6e49b3e303398b5e73af864e11aaaac3ead5d179ebb5ba952b68`
+and
+`3b3bacd833623fa99120d352408dfb2928a3ce74e183ed4933434eb5cc87db8c`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs`.
+
+Pull request 121 carries only the audit change against `main`. Its head is
+`b8c0aab6c975211ac6b24d14f872d3dbc49344a5`, with source tree
+`git-tree-sha1:84184b1f319fc1d8ab07eea58e889098fe430e53`. The clean branch passes
+the workspace suite, Clippy, deterministic examples, and line-count check.
+External scores came from the aggregate candidate above because that exact
+binary also contains the previously reviewed release changes.
+
+This is a directly implemented improvement. It does not count toward the two
+required autonomous self-improvements. The candidate remains available for
+review because it converted two externally verified development failures.
+Before confirmation, it must preserve success on development tasks where the
+terminal audit previously performed substantial repairs. The regression gate
+starts with `gpt2-codegolf`, `path-tracing-reverse`, and `regex-chess`.
