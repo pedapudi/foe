@@ -3784,3 +3784,52 @@ identifies a valid audit defect. It does not supply the two matching failures
 required for an identity-bound repeated-failure contrast. The campaign will
 not treat that single failure as sufficient evidence for an autonomous source
 change. The 11/12 development disposition remains unchanged.
+
+## Autonomous candidate review and self-improvement repair
+
+The current-version DNA corpus contains no validated repeated-failure
+contrast, so the self-improvement controller rejected it before provider
+spend. The campaign preserved that evidence gate. A second no-spend plan used
+the retained repeated `dna-insert` contrast and evaluator-owned assessment
+against their exact parent source tree and binary. The plan selected GPT-5.6
+Sol, low diagnosis and implementation reasoning, xhigh source review, the
+standard service tier, and measurement-only token accounting.
+
+The autonomous workflow produced a source candidate in 28 model calls and
+256.785 seconds. It used 495,525 input tokens, 258,560 cached-input tokens,
+8,707 output tokens, and an estimated $1.225424. The repository checker
+accepted changes to CLI source, regression assertions, and two specifications.
+The source candidate identity was
+`sha256:fd75200d420541c2b2253c8939e85bc61960a5960343b2672f9b9d766428906e`,
+and its source-bundle identity was
+`sha256:3e747e3fcb0293e37621b84a98c1b747ae3b405b9664aea0e34e476c63cdaa9a`.
+The retained result has SHA-256 digest
+`ee551abc866adfc8f0f9dad81e68e069dc37787d5d1eb4eac72779838276617a`.
+
+The candidate is rejected before external task evaluation. It added audit
+instructions that require one artifact-bound derivation. The independent
+xhigh source review found that the return schema and settlement gate still
+could accept inconsistent semantic claims. The finalization child returned no
+typed value and left that P1 finding unresolved. The repository checker
+covered source shape, tests, formatting, Clippy, and line budgets, so it could
+not adjudicate the semantic finding. The controller nevertheless marked the
+candidate accepted. External evaluation would have spent protected task
+attempts on a mechanism that its own independent review had already rejected.
+
+This failed autonomous attempt triggered a direct repair to the
+self-improvement mechanism. Finalization now returns one typed disposition for
+each independent-review finding. It must copy each finding exactly and mark it
+`fixed` or `unresolved`. Missing, duplicated, unexpected, and unresolved
+findings reject the candidate after the episode. A review that exhausts adds a
+finding that requires finalization to perform the missing semantic review.
+The repository checker remains the authority for mechanical conformance; it no
+longer implies that semantic review findings were resolved.
+
+The Terminal-Bench evaluation unit suite and Python compilation pass. A
+retrospective check rejects the retained candidate because its finalization
+returned no typed value. The revised workflow passes a no-spend `foe plan`
+against the same identity-bound evidence and parent. Campaign commit
+`f0bc01b` contains the controller, regression tests, and operator
+documentation. The repair changes no evaluated Foe runtime, so the 11/12
+development result remains valid. The next provider-backed action is one
+rerun of the autonomous workflow with this review-resolution contract.
