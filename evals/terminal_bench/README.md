@@ -213,6 +213,20 @@ bazel run //evals/terminal_bench:foe-development -- \
   --confirm-spend
 ```
 
+An ordinary two-worker run falls back to serial execution when a pair cannot
+start safely. A concurrency qualification must stop before provider spend
+instead:
+
+```sh
+bazel run //evals/terminal_bench:foe-development -- \
+  --workers 2 \
+  --require-parallel \
+  --confirm-spend
+```
+
+`--require-parallel` also refuses a task selection that contains an unpaired
+task or a task whose declared memory reservation requires serial execution.
+
 The runner starts a pair when all of these conditions hold:
 
 - The case metadata reserves less than 8 GiB for each task.

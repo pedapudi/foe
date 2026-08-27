@@ -265,6 +265,36 @@ class CasesTest(unittest.TestCase):
         )
         self.assertTrue(all(len(group) == 1 for group in execution_groups(selected, 1)))
 
+    def test_required_parallel_plan_refuses_every_serial_fallback(self):
+        _, _, tasks, _ = read_cases(Path(__file__).with_name("cases.json"))
+        selected = [tasks["fix-git"], tasks["cancel-async-tasks"]]
+        terminal_bench_run.validate_parallel_plan(selected, 2, True)
+        terminal_bench_run.validate_parallel_plan(selected, 1, False)
+        with self.assertRaisesRegex(ValueError, "requires --workers 2"):
+            terminal_bench_run.validate_parallel_plan(selected, 1, True)
+        with self.assertRaisesRegex(ValueError, "serial tasks: gpt2-codegolf"):
+            terminal_bench_run.validate_parallel_plan(
+                [tasks["gpt2-codegolf"]], 2, True
+            )
+
+    def test_required_parallel_stops_instead_of_running_a_serial_fallback(self):
+        _, _, tasks, _ = read_cases(Path(__file__).with_name("cases.json"))
+        group = (tasks["fix-git"], tasks["cancel-async-tasks"])
+        self.assertEqual(
+            terminal_bench_run.required_parallel_stop(
+                True, group, False, "available memory is below 14 GiB"
+            ),
+            "required two-worker cohort cannot start: available memory is below 14 GiB",
+        )
+        self.assertIsNone(
+            terminal_bench_run.required_parallel_stop(
+                False, group, False, "available memory is below 14 GiB"
+            )
+        )
+        self.assertIsNone(
+            terminal_bench_run.required_parallel_stop(True, group, True, None)
+        )
+
     def test_host_admission_falls_back_on_pressure_and_stops_on_low_capacity(self):
         _, _, tasks, _ = read_cases(Path(__file__).with_name("cases.json"))
         pair = (tasks["fix-git"], tasks["cancel-async-tasks"])

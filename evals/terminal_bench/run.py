@@ -391,6 +391,38 @@ def execution_groups(tasks: list[Task], workers: int) -> list[tuple[Task, ...]]:
     return groups
 
 
+def validate_parallel_plan(
+    tasks: list[Task], workers: int, require_parallel: bool
+) -> None:
+    """Refuse a qualification plan that cannot run every task in a pair."""
+    if not require_parallel:
+        return
+    if workers != 2:
+        raise ValueError("--require-parallel requires --workers 2")
+    serial = [
+        group[0].name
+        for group in execution_groups(tasks, workers)
+        if len(group) != 2
+    ]
+    if serial:
+        raise ValueError(
+            "--require-parallel requires every selected task to fit a two-worker "
+            f"cohort; serial tasks: {', '.join(serial)}"
+        )
+
+
+def required_parallel_stop(
+    require_parallel: bool,
+    planned_group: tuple[Task, ...],
+    use_parallel: bool,
+    fallback_reason: str | None,
+) -> str | None:
+    """Return the no-spend stop reason for a required cohort."""
+    if require_parallel and len(planned_group) == 2 and not use_parallel:
+        return f"required two-worker cohort cannot start: {fallback_reason}"
+    return None
+
+
 def parallel_host_admission(
     resources: HostResources,
     tasks: tuple[Task, ...],
@@ -857,6 +889,14 @@ def parser() -> argparse.ArgumentParser:
         default=1,
         help="maximum assessed tasks to run at once",
     )
+    answer.add_argument(
+        "--require-parallel",
+        action="store_true",
+        help=(
+            "stop before provider spend unless every selected task starts in a "
+            "two-worker cohort"
+        ),
+    )
     answer.add_argument("--model", default=DEFAULT_MODEL)
     answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
     answer.add_argument(
@@ -1010,6 +1050,7 @@ def main(argv: list[str] | None = None) -> int:
         if credential_state.is_relative_to(jobs_dir):
             raise ValueError("--credential-state must remain outside --jobs-dir")
         selected = [tasks[name] for name in selected_names]
+        validate_parallel_plan(selected, args.workers, args.require_parallel)
         workflow_candidate_path = (
             args.workflow_candidate.resolve(strict=True)
             if args.workflow_candidate is not None
@@ -1280,6 +1321,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "attempts": args.attempts,
             "requested_workers": args.workers,
+            "parallel_required": args.require_parallel,
             "concurrency": max(
                 (record["processes_started"] for record in execution_records),
                 default=1,
@@ -1413,6 +1455,15 @@ def main(argv: list[str] | None = None) -> int:
                             )
                         else:
                             fallback_reason = "parallel execution was not requested"
+                    required_stop = required_parallel_stop(
+                        args.require_parallel,
+                        planned_group,
+                        use_parallel,
+                        fallback_reason,
+                    )
+                    if required_stop is not None:
+                        stopped_reason = required_stop
+                        break
                     actual_groups = (
                         [planned_group]
                         if use_parallel
