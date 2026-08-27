@@ -170,8 +170,10 @@ Outcome =
 vocabulary so that a supervising episode can route on it. The vocabulary is
 listed in [log-format.md](log-format.md#blocked-codes).
 
-Episodes never resume. A later episode may be seeded from a prefix of an
-earlier log, which is how replay and forking work.
+A finished episode is never extended. An interrupted one — a log without
+`episode/end` — is continued by launching over its directory, under "The
+command line" below. A later episode may be seeded from a prefix of any
+log, which is how replay and forking work.
 
 The model's context is a projection of the log, and the projection is
 bounded. When a configuration enables compaction and the next request is
@@ -239,6 +241,42 @@ Three rules hold in every step. Each exists because its absence loses data.
   Calls that write, execute, or spawn run one at a time in issue order. Results
   are appended in issue order regardless of completion order.
 
+### The event model
+
+Everything that happens to an episode from outside its own turns reaches
+the model one way: as an `inbox/item` in the log. The inbox is the single
+event queue and its `source` is the event's type — the task, a parent's
+steer, a child's report or ending, a peer message, verifier findings,
+runtime notices, and session exits. Items are appended the moment they
+arrive and delivered only at request boundaries: the next `model/request`
+names every newly delivered item in `consumed`, so nothing interrupts a
+request in flight, and the `consumed` lists are a reconstructable account
+of the event loop: what the model saw, and when, is derivable from the
+log alone.
+
+The cost model behind the loop is that model turns are the expensive
+resource and wall-clock time the cheap one. `wait` is the sanctioned
+trade between them: it spends wall-clock time so that no model turn is
+spent polling. Bare, it blocks until every child has ended. With `until`,
+it blocks until an arrival matches one of the named conditions, each in
+outcome vocabulary: a child (by id, or `any`) reaching any outcome or a
+named outcome kind, a session (by id, or `any`) exiting, or an inbox
+arrival by source; `timeout_seconds` returns the call after that long
+even if nothing matched. The result names only the condition met, or
+`timeout`. The arrival itself reaches the model through the ordinary
+inbox drain of the next request, so the `consumed` lists remain the
+complete record. Blocking counts against the `seconds` budget like any
+elapsed time, and `wait` is itself a tool call, so all blocking happens
+where blocking already happens.
+
+The same pieces form the verified-future pattern foe implements: `spawn`
+returns the handle, `done_when.returns` is the future's type,
+`done_when.verify` is the resolution predicate, and `wait` is the join.
+The predicate self-repairs: findings return to the model for another
+attempt, and retries spent reject the future into a typed `Blocked`. A
+parent that spawns, continues its own work, and then waits is composing
+futures whose resolution the log evidences end to end.
+
 ### Termination
 
 An episode ends by writing `episode/end`, and before that it closes every
@@ -248,6 +286,13 @@ tool call left without a result receives a synthetic error result. The
 record of a completed run is therefore never mistakable for the record of
 one killed mid-flight.
 
+A process session normally ends at episode settlement. A program with the
+`task_session` grant may request task lifetime when it starts a session.
+Settlement then records the process and process-group identities and
+transfers cleanup responsibility to the environment that owns the foe
+invocation. Every remaining group member retains its sandbox restrictions
+after foe exits.
+
 Ending a child that a model meant to keep is a poor answer, so a parent
 that means to wait says so: the `wait` tool returns once every child it
 started has ended, bounded by the episode's `seconds` budget. When it
@@ -256,6 +301,8 @@ children are still running, and the episode ends as exhausted at its next
 step. A program that declares no `seconds` gives `wait` no bound of its
 own; the wait then lasts as long as the children do. A model that means to
 abandon its children ends its turn as usual, and the teardown settles them.
+With `until` conditions or `timeout_seconds`, `wait` returns as "The
+event model" above specifies.
 
 `seconds` is the one bound that every episode in the tree shares as a
 single deadline rather than dividing between children. A child's
@@ -294,6 +341,14 @@ The `verify` and `returns` forms combine: a returned value may be verified.
 A program author declares a schema only when the output has a known shape.
 A verifier is a tool, so an author who can check a result without being able
 to describe its shape declares the verifier alone.
+
+In an agent-loop episode, a return schema that requires `learned` also
+requires evidence citations. Each claim cites the sequence of a successful
+tool result in the same episode. The runtime checks that the result exists
+and that its canonical value remains reconstructable. A configured verifier
+then judges semantic correctness. Without a verifier, semantic judgment
+remains with the program's model or a successor such as an independent
+audit.
 
 For a verifier without a return schema, a non-error ordinary call to the
 declared verifier also signals completion. The runtime invokes the verifier
@@ -404,6 +459,8 @@ an operation runs rather than when a pathname was last checked.
 A `bind` grant appears in neither column: it names TCP ports rather than a
 tool's effect, no tool requires it, and it reaches every process of the
 episode through the compiled sandbox alone ([sandbox.md](sandbox.md)).
+The `task_session` grant also appears in neither column. The session
+capability checks it only when a `start` call requests task lifetime.
 
 Tools come from three sources, resolved in this order at construction.
 A name that resolves in two sources is an error.
@@ -594,8 +651,9 @@ The binary has one running form and four forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
-foe "task" [--model PROVIDER/MODEL] [--key-file PATH] [--verify PATH]   run the built-in coding workflow
+foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
 foe "task" --headless                                    run; no viewer; print the outcome
+foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode seeded from a prefix of SOURCE_DIR's log
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
@@ -623,15 +681,44 @@ for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
 Progress goes to standard error. The log goes to the file.
 
 The log directory is `--log-dir` when given and `.foe/<episode-id>` under
-the current directory otherwise. A directory that already holds a log, as
-one seeded by a fork does, is continued. A `lineage.json` beside the log,
-which a parent writes for a child, supplies the child's id, its parent, and
-its team lead.
+the current directory otherwise. A directory that already holds a log is
+continued under the log's own episode id. One whose log ends at `seed/end`
+— a prepared fork — or at an event boundary with every binding obligation
+closed continues in place. An interrupted log, cut short mid-line or with
+an obligation open, is repaired by seeding a copy at its last clean
+boundary into a fresh directory beside it, named on standard error, which
+the run then continues. Resuming requires the program that ran: a
+configuration whose identity differs from the log's `episode/start.identity`
+is refused with both identities named. A log ending at `seed/end` is
+exempt from that comparison, because a seeded `episode/start` records its
+source's program rather than its own. A finished log — one with
+`episode/end` — accepts nothing and is forked instead. A `lineage.json`
+beside the log, which a parent writes for a child, supplies the child's
+id, its parent, and its team lead.
+
+`--fork SOURCE_DIR --at SEQ` runs a fresh episode seeded from the source
+log's events below SEQ under the seeding rules of
+[log-format.md](log-format.md): the new episode draws a fresh id, its
+`episode/start.fork_origin` names the source episode and the boundary, and
+the task the launch carries — the positional task, or the document's task
+under `--config` — is appended as a `system` inbox item after `seed/end`,
+since the one `task` item per log is the copied one. The boundary's
+validity is the seeding API's rule, surfaced as the seeding error states
+it. The fork's directory is `--log-dir` when given, refused when it
+already holds a log, and `.foe/<episode-id>` otherwise. A slate — several
+forks from one prefix — is a caller-side loop over this form;
+[deferred.md](deferred.md) states what first-class support would add and
+the evidence that would justify it.
 
 A task given with `--config` replaces the document's own `task`. A task given
 without `--config` uses a built-in coding workflow. An implementation episode
 changes the current directory. A fresh audit episode then checks the task and
 implementation claim, repairs defects, and produces the outcome.
+
+The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
+fills its task, model, current-directory grants, executable inventory, sandbox
+mode, credential path, and optional verifier before resolving it as an ordinary
+program document.
 
 Both episodes have `read`, `grep`, `edit`, and `bash`. Both may
 read and write the current directory. Each episode has a 60-call backstop.
@@ -639,22 +726,27 @@ The root holds their additive 120-call allowance.
 
 Both episodes operate in the supplied execution environment. A task that
 requires a service or other live machine state requires the episodes to apply
-its configuration, validate its public interface, and leave the required state
-available when they return. An unbuilt image, unapplied configuration, or
-temporary probe does not establish live behavior. Repository-only tasks retain
-the same inspect, repair, and final-validation sequence.
+its configuration, exercise its public interface, and leave the required state
+available after completion. An unbuilt image, unapplied configuration, or
+stopped temporary probe does not establish live behavior. Repository-only
+tasks retain the same inspect, repair, and final-validation sequence.
 
 `--verify PATH` names an executable verifier for the built-in workflow.
 The path is canonicalized and becomes a `tool_defs` entry named `check`
-with execute authority on that file; the implementation episode declares
-`done_when: {"verify": "check"}`, and the audit node
-`skip_when_verified: "implement-task"`. The verifier runs in the working
-directory, receives the completion value as JSON on standard input, and
-prints one finding per line; exit 0 with empty output is acceptance.
-Findings return to the implementation episode until its retries are
-spent. Acceptance completes that episode and skips the audit, recorded
-as `workflow/node-skipped`. Without `--verify` the built-in workflow is
-unchanged: the audit always runs.
+with execute authority on that file. Both episodes may call `check` while
+working, but only the terminal audit episode declares
+`done_when: {"verify": "check"}`. The verifier runs in the working directory,
+receives the audit's completion value as JSON on standard input, and prints
+one finding per line; exit 0 with empty output is acceptance. Findings return
+to the audit episode for repair until its retries are spent. The audit always
+runs, including when implementation-side checks or claims indicate success,
+and only its accepted terminal verification can complete the workflow.
+Without `--verify`, the independent audit still always runs and completes
+under its typed return contract.
+
+`--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
+workflow. The default is `best-effort`. A program document declares
+its own `sandbox.mode`, so `--sandbox` cannot accompany `--config`.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
 interpreters, and repository tools. Both episodes receive the recorded result
@@ -666,13 +758,13 @@ validation observations, and unresolved risks. The audit receives that value
 and the original task in a fresh context. The shared directory carries the
 artifacts themselves.
 
-Both completion schemas accept one optional `learned` array of at most
-eight observations. Each observation is an object with a one-sentence
-`claim` and a `seq` citing the event in this episode's own log that is the
-claim's evidence. This is the standard exit through which an episode
-reports what it observed, for a launching parent to collect; foe itself
-acts on none of it. [config.md](config.md#done_when) states the convention
-for any program.
+Both completion schemas require one to eight `learned` observations. Each
+observation is a one-sentence claim and the sequence of a successful tool
+result in that episode's log. The runtime checks the citation and preserves
+the completed value as the typed handoff. The audit receives the
+implementation observations and independently reproduces or challenges the
+claims that bear on completion. [config.md](config.md#done_when) specifies
+the contract for any program.
 
 The model is the one named by `--model`, or the default model when `--model`
 is absent. The default model is the `model` block in
@@ -680,9 +772,16 @@ is absent. The default model is the `model` block in
 omits reasoning effort, GPT-5.6 Sol uses low effort for implementation and high
 effort for audit. An explicit reasoning effort applies to both episodes.
 
-`--key-file` names the key file explicitly. Without it, the provider's
-credential file under `~/.config/foe/credentials/` is read. The home directory
-comes from the passwd database, never from the environment.
+`--service-tier TIER` sets the model request's `service_tier` field to
+`default` or `priority` for both episodes. When the option is absent, a value
+from the default model file remains in effect. Otherwise the provider applies
+its own default.
+
+`--key-file` names the provider credential file explicitly. It supplies an API
+key file, OAuth token state, or Google credential according to the selected
+provider. Without it, the provider's credential file under
+`~/.config/foe/credentials/` is read. The home directory comes from the passwd
+database, never from the environment.
 
 `foe login` configures one provider: it asks for the credential, proves it
 with one request, writes it under `~/.config/foe/credentials/` with mode
@@ -724,7 +823,7 @@ not finished.
 ## Structure
 
 ```
-   crates/log ◄─── crates/config ◄─── crates/core ◄──┬── crates/code
+   crates/log ◄─── crates/program ◄─── crates/core ◄──┬── crates/code
     every event      the document,      loop,        │    read grep edit bash
     type,            resolution,        registry,    ├── crates/transport (feature)
     serde,           tool specs,        grants,      │    model clients, credentials
@@ -751,8 +850,8 @@ foe has two contracts, and each is a crate the rest of the repository reads.
 event type, including the reserved ones. It depends on serde, serde_json, and
 thiserror, and on no crate of this repository.
 
-`crates/config` is the second contract, and states what was to run: the
-configuration document, the validation and resolution that turn it into the
+`crates/program` is the second contract, and states what was to run: the
+program document, the validation and resolution that turn it into the
 program `episode/start.program` records, the specification of every tool the
 model will see, and the identity that hashes them. It runs nothing: no
 process starts there, no grant is exercised, and no log is written. It sits
@@ -769,16 +868,16 @@ log's vocabulary, because the two contracts meet at two places by design.
   conversation survives a compaction, because two programs that differ only
   there put different text in front of the model.
 
-`crates/config` therefore depends on `crates/log`, and on no other crate of
+`crates/program` therefore depends on `crates/log`, and on no other crate of
 this repository.
 
 `crates/core` is the machine between the two contracts, and depends on both.
-The line between it and `crates/config` is resolution against execution: what
+The line between it and `crates/program` is resolution against execution: what
 a name means and what a program would be belong to the configuration, and
 running it, guarding it, and charging it belong to the kernel. Tools depend
 on `crates/core` for the tool trait and capability handles and on
-`crates/config` for what a tool declares. `crates/workflow` depends on
-`crates/config` for the graph type and the program each model node runs, and
+`crates/program` for what a tool declares. `crates/workflow` depends on
+`crates/program` for the graph type and the program each model node runs, and
 on `crates/core` for the log, the registry, the budget pool, and the spawner,
 and runs an episode whose configuration declares a `workflow` in place of the
 loop. `crates/context` depends on `crates/core` for the context policy trait
@@ -805,7 +904,7 @@ convention `crates/transport` owns, so the telemetry crate still depends on
 `crates/lineage` is evidence about how program states relate: the lineage
 identity, the evidence-bundle canonical manifest and its checker, and the
 ancestry checker [lineage-identity.md](lineage-identity.md) specifies. It
-depends on `crates/config` for the claim's shape and the canonical
+depends on `crates/program` for the claim's shape and the canonical
 serialization, and on `crates/log` for the episode record, and is part of
 neither contract: nothing in the runtime depends on it. The binary
 supplies only the two directory-backed resolvers `foe plan` builds for its
@@ -814,24 +913,24 @@ supplies only the two directory-backed resolvers `foe plan` builds for its
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 5,000 lines,
+sandbox, and spawning — and its Rust source stays under 5,250 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
-machine alone: what a program is lives in `crates/config`, which is budgeted
-apart under 1,400 lines. The two are separate because a configuration
+machine alone: what a program is lives in `crates/program`, which is budgeted
+apart under 1,400 lines. The two are separate because a program
 document that gains a key must not buy room in the loop, and because the
 claim the kernel's number supports is about the machine that runs a program
 rather than about the data model it runs.
 
-The tool surface in `crates/code` is budgeted apart, under 1,600 lines on
+The tool surface in `crates/code` is budgeted apart, under 1,700 lines on
 the same terms. It is separate because it grows a tool at a time: a new
 tool adds capability without touching the kernel, so room for tools must
 not become room for the loop. The workflow executor in `crates/workflow`
 stays under 1,000 lines: it carries the executor and nothing else, now that
 the inspection of a configured program tree that `foe plan` reports has
-reached `foe_config::inspect`, beside the model it analyses. What the two
+reached `foe_program::inspect`, beside the model it analyses. What the two
 crates still share is one rule — firing a model node starts that node's
-episode — which `spawner_config` realizes in the executor as an ordinary
+episode — which `spawner_document` realizes in the executor as an ordinary
 spawn and the inspection reads as reachability. The compaction policy in
 `crates/context` stays under 500.
 

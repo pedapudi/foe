@@ -2,18 +2,18 @@
 //!
 //! This crate owns grants, budget, the tool registry, the agent loop, the
 //! inbox, spawning, teams, the executable runner, the Landlock sandbox, and
-//! the host protocol. What a program is — the configuration document, its
-//! resolution, and identity — is `foe-config`, which this crate reads.
+//! the host protocol. What a program is — the program document, its
+//! resolution, and identity — is `foe-program`, which this crate reads.
 //! `docs/design.md` states what each part guarantees.
 //!
 //! This file holds the runtime contract types shared across crates: what a
 //! tool receives when it is called, what it returns, and how a model
 //! transport is driven. Behavior lives in the modules. Tool packs such as
-//! `foe-code` depend on this file and on `foe-config`.
+//! `foe-code` depend on this file and on `foe-program`.
 
 #![forbid(unsafe_code)]
 
-use foe_config::{ConfigError, ToolSpec};
+use foe_program::{ProgramError, ToolSpec};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -136,15 +136,24 @@ pub struct CallCtx {
     pub deadline: Option<std::time::Instant>,
 }
 
-/// Filesystem reads bounded to the read roots. Every path is canonicalized
-/// and checked before use; a path outside the roots is an error.
+/// Filesystem reads bounded to descriptor-held read roots. A path outside
+/// those roots is an error.
 pub trait Reader: Send + Sync {
     /// Opens a file through the descriptor-bound root. Streaming consumers
     /// use this operation so their memory does not grow with the file size.
     fn open(&self, path: &Path) -> Result<Box<dyn std::io::Read + Send>, CapError>;
-    fn read(&self, path: &Path) -> Result<Vec<u8>, CapError>;
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError>;
+    /// Enumerates one directory through the same descriptor-bound root.
+    fn read_dir(&self, path: &Path) -> Result<Vec<ReadEntry>, CapError>;
     fn roots(&self) -> &[PathBuf];
+}
+
+/// One entry observed through a [`Reader`]. Other file types, including
+/// symbolic links, have both type fields false.
+pub struct ReadEntry {
+    pub path: PathBuf,
+    pub is_file: bool,
+    pub is_dir: bool,
 }
 
 /// Filesystem writes bounded to the write roots. `write` replaces the file
@@ -192,9 +201,8 @@ pub struct ExecResult {
 }
 
 /// Supervises process sessions: processes that outlive the call that
-/// started them and end, at the latest, at episode settlement. The
-/// `session` tool reaches such processes only through this handle, as
-/// `bash` reaches processes only through [`Executor`].
+/// started them. The `session` tool reaches such processes only through
+/// this handle, as `bash` reaches processes only through [`Executor`].
 pub trait Sessions: Send + Sync {
     /// Starts a session in its own process group. An implementation bounds
     /// how many sessions may be alive at once.
@@ -210,9 +218,15 @@ pub trait Sessions: Send + Sync {
     /// Returns the final status; stopping an ended session returns its
     /// status again.
     fn stop(&self, id: u64) -> Result<SessionStatus, CapError>;
-    /// Stops every alive session, for the settlement that ends the episode.
-    /// Returns the final status of each session that was alive.
-    fn stop_all(&self) -> Vec<SessionStatus>;
+    /// Settles every alive session. Episode-lifetime sessions stop. A task-
+    /// lifetime session is released to the enclosing task environment.
+    fn settle(&self) -> Vec<SessionSettlement>;
+    /// The final status of every session whose end no earlier call
+    /// reported, each session's once per lifetime. The agent loop turns
+    /// these into `session`-source inbox items. Default: no exit reports.
+    fn take_exited(&self) -> Vec<SessionStatus> {
+        Vec::new()
+    }
 }
 
 /// What starts a session: the program, arguments, environment, and working
@@ -226,6 +240,27 @@ pub struct SessionRequest {
     pub args: Vec<String>,
     pub env: BTreeMap<String, String>,
     pub cwd: PathBuf,
+    pub lifetime: SessionLifetime,
+}
+
+/// How long the runtime owns a process session. Episode is the default.
+/// Task requires explicit program authority and transfers ownership at
+/// settlement to the environment that owns the foe invocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionLifetime {
+    Episode,
+    Task,
+}
+
+/// What settlement did with a process group that had a live member. The
+/// leader and group ids identify a released task session for external cleanup.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionSettlement {
+    pub status: SessionStatus,
+    pub pid: u32,
+    pub process_group: i32,
+    pub released_to_task: bool,
 }
 
 /// A session's state: whether the process group is alive, the exit code
@@ -332,7 +367,7 @@ impl ChunkSink for Vec<Chunk> {
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
     #[error(transparent)]
-    Config(#[from] ConfigError),
+    Program(#[from] ProgramError),
     #[error(transparent)]
     Log(#[from] foe_log::LogError),
     #[error(transparent)]

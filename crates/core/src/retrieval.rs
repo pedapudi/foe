@@ -2,8 +2,8 @@
 
 use crate::loop_::Log;
 use crate::{CallCtx, RuntimeError, Tool, ToolValue};
-use foe_config::{harness_text as text, identity::sha256_hex, Effect, ToolSpec};
 use foe_log::{Event, EventData, RenderingArchive};
+use foe_program::{harness_text as text, identity::sha256_hex, Effect, ToolSpec};
 use serde_json::{json, Value};
 use std::io::Write;
 use std::path::Path;

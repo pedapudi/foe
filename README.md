@@ -83,7 +83,7 @@ that runs with the built-in model transport.
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "name": "hello",
   "instructions": { "role": "You are a coding agent." },
   "tools": ["read", "grep", "edit", "bash"],

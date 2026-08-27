@@ -10,9 +10,9 @@
 //! after the named tools. A declared effect the grants do not cover is
 //! refused here, before any tool is constructed.
 
-use crate::config::Program;
+use crate::document::ResolvedProgram;
 use crate::harness_text as text;
-use crate::{ConfigError, Effect, HostToolDef, ToolDef, ToolSpec};
+use crate::{Effect, HostToolDef, ProgramError, ToolDef, ToolSpec};
 use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,8 +22,8 @@ pub enum Source {
     Host,
 }
 
-fn invalid(rule: String) -> ConfigError {
-    ConfigError::Invalid { key: "tools".into(), rule }
+fn invalid(rule: String) -> ProgramError {
+    ProgramError::Invalid { key: "tools".into(), rule }
 }
 
 /// Applies the resolution order to every name in `tools`.
@@ -32,7 +32,7 @@ pub fn resolve_sources(
     builtins: &[&str],
     configured: &[&str],
     host: &[&str],
-) -> Result<Vec<Source>, ConfigError> {
+) -> Result<Vec<Source>, ProgramError> {
     tools
         .iter()
         .map(|name| {
@@ -111,7 +111,7 @@ pub fn host_spec(name: &str, def: &HostToolDef) -> ToolSpec {
 /// model sees them, without constructing any tool. Identity uses this.
 /// `extra_builtins` are the specifications of built-in tools implemented
 /// outside this crate.
-pub fn resolve_specs(program: &Program, extra_builtins: &[ToolSpec]) -> Result<Vec<ToolSpec>, ConfigError> {
+pub fn resolve_specs(program: &ResolvedProgram, extra_builtins: &[ToolSpec]) -> Result<Vec<ToolSpec>, ProgramError> {
     let block = block_spec();
     let builtins: Vec<&ToolSpec> = std::iter::once(&block).chain(extra_builtins).collect();
     let builtin_names: Vec<&str> = builtins.iter().map(|s| s.name.as_str()).collect();
@@ -140,7 +140,7 @@ pub fn resolve_specs(program: &Program, extra_builtins: &[ToolSpec]) -> Result<V
 /// A tool whose declared effect exceeds the grants is refused. Execution
 /// needs no grant: declaring a `tool_defs` entry is what permits it, and a
 /// built-in executor is bounded by its own construction.
-fn check_effect(program: &Program, spec: &ToolSpec) -> Result<(), ConfigError> {
+fn check_effect(program: &ResolvedProgram, spec: &ToolSpec) -> Result<(), ProgramError> {
     let uncovered = match spec.effect {
         Effect::Reads => program.grants.read.is_empty().then_some("grants.read"),
         Effect::Writes => program.grants.write.is_empty().then_some("grants.write"),

@@ -12,25 +12,24 @@
 
 use crate::bind;
 use crate::graph::{Produced, Scheduler};
-use foe_config::config::Program;
-use foe_config::harness_text as text;
-use foe_config::schema::conforms;
-use foe_config::tools::Source;
-use foe_config::workflow::{ancestors, Node, WorkflowConfig};
-use foe_config::{Effect, ToolSpec};
 use foe_core::budget::Pool;
 use foe_core::loop_::{lock, settle, until, verify_recorded, wait_stop, Log, Params, Recorder};
 use foe_core::registry::{Handles, Registry};
 use foe_core::{ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolValue, Transport};
 use foe_log::{
     BlockedCode, BudgetAmount, Chunk, ContentBlock, Event, EventData, ExhaustedLimit, HeaderReason, InboxItem,
-    InboxSource, Message, ModelRequest, Outcome, RequestHeader, SpawnContext, ToolCall, ToolResult, VerificationStatus,
-    WorkflowBranch, WorkflowNodeEnd, WorkflowNodeSkipped, WorkflowNodeStart, WorkflowRecovery,
+    InboxSource, Message, ModelRequest, Outcome, RequestHeader, SpawnContext, ToolCall, ToolResult, WorkflowBranch,
+    WorkflowNodeEnd, WorkflowNodeStart, WorkflowRecovery,
 };
+use foe_program::document::ResolvedProgram;
+use foe_program::harness_text as text;
+use foe_program::schema::conforms;
+use foe_program::tools::Source;
+use foe_program::workflow::{ancestors, Node, WorkflowConfig};
+use foe_program::{Effect, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::future::Future;
-use std::path::Path;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -99,7 +98,7 @@ struct Shared {
     pool: Arc<Mutex<Pool>>,
     stop: watch::Receiver<Option<String>>,
     spawner: Arc<dyn Spawner>,
-    program: Program,
+    program: ResolvedProgram,
     /// `episode/start.runtime.build`, which a `verification/result` records
     /// as the identity of a built-in or host verifier.
     runtime_build: String,
@@ -170,6 +169,15 @@ fn output_of(outcome: Outcome, nested: bool) -> Output {
     }
 }
 
+/// The value an explicitly optional model node contributes when its child
+/// spent its allowance or reported that it could not proceed.
+fn empty_after_child(node: &Node, trouble: &Trouble) -> Option<Value> {
+    let ends_partial =
+        !trouble.settled && matches!(trouble.outcome, Outcome::Blocked { .. } | Outcome::Exhausted { .. });
+    node.model.as_ref()?;
+    ends_partial.then(|| node.empty.clone()).flatten()
+}
+
 /// The wire name of a limit or a blocked code.
 fn limit_or_code(value: impl serde::Serialize) -> String {
     serde_json::to_value(value).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
@@ -200,19 +208,6 @@ fn classify_tool(value: ToolValue, configured: bool) -> Output {
         Some(outcome) => Err(Trouble::settled(outcome)),
         None => Err(Trouble::recoverable("tool-error", rendered.clone(), Outcome::Failed { error: rendered })),
     }
-}
-
-/// The `seq` of the last accepted `verification/result` in a child
-/// episode's log: the evidence a `skip_when_verified` guard reads for a
-/// model node whose program declares `done_when.verify`. `None` when the
-/// log cannot be read or holds no accepted run, and the guarded node then
-/// fires as it would without the guard.
-fn accepted_in_child(dir: &Path) -> Option<u64> {
-    let events = foe_log::fold::read_all(dir).ok()?;
-    events.iter().rev().find_map(|e| match &e.data {
-        EventData::VerificationResult(v) if v.status == VerificationStatus::Accepted => Some(e.seq),
-        _ => None,
-    })
 }
 
 /// The text successors of a node receive: a string as itself, anything
@@ -390,24 +385,7 @@ impl Executor {
                 return Ok(Outcome::Exhausted { limit });
             }
             let mut deferred = false;
-            let mut skipped = false;
             for name in self.sched.ready() {
-                // The guard: a node whose `skip_when_verified` names a node
-                // with an accepted verification does not fire. On every
-                // other path the node fires exactly as it would without the
-                // guard. The runtime evaluates it from the log's evidence
-                // alone; the model makes no choice here.
-                let guard = self.sched.nodes[&name]
-                    .skip_when_verified
-                    .clone()
-                    .and_then(|target| self.sched.state[&target].accepted.map(|seq| (target, seq)));
-                if let Some((target, seq)) = guard {
-                    if let Some(outcome) = self.skip(&name, &target, seq).await? {
-                        return Ok(outcome);
-                    }
-                    skipped = true;
-                    continue;
-                }
                 let node = &self.sched.nodes[&name];
                 let bound = node.max_fires.unwrap_or(1);
                 if self.sched.state[&name].fires >= bound {
@@ -437,9 +415,6 @@ impl Executor {
             if self.tasks.is_empty() {
                 // A skip refreshed its successors, so the ready set has
                 // moved on even though nothing is running.
-                if skipped {
-                    continue;
-                }
                 if deferred {
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                     continue;
@@ -585,24 +560,22 @@ impl Executor {
         let (name, fire, started) = (fired.node.clone(), fired.fire, fired.started);
         self.sched.finish(&name);
         let node = self.sched.nodes[&name].clone();
-        if fired.result.is_err() {
+        if let Err(trouble) = &fired.result {
+            if let Some(empty) = empty_after_child(&node, trouble) {
+                let result = Ok((empty.clone(), render(&empty)));
+                let error = format!("{}: {}", trouble.cause, trouble.detail);
+                let event = self.node_end(&name, fire, started, &result, Some(error))?;
+                return self.contribute_empty(&name, fire, event.seq, empty).await;
+            }
             self.node_end(&name, fire, started, &fired.result, None)?;
         }
         let (value, rendered) = match fired.result {
             Ok(produced) => produced,
             Err(trouble) => return self.trouble(&name, fire, trouble).await,
         };
-        // A model node whose program declares `done_when.verify` completed
-        // only through an acceptance its own loop recorded; the guard's
-        // evidence is that event in the child episode's log.
-        if node.model.as_ref().and_then(|m| m.done_when.as_ref()).is_some_and(|d| d.verify.is_some()) {
-            let children = self.shared.log.dir().join("children");
-            let state = self.sched.state.get_mut(&name).expect("a known node");
-            state.accepted = state.child_id.as_deref().and_then(|child| accepted_in_child(&children.join(child)));
-        }
         let result = Ok((value.clone(), rendered.clone()));
         if let Some(verifier) = &node.verify {
-            let (findings, verified_seq) = self.verify_with(verifier, &value).await?;
+            let (findings, _) = self.verify_with(verifier, &value).await?;
             if !findings.is_empty() {
                 let error = format!("`{verifier}` reported {} finding(s)", findings.len());
                 self.node_end(&name, fire, started, &result, Some(error))?;
@@ -617,7 +590,6 @@ impl Executor {
                 let outcome = Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, message };
                 return self.trouble(&name, fire, Trouble::findings("verify-findings", findings, outcome)).await;
             }
-            self.sched.state.get_mut(&name).expect("a known node").accepted = Some(verified_seq);
         }
         let label = value.get("branch").and_then(Value::as_str).filter(|l| node.branches.contains_key(*l));
         if !node.branches.is_empty() && label.is_none() {
@@ -632,25 +604,19 @@ impl Executor {
         self.produce(&name, fire, Produced { value, rendered, seq: event.seq }, label).await
     }
 
-    /// Applies a satisfied `skip_when_verified` guard: the node does not
-    /// fire. It records `workflow/node-skipped` and contributes the named
-    /// node's value to its successors through the ordinary propagation
-    /// path, so a terminal node completes the workflow with that value and
-    /// the episode's `done_when`, when declared, still applies to it.
-    async fn skip(&mut self, name: &str, target: &str, verification_seq: u64) -> Result<Option<Outcome>, RuntimeError> {
-        let node = self.sched.nodes[name].clone();
-        let carried = self.sched.state[target].value.clone().expect("an accepted node produced a value");
-        let event = self.log(EventData::WorkflowNodeSkipped(WorkflowNodeSkipped {
-            node: self.full(name),
-            verified_by: self.full(target),
-            verification_seq,
-        }))?;
-        self.sched.skip(name);
-        // Construction refuses a guard beside `branches`, so a skipped node
-        // is never a choice point and its value propagates plainly.
-        debug_assert!(node.branches.is_empty());
-        let produced = Produced { value: carried.value, rendered: carried.rendered, seq: event.seq };
-        self.produce(name, 0, produced, None).await
+    /// Contributes a node's declared `empty` value through the ordinary
+    /// branch and completion path.
+    async fn contribute_empty(
+        &mut self,
+        name: &str,
+        fire: u32,
+        seq: u64,
+        empty: Value,
+    ) -> Result<Option<Outcome>, RuntimeError> {
+        let node = &self.sched.nodes[name];
+        let label = empty.get("branch").and_then(Value::as_str).filter(|l| node.branches.contains_key(*l));
+        let produced = Produced { value: empty.clone(), rendered: render(&empty), seq };
+        self.produce(name, fire, produced, label.map(str::to_string)).await
     }
 
     /// Propagates a value along the admitted edges and completes the
@@ -771,9 +737,7 @@ impl Executor {
             }
             Action::Skip => {
                 let empty = node.empty.clone().expect("skip was offered");
-                let label = empty.get("branch").and_then(Value::as_str).filter(|l| node.branches.contains_key(*l));
-                let produced = Produced { value: empty.clone(), rendered: render(&empty), seq: event.seq };
-                return self.produce(name, fire, produced, label.map(str::to_string)).await;
+                return self.contribute_empty(name, fire, event.seq, empty).await;
             }
             Action::Abort(code, message) => return Ok(Some(Outcome::Blocked { code, message })),
         }

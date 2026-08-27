@@ -595,12 +595,18 @@ class LineageAdoptionTest(unittest.TestCase):
     ancestry claim with the crate's `check_ancestry` example.
     """
 
-    repository = Path(__file__).resolve().parents[2]
+    # Keep the runfiles path under Bazel so declared binary dependencies are
+    # addressable. Direct test execution uses the checkout path unchanged.
+    repository = Path(__file__).absolute().parents[2]
     validator_sha256 = "a" * 64
     check_sha256 = "b" * 64
 
     @classmethod
     def setUpClass(cls):
+        cls.build_bundle = cls.repository / "crates" / "lineage" / "build-bundle"
+        cls.check_ancestry_binary = cls.repository / "crates" / "lineage" / "check-ancestry"
+        if cls.build_bundle.is_file() and cls.check_ancestry_binary.is_file():
+            return
         subprocess.run(
             ["cargo", "build", "--quiet", "-p", "foe-lineage", "--bins", "--examples"],
             cwd=cls.repository,

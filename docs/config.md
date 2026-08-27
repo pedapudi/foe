@@ -1,6 +1,6 @@
-# Configuration
+# Program document
 
-An episode is configured by one JSON document. This document specifies every
+An episode is defined by one JSON program document. This specification states every
 key, the domain of every value, and every default. The Python package
 generates this document; a person may also write it by hand.
 
@@ -19,7 +19,7 @@ validate a document and offer completions. `foe plan --config FILE` prints
 the resolved program, its identity, and every tool definition the program's
 reachable tree can invoke, without running anything.
 
-`crates/config` implements this document: every rule stated here is a check
+`crates/program` implements this document: every rule stated here is a check
 there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a
 document into the program `episode/start.program` records.
 
@@ -78,7 +78,7 @@ episode.
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "name": "fix-parser-test",
 
   "instructions": {
@@ -129,7 +129,7 @@ episode.
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "name": "hello",
   "instructions": { "role": "You are a coding agent." },
   "tools": ["read", "grep", "edit", "bash"],
@@ -150,7 +150,7 @@ is omitted.
 ### `version`
 
 Integer. Required. The configuration format version. This document describes
-version 2.
+version 3.
 
 ### `name`
 
@@ -256,6 +256,7 @@ Object. Required. Names what the episode may reach.
 | `execute` | list of strings | no | absolute files or directories that a tool subprocess may read and execute; default empty |
 | `spawn` | list of strings | no | names from `programs` the episode may start; default empty |
 | `bind` | list of integers | no | TCP ports, 1 to 65535, that a process of the episode may bind; default empty |
+| `task_session` | boolean | no | permits `session start` with `lifetime: "task"`; default false |
 
 Paths are prefixes. A grant on `/home/user/project` covers every path below
 it. There is no pattern syntax.
@@ -264,6 +265,12 @@ A `bind` grant lets a server the episode starts listen on the named ports;
 [sandbox.md](sandbox.md) states how the kernel enforces it. It grants no
 outbound reach: connecting stays tied to the model transport and to each
 tool definition's `network` field.
+
+A `task_session` grant permits a session process group to survive episode
+settlement. The `session` call must also request `lifetime: "task"`. At
+settlement the runtime transfers cleanup responsibility to the environment
+that owns the foe invocation. [tools.md](tools.md#session) specifies the
+lifecycle and the cleanup requirement.
 
 The runtime opens each granted directory once when the episode starts, and
 every read and write below it names a path relative to that open directory.
@@ -385,13 +392,26 @@ general-purpose linter is wrapped by a short script that reads the
 candidate, runs the linter, prints its findings, and exits with status zero
 whether or not it found any.
 
-A `returns` schema may declare an optional `learned` member: an array of at
-most eight objects, each pairing a one-sentence `claim` string with an
-integer `seq` that cites the event in this episode's own log evidencing the
-claim. The member is a convention rather than a mechanism: it is the
-standard exit through which an episode reports observations for a launching
-parent to collect, and the runtime reads nothing from it. The built-in
-coding workflow declares it on both of its episodes.
+A `returns` schema may declare a `learned` member. The member is an array of
+objects. Each object pairs a one-sentence `claim` string with an integer
+`seq` that cites the supporting event in this episode's log. This shape is
+the standard exit through which an episode exports observations. A schema
+that requires `learned` must declare this non-empty array shape.
+
+In an agent-loop program, listing `learned` in the schema's `required` array
+makes the citations a completion condition. Every tool result shown to that
+episode starts with its log sequence as `[seq N]`. Before completion, the
+runtime requires at least one observation. Each `seq` must name a successful
+`tool/result` in the same episode. An inlined canonical value is
+reconstructable from the event. A spilled canonical value must still be
+readable as JSON at the single-component path and byte length in the event.
+
+An invalid citation returns a `system` inbox finding and the episode
+continues. The runtime does not judge whether the result supports the claim.
+The configured verifier, when present, runs only after every citation passes
+these structural checks. An optional `learned` member remains an exported
+observation that the runtime does not require for completion. The built-in
+coding workflow requires one to eight observations from both episodes.
 
 Without `returns`, a non-error ordinary call to the declared verifier asks
 the runtime to verify the assistant text after the turn settles. Acceptance
@@ -523,13 +543,14 @@ lineage.
 ### `programs`
 
 Object mapping program name to a nested configuration. Optional. Each value
-is a full configuration document without `version`, `task`, or `sandbox`.
+is a full program document without `version`, `task`, or `sandbox`.
 The `model` block is optional and follows the inheritance rule above. A name
 listed in `grants.spawn` must appear here.
 
 A child program's grants must be a subset of its parent's, checked at
-construction. Each child program's identity participates in the parent's
-identity. Its tool list may differ from its parent's. The effective tool
+construction. A child may set `task_session` only when its parent sets it.
+Each child program's identity participates in the parent's identity. Its
+tool list may differ from its parent's. The effective tool
 authority `foe plan` reports covers the root, each descendant program a
 `grants.spawn` entry reaches, and each workflow model node. A declaration
 no such path reaches stays in the resolved program and is absent from the
@@ -545,11 +566,9 @@ model node's program is a child program in the sense of `programs` whose
 tools, configured executable authority, host tool definitions, filesystem
 grants, spawn grants with their descendant programs, and spend limits all
 lie within the document's own. A child program may carry a `workflow` of
-its own. A node may declare `skip_when_verified`, naming a node whose
-verifier-accepted result lets the declaring node be skipped; workflow.md
-"The conditional audit guard" specifies it, and the `workflow/node-skipped`
-event records each skip. The graph participates in identity as
-workflow.md "Identity" lists.
+its own. A model node may declare `empty` so that a blocked or exhausted
+child contributes that value and downstream work continues. The graph
+participates in identity as workflow.md "Identity" lists.
 
 ### `task`
 

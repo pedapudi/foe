@@ -17,17 +17,18 @@
 //! writes `team/delivered`. See docs/protocol.md "Children".
 
 use crate::budget::Pool;
-use crate::loop_::settled_children;
+use crate::loop_::{settled_children, SETTLE_POLL};
 use crate::protocol::{Host, InboxSink};
 use crate::spawn::{ChildObserver, Router};
 use crate::{CallCtx, CapError, SpawnHandle, SpawnRequest, Spawner, Tool, ToolValue};
-use foe_config::{Effect, ToolSpec};
 use foe_log::{
     BudgetAmount, ContentBlock, Event, EventData, InboxItem, InboxSource, MemberPhase, Outcome, SpawnContext,
 };
-use std::collections::BTreeSet;
+use foe_program::{Effect, ToolSpec};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// This episode's own log, as the lead of its team: appends team events and
 /// reads everything written so far.
@@ -341,8 +342,23 @@ impl Kind {
             Kind::Wait => (
                 "Wait until every child episode this one started has ended. Their reports are in the request that \
 follows. Returns at once when no child is running. Use it before acting on work delegated to children; an episode \
-that ends while a child runs ends that child.",
-                object(serde_json::json!({}), &[]),
+that ends while a child runs ends that child. With `until`, wait instead until an arrival matches one of its \
+conditions; the result names the condition met, or `timeout`, and the arrival itself is in the request that follows.",
+                object(
+                    serde_json::json!({
+                        "until": {
+                            "type": "array",
+                            "description": "conditions, of which the first met ends the wait: {child, outcome?} for a child episode (id, or \"any\") reaching any outcome or the named kind; {session} for a process session (id, or \"any\") exiting; {inbox} for an inbox arrival by source",
+                            "items": { "anyOf": [
+                                { "type": "object", "properties": { "child": string("child episode id, or \"any\""), "outcome": { "type": "string", "enum": ["completed", "blocked", "exhausted", "failed"] } }, "required": ["child"], "additionalProperties": false },
+                                { "type": "object", "properties": { "session": { "type": ["integer", "string"], "description": "session id, or \"any\"" } }, "required": ["session"], "additionalProperties": false },
+                                { "type": "object", "properties": { "inbox": { "type": "string", "enum": ["task", "parent", "child", "peer", "verify", "system", "session"] } }, "required": ["inbox"], "additionalProperties": false }
+                            ] }
+                        },
+                        "timeout_seconds": { "type": "integer", "minimum": 1, "description": "return after this long even if nothing matched" }
+                    }),
+                    &[],
+                ),
                 Effect::Pure,
             ),
             Kind::Steer => (
@@ -389,6 +405,92 @@ pub fn tools(team: Arc<Team>, parent: Option<&Host>) -> Vec<Box<dyn Tool>> {
             _ => Box::new(TeamTool { spec: kind.spec(), kind, team: team.clone() }) as Box<dyn Tool>,
         })
         .collect()
+}
+
+/// Arguments of `wait`. Bare, the tool blocks until every child has ended;
+/// with `until`, until an arrival matches one of the conditions.
+#[derive(serde::Deserialize)]
+struct WaitArgs {
+    #[serde(default)]
+    until: Vec<Condition>,
+    timeout_seconds: Option<u64>,
+}
+
+/// One `until` condition, in outcome vocabulary. Each names what counts as
+/// news: a child reaching an outcome, a session exiting, or an inbox
+/// arrival by source.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+enum Condition {
+    Child {
+        child: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        outcome: Option<OutcomeKind>,
+    },
+    Session {
+        /// A session id, or the string `any`; validated before the wait.
+        session: serde_json::Value,
+    },
+    Inbox {
+        inbox: InboxSource,
+    },
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum OutcomeKind {
+    Completed,
+    Blocked,
+    Exhausted,
+    Failed,
+}
+
+fn kind_of(outcome: &Outcome) -> OutcomeKind {
+    match outcome {
+        Outcome::Completed { .. } => OutcomeKind::Completed,
+        Outcome::Blocked { .. } => OutcomeKind::Blocked,
+        Outcome::Exhausted { .. } => OutcomeKind::Exhausted,
+        Outcome::Failed { .. } => OutcomeKind::Failed,
+    }
+}
+
+/// The first condition an unconsumed inbox item satisfies: `wait` blocks
+/// until an arrival matches, and the arrival reaches the model through the
+/// ordinary inbox drain of the next request. A child condition is met by
+/// the child's ended report once its `spawn/end` records a matching
+/// outcome; a session condition by the `session`-source item whose `from`
+/// is the session id.
+fn matched(events: &[Event], until: &[Condition]) -> Option<usize> {
+    let mut consumed: BTreeSet<u64> = BTreeSet::new();
+    let mut ended: BTreeMap<&str, OutcomeKind> = BTreeMap::new();
+    for event in events {
+        match &event.data {
+            EventData::ModelRequest(r) => consumed.extend(r.consumed.iter().copied()),
+            EventData::SpawnEnd { child_id, outcome } => {
+                ended.insert(child_id, kind_of(outcome));
+            }
+            _ => {}
+        }
+    }
+    for event in events.iter().filter(|e| !consumed.contains(&e.seq)) {
+        let EventData::InboxItem(item) = &event.data else { continue };
+        let from = item.from.as_deref().unwrap_or_default();
+        let met = |condition: &Condition| match condition {
+            Condition::Inbox { inbox } => item.source == *inbox,
+            Condition::Session { session } => {
+                item.source == InboxSource::Session && session.as_u64().is_none_or(|id| from == id.to_string())
+            }
+            Condition::Child { child, outcome } => {
+                item.source == InboxSource::Child
+                    && (child == "any" || child == from)
+                    && ended.get(from).is_some_and(|kind| outcome.is_none_or(|wanted| wanted == *kind))
+            }
+        };
+        if let Some(index) = until.iter().position(met) {
+            return Some(index);
+        }
+    }
+    None
 }
 
 struct TeamTool {
@@ -451,12 +553,42 @@ impl Tool for TeamTool {
                     Err(e) => ToolValue::error(format!("steer: {e}")),
                 }
             }
-            Kind::Wait => match settled_children(&self.team.pool, ctx.deadline).await {
-                0 => ToolValue::ok(serde_json::json!({ "running": 0 }), "every child has ended"),
-                running => ToolValue::error(format!(
-                    "wait: {running} child episode(s) were still running when the seconds budget ran out"
-                )),
-            },
+            Kind::Wait => {
+                let parsed: WaitArgs = match serde_json::from_value(args) {
+                    Ok(parsed) => parsed,
+                    Err(e) => return ToolValue::error(format!("wait: {e}")),
+                };
+                if parsed.until.iter().any(
+                    |c| matches!(c, Condition::Session { session } if session.as_u64().is_none() && session != "any"),
+                ) {
+                    return ToolValue::error("wait: `session` names a session id or \"any\"");
+                }
+                let timeout = parsed.timeout_seconds.map(|s| Instant::now() + Duration::from_secs(s));
+                let deadline = match (ctx.deadline, timeout) {
+                    (Some(budget), Some(asked)) => Some(budget.min(asked)),
+                    (budget, asked) => budget.or(asked),
+                };
+                let timed_out = || ToolValue::ok(serde_json::json!({ "matched": "timeout" }), "timeout");
+                if parsed.until.is_empty() {
+                    return match settled_children(&self.team.pool, deadline).await {
+                        0 => ToolValue::ok(serde_json::json!({ "running": 0 }), "every child has ended"),
+                        _ if timeout.is_some_and(|t| Instant::now() >= t) => timed_out(),
+                        running => ToolValue::error(format!(
+                            "wait: {running} child episode(s) were still running when the seconds budget ran out"
+                        )),
+                    };
+                }
+                loop {
+                    if let Some(index) = matched(&self.team.log.events(), &parsed.until) {
+                        let met = serde_json::to_value(&parsed.until[index]).unwrap_or_default();
+                        return ToolValue::ok(serde_json::json!({ "matched": met }), format!("matched: {met}"));
+                    }
+                    if deadline.is_some_and(|d| Instant::now() >= d) {
+                        return timed_out();
+                    }
+                    tokio::time::sleep(SETTLE_POLL).await;
+                }
+            }
             Kind::Notify => ToolValue::error("notify: this episode has no parent to notify"),
             Kind::Team => self.team.roster(),
         }

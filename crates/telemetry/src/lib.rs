@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 
 /// Changes whenever an emitted field is added, removed, renamed, or given a
 /// different meaning. Every payload carries it as a resource attribute.
-pub const SCHEMA_VERSION: &str = "3";
+pub const SCHEMA_VERSION: &str = "4";
 
 /// The fraction of the input tokens the cache served, absent when no input
 /// token was recorded: an unmeasured spend has no fraction rather than a
@@ -132,6 +132,12 @@ pub fn emission(events: &[Event], log_dir: &str, key: Vec<u8>) -> Result<Emissio
     episode_attributes.extend(vec![
         number("foe.verification.runs", facts.verification_runs),
         number("foe.verification.findings", facts.verification_findings),
+        number("foe.workflow.recovery.interventions", facts.workflow.recovery_interventions),
+        list(
+            "foe.workflow.recovery.actions",
+            facts.workflow.recovery_actions.iter().map(|(action, count)| format!("{action}={count}")),
+        ),
+        number("foe.workflow.empty_substitutions", facts.workflow.empty_substitutions),
         text("foe.model.provider", facts.provider.clone()),
         text("foe.model.model", facts.model.clone()),
         text("foe.category", classification.bucket.clone()),

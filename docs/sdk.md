@@ -87,7 +87,7 @@ when the binary asks.
 
 | name | role |
 |---|---|
-| `foe.Program(...)` | a configuration document without a task |
+| `foe.Program(...)` | a program document without a task |
 | `program.to_dict()`, `program.to_json()` | the document, without `task` and without `model` |
 | `program.identity(binary)` | the program's identity hash, computed by `foe plan` |
 | `await program.run(task, ...)` | run one episode to its outcome |

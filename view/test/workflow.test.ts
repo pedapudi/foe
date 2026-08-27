@@ -131,35 +131,6 @@ test("a recovery names the node that failed, its action, and its cause", () => {
   assert.equal(recovery.intervention, 1);
 });
 
-test("a guard-skipped node carries its skip and its value crosses to its successors", () => {
-  const program = {
-    workflow: {
-      nodes: {
-        work: { tool: "t", verify: "check" },
-        audit: { model: { name: "audit" }, follows: ["work"], skip_when_verified: "work" },
-        report: { tool: "t", follows: ["audit"], terminal: true },
-      },
-    },
-  };
-  const events = [
-    { seq: 0, time: 1, type: "episode/start", data: { id: "e", program } },
-    { seq: 1, time: 2, type: "workflow/node-start", data: { node: "work", fire: 1, inputs: [] } },
-    { seq: 2, time: 3, type: "verification/result", data: { tool: "check", status: "accepted", findings: [], duration_ms: 1 } },
-    { seq: 3, time: 4, type: "workflow/node-end", data: { node: "work", fire: 1, value: {}, rendered: "", duration_ms: 1 } },
-    { seq: 4, time: 5, type: "workflow/node-skipped", data: { node: "audit", verified_by: "work", verification_seq: 2 } },
-    { seq: 5, time: 6, type: "workflow/node-start", data: { node: "report", fire: 1, inputs: [4] } },
-    { seq: 6, time: 7, type: "workflow/node-end", data: { node: "report", fire: 1, value: {}, rendered: "", duration_ms: 1 } },
-  ] as LogEvent[];
-  const workflow = readWorkflow(program, events)!;
-  const audit = workflow.nodes.find((n) => n.name === "audit")!;
-  assert.deepEqual(audit.skipped, { seq: 4, verifiedBy: "work", verificationSeq: 2 });
-  assert.equal(audit.firings.length, 0);
-  assert.equal(audit.direction, "", "a skipped node earns no direction");
-  assert.equal(workflow.nodes.find((n) => n.name === "work")!.verify, "check");
-  const onward = workflow.edges.find((e) => e.from === "audit" && e.to === "report")!;
-  assert.equal(onward.traversed, true, "the skip's contributed value crossed the edge");
-});
-
 test("rank is the longest path of forward edges, and a cycle does not push it", () => {
   const workflow = run();
   const rank = rankNodes(workflow.nodes.map((n) => n.name), workflow.edges);

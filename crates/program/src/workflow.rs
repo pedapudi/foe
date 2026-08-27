@@ -3,7 +3,7 @@
 //! executor lives in the `foe-workflow` crate; this module holds what the
 //! document, validation, and identity need.
 
-use crate::{ChildProgram, ConfigError, DoneWhen};
+use crate::{ChildProgramDocument, DoneWhen, ProgramError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -72,19 +72,15 @@ pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub args: Option<Map<String, Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<ChildProgram>,
+    pub model: Option<ChildProgramDocument>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow: Option<WorkflowConfig>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub follows: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub followed_by: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verify: Option<String>,
     #[serde(default = "crate::u32_default::<2>")]
     pub retries: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skip_when_verified: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub branches: BTreeMap<String, Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -120,20 +116,10 @@ impl WorkflowConfig {
         })
     }
 
-    /// The data inputs of every node: the `task` source first when the node
-    /// follows it, then its other `follows`, then every node whose
-    /// `followed_by` names it, in name order, each listed once.
+    /// The data inputs of every node, with the `task` source first.
     pub fn inputs(&self) -> BTreeMap<String, Vec<String>> {
         let mut inputs: BTreeMap<String, Vec<String>> =
             self.nodes.iter().map(|(name, node)| (name.clone(), node.follows.clone())).collect();
-        for (source, node) in &self.nodes {
-            for target in &node.followed_by {
-                let list = inputs.entry(target.clone()).or_default();
-                if !list.contains(source) {
-                    list.push(source.clone());
-                }
-            }
-        }
         inputs.values_mut().for_each(|list| list.sort_by_key(|name| name != TASK_SOURCE));
         inputs
     }
@@ -193,9 +179,9 @@ pub fn check(
     prefix: &str,
     wf: &WorkflowConfig,
     tools: &[String],
-    program: &mut dyn FnMut(&str, &ChildProgram) -> Result<(), ConfigError>,
-) -> Result<(), ConfigError> {
-    let invalid = |key: String, rule: String| ConfigError::Invalid { key, rule };
+    program: &mut dyn FnMut(&str, &ChildProgramDocument) -> Result<(), ProgramError>,
+) -> Result<(), ProgramError> {
+    let invalid = |key: String, rule: String| ProgramError::Invalid { key, rule };
     let firings = wf.possible_firings();
     if firings > MAX_POSSIBLE_FIRINGS {
         let rule = format!("describes {firings} possible firings; the runtime permits at most {MAX_POSSIBLE_FIRINGS}");
@@ -221,44 +207,10 @@ pub fn check(
             false => Err(invalid(key(field), format!("names a tool in tools; `{tool}` is absent"))),
         };
         node.follows.iter().filter(|t| *t != TASK_SOURCE).try_for_each(|t| names("follows", t))?;
-        node.followed_by.iter().try_for_each(|t| names("followed_by", t))?;
         for (label, list) in &node.branches {
             list.iter().try_for_each(|t| names(&format!("branches.{label}"), t))?;
         }
         node.recovery.iter().flat_map(|r| &r.follows).try_for_each(|t| names("recovery.follows", t))?;
-        if let Some(target) = &node.skip_when_verified {
-            names("skip_when_verified", target)?;
-            if !inputs[name].contains(target) {
-                let rule = format!("names a node in this node's follows; `{target}` is not among them");
-                return Err(invalid(key("skip_when_verified"), rule));
-            }
-            // The guard reads an accepted verification of the named node,
-            // so that node must be able to produce one: a node-level
-            // `verify`, or a model program whose own `done_when.verify` is
-            // declared. Any other node completes without a verifier and
-            // the guard could never fire.
-            let observed = wf.nodes.get(target).is_some_and(|named| {
-                named.verify.is_some()
-                    || named.model.as_ref().is_some_and(|m| m.done_when.as_ref().is_some_and(|d| d.verify.is_some()))
-            });
-            if !observed {
-                let rule = format!(
-                    "names a node with a verifier; `{target}` declares no `verify` and its program no \
-                     `done_when.verify`, so the guard could never observe a verification"
-                );
-                return Err(invalid(key("skip_when_verified"), rule));
-            }
-            // A choice point is the node's own judgment over its result,
-            // and a skipped node exercises none: no rule could say which
-            // branch a value the node never produced selects. The two
-            // declarations are therefore refused together.
-            if !node.branches.is_empty() {
-                let rule = "is declared beside branches; a skipped node makes no choice, so a guarded node \
-                            cannot be a choice point"
-                    .to_string();
-                return Err(invalid(key("skip_when_verified"), rule));
-            }
-        }
         node.verify.iter().try_for_each(|v| tool_in("verify", v))?;
         node.tool.iter().try_for_each(|t| tool_in("tool", t))?;
         let args = node.args.clone().map_or(Value::Null, Value::Object);
@@ -296,7 +248,7 @@ pub fn model_nodes<'a>(wf: &'a WorkflowConfig, prefix: &str) -> Vec<(String, &'a
 /// `branch` added to its `done_when.returns` as a required enum over the
 /// labels when the node declares `branches`. See docs/workflow.md "Choice
 /// points".
-pub fn node_program(node: &Node) -> ChildProgram {
+pub fn node_program(node: &Node) -> ChildProgramDocument {
     let mut program = node.model.clone().expect("a model node");
     if node.branches.is_empty() {
         return program;

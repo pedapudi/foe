@@ -1,0 +1,184 @@
+{
+  "version": 0,
+  "name": "coding",
+  "instructions": {
+    "role": "Run the declared coding workflow against the task."
+  },
+  "tools": ["read", "grep", "edit", "bash"],
+  "grants": {
+    "read": [],
+    "write": []
+  },
+  "budget": {
+    "model_calls": 0,
+    "max_episodes": 3,
+    "max_concurrent": 1
+  },
+  "model": {},
+  "workflow": {
+    "nodes": {
+      "implement-task": {
+        "model": {
+          "name": "implement-task",
+          "instructions": {
+            "environment": "",
+            "role": "Implement the task in the current directory, which is the root of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the final change. When the task requires a service or other live machine state, apply its configuration in the current environment, exercise the requested public interface, and leave the required state available after completion. An unbuilt image, unapplied configuration, or stopped temporary probe does not satisfy live behavior. Each tool result begins with its log sequence as `[seq N]`. Return at least one `learned` claim whose `seq` cites such a result. Also report changed artifacts, validation, and unresolved risks."
+          },
+          "tools": ["read", "grep", "edit", "bash"],
+          "grants": {
+            "read": [],
+            "write": []
+          },
+          "budget": {
+            "model_calls": 0
+          },
+          "done_when": {
+            "returns": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                "changed_paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 512
+                  },
+                  "maxItems": 64
+                },
+                "validation": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "minItems": 1,
+                  "maxItems": 32
+                },
+                "unresolved_risks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "maxItems": 16
+                },
+                "learned": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "claim": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 300
+                      },
+                      "seq": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": ["claim", "seq"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["summary", "changed_paths", "validation", "unresolved_risks", "learned"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "follows": ["task"]
+      },
+      "audit-and-repair-task": {
+        "model": {
+          "name": "audit-and-repair-task",
+          "instructions": {
+            "environment": "",
+            "role": "Independently determine whether the shared workspace satisfies the original task. Treat the implementation episode's completion claim and its cited `learned` observations as unverified. Independently reproduce or challenge every claim relevant to completion. Repair every defect you find. When the task requires a service or other live machine state, apply its configuration in the current environment, exercise the requested public interface, and leave the required state available after completion. An unbuilt image, unapplied configuration, or stopped temporary probe does not satisfy live behavior. After the final edit, run the strongest task-relevant checks. Return at least one cited `learned` observation and report every path changed by either episode, including valid implementation changes that required no audit edit."
+          },
+          "tools": ["read", "grep", "edit", "bash"],
+          "grants": {
+            "read": [],
+            "write": []
+          },
+          "budget": {
+            "model_calls": 0
+          },
+          "done_when": {
+            "returns": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                "changed_paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 512
+                  },
+                  "maxItems": 64
+                },
+                "validation": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "minItems": 1,
+                  "maxItems": 32
+                },
+                "unresolved_risks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "maxItems": 16
+                },
+                "learned": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "claim": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 300
+                      },
+                      "seq": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": ["claim", "seq"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["summary", "changed_paths", "validation", "unresolved_risks", "learned"],
+              "additionalProperties": false
+            }
+          },
+          "model": {}
+        },
+        "follows": ["task", "implement-task"],
+        "terminal": true
+      }
+    },
+    "recovery": {
+      "enabled": false
+    }
+  },
+  "task": ""
+}

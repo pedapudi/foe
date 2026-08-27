@@ -2,8 +2,8 @@ use super::{resolve_specs, Handles, Registry, Source};
 use crate::grants::{RootReader, RootWriter};
 use crate::test_util::{program_with, spec, tmp, FakeExecutor, Probe, Verifier};
 use crate::{Tool, ToolCall};
-use foe_config::harness_text as text;
-use foe_config::{ConfigError, Effect};
+use foe_program::harness_text as text;
+use foe_program::{Effect, ProgramError};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -15,9 +15,9 @@ fn call(name: &str, args: Value) -> ToolCall {
     ToolCall { id: format!("tc_{name}"), name: name.into(), args }
 }
 
-fn rule_of(result: Result<Registry, ConfigError>) -> String {
+fn rule_of(result: Result<Registry, ProgramError>) -> String {
     match result {
-        Err(ConfigError::Invalid { key, rule }) => {
+        Err(ProgramError::Invalid { key, rule }) => {
             assert_eq!(key, "tools");
             rule
         }

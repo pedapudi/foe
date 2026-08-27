@@ -1,4 +1,4 @@
-//! The running form: load the configuration, restrict the process, compose
+//! The running form: load the program document, restrict the process, compose
 //! the runtime's parts, run one episode, and report the outcome.
 //!
 //! Order matters in [`run`]. Everything that reads a file outside the
@@ -9,9 +9,6 @@
 //! applied on the main thread before the asynchronous runtime starts, so
 //! every thread of the episode inherits it.
 
-use foe_config::config::{resolve, Program};
-use foe_config::identity::{compute, Identity};
-use foe_config::{Config, ModelConfig, ToolSpec};
 use foe_core::budget::Pool;
 use foe_core::confine::{Confined, Unconfined};
 use foe_core::context::ContextPolicy;
@@ -27,7 +24,10 @@ use foe_core::spawn::{ProcessSpawner, Router, Uplink};
 use foe_core::team::{self, Team};
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
-use foe_log::{EpisodeStart, Outcome};
+use foe_log::{seed::SeedHeader, ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
+use foe_program::document::{resolve, ResolvedProgram};
+use foe_program::identity::{compute, Identity};
+use foe_program::{ModelConfig, ProgramDocument, ToolSpec};
 use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -43,24 +43,9 @@ const VIEWER_GRACE: Duration = Duration::from_secs(3);
 const BUILTIN_IMPLEMENTATION_CALLS: u64 = 60;
 const BUILTIN_AUDIT_CALLS: u64 = 60;
 
-/// Runtime-owned instructions for the built-in coding workflow. They name no
-/// path, so the program identity is the same in every directory.
-const BUILTIN_INSTRUCTION: &str = "Run the declared coding workflow against the task.";
-const BUILTIN_IMPLEMENTATION_INSTRUCTION: &str = "Implement the task in the current directory, which is the root \
-of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the final \
-change. When the task requires a service or other live machine state, apply the configuration in the current \
-environment, validate the requested public interface end to end, and leave required state available when returning. \
-An unbuilt image, unapplied configuration, or stopped temporary probe does not satisfy live behavior. In the \
-completion value, report changed artifacts, commands and observed results, and unresolved risks for an independent \
-audit.";
-const BUILTIN_AUDIT_INSTRUCTION: &str = "Independently determine whether the shared workspace satisfies the \
-original task. Treat the implementation episode's completion claim as unverified. Inspect the artifacts and run \
-checks that distinguish plausible incorrect implementations. Repair every defect you find. When the task requires a \
-service or other live machine state, apply the configuration in the current environment, validate the requested public \
-interface end to end, and leave required state available when returning. Do not substitute an unbuilt image, unapplied \
-configuration, or temporary probe that removes required final state. After the final edit, run the strongest available \
-task-relevant checks. Complete with the workspace in the state the task requires. Report every path changed by either \
-episode, including valid implementation changes that required no audit edit.";
+/// Static behavior of the built-in coding workflow. Dynamic authority,
+/// environment, model, verifier, and task values are filled below.
+const BUILTIN_PROGRAM_DOCUMENT: &str = include_str!("builtin-coding.json");
 const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
@@ -81,18 +66,11 @@ const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
 ];
 
 fn builtin_environment(cwd: &Path, present: impl Fn(&Path) -> bool) -> String {
-    let availability =
-        BUILTIN_EXECUTABLE_PROBES
-            .iter()
-            .map(|(name, path)| {
-                if present(Path::new(path)) {
-                    format!("{name}={path}")
-                } else {
-                    format!("{name}=not found at {path}")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
+    let probe = |(name, path): &(&str, &str)| match present(Path::new(path)) {
+        true => format!("{name}={path}"),
+        false => format!("{name}=not found at {path}"),
+    };
+    let availability = BUILTIN_EXECUTABLE_PROBES.iter().map(probe).collect::<Vec<_>>().join(", ");
     format!(
         "Working directory: {}. Fixed-path executable probe: {availability}. A not-found result covers only the \
          listed standard locations; project-local tools may still exist.",
@@ -105,13 +83,21 @@ pub struct Options {
     pub task: Option<String>,
     pub config: Option<PathBuf>,
     pub model: Option<String>,
+    /// Provider service tier for the built-in coding workflow.
+    pub service_tier: Option<String>,
     pub key_file: Option<PathBuf>,
     /// An executable verifier for the built-in coding workflow.
     pub verify: Option<PathBuf>,
+    /// Kernel confinement mode for the built-in coding workflow.
+    pub sandbox: Option<String>,
     pub log_dir: Option<PathBuf>,
     pub no_open: bool,
     pub headless: bool,
     pub host: bool,
+    /// Source log directory to seed the new episode from, with the
+    /// boundary: source events with `seq` in `[1, at)` are copied.
+    pub fork: Option<PathBuf>,
+    pub at: Option<u64>,
 }
 
 /// The built-in tools implemented outside the registry: the coding tools
@@ -126,7 +112,7 @@ pub fn extra_builtin_specs() -> Vec<ToolSpec> {
         .collect()
 }
 
-pub fn identity(program: &Program) -> Result<Identity, String> {
+pub fn identity(program: &ResolvedProgram) -> Result<Identity, String> {
     compute(program, &extra_builtin_specs(), &runtime_info()).map_err(|e| e.to_string())
 }
 
@@ -138,7 +124,7 @@ pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
 /// to, with the window taken from the block or from the provider table for
 /// the model named. `None` when the program never compacts. An unknown
 /// model with no `window_tokens` is a construction error.
-pub fn context_policy(program: &Program) -> Result<Option<foe_context::Policy>, String> {
+pub fn context_policy(program: &ResolvedProgram) -> Result<Option<foe_context::Policy>, String> {
     let Some(cfg) = program.context.clone().filter(|c| c.compact) else { return Ok(None) };
     let model = program.model.as_ref();
     let window = cfg.window_tokens.or_else(|| model.and_then(known_window)).ok_or_else(|| {
@@ -176,13 +162,9 @@ struct Lineage {
 impl Lineage {
     fn read(log_dir: Option<&Path>) -> Result<Lineage, String> {
         let file = log_dir.map(|d| d.join("lineage.json")).filter(|f| f.is_file());
-        match file {
-            Some(file) => {
-                serde_json::from_slice(&std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?)
-                    .map_err(|e| format!("{}: {e}", file.display()))
-            }
-            None => Ok(Lineage { episode_id: fresh_id(), parent_id: None, team_id: None }),
-        }
+        let Some(file) = file else { return Ok(Lineage { episode_id: fresh_id(), parent_id: None, team_id: None }) };
+        let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+        serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", file.display()))
     }
 }
 
@@ -192,13 +174,94 @@ fn fresh_id() -> String {
     format!("ep_{}", hex::encode(&digest[..4]))
 }
 
-/// The configuration to run: the document named by `--config`, with the
+/// Where the episode's log lives and who the episode is: a fresh directory
+/// seeded from `--fork`, an existing log continued or repaired, or a new
+/// log. docs/log-format.md "Seeding" states the fork and resume flows.
+fn episode_directory(options: &Options, identity: &str, task: &str) -> Result<(PathBuf, Lineage), String> {
+    if let Some(source) = &options.fork {
+        let at = options.at.expect("the parser pairs --fork with --at");
+        return fork(source, at, options.log_dir.clone(), task);
+    }
+    if let Some(dir) = options.log_dir.as_deref().filter(|dir| dir.join(foe_log::fold::LOG_FILE).is_file()) {
+        return resume(dir, identity);
+    }
+    let lineage = Lineage::read(options.log_dir.as_deref())?;
+    let dir = options.log_dir.clone().unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
+    Ok((dir, lineage))
+}
+
+/// Seeds a fresh episode from a prefix of the log in `source` and appends
+/// the running form's task as a `system` inbox item: the one `task` item
+/// per log is the copied one at seq 1, and `system` is the runtime's
+/// channel for text the model must see.
+fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(PathBuf, Lineage), String> {
+    let lineage = Lineage { episode_id: fresh_id(), parent_id: None, team_id: None };
+    let dest = dest.unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
+    let in_dest = |e: LogError| format!("{}: {e}", dest.display());
+    if dest.join(foe_log::fold::LOG_FILE).is_file() {
+        return Err(format!("{} already holds a log; a fork starts a fresh one", dest.display()));
+    }
+    std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    let header = SeedHeader { new_id: lineage.episode_id.clone(), parent_id: None, team_id: None };
+    foe_log::seed::seed(source, at, &dest, header).map_err(|e| format!("--fork {}: {e}", source.display()))?;
+    let mut writer = foe_log::append::Writer::open(&dest, None).map_err(in_dest)?;
+    let content = vec![ContentBlock::Text { text: task.to_string() }];
+    let item = InboxItem { source: InboxSource::System, content, from: None, message_id: None };
+    writer.append(EventData::InboxItem(item)).map_err(in_dest)?;
+    writer.sync().map_err(in_dest)?;
+    Ok((dest, lineage))
+}
+
+/// Continues the episode whose log is in `dir` under the same program. A
+/// log ending at an event boundary with every binding obligation closed is
+/// continued in place; one cut short mid-line or with an obligation open
+/// is seeded at its last clean boundary into a fresh directory beside it,
+/// which the run then continues. A prepared seeded log, ending at
+/// `seed/end`, is continued as it stands with no identity comparison,
+/// because a seeded `episode/start` records its source's program.
+fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
+    let dir = dir.canonicalize().map_err(|e| format!("{}: {e}", dir.display()))?;
+    let in_dir = |e: LogError| format!("{}: {e}", dir.display());
+    let (events, consumed) = foe_log::fold::read_from(&dir, 0).map_err(in_dir)?;
+    let state = foe_log::fold::fold(&events).map_err(in_dir)?;
+    let start = state.start.ok_or_else(|| format!("{}: the log has no episode/start", dir.display()))?;
+    if state.outcome.is_some() {
+        let (dir, id) = (dir.display(), &start.id);
+        return Err(format!("{dir}: episode {id} already ended; a finished log is forked, not resumed: foe \"task\" --fork {dir} --at SEQ"));
+    }
+    let lineage = Lineage { episode_id: start.id, parent_id: start.parent_id, team_id: start.team_id };
+    let torn = std::fs::metadata(dir.join(foe_log::fold::LOG_FILE)).is_ok_and(|m| m.len() > consumed);
+    if !torn && events.last().is_some_and(|e| matches!(e.data, EventData::SeedEnd {})) {
+        return Ok((dir, lineage));
+    }
+    if start.identity != identity {
+        let (dir, recorded) = (dir.display(), &start.identity);
+        return Err(format!("{dir}: resuming requires the program that ran: the log records identity {recorded}; the given program document resolves to {identity}"));
+    }
+    if !torn && foe_log::fold::open_obligations(&events).is_empty() {
+        return Ok((dir, lineage));
+    }
+    let new_id = fresh_id();
+    let dest = dir.parent().unwrap_or(Path::new(".")).join(&new_id);
+    std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    let header =
+        SeedHeader { new_id: new_id.clone(), parent_id: lineage.parent_id.clone(), team_id: lineage.team_id.clone() };
+    foe_log::seed::seed(&dir, events.len() as u64, &dest, header).map_err(in_dir)?;
+    eprintln!(
+        "foe: {} stopped mid-line or mid-obligation; episode {new_id} continues it in {}",
+        dir.display(),
+        dest.display()
+    );
+    Ok((dest, Lineage { episode_id: new_id, ..lineage }))
+}
+
+/// The program document to run: the document named by `--config`, with the
 /// command-line task replacing its own, or the built-in coding workflow
 /// for a bare task.
-fn load_config(options: &Options) -> Result<Config, String> {
+fn load_program_document(options: &Options) -> Result<ProgramDocument, String> {
     let Some(path) = &options.config else {
         let task = options.task.clone().ok_or(USAGE_BARE)?;
-        let model = match &options.model {
+        let mut model = match &options.model {
             Some(spec) => {
                 let (provider, model) =
                     spec.split_once('/').ok_or("--model takes PROVIDER/MODEL, for example anthropic/claude-opus-5")?;
@@ -206,15 +269,34 @@ fn load_config(options: &Options) -> Result<Config, String> {
             }
             None => default_model()?.ok_or(NO_DEFAULT_MODEL)?,
         };
-        return builtin_config(task, model, options.key_file.as_deref(), options.verify.as_deref());
+        if let Some(tier) = &options.service_tier {
+            if !matches!(tier.as_str(), "default" | "priority") {
+                return Err(format!("--service-tier {tier}: expected default or priority"));
+            }
+            model.options.insert("service_tier".into(), tier.clone());
+        }
+        return builtin_program_document(
+            task,
+            model,
+            options.key_file.as_deref(),
+            options.verify.as_deref(),
+            options.sandbox.as_deref(),
+        );
     };
-    if options.verify.is_some() {
-        return Err("--verify applies to the built-in coding workflow; a configuration document declares its own \
-                    done_when and skip_when_verified"
-            .into());
+    if options.verify.is_some() || options.sandbox.is_some() || options.service_tier.is_some() {
+        let option = if options.verify.is_some() {
+            "--verify"
+        } else if options.sandbox.is_some() {
+            "--sandbox"
+        } else {
+            "--service-tier"
+        };
+        return Err(format!(
+            "{option} applies to the built-in coding workflow; a program document declares its own behavior"
+        ));
     }
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut config = foe_config::config::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut config = foe_program::document::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     if let Some(task) = &options.task {
         config.task = task.clone();
     }
@@ -253,22 +335,24 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// The built-in coding workflow. `--key-file` names the API key file
 /// explicitly; without it the provider's convention path is read.
 /// `verify` names an executable verifier: it becomes a `tool_defs` entry
-/// named `check` with execute authority on that file, the implementation
-/// episode declares `done_when.verify` on it, and the audit node gains
-/// `skip_when_verified`, so an accepted implementation skips the audit.
-/// Without it the workflow is unchanged: always audited.
-fn builtin_config(
+/// named `check` available to both episodes, and the terminal audit declares
+/// `done_when.verify` on it. The independent audit therefore always runs and
+/// its checked result alone can complete the workflow. Without a verifier the
+/// workflow remains an unconditional independent audit.
+fn builtin_program_document(
     task: String,
     mut model: ModelConfig,
     key_file: Option<&Path>,
     verify: Option<&Path>,
-) -> Result<Config, String> {
+    sandbox: Option<&str>,
+) -> Result<ProgramDocument, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
     let explicit_reasoning = model.option("reasoning_effort").is_some();
     apply_builtin_model_defaults(&mut model);
     if let Some(key_file) = key_file {
         let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
-        model.options.insert("api_key_file".to_string(), key_file.to_string_lossy().into_owned());
+        let option = credential_option(&model.provider);
+        model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
     }
     let mut audit_model = model.clone();
     if !explicit_reasoning
@@ -278,102 +362,54 @@ fn builtin_config(
         audit_model.options.insert("reasoning_effort".into(), "high".into());
     }
     let environment = builtin_environment(&cwd, Path::is_file);
-    let completion = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
-            "changed_paths": {
-                "type": "array", "items": { "type": "string", "maxLength": 512 }, "maxItems": 64
-            },
-            "validation": {
-                "type": "array", "items": { "type": "string", "maxLength": 1000 },
-                "minItems": 1, "maxItems": 32
-            },
-            "unresolved_risks": {
-                "type": "array", "items": { "type": "string", "maxLength": 1000 }, "maxItems": 16
-            },
-            "learned": {
-                "type": "array", "maxItems": 8,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "claim": { "type": "string", "minLength": 1, "maxLength": 300 },
-                        "seq": { "type": "integer", "minimum": 0 }
-                    },
-                    "required": ["claim", "seq"],
-                    "additionalProperties": false
-                }
-            }
-        },
-        "required": ["summary", "changed_paths", "validation", "unresolved_risks"],
-        "additionalProperties": false
-    });
     let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });
-    let tools = serde_json::json!(["read", "grep", "edit", "bash"]);
-    let document = serde_json::json!({
-        "version": foe_config::config::CONFIG_VERSION,
-        "name": "coding",
-        "instructions": { "role": BUILTIN_INSTRUCTION },
-        "tools": tools,
-        "grants": grants,
-        "budget": {
-            "model_calls": BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS,
-            "max_episodes": 3,
-            "max_concurrent": 1
-        },
-        "model": model,
-        "workflow": {
-            "nodes": {
-                "implement-task": {
-                    "model": {
-                        "name": "implement-task",
-                        "instructions": {
-                            "environment": environment,
-                            "role": BUILTIN_IMPLEMENTATION_INSTRUCTION
-                        },
-                        "tools": tools,
-                        "grants": grants,
-                        "budget": { "model_calls": BUILTIN_IMPLEMENTATION_CALLS },
-                        "done_when": { "returns": completion }
-                    },
-                    "follows": ["task"]
-                },
-                "audit-and-repair-task": {
-                    "model": {
-                        "name": "audit-and-repair-task",
-                        "instructions": {
-                            "environment": environment,
-                            "role": BUILTIN_AUDIT_INSTRUCTION
-                        },
-                        "tools": tools,
-                        "grants": grants,
-                        "budget": { "model_calls": BUILTIN_AUDIT_CALLS },
-                        "done_when": { "returns": completion },
-                        "model": audit_model
-                    },
-                    "follows": ["task", "implement-task"],
-                    "terminal": true
-                }
-            },
-            "recovery": { "enabled": false }
-        },
-        "task": task,
-    });
+    let mut document: serde_json::Value =
+        serde_json::from_str(BUILTIN_PROGRAM_DOCUMENT).map_err(|e| format!("built-in program template: {e}"))?;
+    document["version"] = serde_json::json!(foe_program::document::PROGRAM_FORMAT_VERSION);
+    document["model"] = serde_json::json!(model);
+    document["grants"] = grants.clone();
+    document["budget"]["model_calls"] = serde_json::json!(BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS);
+    document["task"] = serde_json::json!(task);
+    for (node, calls) in
+        [("implement-task", BUILTIN_IMPLEMENTATION_CALLS), ("audit-and-repair-task", BUILTIN_AUDIT_CALLS)]
+    {
+        let program = &mut document["workflow"]["nodes"][node]["model"];
+        program["instructions"]["environment"] = serde_json::json!(environment);
+        program["grants"] = grants.clone();
+        program["budget"]["model_calls"] = serde_json::json!(calls);
+    }
+    document["workflow"]["nodes"]["audit-and-repair-task"]["model"]["model"] = serde_json::json!(audit_model);
+    if let Some(mode) = sandbox {
+        if !matches!(mode, "best-effort" | "required" | "off") {
+            return Err(format!("--sandbox {mode}: expected best-effort, required, or off"));
+        }
+        document["sandbox"] = serde_json::json!({ "mode": mode });
+    }
     if let Some(check) = verify {
         let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
         let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": cwd });
-        let mut document = document;
-        let implement = "implement-task";
         document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
-        let node_tools = &mut document["workflow"]["nodes"][implement]["model"]["tools"];
-        node_tools.as_array_mut().expect("a tool list").push(serde_json::json!("check"));
         document["tool_defs"] = serde_json::json!({ "check": def });
-        document["workflow"]["nodes"][implement]["model"]["tool_defs"] = serde_json::json!({ "check": def });
-        document["workflow"]["nodes"][implement]["model"]["done_when"]["verify"] = serde_json::json!("check");
-        document["workflow"]["nodes"]["audit-and-repair-task"]["skip_when_verified"] = serde_json::json!(implement);
-        return serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"));
+        for node in ["implement-task", "audit-and-repair-task"] {
+            let program = &mut document["workflow"]["nodes"][node]["model"];
+            program["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
+            program["tool_defs"] = serde_json::json!({ "check": def });
+        }
+        document["workflow"]["nodes"]["audit-and-repair-task"]["model"]["done_when"]["verify"] =
+            serde_json::json!("check");
+        return serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"));
     }
-    serde_json::from_value(document).map_err(|e| format!("built-in configuration: {e}"))
+    serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"))
+}
+
+#[cfg(feature = "transport")]
+fn credential_option(provider: &str) -> &'static str {
+    foe_transport::provider_info(provider).and_then(|value| value.auth.option_key()).unwrap_or("api_key_file")
+}
+
+#[cfg(not(feature = "transport"))]
+fn credential_option(_provider: &str) -> &'static str {
+    "api_key_file"
 }
 
 #[cfg(test)]
@@ -426,16 +462,16 @@ fn built_in_transport(
 }
 
 pub fn run(options: Options) -> Result<ExitCode, String> {
-    let config = load_config(&options)?;
+    let config = load_program_document(&options)?;
     let mut program = resolve(&config).map_err(|e| format!("config: {e}"))?;
-    let lineage = Lineage::read(options.log_dir.as_deref())?;
-    let log_dir = options.log_dir.clone().unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
+    let identity = identity(&program)?;
+    let (log_dir, lineage) = episode_directory(&options, &identity.hash, &config.task)?;
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let sandbox = Arc::new(Sandbox::new(program.sandbox.mode).map_err(|e| e.to_string())?);
     // Every model node of a workflow is a child program of the spawner, so
-    // the policy and the spawner see the same configuration.
-    let config = foe_workflow::spawner_config(&config);
+    // the policy and the spawner see the same program document.
+    let config = foe_workflow::spawner_document(&config);
     let mut unconfined = Unconfined::new(sandbox, Policy::for_episode(&config, &log_dir));
     // Telemetry is resolved before confinement: the capture directory must
     // be writable after the sandbox closes, so it is created now and
@@ -460,7 +496,6 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
             crate::open_browser(&bound.url());
         }
     }
-    let identity = identity(&program)?;
     let context = context_policy(&program)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
     let runtime_info = runtime_info();
     let transport = match &mut program.model {
@@ -501,8 +536,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
 /// itself. It carries a [`Confined`] rather than a policy, so nothing
 /// assembled here can widen what the kernel already holds.
 struct Setup {
-    config: Config,
-    program: Program,
+    config: ProgramDocument,
+    program: ResolvedProgram,
     log_dir: PathBuf,
     confined: Confined,
     viewer: Option<foe_view::Bound>,
@@ -549,6 +584,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         policy.clone(),
         log_dir.join("spill"),
         foe_code::SESSION_MAX_ALIVE,
+        program.grants.task_session,
     ));
     let host_tools = if host { protocol.tools(&program) } else { Vec::new() };
     let parent = start.parent_id.is_some().then_some(&protocol);

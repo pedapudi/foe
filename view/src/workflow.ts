@@ -60,19 +60,6 @@ export interface Recovery {
   intervention: number;
 }
 
-/** One applied `skip_when_verified` guard, from `workflow/node-skipped`. */
-export interface Skip {
-  seq: number;
-  /** The node whose result an authoritative verifier accepted. */
-  verifiedBy: string;
-  /**
-   * Seq of the accepted `verification/result`: in this log for a
-   * node-level verify, in the named node's child episode log for a
-   * program-level `done_when.verify`.
-   */
-  verificationSeq: number;
-}
-
 export interface WorkflowNode {
   name: string;
   kind: NodeKind;
@@ -83,8 +70,6 @@ export interface WorkflowNode {
   branches: Branch[];
   maxFires: number | null;
   terminal: boolean;
-  /** The guard that skipped this node, null when it was never skipped. */
-  skipped: Skip | null;
   firings: Firing[];
   /**
    * Colour direction, earned by the last firing's end and never by
@@ -180,7 +165,6 @@ export function readWorkflow(program: Record<string, unknown>, events: LogEvent[
       branches,
       maxFires: typeof raw.max_fires === "number" ? raw.max_fires : null,
       terminal: raw.terminal === true,
-      skipped: null,
       firings: [],
       direction: "",
       running: false,
@@ -189,6 +173,7 @@ export function readWorkflow(program: Record<string, unknown>, events: LogEvent[
       if (source === TASK_SOURCE) hasTask = true;
       addEdge(source, name, null);
     }
+    // Retained logs are immutable compatibility inputs and may use the outgoing spelling.
     for (const target of arr(raw.followed_by).map((s) => str(s))) addEdge(name, target, null);
   }
   // A branch edge is declared from the other end and may name a node that
@@ -263,19 +248,6 @@ export function readWorkflow(program: Record<string, unknown>, events: LogEvent[
             if (edge.from === name && edge.to === successor && edge.label === label) edge.traversed = true;
           }
         }
-        break;
-      }
-      case "workflow/node-skipped": {
-        if (!node) break;
-        // The skipped node contributes the named node's value, so its
-        // successors name this event among their inputs; producing here is
-        // what lets their edges read as traversed.
-        producer.set(event.seq, name);
-        node.skipped = {
-          seq: event.seq,
-          verifiedBy: str(data.verified_by),
-          verificationSeq: num(data.verification_seq),
-        };
         break;
       }
       case "workflow/recovery": {
