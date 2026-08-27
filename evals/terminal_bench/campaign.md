@@ -3752,3 +3752,35 @@ Confirmation remains closed while this failure supplies evidence for the
 second required autonomous improvement. The current source tree and binary
 remain frozen. Additional `dna-assembly` attempts may establish a repeated
 failure contrast without invalidating any of the eleven passing results.
+
+Two initial repeat attempts did not reach Foe or the task-owned grader. They
+used the evaluated source branch's stale controller. That controller invoked
+`foe schema` without a model argument inside the container, and the installed
+binary correctly rejected the command because the container had no default
+model. Harbor recorded two `NonZeroAgentExitCodeError` setup exceptions. No
+provider request occurred. These attempts are infrastructure-invalid, and
+their avoidable setup failure remains part of the campaign integrity record.
+
+The replacement command kept the exact frozen source and binary while using
+the current immutable controller and credential-safe adapter. Its no-spend
+preflight named the correct binary digest, source tree, standard service tier,
+serial execution, and built-in workflow before either attempt began. Both
+attempts then passed the unchanged task-owned grader.
+
+| Task | Attempt | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `dna-assembly` | 2 | 1.0 | 26 | 260,666 | 124,928 | 20,110 | $0.995123 | 489.999 |
+| `dna-assembly` | 3 | 1.0 | 34 | 468,542 | 281,600 | 26,394 | $1.388288 | 635.600 |
+
+Both accounts conformed. The controller recorded no credential, container,
+executable, sandbox, allowance, or other infrastructure failure. The
+credential-safe repeat manifest has SHA-256 digest
+`3d024019c7d6628aa7b0fc9dd056da372154daea39aae21cf7b59d2e6da38cc1`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/standard-audit-scope-transfer-dna-repeatability-credential-safe-20260827T212005Z`.
+
+The frozen candidate is 2/3 on `dna-assembly`. The one false acceptance still
+identifies a valid audit defect. It does not supply the two matching failures
+required for an identity-bound repeated-failure contrast. The campaign will
+not treat that single failure as sufficient evidence for an autonomous source
+change. The 11/12 development disposition remains unchanged.
