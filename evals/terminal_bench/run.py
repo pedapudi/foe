@@ -797,11 +797,76 @@ def read_job_result(path: Path) -> dict[str, Any]:
     return result
 
 
+def source_candidate_program_rows(
+    program: dict[str, Any],
+) -> tuple[
+    list[tuple[str, tuple[Any, ...]]],
+    list[tuple[str, dict[str, Any], tuple[Any, ...]]],
+]:
+    """Return every model profile and each completion-owning node program."""
+
+    def mapping(value: Any) -> dict[str, Any]:
+        return value if isinstance(value, dict) else {}
+
+    def profile(value: Any) -> tuple[Any, ...]:
+        model = mapping(value)
+        return tuple(
+            model.get(key)
+            for key in ("provider", "model", "reasoning_effort", "service_tier")
+        )
+
+    models = []
+    terminals = []
+
+    def visit(
+        workflow: dict[str, Any],
+        path: str,
+        inherited: tuple[Any, ...],
+        owns_completion: bool,
+    ) -> None:
+        for name, node_value in sorted(mapping(workflow.get("nodes")).items()):
+            node_path = f"{path}.nodes.{name}"
+            node = mapping(node_value)
+            child = mapping(node.get("model"))
+            nested = mapping(node.get("workflow"))
+            child_profile = inherited
+            child_workflow = {}
+            if child:
+                declared = profile(child.get("model"))
+                if any(value is not None for value in declared):
+                    child_profile = declared
+                models.append((node_path, child_profile))
+                child_workflow = mapping(child.get("workflow"))
+                if child_workflow:
+                    visit(
+                        child_workflow,
+                        f"{node_path}.model.workflow",
+                        child_profile,
+                        owns_completion and node.get("terminal") is True,
+                    )
+            if nested:
+                visit(
+                    nested,
+                    f"{node_path}.workflow",
+                    inherited,
+                    owns_completion and node.get("terminal") is True,
+                )
+            elif owns_completion and node.get("terminal") is True:
+                if child_workflow:
+                    continue
+                terminals.append((node_path, child, child_profile))
+
+    root_profile = profile(program.get("model"))
+    visit(mapping(program.get("workflow")), "workflow", root_profile, True)
+    return models, terminals
+
+
 def built_in_program_failures(
     result_path: Path,
     *,
     completion_checker: bool,
     service_tier: str,
+    source_candidate: bool = False,
 ) -> list[str]:
     """Validate the resolved built-in workflow recorded by one trial."""
     episode_path = result_path.parent / "agent" / "foe-episode" / "episode.jsonl"
@@ -834,6 +899,63 @@ def built_in_program_failures(
 
     root_model = mapping(program.get("model"))
     nodes = mapping(mapping(program.get("workflow")).get("nodes"))
+    if source_candidate:
+        failures = []
+        expected_root_model = (
+            "openai-codex",
+            "gpt-5.6-sol",
+            "low",
+            service_tier,
+        )
+        if program.get("name") != "coding":
+            failures.append(
+                f"built-in candidate root.name: expected 'coding', recorded {program.get('name')!r}"
+            )
+        if model_profile(root_model) != expected_root_model:
+            failures.append(
+                "built-in candidate root.model: expected "
+                f"{expected_root_model!r}, recorded {model_profile(root_model)!r}"
+            )
+        sandbox = mapping(program.get("sandbox")).get("mode")
+        if sandbox != "off":
+            failures.append(
+                f"built-in candidate root.sandbox: expected 'off', recorded {sandbox!r}"
+            )
+        if not nodes:
+            failures.append("built-in candidate workflow has no nodes")
+
+        model_rows, terminal_programs = source_candidate_program_rows(program)
+        for path, profile in model_rows:
+            valid_profile = (
+                len(profile) == 4
+                and profile[0:2] == ("openai-codex", "gpt-5.6-sol")
+                and profile[2] in REASONING_EFFORTS
+                and profile[3] == service_tier
+            )
+            if not valid_profile:
+                failures.append(
+                    f"built-in candidate {path}.model: "
+                    f"recorded disallowed profile {profile!r}"
+                )
+        if len(terminal_programs) != 1:
+            failures.append(
+                "built-in candidate workflow must have exactly one terminal model node"
+            )
+        expected_verify = "check" if completion_checker else None
+        for name, child, _ in terminal_programs:
+            if not child:
+                failures.append(
+                    f"built-in candidate {name}: terminal node is not a model or workflow"
+                )
+                continue
+            observed = mapping(child.get("done_when")).get("verify")
+            if observed != expected_verify:
+                failures.append(
+                    f"built-in candidate {name}.verify: expected "
+                    f"{expected_verify!r}, recorded {observed!r}"
+                )
+        return failures
+
     implementation = mapping(nodes.get("implement-task"))
     audit = mapping(nodes.get("audit-and-repair-task"))
     implementation_program = mapping(implementation.get("model"))
@@ -901,7 +1023,11 @@ def built_in_program_failures(
     ]
 
 
-def built_in_audit_reasoning_effort(result_path: Path) -> str:
+def built_in_audit_reasoning_effort(
+    result_path: Path,
+    *,
+    source_candidate: bool = False,
+) -> str:
     """Read the resolved terminal-audit effort from one root episode."""
     episode_path = result_path.parent / "agent" / "foe-episode" / "episode.jsonl"
     try:
@@ -913,10 +1039,18 @@ def built_in_audit_reasoning_effort(result_path: Path) -> str:
     program = data.get("program") if isinstance(data, dict) else None
     workflow = program.get("workflow") if isinstance(program, dict) else None
     nodes = workflow.get("nodes") if isinstance(workflow, dict) else None
-    audit = nodes.get("audit-and-repair-task") if isinstance(nodes, dict) else None
-    audit_program = audit.get("model") if isinstance(audit, dict) else None
-    model = audit_program.get("model") if isinstance(audit_program, dict) else None
-    effort = model.get("reasoning_effort") if isinstance(model, dict) else None
+    if source_candidate and isinstance(nodes, dict):
+        _, terminals = source_candidate_program_rows(program)
+        if len(terminals) != 1:
+            raise ValueError(
+                "the resolved built-in candidate must have one terminal model node"
+            )
+        effort = terminals[0][2][2]
+    else:
+        audit = nodes.get("audit-and-repair-task") if isinstance(nodes, dict) else None
+        audit_program = audit.get("model") if isinstance(audit, dict) else None
+        model = audit_program.get("model") if isinstance(audit_program, dict) else None
+        effort = model.get("reasoning_effort") if isinstance(model, dict) else None
     if effort not in REASONING_EFFORTS:
         raise ValueError("the resolved built-in terminal audit has invalid reasoning effort")
     return effort
@@ -928,6 +1062,7 @@ def read_job_integrity(
     built_in_workflow: bool | None = None,
     completion_checker: bool = False,
     service_tier: str = "default",
+    source_candidate: bool = False,
 ) -> dict[str, list[str]]:
     """Record runtime, trace, and resource diagnostics beside task quality."""
     infrastructure_failures = []
@@ -991,10 +1126,16 @@ def read_job_integrity(
                     path,
                     completion_checker=completion_checker,
                     service_tier=service_tier,
+                    source_candidate=source_candidate,
                 )
             )
             try:
-                built_in_audit_efforts.add(built_in_audit_reasoning_effort(path))
+                built_in_audit_efforts.add(
+                    built_in_audit_reasoning_effort(
+                        path,
+                        source_candidate=source_candidate,
+                    )
+                )
             except ValueError as error:
                 infrastructure_failures.append(f"{trial}: {error}")
         if (
@@ -1133,6 +1274,7 @@ def task_record(
                     built_in_workflow=built_in_workflow,
                     completion_checker=completion_checker,
                     service_tier=service_tier,
+                    source_candidate=source_adoption_path is not None,
                 )
             )
             if source_adoption_path is not None:

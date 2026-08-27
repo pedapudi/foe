@@ -946,6 +946,13 @@ task, and identity. The trusted checker also requires the root episode to
 carry the rebuilt binary digest. It creates the child state from the checked
 identity document. The canonical ancestry checker must accept the transition.
 
+The campaign accepts a source candidate's recorded workflow topology and root
+model-call budget as candidate behavior. It still requires one terminal model
+node. Every model node must use GPT-5.6 Sol, the requested service tier, and an
+allowed reasoning effort. The root uses low reasoning and sandbox mode `off`.
+The terminal node owns the requested completion verifier. Ordinary release
+runs retain the stricter check for the repository's exact built-in profile.
+
 `campaign.json` records the controller source and build-output roots, the
 committed controller source tree, and the runner and checker paths and digests.
 It records the source candidate and one completed adoption per trial. The

@@ -143,6 +143,110 @@ class CasesTest(unittest.TestCase):
                 ),
                 [],
             )
+            candidate = json.loads(json.dumps(program))
+            candidate["budget"]["model_calls"] = 126
+            candidate_audit = candidate["workflow"]["nodes"][
+                "audit-and-repair-task"
+            ]
+            candidate_audit["terminal"] = False
+            del candidate_audit["model"]["done_when"]["verify"]
+            candidate["workflow"]["nodes"]["falsify-completion"] = {
+                "follows": ["task", "audit-and-repair-task"],
+                "terminal": True,
+                "model": {
+                    "name": "falsify-completion",
+                    "budget": {"model_calls": 6},
+                    "model": {
+                        "provider": "openai-codex",
+                        "model": "gpt-5.6-sol",
+                        "reasoning_effort": "high",
+                        "service_tier": "priority",
+                    },
+                    "done_when": {"returns": {}, "verify": "check"},
+                },
+            }
+            (episode / "episode.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "episode/start",
+                        "data": {"program": candidate},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                built_in_program_failures(
+                    result,
+                    completion_checker=True,
+                    service_tier="priority",
+                    source_candidate=True,
+                ),
+                [],
+            )
+            nested_candidate = json.loads(json.dumps(candidate))
+            gate = nested_candidate["workflow"]["nodes"].pop(
+                "falsify-completion"
+            )
+            gate["follows"] = ["task"]
+            nested_candidate["workflow"]["nodes"]["completion-workflow"] = {
+                "follows": ["task", "audit-and-repair-task"],
+                "terminal": True,
+                "workflow": {"nodes": {"falsify-completion": gate}},
+            }
+            (episode / "episode.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "episode/start",
+                        "data": {"program": nested_candidate},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                built_in_program_failures(
+                    result,
+                    completion_checker=True,
+                    service_tier="priority",
+                    source_candidate=True,
+                ),
+                [],
+            )
+            nested_candidate["workflow"]["nodes"]["completion-workflow"][
+                "workflow"
+            ]["nodes"]["falsify-completion"]["model"][
+                "model"
+            ]["service_tier"] = "default"
+            (episode / "episode.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "episode/start",
+                        "data": {"program": nested_candidate},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            candidate_failures = built_in_program_failures(
+                result,
+                completion_checker=True,
+                service_tier="priority",
+                source_candidate=True,
+            )
+            self.assertTrue(
+                any("recorded disallowed profile" in item for item in candidate_failures)
+            )
+            (episode / "episode.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "episode/start",
+                        "data": {"program": program},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             program["workflow"]["nodes"]["audit-and-repair-task"]["model"][
                 "model"
             ]["reasoning_effort"] = "xhigh"
