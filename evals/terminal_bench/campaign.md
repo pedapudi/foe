@@ -85,6 +85,14 @@ They do not reject a candidate that improves task quality. Development runs
 use the priority service tier and record it in the manifest. Foe records
 usage without enforcing token ceilings during ordinary quality runs.
 
+A retained qualification remains valid while the evaluated source tree,
+portable binary, task registry, model configuration, and task semantics remain
+unchanged. Documentation edits, diagnostic collectors, and controller safety
+checks do not invalidate task-quality evidence. A changed runtime or
+model-visible program requires only the smallest gate whose result can change.
+Every reuse decision records the retained manifest digest and the identities
+that establish equivalence.
+
 ## Confirmation-quality recovery
 
 The frozen candidate passed eleven of twelve closed-book development tasks.
@@ -2924,3 +2932,99 @@ campaign-manifest SHA-256 digests:
   `6ab54906c28e79514a63b80f3cee54f95f456c3e22f548039e530869873b6a41`;
 - remaining development tasks:
   `0414fde9af51caf021623bfdaca3fc7a189e5edcd4f47cc34c0b1d71c3cedef6`.
+
+## Access-only credential release requalification
+
+Two-worker execution gives each worker an isolated access-only OAuth token
+file. The prior binary rejected those files during configuration because it
+required a refresh token before any request needed renewal. The revised
+transport accepts an access token through its recorded expiry. It reports a
+local renewal error if the token later expires without refresh authority.
+
+The revised release has these identities:
+
+- source commit
+  `bdae366634b85d12518e777d865f7bb07ba7e88e`;
+- source tree
+  `git-tree-sha1:df82cf9c80eaefedc06fdd7a25aab35bf045af29`;
+- portable binary
+  `sha256:701e7546a52fdad91692faa807c0a2e9ef2bbcc1870a1f9dd54cdecb08a8dcff`;
+- task registry
+  `sha256:067fbaed267283bf44abd588e6309bb8efe0224d343f9ffe3d7427f2c7f74158`.
+
+The workspace tests, Clippy checks, example suite, line-count check, and
+portable-binary build passed. A provider-free task-container check installed
+and planned the exact binary. A separate expired-token probe reached the
+recorded access-only renewal error and preserved a complete episode account.
+
+Every assessed request used GPT-5.6 Sol and the priority service tier.
+Implementation used low reasoning. The runtime-owned terminal audit used high
+reasoning. Landlock remained off inside the task containers. Token use
+remained measurement-only.
+
+The release passed all twelve development tasks:
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 7 | 20,939 | 1,536 | 5,846 | $0.195146 |
+| `dna-assembly` | 1.0 | 41 | 952,661 | 618,496 | 31,436 | $2.212778 |
+| `fix-git` | 1.0 | 14 | 94,577 | 27,136 | 6,600 | $0.412618 |
+| `fix-ocaml-gc` | 1.0 | 27 | 752,632 | 324,608 | 8,200 | $2.005939 |
+| `git-multibranch` | 1.0 | 15 | 102,936 | 20,480 | 14,761 | $0.633236 |
+| `gpt2-codegolf` | 1.0 | 35 | 593,280 | 306,176 | 21,292 | $1.696726 |
+| `large-scale-text-editing` | 1.0 | 18 | 119,151 | 45,568 | 11,257 | $0.537699 |
+| `model-extraction-relu-logits` | 1.0 | 25 | at least 148,201 | at least 65,536 | at least 13,831 | at least $0.633494 |
+| `path-tracing-reverse` | 1.0 | 43 | 2,885,297 | 2,019,328 | 20,600 | $4.683607 |
+| `regex-chess` | 1.0 | 69 | at least 1,427,456 | at least 927,232 | at least 26,725 | at least $2.906289 |
+| `sanitize-git-repo` | 1.0 | 24 | at least 717,230 | at least 349,696 | at least 21,800 | at least $2.046014 |
+| `sqlite-db-truncate` | 1.0 | 10 | 50,364 | 4,096 | 10,849 | $0.403690 |
+
+The twelve tasks used 328 model calls. Recorded usage totals at least 7,864,724
+input tokens, 4,709,888 cached-input tokens, 193,197 output tokens, and
+$18.367239. Twenty retryable provider errors omitted usage. Every successful
+response reported usage, and every episode settled all recorded model calls.
+
+Every task received score 1.0. Every account passed conformance with zero
+violations. The sanitization task converted the preceding release's only
+development failure. The revised run changed the contaminated working-tree
+files while preserving repository history outside the requested edits.
+
+The four-task manifest has SHA-256 digest
+`72767aee1787337b814a6613c1e7c7f99b59c7c89ac58da922d07ba56ca1e041`.
+The eight-task manifest has SHA-256 digest
+`dacbea45a0834ea04769f5ef90dcaeb12e1365383f405c66b88404065076621b`.
+Together they constitute the 12/12 development qualification for this exact
+release.
+
+### Two-worker result
+
+The first two-worker request selected serial execution because available
+memory was below the declared parallel threshold. Its manifest has SHA-256
+digest
+`1f17c20bc85cdb2d344bf890f241c5248cb04857e06d2681db26dce4e9068619`.
+That run provides four additional task successes and no concurrency evidence.
+
+The campaign runner now supports required parallel admission. The option
+stops before Harbor or provider execution when two workers cannot start. A
+provider-free low-memory check made no model request and produced manifest
+digest
+`46ad7f4b4255d3bf1d1f2adcfc43d7c46cac855c738d3552b1645548acdb6063`.
+The controller change does not alter the evaluated release or its model-visible
+program.
+
+A strict two-worker run then used isolated access-only credentials and the
+priority service tier. All four tasks received score 1.0. Every account passed
+conformance, the parent credential remained unchanged, and no worker received
+refresh authority. The manifest has SHA-256 digest
+`2c4f7852b4cfa32704e9ae6cfb60c149631b3dbeac803c921772420f247e55af`.
+
+The serial batch completed in 935.817721 seconds. The strict two-worker batch
+completed in 818.906006 seconds. The 12.493 percent reduction misses the
+required one-third reduction. Eighteen retryable provider overload responses
+occurred during concurrent execution and increased task durations.
+
+The result qualifies two-worker credential isolation, score preservation, and
+evidence preservation. It leaves the makespan criterion open. Another matched
+four-task run requires a specific overload-reduction mechanism or a different
+predeclared workload rationale. Repeating the same configuration would spend
+provider capacity without testing a changed hypothesis.
