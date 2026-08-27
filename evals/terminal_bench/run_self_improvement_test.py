@@ -287,6 +287,14 @@ class SelfImprovementConfigTest(unittest.TestCase):
             nodes["implement-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime"],
         )
+        self.assertIn(
+            "without a completed implementation handoff",
+            nodes["implement-runtime-improvement"]["empty"]["unresolved_risks"][0],
+        )
+        self.assertEqual(
+            nodes["implement-runtime-improvement"]["empty"]["changed_paths"],
+            [],
+        )
         self.assertNotIn(
             "collect-trajectory-diagnostics",
             nodes["implement-runtime-improvement"]["follows"],

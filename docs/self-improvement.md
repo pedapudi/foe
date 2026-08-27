@@ -124,6 +124,8 @@ the program. The resulting version 3 program contains four model nodes:
    It may instead report insufficient evidence.
 2. A source implementation node receives the typed diagnosis and task. It
    returns a typed summary of changed paths, validation, and unresolved risks.
+   A blocked or exhausted implementation contributes a declared empty handoff,
+   so review can inspect any source artifact that the child produced.
 3. A fresh review node receives the task, diagnosis, and implementation
    handoff. It uses `xhigh` reasoning and has no source-write authority. It
    returns bounded findings within 20 requests. When it exhausts, a declared

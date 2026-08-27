@@ -969,6 +969,7 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             nodes["implement-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime"],
         )
+        self.assertIn("empty", nodes["implement-runtime-improvement"])
         self.assertEqual(
             nodes["review-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime", "implement-runtime-improvement"],

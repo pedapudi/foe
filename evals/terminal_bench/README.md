@@ -734,18 +734,21 @@ files. Its write authority covers runtime crates, specifications, and examples.
 It cannot write evaluation code or benchmark material.
 
 The implementation node returns a typed handoff with its summary, changed
-paths, validation, and unresolved risks. A fresh source-review node receives
-the task, diagnosis, and handoff. It uses the same model route and service tier
-as implementation with `xhigh` reasoning. It can read the source and write only
-to validation-output directories. It returns bounded findings within 20
-requests. A review that ends blocked or exhausted contributes a declared empty
-handoff, so finalization still runs. The finalization child has 40 reserved
-requests and sole source-repair authority after implementation. It inspects the
-current source, runs the candidate checker first, repairs remaining findings,
-and owns terminal completion through `done_when.verify`, with four correction
-attempts. If finalization ends after producing an artifact, the runner recovers
-the diagnosis from its child episode and applies the external source checker to
-the candidate.
+paths, validation, and unresolved risks. A blocked or exhausted implementation
+contributes a declared empty handoff. The source-review node can therefore
+inspect any candidate artifact that exists even when implementation omitted its
+return value. The source-review node receives the task, diagnosis, and handoff.
+It uses the same model route and service tier as implementation with `xhigh`
+reasoning. It can read the source and write only to validation-output
+directories. It returns bounded findings within 20 requests. A review that ends
+blocked or exhausted contributes a declared empty handoff, so finalization
+still runs. The finalization child has 40 reserved requests and sole
+source-repair authority after implementation. It inspects the current source,
+runs the candidate checker first, repairs remaining findings, and owns terminal
+completion through `done_when.verify`, with four correction attempts. If
+finalization ends after producing an artifact, the runner recovers the
+diagnosis from its child episode and applies the external source checker to the
+candidate.
 
 When the diagnosis chooses `configure-workflow`, the runner validates the
 typed independent-audit setting. It writes `workflow-candidate.json` beside

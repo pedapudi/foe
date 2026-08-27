@@ -2746,3 +2746,25 @@ implementation, xhigh reasoning for review and finalization, and the priority
 service tier. It made no model request. An autonomous source-improvement run
 must establish whether the repaired ownership structure produces an accepted
 candidate.
+
+### Priority-tier implementation handoff failure
+
+The priority-tier source-improvement run completed diagnosis in one request.
+The implementation child changed twelve source, test, schema, and specification
+files. It then exhausted its 60-call allowance before returning the typed
+implementation handoff. Strict workflow propagation ended the root episode, so
+the read-only reviewer and verifier-owned finalizer never started.
+
+The attempt used 61 model calls, 3,260,584 input tokens, 2,802,688 cached-input
+tokens, and 10,932 output tokens. Its estimated cost was $3.171299, and it ran
+for 456.818 seconds. The external source checker found one formatting defect.
+The retained directory is
+`target/priority-read-only-review-source-improvement`. The candidate remains
+rejected.
+
+This result narrows the workflow defect. Separating review from repair protects
+finalization capacity only when implementation returns a value. The workflow
+now gives the implementation node a declared empty value for blocked and
+exhausted endings. Review and finalization can inspect the shared source tree
+and apply the authoritative checker even when the implementation summary is
+missing. The source checker still rejects an absent or invalid artifact.

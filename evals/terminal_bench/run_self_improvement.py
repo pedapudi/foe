@@ -1750,6 +1750,14 @@ def build_config(
                 "implement-runtime-improvement": {
                     "model": implementation,
                     "follows": ["task", "diagnose-runtime"],
+                    "empty": {
+                        "summary": "Source implementation ended before returning its typed handoff.",
+                        "changed_paths": [],
+                        "validation": [],
+                        "unresolved_risks": [
+                            "Review and finalization must inspect the current candidate without a completed implementation handoff."
+                        ],
+                    },
                 },
                 "review-runtime-improvement": {
                     "model": review,
