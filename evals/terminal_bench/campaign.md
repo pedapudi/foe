@@ -3150,3 +3150,99 @@ This controller change does not alter the evaluated release or its
 model-visible program. It therefore does not invalidate any completed
 qualification. The repeatability campaign manifest has SHA-256 digest
 `83b8acfb95fc3df4295478856aaae5c46d20e6940c5ea576b3b6ddac8df70600`.
+
+## Identity-bound source candidate for completion auditing
+
+The self-improvement workflow consumed only the three retained `dna-insert`
+trajectories. The corpus contained two failures and one success from the exact
+frozen release. Its evidence report has SHA-256 digest
+`7bf0fdd2ce9b7cac0355c3f141ea27c8ffabe23c9bea453480efbfad3ca2d13e`.
+
+Every model request used GPT-5.6 Sol with xhigh reasoning and the priority
+service tier. The workflow used 59 model calls over 1,259.183 seconds. It
+recorded 6,221,102 input tokens, 4,453,888 cached-input tokens, 54,743 output
+tokens, and $9.945271 in estimated cost. Token use remained measurement-only.
+
+The diagnosis selected a source-level intervention for repeated false
+acceptance by the built-in terminal audit. The implementation added a fresh
+completion-falsification node after the existing audit. The node receives the
+task and the preceding audit account. It must seek counterexamples, recompute
+quantitative claims, and identify uncovered requirements before completion.
+The node owns `done_when.verify` for the built-in workflow.
+
+The source candidate changed the built-in workflow, its Rust integration,
+tests, and the relevant specifications. The workflow's review found that the
+new prompt could request `block` while the node lacked that tool. Finalization
+added the tool and a regression test before the repository checker accepted
+the candidate.
+
+The first post-episode checker encountered `Text file busy` in an unrelated
+executable-transport test. The transport tests use shared scratch executable
+paths, so overlapping checker processes can expose that race. The unchanged
+candidate passed the same complete repository checker immediately afterward.
+No model request was repeated.
+
+The retained revalidation record has SHA-256 digest
+`74ff4c85dfa1fb051ee31ad5809fc9a25f64445a8394fd091c75fe1a04077b10`.
+It binds the original result digest, checker digest, unchanged source
+candidate, and successful checker outcome. The source candidate identity is
+`sha256:9a81dae2872875a502c7d0dcba607c1867935b7c8d9a1504d3c36bacc4cb657b`.
+The source bundle identity is
+`sha256:e0a2fa055443a166bc8d51f27eac9882cf2aed8787638322a3c6b45c52b8f17e`.
+
+The candidate remains pending external evaluation. Its activation gate runs
+only `dna-insert`, where the frozen release succeeded once in three attempts.
+The gate reuses every retained release qualification and uses the priority
+service tier. Promotion requires improved task-owned quality and conformant
+accounts. A passing activation then permits one transfer case that exercises
+the same completion-audit mechanism.
+
+## Rejection of the completion-falsification source candidate
+
+The source-evaluation controller committed the accepted candidate bytes on an
+isolated branch. It built and retained a portable binary with SHA-256 digest
+`c5b3573f173a27efe7f2a91535393bc3845a895d9fbf2833251539035c6572b4`.
+The evaluated source tree is
+`git-tree-sha1:9fb92690ac718dd7b84216bb592f37c5a5a6c81c`.
+
+The activation selected only `dna-insert`. Every request used GPT-5.6 Sol and
+the priority service tier. Implementation used low reasoning. The built-in
+audit and generated falsification stage used high reasoning. Token limits
+remained measurement-only.
+
+The first two attempts both received task-owned score 0.0. The candidate could
+therefore finish with at most one success from three attempts. That result
+could only equal the frozen release's one success from three attempts. The
+controller stopped during the third attempt after its implementation child
+completed and its audit began. No qualification or unrelated task was rerun.
+
+The two scored attempts used 67 model calls. Recorded usage is at least
+667,055 input tokens, 305,664 cached-input tokens, 47,788 output tokens, and
+$2.523590 in estimated cost. Two calls in the second attempt omitted provider
+usage. The interrupted attempt used twelve calls and recorded at least
+$0.247168 in additional cost before cancellation.
+
+Both failures exposed the same remaining mechanism. The fresh stage found
+multiple valid locations for the inserted sequence. It still evaluated
+dependent primer lengths and melting temperatures by combining boundaries from
+different locations. The external verifier preserved one complete location
+and measured pair differences of 6.127779 and 5.828321 degrees Celsius. Both
+exceeded the five-degree requirement.
+
+The source candidate is rejected for quality and receives no transfer run. A
+replacement must preserve each complete interpretation as one tuple while it
+checks dependent constraints. It must repair the artifact until every valid
+interpretation passes or the serialization makes the interpretation unique.
+
+The source-adoption lineage succeeded for both scored attempts. The campaign
+runner nevertheless marked their configuration claims invalid because its
+built-in-profile diagnostic hard-coded the preceding two-node workflow and
+120-call root budget. A source candidate is expected to change those values.
+The diagnostic must validate campaign invariants against the rebuilt program
+without assuming the candidate's topology.
+
+The retained campaign manifest has SHA-256 digest
+`9825b147dc113c7fe8c7b625620a9919e5f0a12810c33ede081d6235663f10fd`.
+It records cancellation, the exact rebuilt source and binary pair, and two
+completed source adoptions. Raw episodes and task workspaces remain in the
+local evidence worktree.
