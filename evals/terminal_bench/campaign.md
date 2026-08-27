@@ -3890,3 +3890,28 @@ repository checker, and rejects every finding, unresolved risk, missing typed
 return, or exhaustion. Campaign commit `660d633` contains the workflow stage,
 acceptance gate, tests, and operator documentation. This repair affects future
 self-improvement attempts and does not change the evaluated 11/12 release.
+
+The first autonomous second-audit attempt produced a mechanically clean source
+candidate. Its initial independent review found that the cloned terminal audit
+had replaced important quality instructions and that several specifications
+still described two episodes. Finalization preserved the full original audit
+role, appended the fresh-review duties, updated every identified
+specification, passed the repository checker, and returned exact `fixed`
+dispositions for both findings.
+
+The final read-only assessment did not start. The workflow retained
+`max_episodes: 5` after adding a fifth model child, while the allowance counts
+the root episode as well. Foe ended with `exhausted: episodes`, and the
+controller rejected the candidate because no final assessment value existed.
+This is an evaluation-controller defect rather than candidate evidence. The
+run used 55 model calls over 704.218 seconds, 1,706,676 input tokens, 905,216
+cached-input tokens, and 29,467 output tokens at an estimated cost of
+$4.157266.
+
+The source-program builder now derives `max_episodes` as one root plus the
+number of declared model nodes. A regression asserts both the resulting value
+of six and the derivation itself. The evaluation unit suite and Python
+compilation pass. Campaign commit `dd198b3` contains the fix and operator
+documentation. The replacement attempt keeps the same evidence, parent source,
+objective, models, and standard service tier. Its retained program records five
+model nodes and an episode allowance of six before the first model request.
