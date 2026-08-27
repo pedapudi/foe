@@ -576,8 +576,13 @@ A malformed retained verifier report stops collection. A missing or partial
 report remains visible in its trajectory diagnosis and cannot enter a repeated
 failure contrast.
 
-Create a clean candidate worktree at the evaluated commit. Run the
-self-improvement workflow from that worktree:
+Supply a clean parent worktree at the evaluated commit. The runner verifies
+its frozen tree identity, then creates `candidate-source` under the retained
+run directory. This candidate is a separate Git repository that contains only
+the frozen `HEAD` commit and its ancestors. It has no remote and cannot read
+branches, worktrees, or evaluator artifacts from the parent repository.
+
+Run the self-improvement workflow from the clean parent worktree:
 
 ```sh
 bazel run //evals/terminal_bench:self-improve -- \
@@ -807,9 +812,11 @@ workflow is ready. The requested retained directory is created only after
 `--confirm-spend` is supplied. A preview removes the empty candidate validation
 directories it created while resolving program grants.
 
-The coding child receives read-only access to the candidate worktree's Git
-metadata. This access lets `git status`, `git diff`, and the independent
-candidate checker operate when the candidate is a linked Git worktree.
+The coding child receives read-only access to the isolated candidate
+repository's Git metadata. This access lets `git status`, `git diff`, and the
+independent candidate checker operate without exposing unrelated parent
+repository references. The coding child can write the isolated working tree.
+The supplied parent worktree remains immutable throughout the run.
 
 The runner validates the artifact after Foe exits. A valid artifact remains
 accepted when the episode exhausted its reporting budget after producing the

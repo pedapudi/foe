@@ -26,6 +26,7 @@ from run_self_improvement import (
     model_config,
     parser as self_improvement_parser,
     prepare_output_root,
+    prepare_isolated_source,
     prepare_validation_directories,
     record_adoption,
     require_successful_adoption,
@@ -108,6 +109,90 @@ class SelfImprovementConfigTest(unittest.TestCase):
             self.assertEqual(root, requested)
             self.assertTrue(requested.is_dir())
             self.assertIsNone(temporary)
+
+    def test_isolated_source_excludes_unrelated_repository_references(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            subprocess.run(["git", "init", "--quiet"], cwd=source, check=True)
+            subprocess.run(
+                ["git", "config", "user.name", "Foe Test"], cwd=source, check=True
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "foe-test@example.invalid"],
+                cwd=source,
+                check=True,
+            )
+            (source / "source.txt").write_text("frozen\n", encoding="utf-8")
+            subprocess.run(["git", "add", "source.txt"], cwd=source, check=True)
+            subprocess.run(
+                ["git", "commit", "--quiet", "-m", "Frozen source"],
+                cwd=source,
+                check=True,
+            )
+            frozen = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=True,
+            ).stdout.strip()
+            frozen_tree = "git-tree-sha1:" + subprocess.run(
+                ["git", "rev-parse", "HEAD^{tree}"],
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=True,
+            ).stdout.strip()
+            (source / "evaluator-checker.txt").write_text("private\n", encoding="utf-8")
+            subprocess.run(["git", "add", "evaluator-checker.txt"], cwd=source, check=True)
+            subprocess.run(
+                ["git", "commit", "--quiet", "-m", "Evaluator checker"],
+                cwd=source,
+                check=True,
+            )
+            evaluator_commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=True,
+            ).stdout.strip()
+            subprocess.run(
+                ["git", "branch", "evaluator-checker"], cwd=source, check=True
+            )
+            subprocess.run(
+                ["git", "checkout", "--quiet", "--detach", frozen], cwd=source, check=True
+            )
+
+            isolated = prepare_isolated_source(source, root / "isolated", frozen_tree)
+            all_commits = subprocess.run(
+                ["git", "log", "--all", "--format=%H"],
+                cwd=isolated,
+                text=True,
+                capture_output=True,
+                check=True,
+            ).stdout.splitlines()
+            common = subprocess.run(
+                ["git", "rev-parse", "--git-common-dir"],
+                cwd=isolated,
+                text=True,
+                capture_output=True,
+                check=True,
+            ).stdout.strip()
+            evaluator_object = subprocess.run(
+                ["git", "cat-file", "-e", evaluator_commit],
+                cwd=isolated,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertIn(frozen, all_commits)
+            self.assertNotIn(evaluator_commit, all_commits)
+            self.assertNotEqual(evaluator_object.returncode, 0)
+            self.assertFalse((isolated / "evaluator-checker.txt").exists())
+            self.assertEqual((isolated / common).resolve(), (isolated / ".git").resolve())
 
     def test_validation_directories_exist_before_program_construction(self):
         with tempfile.TemporaryDirectory() as directory:

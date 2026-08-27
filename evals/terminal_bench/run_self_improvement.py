@@ -1923,6 +1923,61 @@ def prepare_output_root(
     return Path(temporary.name), temporary
 
 
+def prepare_isolated_source(source: Path, destination: Path, expected_tree: str) -> Path:
+    """Clone only the frozen revision so coding cannot read evaluator branches."""
+    if destination.exists():
+        raise ValueError(f"isolated candidate source already exists: {destination}")
+    if clean_source_tree(source) != expected_tree:
+        raise ValueError("candidate source changed before isolation")
+    head = subprocess.run(
+        ["/usr/bin/git", "-C", str(source), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    bundle = destination.parent / "frozen-source.bundle"
+    subprocess.run(
+        ["/usr/bin/git", "-C", str(source), "bundle", "create", str(bundle), "HEAD"],
+        capture_output=True,
+        check=True,
+    )
+    try:
+        subprocess.run(
+            ["/usr/bin/git", "clone", "--quiet", "--no-checkout", str(bundle), str(destination)],
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["/usr/bin/git", "-C", str(destination), "checkout", "--quiet", "--detach", head],
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["/usr/bin/git", "-C", str(destination), "remote", "remove", "origin"],
+            capture_output=True,
+            check=True,
+        )
+    finally:
+        bundle.unlink(missing_ok=True)
+
+    refs = subprocess.run(
+        ["/usr/bin/git", "-C", str(destination), "for-each-ref", "--format=%(objectname)"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.splitlines()
+    for reference in refs:
+        if subprocess.run(
+            ["/usr/bin/git", "-C", str(destination), "merge-base", "--is-ancestor", reference, head],
+            capture_output=True,
+            check=False,
+        ).returncode != 0:
+            raise ValueError("isolated candidate source retained an unrelated Git reference")
+    if clean_source_tree(destination) != expected_tree:
+        raise ValueError("isolated candidate source differs from the frozen source tree")
+    return destination.resolve(strict=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
@@ -1950,7 +2005,7 @@ def main(argv: list[str] | None = None) -> int:
         if cargo_home is not None and not (cargo_home / "bin").is_dir():
             raise ValueError("--cargo-home must contain the Cargo command-shim directory `bin`")
         validator_identity = rust_toolchain_identity(cargo) if cargo is not None else None
-        candidate = args.candidate.resolve(strict=True)
+        parent_candidate = args.candidate.resolve(strict=True)
         evidence = args.evidence.resolve(strict=True)
         binary = args.foe.resolve(strict=True)
         bundle_builder = args.bundle_builder.resolve(strict=True)
@@ -1963,7 +2018,7 @@ def main(argv: list[str] | None = None) -> int:
         ):
             if not executable.is_file():
                 raise ValueError(f"{label} must name a trusted executable file")
-        identity = verify_evidence_identity(candidate, binary, evidence)
+        identity = verify_evidence_identity(parent_candidate, binary, evidence)
         base_configuration = failed_base_configuration(evidence)
         supported_audits = supported_independent_audits(evidence, base_configuration)
         failure_contrasts = supported_failure_contrasts(evidence)
@@ -2017,6 +2072,17 @@ def main(argv: list[str] | None = None) -> int:
         os.environ.get("BUILD_WORKSPACE_DIRECTORY"),
         args.confirm_spend,
     )
+    try:
+        candidate = prepare_isolated_source(
+            parent_candidate,
+            root / "candidate-source",
+            identity["source_tree"],
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print(f"self-improvement: source isolation failed: {error}", file=sys.stderr)
+        if temporary:
+            temporary.cleanup()
+        return 2
     check = root / "candidate-check"
     assert cargo is not None and cargo_home is not None
     existing_validation_directories = {

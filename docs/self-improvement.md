@@ -31,6 +31,13 @@ repeated failed and successful trajectory contrasts. Automatic promotion into
 the checkout and general reliability across unrelated tasks remain
 unsupported.
 
+The evaluation runner accepts a clean parent worktree as an identity-bearing
+input. Before model execution, it creates a retained candidate repository that
+contains only the frozen `HEAD` revision and its ancestors. Candidate episodes
+can inspect that repository's Git history and edit its working tree. They
+cannot inspect unrelated branches, linked worktrees, or evaluator commits from
+the parent repository. The parent worktree remains unchanged.
+
 ## Workflow structure
 
 The [workflow configuration](../examples/self-extension/workflow-config.json)
@@ -631,7 +638,8 @@ Use the following sequence for a bounded self-improvement task:
 5. Put the evaluator in the child program's `done_when.verify` field.
 6. Keep model-call and token ceilings above observed successful variance.
 7. Re-run an external grader after the episode.
-8. Compile and test the candidate in a complete disposable source tree.
+8. Compile and test the candidate in a complete isolated source repository
+   that exposes only the frozen parent revision and its ancestors.
 9. Capture the accepted source candidate as content-addressed evidence.
 10. Inspect trace conformance and resource use.
 11. Evaluate the rebuilt candidate against unchanged external tasks.
