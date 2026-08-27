@@ -3390,3 +3390,65 @@ tier is part of each run's measured conditions.
 No provider-backed run was active when the selection changed. The retained
 frozen release and its completed qualifications remain unchanged. Every future
 candidate manifest must record the standard tier before model spend begins.
+
+## Model-facing tool usability audit
+
+A read-only audit examined the canonical child episodes from scored
+Terminal-Bench attempts. It inspected the built-in coding tools, configured
+executables, team tools, return values, and workflow recovery. The audit found
+three model-facing interfaces with retained trajectory evidence.
+
+The edit tool rejected an exact 64-digit lowercase SHA-256 value unless the
+model added the `sha256:` prefix. The corpus contains 83 such rejections in 40
+child episodes and 31 scored trials. One `fix-ocaml-gc` episode repeated the
+same correct value three times before recovering. Pull request 110 accepts the
+bare and qualified encodings of the same complete digest. It continues to
+reject malformed, truncated, different, and stale values without writing.
+
+Seven scored trials began by asking the read tool to inspect the current
+directory. The tool returned `Is a directory`, although its read capability
+already permits bounded directory enumeration. At least three episodes spent
+the next model request on a shell listing. Six of the seven trials eventually
+succeeded. The one failed trial was a `dna-insert` source-candidate activation
+whose retained verifier evidence identifies an unrelated primer-boundary
+error. Pull request 119 lets the existing read tool return a bounded, sorted
+listing of immediate entries. The result preserves descriptor-bound traversal
+and the existing read grant.
+
+One successful `fix-git` episode embedded U+0000 in a Bash command. Process
+creation rejected the argument with the low-level message `nul byte found in
+provided data`. The next complete model request repeated the audit with a
+valid command. Pull request 120 validates the command before process creation
+and explains that shell syntax such as `printf '\\0'` can create the byte in a
+process stream. It does not rewrite the command because a replacement could
+change shell token boundaries.
+
+The audit found four additional consistency opportunities without scored
+Terminal-Bench activation evidence. A configured executable can default an
+omitted argument list to an empty list. Workflow recovery can derive the only
+eligible target when the model omits it. Team messages can accept the member
+identifier returned by team creation. Session waits can use one canonical
+representation for a numeric session identifier. These changes remain
+unimplemented until relevant trajectories or a dedicated design review
+justify their effect on the model-visible surface.
+
+Strict interfaces remain strict where they protect authority, target
+selection, replay integrity, or output conformance. This includes exact edit
+text, stale-version rejection, granted paths, absolute executable paths,
+episode-local retrieval cursors, completion evidence references, recovery
+choices among multiple nodes, and returned JSON schemas. All 127 retained
+return calls succeeded, so the required `value` wrapper remains unchanged.
+
+The usability fixes are independently reviewable. Their activation cases
+already succeeded after recovery, so they do not establish a task-quality
+gain by themselves. The next scored release candidate will include them only
+after review. It will also contain a change that targets a repeatable external
+task failure. This rule prevents a full candidate qualification from measuring
+only reduced friction on tasks that already pass.
+
+The release manifest will record the exact source commit, source tree, binary
+digest, program identity, service tier, and included pull-request heads before
+the first provider request. Completed activation evidence for live-state
+preservation and final-artifact boundaries remains valid for the exact source
+changes that produced it. The campaign will run only the affected activation
+and transfer cases for new behavior before reopening the confirmation gate.
