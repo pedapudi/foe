@@ -3530,3 +3530,73 @@ successful activation results count toward the twelve-task development total
 because they use the exact candidate, unchanged task-owned graders, and the
 same standard-tier execution contract. Confirmation remains closed until the
 combined twelve-task result reaches at least eleven successes.
+
+## Twelve-task development result
+
+The exact portable binary completed the remaining development tasks serially.
+Every provider-backed request used the standard service tier. Implementation
+used low reasoning, and the built-in terminal audit used high reasoning. Token
+limits remained measurement-only, and Landlock remained off inside each task
+container.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 11 | 31,071 | 1,536 | 4,785 | $0.214454 | 149.008 |
+| `fix-git` | 1.0 | 22 | 194,031 | 59,392 | 8,273 | $0.727773 | 224.875 |
+| `sqlite-db-truncate` | 1.0 | 13 | 97,065 | 15,360 | 10,459 | $0.542144 | 253.210 |
+| `sanitize-git-repo` | 0.0 | 24 | 854,327 | 463,872 | 27,490 | $2.297169 | 701.316 |
+| `large-scale-text-editing` | 1.0 | 11 | 49,672 | 3,072 | 8,010 | $0.347829 | 289.933 |
+| `gpt2-codegolf` | 1.0 | 48 | 1,670,917 | 1,183,232 | 40,644 | $3.236913 | 1,140.084 |
+| `fix-ocaml-gc` | 1.0 | 22 | 579,420 | 213,504 | 6,723 | $1.683526 | 1,813.906 |
+| `path-tracing-reverse` | 1.0 | 44 | 2,385,539 | 1,761,792 | 16,984 | $3.539385 | 459.573 |
+| `regex-chess` | 1.0 | 32 | 700,901 | 439,296 | 28,447 | $1.791078 | 854.703 |
+| `model-extraction-relu-logits` | 0.0 | 13 | 51,039 | 12,800 | 6,699 | $0.292056 | 207.837 |
+
+Together with `git-multibranch` and `dna-assembly`, the frozen candidate
+scored 10/12. The twelve score-valid attempts used 290 model calls, 7,198,940
+input tokens, 4,402,688 cached-input tokens, 204,272 output tokens, an
+estimated $17.031523, and 7,280.138 wall seconds. Resources remain diagnostic;
+task quality governs promotion. Every Foe account conformed with no recorded
+violation.
+
+The `sanitize-git-repo` implementation changed only the three contaminated
+working-tree files. The terminal audit broadened the requested repair into a
+rewrite of all 108 Git commits and removed the original commit object. The
+task-owned verifier accepted secret removal and replacement, then failed
+because the baseline commit required for its unchanged-file comparison no
+longer resolved. This is a harness-quality failure. A terminal audit must make
+the smallest repair supported by recorded evidence and preserve baseline
+identities that an external verifier can compare.
+
+The `model-extraction-relu-logits` implementation recovered every row from
+the supplied model. The audit independently established a complete one-to-one
+match for that instance. The implementation also recorded assumptions about
+the finite scan range and breakpoint separation. The task-owned verifier used
+a different weight matrix and found three missing rows out of thirty. This is
+a transfer failure. An audit must challenge stated assumptions with varied
+instances or invariant reasoning when the requested artifact must generalize
+beyond the supplied instance.
+
+The first `model-extraction-relu-logits` attempt made no score-valid progress.
+The provider rejected the task text as a possible cybersecurity request before
+the model loop began. The task is an authorized model-extraction exercise in
+an isolated container. The replacement attempt appended one fixed statement
+that records this authorization and confinement. The runner exposes no
+free-form prompt override. The replacement reached the unchanged task-owned
+verifier, so its 0.0 score is the development result.
+
+The serial ten-task campaign manifest has SHA-256 digest
+`03bb6fd4851fec57bbccc33727a0c86bdb24e90d6ab27fe4b5422ff21459d5e9`.
+The authorized replacement manifest has SHA-256 digest
+`8802dc1889a135761b1b533b4f4e5cf9c494bae7c4e7f3c41d43f9eab6a9ef80`.
+Raw episodes and task workspaces remain under
+`/home/sunil/git/foe-live-artifact-tool-usability/target/terminal-bench-jobs/standard-live-artifact-tool-usability-development-remaining-ten-20260827T163746Z`
+and
+`/home/sunil/git/foe-live-artifact-tool-usability/target/terminal-bench-jobs/standard-live-artifact-tool-usability-model-extraction-authorized-retry-20260827T182109Z`.
+
+The 10/12 result does not open confirmation. A source candidate must address
+the two observed audit defects without task-specific instructions. It receives
+activation attempts on `sanitize-git-repo` and
+`model-extraction-relu-logits` before any confirmation task. Previously
+qualified task results remain attached to the frozen binary that produced
+them and are not rerun during the focused activation gate.
