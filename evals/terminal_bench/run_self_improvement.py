@@ -1636,6 +1636,41 @@ def build_config(
         "required": ["summary", "findings", "validation", "unresolved_risks"],
         "additionalProperties": False,
     }
+    finalization_handoff = {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string", "minLength": 1},
+            "review_findings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "finding": {"type": "string", "minLength": 1},
+                        "disposition": {
+                            "type": "string",
+                            "enum": ["fixed", "unresolved"],
+                        },
+                        "explanation": {"type": "string", "minLength": 1},
+                    },
+                    "required": ["finding", "disposition", "explanation"],
+                    "additionalProperties": False,
+                },
+                "maxItems": 16,
+            },
+            "validation": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 16,
+            },
+            "unresolved_risks": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 8,
+            },
+        },
+        "required": ["summary", "review_findings", "validation", "unresolved_risks"],
+        "additionalProperties": False,
+    }
     implementation = {
         "name": "implement-foe-improvement",
         "instructions": {
@@ -1690,7 +1725,7 @@ def build_config(
         "instructions": {
             "role": "Own every source repair after independent review and finalize the candidate under the candidate checker's authority.",
             "evidence": "Treat the diagnosis, implementation handoff, and read-only review findings as unverified. Inspect the current diff and affected source, tests, and specifications before accepting them.",
-            "correction": "Run the candidate check first. Repair every reported defect. Run it again after the final edit. The declared verifier owns completion, so return only after the current candidate passes.",
+            "correction": "Run the candidate check first. Address every independent-review finding even when the candidate check passes. Copy each finding exactly into the final return and mark it fixed only after the source, regression test, and specification establish the requested behavior. Mark a finding unresolved when the candidate does not establish it. Run the candidate check again after the final edit. The controller rejects missing, duplicated, unexpected, or unresolved findings.",
             "independence": review["instructions"]["independence"],
             "build_metadata": "Reject and revert changes to Cargo, Bazel, module, toolchain, package, or build-script metadata.",
         },
@@ -1700,7 +1735,7 @@ def build_config(
             "seconds": FINALIZATION_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
         },
-        "done_when": {"verify": "check", "retries": 4},
+        "done_when": {"verify": "check", "retries": 4, "returns": finalization_handoff},
     }
     return {
         "version": 3,
@@ -1772,7 +1807,9 @@ def build_config(
                     "follows": ["task", "diagnose-runtime", "implement-runtime-improvement"],
                     "empty": {
                         "summary": "The independent source review spent its allowance before returning findings.",
-                        "findings": [],
+                        "findings": [
+                            "The independent source review did not complete; finalization must perform the missing semantic review."
+                        ],
                         "validation": [],
                         "unresolved_risks": [
                             "Finalization must inspect the candidate without completed review findings."
@@ -1900,6 +1937,47 @@ def candidate_outcome_value(root: Path, outcome: Any) -> dict[str, Any] | None:
     if isinstance(value, dict) and isinstance(value.get("branch"), str):
         return value
     return workflow_node_value(root, "diagnose-runtime")
+
+
+def source_review_resolution_findings(
+    review: dict[str, Any] | None, finalization: dict[str, Any] | None
+) -> list[str]:
+    """Require finalization to resolve every independent source-review finding."""
+    if review is None:
+        return ["the independent source review returned no typed value"]
+    if finalization is None:
+        return ["source finalization returned no typed value"]
+    expected = review.get("findings")
+    reported = finalization.get("review_findings")
+    if not isinstance(expected, list) or not all(isinstance(item, str) for item in expected):
+        return ["the independent source review returned invalid findings"]
+    if not isinstance(reported, list):
+        return ["source finalization returned invalid review findings"]
+    findings = []
+    resolutions: dict[str, str] = {}
+    for item in reported:
+        if not isinstance(item, dict):
+            findings.append("source finalization returned a non-object review resolution")
+            continue
+        finding = item.get("finding")
+        disposition = item.get("disposition")
+        if not isinstance(finding, str) or not finding:
+            findings.append("source finalization returned a review resolution without a finding")
+            continue
+        if finding in resolutions:
+            findings.append(f"source finalization duplicated review finding: {finding}")
+            continue
+        resolutions[finding] = disposition if isinstance(disposition, str) else "invalid"
+    expected_set = set(expected)
+    for finding in expected:
+        disposition = resolutions.get(finding)
+        if disposition is None:
+            findings.append(f"source finalization omitted review finding: {finding}")
+        elif disposition != "fixed":
+            findings.append(f"source finalization left review finding unresolved: {finding}")
+    for finding in resolutions.keys() - expected_set:
+        findings.append(f"source finalization reported an unexpected review finding: {finding}")
+    return findings
 
 
 def parser() -> argparse.ArgumentParser:
@@ -2257,6 +2335,7 @@ def main(argv: list[str] | None = None) -> int:
     instruction_candidate_path = None
     tool_candidate_path = None
     tool_executable_path = None
+    source_review_resolution = None
     if expected_branch is not None and branch != expected_branch:
         artifact_identity = candidate_artifact_identity(candidate, identity["source_tree"], changed)
         acceptance = {
@@ -2350,6 +2429,22 @@ def main(argv: list[str] | None = None) -> int:
             "findings": ["source candidate contains no changed files"],
             "exit_code": None,
         }
+        review_value = workflow_node_value(episode, "review-runtime-improvement")
+        finalization_value = workflow_node_value(episode, "finalize-runtime-improvement")
+        resolution_findings = source_review_resolution_findings(
+            review_value, finalization_value
+        )
+        source_review_resolution = {
+            "review": review_value,
+            "finalization": finalization_value,
+            "findings": resolution_findings,
+        }
+        if acceptance["accepted"] and resolution_findings:
+            acceptance = {
+                "accepted": False,
+                "findings": resolution_findings,
+                "exit_code": None,
+            }
         if acceptance["accepted"]:
             try:
                 require_source_candidate_excludes_assessment_literals(
@@ -2498,6 +2593,7 @@ def main(argv: list[str] | None = None) -> int:
         "tool_candidate": str(tool_candidate_path) if tool_candidate_path else None,
         "tool_candidate_executable": str(tool_executable_path) if tool_executable_path else None,
         "candidate_acceptance": acceptance,
+        "source_review_resolution": source_review_resolution,
         "adoption": adoption,
         "artifact_outcome_mismatch": artifact_accepted and result.returncode != 0,
         "direct_implementation_required": direct_implementation_required,

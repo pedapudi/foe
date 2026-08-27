@@ -33,6 +33,7 @@ from run_self_improvement import (
     revised_program_document,
     remove_preview_validation_directories,
     rust_toolchain_identity,
+    source_review_resolution_findings,
     supported_independent_audits,
     supported_failure_contrasts,
     tool_candidate_from_outcome,
@@ -315,6 +316,11 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertTrue(nodes["finalize-runtime-improvement"]["terminal"])
         self.assertIn("unresolved_risks", nodes["review-runtime-improvement"]["empty"])
         self.assertIn("findings", nodes["review-runtime-improvement"]["empty"])
+        self.assertEqual(len(nodes["review-runtime-improvement"]["empty"]["findings"]), 1)
+        self.assertIn(
+            "did not complete",
+            nodes["review-runtime-improvement"]["empty"]["findings"][0],
+        )
         self.assertEqual(
             nodes["diagnose-runtime"]["branches"],
             {
@@ -388,8 +394,23 @@ class SelfImprovementConfigTest(unittest.TestCase):
             review["done_when"]["returns"]["required"],
             ["summary", "findings", "validation", "unresolved_risks"],
         )
-        self.assertEqual(finalization["done_when"], {"verify": "check", "retries": 4})
+        self.assertEqual(finalization["done_when"]["verify"], "check")
+        self.assertEqual(finalization["done_when"]["retries"], 4)
+        finalization_returns = finalization["done_when"]["returns"]
+        self.assertEqual(
+            finalization_returns["required"],
+            ["summary", "review_findings", "validation", "unresolved_risks"],
+        )
+        resolution = finalization_returns["properties"]["review_findings"]["items"]
+        self.assertEqual(
+            resolution["required"], ["finding", "disposition", "explanation"]
+        )
+        self.assertEqual(
+            resolution["properties"]["disposition"]["enum"], ["fixed", "unresolved"]
+        )
         self.assertIn("Run the candidate check first", finalization["instructions"]["correction"])
+        self.assertIn("every independent-review finding", finalization["instructions"]["correction"])
+        self.assertIn("rejects missing", finalization["instructions"]["correction"])
         self.assertEqual(
             implementation["done_when"]["returns"]["required"],
             ["summary", "changed_paths", "validation", "unresolved_risks"],
@@ -511,6 +532,58 @@ class SelfImprovementConfigTest(unittest.TestCase):
             )
         self.assertEqual(value["branch"], "implement-source")
         self.assertEqual(value["intervention"], "change source")
+
+    def test_source_finalization_must_resolve_each_review_finding(self):
+        finding = "The source change does not enforce the claimed runtime behavior."
+        review = {"findings": [finding]}
+        self.assertEqual(
+            source_review_resolution_findings(review, None),
+            ["source finalization returned no typed value"],
+        )
+        fixed = {
+            "review_findings": [
+                {
+                    "finding": finding,
+                    "disposition": "fixed",
+                    "explanation": "The runtime rejects the invalid state and the regression covers it.",
+                }
+            ]
+        }
+        self.assertEqual(source_review_resolution_findings(review, fixed), [])
+
+        unresolved = {
+            "review_findings": [
+                {
+                    "finding": finding,
+                    "disposition": "unresolved",
+                    "explanation": "The candidate check cannot prove the semantic behavior.",
+                }
+            ]
+        }
+        self.assertEqual(
+            source_review_resolution_findings(review, unresolved),
+            [f"source finalization left review finding unresolved: {finding}"],
+        )
+
+    def test_source_finalization_rejects_missing_duplicate_and_unexpected_findings(self):
+        first = "Repair the completion gate."
+        second = "Add a behavioral regression."
+        finalization = {
+            "review_findings": [
+                {"finding": first, "disposition": "fixed", "explanation": "done"},
+                {"finding": first, "disposition": "fixed", "explanation": "duplicate"},
+                {"finding": "Unreviewed claim.", "disposition": "fixed", "explanation": "done"},
+            ]
+        }
+        findings = source_review_resolution_findings(
+            {"findings": [first, second]}, finalization
+        )
+        self.assertIn(f"source finalization duplicated review finding: {first}", findings)
+        self.assertIn(f"source finalization omitted review finding: {second}", findings)
+        self.assertIn(
+            "source finalization reported an unexpected review finding: Unreviewed claim.",
+            findings,
+        )
 
     def test_failed_base_configuration_excludes_the_successful_audit_setting(self):
         with tempfile.TemporaryDirectory() as directory:

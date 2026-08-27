@@ -781,14 +781,18 @@ return value. The source-review node receives the task, diagnosis, and handoff.
 It uses the same model route and service tier as implementation with `xhigh`
 reasoning. It can read the source and write only to validation-output
 directories. It returns bounded findings within 20 requests. A review that ends
-blocked or exhausted contributes a declared empty handoff, so finalization
-still runs. The finalization child has 40 reserved requests and sole
-source-repair authority after implementation. It inspects the current source,
-runs the candidate checker first, repairs remaining findings, and owns terminal
-completion through `done_when.verify`, with four correction attempts. If
-finalization ends after producing an artifact, the runner recovers the
-diagnosis from its child episode and applies the external source checker to the
-candidate.
+blocked or exhausted contributes a finding that requires finalization to
+perform the missing semantic review. The finalization child has 40 reserved
+requests and sole source-repair authority after implementation. It inspects the
+current source, runs the candidate checker first, and repairs remaining
+findings. Its typed return copies each independent-review finding exactly once
+and marks it `fixed` or `unresolved`. Missing, duplicated, unexpected, and
+unresolved findings reject the source candidate after the episode. A passing
+repository check does not resolve a semantic review finding. Finalization owns
+terminal completion through `done_when.verify`, with four correction attempts.
+If finalization ends after producing an artifact, the runner recovers the
+diagnosis from its child episode and applies the review-resolution check and
+external source checker to the candidate.
 
 When the diagnosis chooses `configure-workflow`, the runner validates the
 typed independent-audit setting. It writes `workflow-candidate.json` beside
