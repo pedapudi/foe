@@ -93,6 +93,35 @@ model-visible program requires only the smallest gate whose result can change.
 Every reuse decision records the retained manifest digest and the identities
 that establish equivalence.
 
+### Incremental improvement disposition
+
+The release quality gates decide whether one combined Foe release advances to
+confirmation, calibration, or sealed holdout. They do not decide whether an
+individual improvement remains available for review.
+
+A focused change remains on a reviewable branch when unchanged external
+Terminal-Bench evaluation records any task-quality improvement over its bound
+parent. The campaign records the number of attempts and the uncertainty of the
+comparison. A result from one attempt can justify preserving the change for
+review, but it cannot establish repeatability. Repository validation and
+source review must still pass before the change can enter Foe.
+
+The pull request for an incremental improvement contains the general Foe
+mechanism, its regression tests, affected specifications, and the external
+activation evidence. It excludes task-specific instructions, grader rules,
+fixture values, raw trajectories, workspaces, and credentials. A focused
+change can merge independently when its implementation is sound, even when the
+combined release has not passed every campaign quality gate.
+
+Rejected combined releases do not discard their successful components. The
+campaign gives each externally validated component one of three dispositions:
+
+- send a focused pull request for a sound general mechanism;
+- retain the branch for more activation evidence when the mechanism remains
+  uncertain;
+- reject the component when source review finds a correctness defect that the
+  evaluated score did not expose.
+
 ## Confirmation-quality recovery
 
 The frozen candidate passed eleven of twelve closed-book development tasks.
@@ -3282,3 +3311,71 @@ task registry, model-visible evaluated program, or task semantics. Completed
 release qualification therefore remains valid. The next provider spend is one
 identity-bound source-generation workflow. A resulting candidate receives
 only its affected activation gate before any transfer or qualification work.
+
+## Assessment-guided independent-evidence candidate
+
+The source-improvement workflow used the rejected-candidate assessment across
+the two recorded parent source trees. The diagnosis classified the earlier
+instruction-level completion check as falsified. It proposed a runtime-owned
+gate that requires two successful evidence events for each terminal-audit
+claim when no authoritative verifier is configured.
+
+Every model request used GPT-5.6 Sol and the priority service tier. Diagnosis
+and implementation used low reasoning. Read-only review and finalization used
+xhigh reasoning. The workflow used 42 model calls over 507.614 seconds. It
+recorded 1,341,770 input tokens, 919,040 cached-input tokens, 18,177 output
+tokens, and $2.422076 in estimated cost.
+
+The repository checker accepted the source, regression tests, and affected
+specifications with no finding. The candidate changes seven files. Its source
+identity is
+`sha256:1891321b8becdab3c9eb4dc29fdf05ba46ff6f23b32503cc25baf3a444f41ddc`,
+and its source-bundle identity is
+`sha256:0a88484ec5f99028ed96fd21f27b30e109c7fb191d48e75740f1015094c8ba88`.
+The retained result has SHA-256 digest
+`6d3d5a3c58f55161c8f5cc1bbd2391052e9d397a37a2b4b223ca04c7aaf3eebb`.
+
+The candidate requires distinct event sequences and distinct model-supplied
+method names. It also requires the audit to explain why both results measure
+the same claim. The runtime can reconstruct the events and check their status.
+It cannot establish that two method descriptions represent semantically
+independent analyses. External task quality therefore remains the acceptance
+authority.
+
+## Rejection of the independent-evidence candidate
+
+The source-evaluation controller rebuilt source tree
+`git-tree-sha1:4b1cbc555e890a32addefb04b65a36a0847548ee` as portable binary
+`sha256:4f60fbf4c3254e9dac5e6509f26f08c3b5adbc9d7ae67feec13190539be2ae9d`.
+It evaluated only `dna-insert` with the unchanged task and task-owned grader.
+Implementation used low reasoning, and the built-in terminal audit used high
+reasoning. Every request used the priority service tier.
+
+Both completed attempts received task score 0.0. They used 585,021 input
+tokens, 215,552 cached-input tokens, 43,251 output tokens, and $2.429117 in
+estimated cost. The already-started third attempt was cancelled after nine
+requests with reported usage. It had recorded 61,602 input tokens, 23,040
+cached-input tokens, and 3,357 output tokens.
+
+The first audit cited two successful final checks and reported a melting-
+temperature difference of 4.627650 degrees Celsius. The external verifier
+preserved the earlier complete insert occurrence and measured 6.127779
+degrees. The second audit also cited two successful checks. The external
+verifier measured 5.828321 degrees, above the allowed maximum.
+
+Both audits derived their evidence from the same incorrect insert boundary.
+Distinct successful events and different method labels therefore supplied
+correlated evidence for the same false interpretation. The candidate did not
+improve on the frozen parent's one success from three attempts. It receives no
+transfer run and no production pull request.
+
+The first audit also supplied the correct 64 hexadecimal file-version digits
+to `edit` three times without the `sha256:` prefix. Each call was rejected
+before the audit recovered by adding the prefix. Pull request 110 makes this
+unambiguous input equivalent to the canonical qualified version. The tool
+continues to record and compare the complete SHA-256 value.
+
+The cancelled campaign is retained under
+`/home/sunil/git/foe-terminal-bench-quality-release/target/terminal-bench-jobs/priority-independent-audit-evidence-dna-activation/priority-independent-audit-evidence-dna-activation-20260827T145619Z`.
+Its campaign manifest has SHA-256 digest
+`e8fc02525b816d4c51040fabd50ab488feaa792c0f10579fc46ec5bbd5d1afe8`.
