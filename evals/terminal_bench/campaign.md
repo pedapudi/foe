@@ -19,7 +19,7 @@ least 85 percent quality on the twenty-task calibration set. It must also
 demonstrate repeatable self-improvement that transfers beyond each activation
 case.
 
-Every provider request uses GPT-5.6 Sol and the priority service tier. Low
+Every provider request uses GPT-5.6 Sol and the standard service tier. Low
 reasoning is the primary coding setting. Conditional escalation may use at
 most `xhigh` reasoning. Token use, estimated cost, cache use, and latency
 are measurements. Task quality is the only candidate promotion metric until
@@ -82,7 +82,7 @@ use conditional Sol reasoning escalation. It must preserve task quality.
 
 Planning estimates bound campaign exposure before each confirmed command.
 They do not reject a candidate that improves task quality. Development runs
-use the priority service tier and record it in the manifest. Foe records
+use the standard service tier and record it in the manifest. Foe records
 usage without enforcing token ceilings during ordinary quality runs.
 
 A retained qualification remains valid while the evaluated source tree,

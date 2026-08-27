@@ -684,10 +684,9 @@ identities. The coding-node isolation and source-candidate identity rejection
 remain unchanged.
 
 The runner emits a version 3 program. The campaign Bazel target supplies the
-`priority` service tier for diagnosis, implementation, review, and
+standard service tier for diagnosis, implementation, review, and
 finalization. A direct invocation of `run_self_improvement.py` defaults to
-`default` and must set `--service-tier priority` to match the campaign. The
-model blocks
+`default`, which matches the campaign. The model blocks
 explicitly name the credential file from Foe's per-provider convention under
 the passwd home directory. The retained plan and `episode/start.program`
 therefore carry the same runtime-resolved model block. `--candidate-kind` can
@@ -893,7 +892,7 @@ Apply a retained workflow candidate to any permitted task set with:
 ```sh
 bazel run //evals/terminal_bench:foe-development -- \
   --workflow-candidate /absolute/path/to/workflow-candidate.json \
-  --service-tier priority \
+  --service-tier default \
   --confirm-spend
 ```
 
@@ -912,7 +911,7 @@ bazel run //evals/terminal_bench:foe-source-candidate -- \
   --source-adoption /absolute/path/to/self-improvement/result.json \
   --controller-bazel /absolute/path/to/bazel \
   --built-in-workflow \
-  --service-tier priority \
+  --service-tier default \
   --confirm-spend
 ```
 

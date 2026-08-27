@@ -270,7 +270,7 @@ primary effort, service tier, token policy, workflow owner, and completion
 governance must remain equal. Success on a transfer task supplies later
 evidence and cannot establish the initial causal contrast.
 
-The default OpenAI service tier is `priority` for all three model nodes. A
+The default OpenAI service tier is `default` for all three model nodes. A
 preview constructs and validates the complete program without creating the
 requested retained directory or sending a model request. It removes any empty
 candidate validation directories that it created for grant resolution. A
