@@ -1269,6 +1269,17 @@ def require_failure_coverage(candidate, contrast):
     if not isinstance(shared, str) or not shared.strip():
         raise ValueError("causal contrast must state one shared failure mechanism")
 
+def reject_semantic_only_source_contrast(contrast):
+    profile = contrast["failure_profile"]
+    if (
+        profile["outcome"].get("kind") == "completed"
+        and profile["artifact_outcome_mismatch"] is True
+    ):
+        raise ValueError(
+            "a completed artifact rejection does not isolate a Foe source mechanism; "
+            "return insufficient-evidence for a source change"
+        )
+
 try:
     candidate = json.load(sys.stdin)
     validate_revised_diagnosis(candidate, candidate_assessment_diagnostics)
@@ -1296,6 +1307,8 @@ try:
             )
         selected_contrast = matches[0]
         require_failure_coverage(candidate, selected_contrast)
+        if branch == "implement-source":
+            reject_semantic_only_source_contrast(selected_contrast)
     if branch == "configure-workflow":
         audit = validate_independent_audit(candidate.get("independent_audit"))
         if audit not in supported_audits:
@@ -1376,10 +1389,12 @@ def build_config(
     if requested_candidate_kind == "source-change":
         sufficiency = (
             "Choose `implement-source` when repeated retained failures support one general, source-owned, "
-            "falsifiable mechanism to test. Candidate generation does not require prior proof of transfer or "
-            "task-quality improvement; unchanged external task evaluation decides promotion. Choose "
-            "`insufficient-evidence` when the evidence identifies no source-owned mechanism, combines "
-            "incompatible failure mechanisms, or requires task-specific semantic behavior in Foe. Do not choose "
+            "falsifiable runtime mechanism to test. A completed episode whose artifact fails external verification "
+            "establishes a semantic task-quality error without isolating a Foe source mechanism, so return "
+            "`insufficient-evidence` for that contrast. Candidate generation does not require prior proof of "
+            "transfer or task-quality improvement; unchanged external task evaluation decides promotion. Choose "
+            "`insufficient-evidence` when the evidence identifies no source-owned mechanism, combines incompatible "
+            "failure mechanisms, or requires task-specific semantic behavior in Foe. Do not choose "
             "`configure-workflow`; this run evaluates one source hypothesis."
         )
     elif requested_candidate_kind == "workflow-configuration":

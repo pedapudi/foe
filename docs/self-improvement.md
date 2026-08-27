@@ -157,6 +157,12 @@ evidence of transfer or task-quality improvement. Repository validation can
 admit the proposal for evaluation. Unchanged external task quality remains the
 sole promotion authority.
 
+Source-change admission excludes a contrast that contains only completed
+episodes whose artifacts failed external verification. Such a contrast
+establishes a semantic task-quality error without distinguishing model error
+from a Foe source mechanism. The diagnosis returns `insufficient-evidence`
+unless another eligible contrast supports the source change.
+
 An external source-candidate assessment can guide one later generation. The
 evaluator constructs the private assessment from the retained source bundle,
 a completed parent campaign, and a completed candidate campaign. The

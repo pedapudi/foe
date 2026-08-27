@@ -467,7 +467,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         sufficiency = config["workflow"]["nodes"]["diagnose-runtime"]["model"][
             "instructions"
         ]["sufficiency"]
-        self.assertIn("general, source-owned, falsifiable mechanism", sufficiency)
+        self.assertIn("general, source-owned, falsifiable runtime mechanism", sufficiency)
+        self.assertIn("semantic task-quality error", sufficiency)
         self.assertIn("does not require prior proof of transfer", sufficiency)
         self.assertIn("external task evaluation decides promotion", sufficiency)
         self.assertIn("Choose `insufficient-evidence`", sufficiency)
@@ -968,8 +969,8 @@ COMPLETE_FAILURE_COUNTS = {
 FAILURE_CONTRAST = {
     "task": "terminal-bench/example",
     "failure_profile": {
-        "outcome": {"kind": "completed"},
-        "artifact_outcome_mismatch": True,
+        "outcome": {"kind": "exhausted", "limit": "model_calls"},
+        "artifact_outcome_mismatch": False,
         "failed_verifier_checks": [
             {"name": "test_public_interface", "failure_class": "AssertionError"}
         ],
@@ -1019,6 +1020,18 @@ def with_contrast_digest(value):
     answer = {key: item for key, item in value.items() if key != "contrast_sha256"}
     answer["contrast_sha256"] = digest_bytes(canonical_json(answer))
     return answer
+
+
+COMPLETED_ARTIFACT_REJECTION_CONTRAST = with_contrast_digest(
+    {
+        **FAILURE_CONTRAST,
+        "failure_profile": {
+            **FAILURE_CONTRAST["failure_profile"],
+            "outcome": {"kind": "completed"},
+            "artifact_outcome_mismatch": True,
+        },
+    }
+)
 
 
 VALID_CAUSAL_CONTRAST = {
@@ -1082,6 +1095,10 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertIn(
             "copied verbatim as bare strings",
             diagnosis["instructions"]["evidence"],
+        )
+        self.assertIn(
+            "semantic task-quality error",
+            diagnosis["instructions"]["sufficiency"],
         )
 
     def judgments(
@@ -1226,6 +1243,25 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertEqual(judged[0], "")
         self.assertIn("requires branch implement-source", judged[1])
         self.assertEqual(judged[2], "")
+
+    def test_completed_artifact_rejection_cannot_claim_a_source_mechanism(self):
+        contrast = COMPLETED_ARTIFACT_REJECTION_CONTRAST
+        judged = self.judgments(
+            [
+                {
+                    "branch": "implement-source",
+                    "failure_contrast_sha256": contrast["contrast_sha256"],
+                },
+                {"branch": "insufficient-evidence"},
+            ],
+            "source-change",
+            failure_contrasts=[contrast],
+        )
+        self.assertIn(
+            "completed artifact rejection does not isolate a Foe source mechanism",
+            judged[0],
+        )
+        self.assertEqual(judged[1], "")
 
     def test_validator_requires_every_failed_attempt_and_distinct_locus(self):
         missing_attempt = {

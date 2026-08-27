@@ -2768,3 +2768,51 @@ now gives the implementation node a declared empty value for blocked and
 exhausted endings. Review and finalization can inspect the shared source tree
 and apply the authoritative checker even when the implementation summary is
 missing. The source checker still rejects an absent or invalid artifact.
+
+## Autonomous repository-validation candidate rejection
+
+The repaired self-improvement workflow repeated the same identity-bound source
+request with the priority service tier. Diagnosis used one call, implementation
+used 30, read-only review used seven, and verifier-owned finalization used one.
+The workflow completed in 483.273 seconds. The external source checker accepted
+the candidate with no finding.
+
+The source-improvement run used 39 model calls, 1,033,187 input tokens, 618,496
+cached-input tokens, and 14,359 output tokens. Its estimated cost was $2.193342.
+The retained directory is
+`target/priority-incomplete-handoff-recovery-source-improvement`. The source
+bundle identity is
+`sha256:5a40dfc2191718fbbfba59b1c66679f0dc1bc25f46277fd4f9e900ee0b767150`,
+and the source candidate identity is
+`sha256:cd3280514a613c3d040822d861aba51744c06a2b061971bfaa24483ee14611b8`.
+
+The candidate required terminal audits to distinguish repository-native
+validation from auditor-authored checks. It changed runtime source, regression
+tests, the built-in workflow, and two specifications. A separate controller
+rebuilt Git tree
+`git-tree-sha1:8d1080552b238db369634b46f0b4cc78b31a2547` into portable binary
+`sha256:979601fa0f00aef64cfb5e0e116f79bfd2301cc54ab40169c9da846ff07d6512`.
+
+One unchanged priority-tier `dna-insert` activation attempt received score 0.0
+without an exception. It used 32 model calls, 504,191 input tokens, 292,864
+cached-input tokens, and 17,069 output tokens. Its estimated cost was $1.303834.
+The trace passed 10,164 assertions with no violation. The campaign manifest is
+`target/terminal-bench-jobs/priority-autonomous-native-validation-dna-insert-activation-20260827T032258Z/campaign.json`.
+Its SHA-256 is
+`55217667749cb584176b9ecf79507c14e6e544bcc0a5158b7334f489d4b4eabc`.
+
+The audit reported that no repository-native check existed. It cited one
+auditor-authored script for every semantic requirement. The script measured
+the reverse annealing region at 60.954190 degrees Celsius. The unchanged grader
+measured the complete reverse annealing region at 59.311917 degrees Celsius.
+The resulting pair differed by 5.828321 degrees Celsius, above the permitted
+five degrees.
+
+The candidate is rejected. Its mechanism never constrained the activation
+case because the audit classified native validation as unavailable. The run
+also exposes a candidate-selection defect: repeated completed artifacts that
+fail external semantic checks do not isolate a Foe source mechanism. The
+diagnosis verifier now rejects `implement-source` for such a contrast and
+requires `insufficient-evidence`. Source generation remains available for
+non-completed Foe outcomes whose retained evidence can support a source
+mechanism.

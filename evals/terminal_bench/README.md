@@ -714,15 +714,20 @@ abstention pass this verifier: a source candidate is judged by the
 implementation node's candidate check, and an abstention proposes nothing.
 
 The diagnosis chooses `implement-source` when repeated retained failures
-support one general, source-owned, falsifiable mechanism. Candidate generation
-does not require prior evidence of transfer or task-quality improvement.
-Unchanged external task evaluation decides promotion. The diagnosis chooses
-`configure-workflow` when an independent audit stage supplies a repeated
-quality gain. An explicit run can choose `revise-instructions` or `define-tool`
-to retain a proposal for a future application mechanism. The diagnosis chooses
-`insufficient-evidence` when the contrast identifies only model capability or
-requires semantic task knowledge absent from the log. That choice ends the
-workflow before a coding episode and sets `direct_implementation_required`.
+support one general, source-owned, falsifiable runtime mechanism. A contrast
+that contains only completed episodes followed by external artifact rejection
+establishes semantic task-quality error without isolating a Foe source
+mechanism. The diagnosis verifier requires `insufficient-evidence` for that
+source-change contrast.
+Candidate generation does not require prior evidence of transfer or
+task-quality improvement. Unchanged external task evaluation decides
+promotion. The diagnosis chooses `configure-workflow` when an independent
+audit stage supplies a repeated quality gain. An explicit run can choose
+`revise-instructions` or `define-tool` to retain a proposal for a future
+application mechanism. The diagnosis chooses `insufficient-evidence` when the
+contrast identifies only model capability or requires semantic task knowledge
+absent from the log. That choice ends the workflow before a coding episode and
+sets `direct_implementation_required`.
 
 When the diagnosis chooses `implement-source`, the configured coding model
 acts with `read`, `grep`, `edit`, and `bash`. The diagnosis node's branch edge
