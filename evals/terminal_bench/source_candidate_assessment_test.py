@@ -871,8 +871,21 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
                 },
             }
             with self.subTest(field=field):
-                with self.assertRaisesRegex(ValueError, "task-specific assessment detail"):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    r"field `\$\.intervention` copies a task-specific assessment detail",
+                ):
                     validate_revised_diagnosis(diagnosis, projection)
+
+        diagnosis["intervention"] = "Enforce one general completion invariant."
+        diagnosis["assessment_revision"]["explanation"] = (
+            "The assessment observed " + locus["observed_assertion"]
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            r"field `\$\.assessment_revision\.explanation` copies a task-specific assessment detail",
+        ):
+            validate_revised_diagnosis(diagnosis, projection)
 
     def test_source_candidate_cannot_embed_assessment_details(self):
         with tempfile.TemporaryDirectory() as directory:

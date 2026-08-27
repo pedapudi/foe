@@ -2118,33 +2118,45 @@ def assessment_failure_literals(diagnostics: dict[str, Any]) -> set[str]:
     return literals
 
 
-def diagnosis_explanations(value: Any, field: str | None = None) -> list[str]:
-    """Return prose fields while excluding required opaque citations."""
+def diagnosis_explanation_fields(
+    value: Any, path: str = "$"
+) -> list[tuple[str, str]]:
+    """Return prose field paths and values while excluding opaque citations."""
     if isinstance(value, dict):
         return [
-            text
+            located
             for key, item in value.items()
             if not any(
                 marker in key
                 for marker in ("sha256", "identity", "episode_id")
             )
-            for text in diagnosis_explanations(item, key)
+            for located in diagnosis_explanation_fields(item, f"{path}.{key}")
         ]
     if isinstance(value, list):
-        return [text for item in value for text in diagnosis_explanations(item, field)]
-    return [value] if isinstance(value, str) else []
+        return [
+            located
+            for index, item in enumerate(value)
+            for located in diagnosis_explanation_fields(item, f"{path}[{index}]")
+        ]
+    return [(path, value)] if isinstance(value, str) else []
 
 
 def require_generalized_revised_diagnosis(
     diagnosis: dict[str, Any], diagnostics: dict[str, Any]
 ) -> None:
     """Keep task-specific verifier details out of the implementation handoff."""
-    prose = [" ".join(value.split()).casefold() for value in diagnosis_explanations(diagnosis)]
+    prose = [
+        (path, " ".join(value.split()).casefold())
+        for path, value in diagnosis_explanation_fields(diagnosis)
+    ]
     for literal in assessment_failure_literals(diagnostics):
-        if any(literal in value for value in prose):
-            raise ValueError(
-                "revised diagnosis copies a task-specific assessment detail into its handoff"
-            )
+        for path, value in prose:
+            if literal in value:
+                excerpt = literal if len(literal) <= 160 else literal[:157] + "..."
+                raise ValueError(
+                    f"revised diagnosis field `{path}` copies a task-specific assessment "
+                    f"detail into its handoff: {json.dumps(excerpt)}"
+                )
 
 
 def require_source_candidate_excludes_assessment_literals(

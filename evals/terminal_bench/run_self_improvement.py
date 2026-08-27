@@ -1419,7 +1419,10 @@ def build_config(
         "only a qualified subset remains supported, replace when the contrast falsifies the mechanism, "
         "or insufficient-evidence when the bounded evidence cannot distinguish those dispositions. A replace "
         "disposition may propose one distinct general and falsifiable source hypothesis after the assessment "
-        "rejects the prior mechanism. External task quality decides whether that hypothesis is promoted."
+        "rejects the prior mechanism. Opaque identities belong in the revised diagnosis, but its prose must "
+        "generalize the evidence without copying a failure location, assertion, observed operand, message, or "
+        "terminal audit sentence. The coding children receive this prose without the assessment. External task "
+        "quality decides whether that hypothesis is promoted."
         if candidate_assessment_diagnostics is not None
         else None
     )

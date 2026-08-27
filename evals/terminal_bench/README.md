@@ -652,6 +652,10 @@ locus, and all qualified successes. It compares the terminal audit's claims
 and named validation methods with the external failure operands. It chooses
 `retain`, `narrow`, `replace`, or `insufficient-evidence`. The generated
 diagnosis verifier checks these citations before source implementation starts.
+The verifier names the prose field and bounded copied text when the diagnosis
+would expose a task-specific assessment detail to a coding child. This finding
+returns only to the diagnosis child, which can replace the detail with a
+general mechanism before any coding child starts.
 
 Assessment diagnostics and a canonical generation-context record enter a
 later accepted source bundle before source capture. These files bind the

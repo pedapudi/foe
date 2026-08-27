@@ -213,6 +213,11 @@ success. Its disposition is `retain`, `narrow`, `replace`, or
 `insufficient-evidence`. The diagnosis verifier enforces those citations
 before source implementation can start.
 
+When diagnosis prose copies a task-specific assessment detail, the verifier
+identifies the prose field and a bounded excerpt. The finding remains inside
+the diagnosis episode. The model can remove the copied detail before a coding
+child receives the generalized diagnosis.
+
 The diagnosis verifier also confines task-specific assessment details to the
 diagnosis episode. It rejects a typed handoff that copies a retained failure
 location, source assertion, rewritten assertion, or message into its
