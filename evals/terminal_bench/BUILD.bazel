@@ -15,7 +15,7 @@ COMMON_ARGS = [
     "--cases",
     "$(rootpath :cases.json)",
     "--service-tier",
-    "priority",
+    "default",
 ]
 
 SCORED_WORKFLOW_ARGS = COMMON_ARGS + ["--built-in-workflow"]
@@ -36,7 +36,7 @@ SOURCE_CONTROLLER_ARGS = [
     "--cases",
     "$(rootpath :cases.json)",
     "--service-tier",
-    "priority",
+    "default",
 ]
 
 COMMON_DATA = [
@@ -379,7 +379,7 @@ sh_binary(
         "--source-checker",
         "$(rootpath //crates/lineage:source-adoption)",
         "--service-tier",
-        "priority",
+        "default",
     ],
     data = [
         "//:foe-portable",

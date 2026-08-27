@@ -203,7 +203,7 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
 Equivalent targets end in `foe-verifier-fix-git` and
 `foe-verifier-large-scale-text-editing`. Additional targets cover
 `dna-assembly`, `dna-insert`, `git-multibranch`, and `gpt2-codegolf`. These
-targets use the priority service tier and low reasoning. They construct an
+targets use the standard service tier and low reasoning. They construct an
 adapter-owned single-episode program with the public checker as its completion
 verifier.
 
@@ -351,10 +351,9 @@ time allowance ends. [`cases.json`](cases.json) records each multiplier's
 base timeout from the pinned task metadata.
 
 The default route is `openai-codex/gpt-5.6-sol` with low reasoning effort.
-Campaign Bazel targets request the priority service tier. A direct invocation
-of `run.py` defaults to the standard tier and must set `--service-tier
-priority` to match the campaign. The runner records the requested tier and
-credit multiplier beside its token-derived cost estimate. OpenAI documents
+Campaign Bazel targets and direct `run.py` invocations use the standard service
+tier. The runner records the requested tier and credit multiplier beside its
+token-derived cost estimate. OpenAI documents
 Fast mode as targeting 1.5 times Standard speed while GPT-5.6 consumes 2.5
 times the Standard ChatGPT credits. See the
 [OpenAI speed documentation](https://developers.openai.com/codex/speed).

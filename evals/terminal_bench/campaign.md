@@ -3379,3 +3379,14 @@ The cancelled campaign is retained under
 `/home/sunil/git/foe-terminal-bench-quality-release/target/terminal-bench-jobs/priority-independent-audit-evidence-dna-activation/priority-independent-audit-evidence-dna-activation-20260827T145619Z`.
 Its campaign manifest has SHA-256 digest
 `e8fc02525b816d4c51040fabd50ab488feaa792c0f10579fc46ec5bbd5d1afe8`.
+
+## Standard service tier after 2026-08-27
+
+Provider-backed campaign runs after this decision use the standard service
+tier. The Bazel campaign targets and the direct runner now select
+`service_tier=default`. Earlier records retain their original tier because the
+tier is part of each run's measured conditions.
+
+No provider-backed run was active when the selection changed. The retained
+frozen release and its completed qualifications remain unchanged. Every future
+candidate manifest must record the standard tier before model spend begins.
