@@ -3452,3 +3452,81 @@ the first provider request. Completed activation evidence for live-state
 preservation and final-artifact boundaries remains valid for the exact source
 changes that produced it. The campaign will run only the affected activation
 and transfer cases for new behavior before reopening the confirmation gate.
+
+## Standard-tier live-state and tool-usability release gate
+
+A combined source candidate starts from main commit
+`89dd279b01f9e7b98082afa9debb7836f5eff271`. It contains the reviewed heads
+of pull requests 99, 100, 110, 117, 119, and 120. The candidate therefore
+combines bounded provider retry, live-state preservation, final-artifact
+evidence, bare edit-version input, directory reads, and literal-NUL shell
+diagnostics.
+
+The merge reconciles live-state and final-artifact audit instructions. The
+terminal audit must inspect every final requirement and preserve required
+services and machine state after its checks. The candidate has these immutable
+identities:
+
+- source commit
+  `1d90a79b059db864f9b3fe98f7b156abe152120c`;
+- source tree
+  `git-tree-sha1:f108a36aceee4c3dfeba84d29bdc0823bfca52d9`;
+- portable binary
+  `sha256:d6a97374ea95c5efece642b60bf7938abadae59214b894937bbdc2880bb4f6ed`.
+
+The workspace test suite, Clippy, deterministic examples, recorded program
+identities, line-count check, and Bazel portable build passed. The kernel uses
+5,316 of 5,350 lines. The tools use all 1,770 allowed lines. The program
+contract uses 1,399 of 1,400 lines. The exact portable binary passed
+provider-free capability probes in the `dna-insert`, `dna-assembly`,
+`git-multibranch`, and `fix-ocaml-gc` containers.
+
+Three serial task attempts used GPT-5.6 Sol. Implementation used low
+reasoning, and the built-in terminal audit used high reasoning. Every request
+used the standard service tier. Token limits remained measurement-only.
+Landlock remained off inside each task container.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `dna-insert` | 0.0 | 25 | 321,004 | 99,840 | 13,425 | $1.193092 | 414.542 |
+| `git-multibranch` | 1.0 | 21 | 199,769 | 58,368 | 20,850 | $1.005951 | 488.601 |
+| `dna-assembly` | 1.0 | 29 | 385,189 | 190,464 | 24,908 | $1.353246 | 697.092 |
+| **Total** | **2/3** | **75** | **905,962** | **348,672** | **59,183** | **$3.552289** | **1,600.235** |
+
+Every attempt produced a task-owned score without an exception. Every Foe
+account conformed with zero violation, and every model response reported
+usage. The successful `git-multibranch` result left the SSH and HTTPS services
+live after the terminal audit. The task-owned grader accepted the externally
+observable repository and web state.
+
+The successful `dna-assembly` trajectory read `/app` and the current directory
+through the new directory interface. It also supplied a complete bare SHA-256
+digest to `edit`. Both interfaces succeeded without a tool error, and the
+unchanged task-owned grader awarded full credit. A separate `fix-ocaml-gc`
+attempt would repeat this interface evidence on another task that already
+succeeds, so it is omitted.
+
+The `dna-insert` attempt was an incorrect activation choice for these changes.
+The terminal audit measured one insertion boundary and accepted a primer pair
+whose forward and reverse temperatures differed by no more than five degrees
+under that interpretation. The task-owned grader selected an overlapping
+insert occurrence and measured a 5.397779 degree difference. The retained
+`done_when.verify` result already establishes correction when the qualified
+public checker supplies this semantic distinction. The closed-book failure
+adds no evidence that the candidate regressed live-state, final-artifact, or
+tool behavior.
+
+The three campaign manifests have these SHA-256 digests:
+
+- `dna-insert`:
+  `0dab5121ad69f2efdadf4aca80c6eca21e7389546b1aee6f1884c4f79aa9b84d`;
+- `git-multibranch`:
+  `a5420dd59459202b0cc42293170de2dc8ecebbc9f5274261fdfb017965dd2a12`;
+- `dna-assembly`:
+  `4c443553314477af7279db51072d508663ac7ae06e63e3041a0036ba7ef561c0`.
+
+The candidate advances to the remaining ten development tasks. The two
+successful activation results count toward the twelve-task development total
+because they use the exact candidate, unchanged task-owned graders, and the
+same standard-tier execution contract. Confirmation remains closed until the
+combined twelve-task result reaches at least eleven successes.
