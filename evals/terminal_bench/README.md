@@ -274,6 +274,22 @@ allowance. These tasks do not expose the public development checkers. Both
 episodes must select and run task-relevant checks from the task environment.
 Harbor runs the unchanged task-owned verifier after Foe exits.
 
+Some authorized security-research tasks can trigger a provider policy
+classification before the model loop begins. Retry such a task with a fixed
+authorization and isolation statement:
+
+```sh
+bazel run //evals/terminal_bench:foe-development -- \
+  --task model-extraction-relu-logits \
+  --authorized-benchmark-context \
+  --confirm-spend
+```
+
+The option appends one repository-owned statement through Harbor's task
+context. It does not accept arbitrary prompt text. The campaign manifest
+records the exact statement. Use the option only to replace an attempt that
+the provider rejected before score-valid work began.
+
 ## Preview and run one assessed task
 
 Every model-backed target prints planning token estimates and an estimated

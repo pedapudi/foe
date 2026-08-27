@@ -52,6 +52,11 @@ MAX_PARALLEL_CPUS = 4
 PARALLEL_TASK_MEMORY_EXCLUSION_MB = 8 * 1024
 MAX_MEMORY_PRESSURE_AVG10 = 1.0
 PROCESS_TERMINATION_SECONDS = 10
+AUTHORIZED_BENCHMARK_CONTEXT = (
+    "This is an authorized Terminal-Bench software evaluation in an isolated task "
+    "container. Work only with the supplied files, model, and interfaces. Do not "
+    "access external systems or data."
+)
 
 
 class CampaignCancellation(KeyboardInterrupt):
@@ -680,6 +685,7 @@ def harbor_command(
     completion_checker: Path | None = None,
     built_in_workflow: bool = False,
     hard_token_limits: bool = False,
+    authorized_benchmark_context: bool = False,
     install_only: bool = False,
 ) -> list[str]:
     if built_in_workflow:
@@ -771,6 +777,8 @@ def harbor_command(
     ]
     for key, value in kwargs.items():
         command.extend(("--agent-kwarg", f"{key}={value}"))
+    if authorized_benchmark_context:
+        command.extend(("--extra-instruction", AUTHORIZED_BENCHMARK_CONTEXT))
     if install_only:
         command.append("--install-only")
     return command
@@ -1417,6 +1425,14 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="enforce the planning token estimates as Foe allowances",
     )
+    answer.add_argument(
+        "--authorized-benchmark-context",
+        action="store_true",
+        help=(
+            "append a fixed authorization and isolation statement to the task "
+            "instruction for provider policy classification"
+        ),
+    )
     answer.add_argument("--confirm-spend", action="store_true")
     return answer
 
@@ -1820,6 +1836,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     token_policy = "hard allowances" if args.hard_token_limits else "measurement only"
     print(f"token limits  {token_policy}")
+    if args.authorized_benchmark_context:
+        print("task context  authorized isolated benchmark")
     if completion_checker is not None:
         owner = "built-in terminal audit" if args.built_in_workflow else "coding episode"
         print(
@@ -2006,6 +2024,11 @@ def main(argv: list[str] | None = None) -> int:
                 None,
             ),
             "install_only": args.install_only,
+            "authorized_benchmark_context": (
+                AUTHORIZED_BENCHMARK_CONTEXT
+                if args.authorized_benchmark_context
+                else None
+            ),
             "credential_policy": (
                 "provider_free_installation"
                 if args.install_only
@@ -2075,6 +2098,7 @@ def main(argv: list[str] | None = None) -> int:
             completion_checker=completion_checker,
             built_in_workflow=args.built_in_workflow,
             hard_token_limits=args.hard_token_limits,
+            authorized_benchmark_context=args.authorized_benchmark_context,
             install_only=args.install_only,
         )
 
