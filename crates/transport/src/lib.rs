@@ -257,14 +257,14 @@ pub fn build_planned(plan: &Plan, executor: Option<Arc<dyn Executor>>) -> Result
 }
 
 /// The table holds only `exec` rows in a build without a wire format.
-#[cfg(not(feature = "http"))]
+#[cfg(not(any(feature = "messages", feature = "chat", feature = "responses", feature = "google")))]
 fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
     unreachable!("provider {} has no wire format in this build", plan.provider.name)
 }
 
 /// Builds the HTTP client of a plan: the credential source, the wire
 /// format, and the URL the provider row implies.
-#[cfg(feature = "http")]
+#[cfg(any(feature = "messages", feature = "chat", feature = "responses", feature = "google"))]
 fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
     let provider = plan.provider;
     let model = &plan.model;
@@ -367,7 +367,7 @@ fn vertex_route(
 
 /// Opens the credential source a plan names. The only place a secret is
 /// read.
-#[cfg(feature = "http")]
+#[cfg(any(feature = "messages", feature = "chat", feature = "responses", feature = "google"))]
 fn open_auth(plan: &Plan) -> Result<Arc<dyn Auth>, TransportError> {
     let provider = plan.provider;
     let Some(key) = provider.auth.option_key() else {
