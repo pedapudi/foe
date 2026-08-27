@@ -3684,3 +3684,71 @@ review because it converted two externally verified development failures.
 Before confirmation, it must preserve success on development tasks where the
 terminal audit previously performed substantial repairs. The regression gate
 starts with `gpt2-codegolf`, `path-tracing-reverse`, and `regex-chess`.
+
+The exact revised candidate passed all three substantial-repair regression
+tasks on the standard service tier.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `gpt2-codegolf` | 1.0 | 46 | 1,220,140 | 838,656 | 33,777 | $2.536938 | 835.655 |
+| `path-tracing-reverse` | 1.0 | 39 | 2,063,533 | 1,376,768 | 19,174 | $3.681247 | 479.019 |
+| `regex-chess` | 1.0 | 78 | 1,915,451 | 1,491,456 | 37,280 | $3.038162 | 1,037.512 |
+
+Every result used the same source commit, source tree, portable binary,
+models, reasoning efforts, token policy, sandbox policy, and task-owned
+verifier as the two passing activation tasks. Every account conformed with no
+recorded violation. The campaign manifest has SHA-256 digest
+`7cf7c60158a8a959ea945e01e03177de04c6c43c4bfa653b7bf8ddfe8dfd0403`.
+
+The repair-scope rule therefore preserved three trajectories where the audit
+had previously replaced a substantial implementation. The exact candidate is
+5/5 on newly executed development tasks.
+
+The exact candidate then ran the seven remaining development tasks. Every
+request used the standard service tier. The run was serial, used
+measurement-only token accounting, and disabled Landlock inside the task
+containers.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 19 | 154,603 | 68,096 | 15,950 | $0.692266 | 358.846 |
+| `fix-git` | 1.0 | 18 | 147,739 | 47,104 | 9,045 | $0.602282 | 225.249 |
+| `sqlite-db-truncate` | 1.0 | 12 | 92,126 | 7,680 | 7,187 | $0.484596 | 178.423 |
+| `large-scale-text-editing` | 1.0 | 17 | 218,369 | 96,768 | 16,269 | $0.850491 | 427.561 |
+| `fix-ocaml-gc` | 1.0 | 31 | 1,165,806 | 710,144 | 12,020 | $2.347106 | 1,679.004 |
+| `git-multibranch` | 1.0 | 21 | 210,714 | 52,224 | 23,937 | $1.133590 | 532.031 |
+| `dna-assembly` | 0.0 | 42 | 621,942 | 409,600 | 28,510 | $1.583408 | 726.818 |
+
+All seven attempts reached the unchanged task-owned grader. Every Foe account
+conformed, and the campaign recorded no credential, container, executable,
+sandbox, allowance, or other infrastructure failure. The campaign manifest
+has SHA-256 digest
+`fa7e568acb26124d618d2b512bf6bcc130db63be9265b1de6e51603bfdd87ca9`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/standard-audit-scope-transfer-development-remaining-seven-20260827T200106Z`.
+
+The exact candidate scored 11/12 across the two activation tasks, three
+substantial-repair regression tasks, and seven remaining tasks. The twelve
+attempts used 358 model calls, 8,474,742 input tokens, 5,346,304 cached-input
+tokens, 232,753 output tokens, and an estimated $19.307333. Their recorded
+wall time totaled 7,377.099 seconds. The numerical development criterion is
+satisfied.
+
+The `dna-assembly` failure is an artifact-outcome mismatch. Foe completed and
+cited one successful terminal-audit result for every requirement. The
+task-owned grader applied the submitted primers and found that the resulting
+sequence did not match the required output.
+
+The cited audit aligned every primer against a template and checked melting
+temperatures. Its assembly check then concatenated fixed template coordinates
+that described the intended product. It did not derive both fragment
+boundaries from the final primer sequences. This method could accept an
+incorrect primer while reporting an exact reconstruction. The failure is a
+general dependency error in substitute validation: a semantic check must
+derive the behavior under test from the final artifact rather than combining
+separately validated assumptions with an expected result.
+
+Confirmation remains closed while this failure supplies evidence for the
+second required autonomous improvement. The current source tree and binary
+remain frozen. Additional `dna-assembly` attempts may establish a repeated
+failure contrast without invalidating any of the eleven passing results.
