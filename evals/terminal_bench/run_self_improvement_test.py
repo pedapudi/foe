@@ -469,6 +469,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         ]["sufficiency"]
         self.assertIn("general, source-owned, falsifiable runtime mechanism", sufficiency)
         self.assertIn("semantic task-quality error", sufficiency)
+        self.assertIn("false acceptance by a built-in terminal audit", sufficiency)
         self.assertIn("does not require prior proof of transfer", sufficiency)
         self.assertIn("external task evaluation decides promotion", sufficiency)
         self.assertIn("Choose `insufficient-evidence`", sufficiency)
@@ -1244,7 +1245,7 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertIn("requires branch implement-source", judged[1])
         self.assertEqual(judged[2], "")
 
-    def test_completed_artifact_rejection_cannot_claim_a_source_mechanism(self):
+    def test_repeated_completed_rejections_can_support_a_source_hypothesis(self):
         contrast = COMPLETED_ARTIFACT_REJECTION_CONTRAST
         judged = self.judgments(
             [
@@ -1257,10 +1258,7 @@ class DiagnosisValidatorTest(unittest.TestCase):
             "source-change",
             failure_contrasts=[contrast],
         )
-        self.assertIn(
-            "completed artifact rejection does not isolate a Foe source mechanism",
-            judged[0],
-        )
+        self.assertEqual(judged[0], "")
         self.assertEqual(judged[1], "")
 
     def test_validator_requires_every_failed_attempt_and_distinct_locus(self):

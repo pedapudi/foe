@@ -2820,13 +2820,13 @@ The resulting pair differed by 5.828321 degrees Celsius, above the permitted
 five degrees.
 
 The candidate is rejected. Its mechanism never constrained the activation
-case because the audit classified native validation as unavailable. The run
-also exposes a candidate-selection defect: repeated completed artifacts that
-fail external semantic checks do not isolate a Foe source mechanism. The
-diagnosis verifier now rejects `implement-source` for such a contrast and
-requires `insufficient-evidence`. Source generation remains available for
-non-completed Foe outcomes whose retained evidence can support a source
-mechanism.
+case because the audit classified native validation as unavailable. At this
+decision point, the controller excluded completed artifact rejections from
+source-change evidence because they did not isolate a Foe source mechanism.
+Later confirmation evidence distinguished false acceptance by Foe's built-in
+terminal audit from the implementation error. The controller now admits that
+repeated, Foe-owned mechanism as a source hypothesis. Unchanged external task
+evaluation remains the promotion authority.
 
 ## Development gate for the final-artifact and live-state release
 
@@ -3028,3 +3028,125 @@ evidence preservation. It leaves the makespan criterion open. Another matched
 four-task run requires a specific overload-reduction mechanism or a different
 predeclared workload rationale. Repeating the same configuration would spend
 provider capacity without testing a changed hypothesis.
+
+## Confirmation rejection for the access-only credential release
+
+The confirmation gate evaluated the same source tree and portable binary. It
+used GPT-5.6 Sol with low reasoning for implementation and high reasoning for
+the built-in terminal audit. Every provider request used the priority service
+tier. Token use remained measurement-only, and the tasks ran serially.
+
+The gate stopped after twelve scored attempts because the required fourteen
+successes from sixteen attempts had become unreachable. The remaining four
+attempts could raise nine successes to no more than thirteen. The controller
+interrupted the next unscored task and left the final task unstarted.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `build-pov-ray` | 1/2 | 80 | at least 1,047,513 | at least 567,808 | at least 16,452 | at least $2.474983 |
+| `caffe-cifar-10` | 2/2 | 90 | 4,452,855 | 2,343,424 | 34,877 | $10.072634 |
+| `configure-git-webserver` | 1/2 | 46 | 389,020 | 89,600 | 32,095 | $1.875420 |
+| `count-dataset-tokens` | 2/2 | 58 | 578,633 | 220,160 | 36,612 | $2.254196 |
+| `crack-7z-hash` | 2/2 | 44 | 439,037 | 210,944 | 11,571 | $1.228170 |
+| `dna-insert` | 1/2 | 45 | at least 151,869 | at least 31,744 | at least 13,721 | at least $0.767618 |
+
+The twelve scored attempts used 363 model calls. Recorded usage totals at
+least 7,058,927 input tokens, 3,463,680 cached-input tokens, 145,328 output
+tokens, and $18.673020. Four retryable provider errors omitted usage.
+
+The interrupted `log-summary-date-ranges` attempt used six additional model
+calls. Five calls reported 29,765 input tokens, 7,168 cached-input tokens, and
+1,008 output tokens. The attempt has no score and does not contribute to the
+quality result. `overfull-hbox` remained unstarted.
+
+Every scored attempt produced a task-owned result without an infrastructure
+exception. All twelve scored accounts passed 235,657 conformance assertions
+with no violation. The three failures were completed outcomes whose external
+task verifiers rejected their artifacts.
+
+The failed `build-pov-ray` attempt built an official source ZIP. The task
+required provenance from the Unix distribution archive. A successful attempt
+selected the required archive and preserved its provenance file.
+
+The failed `configure-git-webserver` attempt exercised a live clone, push,
+hook, and HTTP request successfully. Its audit then reset the bare repository
+and emptied the web root during cleanup. The external verifier observed HTTP
+404. The successful attempt preserved the requested repository and web
+artifacts after exercising them.
+
+The failed `dna-insert` attempt accepted an alternative circular alignment
+that moved two matching boundary bases between the declared insert and the
+input-derived annealing regions. Its forward and reverse melting temperatures
+differed by 6.531905 degrees Celsius. The successful attempt preserved the
+declared insert as one semantic operand and remained within the five-degree
+limit.
+
+The release is rejected at confirmation. These paired successful and failed
+trajectories become identity-bound evidence for targeted self-improvement.
+They do not authorize another unchanged qualification or confirmation run.
+Only a source candidate that changes one diagnosed mechanism may repeat its
+affected activation and transfer cases.
+
+The retained campaign manifest has SHA-256 digest
+`c4f0401121c347169ee86ccd983148032f331e39e116e03914df3de63cb4be10`.
+Raw trajectories, task workspaces, and verifier artifacts remain in the local
+evidence worktree.
+
+## Confirmation failure repeatability
+
+One additional serial attempt ran for each of two confirmation failures. The
+source tree, portable binary, task definitions, model settings, and service
+tier remained unchanged. `configure-git-webserver` received score 1.0, which
+makes its observed result two successes from three attempts. No further
+unchanged webserver attempt is justified.
+
+The additional `dna-insert` attempt received score 0.0. The two retained
+failures and one success establish a repeated false-acceptance contrast for
+the exact frozen release. All three outcomes came from the unchanged task
+verifier.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `configure-git-webserver` | 1/1 | 21 | 280,093 | 93,696 | 16,196 | $1.106986 |
+| `dna-insert` | 0/1 | 19 | 168,586 | 67,072 | 12,908 | $0.691045 |
+
+The two attempts used 40 model calls, 448,679 input tokens, 160,768
+cached-input tokens, and 29,104 output tokens. Their estimated cost was
+$1.798031. Both accounts passed 40,372 conformance assertions with no
+violation. Neither attempt had an infrastructure exception or missing usage.
+
+The repeated DNA failure exposed a second boundary interpretation. The final
+primer pair contained an input-derived region, the declared insert, and
+another input-derived region. Overlapping bases allowed the insert to be
+located at more than one offset in the concatenated value.
+
+The terminal audit declared one offset unique. It measured a 28-base reverse
+annealing region and reported 58.041322 degrees Celsius. The external verifier
+located the earlier complete insert occurrence. It measured a 26-base reverse
+region at 55.857347 degrees Celsius, below the required minimum.
+
+The implementation and audit artifacts encoded the same concatenated
+sequence. The audit moved the complete insert between primer overhangs without
+changing the verifier-visible decomposition. The causal defect is therefore
+false acceptance of one ambiguous operand boundary. It is not an audit edit
+that converted a passing artifact into a failing artifact.
+
+The diagnosis collector retained only the three DNA trajectories. It bound
+them to the frozen source tree, runtime binary, execution configuration, and
+verifier reports. The evidence has SHA-256 digest
+`7bf0fdd2ce9b7cac0355c3f141ea27c8ffabe23c9bea453480efbfad3ca2d13e`.
+Its repeated-failure contrast identity is
+`sha256:12a4a949dced15e394cc485abe766cd50cc13cea8a76ddfed157f40fe2c2817d`.
+
+The self-improvement controller formerly rejected every source hypothesis
+derived from completed artifact failures. The repeated audit false acceptance
+isolates Foe-owned behavior, so that blanket exclusion prevented a supported
+improvement. The controller now permits this source hypothesis. It still
+requires two failed episodes, one successful episode, complete verifier loci,
+one shared mechanism, repository validation, and unchanged external task
+evaluation.
+
+This controller change does not alter the evaluated release or its
+model-visible program. It therefore does not invalidate any completed
+qualification. The repeatability campaign manifest has SHA-256 digest
+`83b8acfb95fc3df4295478856aaae5c46d20e6940c5ea576b3b6ddac8df70600`.

@@ -729,10 +729,10 @@ implementation node's candidate check, and an abstention proposes nothing.
 
 The diagnosis chooses `implement-source` when repeated retained failures
 support one general, source-owned, falsifiable runtime mechanism. A contrast
-that contains only completed episodes followed by external artifact rejection
-establishes semantic task-quality error without isolating a Foe source
-mechanism. The diagnosis verifier requires `insufficient-evidence` for that
-source-change contrast.
+with completed episodes followed by external artifact rejection establishes a
+semantic task-quality error. Repeated failures can support a source hypothesis
+when retained completion evidence isolates Foe-owned behavior. One example is
+false acceptance by the built-in terminal audit.
 Candidate generation does not require prior evidence of transfer or
 task-quality improvement. Unchanged external task evaluation decides
 promotion. The diagnosis chooses `configure-workflow` when an independent
