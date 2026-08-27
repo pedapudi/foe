@@ -102,6 +102,60 @@ async fn empty_files_and_crlf_files_render() {
     assert_eq!(body(&v), "1\ta\n2\tb\n");
 }
 
+/// docs/tools.md `read`: a directory read lists its immediate entries in a
+/// deterministic order and applies the same 1-indexed window arguments as a
+/// file read.
+#[tokio::test]
+async fn directories_render_sorted_paginated_entries() {
+    let fx = Fixture::new();
+    fx.write("z.txt", "z\n");
+    fx.write("dir/child.txt", "child\n");
+    fx.write("a.txt", "a\n");
+
+    let v = read(&fx, json!({"path": ".", "offset": 2, "limit": 2})).await;
+    assert!(!v.is_error, "{v:?}");
+    assert_eq!(v.rendered.as_deref(), Some("2\tdirectory\tdir\n3\tfile\tz.txt\n"));
+    assert_eq!(v.value["total_entries"], 3);
+    assert_eq!(v.value["shown"], 2);
+    assert_eq!(v.value["truncated"], false);
+    assert_eq!(v.value["entries"][0]["type"], "directory");
+    assert_eq!(v.subject.as_deref(), Some(". entries 2–3 of 3"));
+}
+
+/// docs/tools.md `read`: an empty directory is a successful observation,
+/// while an offset beyond a directory's entries is an error.
+#[tokio::test]
+async fn empty_directories_and_bad_entry_offsets_are_explicit() {
+    let fx = Fixture::new();
+    std::fs::create_dir(fx.root().join("empty")).unwrap();
+    let v = read(&fx, json!({"path": "empty"})).await;
+    assert!(!v.is_error, "{v:?}");
+    assert_eq!(v.rendered.as_deref(), Some("[empty is empty: 0 entries.]"));
+    assert_eq!(v.value["entries"], json!([]));
+
+    fx.write("one.txt", "one\n");
+    let v = read(&fx, json!({"path": ".", "offset": 4})).await;
+    assert!(v.is_error);
+    assert!(v.rendered.unwrap().contains("which has 2 entries"));
+}
+
+/// docs/tools.md `read`: directory output obeys the shared character bound
+/// and names the entry offset that continues the listing.
+#[tokio::test]
+async fn directory_listings_stop_at_the_character_bound() {
+    let fx = Fixture::new();
+    for index in 0..300 {
+        fx.write(&format!("{index:03}-{}", "x".repeat(190)), "");
+    }
+    let v = read(&fx, json!({"path": "."})).await;
+    assert!(!v.is_error, "{v:?}");
+    let rendered = v.rendered.unwrap();
+    assert!(rendered.chars().count() <= OUTPUT_MAX_CHARS);
+    assert!(rendered.contains("Use offset="));
+    assert_eq!(v.value["truncated"], true);
+    assert!(v.value["shown"].as_u64().unwrap() < 300);
+}
+
 #[tokio::test]
 async fn paths_outside_the_roots_are_denied() {
     let fx = Fixture::new();
