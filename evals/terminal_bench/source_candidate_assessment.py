@@ -1188,24 +1188,27 @@ def bounded_terminal_audit_report(trial: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("assessment trial has unbounded terminal acceptance evidence")
     projected_acceptance = []
     for index, item_value in enumerate(acceptance):
-        item = require_exact_fields(
-            item_value,
+        label = f"terminal acceptance evidence {index}"
+        if not isinstance(item_value, dict) or set(item_value) not in (
             {"requirement", "seq", "status"},
-            f"terminal acceptance evidence {index}",
-        )
+            {"requirement", "seq", "status", "falsification"},
+        ):
+            raise ValueError(f"{label} has unknown or missing fields")
+        item = item_value
         if item["status"] not in ("passed", "unmet"):
             raise ValueError("terminal acceptance evidence has an invalid status")
-        projected_acceptance.append(
-            {
-                "requirement": stable_terminal_audit_text(
-                    item["requirement"], f"terminal acceptance evidence {index} requirement"
-                ),
-                "seq": require_nonnegative_integer(
-                    item["seq"], f"terminal acceptance evidence {index} sequence"
-                ),
-                "status": item["status"],
-            }
-        )
+        projected_item = {
+            "requirement": stable_terminal_audit_text(
+                item["requirement"], f"{label} requirement"
+            ),
+            "seq": require_nonnegative_integer(item["seq"], f"{label} sequence"),
+            "status": item["status"],
+        }
+        if "falsification" in item:
+            projected_item["falsification"] = stable_terminal_audit_text(
+                item["falsification"], f"{label} falsification"
+            )
+        projected_acceptance.append(projected_item)
 
     learned = value["learned"]
     if (
@@ -1645,21 +1648,27 @@ def validate_terminal_audit_report(value: Any, label: str) -> dict[str, Any]:
     ):
         raise ValueError(f"{label} has unbounded acceptance evidence")
     for index, item_value in enumerate(acceptance):
-        item = require_exact_fields(
-            item_value,
+        item_label = f"{label} acceptance evidence {index}"
+        if not isinstance(item_value, dict) or set(item_value) not in (
             {"requirement", "seq", "status"},
-            f"{label} acceptance evidence {index}",
-        )
+            {"requirement", "seq", "status", "falsification"},
+        ):
+            raise ValueError(f"{item_label} has unknown or missing fields")
+        item = item_value
         requirement = stable_terminal_audit_text(
-            item["requirement"], f"{label} acceptance evidence {index} requirement"
+            item["requirement"], f"{item_label} requirement"
         )
         if requirement != item["requirement"]:
             raise ValueError(f"{label} acceptance evidence is not normalized")
-        require_nonnegative_integer(
-            item["seq"], f"{label} acceptance evidence {index} sequence"
-        )
+        require_nonnegative_integer(item["seq"], f"{item_label} sequence")
         if item["status"] not in ("passed", "unmet"):
             raise ValueError(f"{label} acceptance evidence has an invalid status")
+        if "falsification" in item:
+            falsification = stable_terminal_audit_text(
+                item["falsification"], f"{item_label} falsification"
+            )
+            if falsification != item["falsification"]:
+                raise ValueError(f"{label} acceptance falsification is not normalized")
 
     learned = report["learned"]
     if (

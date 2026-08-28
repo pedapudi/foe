@@ -648,9 +648,11 @@ The diagnostics file is a reproducible view of the private assessment. It
 contains complete bounded failure loci, final validation timelines, and the
 terminal audit's typed completion report for each rejected attempt. The report
 preserves acceptance claims, learned observations, validation methods, and
-unresolved risks. Host-specific absolute paths are replaced with a stable
-placeholder. The view also contains qualified parent and candidate success
-references. It excludes task text, task names, task checksums, rewards,
+unresolved risks. A bounded `falsification` account in an acceptance item is
+also preserved so the revised diagnosis can compare the audit's reasoning with
+the external failure operands. Host-specific absolute paths are replaced with
+a stable placeholder. The view also contains qualified parent and candidate
+success references. It excludes task text, task names, task checksums, rewards,
 campaign labels, absolute artifact paths, and unstructured grader prose. A
 verified source patch may contain at most 64 KiB of unified diff. The complete
 canonical JSON must fit within 128 KiB. Each terminal audit report must fit

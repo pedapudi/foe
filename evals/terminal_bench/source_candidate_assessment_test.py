@@ -15,6 +15,7 @@ from source_candidate_assessment import (
     MAX_SOURCE_DIFF_BYTES,
     MAX_TERMINAL_AUDIT_TEXT,
     bind_generation_evidence,
+    bounded_terminal_audit_report,
     bytes_digest,
     canonical_json,
     create_source_candidate_assessment,
@@ -27,6 +28,7 @@ from source_candidate_assessment import (
     source_unified_diff,
     validate_candidate_assessment_diagnostics,
     validate_revised_diagnosis,
+    validate_terminal_audit_report,
 )
 from run_self_improvement import build_config, model_config, write_diagnosis_validator
 from trajectory_diagnostics import (
@@ -123,6 +125,14 @@ def terminal_audit_value():
             "A project-owned check at /workspace/bin/check measured the final artifact."
         ],
     }
+
+
+def terminal_audit_value_with_falsification():
+    value = terminal_audit_value()
+    value["acceptance_evidence"][0]["falsification"] = (
+        "The final audit recomputed 4.5 and challenged the boundary values 5 and 5.1."
+    )
+    return value
 
 
 def diagnostics(episode_id: str, runtime: str, success: bool):
@@ -401,6 +411,24 @@ def write_source_bundle(root: Path):
 
 
 class SourceCandidateAssessmentTest(unittest.TestCase):
+    def test_terminal_audit_projection_preserves_bounded_falsification(self):
+        trial = {
+            "diagnostics": {
+                "outcome": {
+                    "kind": "completed",
+                    "value": terminal_audit_value_with_falsification(),
+                }
+            }
+        }
+        report = bounded_terminal_audit_report(trial)
+        self.assertEqual(
+            report["acceptance_evidence"][0]["falsification"],
+            "The final audit recomputed 4.5 and challenged the boundary values 5 and 5.1.",
+        )
+        self.assertEqual(
+            validate_terminal_audit_report(report, "candidate report"), report
+        )
+
     def test_unified_diff_reads_the_recorded_base_blob(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
