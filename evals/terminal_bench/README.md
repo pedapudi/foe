@@ -896,6 +896,11 @@ entries. Each entry retains object type, mode, blob identity, bytes, or a
 deletion. A workflow candidate binds the independent-audit setting and
 preserved controls.
 
+The diagnosis node selects the candidate kind. A later terminal source
+assessment selects whether the resulting source is accepted. The controller
+reads these decisions from their respective workflow-node records, even when
+the terminal assessment supplies the root episode outcome.
+
 Workflow acceptance requires successful lineage adoption. An adoption failure
 sets `direct_implementation_required` and makes the self-improvement process
 exit unsuccessfully. Source artifact acceptance requires successful evidence

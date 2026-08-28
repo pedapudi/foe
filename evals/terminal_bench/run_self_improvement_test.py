@@ -606,6 +606,41 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(value["branch"], "implement-source")
         self.assertEqual(value["intervention"], "change source")
 
+    def test_diagnosis_value_takes_precedence_over_terminal_assessment_branch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            events = [
+                {
+                    "seq": 1,
+                    "type": "workflow/node-end",
+                    "data": {
+                        "node": "diagnose-runtime",
+                        "value": {
+                            "branch": "implement-source",
+                            "intervention": "change source",
+                        },
+                    },
+                },
+                {
+                    "seq": 2,
+                    "type": "workflow/node-end",
+                    "data": {
+                        "node": "assess-source-candidate-for-adoption",
+                        "value": {"branch": "accept", "findings": []},
+                    },
+                },
+            ]
+            (root / "episode.jsonl").write_text(
+                "".join(json.dumps(event) + "\n" for event in events),
+                encoding="utf-8",
+            )
+            value = candidate_outcome_value(
+                root,
+                {"kind": "completed", "value": {"branch": "accept", "findings": []}},
+            )
+        self.assertEqual(value["branch"], "implement-source")
+        self.assertEqual(value["intervention"], "change source")
+
     def test_source_finalization_must_resolve_each_review_finding(self):
         finding = "The source change does not enforce the claimed runtime behavior."
         review = {"findings": [finding]}

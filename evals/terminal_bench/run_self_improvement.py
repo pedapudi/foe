@@ -2097,11 +2097,14 @@ def workflow_node_value(root: Path, node: str) -> dict[str, Any] | None:
 
 
 def candidate_outcome_value(root: Path, outcome: Any) -> dict[str, Any] | None:
-    """Recover the diagnosis when a later terminal child owns the root outcome."""
+    """Return the diagnosis that selected the candidate kind."""
+    diagnosis = workflow_node_value(root, "diagnose-runtime")
+    if diagnosis is not None:
+        return diagnosis
     value = outcome.get("value") if isinstance(outcome, dict) else None
     if isinstance(value, dict) and isinstance(value.get("branch"), str):
         return value
-    return workflow_node_value(root, "diagnose-runtime")
+    return None
 
 
 def source_review_resolution_findings(
