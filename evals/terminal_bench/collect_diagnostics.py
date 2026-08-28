@@ -266,15 +266,29 @@ def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[s
                 f"Terminal-Bench manifest {manifest_path} separates an absent audit stage"
             )
         configuration["assessment_and_repair"] = stage
-        interventions = manifest.get("verifier_recovery_interventions")
-        if interventions is not None:
-            if type(interventions) is not int or interventions <= 0:
+        correction_attempts = manifest.get("verifier_correction_attempts")
+        recovery_interventions = manifest.get("verifier_recovery_interventions")
+        if correction_attempts is not None and recovery_interventions is not None:
+            raise ValueError(
+                f"Terminal-Bench manifest {manifest_path} declares two verifier correction mechanisms"
+            )
+        if correction_attempts is not None:
+            if type(correction_attempts) is not int or correction_attempts <= 0:
+                raise ValueError(
+                    f"Terminal-Bench manifest {manifest_path} has invalid "
+                    "`verifier_correction_attempts`"
+                )
+            configuration["verifier_correction"] = {
+                "attempts": correction_attempts
+            }
+        if recovery_interventions is not None:
+            if type(recovery_interventions) is not int or recovery_interventions <= 0:
                 raise ValueError(
                     f"Terminal-Bench manifest {manifest_path} has invalid "
                     "`verifier_recovery_interventions`"
                 )
             configuration["verifier_recovery"] = {
-                "max_interventions": interventions
+                "max_interventions": recovery_interventions
             }
     checker = manifest.get("completion_checker")
     if checker is not None:

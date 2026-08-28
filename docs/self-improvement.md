@@ -128,7 +128,7 @@ The failed primary configuration fixes the implementation model, reasoning
 effort, service tier, token policy, workflow owner, and completion governance.
 An existing independent assessment or assessment-and-repair stage does not
 exclude a failure from this configuration. This permits a candidate to retain
-an assessment stage while adding verifier-governed writable recovery. A
+an assessment stage while adding verifier-governed deterministic correction. A
 candidate that adds only an independent audit still requires a failed run
 without either assessment stage and one repeated successful audit setting.
 
@@ -293,12 +293,12 @@ and token policy that determine its activation. It omits task identity so the
 same candidate can run on transfer tasks. The verifier-governed structure owns
 workflow construction and completion governance. It declares independent
 read-only assessment, conditional fresh repair, and a root completion verifier
-whose findings enter writable workflow recovery.
+whose findings deterministically re-fire the terminal model node.
 
 Applying that structure requires an evaluation-runner workflow and a declared
 completion checker. Assessment and repair share the candidate's bounded model
-setting. Three recovery interventions are part of the constructed program
-rather than a model-selected parameter.
+setting. Three verifier correction attempts are part of the constructed
+program.
 
 Every self-improvement model stage is a leaf episode. Its structural budget
 therefore declares `max_depth` as zero and `max_episodes` as one. The declared

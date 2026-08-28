@@ -710,7 +710,7 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(program["budget"]["model_calls"], 110)
         self.assertEqual(program["budget"]["seconds"], 2700)
 
-    def test_separate_assessment_routes_root_findings_to_writable_recovery(self):
+    def test_separate_assessment_routes_root_findings_to_the_nearest_writer(self):
         program = build_program(
             "repair it",
             "openai-codex/gpt-5.6-sol",
@@ -729,11 +729,11 @@ class ProgramTest(unittest.TestCase):
         nodes = program["workflow"]["nodes"]
         self.assertEqual(
             program["done_when"],
-            {"verify": "check", "retries": 0},
+            {"verify": "check", "retries": 3},
         )
         self.assertEqual(
             program["workflow"]["recovery"],
-            {"enabled": True, "max_interventions": 3},
+            {"enabled": False},
         )
         self.assertIn("check", nodes["assess-task"]["model"]["tools"])
         self.assertNotIn("verify", nodes["repair-task"]["model"]["done_when"])

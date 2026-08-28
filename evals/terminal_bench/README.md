@@ -477,9 +477,10 @@ smallest supported repair. Its completion contract requires an empty
 stages. Actual use excludes the repair stage when the assessment accepts. The
 unchanged task-owned verifier remains the quality authority in both branches.
 When a completion checker is declared, it governs the workflow root. A checker
-finding enters workflow recovery and amends a writable implementation or
-repair episode with that finding. The configuration permits three recovery
-interventions and reserves every episode that those interventions can start.
+finding deterministically re-fires the terminal assessment or repair episode
+with that finding. The configuration permits three correction attempts and
+reserves every episode that those attempts can start. Workflow recovery stays
+disabled because the declared correction target requires no model judgment.
 
 The task registry uses at least 60 model calls and 1,800 seconds for every task.
 These values serve only as loop and stall backstops. Actual use determines
@@ -801,7 +802,7 @@ Candidate generation does not require prior evidence of transfer or
 task-quality improvement. Unchanged external task evaluation decides
 promotion. The diagnosis chooses `configure-workflow` when repeated failures
 support verifier-governed independent assessment, conditional repair, and
-writable recovery as one falsifiable workflow hypothesis. A retained
+deterministic correction as one falsifiable workflow hypothesis. A retained
 schema-1 candidate can still select an independent-audit setting that supplied
 a repeated quality gain. An explicit run can choose
 `revise-instructions` or `define-tool` to retain a proposal for a future
@@ -861,8 +862,9 @@ external source checker to the candidate.
 When the diagnosis chooses `configure-workflow`, the runner validates one
 typed workflow structure. The verifier-governed structure shares one bounded model
 setting between read-only assessment and conditional fresh repair. A declared
-completion verifier governs both branches, and each finding enters writable
-workflow recovery. The runner writes `workflow-candidate.json` beside the
+completion verifier governs both branches. Each finding re-fires the terminal
+model node with a typed `findings` section. The runner writes
+`workflow-candidate.json` beside the
 retained result. Its digest binds the structure to the evaluated source tree,
 binary, evidence file, primary model, primary reasoning effort, service tier,
 and token policy.

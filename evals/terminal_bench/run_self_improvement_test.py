@@ -2041,10 +2041,10 @@ class LineageAdoptionTest(unittest.TestCase):
                 tuple(sorted(nodes)),
                 ("assess-task", "implement-task", "repair-task"),
             )
-            self.assertEqual(program["done_when"], {"verify": "check", "retries": 0})
+            self.assertEqual(program["done_when"], {"verify": "check", "retries": 3})
             self.assertEqual(
                 program["workflow"]["recovery"],
-                {"enabled": True, "max_interventions": 3},
+                {"enabled": False},
             )
             self.check_ancestry(root, record)
 

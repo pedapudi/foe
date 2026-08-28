@@ -511,7 +511,7 @@ rehashes to the program identity the proposal episode's root log records.
 An adoption's state document contains the program document that runs under
 the adoption. A verifier-governed workflow candidate yields the development
 program with read-only assessment, conditional repair, a representative root
-verifier, and writable recovery. A retained schema-1 candidate yields the
+verifier, and deterministic verifier correction. A retained schema-1 candidate yields the
 development program with its independent-audit setting. The trusted
 `build-bundle` and ancestry-checker binaries come from the invoking build.
 Candidate source cannot replace either executable.

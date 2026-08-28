@@ -702,16 +702,12 @@ def build_program(
             assessment_tools.append("check")
             # Either branch can complete the workflow with a different typed
             # value. The workspace verifier governs both values at the root.
-            # Findings enter recovery immediately so a writable ancestor can
-            # receive them instead of repeatedly re-firing the read-only
-            # assessment.
+            # Each finding deterministically re-fires the nearest model node.
+            # An accepted assessment is reconsidered with the finding, while
+            # a failed repaired value returns directly to the repair node.
             program["done_when"] = {
                 "verify": "check",
-                "retries": 0,
-            }
-            program["workflow"]["recovery"] = {
-                "enabled": True,
-                "max_interventions": SEPARATE_ASSESSMENT_CORRECTIONS,
+                "retries": SEPARATE_ASSESSMENT_CORRECTIONS,
             }
         program["workflow"]["nodes"].update(
             {

@@ -1456,7 +1456,7 @@ def build_config(
         sufficiency = (
             "Choose `configure-workflow` with `assessment_and_repair` when repeated failures show that "
             "model-reported completion needs an independent read-only assessment, conditional fresh repair, "
-            "and a declared completion verifier whose findings reach a writable recovery episode. The setting "
+            "and a declared completion verifier whose findings deterministically re-fire the terminal model. The setting "
             "controls both assessment and repair. A retained independent-audit setting remains valid only when "
             "the evidence contains exactly one repeated successful setting. Choose `insufficient-evidence` "
             "when the evidence does not isolate either workflow structure. "
@@ -1480,7 +1480,7 @@ def build_config(
         sufficiency = (
             "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. "
             "Choose `configure-workflow` with `assessment_and_repair` when repeated failures require independent "
-            "assessment, conditional repair, and verifier findings routed to writable recovery. A retained "
+            "assessment, conditional repair, and verifier findings routed to the terminal model. A retained "
             "independent-audit setting requires a repeated quality gain caused by exactly one setting. "
             "Instruction revisions and "
             "tool definitions require application support before automatic selection may choose them. Choose "
