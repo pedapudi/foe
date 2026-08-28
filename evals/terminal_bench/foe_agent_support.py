@@ -655,6 +655,26 @@ def build_program(
             "terminal": True,
         }
     if escalation_reasoning_effort is not None and separate_audit_and_repair:
+        repair_completion_schema = {
+            **COMPLETION_SCHEMA,
+            "properties": {
+                **COMPLETION_SCHEMA["properties"],
+                "unresolved_risks": {
+                    **COMPLETION_SCHEMA["properties"]["unresolved_risks"],
+                    "maxItems": 0,
+                },
+            },
+        }
+        repair_completion_contract: dict[str, Any] = {
+            "returns": repair_completion_schema,
+        }
+        if completion_checker is not None:
+            repair_completion_contract.update(
+                {
+                    "verify": "check",
+                    "retries": COMPLETION_CHECK_RETRIES,
+                }
+            )
         assessment_schema = {
             "type": "object",
             "properties": {
@@ -700,7 +720,11 @@ def build_program(
                                 "requirement in the original task. Treat the implementation episode's "
                                 "completion claim as unverified. Inspect artifacts and run checks, but "
                                 "do not change the workspace. Distinguish the exact contract from a "
-                                "nearby interpretation. Preserve baseline identities, allowed "
+                                "nearby interpretation. Evaluate the supplied artifacts and inputs "
+                                "under the task's stated interface. Do not require compatibility with "
+                                "absent formats or input variants unless the task requires them. "
+                                "Prioritize checks of the required observable behavior. Preserve "
+                                "baseline identities, allowed "
                                 "transformation sets, and stated structural constraints. For a program "
                                 "interface, test at least two materially different valid inputs and "
                                 "generate a second fixture when the workspace supplies only one. Choose "
@@ -736,12 +760,17 @@ def build_program(
                             "environment": environment_facts,
                             "role": (
                                 "Repair the independent assessment's findings in the shared "
-                                "workspace. Reproduce each finding before changing an artifact. Make "
+                                "workspace. Treat every finding and unresolved risk as an obligation. "
+                                "Reproduce each one before changing an artifact, then resolve it or "
+                                "show with evidence that it cannot affect an original task requirement. "
+                                "Prioritize the task's required observable behavior over compatibility "
+                                "with absent inputs. Make "
                                 "the smallest change that satisfies the original task while preserving "
                                 "unrelated artifacts, baseline identities, allowed transformations, and "
                                 "structural constraints. After the final change, run the strongest "
-                                "available task-relevant checks. Report every changed path, observed "
-                                "validation result, and unresolved risk."
+                                "available task-relevant checks. Complete only after no task-critical "
+                                "risk remains. Return an empty `unresolved_risks` array with every "
+                                "changed path and observed validation result."
                             ),
                         },
                         "tools": coding_tools,
@@ -752,7 +781,7 @@ def build_program(
                             "seconds": escalation_seconds,
                             "loop_threshold": EVALUATION_LOOP_THRESHOLD,
                         },
-                        "done_when": completion_contract,
+                        "done_when": repair_completion_contract,
                         "model": {
                             "provider": provider,
                             "model": model,
