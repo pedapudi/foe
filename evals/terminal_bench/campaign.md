@@ -4644,3 +4644,60 @@ GPT-5.6 Sol, the standard service tier, low diagnosis and implementation
 reasoning, and xhigh independent review. No model request was made. External
 task quality remains required before the workflow change earns improvement
 credit.
+
+## Rejected single-node xhigh confirmation candidate
+
+The frozen release ran one fresh single-node xhigh attempt on every
+confirmation task. Every request used GPT-5.6 Sol and the standard service
+tier. Token limits remained measurement-only.
+
+Five of eight tasks passed:
+
+| Task | Score | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `build-pov-ray` | 1.0 | 1,325,903 | 831,488 | 9,128 | $2.492815 |
+| `caffe-cifar-10` | 1.0 | 3,885,027 | 3,239,424 | 19,920 | $4.276582 |
+| `configure-git-webserver` | 0.0 | 784,062 | 585,216 | 26,954 | $1.568550 |
+| `count-dataset-tokens` | 1.0 | 294,236 | 108,544 | 6,641 | $0.919006 |
+| `crack-7z-hash` | 1.0 | 519,591 | 312,320 | 5,091 | $1.055832 |
+| `dna-insert` | 0.0 | 96,419 | 33,280 | 4,998 | $0.365828 |
+| `log-summary-date-ranges` | 1.0 | 47,095 | 11,264 | 2,695 | $0.201730 |
+| `overfull-hbox` | 0.0 | 1,111,812 | 858,624 | 17,663 | $1.709462 |
+
+All eight configuration claims were valid. Every Foe account conformed, and
+the runner recorded no infrastructure failure. Host resource admission used
+serial execution because available memory stayed near the two-worker
+threshold or swap-out pages changed during execution.
+
+The three failures were completed episodes whose artifacts failed unchanged
+task-owned graders. `configure-git-webserver` produced a Docker Compose design
+even though Docker was unavailable in the task environment. The episode
+reported that limitation and completed without running the required live
+service. The grader received HTTP status 000.
+
+The `dna-insert` episode reported a 1.399275-degree primer melting-temperature
+difference. The task-owned calculation measured 8.191611 degrees. This is the
+same correlated-check failure that the verifier-governed case corrected.
+
+The `overfull-hbox` episode removed every overfull box. It also changed `a` to
+`an`, which is outside the directed substitutions declared in `synonyms.txt`.
+Its completion message incorrectly claimed that every replacement came from
+the declared synonym families.
+
+Three failures in the first eight attempts make the required fourteen
+successes across sixteen attempts impossible. The campaign therefore rejects
+universal single-node xhigh reasoning and does not spend the second eight
+attempts. The result shows that xhigh reasoning can convert individual
+failures without making those conversions repeatable.
+
+The cohort used 8,064,145 input tokens, 5,980,160 cached-input tokens, and
+93,090 output tokens. Its estimated cost was $12.589804, and its serial
+makespan was 4,098.569 seconds.
+
+The campaign manifest has SHA-256 digest
+`a3ec8e4d0886ec6eec5e308f6cfa978c927bb220ea2015fe19ec9a812b32e173`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/`,
+in the
+`xhigh-single-node-clean-confirmation-first-attempt-default-20260828t1200z-20260828T114656Z/`
+directory.
