@@ -5061,3 +5061,72 @@ The batch campaign manifest has SHA-256 digest
 `0d6ca6b9aab8eb86e94e48c29c3cd92cb576fbb8828237d86f6ff0deeb232fd1`.
 Raw evidence remains under
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-development-low-cost-default-20260828T185104Z`.
+
+### Development-gate completion
+
+The frozen candidate ran the five remaining development tasks with the
+priority service tier. The runtime binary and source tree retained the
+identities from the preceding batch. Every task used Sol at low reasoning for
+implementation and Sol at xhigh reasoning for independent assessment and
+conditional repair.
+
+| Task | Score | Assessment branch | Calls | Input | Cache read | Output | Estimated cost |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| `dna-assembly` | 0.0 | repair | 42 | 435,596 | 219,136 | 29,902 | $1.551534 |
+| `git-multibranch` | 1.0 | accept | 17 | 108,814 | 30,720 | 10,495 | $0.534564 |
+| `fix-ocaml-gc` | 1.0 | accept | 29 | 1,172,238 | 663,040 | 9,295 | $2.487908 |
+| `regex-chess` | 1.0 | repair | 47 | 852,619 | 463,872 | 38,999 | $2.520517 |
+| `model-extraction-relu-logits` | 1.0 | accept | 18 | 80,374 | 20,480 | 8,794 | $0.423648 |
+
+The `dna-assembly` assessment reconstructed the submitted BsaI digest and
+ligation. It found one duplicated nucleotide and a three-base deletion at two
+junctions. The repair child corrected both junctions and produced the supplied
+3,591-base output in its physical assembly simulation.
+
+The external grader rejected one remaining primer. The repair measured its
+reverse binding sequence at 45 bases. The grader also counted four matching
+overhang bases as part of the annealing tract and therefore measured 49 bases,
+above the 45-base limit. This task received reward 0.0 without an exception,
+infrastructure failure, account violation, or allowance exhaustion.
+
+The `git-multibranch` assessment tested password-only cloning, both deployment
+branches, trusted-certificate HTTPS, service configuration, and synchronous
+deployment time. It selected `accept`, and the unchanged task-owned grader
+awarded reward 1.0.
+
+The `fix-ocaml-gc` assessment completed a full compiler build and the required
+40-test suite. It also compiled the changed runtime in standard and debug
+modes and ran a fragmented-sizeclass garbage-collection stress fixture. It
+selected `accept`, and the unchanged task-owned grader awarded reward 1.0.
+
+The `regex-chess` assessment selected `repair` after reproducing four defects.
+The implementation allowed castling through check, misclassified a bishop move
+as en passant, assigned en-passant metadata to a rook move, and reordered the
+required example output.
+
+The repair child resolved each finding. It matched eleven focused fixtures and
+1,500 deterministic valid positions against `python-chess`. The rebuilt regex
+artifact stayed within both size limits, and the unchanged task-owned grader
+awarded reward 1.0.
+
+The `model-extraction-relu-logits` assessment recovered all 20 supplied model
+rows and all seven rows in an independently generated model. It confirmed that
+the script used only black-box calls to the imported forward function. It
+selected `accept`, and the unchanged task-owned grader awarded reward 1.0.
+
+The five attempts used 153 model requests, 2,649,641 input tokens, 1,397,248
+cached-input tokens, and 97,485 output tokens. Their estimated cost was
+$7.518171. Every configuration claim was valid, every account conformed, every
+resource measurement was complete, and no infrastructure failure occurred.
+
+The current candidate has passed eleven of twelve development tasks and has
+therefore met the campaign's development quality gate. Five tasks exercised
+conditional repair. Four of those tasks passed their unchanged external
+graders. The `dna-assembly` failure identifies the remaining assessment gap:
+validation must model each task constraint using the same observable object
+that the constraint governs.
+
+The priority-tier batch campaign manifest has SHA-256 digest
+`844bb01658f1c683553bf9d3c2fa00f994e759b7db5b21b51ee510f4bf814c13`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-development-remaining-priority-20260828T190805Z`.
