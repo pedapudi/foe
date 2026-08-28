@@ -4375,3 +4375,38 @@ same source tree and portable binary:
 
 Raw evidence remains under
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/`.
+
+### Frozen-release confirmation coverage
+
+The frozen binary then ran the four confirmation tasks that had no prior
+candidate result. Each task passed its unchanged task-owned grader on the first
+attempt:
+
+- `build-pov-ray` earned reward 1.0;
+- `caffe-cifar-10` earned reward 1.0;
+- `log-summary-date-ranges` earned reward 1.0;
+- `overfull-hbox` earned reward 1.0.
+
+The Caffe attempt recovered from a 600-second primary-download timeout. It
+found another dataset source, converted the records, completed training, and
+passed the independent audit and task-owned grader. Foe used 33 implementation
+requests and 18 audit requests. The attempt cost $4.425023.
+
+The first two tasks ran concurrently with access-only credentials. Both
+credentials remained unchanged. Both accounts conformed, and neither attempt
+had an infrastructure failure. Their shared makespan was 1,519 seconds.
+The runner withheld another parallel cohort after 66 swap-out pages changed
+during the first cohort. Available memory increased and memory pressure stayed
+zero. The remaining tasks therefore ran serially without losing an attempt.
+
+The two-worker manifest has SHA-256 digest
+`64d278d6921b7cb439df90dce04e30dfa2db886602e307b3f47573a6afc86aee`.
+The serial manifest has SHA-256 digest
+`0aee8813c3922a744af790fa71e998e7322509bf30d77d3254a685299f2fd89e`.
+
+Every confirmation task has now succeeded at least once on the frozen source
+tree and binary. Seven tasks passed the ordinary low-implementation,
+high-audit profile. `dna-insert` passed through the fresh xhigh single-node
+profile after repeatable ordinary-profile failures. A second attempt per task
+remains required to establish at least fourteen successes across sixteen
+attempts.
