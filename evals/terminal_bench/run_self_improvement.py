@@ -46,7 +46,13 @@ IMPLEMENTATION_CALLS = 60
 SOURCE_REVIEW_CALLS = 20
 FINALIZATION_CALLS = 60
 FINAL_REVIEW_CALLS = 20
-SOURCE_ACCEPTANCE_CALLS = SOURCE_REVIEW_CALLS + FINALIZATION_CALLS + FINAL_REVIEW_CALLS
+SOURCE_ACCEPTANCE_CALLS = (
+    SOURCE_REVIEW_CALLS
+    + FINALIZATION_CALLS
+    + FINAL_REVIEW_CALLS
+    + FINALIZATION_CALLS
+    + FINAL_REVIEW_CALLS
+)
 SOURCE_REVIEW_REASONING_EFFORT = "xhigh"
 DIAGNOSIS_SECONDS = 1_800
 IMPLEMENTATION_SECONDS = 3_600
@@ -54,7 +60,11 @@ SOURCE_REVIEW_SECONDS = 1_200
 FINALIZATION_SECONDS = 3_600
 FINAL_REVIEW_SECONDS = 1_200
 SOURCE_ACCEPTANCE_SECONDS = (
-    SOURCE_REVIEW_SECONDS + FINALIZATION_SECONDS + FINAL_REVIEW_SECONDS
+    SOURCE_REVIEW_SECONDS
+    + FINALIZATION_SECONDS
+    + FINAL_REVIEW_SECONDS
+    + FINALIZATION_SECONDS
+    + FINAL_REVIEW_SECONDS
 )
 SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + SOURCE_ACCEPTANCE_SECONDS
 LOOP_THRESHOLD = 8
@@ -1745,12 +1755,40 @@ def build_config(
         **review,
         "name": "assess-finalized-foe-improvement",
         "instructions": {
-            "role": "Independently assess the finalized source candidate. No source writer follows this assessment.",
+            "role": "Independently assess the finalized source candidate and choose whether it is accepted or needs one more bounded source repair.",
             "evidence": "Treat the diagnosis, implementation, first review, and finalization dispositions as unverified. Inspect the complete final diff, owning source, tests, and affected specifications.",
             "architecture": review["instructions"]["architecture"],
             "independence": review["instructions"]["independence"],
             "build_metadata": review["instructions"]["build_metadata"],
-            "validation": "Run the candidate check first. Return one concise finding for every remaining semantic or mechanical defect. Return empty findings and unresolved risks only when the final source mechanism supports the claimed task-visible behavior without relying on the finalizer's assertions.",
+            "validation": "Run the candidate check first. Choose `repair-source` and return one concise finding for every remaining semantic or mechanical defect. Choose `accept` with empty findings and unresolved risks only when the final source mechanism supports the claimed task-visible behavior without relying on the finalizer's assertions.",
+        },
+        "budget": {
+            "model_calls": FINAL_REVIEW_CALLS,
+            "seconds": FINAL_REVIEW_SECONDS,
+            "loop_threshold": LOOP_THRESHOLD,
+        },
+    }
+    repair_after_final_review = {
+        **finalization,
+        "name": "repair-after-final-source-assessment",
+        "instructions": {
+            "role": "Repair every finding from the final independent source assessment under the candidate checker's authority.",
+            "evidence": "Treat the current source, complete diff, and final independent assessment as the candidate state. Inspect the owning source, tests, and specifications before editing.",
+            "correction": "Run the candidate check first. Copy every final-assessment finding exactly into the return. Mark it fixed only after source, regression tests, and specifications establish the requested behavior. Mark unsupported findings unresolved. Run the candidate check after the final edit. The controller rejects missing, duplicated, unexpected, or unresolved findings.",
+            "independence": review["instructions"]["independence"],
+            "build_metadata": "Reject and revert changes to Cargo, Bazel, module, toolchain, package, or build-script metadata.",
+        },
+    }
+    review_after_repair = {
+        **review,
+        "name": "assess-repaired-foe-improvement",
+        "instructions": {
+            "role": "Independently assess the source candidate after its second bounded repair. No source writer follows this assessment.",
+            "evidence": "Treat every prior diagnosis, implementation, review, and repair disposition as unverified. Inspect the complete final diff, owning source, tests, and affected specifications.",
+            "architecture": review["instructions"]["architecture"],
+            "independence": review["instructions"]["independence"],
+            "build_metadata": review["instructions"]["build_metadata"],
+            "validation": "Run the candidate check first. Return one concise finding for every remaining semantic or mechanical defect. Return empty findings and unresolved risks only when the final source mechanism supports the claimed task-visible behavior without relying on either repair child's assertions.",
         },
         "budget": {
             "model_calls": FINAL_REVIEW_CALLS,
@@ -1857,6 +1895,7 @@ def build_config(
                     ],
                     "empty": {
                         "summary": "The final independent source review spent its allowance before returning findings.",
+                        "branch": "repair-source",
                         "findings": [
                             "The final independent source review did not complete."
                         ],
@@ -1865,6 +1904,26 @@ def build_config(
                             "The finalized candidate lacks an independent semantic disposition."
                         ],
                     },
+                    "branches": {
+                        "accept": [],
+                        "repair-source": ["repair-after-final-source-assessment"],
+                    },
+                },
+                "repair-after-final-source-assessment": {
+                    "model": repair_after_final_review,
+                    "follows": [
+                        "task",
+                        "diagnose-runtime",
+                        "assess-finalized-runtime-improvement",
+                    ],
+                },
+                "assess-repaired-runtime-improvement": {
+                    "model": review_after_repair,
+                    "follows": [
+                        "task",
+                        "diagnose-runtime",
+                        "repair-after-final-source-assessment",
+                    ],
                     "terminal": True,
                 },
             },
@@ -2043,6 +2102,30 @@ def final_source_review_findings(review: dict[str, Any] | None) -> list[str]:
         *(f"final independent source review finding: {finding}" for finding in reported),
         *(f"final independent source review risk: {risk}" for risk in risks),
     ]
+
+
+def source_review_branch_findings(review: dict[str, Any] | None) -> list[str]:
+    """Require the first final review to route acceptance and repair consistently."""
+    if review is None:
+        return ["the first final independent source review returned no typed value"]
+    branch = review.get("branch")
+    findings = review.get("findings")
+    risks = review.get("unresolved_risks")
+    if branch not in {"accept", "repair-source"}:
+        return ["the first final independent source review returned an invalid branch"]
+    if not isinstance(findings, list) or not all(
+        isinstance(item, str) and item for item in findings
+    ):
+        return ["the first final independent source review returned invalid findings"]
+    if not isinstance(risks, list) or not all(
+        isinstance(item, str) and item for item in risks
+    ):
+        return ["the first final independent source review returned invalid unresolved risks"]
+    if branch == "accept" and (findings or risks):
+        return ["the first final independent source review accepted a candidate with findings or unresolved risks"]
+    if branch == "repair-source" and not findings:
+        return ["the first final independent source review requested repair without a finding"]
+    return []
 
 
 def parser() -> argparse.ArgumentParser:
@@ -2496,17 +2579,45 @@ def main(argv: list[str] | None = None) -> int:
         }
         review_value = workflow_node_value(episode, "review-runtime-improvement")
         finalization_value = workflow_node_value(episode, "finalize-runtime-improvement")
-        final_review_value = workflow_node_value(
+        first_final_review_value = workflow_node_value(
             episode, "assess-finalized-runtime-improvement"
+        )
+        second_finalization_value = workflow_node_value(
+            episode, "repair-after-final-source-assessment"
+        )
+        second_final_review_value = workflow_node_value(
+            episode, "assess-repaired-runtime-improvement"
         )
         resolution_findings = [
             *source_review_resolution_findings(review_value, finalization_value),
-            *final_source_review_findings(final_review_value),
+            *source_review_branch_findings(first_final_review_value),
         ]
+        if (
+            isinstance(first_final_review_value, dict)
+            and first_final_review_value.get("branch") == "repair-source"
+        ):
+            resolution_findings.extend(
+                source_review_resolution_findings(
+                    first_final_review_value, second_finalization_value
+                )
+            )
+            resolution_findings.extend(
+                final_source_review_findings(second_final_review_value)
+            )
+        else:
+            resolution_findings.extend(
+                final_source_review_findings(first_final_review_value)
+            )
         source_review_resolution = {
             "review": review_value,
             "finalization": finalization_value,
-            "final_review": final_review_value,
+            "first_final_review": first_final_review_value,
+            "second_finalization": second_finalization_value,
+            "final_review": (
+                second_final_review_value
+                if second_final_review_value is not None
+                else first_final_review_value
+            ),
             "findings": resolution_findings,
         }
         if acceptance["accepted"] and resolution_findings:

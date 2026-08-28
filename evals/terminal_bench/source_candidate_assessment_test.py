@@ -978,10 +978,12 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             sorted(nodes),
             [
                 "assess-finalized-runtime-improvement",
+                "assess-repaired-runtime-improvement",
                 "collect-trajectory-diagnostics",
                 "diagnose-runtime",
                 "finalize-runtime-improvement",
                 "implement-runtime-improvement",
+                "repair-after-final-source-assessment",
                 "review-runtime-improvement",
             ],
         )

@@ -117,7 +117,8 @@ identifies the complete contrast. Failed and successful identifiers must be
 disjoint.
 
 The runner copies the report into the retained run directory before creating
-the program. The resulting version 3 program contains four model nodes:
+the program. The source-candidate path in the resulting version 3 program
+contains five required model nodes and two conditional model nodes:
 
 1. A diagnosis node receives only the task and bounded trajectory report. In
    automatic mode, it chooses a source or workflow-configuration candidate.
@@ -130,9 +131,16 @@ the program. The resulting version 3 program contains four model nodes:
    handoff. It uses `xhigh` reasoning and has no source-write authority. It
    returns bounded findings within 20 requests. When it exhausts, a declared
    empty handoff lets the workflow continue.
-4. A fresh finalization node receives every typed handoff. It has 40 reserved
+4. A fresh finalization node receives every typed handoff. It has 60 reserved
    requests, runs the candidate checker before editing, repairs remaining
-   findings, and owns terminal completion through that checker.
+   findings, and owns completion through that checker.
+5. A fresh final assessment receives the finalized candidate. It chooses
+   `accept` only with no finding or unresolved risk. A finding chooses
+   `repair-source` and carries the assessment to one conditional repair node.
+6. The conditional repair node has 60 reserved requests and resolves every
+   final-assessment finding under the same checker.
+7. A conditional read-only assessment inspects the repaired source. No source
+   writer follows this assessment.
 
 The diagnosis verifier enforces a requested candidate kind before an
 implementation episode can start. It accepts an insufficient-evidence result
@@ -197,8 +205,9 @@ normalized failure locus may carry its bounded location, source assertion,
 concrete rewritten assertion, and concise message. The rewritten assertion
 does not participate in the stable locus identity.
 
-The projection is limited to 48 KiB, and each terminal audit report is limited
-to 12 KiB. Construction rejects symbolic links,
+The projection is limited to 128 KiB. Its unified source diff is limited to
+64 KiB, and each terminal audit report is limited to 12 KiB. Construction
+rejects symbolic links,
 escaped paths, incomplete campaigns, errored or nonconformant trials, Boolean
 or nonfinite rewards, conflicting identities, and an incomplete source
 adoption set. A candidate failure is eligible only when every failed test has
@@ -213,7 +222,9 @@ diagnostics and the validated assessment projection. Only the fresh diagnosis
 node follows that tool result. The implementation node still receives the task
 and typed diagnosis. The review receives the task, diagnosis, and
 implementation handoff. Finalization also receives the review handoff or its
-declared empty value. No coding node has a read grant for the assessment files.
+declared empty value. A conditional second repair receives only the task,
+typed diagnosis, and final assessment that activated it. No coding node has a
+read grant for the assessment files.
 
 A revised diagnosis cites the assessment contrast, rejected source-candidate
 identity, prior diagnosis digest, every failed attempt, every failed verifier,

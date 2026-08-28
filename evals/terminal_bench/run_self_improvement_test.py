@@ -34,6 +34,7 @@ from run_self_improvement import (
     revised_program_document,
     remove_preview_validation_directories,
     rust_toolchain_identity,
+    source_review_branch_findings,
     source_review_resolution_findings,
     supported_independent_audits,
     supported_failure_contrasts,
@@ -286,6 +287,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         review = nodes["review-runtime-improvement"]["model"]
         finalization = nodes["finalize-runtime-improvement"]["model"]
         final_review = nodes["assess-finalized-runtime-improvement"]["model"]
+        second_finalization = nodes["repair-after-final-source-assessment"]["model"]
+        second_final_review = nodes["assess-repaired-runtime-improvement"]["model"]
         self.assertEqual(
             nodes["implement-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime"],
@@ -316,7 +319,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
             ],
         )
         self.assertNotIn("terminal", nodes["finalize-runtime-improvement"])
-        self.assertTrue(nodes["assess-finalized-runtime-improvement"]["terminal"])
+        self.assertNotIn("terminal", nodes["assess-finalized-runtime-improvement"])
         self.assertEqual(
             nodes["assess-finalized-runtime-improvement"]["follows"],
             [
@@ -327,6 +330,22 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "finalize-runtime-improvement",
             ],
         )
+        self.assertEqual(
+            nodes["assess-finalized-runtime-improvement"]["branches"],
+            {
+                "accept": [],
+                "repair-source": ["repair-after-final-source-assessment"],
+            },
+        )
+        self.assertEqual(
+            nodes["repair-after-final-source-assessment"]["follows"],
+            ["task", "diagnose-runtime", "assess-finalized-runtime-improvement"],
+        )
+        self.assertEqual(
+            nodes["assess-repaired-runtime-improvement"]["follows"],
+            ["task", "diagnose-runtime", "repair-after-final-source-assessment"],
+        )
+        self.assertTrue(nodes["assess-repaired-runtime-improvement"]["terminal"])
         self.assertIn("unresolved_risks", nodes["review-runtime-improvement"]["empty"])
         self.assertIn("findings", nodes["review-runtime-improvement"]["empty"])
         self.assertEqual(len(nodes["review-runtime-improvement"]["empty"]["findings"]), 1)
@@ -346,6 +365,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(review["tools"], ["read", "grep", "bash", "check"])
         self.assertNotIn("edit", review["tools"])
         self.assertEqual(finalization["tools"][:4], ["read", "grep", "edit", "bash"])
+        self.assertEqual(second_finalization["tools"][:4], ["read", "grep", "edit", "bash"])
+        self.assertNotIn("edit", second_final_review["tools"])
         self.assertIn("build-script metadata", implementation["instructions"]["build_metadata"])
         self.assertIn("build-script metadata", review["instructions"]["build_metadata"])
         self.assertEqual(diagnosis["tools"], ["block", DIAGNOSIS_VALIDATOR_TOOL])
@@ -464,8 +485,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(implementation["grants"]["execute"], ["/opt/toolchain"])
         self.assertEqual(config["task"], "Raise verified completion.")
         self.assertEqual(config["budget"]["loop_threshold"], 8)
-        self.assertEqual(config["budget"]["model_calls"], 180)
-        self.assertEqual(config["budget"]["max_episodes"], 6)
+        self.assertEqual(config["budget"]["model_calls"], 260)
+        self.assertEqual(config["budget"]["max_episodes"], 8)
         self.assertEqual(
             config["budget"]["max_episodes"],
             1
@@ -633,6 +654,40 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "final independent source review finding: The repaired mechanism is still advisory.",
                 "final independent source review risk: The regression does not exercise settlement.",
             ],
+        )
+
+    def test_first_final_source_review_routes_findings_to_one_more_repair(self):
+        self.assertEqual(
+            source_review_branch_findings(
+                {"branch": "accept", "findings": [], "unresolved_risks": []}
+            ),
+            [],
+        )
+        self.assertEqual(
+            source_review_branch_findings(
+                {
+                    "branch": "repair-source",
+                    "findings": ["The final state can still change."],
+                    "unresolved_risks": [],
+                }
+            ),
+            [],
+        )
+        self.assertIn(
+            "accepted a candidate with findings",
+            source_review_branch_findings(
+                {
+                    "branch": "accept",
+                    "findings": ["The final state can still change."],
+                    "unresolved_risks": [],
+                }
+            )[0],
+        )
+        self.assertIn(
+            "requested repair without a finding",
+            source_review_branch_findings(
+                {"branch": "repair-source", "findings": [], "unresolved_risks": []}
+            )[0],
         )
 
     def test_failed_base_configuration_excludes_the_successful_audit_setting(self):

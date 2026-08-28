@@ -4049,3 +4049,45 @@ contains the verified rejected patch, which lets a later diagnosis retain,
 narrow, or replace the mechanism with the external result in view. Raw files
 remain under
 `/home/sunil/git/foe-identity-bound-dna-source-improvement/target/`.
+
+## Final source-review feedback
+
+On 2026-08-27, the exact aggregate candidate used the rejected source-candidate
+assessment in one identity-bound source-improvement run. Every request used
+GPT-5.6 Sol and the standard service tier. Token limits remained
+measurement-only.
+
+The diagnosis replaced the rejected additional-audit mechanism with a
+counterexample-evidence gate. Implementation changed runtime source,
+regression tests, the built-in workflow, and both affected specifications. The
+first independent review found four defects. A verifier-owned finalization
+child repaired all four and passed the repository checker.
+
+The final independent assessment found two further correctness defects. A
+later executable could invalidate an earlier cited challenge. An authoritative
+verifier could also run after the audit's final-state evidence. The assessment
+therefore rejected the candidate before any Terminal-Bench activation.
+
+The run used 141 model calls over 2,386 seconds. It consumed 10,073,138 input
+tokens, 8,006,144 cached-input tokens, and 100,784 output tokens. Its estimated
+cost was $13.486114. The retained candidate identity is
+`sha256:93a4b1acee78427b3b0241408396308a83214dc23881e0831fa7b10fdef7b5e1`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/standard-dna-assessment-source-self-improvement/`.
+
+This rejection identified a workflow-owned convergence limit. One independent
+review could feed one source finalization. Findings discovered by the final
+assessment had no source writer that could address them.
+
+The source-improvement workflow now gives its first final assessment two
+declared branches. `accept` ends the workflow only with no finding or
+unresolved risk. `repair-source` carries the typed assessment to one fresh
+60-request repair child. A second 20-request read-only assessment makes the
+terminal decision. The runner validates that each repair resolves every exact
+finding and that the terminal assessment has no finding or unresolved risk.
+
+The additional stages activate only when the first final assessment requests
+repair. The root model-call, time, and episode allowances include every
+possible stage before execution. The Terminal-Bench evaluation unit suite
+passes with the feedback path. The feedback path has not yet produced an
+externally accepted source improvement.
