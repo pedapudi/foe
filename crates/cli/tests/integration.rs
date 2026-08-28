@@ -1119,7 +1119,7 @@ const RECORDED_IDENTITIES: [(&str, &str); 12] = [
     ("subagents", "sha256:342d7efdec551e0de776fd2f287c68b098eb0acd40e0ff73c68be4d2ad783505"),
     ("team", "sha256:a9fd607325bd87b470ad429e78c1fed43db4910b11342d9eff217e6d0be390f6"),
     ("verification-unsatisfiable", "sha256:123953f8cbe22cffe6a7a1f22d7016dc75f5690f34b9931c879867111b39512d"),
-    ("workflow", "sha256:0d8f5bcd48cef1ef4a338661150e6a2926359a913e35e501bb17f560c655fdab"),
+    ("workflow", "sha256:bdc548dc6f3445e630e9c2917c1b9d577a9dfe50975b15f9a74850b5d5ccc49a"),
     ("wrap-a-binary", "sha256:abde8c98805d936de692901443d10b50557ffdd00a89870ff2061d83fe4f7963"),
 ];
 

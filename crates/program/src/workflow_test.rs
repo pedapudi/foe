@@ -216,20 +216,20 @@ fn a_graph_declares_how_many_firings_it_can_perform() {
 
 /// A graph whose nodes declare branches, at the top level and inside a
 /// nested workflow node.
-fn branching_config() -> ProgramDocument {
+fn branching_config(root: &std::path::Path) -> ProgramDocument {
     serde_json::from_value(json!({
         "version": 3, "name": "wf", "instructions": { "r": "x" }, "tools": ["block"],
-        "grants": { "read": ["/p"], "spawn": ["helper"] }, "budget": { "model_calls": 10 }, "task": "t",
+        "grants": { "read": [root], "spawn": ["helper"] }, "budget": { "model_calls": 10 }, "task": "t",
         "programs": { "helper": { "name": "helper", "instructions": { "r": "h" }, "tools": ["block"],
-                                  "grants": { "read": ["/p"] }, "budget": { "model_calls": 1 } } },
+                                  "grants": { "read": [root] }, "budget": { "model_calls": 1 } } },
         "workflow": { "nodes": {
             "plan": { "model": { "name": "plan", "instructions": { "r": "p" }, "tools": ["block"],
-                                 "grants": { "read": ["/p"] }, "budget": { "model_calls": 2 },
+                                 "grants": { "read": [root] }, "budget": { "model_calls": 2 },
                                  "done_when": { "returns": { "type": "object", "properties": { "n": { "type": "integer" } }, "required": ["n"] } } },
                       "branches": { "go": [], "stop": [] } },
             "inner": { "workflow": { "nodes": {
                 "draft": { "model": { "name": "draft", "instructions": { "r": "d" }, "tools": ["block"],
-                                      "grants": { "read": ["/p"] }, "budget": { "model_calls": 2 } },
+                                      "grants": { "read": [root] }, "budget": { "model_calls": 2 } },
                            "branches": { "ok": [] } }
             } } }
         } }
@@ -242,7 +242,8 @@ fn branching_config() -> ProgramDocument {
 /// when the node declared none.
 #[test]
 fn branch_is_added_to_the_returns_schema() {
-    let config = branching_config();
+    let root = tmp("branch-schema");
+    let config = branching_config(&root);
     let nodes = model_nodes(config.workflow.as_ref().unwrap(), "");
     let paths: Vec<&str> = nodes.iter().map(|(p, _)| p.as_str()).collect();
     assert_eq!(paths, ["inner/draft", "plan"]);
@@ -259,4 +260,31 @@ fn branch_is_added_to_the_returns_schema() {
         returns,
         json!({ "type": "object", "properties": { "branch": { "type": "string", "enum": ["ok"] } }, "required": ["branch"] })
     );
+}
+
+/// docs/workflow.md "Identity": a branching model node's program identity
+/// covers the required `branch` field that the runtime adds before launch.
+#[test]
+fn identity_hashes_the_branch_aware_model_program() {
+    let path = tmp("branch-aware-identity");
+    let config = branching_config(&path);
+    let resolved = resolve(&config).unwrap();
+    let runtime = RuntimeInfo { version: "0".into(), build: "unknown".into() };
+    let root = compute(&resolved, &[], &runtime).unwrap();
+    for (path, node) in model_nodes(config.workflow.as_ref().unwrap(), "") {
+        let child = node_program(node);
+        let child =
+            crate::document::resolve_node_program(&format!("workflow.nodes.{path}.model"), &resolved, &child).unwrap();
+        let child = compute(&child, &[], &runtime).unwrap();
+        let names: Vec<_> = path.split('/').collect();
+        let mut workflow = &root.document["workflow"];
+        let mut model = &Value::Null;
+        for (index, name) in names.iter().enumerate() {
+            model = &workflow["nodes"][name];
+            if index + 1 < names.len() {
+                workflow = &model["workflow"];
+            }
+        }
+        assert_eq!(model["model"], child.hash, "{path} uses its launched program identity");
+    }
 }

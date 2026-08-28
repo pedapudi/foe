@@ -479,6 +479,8 @@ edge set, every `branches` declaration, every tool node's `args` with
 bindings, every model node's program identity, `verify`, `retries`,
 `max_fires`, `terminal`, `empty`, every `recovery.follows` widening,
 `recovery.max_interventions`, and the runtime's recovery instruction.
+For a branching model node, its program identity includes the required
+`branch` field that the runtime adds to `done_when.returns` before launch.
 
 ## Relationship to the rest of foe
 

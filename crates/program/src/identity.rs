@@ -162,8 +162,9 @@ fn workflow_document(
         let fields = entry.as_object_mut().expect("a node serializes to an object");
         fields.insert("follows".into(), json!(inputs[name]));
         fields.insert("max_fires".into(), json!(node.max_fires.unwrap_or(1)));
-        if let Some(child) = &node.model {
-            let program = resolve_node_program(&format!("{key}.model"), parent, child)?;
+        if node.model.is_some() {
+            let child = crate::workflow::node_program(node);
+            let program = resolve_node_program(&format!("{key}.model"), parent, &child)?;
             fields.insert(
                 "model".into(),
                 json!(compute_using(&program, extra_builtins, runtime, configured_digest)?.hash),
