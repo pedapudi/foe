@@ -89,7 +89,7 @@ class CasesTest(unittest.TestCase):
             result = trial / "result.json"
             program = {
                 "name": "coding",
-                "budget": {"model_calls": 120},
+                "budget": {"model_calls": 160},
                 "sandbox": {"mode": "off"},
                 "model": {
                     "provider": "openai-codex",
@@ -113,7 +113,7 @@ class CasesTest(unittest.TestCase):
                             "terminal": True,
                             "model": {
                                 "name": "audit-and-repair-task",
-                                "budget": {"model_calls": 60},
+                                "budget": {"model_calls": 100},
                                 "model": {
                                     "provider": "openai-codex",
                                     "model": "gpt-5.6-sol",

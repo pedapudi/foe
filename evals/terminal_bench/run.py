@@ -39,7 +39,7 @@ DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh")
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 MIN_AUXILIARY_MODEL_CALLS = 6
-BUILTIN_WORKFLOW_MODEL_CALLS = 120
+BUILTIN_WORKFLOW_MODEL_CALLS = 160
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
 AGENT_TIMEOUT_GRACE_SECONDS = 300
 CREDENTIAL_LEASE_STARTUP_SECONDS = 900
@@ -1008,7 +1008,7 @@ def built_in_program_failures(
         "audit.terminal": True,
         "audit.name": "audit-and-repair-task",
         "audit.model": actual["audit.model"],
-        "audit.model_calls": 60,
+        "audit.model_calls": 100,
         "audit.verify": "check" if completion_checker else None,
     }
     audit_model = actual["audit.model"]
