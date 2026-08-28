@@ -4775,3 +4775,113 @@ mechanism-specific changes.
 The retained result is
 `/home/sunil/git/foe-identity-bound-dna-source-improvement/target/dna-insert-falsification-feedback-source-improvement-default/result.json`.
 Its source trajectory and rejected working tree remain beside that file.
+
+## Independent assessment with conditional repair
+
+An evaluation-only workflow candidate separates final assessment from source
+mutation. A low-reasoning implementation child writes the artifact. A fresh
+xhigh assessment child receives the task and implementation result. Its
+declared grants permit reading and command execution without write authority.
+
+The assessment returns one of two typed branches. `accept` completes the
+workflow without another writer. `repair` passes the findings to a fresh
+xhigh coding child. That child must reproduce each finding before making the
+smallest supported change. The unchanged task-owned Terminal-Bench verifier
+remains the quality authority.
+
+The candidate is commit `4de6369` on branch
+`experiment/conditional-terminal-assessment-current`. It changes only the
+Terminal-Bench adapter, runner, tests, and evaluation documentation. The
+evaluated Foe release remains source tree
+`ba0847225330c05832cfa907c2fbfd9e32c4c4a0` and portable binary
+`sha256:fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
+
+Four serial attempts used GPT-5.6 Sol and the standard service tier. The root
+backstop reserved 60 requests for each possible model stage. Token limits
+remained measurement-only.
+
+| Task | Score | Assessment | Calls | Input | Cache read | Output | Estimated cost |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| `sanitize-git-repo` | 1.0 | accept | 17 | 599,791 | 329,728 | 13,932 | $1.490783 |
+| `count-dataset-tokens` | 1.0 | accept | 20 | 144,192 | 33,792 | 7,759 | $0.610297 |
+| `build-pov-ray` | 1.0 | accept | 27 | 628,937 | 360,960 | 8,881 | $1.393912 |
+| `overfull-hbox` | 1.0 | accept | 27 | 393,469 | 225,280 | 9,121 | $0.945288 |
+| **Total** | **4 of 4** |  | **91** | **1,766,389** | **949,760** | **39,693** | **$4.440280** |
+
+Every task-owned verifier awarded reward 1.0. Every configuration claim was
+valid, every Foe account conformed, and the runner recorded no infrastructure
+failure. All four assessments selected `accept`, so no repair child ran.
+
+The `sanitize-git-repo` result activates the separation between assessment
+and mutation. The implementation changed only the three contaminated
+working-tree files. The assessment compared the resulting files with the
+baseline and preserved the repository history. The earlier always-writing
+audit had broadened the same repair to all 108 commits and destroyed the
+baseline object required by the grader.
+
+The other three results establish preservation on one development success and
+two confirmation tasks that had failed on a preceding ordinary-profile
+attempt. They do not establish a repair benefit because their implementations
+already satisfied the task contracts. The repair branch remains unqualified.
+
+Two additional `sanitize-git-repo` attempts used the same source identity,
+configuration, and task-owned verifier. Both earned reward 1.0. Each
+implementation changed only the three contaminated working-tree files. Each
+assessment selected `accept` after checking the narrow repair and preserved
+repository history.
+
+| Repeat attempt | Score | Assessment | Calls | Input | Cache read | Output | Estimated cost |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| second | 1.0 | accept | 17 | 438,255 | 182,784 | 12,000 | $1.334998 |
+| third | 1.0 | accept | 17 | 581,514 | 185,856 | 16,283 | $1.982634 |
+
+The candidate therefore passed all three `sanitize-git-repo` attempts.
+
+One `model-extraction-relu-logits` attempt then tested the other prior
+development failure. The implementation recovered all 20 rows in the supplied
+model. The assessment tested the unchanged implementation against an
+independently generated seven-row model and found complete unique coverage.
+It selected `accept`, and the unchanged task-owned grader awarded reward 1.0.
+The attempt used 17 model requests, 81,494 input tokens, 22,016 cached-input
+tokens, and 9,096 output tokens. Its estimated cost was $0.428638.
+
+One `dna-insert` attempt then tested the ordinary confirmation profile's most
+repeated semantic failure. The implementation selected a unique insertion
+boundary and produced one primer pair. The assessment independently measured
+annealing temperatures of 66.274364 and 61.747881 degrees Celsius and selected
+`accept`. The unchanged task-owned grader awarded reward 1.0. The attempt used
+31 model requests, 298,579 input tokens, 133,120 cached-input tokens, and
+17,169 output tokens. Its estimated cost was $1.058464.
+
+Across the eight completed candidate attempts, every task passed. They used
+173 model requests, 3,166,231 input tokens, 1,473,536 cached-input tokens, and
+94,241 output tokens. Their estimated cost was $9.245014.
+
+The repeated result establishes that separating assessment from mutation
+prevents the observed history rewrite on this activation case. A later case
+must exercise `repair` before the conditional repair stage can receive causal
+credit. The `build-pov-ray`, `overfull-hbox`, and `dna-insert` results convert
+the three failures from the preceding ordinary confirmation cohort on one
+attempt each. Their implementations were already correct, so these conversions
+do not isolate the workflow mechanism. The candidate next requires
+preservation coverage on tasks where the preceding terminal audit performed
+substantial repairs.
+
+The completed campaign manifests have these SHA-256 digests:
+
+- the first `sanitize-git-repo` and `count-dataset-tokens` batch:
+  `66d60ca66cb196a6d411cfe0ae69d28413e7a0dbb67436e812ca2003347d42b1`;
+- `build-pov-ray`:
+  `17741e5761e7ebc62369effcdfcbbb20ab2c213a9587dcb5eabbd9dd49638832`;
+- `overfull-hbox`:
+  `a536815c18d773edf89668f8742b110e101f7cb90f8af40382802755e540d0bc`.
+- the two repeated `sanitize-git-repo` attempts:
+  `1c0f170d2c5ecf4a80b3e347aaac677eee0f3ba57d4411b7f20686f46eb83ea7`;
+- `model-extraction-relu-logits`:
+  `60936ab489eb7fe402301d13b281798c28cf99375df0f70cb79c7d9702cb3625`;
+- `dna-insert`:
+  `a9ba97de4e8160926a5fc28c8b7976282c9f2d1ee15a5529931b83cc1833695d`.
+
+Raw evidence remains under the `target/terminal-bench-jobs/` directories in
+`/home/sunil/git/foe-conditional-terminal-assessment-current` and
+`/home/sunil/git/foe-audit-evidence-repair-transfer`.
