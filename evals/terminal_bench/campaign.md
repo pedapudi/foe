@@ -4567,3 +4567,55 @@ finding. Workspace tests and Clippy passed. Bazel built the portable binary,
 and the deterministic exec-transport example completed against that binary.
 The kernel remains at its 5,350-line ceiling. External Terminal-Bench results
 have not yet qualified this source candidate.
+
+### Completion-evidence candidate activation and rejection
+
+The directly repaired source candidate first ran one verifier-governed
+`dna-insert` attempt. The built-in implementation used low reasoning. The
+terminal audit used high reasoning and owned the public completion verifier.
+Every provider request used the standard service tier.
+
+The implementation produced a primer design with an unresolved thermodynamic
+risk. The terminal audit installed `primer3`, found three task-consistent
+insertion boundaries, and reproduced a 48-nucleotide reverse annealing region
+at one boundary. It repaired `primers.fasta`, tested all three boundaries, and
+received an empty finding list from the public verifier.
+
+The unchanged task-owned grader awarded reward 1.0. The attempt used 38 model
+requests, 564,164 input tokens, 312,320 cached-input tokens, and 26,545 output
+tokens. Its estimated cost was $1.663204, and its makespan was 655.272 seconds.
+The resolved configuration and Foe account conformed.
+
+Three invalid structured returns preceded completion. The first cited
+nonexistent sequence zero. The second used challenge evidence older than the
+final executable result. The third described a verifier finding as a failed
+process, although configured verifiers return findings on standard output
+with a successful process status. Foe returned precise findings after each
+invalid value, and the audit produced an admissible final account.
+
+The candidate then ran one closed-book `dna-insert` transfer without the
+public checker. The audit independently found the three insertion boundaries,
+installed `primer3`, changed the primer artifact, and certified its generated
+check. The unchanged task-owned grader awarded reward 0.0. It measured a
+5.828321-degree primer-pair difference at
+`tests/test_outputs.py:100`, which exceeds the five-degree limit.
+
+The closed-book attempt used 32 model requests, 315,495 input tokens, 152,576
+cached-input tokens, and 20,808 output tokens. Its estimated cost was
+$1.128866, and its makespan was 525.220 seconds. The resolved configuration
+and Foe account conformed. The completed Foe outcome disagreed with the failed
+artifact.
+
+The verifier-governed pass confirms that the source candidate can carry
+reconstructable evidence while correcting an artifact under authoritative
+semantic feedback. An earlier aggregate candidate already passed the same
+governed case. The closed-book failure repeats the semantic error that the
+source change was meant to prevent. The campaign therefore rejects the source
+candidate and assigns it no transferable-improvement credit.
+
+The governed manifest has SHA-256 digest
+`2ab1a113d26b57fdde2663b393b07957a3206a00526eb156247339d687b5d77a`.
+The closed-book manifest has SHA-256 digest
+`0f5b8f4b3479be24cec483d9ee1dd795cc5ff77c3378ecbcd6bb6b64043eacf3`.
+Raw evidence remains under the candidate source's
+`target/terminal-bench-jobs/` directory in the retained self-improvement run.
