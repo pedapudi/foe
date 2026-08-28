@@ -621,3 +621,56 @@ The adapter now queries the container's effective working directory before it wr
 The retained local report is under `target/terminal-bench-capability-probes/`. Raw jobs and credentials remain outside Git.
 
 On 2026-08-24, the same probe ran in the pinned `gpt2-codegolf` image. The working directory, workspace writes, package authority, large-file operations, and timeouts passed. The standard executable-path check failed because the image did not provide both `git` and `sh` through its path. This contrast proves that a capability report cannot be generalized across task images.
+
+## Recorded predecessor-edit handoff evaluation
+
+On 2026-08-28, one source candidate added successful built-in `edit` calls to
+the rendered output of a workflow model node. The candidate source tree was
+`git-tree-sha1:71fd952253e21e0ea3bea07f07cc9f7bb1cf2060`. Its portable
+binary was
+`sha256:cb0ee4e8f34e53a45ee51e23489ac038da9e76d55e540cf26520aef1ca18829c`.
+The evaluated commit was `e59388b` applied to frozen release `bc0206d`.
+
+Two unchanged Terminal-Bench 2.1 task-owned graders evaluated the candidate.
+Each run used GPT-5.6 Sol with low implementation reasoning, high terminal
+audit reasoning, the default service tier, one worker, and measurement-only
+token accounting.
+
+| Task | Official score | Model calls | Input tokens | Cached input | Output tokens | Estimated cost | Time |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `overfull-hbox` | 1.0 | 16 | 158,621 | 66,560 | 9,167 | $0.578208 | 263 seconds |
+| `dna-assembly` | 1.0 | 40 | 699,844 | 401,920 | 30,066 | $1.953784 | 738 seconds |
+
+The `overfull-hbox` implementation produced a complete ledger of nine
+replacement operands. The audit received the ledger through its declared
+`follows` edge. Its acceptance report cited the three edit-result sequences
+and checked all 25 changed word occurrences against `synonyms.txt`. The audit
+made no repair, and the task-owned grader accepted the artifact.
+
+The `dna-assembly` implementation produced two successful replacement
+records, including creation of `primers.fasta`. The audit received both
+records, found that the proposed input reverse primer did not anneal to its
+template, repaired the primer set, and reran an independent whole-workspace
+check. The task-owned grader accepted the repaired artifact. This result
+shows that the handoff mechanism operated on a second task and remained
+compatible with audit-owned repair.
+
+Both assessed runs completed with no infrastructure failure and with agreement
+between the Foe outcome and the task-owned grader. One attempt per task does
+not establish a repeatable score increase over the frozen release. The two
+results establish mechanism activation, task-level quality preservation, and
+transfer to one separate development task.
+
+An earlier `overfull-hbox` invocation accidentally omitted
+`--built-in-workflow`. Its manifest recorded `built_in_workflow: false`, and
+its episode tree contained no audit child. The task-owned grader awarded 1.0,
+but that result supplies no evidence about workflow handoffs. It consumed
+618,628 input tokens, 448,512 cached-input tokens, 4,786 output tokens, and an
+estimated $0.955589. The invalid activation is retained so the configuration
+error cannot be mistaken for candidate evidence.
+
+The retained runs are:
+
+- `/home/sunil/git/foe-predecessor-edit-evidence-terminal-bench/target/terminal-bench-jobs/predecessor-edit-evidence-built-in-overfull-default-20260828T140429Z`;
+- `/home/sunil/git/foe-predecessor-edit-evidence-terminal-bench/target/terminal-bench-jobs/predecessor-edit-evidence-built-in-dna-default-20260828T141003Z`;
+- `/home/sunil/git/foe-predecessor-edit-evidence-terminal-bench/target/terminal-bench-jobs/predecessor-edit-evidence-overfull-default-20260828T135932Z` for the invocation without the built-in workflow.
