@@ -4491,3 +4491,79 @@ The activation manifest has SHA-256 digest
 `319ed45af675c90f3680aaae03cf43e9165538c2264e20ad620e67521c44cb8e`.
 Raw evidence remains under
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/xhigh-single-node-contract-activation-default-20260828T091654Z`.
+
+## Rejected autonomous source attempt and direct completion-evidence repair
+
+Foe received the identity-bound `dna-insert` trajectory corpus described
+above. The candidate source matched source tree
+`ba0847225330c05832cfa907c2fbfd9e32c4c4a0` and portable binary
+`fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
+Every provider request used GPT-5.6 Sol and the standard service tier.
+
+The declared self-improvement workflow ran diagnosis, implementation,
+candidate validation, independent assessment, repair, and final assessment.
+It used 206 model requests over 3,574 seconds. Provider accounting reported
+16,826,323 input tokens, 13,750,784 cached-input tokens, and 150,352 output
+tokens. The estimated cost was $20.809510.
+
+The diagnosis identified a source-level defect. A terminal audit could certify
+an interpretation that its own executable check assumed. The implementation
+added structured competing-interpretation evidence to the built-in audit and
+made the kernel validate the cited lifecycle.
+
+Successive independent assessments found and repaired six defects:
+
+- a nonzero or timed-out check could certify acceptance;
+- a challenge could name no acceptance requirement;
+- a repaired claim could omit a failed check, mutation, or successful recheck;
+- an explicit requirement was forced to invent a competing interpretation;
+- a read result could masquerade as an executable challenge check;
+- a successful executable repair was excluded even though its declared effect
+  permits mutation.
+
+The candidate checker accepted the repaired source at the kernel line ceiling.
+The final assessment then rejected the candidate. With several acceptance
+items, a finding omitted the item index, cited sequence values, and the last
+state-changing result. The bounded repair stage had already run, so the
+workflow could not correct that final finding. The autonomous candidate has
+artifact digest
+`sha256:cbc1abdb94722b5367efa7c769857737cb8c0db33fc09df9b023c98a20a5de91`.
+The run requires direct implementation and supplies no accepted autonomous
+improvement.
+
+The retained evidence is under
+`/home/sunil/git/foe-identity-bound-dna-source-improvement/target/dna-self-improvement/`.
+The candidate source is under its `candidate-source/` directory.
+
+A direct repair simplified the candidate before external evaluation. Each
+acceptance item now contains its own nullable challenge. An explicit item has
+a null challenge. An inferred item records the chosen inference, one competing
+interpretation, an executable check, and an optional executable recheck.
+
+The acceptance status determines the lifecycle. A passed item with no recheck
+cites a successful check. A passed item with a recheck cites a failed check and
+a successful recheck. Foe derives the required intervening mutation from the
+episode log. An unmet item cites its unresolved check and carries a risk.
+
+This shape removes the parallel challenge array, text-based requirement
+binding, duplicate challenge outcomes, and the model-supplied repair sequence.
+The kernel still enforces event identity, reconstructability, executable
+effects, process status, lifecycle order, freshness, and unresolved-risk
+reporting. Every rejection identifies the acceptance index, cited sequences,
+and last write or executable result.
+
+The repaired source has these identities:
+
+- source commit `78bc9158aa20e82f5f70ac73c370be874ed124fd`;
+- source tree
+  `git-tree-sha1:bed2e510176e7ea2f3fc29c3592bf1f74ee89c08`;
+- source difference from the frozen release
+  `sha256:fbacf66d8278af5c87f143c3e2ec5113c4d46f29eb47373ae6f164aaa7e7b3c1`;
+- portable binary
+  `sha256:4da1e11ac7e63d6ba36c0ba2f956b6a43c2d9930a286d5fd2c8a71984dc07253`.
+
+The identity-bound candidate checker and its full validation mode returned no
+finding. Workspace tests and Clippy passed. Bazel built the portable binary,
+and the deterministic exec-transport example completed against that binary.
+The kernel remains at its 5,350-line ceiling. External Terminal-Bench results
+have not yet qualified this source candidate.
