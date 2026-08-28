@@ -4885,3 +4885,75 @@ The completed campaign manifests have these SHA-256 digests:
 Raw evidence remains under the `target/terminal-bench-jobs/` directories in
 `/home/sunil/git/foe-conditional-terminal-assessment-current` and
 `/home/sunil/git/foe-audit-evidence-repair-transfer`.
+
+### Conditional repair activation and contract correction
+
+The initial candidate next ran `gpt2-codegolf`, a development task whose
+successful frozen-release trajectories had required substantial
+post-implementation correction. The implementation produced a 4,708-byte C
+program that compiled and emitted 20 tokens. It also reported that output was
+highly repetitive and that the supplied raw checkpoint layout was uncertain.
+
+Independent assessment chose `repair`. It reproduced six defects, including
+incorrect GPT-2 pre-tokenization, the wrong activation function, an input
+buffer overflow, missing end-of-text handling, and an empty-prompt crash. It
+also retained the uncertain raw-checkpoint tensor layout as an unresolved
+risk.
+
+The repair child fixed the six enumerated defects. It expanded support to a
+TensorFlow Bundle V2 checkpoint and returned `completed` with the supplied raw
+layout still unresolved. The task-owned grader then ran the supplied raw
+checkpoint. The program emitted `Smy` 20 times and failed the required output
+check. The unchanged grader awarded reward 0.0.
+
+The failed attempt used 90 model requests, 4,202,499 input tokens, 3,223,552
+cached-input tokens, and 83,501 output tokens. Its estimated cost was
+$6.875229. The account conformed, and no infrastructure failure occurred.
+
+The trajectory exposed an enforceable workflow defect. A terminal repair
+could claim completion while carrying a risk that could invalidate the
+original task. The candidate contract now requires a repair completion to
+contain an empty `unresolved_risks` array. The repair must resolve or falsify
+every assessment finding and risk against the original task. Assessment also
+prioritizes required behavior on supplied artifacts over compatibility with
+absent formats. Commit `8de5c0d` implements the contract, regression tests,
+and evaluation documentation.
+
+A matched `gpt2-codegolf` rerun used the revised contract. The implementation
+again produced a compilable program with an incorrect model output. It also
+reported that it had not completed a full inference validation. Independent
+assessment chose `repair` and found two central defects. The program read the
+checkpoint in execution order although the supplied raw values used
+lexicographic TensorFlow tensor order. It also interpreted the tied embedding
+matrix with the wrong orientation during output projection.
+
+The repair child reproduced the repetitive output, mapped all supplied tensor
+offsets, corrected the tied projection, and retained the raw checkpoint
+interface. It also repaired end-of-text handling, context bounds, and
+tokenization. The final 4,901-byte source generated distinct coherent
+continuations for two prompts. It returned no unresolved risk. The unchanged
+task-owned grader awarded reward 1.0.
+
+The passing attempt used 42 model requests, 818,198 input tokens, 464,896
+cached-input tokens, and 45,485 output tokens. Its estimated cost was
+$2.508866. The account conformed, and no infrastructure failure occurred.
+
+The failed and passing attempts both activated independent assessment and
+conditional repair. Their implementation and assessment trajectories differ,
+so the single pair does not establish repeatability or attribute the lower
+resource use to the contract change. The passing attempt establishes that a
+typed assessment can direct a fresh coding child to repair a task-owned
+failure mechanism without access to the external grader. The revised contract
+still requires preservation coverage before promotion.
+
+The activation manifests have these SHA-256 digests:
+
+- the failed initial contract:
+  `a4382e2c7d9846ea857e8065a62b723d77e0e3648d87a406423b8be5ab960b2f`;
+- the passing risk-resolving contract:
+  `af5cceb72f61afd7b202c9c27d7e9f7ef583618c2c6903711602dd7633f4adf2`.
+
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-audit-repair-gpt2-preservation-frozen-default-20260828T173143Z`
+and
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-resolve-risks-gpt2-default-20260828T180916Z`.
