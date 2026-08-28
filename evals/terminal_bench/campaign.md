@@ -5004,3 +5004,60 @@ Raw evidence remains under
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-resolve-risks-sanitize-preservation-default-20260828T182748Z`
 and
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-resolve-risks-path-tracing-default-20260828T183831Z`.
+
+### Current-candidate development batch
+
+The frozen candidate next ran four additional development tasks without a
+configuration or binary change. The runtime binary remained
+`sha256:fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
+The source tree remained
+`git-tree-sha1:ba0847225330c05832cfa907c2fbfd9e32c4c4a0`.
+
+| Task | Score | Assessment branch | Calls | Input | Cache read | Output | Estimated cost |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | accept | 10 | 30,370 | 2,560 | 5,296 | $0.218184 |
+| `fix-git` | 1.0 | accept | 15 | 95,722 | 46,080 | 5,742 | $0.331840 |
+| `sqlite-db-truncate` | 1.0 | accept | 13 | 63,576 | 11,264 | 6,629 | $0.346334 |
+| `large-scale-text-editing` | 1.0 | repair | 17 | 85,474 | 16,896 | 10,791 | $0.496890 |
+
+The `cancel-async-tasks` assessment sent an actual `SIGINT` during
+`asyncio.run`. It confirmed that every started task completed asynchronous
+cleanup, queued tasks remained unstarted, and `KeyboardInterrupt` reached the
+caller. The unchanged task-owned grader awarded reward 1.0.
+
+The `fix-git` assessment verified the recovered commit as the second parent of
+the final merge. It also verified both parent ancestry relationships, the
+expected Stanford text, a clean worktree, and a valid Git object graph. The
+unchanged task-owned grader awarded reward 1.0.
+
+The `sqlite-db-truncate` assessment independently decoded every record in the
+surviving SQLite leaf page. It matched all ten binary records against the JSON
+artifact and found no additional record payload in the supplied bytes. The
+unchanged task-owned grader awarded reward 1.0.
+
+The `large-scale-text-editing` assessment exercised the conditional repair
+path. The implementation had transformed all one million rows correctly, but
+rerunning its Vim script on the resulting workspace exited with status 1.
+Unguarded substitutions raised `E486` when the transformed rows contained no
+spaces or commas.
+
+The repair child reproduced the nonzero exit and added Vim's no-match error
+flag to the two substitutions. It then ran the required command over all one
+million rows with exit status 0. The result remained byte-identical to the
+expected file, and the unchanged task-owned grader awarded reward 1.0.
+
+The four attempts used 55 model requests, 275,142 input tokens, 76,800
+cached-input tokens, and 28,458 output tokens. Their estimated cost was
+$1.393248. Every configuration claim was valid, every account conformed, and
+no infrastructure failure occurred.
+
+The revised candidate has now passed all seven completed current-revision
+development tasks. Three tasks exercised conditional repair across language
+model inference, numerical graphics, and large text transformation. Four
+tasks selected `accept` after independent validation. Five development tasks
+remain before the twelve-task development gate can be evaluated.
+
+The batch campaign manifest has SHA-256 digest
+`0d6ca6b9aab8eb86e94e48c29c3cd92cb576fbb8828237d86f6ff0deeb232fd1`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-development-low-cost-default-20260828T185104Z`.
