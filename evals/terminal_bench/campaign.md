@@ -4238,3 +4238,140 @@ The comparison manifest has SHA-256 digest
 `1d5f362e40412dc93a3d94b1874a329b42b0f2b8a981268e73c9fff57b477be8`.
 Raw evidence remains under
 `/home/sunil/git/foe-reject-only-challenge-quality/target/terminal-bench-jobs/ambiguity-preserving-challenge-dna-activation-retry-20260828T035737Z`.
+
+## Verifier-owned completion and audit backstop qualification
+
+An earlier autonomous source-improvement run produced source commit
+`027236a`. The change moved built-in verifier ownership from the implementation
+episode to the always-run terminal audit. Its implementation, regression test,
+and `docs/design.md` update passed the independent source checker. The aggregate
+release contains the same runtime behavior.
+
+The aggregate release first exercised that behavior on `gpt2-codegolf` with
+the public development checker. The low-reasoning implementation completed in
+18 requests. The fresh high-reasoning audit then used all 60 requests. Its
+final request removed the last unnecessary statement from `gpt2.c`. The
+unchanged task-owned grader accepted the resulting artifact with reward 1.0.
+
+Foe still ended `exhausted:model_calls` because the audit could not rerun its
+checker after the final edit. The attempt used 78 requests, 2,846,126 input
+tokens, 2,330,112 cached-input tokens, and 33,013 output tokens. Its estimated
+cost was $3.656361. The account conformed, and the checker remained unchanged.
+The campaign manifest has SHA-256 digest
+`31379d11fc3ca867dda4572b2606446450d8268083a1c505e9541173684c7de5`.
+
+The implementation backstop remains 60 requests. The terminal-audit backstop
+is 100 requests because the audit must reproduce defects, repair them, and
+validate the final state. The root allowance is their exact 160-request sum.
+The workspace suite, Clippy, line-count check, and portable build passed.
+
+The revised candidate repeated `gpt2-codegolf` with the same checker. The audit
+used 61 requests, which activates the additional capacity. Foe completed with
+exit status zero, and the unchanged task-owned grader awarded reward 1.0. The
+attempt used 73 total requests, 2,436,871 input tokens, 1,917,440 cached-input
+tokens, and 33,591 output tokens. Its estimated cost was $3.516520. The trace
+conformed, the checker remained unchanged, and the artifact-outcome diagnostic
+reported no mismatch.
+
+That activation used the priority service tier because it was already running
+when the campaign returned to the standard tier. The candidate then ran
+`dna-assembly` on the standard tier as a transfer case. Foe completed with exit
+status zero, and the unchanged task-owned grader awarded reward 1.0. The
+transfer used 37 requests, 529,278 input tokens, 332,288 cached-input tokens,
+and 19,360 output tokens. Its estimated cost was $1.308075. The trace conformed,
+the checker remained unchanged, and the artifact-outcome diagnostic reported
+no mismatch.
+
+The activation manifest has SHA-256 digest
+`bd85c6284c10c2b39167398baf5584517c366b4a78a692f2a0f6599d8803dfc0`.
+The transfer manifest has SHA-256 digest
+`9b79a51596380386246c2f899fd5c24748f903f781f2384ab459e4c1014c3e9c`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/`.
+
+The first two-worker confirmation start exposed an omitted qualified change
+before any model request. Its isolated access-only credential lacked a refresh
+token, and the evaluated binary rejected it before creating an episode. The
+release now includes the previously qualified access-only parser. Such a lease
+works through its recorded expiry and fails locally when renewal becomes
+necessary. The workspace suite and portable build passed again.
+
+The final release candidate has these identities:
+
+- source commit `9ee4344e3418ff2481bbe163d652b703e652a022`;
+- source tree
+  `git-tree-sha1:f740ceedbbcfb60ca84206dbc34a2c3b28d147d9`;
+- portable binary
+  `sha256:afbbbcf68ab17bfb8c75ff00c6b6984418eea1a4843ab2abdec4ca6ecfd6c379`.
+
+All provider requests after the completed GPT-2 activation use the standard
+service tier. Token allowances remain measurement-only. The confirmation
+tasks use their unchanged task-owned graders without development checkers.
+
+## Primer-boundary correction and conditional reasoning
+
+The built-in audit had repeatedly certified invalid `dna-insert` primer
+boundaries. The audit held one primer region fixed while shifting another
+region across several sequence decompositions. The task-owned grader derives
+both regions from one occurrence in the complete primer product. It rejected
+the resulting artifact because one melting-temperature difference exceeded
+five degrees Celsius.
+
+The audit instruction now requires every bound and relation to be evaluated
+within one complete decomposition. A verifier-governed development attempt
+exercised that rule with the public `dna-insert` checker. The checker rejected
+three intermediate artifacts. The audit repaired each finding and completed
+after the checker returned no finding. The unchanged task-owned grader awarded
+reward 1.0.
+
+The governed attempt used 378,484 input tokens, 201,216 cached-input tokens,
+and 17,352 output tokens. Its estimated cost was $1.136598. The manifest has
+SHA-256 digest
+`045a1cde61b35b9948b70225b99b7b555f51273afdc0cb8ff44c489e03b1b3dc`.
+
+Closed-book transfer preserved `dna-assembly` with reward 1.0. The same batch
+failed `dna-insert`. A second closed-book `dna-insert` attempt also failed.
+Both audits enumerated several boundaries but reused one reverse-primer region
+across those boundaries. The transfer batch used 1,073,408 input tokens,
+531,456 cached-input tokens, and 46,856 output tokens. Its estimated cost was
+$3.317510. The second `dna-insert` attempt cost $0.499899.
+
+The transfer manifest has SHA-256 digest
+`c8b0a6b51159ac56bc594143b3e14245e12323bd1771d9b043e68771d1785249`.
+The second `dna-insert` manifest has SHA-256 digest
+`25abf5c2753c84cded1eb0e125a1e0b126a90a3f61c4481800d58ea87b94c312`.
+
+Two source candidates tested whether audit behavior alone could close the
+remaining gap. Raising only the audit from high to xhigh reasoning scored
+zero. A second candidate required literal operations over exact final fields.
+It also scored zero. Both audits wrote executable checks that certified an
+idealized primer construction rather than the complete primer product consumed
+by the task-owned grader. The source changes were removed after the failures.
+
+The xhigh-audit attempt cost $1.151582. Its manifest has SHA-256 digest
+`581270026a31c4ca7e6627ec6ba59020c3eaea7b30df48d556c2241b240101b3`.
+The exact-final-field attempt cost $0.826095. Its manifest has SHA-256 digest
+`2bc07c336973b6477e328ce14252ba8731995e5dfbc65db23d25427c0453163d`.
+
+A fresh single-node coding episode then exercised conditional escalation. It
+used xhigh reasoning because the low-effort built-in profile had failed the
+same task repeatedly. The unchanged `dna-insert` grader awarded reward 1.0.
+The attempt used 117,758 input tokens, 48,640 cached-input tokens, and 6,596
+output tokens. Its estimated cost was $0.427848, and it completed in 220
+seconds. The manifest has SHA-256 digest
+`9f54621a32555a4632c3d0eca895da14ac999a2d41ee82182d467bc5fa2c2d2f`.
+
+These results qualify conditional implementation escalation for the remaining
+confirmation work. The ordinary profile remains a low-reasoning implementation
+followed by a high-reasoning audit. A task that fails repeatedly under that
+profile may receive a fresh xhigh single-node attempt. Every profile uses the
+same source tree and portable binary:
+
+- source commit `bc0206d271f7a8ff8fbb53421b7bcf4180a8afc0`;
+- source tree
+  `git-tree-sha1:ba0847225330c05832cfa907c2fbfd9e32c4c4a0`;
+- portable binary
+  `sha256:fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
+
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/`.
