@@ -76,6 +76,7 @@ class FoeAgent(BaseInstalledAgent):
         unresolved_diagnosis_model_calls: int | str = 20,
         escalation_reasoning_effort: str | None = None,
         escalation_model_calls: int | str = 0,
+        separate_audit_and_repair: bool | str = False,
         completion_checker: str | None = None,
         built_in_workflow: bool | str = False,
         **kwargs: Any,
@@ -112,6 +113,10 @@ class FoeAgent(BaseInstalledAgent):
         self._unresolved_diagnosis_model_calls = int(unresolved_diagnosis_model_calls)
         self._escalation_reasoning_effort = escalation_reasoning_effort
         self._escalation_model_calls = int(escalation_model_calls)
+        self._separate_audit_and_repair = parse_boolean(
+            separate_audit_and_repair,
+            "separate_audit_and_repair",
+        )
         self._completion_checker = (
             Path(completion_checker) if completion_checker is not None else None
         )
@@ -339,6 +344,7 @@ class FoeAgent(BaseInstalledAgent):
                 unresolved_diagnosis_model_calls=self._unresolved_diagnosis_model_calls,
                 escalation_reasoning_effort=self._escalation_reasoning_effort,
                 escalation_model_calls=self._escalation_model_calls,
+                separate_audit_and_repair=self._separate_audit_and_repair,
             )
             local_program = self.logs_dir / "foe-program.json"
             local_program.write_text(

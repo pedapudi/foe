@@ -1043,6 +1043,39 @@ class CasesTest(unittest.TestCase):
         )
         self.assertIn("completion_checker=/tmp/completion-check", command)
 
+    def test_harbor_command_records_separate_assessment_and_repair(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        task = tasks["fix-git"]
+        command = harbor_command(
+            harbor=Path("/tools/harbor"),
+            dataset="terminal-bench/terminal-bench-2-1@6",
+            task=task,
+            attempts=1,
+            jobs_dir=Path("/tmp/jobs"),
+            agent_module=Path("/tmp/foe_agent.py"),
+            trace_evaluator=Path("/tmp/score-trace"),
+            foe=Path("/tmp/foe"),
+            credential_state=Path("/tmp/private.json"),
+            model="openai-codex/gpt-5.6-sol",
+            reasoning_effort="low",
+            diagnosis_model=None,
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            diagnosis_pricing=None,
+            unresolved_diagnosis_reasoning_effort=None,
+            unresolved_diagnosis_model_calls=6,
+            escalation_reasoning_effort="xhigh",
+            escalation_model_calls=25,
+            runtime_digest="abc123",
+            pricing=pricing["openai-codex/gpt-5.6-sol"],
+            separate_audit_and_repair=True,
+        )
+        self.assertIn("separate_audit_and_repair=true", command)
+        self.assertAlmostEqual(
+            float(command[command.index("--agent-timeout-multiplier") + 1]),
+            (task.seconds * 3 + 300) / task.harbor_agent_seconds,
+        )
+
     def test_harbor_command_records_conditional_unresolved_diagnosis(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
         command = harbor_command(
