@@ -20,6 +20,7 @@ CODING_INSTRUCTION = (
 EVALUATION_LOOP_THRESHOLD = 8
 MIN_AUXILIARY_MODEL_CALLS = 6
 COMPLETION_CHECK_RETRIES = 12
+SEPARATE_ASSESSMENT_CORRECTIONS = 3
 BUILTIN_WORKFLOW_REQUIRED_OPTIONS = (
     "--model",
     "--service-tier",
@@ -453,7 +454,9 @@ def build_program(
         }
     )
     if completion_checker is not None and separate_audit_and_repair:
-        program["budget"]["max_episodes"] += COMPLETION_CHECK_RETRIES
+        program["budget"]["max_episodes"] = 1 + 3 * (
+            SEPARATE_ASSESSMENT_CORRECTIONS + 1
+        )
     implementation_role = (
         "Implement the task using the typed diagnosis as advice. Confirm its claims against "
         "the repository. Make the requested change, run the strongest available verification "
@@ -699,9 +702,16 @@ def build_program(
             assessment_tools.append("check")
             # Either branch can complete the workflow with a different typed
             # value. The workspace verifier governs both values at the root.
+            # Findings enter recovery immediately so a writable ancestor can
+            # receive them instead of repeatedly re-firing the read-only
+            # assessment.
             program["done_when"] = {
                 "verify": "check",
-                "retries": COMPLETION_CHECK_RETRIES,
+                "retries": 0,
+            }
+            program["workflow"]["recovery"] = {
+                "enabled": True,
+                "max_interventions": SEPARATE_ASSESSMENT_CORRECTIONS,
             }
         program["workflow"]["nodes"].update(
             {
@@ -791,9 +801,9 @@ def build_program(
             }
         )
         if completion_checker is not None:
-            for node in ("assess-task", "repair-task"):
+            for node in ("implement-task", "assess-task", "repair-task"):
                 program["workflow"]["nodes"][node]["max_fires"] = (
-                    COMPLETION_CHECK_RETRIES + 1
+                    SEPARATE_ASSESSMENT_CORRECTIONS + 1
                 )
     return program
 

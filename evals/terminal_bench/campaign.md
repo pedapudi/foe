@@ -5235,3 +5235,28 @@ The retained closed-book result is
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-dna-insert-repeat-priority-20260828T204759Z`.
 The retained verifier-governed account is
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/verifier-governed-conditional-repair-dna-insert-priority-20260828-20260828T205721Z`.
+
+### Verifier findings enter writable workflow recovery
+
+The campaign program now sends a root verifier finding directly to workflow
+recovery. The root completion contract declares zero retries. Recovery may
+amend the implementation after an accepted assessment or amend a repair that
+the verifier rejected. The selected node receives the finding, and its
+downstream assessment runs again.
+
+The configuration permits three recovery interventions. Implementation,
+assessment, and repair may each fire four times. The root lifetime allowance
+is thirteen episodes. Runs without a separate read-only assessment retain
+their existing verifier retry behavior.
+
+This configuration uses the existing workflow recovery contract. It adds no
+workflow schema or log event. A deterministic workflow regression test proves
+the required sequence: assessment accepts, the verifier rejects, recovery
+amends the implementation, assessment runs again, and the verifier accepts.
+The campaign program-builder tests also passed.
+
+The corresponding product change is commit
+`3280b82cae2e4bf07ca31b46f8cfb36fef5c87d7` in pull request 128. The
+product workspace passed all Rust tests, Clippy checks, examples, line-count
+checks, and Bazel binary builds. A provider-backed DNA activation remains
+required before the configuration can affect a campaign quality claim.
