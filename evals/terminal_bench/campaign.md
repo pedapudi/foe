@@ -5173,3 +5173,65 @@ for source tree `ba0847225330c05832cfa907c2fbfd9e32c4c4a0` and binary
 `fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
 The product candidate requires focused acceptance, repair, and boundary-
 constraint activation before a confirmation run.
+
+### Repeated DNA boundary failure and verifier routing
+
+One priority-tier `dna-insert` attempt repeated the closed-book assessment on
+the same source tree and runtime binary. The implementation produced one
+primer pair. The read-only assessment could not find the task's declared
+`oligotm` executable. It reimplemented the temperature calculation in AWK and
+reported a reverse-primer temperature of 58.452699 degrees Celsius. The
+assessment selected `accept`.
+
+The unchanged task-owned grader invoked `oligotm` after installing the
+`primer3` package. It measured 56.453128 degrees Celsius and awarded reward
+0.0. The attempt used 16 model requests, 101,124 input tokens, 31,232 cached-
+input tokens, and 10,364 output tokens. Its estimated cost was $0.499341.
+The account conformed, and no infrastructure failure occurred.
+
+This result falsifies repeatability for closed-book independent assessment on
+the DNA temperature boundary. The model replaced an unavailable named oracle
+with an approximation and presented the approximation as equivalent. A
+completion contract can prevent this false acceptance only when it provides
+the named oracle or exposes a checker whose finding controls the next writable
+stage.
+
+Two autonomous workflow-configuration attempts examined identity-bound DNA
+evidence before this repeat. The first evidence file contained older repeated
+failures and one confounded success. Foe selected `insufficient-evidence` in
+one model request. A second evidence file contained two repeated closed-book
+failures and one conditional-assessment success. Foe again selected
+`insufficient-evidence`, this time in two requests, because the successful
+configuration had only one attempt and also changed assessment effort. The
+two attempts cost an estimated $0.152144 and $0.255191. They produced no
+candidate and do not satisfy an autonomous-improvement requirement.
+
+A verifier-governed attempt then used the public DNA checker with the same
+source and runtime identities. Its checker identity was
+`sha256:34b6d43b3cc9eda9ef0111911751847c17ba26ee124cb6bc7a2d2e74c6f4e22b`.
+The implementation returned a primer pair and reported the missing
+`oligotm` executable as an unresolved risk. The checker returned one finding:
+`/usr/bin/oligotm is unavailable; install the primer3 package before
+validation`.
+
+Foe correctly re-fired the terminal assessment after each verifier finding.
+Three independent assessment executions each selected `accept` without
+changing the workspace. The checker returned the same finding after each
+selection. The controller stopped the run after 37 completed model requests
+to avoid ten more equivalent assessment executions. The retained requests
+used 294,351 input tokens, 123,392 cached-input tokens, and 30,980 output
+tokens. Their estimated cost was $1.846361. The cancellation occurred before
+Harbor ran the task-owned grader, so this attempt has no quality score.
+
+The account exposes a control-flow defect in the candidate workflow. A root
+verifier finding re-fires the terminal assessment, but the assessment can
+select its `accept` branch again. The finding therefore does not reach the
+writable repair node. The next candidate must route a verifier rejection to a
+fresh repair execution with the finding as declared input. A regression test
+must cover an assessment that accepts, a verifier that rejects, a repair that
+changes the workspace, and a later verifier acceptance.
+
+The retained closed-book result is
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-dna-insert-repeat-priority-20260828T204759Z`.
+The retained verifier-governed account is
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/verifier-governed-conditional-repair-dna-insert-priority-20260828-20260828T205721Z`.
