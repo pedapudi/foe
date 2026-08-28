@@ -43,7 +43,7 @@ const VIEWER_GRACE: Duration = Duration::from_secs(3);
 const BUILTIN_IMPLEMENTATION_CALLS: u64 = 60;
 const BUILTIN_ASSESSMENT_CALLS: u64 = 60;
 const BUILTIN_REPAIR_CALLS: u64 = 60;
-const BUILTIN_VERIFIER_RETRIES: u32 = 12;
+const BUILTIN_VERIFIER_CORRECTIONS: u32 = 3;
 
 /// Static behavior of the built-in coding workflow. Dynamic authority,
 /// environment, model, verifier, and task values are filled below.
@@ -339,7 +339,9 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// `verify` names an executable verifier: it becomes a `tool_defs` entry
 /// named `check` available to every episode. The root completion gate applies
 /// to both the assessment's accept branch and the repair branch. Without a
-/// verifier, the assessment's typed choice governs completion.
+/// verifier, the assessment's typed choice governs completion. A verifier
+/// finding enters workflow recovery immediately, where the runtime can amend
+/// a writable ancestor rather than repeatedly re-fire a read-only assessment.
 fn builtin_program_document(
     task: String,
     mut model: ModelConfig,
@@ -392,7 +394,7 @@ fn builtin_program_document(
     if let Some(check) = verify {
         let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
         let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": cwd });
-        document["budget"]["max_episodes"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES + 4);
+        document["budget"]["max_episodes"] = serde_json::json!(1 + 3 * (BUILTIN_VERIFIER_CORRECTIONS + 1));
         document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
         document["tool_defs"] = serde_json::json!({ "check": def });
         for node in ["implement-task", "assess-task", "repair-task"] {
@@ -400,10 +402,12 @@ fn builtin_program_document(
             program["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
             program["tool_defs"] = serde_json::json!({ "check": def });
         }
-        for node in ["assess-task", "repair-task"] {
-            document["workflow"]["nodes"][node]["max_fires"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES + 1);
+        for node in ["implement-task", "assess-task", "repair-task"] {
+            document["workflow"]["nodes"][node]["max_fires"] = serde_json::json!(BUILTIN_VERIFIER_CORRECTIONS + 1);
         }
-        document["done_when"] = serde_json::json!({ "verify": "check", "retries": BUILTIN_VERIFIER_RETRIES });
+        document["workflow"]["recovery"] =
+            serde_json::json!({ "enabled": true, "max_interventions": BUILTIN_VERIFIER_CORRECTIONS });
+        document["done_when"] = serde_json::json!({ "verify": "check", "retries": 0 });
         return serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"));
     }
     serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"))

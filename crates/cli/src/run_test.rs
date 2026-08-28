@@ -135,7 +135,8 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available
-/// to every built-in episode and gates both completion branches at the root.
+/// to every built-in episode and sends findings directly to bounded workflow
+/// recovery, where a writable ancestor can be amended.
 #[test]
 fn builtin_coding_with_verify_gates_both_assessment_branches() {
     use std::os::unix::fs::PermissionsExt;
@@ -161,10 +162,13 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     let implement = workflow.nodes["implement-task"].model.as_ref().unwrap();
     let gate = config.done_when.as_ref().unwrap();
     assert_eq!(gate.verify.as_deref(), Some("check"));
-    assert_eq!(gate.retries, BUILTIN_VERIFIER_RETRIES);
-    assert_eq!(config.budget.max_episodes, BUILTIN_VERIFIER_RETRIES + 4);
-    assert_eq!(workflow.nodes["assess-task"].max_fires, Some(BUILTIN_VERIFIER_RETRIES + 1));
-    assert_eq!(workflow.nodes["repair-task"].max_fires, Some(BUILTIN_VERIFIER_RETRIES + 1));
+    assert_eq!(gate.retries, 0);
+    assert!(workflow.recovery.enabled);
+    assert_eq!(workflow.recovery.max_interventions, BUILTIN_VERIFIER_CORRECTIONS);
+    assert_eq!(config.budget.max_episodes, 1 + 3 * (BUILTIN_VERIFIER_CORRECTIONS + 1));
+    for node in ["implement-task", "assess-task", "repair-task"] {
+        assert_eq!(workflow.nodes[node].max_fires, Some(BUILTIN_VERIFIER_CORRECTIONS + 1));
+    }
     let done = implement.done_when.as_ref().unwrap();
     assert!(done.verify.is_none(), "implementation claims are not authoritative");
     assert!(done.returns.is_some(), "the typed handoff remains declared");

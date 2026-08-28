@@ -717,6 +717,63 @@ async fn verify_retries_then_recovers_and_nested_workflows_produce_their_termina
     assert_eq!(outcome, Outcome::Completed { value: json!({ "got": { "from": { "v": 1 } } }) });
 }
 
+/// docs/workflow.md "Completion" and "Recovery": with zero `done_when`
+/// retries, verifier findings enter recovery at the terminal node. Recovery
+/// may amend a writable ancestor, whose new value re-fires downstream nodes
+/// before the verifier accepts the later terminal value.
+#[tokio::test]
+async fn done_when_findings_can_amend_an_ancestor_before_acceptance() {
+    let mut fx = Fixture::new(
+        "done-when-amend",
+        &["build", "assess", "check"],
+        json!({
+            "nodes": {
+                "implement": { "tool": "build", "max_fires": 2 },
+                "assess": {
+                    "tool": "assess",
+                    "args": { "candidate": { "$node": "implement" } },
+                    "follows": ["implement"],
+                    "max_fires": 2,
+                    "terminal": true
+                }
+            },
+            "recovery": { "max_interventions": 1 }
+        }),
+    )
+    .tool(
+        "build",
+        vec![
+            ToolValue::ok(json!({ "revision": 1 }), "revision 1"),
+            ToolValue::ok(json!({ "revision": 2 }), "revision 2"),
+        ],
+        0,
+    )
+    .tool("assess", vec![], 0)
+    .tool(
+        "check",
+        vec![ToolValue::ok(json!(["revision 2 is required"]), "finding"), ToolValue::ok(json!([]), "accepted")],
+        0,
+    )
+    .respond(recover(json!({
+        "action": "amend",
+        "node": "implement",
+        "note": "satisfy the verifier finding: revision 2 is required"
+    })));
+    fx.config["done_when"] = json!({ "verify": "check", "retries": 0 });
+
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!({ "candidate": { "revision": 2 } }) });
+    assert_eq!(
+        starts(&events),
+        [("implement".into(), 1), ("assess".into(), 1), ("implement".into(), 2), ("assess".into(), 2)]
+    );
+    let recovery = recoveries(&events)[0];
+    assert_eq!((recovery.cause.as_str(), recovery.action.as_str()), ("done-when-findings", "amend"));
+    assert_eq!(recovery.target.as_deref(), Some("implement"));
+    assert!(recovery.note.as_deref().is_some_and(|note| note.contains("revision 2 is required")));
+    assert_eq!(events.iter().filter(|event| matches!(event.data, EventData::VerificationResult(_))).count(), 2);
+}
+
 /// The two nodes of a drain test: one that answers at once and completes
 /// the workflow, and one that never answers.
 fn draining(name: &str) -> Fixture {

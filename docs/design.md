@@ -736,11 +736,14 @@ while working. The root declares
 The verifier therefore governs both an accepted assessment and a completed
 repair. It runs in the working directory and receives the workflow completion
 value as JSON on standard input. It prints one finding per line; exit 0 with
-empty output is acceptance. Findings re-fire the nearest model episode. An
-assessment can respond by activating repair, and a repair can correct its
-artifacts. Without `--verify`, the assessment's typed branch governs
-completion. With `--verify`, both corrective nodes may fire thirteen times.
-The root lifetime cap grows to sixteen episodes so all twelve retries can run.
+empty output is acceptance. A finding enters workflow recovery without a
+read-only assessment retry. The recovery decision can amend the implementation
+after an accepted assessment or amend a repair that the verifier rejected.
+The amended node receives the finding, and its downstream assessment runs
+again. Recovery permits three interventions. All three model nodes may fire
+four times, and the root lifetime cap is thirteen episodes. Without
+`--verify`, the assessment's typed branch governs completion and workflow
+recovery remains disabled.
 
 `--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
 workflow. The default is `best-effort`. A program document declares
