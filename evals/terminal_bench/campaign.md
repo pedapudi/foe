@@ -4460,3 +4460,34 @@ five-degree primer melting-temperature difference. It binds source tree
 `fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
 The 27,458-byte corpus has SHA-256 digest
 `fbd63cd4072c590cafb2baa47fcbfa5d5086c8d9c90e65c7737e090af9134c7d`.
+
+### Fresh xhigh implementation activation
+
+The frozen binary next ran fresh single-node xhigh implementations for the two
+new repeatability failures. Both unchanged task-owned graders awarded reward
+1.0.
+
+The `overfull-hbox` episode used only directed substitutions from
+`synonyms.txt`. It compiled the final document without an overfull box. The
+attempt used 81,081 input tokens, 12,800 cached-input tokens, and 3,795 output
+tokens. Its estimated cost was $0.354144.
+
+The `build-pov-ray` episode selected the complete official archive set. Its
+final tree contained `/app/povray-2.2/file_id.diz`, the built 2.2.u executable,
+and a full 640 by 480 reference render. The attempt used 2,713,660 input
+tokens, 2,093,568 cached-input tokens, and 10,122 output tokens. Its estimated
+cost was $3.520235.
+
+The two tasks ran concurrently in 389 seconds with isolated access-only
+credentials. Both credentials remained unchanged. Neither task reported an
+infrastructure failure.
+
+Together with the earlier successful `dna-insert` activation, fresh xhigh
+implementation converted all three repeatable ordinary-profile failures. The
+result qualifies xhigh as the quality candidate for one clean confirmation
+run. The candidate has not yet satisfied the confirmation gate.
+
+The activation manifest has SHA-256 digest
+`319ed45af675c90f3680aaae03cf43e9165538c2264e20ad620e67521c44cb8e`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/xhigh-single-node-contract-activation-default-20260828T091654Z`.
