@@ -13,6 +13,7 @@ from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
 from capability_probe_support import build_probe_program, evaluate_probe_episode
+from foe_agent_support import schema_preflight_command
 
 
 REMOTE_BINARY = "/usr/local/bin/foe"
@@ -54,7 +55,7 @@ class CapabilityProbeAgent(BaseInstalledAgent):
             command=(
                 f"chmod 755 {shlex.quote(REMOTE_BINARY)} "
                 f"{shlex.quote(REMOTE_TRANSPORT)} && "
-                f"{shlex.quote(REMOTE_BINARY)} schema >/dev/null"
+                f"{schema_preflight_command(REMOTE_BINARY)}"
             ),
         )
 

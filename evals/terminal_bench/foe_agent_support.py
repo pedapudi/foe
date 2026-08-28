@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,11 @@ def fixed_executable_probe_command() -> str:
             f"else echo '{name}=not found at {path}'; fi"
         )
     return "; ".join(commands)
+
+
+def schema_preflight_command(binary: str) -> str:
+    """Return the credential-free command that validates the installed CLI."""
+    return f"{shlex.quote(binary)} plan --schema >/dev/null"
 
 
 def describe_container_environment(working_directory: str, probe_output: str) -> str:

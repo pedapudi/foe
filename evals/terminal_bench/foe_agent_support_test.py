@@ -12,10 +12,17 @@ from foe_agent_support import (
     estimate_usage_cost,
     fixed_executable_probe_command,
     read_episode_summary,
+    schema_preflight_command,
 )
 
 
 class ProgramTest(unittest.TestCase):
+    def test_schema_preflight_requires_no_default_model(self):
+        self.assertEqual(
+            schema_preflight_command("/usr/local/bin/foe"),
+            "/usr/local/bin/foe plan --schema >/dev/null",
+        )
+
     def test_fixed_path_probe_produces_validated_environment_facts(self):
         command = fixed_executable_probe_command()
         self.assertIn("test -x /usr/bin/python3", command)
