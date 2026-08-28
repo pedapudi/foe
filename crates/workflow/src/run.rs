@@ -28,7 +28,7 @@ use foe_program::tools::Source;
 use foe_program::workflow::{ancestors, Node, WorkflowConfig};
 use foe_program::{Effect, ToolSpec};
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -167,6 +167,74 @@ fn output_of(outcome: Outcome, nested: bool) -> Output {
             Err(Trouble::recoverable(&cause, detail, Outcome::Exhausted { limit }))
         }
     }
+}
+
+const EDIT_EVIDENCE_LIMIT: usize = 64;
+const EDIT_TEXT_LIMIT: usize = 512;
+
+fn bounded_edit_text(value: &Value) -> Value {
+    let Some(text) = value.as_str() else { return json!({ "content": value, "complete": true }) };
+    let characters = text.chars().count();
+    if characters <= EDIT_TEXT_LIMIT {
+        return json!({ "content": text, "characters": characters, "complete": true });
+    }
+    let half = EDIT_TEXT_LIMIT / 2;
+    let head: String = text.chars().take(half).collect();
+    let tail: String = text.chars().skip(characters - half).collect();
+    json!({ "head": head, "tail": tail, "characters": characters, "complete": false })
+}
+
+fn edit_evidence(events: &[Event]) -> Option<String> {
+    let mut calls = BTreeMap::new();
+    for event in events {
+        match &event.data {
+            EventData::AssistantMessage(message) => {
+                for call in message.tool_calls.iter().filter(|call| call.name == "edit") {
+                    calls.insert(call.id.clone(), call.args.clone());
+                }
+            }
+            EventData::ToolInnerCall(call) if call.name == "edit" => {
+                calls.insert(call.call_id.clone(), call.args.clone());
+            }
+            _ => {}
+        }
+    }
+    let mut replacements = Vec::new();
+    let mut omitted = 0;
+    for event in events {
+        let EventData::ToolResult(result) = &event.data else { continue };
+        if result.name != "edit" || result.is_error || result.synthetic {
+            continue;
+        }
+        let Some(args) = calls.get(&result.call_id) else { continue };
+        for edit in args["edits"].as_array().into_iter().flatten() {
+            if replacements.len() == EDIT_EVIDENCE_LIMIT {
+                omitted += 1;
+                continue;
+            }
+            replacements.push(json!({
+                "result_seq": event.seq, "path": args["path"], "expected_version": args["expected_version"],
+                "old_text": bounded_edit_text(&edit["old_text"]), "new_text": bounded_edit_text(&edit["new_text"]),
+                "previous_version": result.value["previous_version"], "version": result.value["version"]
+            }));
+        }
+    }
+    (!replacements.is_empty()).then(|| {
+        json!({ "complete": omitted == 0, "omitted_replacements": omitted, "replacements": replacements }).to_string()
+    })
+}
+
+fn model_output(outcome: Outcome, dir: &std::path::Path, records_edits: bool) -> Output {
+    let (value, mut rendered) = output_of(outcome, false)?;
+    if records_edits {
+        let events = foe_log::fold::read_all(dir)
+            .and_then(|events| foe_log::fold::fold(&events).map(|_| events))
+            .map_err(|error| Trouble::settled(Outcome::Failed { error: format!("child edit evidence: {error}") }))?;
+        if let Some(evidence) = edit_evidence(&events) {
+            rendered = format!("{rendered}\n\nSuccessful built-in edit evidence:\n{evidence}");
+        }
+    }
+    Ok((value, rendered))
 }
 
 /// The value an explicitly optional model node contributes when its child
@@ -486,7 +554,8 @@ impl Executor {
             match sh.spawner.spawn(req) {
                 Ok(handle) => {
                     child_id = Some(handle.child_id.clone());
-                    Box::pin(async move { output_of(handle.run.wait().await.0, false) })
+                    let records_edits = program.tools.iter().any(|tool| tool == "edit");
+                    Box::pin(async move { model_output(handle.run.wait().await.0, &handle.dir, records_edits) })
                 }
                 Err(e) => {
                     let outcome = settled_in(&e.to_string()).unwrap_or(Outcome::Failed { error: e.to_string() });

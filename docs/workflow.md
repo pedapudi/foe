@@ -186,6 +186,22 @@ comes first when the node follows `task`. The child runs the
 ordinary agent loop with the ordinary tools, and its outcome value is the
 node's output.
 
+When a child program includes the built-in `edit` tool, the node's rendered
+output also carries a ledger of its successful edit calls. The ledger travels
+only through declared `follows` edges. Tool nodes continue to bind the
+child's canonical outcome value.
+
+Each ledger entry records the result sequence, requested path, expected
+version, and the replacement's old and new text. It also records the previous
+and resulting versions when the inline tool result contains them. Calls made
+through a composing tool such as `python` are included. Failed and synthetic
+results are excluded. The ledger contains at most 64 replacements. Text over
+512 characters contains its first and last 256 characters, its full character
+count, and `complete: false`. A ledger that omits replacements records their
+count and sets its own `complete` field to false. The ledger covers the
+built-in `edit` tool; commands and other writing tools may also change the
+shared workspace.
+
 Inside the node the agent has everything the loop gives it: it reads, edits,
 runs commands, calls subagents if granted, and decides when it is done. The
 graph bounds what enters the node and what leaves it. It does not bound what

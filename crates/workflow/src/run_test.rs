@@ -1,4 +1,4 @@
-use super::{empty_after_child, run, Trouble, WorkflowParams};
+use super::{edit_evidence, empty_after_child, model_output, run, Trouble, WorkflowParams};
 use foe_core::budget::Pool;
 use foe_core::loop_::{Log, Params};
 use foe_core::registry::{Handles, Registry};
@@ -6,8 +6,8 @@ use foe_core::{
     CallCtx, CapError, ChunkSink, ModelRequestBody, SpawnHandle, SpawnRequest, Spawner, Tool, ToolValue, Transport,
 };
 use foe_log::{
-    BlockedCode, Chunk, EpisodeStart, Event, EventData, ModelRoute, Outcome, RuntimeInfo, SandboxInfo, SandboxMode,
-    StopReason, Usage,
+    AssistantMessage, BlockedCode, Chunk, EpisodeStart, Event, EventData, ModelRoute, Outcome, RuntimeInfo,
+    SandboxInfo, SandboxMode, StopReason, ToolCall, ToolInnerCall, ToolResult, Usage,
 };
 use foe_program::document::resolve;
 use foe_program::workflow::Node;
@@ -120,6 +120,117 @@ fn only_blocked_or_exhausted_optional_model_children_contribute_empty() {
     assert!(empty_after_child(&required, &exhausted).is_none(), "strict propagation is the default");
     let tool: Node = serde_json::from_value(json!({ "tool": "probe", "empty": [] })).unwrap();
     assert!(empty_after_child(&tool, &exhausted).is_none());
+}
+
+fn edit_call(id: &str, path: &str, old_text: Value, new_text: Value) -> ToolCall {
+    ToolCall {
+        id: id.into(),
+        name: "edit".into(),
+        args: json!({ "path": path, "edits": [{ "old_text": old_text, "new_text": new_text }] }),
+    }
+}
+
+fn edit_result(call_id: &str, is_error: bool, synthetic: bool) -> ToolResult {
+    ToolResult {
+        step: 1,
+        call_id: call_id.into(),
+        name: "edit".into(),
+        value: json!({ "previous_version": "sha256:before", "version": "sha256:after" }),
+        rendered: String::new(),
+        is_error,
+        spill: None,
+        subject: None,
+        duration_ms: 0,
+        synthetic,
+    }
+}
+
+fn assistant(calls: Vec<ToolCall>) -> AssistantMessage {
+    AssistantMessage {
+        step: 1,
+        request_id: "rq_1".into(),
+        text: String::new(),
+        tool_calls: calls,
+        thinking: Vec::new(),
+        stop: StopReason::Tool,
+        usage: Usage::default(),
+        interrupted: false,
+    }
+}
+
+/// docs/workflow.md "Model nodes": a completed child contributes every
+/// successful direct and composing-tool edit through its rendered output.
+/// Failed edits do not claim that a workspace change occurred.
+#[test]
+fn a_model_node_rendering_carries_successful_child_edits() {
+    let dir = std::env::temp_dir().join(format!("foe-workflow-edit-evidence-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut writer = foe_log::append::Writer::create(&dir, None).unwrap();
+    writer
+        .append(EventData::EpisodeStart(EpisodeStart {
+            id: "ep_child".into(),
+            parent_id: Some("ep_parent".into()),
+            fork_origin: None,
+            team_id: None,
+            program: json!({}),
+            identity: "sha256:test".into(),
+            task: "implement".into(),
+            runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
+            sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        }))
+        .unwrap();
+    writer
+        .append(EventData::AssistantMessage(assistant(vec![
+            edit_call("ok", "paper.tex", json!("natures"), json!("traits")),
+            edit_call("bad", "paper.tex", json!("absent"), json!("ignored")),
+        ])))
+        .unwrap();
+    writer.append(EventData::ToolResult(edit_result("ok", false, false))).unwrap();
+    writer.append(EventData::ToolResult(edit_result("bad", true, false))).unwrap();
+    writer
+        .append(EventData::ToolInnerCall(ToolInnerCall {
+            outer_call_id: "python".into(),
+            call_id: "inner".into(),
+            index: 0,
+            name: "edit".into(),
+            args: edit_call("unused", "notes.txt", json!("before"), json!("after")).args,
+        }))
+        .unwrap();
+    writer.append(EventData::ToolResult(edit_result("inner", false, false))).unwrap();
+    writer.append(EventData::EpisodeEnd { outcome: Outcome::Completed { value: json!("implemented") } }).unwrap();
+    drop(writer);
+
+    let Ok((value, rendered)) = model_output(Outcome::Completed { value: json!("implemented") }, &dir, true) else {
+        panic!("the completed child log is valid")
+    };
+    assert_eq!(value, json!("implemented"));
+    assert!(rendered.contains("\"content\":\"natures\""), "{rendered}");
+    assert!(rendered.contains("\"path\":\"notes.txt\""), "{rendered}");
+    assert!(!rendered.contains("absent"), "a failed edit is excluded: {rendered}");
+}
+
+/// docs/workflow.md "Model nodes": edit evidence contains at most 64
+/// replacements and marks text beyond 512 characters as incomplete.
+#[test]
+fn edit_evidence_states_every_bound() {
+    let edits: Vec<Value> = (0..65)
+        .map(|index| {
+            let old = if index == 0 { "x".repeat(600) } else { format!("old-{index}") };
+            json!({ "old_text": old, "new_text": format!("new-{index}") })
+        })
+        .collect();
+    let call = ToolCall { id: "many".into(), name: "edit".into(), args: json!({ "path": "many", "edits": edits }) };
+    let events = vec![
+        Event { seq: 0, time: 0, data: EventData::AssistantMessage(assistant(vec![call])) },
+        Event { seq: 1, time: 0, data: EventData::ToolResult(edit_result("many", false, false)) },
+    ];
+    let evidence: Value = serde_json::from_str(&edit_evidence(&events).unwrap()).unwrap();
+    assert_eq!(evidence["complete"], false);
+    assert_eq!(evidence["omitted_replacements"], 1);
+    assert_eq!(evidence["replacements"].as_array().unwrap().len(), 64);
+    assert_eq!(evidence["replacements"][0]["old_text"]["characters"], 600);
+    assert_eq!(evidence["replacements"][0]["old_text"]["complete"], false);
 }
 
 struct Fixture {
