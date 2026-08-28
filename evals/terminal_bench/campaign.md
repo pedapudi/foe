@@ -4957,3 +4957,50 @@ Raw evidence remains under
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-audit-repair-gpt2-preservation-frozen-default-20260828T173143Z`
 and
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-resolve-risks-gpt2-default-20260828T180916Z`.
+
+### Revised-contract preservation and transfer
+
+The revised contract next reran `sanitize-git-repo`. The implementation changed
+only the three contaminated working-tree files. Independent assessment compared
+the edits with the baseline, selected `accept`, and preserved repository
+history. The unchanged task-owned grader awarded reward 1.0.
+
+The attempt used 23 model requests. One implementation request contained no
+provider-reported usage, so exact input, cached-input, output, and cost totals
+are unavailable. The runner recorded the incomplete measurement rather than
+estimating it. The score, configuration claim, and conformant Foe account
+remain valid. The campaign manifest has SHA-256 digest
+`d03e1842e05edfa963b63db64432fea729397e14ceec95d362445a02b25bf0ec`.
+
+The candidate then ran `path-tracing-reverse` as a cross-domain transfer case.
+The implementation reconstructed a standalone C renderer and reported minor
+floating-point differences. Independent assessment chose `repair`. Its
+exhaustive comparison found that 334,266 of 480,000 pixels differed. It traced
+the largest errors to an incorrect checker color and found widespread
+one-level differences from an incorrect output scale.
+
+The fresh repair child corrected the scene constants, output conversion, and
+remaining shadow-edge behavior. It also reproduced the reference program's
+error behavior in an unwritable directory. The final static executable matched
+the reference image, standard output, and standard error byte-for-byte on two
+invocations. It returned no unresolved risk. The unchanged task-owned grader
+awarded reward 1.0.
+
+The transfer attempt used 40 model requests, 1,532,522 input tokens, 863,232
+cached-input tokens, and 21,226 output tokens. Its estimated cost was
+$3.446973. The configuration claim was valid, the Foe account conformed, and
+no infrastructure failure occurred. The campaign manifest has SHA-256 digest
+`33e8d364be7930e5e6e26ab1c7e2319481ad4f23c4c6ed30685b5ebf2673a55f`.
+
+The revised contract has now passed one language-model repair activation, one
+repository preservation case, and one numerical-graphics repair transfer. In
+both repair cases, independent assessment found defects that the implementation
+had reported or failed to detect. A fresh coding child resolved the typed
+findings, returned no task-critical risk, and passed an unchanged external
+grader. This establishes one cross-domain transfer of the repair mechanism.
+Repeatability and the complete development gate remain unproven.
+
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-resolve-risks-sanitize-preservation-default-20260828T182748Z`
+and
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-resolve-risks-path-tracing-default-20260828T183831Z`.
