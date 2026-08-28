@@ -862,6 +862,46 @@ class CollectDiagnosticsTest(unittest.TestCase):
             },
         )
 
+    def test_metadata_names_verifier_governed_assessment_and_repair(self):
+        manifest = {
+            "dataset": "terminal-bench/example@1",
+            "label": "verifier-governed",
+            "model": "openai-codex/gpt-5.6-sol",
+            "reasoning_effort": "low",
+            "service_tier": "default",
+            "token_limits": "measurement_only",
+            "built_in_workflow": False,
+            "requested_workers": 1,
+            "concurrency": 1,
+            "diagnosis_model": None,
+            "diagnosis_reasoning_effort": None,
+            "diagnosis_model_calls": None,
+            "unresolved_diagnosis_reasoning_effort": None,
+            "unresolved_diagnosis_model_calls": None,
+            "escalation_reasoning_effort": "xhigh",
+            "escalation_model_calls": 60,
+            "separate_audit_and_repair": True,
+            "verifier_recovery_interventions": 3,
+            "completion_checker": {
+                "sha256": "1" * 64,
+            },
+        }
+        metadata = evaluation_metadata(manifest, Path("campaign.json"))
+        configuration = metadata["execution_configuration"]
+        self.assertNotIn("independent_audit", configuration)
+        self.assertEqual(
+            configuration["assessment_and_repair"],
+            {
+                "model": "openai-codex/gpt-5.6-sol",
+                "reasoning_effort": "xhigh",
+                "model_calls": 60,
+            },
+        )
+        self.assertEqual(
+            configuration["verifier_recovery"],
+            {"max_interventions": 3},
+        )
+
     def test_summary_keeps_a_built_in_workflow_separate_from_a_bare_episode(self):
         manifest = {
             "dataset": "terminal-bench/example@1",

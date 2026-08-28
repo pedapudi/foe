@@ -29,7 +29,10 @@ from source_adoption import (
     freeze_source_candidate,
     verify_source_candidate,
 )
+from foe_agent_support import SEPARATE_ASSESSMENT_CORRECTIONS
 from trajectory_diagnostics import diagnose_episode, verifier_feedback
+from workflow_candidate import KIND as VERIFIER_GOVERNED_WORKFLOW
+from workflow_candidate import INDEPENDENT_AUDIT_KIND as INDEPENDENT_AUDIT_WORKFLOW
 from workflow_candidate import require_matching_run as require_matching_candidate_run
 from workflow_candidate import validate as validate_workflow_candidate
 
@@ -1704,7 +1707,7 @@ def main(argv: list[str] | None = None) -> int:
                 json.loads(workflow_candidate_path.read_text(encoding="utf-8")),
                 identity,
             )
-            audit = require_matching_candidate_run(
+            workflow_application = require_matching_candidate_run(
                 workflow_candidate,
                 model=args.model,
                 reasoning_effort=args.reasoning_effort,
@@ -1719,8 +1722,16 @@ def main(argv: list[str] | None = None) -> int:
                     else "model-report"
                 ),
             )
-            args.escalation_reasoning_effort = audit["reasoning_effort"]
-            args.escalation_model_calls = audit["model_calls"]
+            args.escalation_reasoning_effort = workflow_application[
+                "reasoning_effort"
+            ]
+            args.escalation_model_calls = workflow_application["model_calls"]
+            if workflow_application["kind"] == VERIFIER_GOVERNED_WORKFLOW:
+                args.separate_audit_and_repair = True
+            elif workflow_application["kind"] != INDEPENDENT_AUDIT_WORKFLOW:
+                raise ValueError(
+                    "workflow candidate selected an unsupported application"
+                )
         except (OSError, ValueError, json.JSONDecodeError) as error:
             print(f"terminal-bench eval: {error}", file=sys.stderr)
             return 2
@@ -2011,6 +2022,12 @@ def main(argv: list[str] | None = None) -> int:
                 else None
             ),
             "separate_audit_and_repair": args.separate_audit_and_repair,
+            "verifier_recovery_interventions": (
+                SEPARATE_ASSESSMENT_CORRECTIONS
+                if args.separate_audit_and_repair
+                and completion_checker is not None
+                else None
+            ),
             "attempts": args.attempts,
             "requested_workers": args.workers,
             "parallel_required": args.require_parallel,

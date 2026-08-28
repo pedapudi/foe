@@ -48,6 +48,7 @@ from instruction_candidate import create as create_instruction_candidate
 from tool_candidate import create as create_tool_candidate
 from tool_candidate import executable_digest
 from workflow_candidate import create as create_workflow_candidate
+from workflow_candidate import create_verifier_governed as create_verifier_governed_workflow
 
 
 class SelfImprovementConfigTest(unittest.TestCase):
@@ -487,6 +488,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertIn("model capability", diagnosis["instructions"]["sufficiency"])
         self.assertIn("configure-workflow", diagnosis["instructions"]["sufficiency"])
         self.assertIn("independent_audit", returns["properties"])
+        self.assertIn("assessment_and_repair", returns["properties"])
         self.assertIn("instruction_revision", returns["properties"])
         self.assertIn("tool_definition", returns["properties"])
         self.assertNotIn("instruction_revision", returns["required"])
@@ -906,6 +908,43 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 )
         self.assertEqual(candidate["independent_audit"], supported[0])
 
+    def test_workflow_candidate_can_propose_verifier_governed_repair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text("{}\n", encoding="utf-8")
+            identity = {
+                "source_tree": "git-tree-sha1:" + "1" * 40,
+                "runtime_binary": "sha256:" + "2" * 64,
+            }
+            base = {
+                "model": "openai-codex/gpt-5.6-sol",
+                "reasoning_effort": "low",
+                "service_tier": "default",
+                "token_policy": "measurement_only",
+                "workflow_ownership": "foe-built-in",
+                "completion_governance": "model-report",
+            }
+            candidate = workflow_candidate_from_outcome(
+                {
+                    "branch": "configure-workflow",
+                    "assessment_and_repair": VERIFIER_GOVERNED_ASSESSMENT,
+                },
+                [],
+                identity,
+                evidence,
+                base,
+            )
+        self.assertEqual(
+            candidate["assessment_and_repair"],
+            VERIFIER_GOVERNED_ASSESSMENT,
+        )
+        self.assertNotIn(
+            "completion_governance", candidate["preserved_configuration"]
+        )
+        self.assertNotIn(
+            "workflow_ownership", candidate["preserved_configuration"]
+        )
+
     def test_instruction_candidate_binds_a_unique_revision_of_the_program_document(self):
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "evidence.json"
@@ -1201,6 +1240,10 @@ BASE_CONFIGURATION = {
 }
 EVIDENCE_SHA256 = "sha256:" + "3" * 64
 SUPPORTED_AUDIT = {"reasoning_effort": "high", "model_calls": 60}
+VERIFIER_GOVERNED_ASSESSMENT = {
+    "reasoning_effort": "xhigh",
+    "model_calls": 60,
+}
 COMPLETE_FAILURE_COUNTS = {
     "total_failed_tests": 1,
     "retained_failed_tests": 1,
@@ -1631,6 +1674,25 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertIn("automatic selection permits only", judged[5])
         self.assertIn("one supported repeated failure contrast", judged[6])
 
+        verifier_governed = self.judgments(
+            [
+                {
+                    "branch": "configure-workflow",
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
+                    "assessment_and_repair": VERIFIER_GOVERNED_ASSESSMENT,
+                },
+                {
+                    "branch": "configure-workflow",
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
+                    "assessment_and_repair": VERIFIER_GOVERNED_ASSESSMENT,
+                    "independent_audit": SUPPORTED_AUDIT,
+                },
+            ],
+            "workflow-configuration",
+        )
+        self.assertEqual(verifier_governed[0], "")
+        self.assertIn("select one workflow structure", verifier_governed[1])
+
         instructions = self.judgments(
             [
                 {
@@ -1841,6 +1903,37 @@ class LineageAdoptionTest(unittest.TestCase):
             audit = state["identity_document"]["workflow"]["nodes"]["audit-and-repair-task"]
             self.assertEqual(
                 audit["model"]["model"]["reasoning_effort"], SUPPORTED_AUDIT["reasoning_effort"]
+            )
+            self.check_ancestry(root, record)
+
+    def test_verifier_governed_workflow_adoption_verifies_end_to_end(self):
+        candidate = create_verifier_governed_workflow(
+            EVALUATED_FOE,
+            EVIDENCE_SHA256,
+            BASE_CONFIGURATION,
+            VERIFIER_GOVERNED_ASSESSMENT,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record = self.record(
+                root,
+                "workflow-configuration",
+                candidate,
+                {"workflow-candidate.json": json.dumps(candidate).encode()},
+                DIAGNOSIS_VALIDATOR_TOOL,
+                self.validator_sha256,
+            )
+            state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
+            program = state["identity_document"]
+            nodes = program["workflow"]["nodes"]
+            self.assertEqual(
+                tuple(sorted(nodes)),
+                ("assess-task", "implement-task", "repair-task"),
+            )
+            self.assertEqual(program["done_when"], {"verify": "check", "retries": 0})
+            self.assertEqual(
+                program["workflow"]["recovery"],
+                {"enabled": True, "max_interventions": 3},
             )
             self.check_ancestry(root, record)
 

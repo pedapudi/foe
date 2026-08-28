@@ -254,6 +254,28 @@ def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[s
         if stage in ("independent_audit", "unresolved_diagnosis"):
             stage_value["model"] = answer["model"]
         configuration[stage] = stage_value
+    separate_assessment = manifest.get("separate_audit_and_repair", False)
+    if not isinstance(separate_assessment, bool):
+        raise ValueError(
+            f"Terminal-Bench manifest {manifest_path} has invalid `separate_audit_and_repair`"
+        )
+    if separate_assessment:
+        stage = configuration.pop("independent_audit", None)
+        if stage is None:
+            raise ValueError(
+                f"Terminal-Bench manifest {manifest_path} separates an absent audit stage"
+            )
+        configuration["assessment_and_repair"] = stage
+        interventions = manifest.get("verifier_recovery_interventions")
+        if interventions is not None:
+            if type(interventions) is not int or interventions <= 0:
+                raise ValueError(
+                    f"Terminal-Bench manifest {manifest_path} has invalid "
+                    "`verifier_recovery_interventions`"
+                )
+            configuration["verifier_recovery"] = {
+                "max_interventions": interventions
+            }
     checker = manifest.get("completion_checker")
     if checker is not None:
         digest = checker.get("sha256") if isinstance(checker, dict) else None

@@ -272,19 +272,30 @@ proposal. The Terminal-Bench runner cannot apply either kind to an evaluation
 program. Automatic selection excludes them until an application path can bind
 the applied program to the proposal.
 
-A workflow candidate preserves the controls that determine its activation.
-The binding covers the primary model, reasoning effort, service tier, token
-policy, workflow owner, and completion-governance mode. The workflow owner
-distinguishes Foe's built-in workflow from a graph created by the evaluation
-runner. Completion governance distinguishes a declared verifier from a model
-completion report. The binding omits task identity so a candidate can be
-evaluated on transfer tasks under the same controls.
+A workflow candidate binds the primary model, reasoning effort, service tier,
+and token policy that determine its activation. It omits task identity so the
+same candidate can run on transfer tasks. The verifier-governed structure owns
+workflow construction and completion governance. It declares independent
+read-only assessment, conditional fresh repair, and a root completion verifier
+whose findings enter writable workflow recovery.
 
-The evidence that creates a workflow candidate is task-specific. A successful
-audit must reverse a baseline failure on the same activation task. The model,
-primary effort, service tier, token policy, workflow owner, and completion
-governance must remain equal. Success on a transfer task supplies later
-evidence and cannot establish the initial causal contrast.
+Applying that structure requires an evaluation-runner workflow and a declared
+completion checker. Assessment and repair share the candidate's bounded model
+setting. Three recovery interventions are part of the constructed program
+rather than a model-selected parameter.
+
+The candidate records `candidate_kind` as
+`verifier-governed-assessment-and-repair`. Its `assessment_and_repair` object
+contains `reasoning_effort` and `model_calls`. Its
+`preserved_configuration` object contains the primary model, primary reasoning
+effort, service tier, and token policy.
+
+The evidence that creates a workflow candidate is task-specific. A repeated
+failure contrast may support the verifier-governed structure as a falsifiable
+hypothesis. Unchanged external task evaluation determines whether the
+candidate improves quality and transfers. Retained schema-1 independent-audit
+candidates remain applicable. Creating one of those candidates requires one
+audit setting with at least two successful attempts on the activation task.
 
 The default OpenAI service tier is `default` for all three model nodes. A
 preview constructs and validates the complete program without creating the

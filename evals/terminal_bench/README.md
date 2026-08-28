@@ -792,8 +792,11 @@ when retained completion evidence isolates Foe-owned behavior. One example is
 false acceptance by the built-in terminal audit.
 Candidate generation does not require prior evidence of transfer or
 task-quality improvement. Unchanged external task evaluation decides
-promotion. The diagnosis chooses `configure-workflow` when an independent
-audit stage supplies a repeated quality gain. An explicit run can choose
+promotion. The diagnosis chooses `configure-workflow` when repeated failures
+support verifier-governed independent assessment, conditional repair, and
+writable recovery as one falsifiable workflow hypothesis. A retained
+schema-1 candidate can still select an independent-audit setting that supplied
+a repeated quality gain. An explicit run can choose
 `revise-instructions` or `define-tool` to retain a proposal for a future
 application mechanism. The diagnosis chooses `insufficient-evidence` when the
 contrast identifies only model capability or requires semantic task knowledge
@@ -848,12 +851,20 @@ If finalization ends after producing an artifact, the runner recovers the
 diagnosis from its child episode and applies the review-resolution check and
 external source checker to the candidate.
 
-When the diagnosis chooses `configure-workflow`, the runner validates the
-typed independent-audit setting. It writes `workflow-candidate.json` beside
-the retained result. The candidate digest binds the setting to the evaluated
-source tree, binary, evidence file, and preserved execution controls. The
-setting must appear in at least two successful attempts in the supplied
-evidence.
+When the diagnosis chooses `configure-workflow`, the runner validates one
+typed workflow structure. The verifier-governed structure shares one bounded model
+setting between read-only assessment and conditional fresh repair. A declared
+completion verifier governs both branches, and each finding enters writable
+workflow recovery. The runner writes `workflow-candidate.json` beside the
+retained result. Its digest binds the structure to the evaluated source tree,
+binary, evidence file, primary model, primary reasoning effort, service tier,
+and token policy.
+
+The verifier-governed structure can be proposed from a repeated failure contrast and is
+accepted for evaluation as a hypothesis. External task quality determines its
+promotion. The retained schema-1 independent-audit structure remains valid
+only when its setting appears in at least two successful attempts in the
+supplied evidence.
 
 When the diagnosis chooses `revise-instructions`, the runner validates the
 typed revision against the retained `program.json`: the named section key
@@ -876,12 +887,13 @@ safety backstops. Each model child ends as blocked after eight consecutive
 identical tool calls or assistant turns.
 
 The diagnosis preserves the primary model route, reasoning effort, task
-allowances, token policy, service tier, and task set. A workflow candidate
-binds the primary model, reasoning effort, service tier, token policy,
-workflow owner, and completion-governance mode. Task identity remains variable
-so the evaluation can measure transfer. Verified task quality is the promotion
-metric. Tokens, cost, cache use, latency, outcome accuracy, and conformance
-remain recorded diagnostics.
+allowances, token policy, service tier, and task set. A verifier-governed workflow
+candidate binds the primary model, reasoning effort, service tier, and token
+policy. It owns the evaluation-runner workflow and declared-verifier completion
+mode that it proposes. Task identity remains variable so the evaluation can
+measure transfer. Verified task quality is the promotion metric. Tokens, cost,
+cache use, latency, outcome accuracy, and conformance remain recorded
+diagnostics.
 
 `--cargo` must name the pinned toolchain binary. A Rustup proxy is refused
 because its result depends on process environment and may download a
@@ -928,8 +940,9 @@ The runner validates the artifact after Foe exits. A valid artifact remains
 accepted when the episode exhausted its reporting budget after producing the
 files. A source candidate binds the base Git tree and complete changed Git
 entries. Each entry retains object type, mode, blob identity, bytes, or a
-deletion. A workflow candidate binds the independent-audit setting and
-preserved controls.
+deletion. A workflow candidate binds its assessment and repair setting and
+preserved controls. A retained schema-1 candidate binds its independent-audit
+setting.
 
 The diagnosis node selects the candidate kind. A later terminal source
 assessment selects whether the resulting source is accepted. The controller
@@ -969,16 +982,21 @@ the program document that will run under it.
 Apply a retained workflow candidate to any permitted task set with:
 
 ```sh
-bazel run //evals/terminal_bench:foe-development -- \
+bazel run //evals/terminal_bench:foe-verifier-dna-insert -- \
   --workflow-candidate /absolute/path/to/workflow-candidate.json \
   --service-tier default \
   --confirm-spend
 ```
 
 The requested model, primary reasoning effort, service tier, and token policy
-must match the candidate. Workflow ownership and completion governance must
-also match. Task identity may vary. The current Foe source tree and binary
-must match the candidate's recorded identity.
+must match the candidate. A verifier-governed candidate also requires a
+declared completion checker and evaluation-runner workflow ownership. Task
+identity may vary. The current Foe source tree and binary must match the
+candidate's recorded identity.
+
+Each verifier-governed target selects one task and its qualified public
+completion checker. A retained schema-1 independent-audit candidate can use a
+multi-task target such as `//evals/terminal_bench:foe-development`.
 
 Run the source evaluation target from a separate immutable controller
 checkout. Name an absolute Bazel executable outside the candidate tree:

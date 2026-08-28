@@ -38,6 +38,8 @@ from source_candidate_assessment import (
 from tool_candidate import create as create_tool_candidate
 from tool_candidate import validate_definition as validate_tool_definition
 from workflow_candidate import create as create_workflow_candidate
+from workflow_candidate import create_verifier_governed as create_verifier_governed_workflow
+from workflow_candidate import validate_assessment_and_repair
 from workflow_candidate import validate_independent_audit
 
 
@@ -189,7 +191,10 @@ def failed_base_configuration(evidence: Path) -> dict[str, str]:
             or type(successes) is not int
             or successes >= attempts
             or not isinstance(configuration, dict)
-            or "independent_audit" in configuration
+            or any(
+                stage in configuration
+                for stage in ("independent_audit", "assessment_and_repair")
+            )
         ):
             continue
         candidate = evaluation_base_configuration(configuration)
@@ -220,7 +225,10 @@ def supported_independent_audits(
         if isinstance(summary, dict)
         and isinstance(summary.get("task"), str)
         and isinstance(summary.get("execution_configuration"), dict)
-        and "independent_audit" not in summary["execution_configuration"]
+        and not any(
+            stage in summary["execution_configuration"]
+            for stage in ("independent_audit", "assessment_and_repair")
+        )
         and evaluation_base_configuration(summary["execution_configuration"])
         == base_configuration
         and type(summary.get("attempts")) is int
@@ -492,6 +500,7 @@ def revised_program_document(document: Any, revision: dict[str, str]) -> Any:
 def development_program_document(
     base_configuration: dict[str, str],
     audit: dict[str, Any] | None = None,
+    verifier_governed_assessment_and_repair: dict[str, Any] | None = None,
     tool: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """The development program document an adoption produces.
@@ -499,9 +508,12 @@ def development_program_document(
     The run-supplied members — task instruction, credential path, working
     directory, and per-task allowances — are fixed to the declared values
     so the document is stable across launches. `audit` adds the
-    independent-audit stage, `tool` adds a tool_defs entry carrying the
+    independent-audit stage. A verifier-governed setting separates read-only
+    assessment from conditional repair and declares the representative
+    completion checker. `tool` adds a tool_defs entry carrying the
     executable's content hash.
     """
+    stage = verifier_governed_assessment_and_repair or audit
     document = build_program(
         DEVELOPMENT_TASK_INSTRUCTION,
         base_configuration["model"],
@@ -513,8 +525,16 @@ def development_program_document(
         seconds=DEVELOPMENT_TASK_SECONDS,
         reasoning_effort=base_configuration["reasoning_effort"],
         service_tier=base_configuration["service_tier"],
-        escalation_reasoning_effort=audit["reasoning_effort"] if audit else None,
-        escalation_model_calls=audit["model_calls"] if audit else 0,
+        completion_checker=(
+            "/checks/completion"
+            if verifier_governed_assessment_and_repair is not None
+            else None
+        ),
+        escalation_reasoning_effort=stage["reasoning_effort"] if stage else None,
+        escalation_model_calls=stage["model_calls"] if stage else 0,
+        separate_audit_and_repair=(
+            verifier_governed_assessment_and_repair is not None
+        ),
     )
     if tool is not None:
         document["tools"] = [*document["tools"], tool["name"]]
@@ -547,6 +567,17 @@ def adoption_state_document(
     if candidate_kind == "instruction-revision":
         return revised_program_document(program_document, candidate["revision"])
     if candidate_kind == "workflow-configuration":
+        if "assessment_and_repair" in candidate:
+            return development_program_document(
+                {
+                    **candidate["preserved_configuration"],
+                    "workflow_ownership": "evaluation-runner",
+                    "completion_governance": "model-report",
+                },
+                verifier_governed_assessment_and_repair=candidate[
+                    "assessment_and_repair"
+                ],
+            )
         return development_program_document(
             candidate["base_configuration"], audit=candidate["independent_audit"]
         )
@@ -736,9 +767,20 @@ def workflow_candidate_from_outcome(
     evidence: Path,
     base_configuration: dict[str, str],
 ) -> dict[str, Any]:
-    """Bind a workflow diagnosis to the sole supported audit setting."""
+    """Bind a workflow diagnosis to one supported workflow structure."""
     if not isinstance(outcome_value, dict) or outcome_value.get("branch") != "configure-workflow":
         raise ValueError("self-improvement outcome did not select configure-workflow")
+    if "assessment_and_repair" in outcome_value:
+        if "independent_audit" in outcome_value:
+            raise ValueError("workflow diagnosis must select one workflow structure")
+        return create_verifier_governed_workflow(
+            identity,
+            evidence_digest(evidence),
+            base_configuration,
+            validate_assessment_and_repair(
+                outcome_value.get("assessment_and_repair")
+            ),
+        )
     if len(supported_audits) != 1:
         raise ValueError(
             "workflow candidate evidence must contain exactly one repeated successful "
@@ -1200,6 +1242,8 @@ from instruction_candidate import create as create_instruction_candidate
 from tool_candidate import create as create_tool_candidate
 from tool_candidate import validate_definition
 from workflow_candidate import create as create_workflow_candidate
+from workflow_candidate import create_verifier_governed as create_verifier_governed_workflow
+from workflow_candidate import validate_assessment_and_repair
 from workflow_candidate import validate_independent_audit
 from source_candidate_assessment import validate_revised_diagnosis
 
@@ -1313,12 +1357,22 @@ try:
         selected_contrast = matches[0]
         require_failure_coverage(candidate, selected_contrast)
     if branch == "configure-workflow":
-        audit = validate_independent_audit(candidate.get("independent_audit"))
-        if audit not in supported_audits:
-            raise ValueError(
-                "workflow candidate independent_audit was not a repeated successful evidence setting"
+        if "assessment_and_repair" in candidate:
+            if "independent_audit" in candidate:
+                raise ValueError("workflow diagnosis must select one workflow structure")
+            stage = validate_assessment_and_repair(
+                candidate.get("assessment_and_repair")
             )
-        create_workflow_candidate(identity, evidence_sha256, base_configuration, audit)
+            create_verifier_governed_workflow(
+                identity, evidence_sha256, base_configuration, stage
+            )
+        else:
+            audit = validate_independent_audit(candidate.get("independent_audit"))
+            if audit not in supported_audits:
+                raise ValueError(
+                    "workflow candidate independent_audit was not a repeated successful evidence setting"
+                )
+            create_workflow_candidate(identity, evidence_sha256, base_configuration, audit)
     elif branch == "revise-instructions":
         documents = {{"program.json": json.loads(pathlib.Path(program).read_text(encoding="utf-8"))}}
         create_instruction_candidate(
@@ -1403,8 +1457,12 @@ def build_config(
         )
     elif requested_candidate_kind == "workflow-configuration":
         sufficiency = (
-            "Choose `configure-workflow` when a repeated quality gain is caused by exactly one independent "
-            "audit setting. Choose `insufficient-evidence` when the evidence does not isolate that setting. "
+            "Choose `configure-workflow` with `assessment_and_repair` when repeated failures show that "
+            "model-reported completion needs an independent read-only assessment, conditional fresh repair, "
+            "and a declared completion verifier whose findings reach a writable recovery episode. The setting "
+            "controls both assessment and repair. A retained independent-audit setting remains valid only when "
+            "the evidence contains exactly one repeated successful setting. Choose `insufficient-evidence` "
+            "when the evidence does not isolate either workflow structure. "
             "Do not choose `implement-source`; this run evaluates a configuration candidate."
         )
     elif requested_candidate_kind == "instruction-revision":
@@ -1424,8 +1482,10 @@ def build_config(
     else:
         sufficiency = (
             "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. "
-            "Choose `configure-workflow` when a repeated quality gain is caused by exactly one independent "
-            "audit setting; the runner binds that setting directly from the evidence. Instruction revisions and "
+            "Choose `configure-workflow` with `assessment_and_repair` when repeated failures require independent "
+            "assessment, conditional repair, and verifier findings routed to writable recovery. A retained "
+            "independent-audit setting requires a repeated quality gain caused by exactly one setting. "
+            "Instruction revisions and "
             "tool definitions require application support before automatic selection may choose them. Choose "
             "`insufficient-evidence` when the intervention requires semantic knowledge absent from the log or "
             "an evaluator change. A reasoning-effort difference without a workflow contrast establishes model "
@@ -1545,6 +1605,22 @@ def build_config(
                         "maxLength": 71,
                     },
                     "independent_audit": {
+                        "type": "object",
+                        "properties": {
+                            "reasoning_effort": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high", "xhigh"],
+                            },
+                            "model_calls": {
+                                "type": "integer",
+                                "minimum": 6,
+                                "maximum": 120,
+                            },
+                        },
+                        "required": ["reasoning_effort", "model_calls"],
+                        "additionalProperties": False,
+                    },
+                    "assessment_and_repair": {
                         "type": "object",
                         "properties": {
                             "reasoning_effort": {

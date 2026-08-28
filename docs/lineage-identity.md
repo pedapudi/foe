@@ -509,10 +509,12 @@ program's own. The runner resolves the program it launches through
 rehashes to the program identity the proposal episode's root log records.
 
 An adoption's state document contains the program document that runs under
-the adoption. A workflow candidate yields the development program document
-with the selected audit setting applied to its preserved base configuration.
-The trusted `build-bundle` and ancestry-checker binaries come from the
-invoking build. Candidate source cannot replace either executable.
+the adoption. A verifier-governed workflow candidate yields the development
+program with read-only assessment, conditional repair, a representative root
+verifier, and writable recovery. A retained schema-1 candidate yields the
+development program with its independent-audit setting. The trusted
+`build-bundle` and ancestry-checker binaries come from the invoking build.
+Candidate source cannot replace either executable.
 
 A source candidate has no descendant program document at proposal time. The
 self-improvement runner retains its accepted source manifest and proposal
