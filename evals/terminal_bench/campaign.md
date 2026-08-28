@@ -4410,3 +4410,53 @@ high-audit profile. `dna-insert` passed through the fresh xhigh single-node
 profile after repeatable ordinary-profile failures. A second attempt per task
 remains required to establish at least fourteen successes across sixteen
 attempts.
+
+### Rejected low-implementation and high-audit profile
+
+The frozen binary completed one additional ordinary-profile attempt for every
+confirmation task. Five of the eight attempts passed. The successful tasks
+were `configure-git-webserver`, `count-dataset-tokens`, `crack-7z-hash`,
+`log-summary-date-ranges`, and `caffe-cifar-10`. The failed tasks were
+`dna-insert`, `overfull-hbox`, and `build-pov-ray`.
+
+Together with the first attempt for each task, the frozen release earned
+thirteen successes across sixteen confirmation attempts. Every task succeeded
+at least once. The release did not satisfy the required fourteen successes,
+so the low-implementation and high-audit profile is rejected before
+calibration.
+
+The three failures expose one repeatability problem through distinct task
+contracts. The `dna-insert` audit again certified primer measurements from an
+incomplete sequence decomposition. The `overfull-hbox` artifact removed every
+overfull box but changed `natures` to `traits`, which was not an allowed
+directed substitution from `synonyms.txt`. The `build-pov-ray` artifact built
+the requested version and rendered the reference image, but its archive
+selection omitted `/app/povray-2.2/file_id.diz`. Each terminal audit certified
+a nearby interpretation rather than the exact final contract enforced by the
+unchanged task-owned grader.
+
+The second Caffe attempt recovered from a 1,200-second dataset-download
+timeout. It resumed the original download, trained for exactly 500 iterations,
+and measured 55.47 percent test accuracy against 55.67 percent training
+accuracy. The unchanged grader awarded reward 1.0.
+
+All eight attempts ran in four credential-isolated two-worker cohorts. The
+credentials remained unchanged, every account conformed, and no attempt had an
+infrastructure failure. This establishes safe concurrent execution for the
+selected tasks. A matched serial batch remains required to establish the
+one-third makespan reduction.
+
+The rejected-profile manifest has SHA-256 digest
+`103a60d2bc01c6128ba2a94f504ca816f37877961789e3332bfc13111c03ec4f`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/frozen-release-confirmation-second-attempts-default-20260828T081120Z`.
+
+The campaign then collected an identity-bound self-improvement corpus from
+the two closed-book `dna-insert` failures and the successful xhigh episode.
+The corpus contains one repeated failure contrast at
+`tests/test_outputs.py:100`, where both completed artifacts exceeded the
+five-degree primer melting-temperature difference. It binds source tree
+`ba0847225330c05832cfa907c2fbfd9e32c4c4a0` and portable binary
+`fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
+The 27,458-byte corpus has SHA-256 digest
+`fbd63cd4072c590cafb2baa47fcbfa5d5086c8d9c90e65c7737e090af9134c7d`.
