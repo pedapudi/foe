@@ -3981,3 +3981,39 @@ must use external verifier feedback during completion or introduce a genuinely
 independent deterministic construction. A declared-verifier development lane
 can test the first mechanism without changing the closed-book Terminal-Bench
 quality authority.
+
+The exact 11/12 aggregate candidate then ran one modified `dna-insert` attempt
+with the qualified public checker assigned to the terminal audit's
+`done_when.verify`. The source tree remained
+`git-tree-sha1:5f9fa88548a1964539b7d4eb22eecc57bb44faa3`. The portable binary
+remained
+`sha256:f17fa16aaf7670348e7caa82d4f5f1dee32ed6825ac78949f0ec4af2d87263af`.
+Every request used the standard service tier. Token limits were
+measurement-only, and Landlock was disabled inside the task container.
+
+The checker rejected three intermediate artifacts. Each finding identified a
+task-consistent boundary at which the paired melting temperatures differed by
+more than five degrees Celsius. The reported differences were 5.268284,
+5.787026, and 5.020077 degrees Celsius. The terminal audit repaired the final
+artifact after every finding. Its fourth ordinary checker call returned no
+finding, and the authoritative completion verification also accepted.
+
+The unchanged task-owned grader awarded score 1.0 without an exception. Foe
+completed after 61 model calls. The attempt used 780,564 input tokens, 494,592
+cached-input tokens, and 24,299 output tokens at an estimated cost of
+$1.827705. Its makespan was 683.548 seconds. The Foe account conformed with no
+violation, and the checker digest remained
+`34b6d43b3cc9eda9ef0111911751847c17ba26ee124cb6bc7a2d2e74c6f4e22b`.
+
+The campaign manifest has SHA-256 digest
+`8f2de52677cec819444214fdf1bccd12054d9945195c0ae73fd8c6b91a842b57`.
+Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/standard-aggregate-dna-insert-done-when-20260828T001456Z`.
+
+This result establishes the causal value of verifier-governed correction on
+the exact aggregate candidate. It does not repair the rejected closed-book
+second-audit candidate, and one attempt does not establish repeatability. The
+next self-improvement input should contrast the three rejected checker states
+with the final accepted state. That contrast supplies denser evidence than the
+task score alone and identifies trusted semantic feedback as the successful
+mechanism.
