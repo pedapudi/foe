@@ -4202,3 +4202,39 @@ The valid comparison manifest has SHA-256 digest
 `601f8c64bf914bc55f670cfc2f970eb5ef24c0d64d2cdf2ca13c2e7c825dac64`.
 Raw evidence remains under
 `/home/sunil/git/foe-reject-only-challenge-quality/target/terminal-bench-jobs/reject-only-challenge-dna-built-in-activation-20260828T025647Z`.
+
+### Ambiguity-preserving challenge activation
+
+A second candidate constrained challenges that relied on unstated resource
+bounds or disputed interpretations. Such a challenge became inconclusive and
+could not authorize a workspace change. The terminal repair had to preserve
+the incumbent procedure when the challenge was inconclusive. The candidate
+source commit was `4095c26c78ea3b6221a337a7462fc546be29049d`. Its source tree
+was `git-tree-sha1:8819c88419ddb0e734ff71d4b96a8c9693e4d8c9`. The portable
+binary was
+`sha256:6db13eb89d568bcdcf55be113d5d23619d07d454246ee83ceb706146b816696e`.
+
+The priority-tier activation completed two externally scored attempts before
+the campaign stopped. One passed and one failed. A third Foe episode completed
+and its task verifier wrote reward 1, but cancellation interrupted Harbor
+before it wrote the trial result. The retained cohort therefore contains two
+authoritative scores and one incomplete result.
+
+Every retained challenge report preserved the four-source PCR structure. The
+failed repair retained four primer pairs but misidentified two complete-primer
+annealing regions. A fixed tail split hid contiguous template matches. One
+region exceeded the 45-nucleotide limit, and one primer pair exceeded the
+five-degree melting-temperature difference. The terminal repair certified
+both claims from the same incorrect structural assumption.
+
+The two scored attempts used 33 and 41 model requests. They consumed 793,151
+input tokens, 327,680 cached-input tokens, and 64,002 output tokens. Their
+estimated cost was $3.272996. The candidate could score no better than 2/3
+after the first failure, which equaled the aggregate parent's retained 2/3.
+The campaign therefore stopped before spending on transfer and rejected the
+candidate.
+
+The comparison manifest has SHA-256 digest
+`1d5f362e40412dc93a3d94b1874a329b42b0f2b8a981268e73c9fff57b477be8`.
+Raw evidence remains under
+`/home/sunil/git/foe-reject-only-challenge-quality/target/terminal-bench-jobs/ambiguity-preserving-challenge-dna-activation-retry-20260828T035737Z`.
