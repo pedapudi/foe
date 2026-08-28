@@ -194,10 +194,6 @@ def failed_base_configuration(evidence: Path) -> dict[str, str]:
             or type(successes) is not int
             or successes >= attempts
             or not isinstance(configuration, dict)
-            or any(
-                stage in configuration
-                for stage in ("independent_audit", "assessment_and_repair")
-            )
         ):
             continue
         candidate = evaluation_base_configuration(configuration)
@@ -206,7 +202,7 @@ def failed_base_configuration(evidence: Path) -> dict[str, str]:
         candidates[json.dumps(candidate, sort_keys=True)] = candidate
     if len(candidates) != 1:
         raise ValueError(
-            "self-improvement evidence must identify one failed configuration without an independent audit"
+            "self-improvement evidence must identify one failed primary configuration"
         )
     values = next(iter(candidates.values()))
     if not all(isinstance(value, str) and value for value in values.values()):
@@ -239,9 +235,7 @@ def supported_independent_audits(
         and summary["verified_successes"] < summary["attempts"]
     }
     if not activation_tasks:
-        raise ValueError(
-            "self-improvement evidence has no task-specific baseline failure for the preserved controls"
-        )
+        return []
     supported: dict[str, dict[str, Any]] = {}
     for summary in summaries:
         if not isinstance(summary, dict):

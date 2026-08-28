@@ -596,7 +596,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 json.dumps({"evaluation_summary": summary}),
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(ValueError, "no task-specific baseline failure"):
+            self.assertEqual(
                 supported_independent_audits(
                     evidence,
                     {
@@ -605,7 +605,9 @@ class CollectDiagnosticsTest(unittest.TestCase):
                         "service_tier": "priority",
                         "token_policy": "measurement_only",
                     },
-                )
+                ),
+                [],
+            )
 
     def test_missing_verifier_output_cannot_enter_a_failure_contrast(self):
         def failed(episode: str) -> dict:

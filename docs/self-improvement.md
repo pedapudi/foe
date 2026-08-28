@@ -124,6 +124,14 @@ records the digest of the `--foe` runtime that executes the workflow. When
 This separation lets one Foe generation improve an earlier generation while
 keeping both roles content-addressed.
 
+The failed primary configuration fixes the implementation model, reasoning
+effort, service tier, token policy, workflow owner, and completion governance.
+An existing independent assessment or assessment-and-repair stage does not
+exclude a failure from this configuration. This permits a candidate to retain
+an assessment stage while adding verifier-governed writable recovery. A
+candidate that adds only an independent audit still requires a failed run
+without either assessment stage and one repeated successful audit setting.
+
 The runner copies the report into the retained run directory before creating
 the program. The source-candidate path in the resulting version 3 program
 contains five required model nodes and four conditional model nodes:
