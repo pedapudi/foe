@@ -129,6 +129,7 @@ def terminal_audit_value():
 
 def terminal_audit_value_with_falsification():
     value = terminal_audit_value()
+    value["changed_paths"] = ["/app/primers.fasta"]
     value["acceptance_evidence"][0]["falsification"] = (
         "The final audit recomputed 4.5 and challenged the boundary values 5 and 5.1."
     )
@@ -425,6 +426,7 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             report["acceptance_evidence"][0]["falsification"],
             "The final audit recomputed 4.5 and challenged the boundary values 5 and 5.1.",
         )
+        self.assertEqual(report["changed_paths"], ["primers.fasta"])
         self.assertEqual(
             validate_terminal_audit_report(report, "candidate report"), report
         )

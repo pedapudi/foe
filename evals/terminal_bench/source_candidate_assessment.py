@@ -125,6 +125,19 @@ def require_relative_path(value: Any, label: str) -> str:
     return value
 
 
+def stable_terminal_changed_path(value: Any, label: str) -> str:
+    """Return a workspace-relative path from a terminal audit report."""
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{label} is not a path")
+    path = Path(value)
+    if not path.is_absolute():
+        return require_relative_path(value, label)
+    parts = path.parts[2:]
+    if not parts or any(part in (".", "..") for part in parts):
+        raise ValueError(f"{label} is not below an absolute workspace root")
+    return require_relative_path("/".join(parts), label)
+
+
 def require_git_object(value: Any, label: str) -> dict[str, str]:
     object_value = require_exact_fields(
         value, {"object_type", "mode", "identity"}, label
@@ -1240,7 +1253,7 @@ def bounded_terminal_audit_report(trial: dict[str, Any]) -> dict[str, Any]:
     ):
         raise ValueError("assessment trial has unbounded changed paths")
     projected_paths = [
-        require_relative_path(path, f"terminal changed path {index}")
+        stable_terminal_changed_path(path, f"terminal changed path {index}")
         for index, path in enumerate(changed_paths)
     ]
     if len(projected_paths) != len(set(projected_paths)):
