@@ -476,6 +476,10 @@ smallest supported repair. Its completion contract requires an empty
 `unresolved_risks` array. The spending preview includes both conditional
 stages. Actual use excludes the repair stage when the assessment accepts. The
 unchanged task-owned verifier remains the quality authority in both branches.
+When a completion checker is declared, it governs the workflow root. A checker
+finding enters workflow recovery and amends a writable implementation or
+repair episode with that finding. The configuration permits three recovery
+interventions and reserves every episode that those interventions can start.
 
 The task registry uses at least 60 model calls and 1,800 seconds for every task.
 These values serve only as loop and stall backstops. Actual use determines

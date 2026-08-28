@@ -710,7 +710,7 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(program["budget"]["model_calls"], 110)
         self.assertEqual(program["budget"]["seconds"], 2700)
 
-    def test_separate_assessment_preserves_episode_level_verification(self):
+    def test_separate_assessment_routes_root_findings_to_writable_recovery(self):
         program = build_program(
             "repair it",
             "openai-codex/gpt-5.6-sol",
@@ -729,17 +729,17 @@ class ProgramTest(unittest.TestCase):
         nodes = program["workflow"]["nodes"]
         self.assertEqual(
             program["done_when"],
-            {"verify": "check", "retries": 12},
+            {"verify": "check", "retries": 0},
+        )
+        self.assertEqual(
+            program["workflow"]["recovery"],
+            {"enabled": True, "max_interventions": 3},
         )
         self.assertIn("check", nodes["assess-task"]["model"]["tools"])
-        self.assertEqual(
-            nodes["repair-task"]["model"]["done_when"]["verify"],
-            "check",
-        )
-        self.assertEqual(
-            nodes["repair-task"]["model"]["done_when"]["retries"],
-            12,
-        )
+        self.assertNotIn("verify", nodes["repair-task"]["model"]["done_when"])
+        for node in ("implement-task", "assess-task", "repair-task"):
+            self.assertEqual(nodes[node]["max_fires"], 4)
+        self.assertEqual(program["budget"]["max_episodes"], 13)
         self.assertEqual(
             nodes["repair-task"]["model"]["done_when"]["returns"]["properties"][
                 "unresolved_risks"
