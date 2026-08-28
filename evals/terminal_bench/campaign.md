@@ -4137,3 +4137,68 @@ evaluation unit suite also passed. The larger allowance addresses progressive
 source work that reached validation at the previous request boundary. It does
 not relax repository validation, independent review, or external quality
 acceptance.
+
+## Reject-only challenge activation
+
+The 478-line autonomous source candidate was reduced to a configuration-only
+quality hypothesis before external evaluation. The built-in coding workflow
+used a 60-request implementation child, a fresh 30-request reject-only
+challenger, and a 60-request terminal repair child. The challenger could read
+and execute probes but could not authorize completion. Its typed report carried
+one outcome and one successful result sequence for each task requirement. The
+terminal repair received the task, implementation claim, and challenge report.
+
+The first attempted comparison used the ordinary evaluation-runner target,
+which constructs a single coding episode. It therefore did not exercise the
+built-in candidate. That batch was stopped after one irrelevant scored attempt.
+The installation check also exposed a credential-dependent schema probe. The
+adapter now invokes `foe plan --schema`, which verifies the installed binary
+without resolving a model. A real Harbor installation check passed without a
+model request after that correction.
+
+The corrected controller required the exact three-node workflow, a 150-request
+root allowance, four lifetime episodes including the root, and three task-time
+allowances. The candidate source commit was
+`85e9e0a1d2a64adb783a8a9b5b307cd536b9bf6e`. Its source tree was
+`git-tree-sha1:feea9c39b0a0d238815c30f8b79575240de55f08`. The portable binary
+was
+`sha256:10446908c82bc4c1bca6ed1f867bbf760eefad6a1026f5cac46b47ec5760865c`.
+The three valid `dna-assembly` attempts used the standard service tier,
+measurement-only token allowances, one worker, and the unchanged task-owned
+grader.
+
+The candidate scored 2/3 with no infrastructure exception. This equals the
+exact aggregate parent's 2/3 result and does not qualify for promotion. The
+three attempts used 43, 52, and 37 model requests. Two attempts reported
+complete provider usage. They cost $2.382886 and $2.284695. Two provider
+responses in the 52-request attempt omitted usage, so the campaign does not
+claim a complete cohort cost or token total. Every Foe account conformed.
+
+The challenger found executable task defects in every attempt. It identified a
+melting-temperature mismatch in the failed attempt, a two-base assembly error
+in the first successful attempt, and three fragment-boundary defects in the
+second successful attempt. Both successful terminal repairs preserved four
+primer pairs and corrected the challenged behavior.
+
+The failed repair followed a different challenge. The visible task requests the
+minimum number of primer pairs and states no total primer-length limit. The
+challenger constructed a 122-nucleotide fusion primer that reduced the design
+from four pairs to three while reproducing the requested output. The repair
+then encoded all inserted bases in a 1,388-nucleotide nonannealing payload and
+reduced the design to one pair. The task-owned grader requires exactly four
+pairs and rejected the four-line FASTA before testing its sequence behavior.
+The visible task does not state the ordinary-primer-length or
+separate-template-amplification assumption that makes four pairs minimal.
+
+The result rejects the general three-stage candidate while retaining a narrower
+mechanism hypothesis. A challenge that depends on the absence of a customary
+physical or operational bound is interpretation-dependent. The repair should
+preserve the incumbent behavior for such a challenge and modify only behavior
+that executable evidence proves defective under the stable task contract. A
+revised activation candidate must improve the task-owned score before the
+campaign spends a transfer attempt.
+
+The valid comparison manifest has SHA-256 digest
+`601f8c64bf914bc55f670cfc2f970eb5ef24c0d64d2cdf2ca13c2e7c825dac64`.
+Raw evidence remains under
+`/home/sunil/git/foe-reject-only-challenge-quality/target/terminal-bench-jobs/reject-only-challenge-dna-built-in-activation-20260828T025647Z`.
