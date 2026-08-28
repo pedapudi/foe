@@ -5283,3 +5283,21 @@ causally activates writable recovery after verifier rejection. It establishes
 the control-flow mechanism and does not establish closed-book repeatability.
 The retained evidence is
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/verifier-recovery-dna-insert-priority-20260828T212536Z`.
+
+Two priority-tier preservation cases then used the same runtime and workflow
+configuration. `fix-git` received reward 1.0 through the assessment's
+`accept` branch. It used 21 model requests, 139,303 input tokens, 56,832
+cached-input tokens, and 6,845 output tokens. Its estimated cost was $0.489517.
+
+`large-scale-text-editing` also received reward 1.0 through `accept`. Its
+implementation already satisfied the task, so the historical repair path did
+not activate. The attempt used 13 model requests, 60,001 input tokens, 9,216
+cached-input tokens, and 7,228 output tokens. Its estimated cost was $0.351386.
+
+Both accounts conformed, retained their checker identities, and completed
+without recovery. Together with the DNA activation, these cases preserve two
+ordinary successes while adding a successful conditional repair followed by
+verifier-driven re-repair. The retained evidence directories are
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/verifier-recovery-preservation-fix-git-priority-20260828T214618Z`
+and
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/verifier-recovery-preservation-large-scale-edit-priority-20260828T215000Z`.
