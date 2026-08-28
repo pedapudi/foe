@@ -659,6 +659,11 @@ verified source patch may contain at most 64 KiB of unified diff. The complete
 canonical JSON must fit within 128 KiB. Each terminal audit report must fit
 within 12 KiB.
 
+Every `acceptance_evidence` sequence must resolve in the retained final-state
+validation window. A `learned` sequence may name an earlier observation because
+the report can describe a reproduced defect that the terminal audit later
+repaired. Learned claims remain untrusted inputs to the revised diagnosis.
+
 Pass the private assessment to a later source-generation run:
 
 ```sh

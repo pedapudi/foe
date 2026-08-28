@@ -1763,11 +1763,11 @@ def validate_failure_reference(value: Any, index: int) -> dict[str, Any]:
         for timeline in failure["final_validation_timelines"]
         for result in timeline["results"]
     }
-    cited_sequences = {
-        item["seq"] for item in (*report["acceptance_evidence"], *report["learned"])
-    }
+    cited_sequences = {item["seq"] for item in report["acceptance_evidence"]}
     if not cited_sequences.issubset(retained_sequences):
-        raise ValueError(f"{label} terminal report cites an omitted validation result")
+        raise ValueError(
+            f"{label} terminal acceptance evidence cites an omitted validation result"
+        )
     verifiers = failure["failed_verifiers"]
     if not isinstance(verifiers, list) or not verifiers:
         raise ValueError(f"{label} omits a failed verifier")

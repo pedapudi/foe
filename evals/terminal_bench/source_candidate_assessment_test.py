@@ -773,10 +773,19 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
         omitted_citation = copy.deepcopy(projection)
         omitted_citation["assessment_contrast"]["failed_attempts"][0][
             "terminal_audit_report"
-        ]["learned"][0]["seq"] = 999
+        ]["acceptance_evidence"][0]["seq"] = 999
         reidentify_projection(omitted_citation)
         with self.assertRaisesRegex(ValueError, "omitted validation result"):
             validate_candidate_assessment_diagnostics(omitted_citation)
+        historical_learning = copy.deepcopy(projection)
+        historical_learning["assessment_contrast"]["failed_attempts"][0][
+            "terminal_audit_report"
+        ]["learned"][0]["seq"] = 999
+        reidentify_projection(historical_learning)
+        self.assertEqual(
+            validate_candidate_assessment_diagnostics(historical_learning),
+            historical_learning,
+        )
 
         bounded = copy.deepcopy(assessment)
         timeline = bounded["evaluations"]["candidate"]["trials"][1][
