@@ -4619,3 +4619,28 @@ The closed-book manifest has SHA-256 digest
 `0f5b8f4b3479be24cec483d9ee1dd795cc5ff77c3378ecbcd6bb6b64043eacf3`.
 Raw evidence remains under the candidate source's
 `target/terminal-bench-jobs/` directory in the retained self-improvement run.
+
+## Bounded correction after independent reassessment
+
+The rejected autonomous source attempt ended with one actionable finding from
+the read-only assessment that followed its second source repair. No source
+writer followed that assessment. Correcting the finding therefore required
+direct implementation or a complete new self-improvement run.
+
+The source-improvement workflow now gives that reassessment the same typed
+choice as the preceding assessment. `accept` ends the source path only with no
+finding or unresolved risk. `repair-source` carries the complete reassessment
+to one final conditional repair child. A fresh read-only adoption assessment
+then judges the resulting source, and no writer follows that judgment.
+
+The additional repair and assessment reserve 100 and 20 model requests. They
+activate only when the preceding reassessment requests repair. The root
+backstop is 460 model requests and 16,200 seconds, equal to the complete
+declared path. Token use remains measurement-only.
+
+The Terminal-Bench unit suite passed. A no-spend plan validated the complete
+workflow against the frozen evidence identity and Foe binary. It selected
+GPT-5.6 Sol, the standard service tier, low diagnosis and implementation
+reasoning, and xhigh independent review. No model request was made. External
+task quality remains required before the workflow change earns improvement
+credit.

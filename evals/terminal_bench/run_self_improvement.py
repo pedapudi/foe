@@ -52,6 +52,8 @@ SOURCE_ACCEPTANCE_CALLS = (
     + FINAL_REVIEW_CALLS
     + FINALIZATION_CALLS
     + FINAL_REVIEW_CALLS
+    + FINALIZATION_CALLS
+    + FINAL_REVIEW_CALLS
 )
 SOURCE_REVIEW_REASONING_EFFORT = "xhigh"
 DIAGNOSIS_SECONDS = 1_800
@@ -1780,15 +1782,43 @@ def build_config(
         },
     }
     review_after_repair = {
-        **review,
+        **final_review,
         "name": "assess-repaired-foe-improvement",
         "instructions": {
-            "role": "Independently assess the source candidate after its second bounded repair. No source writer follows this assessment.",
+            "role": "Independently assess the source candidate after its second bounded repair and choose whether remaining findings need one final bounded repair.",
             "evidence": "Treat every prior diagnosis, implementation, review, and repair disposition as unverified. Inspect the complete final diff, owning source, tests, and affected specifications.",
             "architecture": review["instructions"]["architecture"],
             "independence": review["instructions"]["independence"],
             "build_metadata": review["instructions"]["build_metadata"],
-            "validation": "Run the candidate check first. Return one concise finding for every remaining semantic or mechanical defect. Return empty findings and unresolved risks only when the final source mechanism supports the claimed task-visible behavior without relying on either repair child's assertions.",
+            "validation": "Run the candidate check first. Choose `repair-source` and return one concise finding for every remaining semantic or mechanical defect. Choose `accept` with empty findings and unresolved risks only when the source mechanism supports the claimed task-visible behavior without relying on either repair child's assertions.",
+        },
+        "budget": {
+            "model_calls": FINAL_REVIEW_CALLS,
+            "seconds": FINAL_REVIEW_SECONDS,
+            "loop_threshold": LOOP_THRESHOLD,
+        },
+    }
+    repair_remaining_findings = {
+        **repair_after_final_review,
+        "name": "repair-remaining-source-findings",
+        "instructions": {
+            "role": "Repair every finding from the independent reassessment under the candidate checker's authority.",
+            "evidence": "Treat the current source, complete diff, and independent reassessment as the candidate state. Inspect the owning source, tests, and specifications before editing.",
+            "correction": "Run the candidate check first. Copy every reassessment finding exactly into the return. Mark it fixed only after source, regression tests, and specifications establish the requested behavior. Mark unsupported findings unresolved. Run the candidate check after the final edit. The controller rejects missing, duplicated, unexpected, or unresolved findings.",
+            "independence": review["instructions"]["independence"],
+            "build_metadata": "Reject and revert changes to Cargo, Bazel, module, toolchain, package, or build-script metadata.",
+        },
+    }
+    adoption_assessment = {
+        **review,
+        "name": "assess-source-candidate-for-adoption",
+        "instructions": {
+            "role": "Independently assess the source candidate after the final bounded repair. No source writer follows this assessment.",
+            "evidence": "Treat every prior diagnosis, implementation, review, and repair disposition as unverified. Inspect the complete final diff, owning source, tests, and affected specifications.",
+            "architecture": review["instructions"]["architecture"],
+            "independence": review["instructions"]["independence"],
+            "build_metadata": review["instructions"]["build_metadata"],
+            "validation": "Run the candidate check first. Return one concise finding for every remaining semantic or mechanical defect. Return empty findings and unresolved risks only when the final source mechanism supports the claimed task-visible behavior without relying on any repair child's assertions.",
         },
         "budget": {
             "model_calls": FINAL_REVIEW_CALLS,
@@ -1923,6 +1953,37 @@ def build_config(
                         "task",
                         "diagnose-runtime",
                         "repair-after-final-source-assessment",
+                    ],
+                    "empty": {
+                        "summary": "The independent source reassessment spent its allowance before returning findings.",
+                        "branch": "repair-source",
+                        "findings": [
+                            "The independent source reassessment did not complete."
+                        ],
+                        "validation": [],
+                        "unresolved_risks": [
+                            "The repaired candidate lacks an independent semantic disposition."
+                        ],
+                    },
+                    "branches": {
+                        "accept": [],
+                        "repair-source": ["repair-remaining-source-findings"],
+                    },
+                },
+                "repair-remaining-source-findings": {
+                    "model": repair_remaining_findings,
+                    "follows": [
+                        "task",
+                        "diagnose-runtime",
+                        "assess-repaired-runtime-improvement",
+                    ],
+                },
+                "assess-source-candidate-for-adoption": {
+                    "model": adoption_assessment,
+                    "follows": [
+                        "task",
+                        "diagnose-runtime",
+                        "repair-remaining-source-findings",
                     ],
                     "terminal": True,
                 },
@@ -2588,6 +2649,12 @@ def main(argv: list[str] | None = None) -> int:
         second_final_review_value = workflow_node_value(
             episode, "assess-repaired-runtime-improvement"
         )
+        finalization_after_reassessment_value = workflow_node_value(
+            episode, "repair-remaining-source-findings"
+        )
+        adoption_assessment_value = workflow_node_value(
+            episode, "assess-source-candidate-for-adoption"
+        )
         resolution_findings = [
             *source_review_resolution_findings(review_value, finalization_value),
             *source_review_branch_findings(first_final_review_value),
@@ -2602,8 +2669,25 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             resolution_findings.extend(
-                final_source_review_findings(second_final_review_value)
+                source_review_branch_findings(second_final_review_value)
             )
+            if (
+                isinstance(second_final_review_value, dict)
+                and second_final_review_value.get("branch") == "repair-source"
+            ):
+                resolution_findings.extend(
+                    source_review_resolution_findings(
+                        second_final_review_value,
+                        finalization_after_reassessment_value,
+                    )
+                )
+                resolution_findings.extend(
+                    final_source_review_findings(adoption_assessment_value)
+                )
+            else:
+                resolution_findings.extend(
+                    final_source_review_findings(second_final_review_value)
+                )
         else:
             resolution_findings.extend(
                 final_source_review_findings(first_final_review_value)
@@ -2613,10 +2697,13 @@ def main(argv: list[str] | None = None) -> int:
             "finalization": finalization_value,
             "first_final_review": first_final_review_value,
             "second_finalization": second_finalization_value,
+            "second_final_review": second_final_review_value,
+            "finalization_after_reassessment": finalization_after_reassessment_value,
+            "adoption_assessment": adoption_assessment_value,
             "final_review": (
-                second_final_review_value
-                if second_final_review_value is not None
-                else first_final_review_value
+                adoption_assessment_value
+                or second_final_review_value
+                or first_final_review_value
             ),
             "findings": resolution_findings,
         }

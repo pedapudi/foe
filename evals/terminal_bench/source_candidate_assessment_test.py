@@ -979,11 +979,13 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
             [
                 "assess-finalized-runtime-improvement",
                 "assess-repaired-runtime-improvement",
+                "assess-source-candidate-for-adoption",
                 "collect-trajectory-diagnostics",
                 "diagnose-runtime",
                 "finalize-runtime-improvement",
                 "implement-runtime-improvement",
                 "repair-after-final-source-assessment",
+                "repair-remaining-source-findings",
                 "review-runtime-improvement",
             ],
         )

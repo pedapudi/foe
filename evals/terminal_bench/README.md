@@ -797,14 +797,18 @@ source with `xhigh` reasoning and writes only to validation-output directories.
 An empty finding and risk set chooses `accept` and ends the workflow. A finding
 chooses `repair-source` and carries the assessment to one fresh repair child.
 That child has 100 reserved requests, copies and resolves every finding, and
-owns completion through the candidate checker. A second read-only assessment
-then makes the terminal decision. A missing typed return or exhausted first
-assessment contributes a repair finding rather than ending the source path.
-The two assessments each reserve 20 requests and 1,200 seconds as loop
-backstops. The optional repair reserves 100 requests and 3,600 seconds. This
-bounded feedback path prevents either source-repair child from certifying its
-own final edits. The root episode allowance is derived from the declared
-model-node count, including the root, so every activated stage can start.
+owns completion through the candidate checker.
+
+A read-only reassessment follows that repair. It may accept the candidate or
+carry remaining findings to one final 100-request repair child. A final
+read-only adoption assessment follows the final bounded repair. A missing
+typed return or exhausted assessment contributes a repair finding while a
+writer remains. Each assessment reserves 20 requests and 1,200 seconds as a
+loop backstop. Each conditional repair reserves 100 requests and 3,600
+seconds. This bounded feedback path prevents a source-repair child from
+certifying its own final edits. The root episode allowance is derived from the
+declared model-node count, including the root, so every activated stage can
+start.
 If finalization ends after producing an artifact, the runner recovers the
 diagnosis from its child episode and applies the review-resolution check and
 external source checker to the candidate.

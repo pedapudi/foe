@@ -289,6 +289,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         final_review = nodes["assess-finalized-runtime-improvement"]["model"]
         second_finalization = nodes["repair-after-final-source-assessment"]["model"]
         second_final_review = nodes["assess-repaired-runtime-improvement"]["model"]
+        finalization_after_reassessment = nodes["repair-remaining-source-findings"]["model"]
+        adoption_assessment = nodes["assess-source-candidate-for-adoption"]["model"]
         self.assertEqual(
             nodes["implement-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime"],
@@ -345,7 +347,23 @@ class SelfImprovementConfigTest(unittest.TestCase):
             nodes["assess-repaired-runtime-improvement"]["follows"],
             ["task", "diagnose-runtime", "repair-after-final-source-assessment"],
         )
-        self.assertTrue(nodes["assess-repaired-runtime-improvement"]["terminal"])
+        self.assertNotIn("terminal", nodes["assess-repaired-runtime-improvement"])
+        self.assertEqual(
+            nodes["assess-repaired-runtime-improvement"]["branches"],
+            {
+                "accept": [],
+                "repair-source": ["repair-remaining-source-findings"],
+            },
+        )
+        self.assertEqual(
+            nodes["repair-remaining-source-findings"]["follows"],
+            ["task", "diagnose-runtime", "assess-repaired-runtime-improvement"],
+        )
+        self.assertEqual(
+            nodes["assess-source-candidate-for-adoption"]["follows"],
+            ["task", "diagnose-runtime", "repair-remaining-source-findings"],
+        )
+        self.assertTrue(nodes["assess-source-candidate-for-adoption"]["terminal"])
         self.assertIn("unresolved_risks", nodes["review-runtime-improvement"]["empty"])
         self.assertIn("findings", nodes["review-runtime-improvement"]["empty"])
         self.assertEqual(len(nodes["review-runtime-improvement"]["empty"]["findings"]), 1)
@@ -366,7 +384,12 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn("edit", review["tools"])
         self.assertEqual(finalization["tools"][:4], ["read", "grep", "edit", "bash"])
         self.assertEqual(second_finalization["tools"][:4], ["read", "grep", "edit", "bash"])
+        self.assertEqual(
+            finalization_after_reassessment["tools"][:4],
+            ["read", "grep", "edit", "bash"],
+        )
         self.assertNotIn("edit", second_final_review["tools"])
+        self.assertNotIn("edit", adoption_assessment["tools"])
         self.assertIn("build-script metadata", implementation["instructions"]["build_metadata"])
         self.assertIn("build-script metadata", review["instructions"]["build_metadata"])
         self.assertEqual(diagnosis["tools"], ["block", DIAGNOSIS_VALIDATOR_TOOL])
@@ -485,8 +508,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(implementation["grants"]["execute"], ["/opt/toolchain"])
         self.assertEqual(config["task"], "Raise verified completion.")
         self.assertEqual(config["budget"]["loop_threshold"], 8)
-        self.assertEqual(config["budget"]["model_calls"], 340)
-        self.assertEqual(config["budget"]["max_episodes"], 8)
+        self.assertEqual(config["budget"]["model_calls"], 460)
+        self.assertEqual(config["budget"]["max_episodes"], 10)
         self.assertEqual(
             config["budget"]["max_episodes"],
             1
@@ -499,7 +522,11 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(review["budget"]["model_calls"], 20)
         self.assertEqual(finalization["budget"]["model_calls"], 100)
         self.assertEqual(second_finalization["budget"]["model_calls"], 100)
+        self.assertEqual(
+            finalization_after_reassessment["budget"]["model_calls"], 100
+        )
         self.assertEqual(final_review["budget"]["model_calls"], 20)
+        self.assertEqual(adoption_assessment["budget"]["model_calls"], 20)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
         self.assertEqual(
             review["grants"]["write"],

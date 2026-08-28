@@ -118,7 +118,7 @@ disjoint.
 
 The runner copies the report into the retained run directory before creating
 the program. The source-candidate path in the resulting version 3 program
-contains five required model nodes and two conditional model nodes:
+contains five required model nodes and four conditional model nodes:
 
 1. A diagnosis node receives only the task and bounded trajectory report. In
    automatic mode, it chooses a source or workflow-configuration candidate.
@@ -139,8 +139,13 @@ contains five required model nodes and two conditional model nodes:
    `repair-source` and carries the assessment to one conditional repair node.
 6. The conditional repair node has 100 reserved requests and resolves every
    final-assessment finding under the same checker.
-7. A conditional read-only assessment inspects the repaired source. No source
-   writer follows this assessment.
+7. A conditional read-only reassessment inspects the repaired source. It
+   accepts the candidate only with no finding or unresolved risk. A finding
+   carries the reassessment to one final conditional repair node.
+8. The final conditional repair node has 100 reserved requests. It resolves
+   every reassessment finding under the same checker.
+9. A conditional adoption assessment inspects the source after the final
+   bounded repair. No source writer follows this assessment.
 
 The diagnosis verifier enforces a requested candidate kind before an
 implementation episode can start. It accepts an insufficient-evidence result
