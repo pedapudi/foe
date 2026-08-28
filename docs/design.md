@@ -715,62 +715,70 @@ the evidence that would justify it.
 
 A task given with `--config` replaces the document's own `task`. A task given
 without `--config` uses a built-in coding workflow. An implementation episode
-changes the current directory. A fresh audit episode then checks the task and
-implementation claim, repairs defects, and produces the outcome.
+changes the current directory. A fresh assessment episode independently checks
+the task and implementation claim. It either accepts the artifacts or activates
+a fresh repair episode with its typed findings.
 
 The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
 fills its task, model, current-directory grants, executable inventory, sandbox
 mode, credential path, and optional verifier before resolving it as an ordinary
 program document.
 
-Both episodes have `read`, `grep`, `edit`, and `bash`. Both may
-read and write the current directory. Each episode has a 60-call backstop.
-The root holds their additive 120-call allowance.
+The implementation and repair episodes have `read`, `grep`, `edit`, and
+`bash`. The assessment episode has `read`, `grep`, and `bash`. It has no edit
+tool. All three episodes may read and write the current directory because
+builds and checks can create outputs. Each episode has a 60-call backstop. The
+root holds their additive 180-call allowance. A run without a verifier has a
+four-episode lifetime cap, including the root.
 
 `--verify PATH` names an executable verifier for the built-in workflow.
 The path is canonicalized and becomes a `tool_defs` entry named `check`
-with execute authority on that file. Both episodes may call `check` while
-working, but only the terminal audit episode declares
-`done_when: {"verify": "check"}`. The verifier runs in the working directory,
-receives the audit's completion value as JSON on standard input, and prints
-one finding per line; exit 0 with empty output is acceptance. Findings return
-to the audit episode for repair until its retries are spent. The audit always
-runs, including when implementation-side checks or claims indicate success,
-and only its accepted terminal verification can complete the workflow.
-Without `--verify`, the independent audit still always runs and completes
-under its typed return contract.
+with execute authority on that file. All three episodes may call `check`
+while working. The root declares
+`done_when: {"verify": "check", "retries": 12}`.
+The verifier therefore governs both an accepted assessment and a completed
+repair. It runs in the working directory and receives the workflow completion
+value as JSON on standard input. It prints one finding per line; exit 0 with
+empty output is acceptance. Findings re-fire the nearest model episode. An
+assessment can respond by activating repair, and a repair can correct its
+artifacts. Without `--verify`, the assessment's typed branch governs
+completion. With `--verify`, both corrective nodes may fire thirteen times.
+The root lifetime cap grows to sixteen episodes so all twelve retries can run.
 
 `--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
 workflow. The default is `best-effort`. A program document declares
 its own `sandbox.mode`, so `--sandbox` cannot accompany `--config`.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
-interpreters, and repository tools. Both episodes receive the recorded result
-and its limited scope. The result does not claim that unexamined paths lack an
-executable.
+interpreters, and repository tools. All three episodes receive the recorded
+result and its limited scope. The result does not claim that unexamined paths
+lack an executable.
 
 The implementation returns a typed handoff with its summary, changed paths,
-validation observations, and unresolved risks. The audit receives that value
-and the original task in a fresh context. The shared directory carries the
-artifacts themselves.
+validation observations, and unresolved risks. The assessment receives that
+value and the original task in a fresh context. A repair receives both prior
+values and the original task. The shared directory carries the artifacts.
 
-Both completion schemas require one to eight `learned` observations. Each
+All three completion schemas require one to eight `learned` observations. Each
 observation is a one-sentence claim and the sequence of a successful tool
 result in that episode's log. The runtime checks the citation and preserves
-the completed value as the typed handoff. The audit receives the
+the completed value as the typed handoff. The assessment receives the
 implementation observations and independently reproduces or challenges the
-claims that bear on completion. [config.md](config.md#done_when) specifies
-the contract for any program.
+claims that bear on completion. Its value also contains findings and an
+`accept` or `repair` branch. A repair must return no unresolved risk.
+[config.md](config.md#done_when) specifies the contract for any program.
 
 The model is the one named by `--model`, or the default model when `--model`
 is absent. The default model is the `model` block in
 `~/.config/foe/default-model.json`, which `foe login` writes. When that block
-omits reasoning effort, GPT-5.6 Sol uses low effort for implementation and high
-effort for audit. An explicit reasoning effort applies to both episodes.
+omits reasoning effort, GPT-5.6 Sol uses low effort for implementation. Its
+assessment and repair episodes use xhigh effort. An explicit reasoning effort
+applies to implementation. The two later Sol stages retain xhigh effort.
+Other models carry the root model options into every stage.
 
 `--service-tier TIER` sets the model request's `service_tier` field to
-`default` or `priority` for both episodes. When the option is absent, a value
-from the default model file remains in effect. Otherwise the provider applies
+`default` or `priority` for all three episodes. When the option is absent, the
+default model file's value remains in effect. Otherwise the provider applies
 its own default.
 
 `--key-file` names the provider credential file explicitly. It supplies an API

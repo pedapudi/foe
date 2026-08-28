@@ -421,7 +421,7 @@ continues. The runtime does not judge whether the result supports the claim.
 The configured verifier, when present, runs only after every citation passes
 these structural checks. An optional `learned` member remains an exported
 observation that the runtime does not require for completion. The built-in
-coding workflow requires one to eight observations from both episodes.
+coding workflow requires one to eight observations from every model episode.
 
 Without `returns`, a non-error ordinary call to the declared verifier asks
 the runtime to verify the assistant text after the turn settles. Acceptance

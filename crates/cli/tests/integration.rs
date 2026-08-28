@@ -601,9 +601,9 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
 
 /// The built-in coding workflow's shape, as `foe "task" --verify PATH`
 /// composes it when `verifier` is set and as the bare form composes it
-/// otherwise: an implementation model node feeding a terminal audit model
-/// node. With a verifier, both episodes can call it and the terminal audit
-/// declares it as `done_when.verify`; no implementation result skips audit.
+/// otherwise: implementation feeds an assessment choice, and its repair
+/// branch feeds a fresh coding node. A verifier governs both branches at the
+/// root. Every episode may call it while working.
 /// The wiring itself is pinned by the unit tests over `builtin_program_document`;
 /// the bare form cannot run under a scripted transport, because the exec
 /// provider needs a `model` option no flag sets, so these runs drive the
@@ -616,27 +616,61 @@ fn coding_workflow(dir: &Path, verifier: Option<&Path>) -> Value {
         })
     };
     let mut implement = node("implement-task", json!(["read"]));
-    let mut audit = node("audit-and-repair-task", json!(["read"]));
+    let completion = json!({ "returns": {
+        "type": "object",
+        "properties": { "summary": { "type": "string", "minLength": 1 } },
+        "required": ["summary"],
+        "additionalProperties": false
+    } });
+    let mut assessment = node("assess-task", json!(["read"]));
+    assessment["done_when"] = completion.clone();
+    let mut repair = node("repair-task", json!(["read"]));
+    repair["done_when"] = completion;
     let mut value = config(dir, |c| {
         c["grants"]["write"] = json!([dir]);
-        c["budget"] = json!({ "model_calls": 8, "max_episodes": 3, "max_concurrent": 1 });
+        c["budget"] = json!({ "model_calls": 12, "max_episodes": 4, "max_concurrent": 1 });
     });
     if let Some(script) = verifier {
         let def = json!({ "check": { "exec": script, "description": "Prints one finding per line; silence is acceptance." } });
         implement["tools"] = json!(["read", "check"]);
         implement["tool_defs"] = def.clone();
-        audit["tools"] = json!(["read", "check"]);
-        audit["tool_defs"] = def.clone();
-        audit["done_when"] = json!({ "verify": "check" });
+        assessment["tools"] = json!(["read", "check"]);
+        assessment["tool_defs"] = def.clone();
+        repair["tools"] = json!(["read", "check"]);
+        repair["tool_defs"] = def.clone();
+        value["budget"]["max_episodes"] = json!(16);
         value["tools"] = json!(["read", "check"]);
         value["tool_defs"] = def;
+        value["done_when"] = json!({ "verify": "check", "retries": 12 });
     }
-    let audit_node = json!({ "model": audit, "follows": ["task", "implement-task"], "terminal": true });
     value["workflow"] = json!({
-        "nodes": { "implement-task": { "model": implement, "follows": ["task"] }, "audit-and-repair-task": audit_node },
+        "nodes": {
+            "implement-task": { "model": implement, "follows": ["task"] },
+            "assess-task": {
+                "model": assessment,
+                "follows": ["task", "implement-task"],
+                "branches": { "accept": [], "repair": ["repair-task"] }
+            },
+            "repair-task": {
+                "model": repair,
+                "follows": ["task", "implement-task", "assess-task"],
+                "terminal": true
+            }
+        },
         "recovery": { "enabled": false }
     });
+    if verifier.is_some() {
+        value["workflow"]["nodes"]["assess-task"]["max_fires"] = json!(13);
+        value["workflow"]["nodes"]["repair-task"]["max_fires"] = json!(13);
+    }
     value
+}
+
+fn workflow_return(value: Value) -> Vec<Value> {
+    let mut chunks = vec![text("returning the assessed result")];
+    chunks.extend(call("tc_return", "return", &json!({ "value": value }).to_string()));
+    chunks.push(done("tool"));
+    chunks
 }
 
 fn child_events(dir: &Path, child_id: &str) -> Vec<Value> {
@@ -717,30 +751,29 @@ fn a_workflow_child_can_release_a_task_lifetime_session() {
     assert_eq!(child.last().unwrap()["type"], "episode/end");
 }
 
-/// docs/design.md "The command line": an accepted implementation cannot
-/// skip the independent audit. The audit fires, its authoritative verifier
-/// evidence is retained in its child log, and its checked value completes.
+/// docs/design.md "The command line": an accepted assessment reaches the
+/// root verifier. Its evidence remains in the root account, and repair does
+/// not fire.
 #[test]
-fn accepted_verification_belongs_to_the_terminal_audit() {
-    let dir = scratch("verify-audit");
+fn accepted_assessment_is_verified_at_the_workflow_root() {
+    let dir = scratch("verify-assessment");
     let script = executable(&dir, "check", "#!/bin/sh\nexit 0\n");
     let config = coding_workflow(&dir, Some(&script));
     let implement = vec![text("implemented the change"), done("end")];
-    let audit = vec![text("independently audited"), done("end")];
-    let (events, code) = host_run(&dir, &config, vec![implement, audit], |_, _| Value::Null);
+    let assessment = workflow_return(json!({ "branch": "accept", "summary": "independently assessed" }));
+    let (events, code) = host_run(&dir, &config, vec![implement, assessment], |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(
         events.last().unwrap()["data"]["outcome"],
-        json!({ "kind": "completed", "value": "independently audited" })
+        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "independently assessed" } })
     );
     assert_eq!(
         node_starts(&events),
-        [("implement-task".into(), 1), ("audit-and-repair-task".into(), 1)],
-        "verification never bypasses the audit"
+        [("implement-task".into(), 1), ("assess-task".into(), 1)],
+        "the accepted branch ends before repair"
     );
-    let starts: Vec<_> = events.iter().filter(|e| e["type"] == "workflow/node-start").collect();
-    let child = child_events(&dir, starts[1]["data"]["child_id"].as_str().unwrap());
-    let evidence = child.iter().find(|e| e["type"] == "verification/result").expect("audit verification is logged");
+    let evidence =
+        events.iter().find(|event| event["type"] == "verification/result").expect("root verification is logged");
     assert_eq!(evidence["data"]["status"], "accepted");
     assert_eq!(evidence["data"]["tool"], "check");
     assert_eq!(evidence["data"]["findings"], json!([]));
@@ -752,19 +785,77 @@ fn accepted_verification_belongs_to_the_terminal_audit() {
     assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2);
 }
 
-/// The same run without a verifier audits: both model nodes fire and the
-/// audit's value completes the workflow.
+/// The same accepted branch completes from the assessment's typed value when
+/// no verifier is configured.
 #[test]
-fn without_a_verifier_the_audit_runs() {
+fn without_a_verifier_the_assessment_runs() {
     let dir = scratch("verify-absent");
     let config = coding_workflow(&dir, None);
     let implement = vec![text("implemented"), done("end")];
-    let audit = vec![text("audited"), done("end")];
-    let (events, code) = host_run(&dir, &config, vec![implement, audit], |_, _| Value::Null);
+    let assessment = workflow_return(json!({ "branch": "accept", "summary": "assessed" }));
+    let (events, code) = host_run(&dir, &config, vec![implement, assessment], |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
-    assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "completed", "value": "audited" }));
-    assert_eq!(node_starts(&events), [("implement-task".into(), 1), ("audit-and-repair-task".into(), 1)]);
-    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2, "both episodes ran");
+    assert_eq!(
+        events.last().unwrap()["data"]["outcome"],
+        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "assessed" } })
+    );
+    assert_eq!(node_starts(&events), [("implement-task".into(), 1), ("assess-task".into(), 1)]);
+    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2);
+}
+
+/// docs/design.md "The command line": a repair branch carries the assessment
+/// value into one fresh coding child, whose typed value completes the workflow.
+#[test]
+fn assessment_findings_activate_a_fresh_repair() {
+    let dir = scratch("assessment-repair");
+    let config = coding_workflow(&dir, None);
+    let implement = vec![text("implemented"), done("end")];
+    let assessment = workflow_return(json!({ "branch": "repair", "summary": "one defect" }));
+    let repair = workflow_return(json!({ "summary": "repaired" }));
+    let (events, code) = host_run(&dir, &config, vec![implement, assessment, repair], |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert_eq!(
+        events.last().unwrap()["data"]["outcome"],
+        json!({ "kind": "completed", "value": { "summary": "repaired" } })
+    );
+    assert_eq!(
+        node_starts(&events),
+        [("implement-task".into(), 1), ("assess-task".into(), 1), ("repair-task".into(), 1)]
+    );
+}
+
+/// docs/design.md "The command line": root verifier findings re-fire the
+/// assessment, which can activate repair before the verifier runs again.
+#[test]
+fn root_verifier_findings_can_turn_accept_into_repair() {
+    let dir = scratch("verify-then-repair");
+    let script = executable(
+        &dir,
+        "check",
+        "#!/bin/sh\nstate=./.verification-attempted\nif [ ! -f \"$state\" ]; then : >\"$state\"; echo 'repair required'; fi\n",
+    );
+    let config = coding_workflow(&dir, Some(&script));
+    let implement = vec![text("implemented"), done("end")];
+    let first_assessment = workflow_return(json!({ "branch": "accept", "summary": "initial acceptance" }));
+    let revised_assessment = workflow_return(json!({ "branch": "repair", "summary": "verifier finding" }));
+    let repair = workflow_return(json!({ "summary": "repaired" }));
+    let (events, code) =
+        host_run(&dir, &config, vec![implement, first_assessment, revised_assessment, repair], |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert_eq!(
+        events.last().unwrap()["data"]["outcome"],
+        json!({ "kind": "completed", "value": { "summary": "repaired" } })
+    );
+    assert_eq!(
+        node_starts(&events),
+        [("implement-task".into(), 1), ("assess-task".into(), 1), ("assess-task".into(), 2), ("repair-task".into(), 1)]
+    );
+    let statuses: Vec<_> = events
+        .iter()
+        .filter(|event| event["type"] == "verification/result")
+        .map(|event| event["data"]["status"].as_str().unwrap())
+        .collect();
+    assert_eq!(statuses, ["findings", "accepted"]);
 }
 
 fn done_with(stop: &str, input: u64) -> Value {
