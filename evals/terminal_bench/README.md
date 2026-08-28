@@ -101,6 +101,10 @@ utility therefore changes tool selection without invalidating the benchmark.
 An installation failure or a missing task-required capability is an
 infrastructure failure and must not contribute a quality score.
 
+Every installed-agent preflight runs `foe plan --schema`. This command checks
+the installed binary without reading a default model or provider credential.
+The later task program names its model and credential file explicitly.
+
 ## Validate verifier-governed completion without model spend
 
 Three modified scenarios expose a public, read-only checker as a configured
