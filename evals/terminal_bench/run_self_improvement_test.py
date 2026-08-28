@@ -480,7 +480,13 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(config["version"], 3)
         self.assertEqual(
             diagnosis["budget"],
-            {"model_calls": 20, "seconds": 1800, "loop_threshold": 8},
+            {
+                "model_calls": 20,
+                "seconds": 1800,
+                "loop_threshold": 8,
+                "max_depth": 0,
+                "max_episodes": 1,
+            },
         )
         self.assertIn("four model requests as a planning target", diagnosis["instructions"]["result"])
         self.assertIn("do not call that tool directly", diagnosis["instructions"]["result"])
@@ -530,6 +536,10 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(final_review["budget"]["model_calls"], 20)
         self.assertEqual(adoption_assessment["budget"]["model_calls"], 20)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
+        for node in nodes.values():
+            if "model" in node:
+                self.assertEqual(node["model"]["budget"]["max_depth"], 0)
+                self.assertEqual(node["model"]["budget"]["max_episodes"], 1)
         self.assertEqual(
             review["grants"]["write"],
             [

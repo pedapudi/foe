@@ -284,6 +284,12 @@ completion checker. Assessment and repair share the candidate's bounded model
 setting. Three recovery interventions are part of the constructed program
 rather than a model-selected parameter.
 
+Every self-improvement model stage is a leaf episode. Its structural budget
+therefore declares `max_depth` as zero and `max_episodes` as one. The declared
+limits keep the planned child identity equal to the identity recorded after
+the parent reserves that stage's budget. Artifact adoption can then bind a
+child verifier result to the parent program's workflow identity.
+
 The candidate records `candidate_kind` as
 `verifier-governed-assessment-and-repair`. Its `assessment_and_repair` object
 contains `reasoning_effort` and `model_calls`. Its

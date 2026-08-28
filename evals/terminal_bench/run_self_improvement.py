@@ -72,6 +72,7 @@ SOURCE_ACCEPTANCE_SECONDS = (
 )
 SECONDS = DIAGNOSIS_SECONDS + IMPLEMENTATION_SECONDS + SOURCE_ACCEPTANCE_SECONDS
 LOOP_THRESHOLD = 8
+LEAF_STAGE_STRUCTURE = {"max_depth": 0, "max_episodes": 1}
 ALLOWED_DIRECTORIES = ("crates", "docs", "examples")
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
 SYSTEM_DEVELOPMENT_READ_DIRS = (Path("/usr/include"), Path("/usr/local/include"))
@@ -1542,6 +1543,7 @@ def build_config(
             "model_calls": DIAGNOSIS_CALLS,
             "seconds": DIAGNOSIS_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
+            **LEAF_STAGE_STRUCTURE,
         },
         "model": diagnosis_model,
         "done_when": {
@@ -1779,6 +1781,7 @@ def build_config(
             "model_calls": IMPLEMENTATION_CALLS,
             "seconds": IMPLEMENTATION_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
+            **LEAF_STAGE_STRUCTURE,
         },
         "done_when": {"returns": implementation_handoff},
     }
@@ -1807,6 +1810,7 @@ def build_config(
             "model_calls": SOURCE_REVIEW_CALLS,
             "seconds": SOURCE_REVIEW_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
+            **LEAF_STAGE_STRUCTURE,
         },
         "model": review_model,
         "done_when": {"returns": review_handoff},
@@ -1826,6 +1830,7 @@ def build_config(
             "model_calls": FINALIZATION_CALLS,
             "seconds": FINALIZATION_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
+            **LEAF_STAGE_STRUCTURE,
         },
         "done_when": {"verify": "check", "retries": 4, "returns": finalization_handoff},
     }
@@ -1844,6 +1849,7 @@ def build_config(
             "model_calls": FINAL_REVIEW_CALLS,
             "seconds": FINAL_REVIEW_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
+            **LEAF_STAGE_STRUCTURE,
         },
     }
     repair_after_final_review = {
@@ -1872,6 +1878,7 @@ def build_config(
             "model_calls": FINAL_REVIEW_CALLS,
             "seconds": FINAL_REVIEW_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
+            **LEAF_STAGE_STRUCTURE,
         },
     }
     repair_remaining_findings = {
@@ -1900,6 +1907,7 @@ def build_config(
             "model_calls": FINAL_REVIEW_CALLS,
             "seconds": FINAL_REVIEW_SECONDS,
             "loop_threshold": LOOP_THRESHOLD,
+            **LEAF_STAGE_STRUCTURE,
         },
     }
     program = {
