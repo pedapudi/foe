@@ -783,7 +783,7 @@ It uses the same model route and service tier as implementation with `xhigh`
 reasoning. It can read the source and write only to validation-output
 directories. It returns bounded findings within 20 requests. A review that ends
 blocked or exhausted contributes a finding that requires finalization to
-perform the missing semantic review. The finalization child has 60 reserved
+perform the missing semantic review. The finalization child has 100 reserved
 requests and sole source-repair authority after implementation. It inspects the
 current source, runs the candidate checker first, and repairs remaining
 findings. Its typed return copies each independent-review finding exactly once
@@ -796,12 +796,12 @@ A fresh read-only assessment follows finalization. It inspects the resulting
 source with `xhigh` reasoning and writes only to validation-output directories.
 An empty finding and risk set chooses `accept` and ends the workflow. A finding
 chooses `repair-source` and carries the assessment to one fresh repair child.
-That child has 60 reserved requests, copies and resolves every finding, and
+That child has 100 reserved requests, copies and resolves every finding, and
 owns completion through the candidate checker. A second read-only assessment
 then makes the terminal decision. A missing typed return or exhausted first
 assessment contributes a repair finding rather than ending the source path.
 The two assessments each reserve 20 requests and 1,200 seconds as loop
-backstops. The optional repair reserves 60 requests and 3,600 seconds. This
+backstops. The optional repair reserves 100 requests and 3,600 seconds. This
 bounded feedback path prevents either source-repair child from certifying its
 own final edits. The root episode allowance is derived from the declared
 model-node count, including the root, so every activated stage can start.

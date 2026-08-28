@@ -4091,3 +4091,49 @@ repair. The root model-call, time, and episode allowances include every
 possible stage before execution. The Terminal-Bench evaluation unit suite
 passes with the feedback path. The feedback path has not yet produced an
 externally accepted source improvement.
+
+## Review-feedback source attempt and finalization allowance
+
+On 2026-08-28, the exact aggregate candidate ran the source-improvement
+workflow with the final-assessment feedback path. It used the same private
+assessment, trajectory evidence, models, reasoning efforts, source tree, and
+portable binary as the preceding source attempt. Every request used the
+standard service tier. Token allowances remained measurement-only.
+
+The revised diagnosis chose a reject-only challenger followed by one terminal
+repair episode. The implementation child added the challenger and a typed
+challenge report. The first independent source review found three defects.
+Challenge citations lacked runtime validation. The terminal repair could omit
+challenges from its final ledger. The challenger retained a shell that could
+write when Landlock was unavailable or disabled.
+
+The finalization child addressed these findings in runtime, workflow, CLI,
+tests, and specifications. It used all 60 available requests before returning
+the required typed handoff. The root episode therefore ended exhausted before
+either final assessment could run. The workflow used 99 model calls over
+1,380.918 seconds. It consumed 8,606,595 input tokens, 7,098,880 cached-input
+tokens, and 52,030 output tokens. Its estimated cost was $9.911012.
+
+The retained artifact has source-candidate identity
+`sha256:22f0949259ee5df7c8dd9facbb5183f8245f7a432d9fe4f7a3c3473aceafc19f`.
+The workflow rejected it because its finalization return was absent and the
+repository checker reported unformatted Rust. Raw evidence remains under
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/standard-dna-assessment-source-self-improvement-feedback/`.
+
+A deterministic formatting pass and four local consistency corrections let
+the retained artifact reach the line-budget gate. The artifact then exceeded
+the kernel allowance by 148 lines and the program allowance by 20 lines. It
+added 478 lines and removed 79 across 15 files. Its filesystem preservation
+mechanism accounts for 161 added lines in `crates/core/src/spawn.rs`. This
+post-run repair does not qualify as autonomous acceptance. The size failure
+also requires design reduction before any external task evaluation.
+
+Source finalization and the optional source repair now each have a 100-request
+loop backstop. The root allowance is 340 requests, which covers every possible
+model node. The 3,600-second limit and eight-repetition loop detector remain
+unchanged. A no-spend construction check reproduced the assessed parent and
+generation identities and accepted the complete workflow. The Terminal-Bench
+evaluation unit suite also passed. The larger allowance addresses progressive
+source work that reached validation at the previous request boundary. It does
+not relax repository validation, independent review, or external quality
+acceptance.

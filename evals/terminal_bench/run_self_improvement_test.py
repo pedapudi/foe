@@ -485,7 +485,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(implementation["grants"]["execute"], ["/opt/toolchain"])
         self.assertEqual(config["task"], "Raise verified completion.")
         self.assertEqual(config["budget"]["loop_threshold"], 8)
-        self.assertEqual(config["budget"]["model_calls"], 260)
+        self.assertEqual(config["budget"]["model_calls"], 340)
         self.assertEqual(config["budget"]["max_episodes"], 8)
         self.assertEqual(
             config["budget"]["max_episodes"],
@@ -497,7 +497,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         )
         self.assertEqual(implementation["budget"]["model_calls"], 60)
         self.assertEqual(review["budget"]["model_calls"], 20)
-        self.assertEqual(finalization["budget"]["model_calls"], 60)
+        self.assertEqual(finalization["budget"]["model_calls"], 100)
+        self.assertEqual(second_finalization["budget"]["model_calls"], 100)
         self.assertEqual(final_review["budget"]["model_calls"], 20)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
         self.assertEqual(

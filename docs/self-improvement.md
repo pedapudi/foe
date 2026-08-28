@@ -131,13 +131,13 @@ contains five required model nodes and two conditional model nodes:
    handoff. It uses `xhigh` reasoning and has no source-write authority. It
    returns bounded findings within 20 requests. When it exhausts, a declared
    empty handoff lets the workflow continue.
-4. A fresh finalization node receives every typed handoff. It has 60 reserved
+4. A fresh finalization node receives every typed handoff. It has 100 reserved
    requests, runs the candidate checker before editing, repairs remaining
    findings, and owns completion through that checker.
 5. A fresh final assessment receives the finalized candidate. It chooses
    `accept` only with no finding or unresolved risk. A finding chooses
    `repair-source` and carries the assessment to one conditional repair node.
-6. The conditional repair node has 60 reserved requests and resolves every
+6. The conditional repair node has 100 reserved requests and resolves every
    final-assessment finding under the same checker.
 7. A conditional read-only assessment inspects the repaired source. No source
    writer follows this assessment.
