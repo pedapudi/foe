@@ -5301,3 +5301,26 @@ verifier-driven re-repair. The retained evidence directories are
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/verifier-recovery-preservation-fix-git-priority-20260828T214618Z`
 and
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/verifier-recovery-preservation-large-scale-edit-priority-20260828T215000Z`.
+
+### Identity-bound diagnosis after verifier recovery
+
+The cross-trajectory collector combined six same-identity diagnoses. They
+included two DNA false completions, two DNA successes under different
+controls, and the two preservation successes above. The 45,128-byte evidence
+document has SHA-256 digest
+`faaa6e966871892918e3c6132ecba4d8fb9a91c17102149683eb3de02af7b227`.
+
+One priority-tier self-improvement attempt requested a workflow-configuration
+candidate. Sol low returned `insufficient-evidence` in one model request. It
+observed that a 60-call xhigh assessment had produced both a success and a
+failure. The completion verifier and writable recovery had one successful
+activation, which did not isolate their effect from run variance.
+
+The diagnosis requested a controlled comparison that changes one workflow
+setting while preserving the model, reasoning effort, allowances, token
+policy, service tier, and task. The attempt used 15,849 input tokens and 795
+output tokens. Its estimated cost was $0.079296. It produced no candidate and
+does not satisfy an autonomous-improvement requirement.
+
+The retained self-improvement result is
+`/home/sunil/git/foe-conditional-terminal-assessment-current/target/verifier-recovery-workflow-self-improvement/result.json`.
