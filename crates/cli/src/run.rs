@@ -41,7 +41,9 @@ use std::time::Duration;
 const VIEWER_GRACE: Duration = Duration::from_secs(3);
 
 const BUILTIN_IMPLEMENTATION_CALLS: u64 = 60;
-const BUILTIN_AUDIT_CALLS: u64 = 60;
+const BUILTIN_ASSESSMENT_CALLS: u64 = 60;
+const BUILTIN_REPAIR_CALLS: u64 = 60;
+const BUILTIN_VERIFIER_RETRIES: u32 = 12;
 
 /// Static behavior of the built-in coding workflow. Dynamic authority,
 /// environment, model, verifier, and task values are filled below.
@@ -303,8 +305,8 @@ fn load_program_document(options: &Options) -> Result<ProgramDocument, String> {
     Ok(config)
 }
 
-/// Applies model settings measured for the built-in coding workflow.
-/// A value in the default model file remains authoritative.
+/// Applies implementation model settings measured for the built-in coding
+/// workflow. A value in the default model file remains authoritative here.
 pub(crate) fn apply_builtin_model_defaults(model: &mut ModelConfig) {
     if matches!(model.provider.as_str(), "openai" | "openai-codex") && model.model == "gpt-5.6-sol" {
         model.options.entry("reasoning_effort".into()).or_insert_with(|| "low".into());
@@ -335,10 +337,9 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// The built-in coding workflow. `--key-file` names the API key file
 /// explicitly; without it the provider's convention path is read.
 /// `verify` names an executable verifier: it becomes a `tool_defs` entry
-/// named `check` available to both episodes, and the terminal audit declares
-/// `done_when.verify` on it. The independent audit therefore always runs and
-/// its checked result alone can complete the workflow. Without a verifier the
-/// workflow remains an unconditional independent audit.
+/// named `check` available to every episode. The root completion gate applies
+/// to both the assessment's accept branch and the repair branch. Without a
+/// verifier, the assessment's typed choice governs completion.
 fn builtin_program_document(
     task: String,
     mut model: ModelConfig,
@@ -347,20 +348,19 @@ fn builtin_program_document(
     sandbox: Option<&str>,
 ) -> Result<ProgramDocument, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
-    let explicit_reasoning = model.option("reasoning_effort").is_some();
     apply_builtin_model_defaults(&mut model);
     if let Some(key_file) = key_file {
         let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
         let option = credential_option(&model.provider);
         model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
     }
-    let mut audit_model = model.clone();
-    if !explicit_reasoning
-        && matches!(audit_model.provider.as_str(), "openai" | "openai-codex")
-        && audit_model.model == "gpt-5.6-sol"
+    let mut assessment_model = model.clone();
+    if matches!(assessment_model.provider.as_str(), "openai" | "openai-codex")
+        && assessment_model.model == "gpt-5.6-sol"
     {
-        audit_model.options.insert("reasoning_effort".into(), "high".into());
+        assessment_model.options.insert("reasoning_effort".into(), "xhigh".into());
     }
+    let repair_model = assessment_model.clone();
     let environment = builtin_environment(&cwd, Path::is_file);
     let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });
     let mut document: serde_json::Value =
@@ -368,17 +368,21 @@ fn builtin_program_document(
     document["version"] = serde_json::json!(foe_program::document::PROGRAM_FORMAT_VERSION);
     document["model"] = serde_json::json!(model);
     document["grants"] = grants.clone();
-    document["budget"]["model_calls"] = serde_json::json!(BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS);
+    document["budget"]["model_calls"] =
+        serde_json::json!(BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_ASSESSMENT_CALLS + BUILTIN_REPAIR_CALLS);
     document["task"] = serde_json::json!(task);
-    for (node, calls) in
-        [("implement-task", BUILTIN_IMPLEMENTATION_CALLS), ("audit-and-repair-task", BUILTIN_AUDIT_CALLS)]
-    {
+    for (node, calls) in [
+        ("implement-task", BUILTIN_IMPLEMENTATION_CALLS),
+        ("assess-task", BUILTIN_ASSESSMENT_CALLS),
+        ("repair-task", BUILTIN_REPAIR_CALLS),
+    ] {
         let program = &mut document["workflow"]["nodes"][node]["model"];
         program["instructions"]["environment"] = serde_json::json!(environment);
         program["grants"] = grants.clone();
         program["budget"]["model_calls"] = serde_json::json!(calls);
     }
-    document["workflow"]["nodes"]["audit-and-repair-task"]["model"]["model"] = serde_json::json!(audit_model);
+    document["workflow"]["nodes"]["assess-task"]["model"]["model"] = serde_json::json!(assessment_model);
+    document["workflow"]["nodes"]["repair-task"]["model"]["model"] = serde_json::json!(repair_model);
     if let Some(mode) = sandbox {
         if !matches!(mode, "best-effort" | "required" | "off") {
             return Err(format!("--sandbox {mode}: expected best-effort, required, or off"));
@@ -388,15 +392,18 @@ fn builtin_program_document(
     if let Some(check) = verify {
         let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
         let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": cwd });
+        document["budget"]["max_episodes"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES + 4);
         document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
         document["tool_defs"] = serde_json::json!({ "check": def });
-        for node in ["implement-task", "audit-and-repair-task"] {
+        for node in ["implement-task", "assess-task", "repair-task"] {
             let program = &mut document["workflow"]["nodes"][node]["model"];
             program["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
             program["tool_defs"] = serde_json::json!({ "check": def });
         }
-        document["workflow"]["nodes"]["audit-and-repair-task"]["model"]["done_when"]["verify"] =
-            serde_json::json!("check");
+        for node in ["assess-task", "repair-task"] {
+            document["workflow"]["nodes"][node]["max_fires"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES + 1);
+        }
+        document["done_when"] = serde_json::json!({ "verify": "check", "retries": BUILTIN_VERIFIER_RETRIES });
         return serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"));
     }
     serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"))
