@@ -686,6 +686,7 @@ def harbor_command(
     runtime_digest: str,
     pricing: Pricing,
     completion_checker: Path | None = None,
+    completion_checker_setup: Path | None = None,
     built_in_workflow: bool = False,
     separate_audit_and_repair: bool = False,
     hard_token_limits: bool = False,
@@ -755,6 +756,10 @@ def harbor_command(
         kwargs["separate_audit_and_repair"] = "true"
     if completion_checker is not None:
         kwargs["completion_checker"] = completion_checker
+    if completion_checker_setup is not None:
+        if completion_checker is None:
+            raise ValueError("completion checker setup requires a completion checker")
+        kwargs["completion_checker_setup"] = completion_checker_setup
     if built_in_workflow:
         kwargs["built_in_workflow"] = "true"
     command = [
@@ -1428,6 +1433,11 @@ def parser() -> argparse.ArgumentParser:
         help="read-only checker used by done_when.verify; requires one selected task",
     )
     answer.add_argument(
+        "--completion-checker-setup",
+        type=Path,
+        help="credential-free prerequisite installer run before the completion checker",
+    )
+    answer.add_argument(
         "--built-in-workflow",
         action="store_true",
         help="exercise Foe's built-in implementation and terminal-audit workflow",
@@ -1463,6 +1473,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("a task may be selected only once")
         if args.completion_checker is not None and len(selected_names) != 1:
             raise ValueError("--completion-checker requires exactly one selected task")
+        if args.completion_checker_setup is not None and args.completion_checker is None:
+            raise ValueError("--completion-checker-setup requires --completion-checker")
         if args.built_in_workflow:
             if args.model != DEFAULT_MODEL:
                 raise ValueError(
@@ -1590,6 +1602,11 @@ def main(argv: list[str] | None = None) -> int:
         completion_checker = (
             args.completion_checker.resolve(strict=True)
             if args.completion_checker is not None
+            else None
+        )
+        completion_checker_setup = (
+            args.completion_checker_setup.resolve(strict=True)
+            if args.completion_checker_setup is not None
             else None
         )
         harbor = args.harbor.resolve(strict=True)
@@ -1882,6 +1899,8 @@ def main(argv: list[str] | None = None) -> int:
             f"completion    {owner} done_when.verify "
             f"sha256:{digest(completion_checker)}"
         )
+    if completion_checker_setup is not None:
+        print(f"checker setup sha256:{digest(completion_checker_setup)}")
     if args.service_tier == "priority":
         print(f"Fast credits  {FAST_SERVICE_CREDIT_MULTIPLIER:g}x Standard ChatGPT credits")
     if args.install_only:
@@ -2022,7 +2041,7 @@ def main(argv: list[str] | None = None) -> int:
                 else None
             ),
             "separate_audit_and_repair": args.separate_audit_and_repair,
-            "verifier_recovery_interventions": (
+            "verifier_correction_attempts": (
                 SEPARATE_ASSESSMENT_CORRECTIONS
                 if args.separate_audit_and_repair
                 and completion_checker is not None
@@ -2083,6 +2102,14 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "path": str(completion_checker),
                     "sha256": digest(completion_checker),
+                    "setup": (
+                        {
+                            "path": str(completion_checker_setup),
+                            "sha256": digest(completion_checker_setup),
+                        }
+                        if completion_checker_setup is not None
+                        else None
+                    ),
                 }
                 if completion_checker is not None
                 else None
@@ -2141,6 +2168,7 @@ def main(argv: list[str] | None = None) -> int:
             runtime_digest=runtime_digest,
             pricing=selected_pricing,
             completion_checker=completion_checker,
+            completion_checker_setup=completion_checker_setup,
             built_in_workflow=args.built_in_workflow,
             separate_audit_and_repair=args.separate_audit_and_repair,
             hard_token_limits=args.hard_token_limits,

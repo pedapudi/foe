@@ -241,6 +241,13 @@ adapter also downloads the checker after the episode and compares its digest
 with the source digest. A changed checker invalidates the trial as
 infrastructure evidence.
 
+A checker may declare a credential-free setup executable through
+`--completion-checker-setup`. The adapter runs that executable as root during
+installation and rejects the trial before any model request when setup fails.
+The campaign manifest records the executable's path and SHA-256 digest. The
+DNA checker targets use this facility to install the `oligotm` executable that
+their thermodynamic checks require.
+
 When a configured workflow adds an audit-and-repair model, the implementation
 episode returns its typed result without owning the completion condition. The
 terminal audit owns `done_when.verify`. Both episodes retain the checker tool,

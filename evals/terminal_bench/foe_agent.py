@@ -39,6 +39,7 @@ from foe_agent_support import (
 REMOTE_BINARY = "/usr/local/bin/foe"
 REMOTE_PROGRAM = "/tmp/foe-terminal-bench-program.json"
 REMOTE_COMPLETION_CHECKER = "/tmp/foe-completion-check"
+REMOTE_COMPLETION_CHECKER_SETUP = "/tmp/foe-completion-check-setup"
 
 
 class FoeAgent(BaseInstalledAgent):
@@ -78,6 +79,7 @@ class FoeAgent(BaseInstalledAgent):
         escalation_model_calls: int | str = 0,
         separate_audit_and_repair: bool | str = False,
         completion_checker: str | None = None,
+        completion_checker_setup: str | None = None,
         built_in_workflow: bool | str = False,
         **kwargs: Any,
     ) -> None:
@@ -120,11 +122,17 @@ class FoeAgent(BaseInstalledAgent):
         self._completion_checker = (
             Path(completion_checker) if completion_checker is not None else None
         )
+        self._completion_checker_setup = (
+            Path(completion_checker_setup)
+            if completion_checker_setup is not None
+            else None
+        )
         self._built_in_workflow = parse_boolean(
             built_in_workflow,
             "built_in_workflow",
         )
         self._completion_checker_digest: str | None = None
+        self._completion_checker_setup_digest: str | None = None
         self._observed_completion_checker_digest: str | None = None
         diagnosis_prices = (
             diagnosis_input_per_million,
@@ -166,9 +174,21 @@ class FoeAgent(BaseInstalledAgent):
             raise FileNotFoundError(
                 f"completion checker does not exist: {self._completion_checker}"
             )
+        if self._completion_checker_setup is not None:
+            if self._completion_checker is None:
+                raise ValueError("completion checker setup requires a completion checker")
+            if not self._completion_checker_setup.is_file():
+                raise FileNotFoundError(
+                    "completion checker setup does not exist: "
+                    f"{self._completion_checker_setup}"
+                )
         if self._completion_checker is not None:
             self._completion_checker_digest = hashlib.sha256(
                 self._completion_checker.read_bytes()
+            ).hexdigest()
+        if self._completion_checker_setup is not None:
+            self._completion_checker_setup_digest = hashlib.sha256(
+                self._completion_checker_setup.read_bytes()
             ).hexdigest()
         if self._built_in_workflow:
             if any(
@@ -204,6 +224,14 @@ class FoeAgent(BaseInstalledAgent):
                 REMOTE_COMPLETION_CHECKER,
             )
             checker_setup = f"chmod 755 {shlex.quote(REMOTE_COMPLETION_CHECKER)} && "
+        if self._completion_checker_setup is not None:
+            await environment.upload_file(
+                self._completion_checker_setup,
+                REMOTE_COMPLETION_CHECKER_SETUP,
+            )
+            checker_setup += (
+                f"chmod 755 {shlex.quote(REMOTE_COMPLETION_CHECKER_SETUP)} && "
+            )
         owner = environment.default_user
         ownership = ""
         if owner is not None:
@@ -212,7 +240,7 @@ class FoeAgent(BaseInstalledAgent):
                 f"{shlex.quote(self._remote_credential)} && "
             )
         credential_mode = "600" if self._credential_mode == "mutable" else "400"
-        await self.exec_as_root(
+        installed = await self.exec_as_root(
             environment,
             command=(
                 f"{ownership}{checker_setup}chmod 755 {shlex.quote(REMOTE_BINARY)} && "
@@ -220,6 +248,25 @@ class FoeAgent(BaseInstalledAgent):
                 f"{schema_probe_command(REMOTE_BINARY)}"
             ),
         )
+        if installed.return_code != 0:
+            detail = (installed.stderr or installed.stdout or "").strip()
+            raise RuntimeError(
+                "Foe installation preflight exited with status "
+                f"{installed.return_code}: {detail}"
+            )
+        if self._completion_checker_setup is not None:
+            prepared = await self.exec_as_root(
+                environment,
+                command=(
+                    f"/usr/bin/env -i {shlex.quote(REMOTE_COMPLETION_CHECKER_SETUP)}"
+                ),
+            )
+            if prepared.return_code != 0:
+                detail = (prepared.stderr or prepared.stdout or "").strip()
+                raise RuntimeError(
+                    "completion checker setup exited with status "
+                    f"{prepared.return_code}: {detail}"
+                )
         if self._built_in_workflow:
             help_result = await self.exec_as_agent(
                 environment,
@@ -532,5 +579,9 @@ class FoeAgent(BaseInstalledAgent):
                         == self._completion_checker_digest
                     ),
                 }
+            )
+        if self._completion_checker_setup_digest is not None:
+            metadata["foe_completion_checker_setup_sha256"] = (
+                self._completion_checker_setup_digest
             )
         context.metadata = metadata

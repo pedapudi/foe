@@ -8,11 +8,13 @@
     },
     "dna-assembly": {
       "checker": "verifier_cases/dna_assembly/check.pl",
+      "setup": "verifier_cases/primer3_setup.sh",
       "oracle": "verifier_cases/dna_assembly/oracle.sh",
       "contract": "The public checker validates the eight declared primers, physical template binding, full annealed tracts, oligotm temperatures, and compatible assembly overhangs."
     },
     "dna-insert": {
       "checker": "verifier_cases/dna_insert/check.pl",
+      "setup": "verifier_cases/primer3_setup.sh",
       "oracle": "verifier_cases/dna_insert/oracle.sh",
       "contract": "The public checker derives every input-output insertion boundary and requires every task-consistent primer interpretation to assign the insert and both annealing regions under one boundary and satisfy the declared bounds."
     },

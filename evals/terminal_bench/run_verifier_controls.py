@@ -21,6 +21,7 @@ from run import HARBOR_VERSION, default_harbor, read_cases
 class VerifierCase:
     task: str
     checker: Path
+    setup: Path | None
     oracle: Path
     contract: str
 
@@ -46,13 +47,17 @@ def read_verifier_cases(path: Path, dataset: str) -> dict[str, VerifierCase]:
         if not isinstance(task, str) or not isinstance(raw, dict):
             raise ValueError("every verifier case must be an object")
         checker = raw.get("checker")
+        setup = raw.get("setup")
         oracle = raw.get("oracle")
         contract = raw.get("contract")
         if not all(isinstance(item, str) and item for item in (checker, oracle, contract)):
             raise ValueError(f"verifier case {task} has incomplete fields")
+        if setup is not None and (not isinstance(setup, str) or not setup):
+            raise ValueError(f"verifier case {task} has an invalid setup")
         checker_path = (path.parent / checker).resolve(strict=True)
+        setup_path = (path.parent / setup).resolve(strict=True) if setup is not None else None
         oracle_path = (path.parent / oracle).resolve(strict=True)
-        cases[task] = VerifierCase(task, checker_path, oracle_path, contract)
+        cases[task] = VerifierCase(task, checker_path, setup_path, oracle_path, contract)
     return cases
 
 
@@ -197,13 +202,20 @@ def main(argv: list[str] | None = None) -> int:
             "--agent-kwarg",
             f"oracle_file={case.oracle}",
             "--agent-kwarg",
-            f"version=checker-{file_digest(case.checker)}-oracle-{file_digest(case.oracle)}",
+            (
+                f"version=checker-{file_digest(case.checker)}-"
+                f"setup-{file_digest(case.setup) if case.setup is not None else 'none'}-"
+                f"oracle-{file_digest(case.oracle)}"
+            ),
         ]
+        if case.setup is not None:
+            command.extend(("--agent-kwarg", f"setup_file={case.setup}"))
         result = subprocess.run(command, cwd=agent_module.parent, check=False)
         record = {
             "task": case.task,
             "contract": case.contract,
             "checker_sha256": file_digest(case.checker),
+            "setup_sha256": file_digest(case.setup) if case.setup is not None else None,
             "oracle_sha256": file_digest(case.oracle),
             "harbor_exit_code": result.returncode,
         }

@@ -16,6 +16,7 @@ from run_verifier_controls import checker_control_command
 
 
 REMOTE_CHECKER = "/tmp/foe-completion-check"
+REMOTE_SETUP = "/tmp/foe-completion-check-setup"
 REMOTE_ORACLE = "/tmp/foe-completion-oracle"
 
 
@@ -26,12 +27,17 @@ class VerifierControlAgent(BaseInstalledAgent):
         self,
         *args: Any,
         checker_file: str,
+        setup_file: str | None = None,
         oracle_file: str,
         **kwargs: Any,
     ) -> None:
         self._checker = Path(checker_file)
+        self._setup = Path(setup_file) if setup_file is not None else None
         self._oracle = Path(oracle_file)
-        for role, path in (("checker", self._checker), ("oracle", self._oracle)):
+        files = [("checker", self._checker), ("oracle", self._oracle)]
+        if self._setup is not None:
+            files.append(("setup", self._setup))
+        for role, path in files:
             if not path.is_file():
                 raise FileNotFoundError(f"{role} does not exist: {path}")
         self._report: dict[str, Any] | None = None
@@ -46,13 +52,26 @@ class VerifierControlAgent(BaseInstalledAgent):
     async def install(self, environment: BaseEnvironment) -> None:
         await environment.upload_file(self._checker, REMOTE_CHECKER)
         await environment.upload_file(self._oracle, REMOTE_ORACLE)
+        if self._setup is not None:
+            await environment.upload_file(self._setup, REMOTE_SETUP)
         await self.exec_as_root(
             environment,
             command=(
                 f"chmod 755 {shlex.quote(REMOTE_CHECKER)} "
                 f"{shlex.quote(REMOTE_ORACLE)}"
+                + (f" {shlex.quote(REMOTE_SETUP)}" if self._setup is not None else "")
             ),
         )
+        if self._setup is not None:
+            prepared = await self.exec_as_root(
+                environment,
+                command=f"/usr/bin/env -i {shlex.quote(REMOTE_SETUP)}",
+            )
+            if prepared.return_code != 0:
+                raise RuntimeError(
+                    "completion checker setup failed: "
+                    f"{(prepared.stderr or prepared.stdout or '').strip()}"
+                )
 
     async def _check(self, environment: BaseEnvironment) -> tuple[int, list[str], str]:
         result = await self.exec_as_agent(

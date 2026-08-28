@@ -38,6 +38,11 @@ class VerifierControlTest(unittest.TestCase):
             },
         )
         self.assertTrue(cases["cancel-async-tasks"].checker.is_file())
+        self.assertIsNone(cases["cancel-async-tasks"].setup)
+        self.assertEqual(
+            cases["dna-insert"].setup.name,
+            "primer3_setup.sh",
+        )
         self.assertTrue(cases["cancel-async-tasks"].oracle.is_file())
         self.assertEqual(
             cases["cancel-async-tasks"].checker.read_text(encoding="utf-8").splitlines()[0],
