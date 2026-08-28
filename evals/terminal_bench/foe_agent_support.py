@@ -452,6 +452,8 @@ def build_program(
             "max_concurrent": 1,
         }
     )
+    if completion_checker is not None and separate_audit_and_repair:
+        program["budget"]["max_episodes"] += COMPLETION_CHECK_RETRIES
     implementation_role = (
         "Implement the task using the typed diagnosis as advice. Confirm its claims against "
         "the repository. Make the requested change, run the strongest available verification "
@@ -668,13 +670,6 @@ def build_program(
         repair_completion_contract: dict[str, Any] = {
             "returns": repair_completion_schema,
         }
-        if completion_checker is not None:
-            repair_completion_contract.update(
-                {
-                    "verify": "check",
-                    "retries": COMPLETION_CHECK_RETRIES,
-                }
-            )
         assessment_schema = {
             "type": "object",
             "properties": {
@@ -795,6 +790,11 @@ def build_program(
                 },
             }
         )
+        if completion_checker is not None:
+            for node in ("assess-task", "repair-task"):
+                program["workflow"]["nodes"][node]["max_fires"] = (
+                    COMPLETION_CHECK_RETRIES + 1
+                )
     return program
 
 

@@ -5130,3 +5130,46 @@ The priority-tier batch campaign manifest has SHA-256 digest
 `844bb01658f1c683553bf9d3c2fa00f994e759b7db5b21b51ee510f4bf814c13`.
 Raw evidence remains under
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/conditional-repair-development-remaining-priority-20260828T190805Z`.
+
+### Product integration and verifier correction capacity
+
+The qualified three-stage workflow was next expressed as Foe's built-in
+coding program. Product commit
+`7a44005c7ecd027456d7df99136aa98ab858ca31` defines implementation,
+independent assessment, and conditional fresh repair with the same 60-call
+stage allowances. Sol uses low effort for implementation and xhigh effort for
+assessment and repair. The product change is available for review in pull
+request 127. It has not been merged.
+
+The product integration added no kernel or workflow concept. Its static
+workflow uses the existing `follows`, `branches`, typed return, and root
+verifier contracts. The CLI gained eight counted Rust lines and remains at
+1,282 of its 1,300-line budget.
+
+A deterministic root-verifier integration test exposed a correction-capacity
+defect in both the product and campaign configurations. The root verifier
+could reject an assessment, but `assess-task` and `repair-task` retained the
+default `max_fires` value of one. The root also retained a four-episode
+lifetime allowance. A rejected accepted branch therefore ended as
+`recovery-exhausted` before the declared verifier retry could run.
+
+The product now derives both correction limits from its twelve declared
+verifier retries. Each corrective node may fire thirteen times. A verified
+run reserves sixteen lifetime episodes, including the root. The deterministic
+test proves that a root finding re-fires assessment, assessment can choose
+repair, repair completes, and the next verifier invocation accepts. The
+campaign program builder now emits the same limits and relies on the root
+verifier alone, avoiding a duplicate repair-child verifier invocation.
+
+The workspace tests, Clippy checks, example suite, line-count check, Bazel
+binary builds, and deterministic accept, repair, and verifier-correction tests
+passed. A priority-tier bare-task smoke run used Sol low for implementation
+and Sol xhigh for assessment. Assessment selected `accept` after independently
+checking the exact four output bytes.
+
+No Terminal-Bench score is attributed to the product integration or the
+correction-capacity repair. The development result remains eleven of twelve
+for source tree `ba0847225330c05832cfa907c2fbfd9e32c4c4a0` and binary
+`fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
+The product candidate requires focused acceptance, repair, and boundary-
+constraint activation before a confirmation run.
