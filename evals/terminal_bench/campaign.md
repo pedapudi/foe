@@ -3915,3 +3915,69 @@ compilation pass. Campaign commit `dd198b3` contains the fix and operator
 documentation. The replacement attempt keeps the same evidence, parent source,
 objective, models, and standard service tier. Its retained program records five
 model nodes and an episode allowance of six before the first model request.
+
+The replacement autonomous workflow completed its final read-only assessment
+and produced a mechanically accepted source candidate. The candidate added a
+second fresh audit after the existing implementation and audit children. The
+new audit received the task and both prior typed returns, retained write access
+to the shared workspace, and became the sole terminal node. The external
+verifier remained attached only to that terminal node.
+
+The implementation, regression tests, and affected specifications changed
+together. Initial review found four defects: an unreachable episode allowance,
+missing host-integration coverage, an incomplete episode-count description, and
+stale completion language. Finalization resolved all four findings. The final
+read-only assessment found no remaining source defect or unresolved risk. The
+repository checker passed.
+
+The autonomous run used 101 model calls over 1,108.958 seconds. It consumed
+4,655,870 input tokens, 3,188,736 cached-input tokens, and 45,771 output tokens
+at an estimated cost of $8.059450. The source candidate identity was
+`sha256:8b1d277ff41a71665e8853cebfd20204e0085cc5088ddbae59f031238e60b0a1`.
+Its source-bundle identity was
+`sha256:db5bec0c81192b7cc2c6445e2e067b244b2bfdde7f2befc80c28ebf2263decb6`.
+The retained result has SHA-256 digest
+`75b07d7fd2f3ac9c8a7e739b7d317c2c56eb2c5d07ff56cfc1c22a7cf7d39033`.
+
+An exact portable binary built from the retained source candidate then ran
+three unchanged `dna-insert` attempts. Every request used the standard service
+tier. Execution was serial, token limits were measurement-only, and Landlock
+was disabled inside each Terminal-Bench container.
+
+| Attempt | Score | Calls | Input | Cache read | Output | Estimated cost |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1.0 | 32 | 323,146 | 140,800 | 22,829 | $1.242284 |
+| 2 | 0.0 | 20 | 167,509 | 40,448 | 22,538 | $0.975183 |
+| 3 | 0.0 | 31 | 332,754 | 151,552 | 25,712 | $1.299669 |
+
+All three attempts reached the unchanged task-owned grader. Every account
+conformed. The controller recorded no credential, container, executable,
+sandbox, allowance, or other infrastructure failure. The assessed binary had
+SHA-256 digest
+`905583f51db318241ba015417f9cd100de40f4fb1748bfb4d33d69b3f70115d2`.
+Its source tree was
+`git-tree-sha1:15aa73f4cfbce6e9e1cbc99dc90176c0620839b9`. The campaign manifest
+has SHA-256 digest
+`dc1a4be5f6b7ceb3da4b9af052ea1392b39722f3b78cf4ba9ca500d13d17c412`.
+Raw evidence remains under
+`/home/sunil/git/foe-second-independent-audit-candidate/target/terminal-bench-jobs/standard-autonomous-second-audit-dna-activation-20260827T233755Z`.
+
+The source candidate scored 1/3, which matches its identity-bound parent. It
+does not establish an activation improvement, so the campaign rejects it and
+does not spend an unrelated transfer attempt.
+
+Both failed final audits invoked the required `oligotm` executable and reported
+passing Tm differences. They selected the annealed portions through maximal
+alignment of each primer against the circular input. The task-owned grader
+instead split the concatenated final primers around the inserted sequence and
+computed Tm from the two remaining flanks. That construction produced Tm
+differences of 5.172678 and 5.828321 degrees Celsius.
+
+The first and second audits made the same semantic boundary choice. A fresh
+context therefore removed trajectory dependence but did not create an
+independent validation method. More copies of the same audit role would add
+cost without addressing the correlated error. The next development candidate
+must use external verifier feedback during completion or introduce a genuinely
+independent deterministic construction. A declared-verifier development lane
+can test the first mechanism without changing the closed-book Terminal-Bench
+quality authority.
