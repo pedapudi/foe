@@ -29,14 +29,14 @@ from trajectory_diagnostics import (
 
 ASSESSMENT_SCHEMA_VERSION = 1
 DIAGNOSTICS_SCHEMA_VERSION = 1
-MAX_DIAGNOSTICS_BYTES = 48 * 1024
+MAX_DIAGNOSTICS_BYTES = 128 * 1024
 MAX_ASSESSMENT_FAILURES = 12
 MAX_ASSESSMENT_SUCCESSES_PER_ROLE = 12
 MAX_FINAL_VALIDATION_TIMELINES = 24
 MAX_TERMINAL_AUDIT_REPORT_BYTES = 12 * 1024
 MAX_TERMINAL_AUDIT_ITEMS = 16
 MAX_TERMINAL_AUDIT_TEXT = 2 * 1024
-MAX_SOURCE_DIFF_BYTES = 24 * 1024
+MAX_SOURCE_DIFF_BYTES = 64 * 1024
 SOURCE_MANIFEST = "source-candidate-manifest.json"
 ASSESSMENT_DIAGNOSTICS_FILE = "candidate-assessment-diagnostics.json"
 GENERATION_CONTEXT_FILE = "candidate-generation-context.json"
@@ -350,7 +350,10 @@ def source_unified_diff(
             sections.append(section)
     answer = "\n".join(sections)
     if not answer or len(answer.encode("utf-8")) > MAX_SOURCE_DIFF_BYTES:
-        raise ValueError("source candidate unified diff is empty or exceeds 24 KiB")
+        raise ValueError(
+            "source candidate unified diff is empty or exceeds "
+            f"{MAX_SOURCE_DIFF_BYTES // 1024} KiB"
+        )
     return answer
 
 

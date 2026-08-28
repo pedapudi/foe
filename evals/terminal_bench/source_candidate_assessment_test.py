@@ -12,6 +12,7 @@ from source_candidate_assessment import (
     ASSESSMENT_DIAGNOSTICS_FILE,
     GENERATION_CONTEXT_FILE,
     MAX_DIAGNOSTICS_BYTES,
+    MAX_SOURCE_DIFF_BYTES,
     MAX_TERMINAL_AUDIT_TEXT,
     bind_generation_evidence,
     bytes_digest,
@@ -454,6 +455,32 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
                     [entry],
                     [{"path": "src/example.rs", "content": "fn value() -> bool { true }\n"}],
                 )
+
+    def test_unified_diff_accepts_a_bounded_source_test_and_specification_patch(self):
+        paths = (
+            "crates/core/src/behavior.rs",
+            "crates/core/src/behavior_test.rs",
+            "docs/design.md",
+        )
+        entries = [{"status": "present", "path": path} for path in paths]
+        contents = [
+            {"path": path, "content": character * (12 * 1024) + "\n"}
+            for path, character in zip(paths, "abc", strict=True)
+        ]
+        diff = source_unified_diff(None, PARENT_TREE, entries, contents)
+        self.assertGreater(len(diff.encode("utf-8")), 24 * 1024)
+        self.assertLessEqual(len(diff.encode("utf-8")), MAX_SOURCE_DIFF_BYTES)
+
+        oversized = [
+            {
+                "path": paths[0],
+                "content": "x" * MAX_SOURCE_DIFF_BYTES + "\n",
+            }
+        ]
+        with self.assertRaisesRegex(
+            ValueError, f"exceeds {MAX_SOURCE_DIFF_BYTES // 1024} KiB"
+        ):
+            source_unified_diff(None, PARENT_TREE, entries[:1], oversized)
 
     def assessment(
         self,

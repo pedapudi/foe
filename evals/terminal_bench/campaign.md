@@ -4017,3 +4017,35 @@ next self-improvement input should contrast the three rejected checker states
 with the final accepted state. That contrast supplies denser evidence than the
 task score alone and identifies trusted semantic feedback as the successful
 mechanism.
+
+## Rejected source-candidate assessment
+
+The source-candidate assessment initially rejected the autonomous second-audit
+patch before any model request. Its verified unified diff was 37,425 bytes,
+which exceeded the configured 24 KiB limit. The patch contained runtime code,
+integration tests, and three affected specifications. Its size was therefore a
+valid consequence of the source-change contract rather than malformed input.
+
+The assessment now accepts at most 64 KiB of verified unified diff. Its complete
+model-facing diagnostic document may contain at most 128 KiB. A regression test
+admits a three-file source, test, and specification patch above 24 KiB and
+rejects a patch above 64 KiB. The Terminal-Bench unit suite passed after the
+change.
+
+The original assessment command then completed without a model request. It
+created a 760,648-byte private assessment and a 66,678-byte model-facing
+diagnostic document. The private file has SHA-256 digest
+`b203595f98b45b073f72aeadd932b5b9a5e6f84156d6329069e6381047b6733a`.
+The model-facing file has SHA-256 digest
+`000941a79db4af4540f64afd01a49885988050282ab1f6a985ab1cfbe6639bc1` and
+canonical diagnostic identity
+`sha256:ef7015e373af02404e33e85bbdcda9e58a0d889c0448ac44ffeccfb8403c44e9`.
+
+The diagnostic document binds the rejected source-candidate identity, its
+parent and candidate source trees, two externally failed attempts, one parent
+success, and one candidate success. Both failures cite the task-owned
+melting-temperature assertion and its measured operand. The document also
+contains the verified rejected patch, which lets a later diagnosis retain,
+narrow, or replace the mechanism with the external result in view. Raw files
+remain under
+`/home/sunil/git/foe-identity-bound-dna-source-improvement/target/`.
