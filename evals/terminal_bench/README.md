@@ -454,6 +454,28 @@ the task benefits from a cheaper model's typed analysis. Conditional unresolved
 diagnosis and post-implementation repair are separate experiments, so the
 runner refuses a command that enables both.
 
+An experiment can separate independent assessment from mutation:
+
+```sh
+bazel run //evals/terminal_bench:foe-capability-search -- \
+  --task sanitize-git-repo \
+  --escalation-reasoning-effort xhigh \
+  --escalation-model-calls 60 \
+  --separate-audit-and-repair \
+  --confirm-spend
+```
+
+The implementation runs first. A fresh assessment episode receives the task
+and implementation result. It can inspect the shared workspace and run
+validation commands, but its declared grants contain no write authority. The
+assessment returns `accept` only when its observations support every task
+requirement. The `accept` branch completes without another writer. A `repair`
+branch passes typed findings to a fresh coding episode. That episode must
+reproduce the findings and make the smallest supported repair. The spending
+preview includes both conditional stages. Actual use excludes the repair
+stage when the assessment accepts. The unchanged task-owned verifier remains
+the quality authority in both branches.
+
 The task registry uses at least 60 model calls and 1,800 seconds for every task.
 These values serve only as loop and stall backstops. Actual use determines
 spend. The adapter permits eight consecutive identical tool calls or assistant

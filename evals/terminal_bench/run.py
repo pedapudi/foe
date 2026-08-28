@@ -684,6 +684,7 @@ def harbor_command(
     pricing: Pricing,
     completion_checker: Path | None = None,
     built_in_workflow: bool = False,
+    separate_audit_and_repair: bool = False,
     hard_token_limits: bool = False,
     authorized_benchmark_context: bool = False,
     install_only: bool = False,
@@ -701,6 +702,7 @@ def harbor_command(
                 diagnosis_model is not None,
                 unresolved_diagnosis_reasoning_effort is not None,
                 escalation_reasoning_effort is not None,
+                separate_audit_and_repair,
             )
         ):
             raise ValueError(
@@ -713,7 +715,7 @@ def harbor_command(
         unresolved_diagnosis_reasoning_effort,
         escalation_reasoning_effort,
         built_in_workflow,
-    )
+    ) + int(separate_audit_and_repair)
     agent_timeout_seconds = task_agent_timeout_seconds(task, model_stages)
     agent_timeout_multiplier = agent_timeout_seconds / task.harbor_agent_seconds
     kwargs = {
@@ -746,6 +748,8 @@ def harbor_command(
     if escalation_reasoning_effort is not None:
         kwargs["escalation_reasoning_effort"] = escalation_reasoning_effort
         kwargs["escalation_model_calls"] = escalation_model_calls
+    if separate_audit_and_repair:
+        kwargs["separate_audit_and_repair"] = "true"
     if completion_checker is not None:
         kwargs["completion_checker"] = completion_checker
     if built_in_workflow:
@@ -1391,6 +1395,11 @@ def parser() -> argparse.ArgumentParser:
     )
     answer.add_argument("--escalation-model-calls", type=int, default=0)
     answer.add_argument(
+        "--separate-audit-and-repair",
+        action="store_true",
+        help="assess independently and start a fresh repair episode only for reported findings",
+    )
+    answer.add_argument(
         "--workflow-candidate",
         type=Path,
         help="identity-bound workflow configuration produced by self-improvement",
@@ -1465,6 +1474,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.unresolved_diagnosis_reasoning_effort is not None,
                     args.escalation_reasoning_effort is not None,
                     args.workflow_candidate is not None,
+                    args.separate_audit_and_repair,
                 )
             ):
                 raise ValueError(
@@ -1520,8 +1530,14 @@ def main(argv: list[str] | None = None) -> int:
                 "--escalation-model-calls must be at least "
                 f"{MIN_AUXILIARY_MODEL_CALLS}"
             )
+        if args.separate_audit_and_repair and args.escalation_reasoning_effort is None:
+            raise ValueError(
+                "--separate-audit-and-repair requires --escalation-reasoning-effort"
+            )
         if args.workflow_candidate is not None and (
-            args.escalation_reasoning_effort is not None or args.escalation_model_calls != 0
+            args.escalation_reasoning_effort is not None
+            or args.escalation_model_calls != 0
+            or args.separate_audit_and_repair
         ):
             raise ValueError(
                 "--workflow-candidate cannot be combined with manual escalation settings"
@@ -1708,13 +1724,14 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError, json.JSONDecodeError) as error:
             print(f"terminal-bench eval: {error}", file=sys.stderr)
             return 2
+    escalation_stages = 2 if args.separate_audit_and_repair else 1
     auxiliary_calls = (
         args.diagnosis_model_calls if args.diagnosis_model is not None else 0
     ) + (
         args.unresolved_diagnosis_model_calls
         if args.unresolved_diagnosis_reasoning_effort is not None
         else 0
-    ) + args.escalation_model_calls
+    ) + args.escalation_model_calls * escalation_stages
     selected_pricing = pricing[args.model]
     diagnosis_pricing = pricing[args.diagnosis_model] if args.diagnosis_model else None
     plans = []
@@ -1740,8 +1757,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         diagnosis_input = round(task.expected_input_tokens * diagnosis_fraction)
         diagnosis_output = round(task.expected_output_tokens * diagnosis_fraction)
-        escalation_input = round(task.expected_input_tokens * escalation_fraction)
-        escalation_output = round(task.expected_output_tokens * escalation_fraction)
+        escalation_input = round(
+            task.expected_input_tokens * escalation_fraction * escalation_stages
+        )
+        escalation_output = round(
+            task.expected_output_tokens * escalation_fraction * escalation_stages
+        )
         unresolved_diagnosis_input = round(
             task.expected_input_tokens * unresolved_diagnosis_fraction
         )
@@ -1770,7 +1791,11 @@ def main(argv: list[str] | None = None) -> int:
             )
         primary_seconds = task.seconds * (2 if args.built_in_workflow else 1)
         diagnosis_seconds = task.seconds if args.diagnosis_model is not None else 0
-        escalation_seconds = task.seconds if args.escalation_reasoning_effort is not None else 0
+        escalation_seconds = (
+            task.seconds * escalation_stages
+            if args.escalation_reasoning_effort is not None
+            else 0
+        )
         unresolved_diagnosis_seconds = (
             task.seconds if args.unresolved_diagnosis_reasoning_effort is not None else 0
         )
@@ -1812,6 +1837,8 @@ def main(argv: list[str] | None = None) -> int:
             f"reasoning_effort={args.escalation_reasoning_effort} "
             f"calls={args.escalation_model_calls}"
         )
+        if args.separate_audit_and_repair:
+            print("workflow      independent assessment; conditional fresh repair")
     if workflow_candidate is not None:
         print(f"workflow      {workflow_candidate['digest']}")
     elif args.built_in_workflow:
@@ -1938,7 +1965,7 @@ def main(argv: list[str] | None = None) -> int:
         args.unresolved_diagnosis_reasoning_effort,
         args.escalation_reasoning_effort,
         args.built_in_workflow,
-    )
+    ) + int(args.separate_audit_and_repair)
     planned_groups = execution_groups(selected, args.workers)
     records: list[dict[str, Any]] = []
     execution_records: list[dict[str, Any]] = []
@@ -1983,6 +2010,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.escalation_reasoning_effort
                 else None
             ),
+            "separate_audit_and_repair": args.separate_audit_and_repair,
             "attempts": args.attempts,
             "requested_workers": args.workers,
             "parallel_required": args.require_parallel,
@@ -2097,6 +2125,7 @@ def main(argv: list[str] | None = None) -> int:
             pricing=selected_pricing,
             completion_checker=completion_checker,
             built_in_workflow=args.built_in_workflow,
+            separate_audit_and_repair=args.separate_audit_and_repair,
             hard_token_limits=args.hard_token_limits,
             authorized_benchmark_context=args.authorized_benchmark_context,
             install_only=args.install_only,

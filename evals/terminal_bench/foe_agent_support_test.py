@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from foe_agent_support import (
+    COMPLETION_SCHEMA,
     FIXED_EXECUTABLE_PATHS,
     builtin_workflow_arguments,
     build_program,
@@ -650,6 +651,99 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(program["budget"]["max_episodes"], 3)
         self.assertEqual(program["budget"]["model_calls"], 85)
         self.assertEqual(program["budget"]["seconds"], 1800)
+
+    def test_program_can_assess_before_conditionally_repairing(self):
+        program = build_program(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            "/workspace",
+            model_calls=60,
+            input_tokens=None,
+            output_tokens=None,
+            seconds=900,
+            reasoning_effort="low",
+            escalation_reasoning_effort="xhigh",
+            escalation_model_calls=25,
+            separate_audit_and_repair=True,
+        )
+        nodes = program["workflow"]["nodes"]
+        self.assertFalse(nodes["implement-task"]["terminal"])
+        assessment = nodes["assess-task"]
+        self.assertEqual(assessment["follows"], ["task", "implement-task"])
+        self.assertEqual(
+            assessment["branches"],
+            {"accept": [], "repair": ["repair-task"]},
+        )
+        self.assertEqual(assessment["model"]["tools"], ["read", "grep", "bash"])
+        self.assertNotIn("write", assessment["model"]["grants"])
+        self.assertIn(
+            "do not change the workspace",
+            assessment["model"]["instructions"]["role"],
+        )
+        self.assertEqual(
+            assessment["model"]["done_when"]["returns"]["required"],
+            ["summary", "findings", "validation", "unresolved_risks"],
+        )
+        repair = nodes["repair-task"]
+        self.assertEqual(
+            repair["follows"],
+            ["task", "implement-task", "assess-task"],
+        )
+        self.assertIn("smallest change", repair["model"]["instructions"]["role"])
+        self.assertTrue(repair["terminal"])
+        self.assertEqual(program["budget"]["max_episodes"], 4)
+        self.assertEqual(program["budget"]["model_calls"], 110)
+        self.assertEqual(program["budget"]["seconds"], 2700)
+
+    def test_separate_assessment_preserves_episode_level_verification(self):
+        program = build_program(
+            "repair it",
+            "openai-codex/gpt-5.6-sol",
+            "/tmp/private.json",
+            "/workspace",
+            model_calls=60,
+            input_tokens=None,
+            output_tokens=None,
+            seconds=900,
+            reasoning_effort="low",
+            completion_checker="/tmp/completion-check",
+            escalation_reasoning_effort="high",
+            escalation_model_calls=25,
+            separate_audit_and_repair=True,
+        )
+        nodes = program["workflow"]["nodes"]
+        self.assertEqual(
+            program["done_when"],
+            {"verify": "check", "retries": 12},
+        )
+        self.assertIn("check", nodes["assess-task"]["model"]["tools"])
+        self.assertEqual(
+            nodes["repair-task"]["model"]["done_when"],
+            {
+                "returns": COMPLETION_SCHEMA,
+                "verify": "check",
+                "retries": 12,
+            },
+        )
+
+    def test_separate_assessment_requires_an_escalation_model(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "separate audit and repair requires an escalation reasoning effort",
+        ):
+            build_program(
+                "repair it",
+                "openai-codex/gpt-5.6-sol",
+                "/tmp/private.json",
+                "/workspace",
+                model_calls=60,
+                input_tokens=None,
+                output_tokens=None,
+                seconds=900,
+                reasoning_effort="low",
+                separate_audit_and_repair=True,
+            )
 
 
 class EpisodeSummaryTest(unittest.TestCase):

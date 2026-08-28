@@ -292,6 +292,7 @@ def build_program(
     unresolved_diagnosis_model_calls: int = 20,
     escalation_reasoning_effort: str | None = None,
     escalation_model_calls: int = 0,
+    separate_audit_and_repair: bool = False,
 ) -> dict[str, Any]:
     """Build the recorded Foe program used for one Terminal-Bench trial."""
     if "/" not in model_name:
@@ -368,6 +369,7 @@ def build_program(
         diagnosis_model_name is None
         and unresolved_diagnosis_reasoning_effort is None
         and escalation_reasoning_effort is None
+        and not separate_audit_and_repair
     ):
         return program
     diagnosis_provider = diagnosis_model = None
@@ -395,6 +397,8 @@ def build_program(
             )
     if escalation_reasoning_effort is None and escalation_model_calls != 0:
         raise ValueError("escalation model calls require an escalation reasoning effort")
+    if separate_audit_and_repair and escalation_reasoning_effort is None:
+        raise ValueError("separate audit and repair requires an escalation reasoning effort")
     if (
         escalation_reasoning_effort is not None
         and escalation_model_calls < MIN_AUXILIARY_MODEL_CALLS
@@ -411,6 +415,9 @@ def build_program(
     )
     unresolved_diagnosis_seconds = seconds if unresolved_diagnosis_reasoning_effort is not None else 0
     escalation_seconds = seconds if escalation_reasoning_effort is not None else 0
+    escalation_stages = (
+        2 if separate_audit_and_repair else int(escalation_reasoning_effort is not None)
+    )
     implementation_seconds = seconds
     implementation_calls = model_calls
     shared_grants = {"read": [working_directory, "/"], "write": ["/"]}
@@ -430,18 +437,18 @@ def build_program(
                 model_calls
                 + diagnosis_calls
                 + unresolved_diagnosis_calls
-                + escalation_model_calls
+                + escalation_model_calls * escalation_stages
             ),
             "seconds": (
                 seconds
                 + diagnosis_seconds
                 + unresolved_diagnosis_seconds
-                + escalation_seconds
+                + escalation_seconds * escalation_stages
             ),
             "max_episodes": 2
             + int(diagnosis_model_name is not None)
             + int(unresolved_diagnosis_reasoning_effort is not None)
-            + int(escalation_reasoning_effort is not None),
+            + escalation_stages,
             "max_concurrent": 1,
         }
     )
@@ -609,7 +616,7 @@ def build_program(
                 },
                 "follows": ["task", "diagnose-task"],
             }
-    if escalation_reasoning_effort is not None:
+    if escalation_reasoning_effort is not None and not separate_audit_and_repair:
         program["workflow"]["nodes"]["audit-and-repair-task"] = {
             "model": {
                 "name": "audit-and-repair-task",
@@ -647,6 +654,118 @@ def build_program(
             "follows": ["task", "implement-task"],
             "terminal": True,
         }
+    if escalation_reasoning_effort is not None and separate_audit_and_repair:
+        assessment_schema = {
+            "type": "object",
+            "properties": {
+                "summary": {"type": "string", "minLength": 1, "maxLength": 1000},
+                "findings": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 1000},
+                    "maxItems": 32,
+                },
+                "validation": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 1000},
+                    "minItems": 1,
+                    "maxItems": 32,
+                },
+                "unresolved_risks": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 1000},
+                    "maxItems": 16,
+                },
+            },
+            "required": ["summary", "findings", "validation", "unresolved_risks"],
+            "additionalProperties": False,
+        }
+        assessment_tools = ["read", "grep", "bash"]
+        if completion_checker is not None:
+            assessment_tools.append("check")
+            # Either branch can complete the workflow with a different typed
+            # value. The workspace verifier governs both values at the root.
+            program["done_when"] = {
+                "verify": "check",
+                "retries": COMPLETION_CHECK_RETRIES,
+            }
+        program["workflow"]["nodes"].update(
+            {
+                "assess-task": {
+                    "model": {
+                        "name": "assess-task",
+                        "instructions": {
+                            "environment": environment_facts,
+                            "role": (
+                                "Independently assess whether the shared workspace satisfies every "
+                                "requirement in the original task. Treat the implementation episode's "
+                                "completion claim as unverified. Inspect artifacts and run checks, but "
+                                "do not change the workspace. Distinguish the exact contract from a "
+                                "nearby interpretation. Preserve baseline identities, allowed "
+                                "transformation sets, and stated structural constraints. For a program "
+                                "interface, test at least two materially different valid inputs and "
+                                "generate a second fixture when the workspace supplies only one. Choose "
+                                "`accept` only when current observations support every requirement and "
+                                "there is no unresolved risk. Otherwise choose `repair` and return "
+                                "precise findings that a fresh coding episode can reproduce."
+                            ),
+                        },
+                        "tools": assessment_tools,
+                        "tool_defs": check_tool_defs,
+                        "grants": {"read": [working_directory, "/"]},
+                        "budget": {
+                            "model_calls": escalation_model_calls,
+                            "seconds": escalation_seconds,
+                            "loop_threshold": EVALUATION_LOOP_THRESHOLD,
+                        },
+                        "done_when": {"returns": assessment_schema},
+                        "model": {
+                            "provider": provider,
+                            "model": model,
+                            "reasoning_effort": escalation_reasoning_effort,
+                            "service_tier": service_tier,
+                            "token_file": credential_path,
+                        },
+                    },
+                    "follows": ["task", "implement-task"],
+                    "branches": {"accept": [], "repair": ["repair-task"]},
+                },
+                "repair-task": {
+                    "model": {
+                        "name": "repair-task",
+                        "instructions": {
+                            "environment": environment_facts,
+                            "role": (
+                                "Repair the independent assessment's findings in the shared "
+                                "workspace. Reproduce each finding before changing an artifact. Make "
+                                "the smallest change that satisfies the original task while preserving "
+                                "unrelated artifacts, baseline identities, allowed transformations, and "
+                                "structural constraints. After the final change, run the strongest "
+                                "available task-relevant checks. Report every changed path, observed "
+                                "validation result, and unresolved risk."
+                            ),
+                        },
+                        "tools": coding_tools,
+                        "tool_defs": check_tool_defs,
+                        "grants": shared_grants,
+                        "budget": {
+                            "model_calls": escalation_model_calls,
+                            "seconds": escalation_seconds,
+                            "loop_threshold": EVALUATION_LOOP_THRESHOLD,
+                        },
+                        "done_when": completion_contract,
+                        "model": {
+                            "provider": provider,
+                            "model": model,
+                            "reasoning_effort": escalation_reasoning_effort,
+                            "service_tier": service_tier,
+                            "token_file": credential_path,
+                        },
+                    },
+                    "follows": ["task", "implement-task", "assess-task"],
+                    "terminal": True,
+                },
+            }
+        )
     return program
 
 
