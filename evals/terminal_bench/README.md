@@ -471,10 +471,11 @@ validation commands, but its declared grants contain no write authority. The
 assessment returns `accept` only when its observations support every task
 requirement. The `accept` branch completes without another writer. A `repair`
 branch passes typed findings to a fresh coding episode. That episode must
-reproduce the findings and make the smallest supported repair. The spending
-preview includes both conditional stages. Actual use excludes the repair
-stage when the assessment accepts. The unchanged task-owned verifier remains
-the quality authority in both branches.
+reproduce every finding and task-critical unresolved risk before making the
+smallest supported repair. Its completion contract requires an empty
+`unresolved_risks` array. The spending preview includes both conditional
+stages. Actual use excludes the repair stage when the assessment accepts. The
+unchanged task-owned verifier remains the quality authority in both branches.
 
 The task registry uses at least 60 model calls and 1,800 seconds for every task.
 These values serve only as loop and stall backstops. Actual use determines

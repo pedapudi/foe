@@ -681,6 +681,10 @@ class ProgramTest(unittest.TestCase):
             "do not change the workspace",
             assessment["model"]["instructions"]["role"],
         )
+        self.assertIn(
+            "Do not require compatibility with absent formats",
+            assessment["model"]["instructions"]["role"],
+        )
         self.assertEqual(
             assessment["model"]["done_when"]["returns"]["required"],
             ["summary", "findings", "validation", "unresolved_risks"],
@@ -691,6 +695,16 @@ class ProgramTest(unittest.TestCase):
             ["task", "implement-task", "assess-task"],
         )
         self.assertIn("smallest change", repair["model"]["instructions"]["role"])
+        self.assertIn(
+            "Treat every finding and unresolved risk as an obligation",
+            repair["model"]["instructions"]["role"],
+        )
+        self.assertEqual(
+            repair["model"]["done_when"]["returns"]["properties"][
+                "unresolved_risks"
+            ]["maxItems"],
+            0,
+        )
         self.assertTrue(repair["terminal"])
         self.assertEqual(program["budget"]["max_episodes"], 4)
         self.assertEqual(program["budget"]["model_calls"], 110)
@@ -719,12 +733,18 @@ class ProgramTest(unittest.TestCase):
         )
         self.assertIn("check", nodes["assess-task"]["model"]["tools"])
         self.assertEqual(
-            nodes["repair-task"]["model"]["done_when"],
-            {
-                "returns": COMPLETION_SCHEMA,
-                "verify": "check",
-                "retries": 12,
-            },
+            nodes["repair-task"]["model"]["done_when"]["verify"],
+            "check",
+        )
+        self.assertEqual(
+            nodes["repair-task"]["model"]["done_when"]["retries"],
+            12,
+        )
+        self.assertEqual(
+            nodes["repair-task"]["model"]["done_when"]["returns"]["properties"][
+                "unresolved_risks"
+            ]["maxItems"],
+            0,
         )
 
     def test_separate_assessment_requires_an_escalation_model(self):
