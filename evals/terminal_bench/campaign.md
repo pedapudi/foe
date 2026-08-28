@@ -5258,5 +5258,28 @@ The campaign program-builder tests also passed.
 The corresponding product change is commit
 `3280b82cae2e4bf07ca31b46f8cfb36fef5c87d7` in pull request 128. The
 product workspace passed all Rust tests, Clippy checks, examples, line-count
-checks, and Bazel binary builds. A provider-backed DNA activation remains
-required before the configuration can affect a campaign quality claim.
+checks, and Bazel binary builds.
+
+One priority-tier `dna-insert` activation then exercised the campaign
+configuration against the same runtime binary and source tree as the repeated
+failure. The implementation produced the previously failing primer pair. The
+independent assessment selected `repair` after identifying three valid junction
+interpretations and an 8.6-degree temperature difference in one interpretation.
+
+The first repair changed the primers but could not use `oligotm`. The root
+verifier rejected its terminal value. Workflow recovery recorded one
+`done-when-findings` intervention and amended `repair-task` with the exact
+finding. The fresh repair installed `primer3`, validated all three junctions
+with `/usr/bin/oligotm`, reran the completion checker, and received no finding.
+
+The unchanged task-owned Terminal-Bench grader awarded reward 1.0. The account
+completed with 58 model requests, 2,270,472 input tokens, 1,246,720 cached-input
+tokens, and 50,260 output tokens. Its estimated cost was $5.598896, and its
+wall time was 1,148 seconds. Every conformance metric passed. The checker
+identity remained unchanged.
+
+This modified evaluation converts the repeated DNA failure into success and
+causally activates writable recovery after verifier rejection. It establishes
+the control-flow mechanism and does not establish closed-book repeatability.
+The retained evidence is
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/verifier-recovery-dna-insert-priority-20260828T212536Z`.
