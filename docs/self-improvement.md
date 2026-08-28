@@ -116,6 +116,14 @@ its verifier provenance, completeness counts, and failure loci. A digest
 identifies the complete contrast. Failed and successful identifiers must be
 disjoint.
 
+The Foe runtime that executes self-improvement may be newer than the runtime
+described by the evidence. The runner verifies the candidate source and the
+binary supplied as `--evaluated-foe` against the evidence. It separately
+records the digest of the `--foe` runtime that executes the workflow. When
+`--evaluated-foe` is absent, the executing runtime must match the evidence.
+This separation lets one Foe generation improve an earlier generation while
+keeping both roles content-addressed.
+
 The runner copies the report into the retained run directory before creating
 the program. The source-candidate path in the resulting version 3 program
 contains five required model nodes and four conditional model nodes:

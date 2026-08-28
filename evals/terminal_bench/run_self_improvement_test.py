@@ -40,6 +40,7 @@ from run_self_improvement import (
     supported_failure_contrasts,
     tool_candidate_from_outcome,
     validate_program,
+    verify_evidence_identity,
     workflow_candidate_from_outcome,
     write_candidate_check,
     write_diagnosis_validator,
@@ -95,7 +96,59 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertEqual(args.diagnosis_model, "openai-codex/gpt-5.6-sol")
         self.assertEqual(args.diagnosis_reasoning_effort, "low")
         self.assertEqual(args.service_tier, "default")
+        self.assertIsNone(args.evaluated_foe)
         self.assertIn("Task quality is the promotion metric", args.objective)
+
+    def test_evaluated_binary_can_differ_from_the_self_improvement_runtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "candidate"
+            candidate.mkdir()
+            subprocess.run(["git", "init", "--quiet"], cwd=candidate, check=True)
+            subprocess.run(
+                ["git", "config", "user.name", "Foe Test"],
+                cwd=candidate,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "foe-test@example.invalid"],
+                cwd=candidate,
+                check=True,
+            )
+            (candidate / "source.txt").write_text("frozen\n", encoding="utf-8")
+            subprocess.run(["git", "add", "source.txt"], cwd=candidate, check=True)
+            subprocess.run(
+                ["git", "commit", "--quiet", "-m", "Frozen source"],
+                cwd=candidate,
+                check=True,
+            )
+            source_tree = "git-tree-sha1:" + subprocess.run(
+                ["git", "rev-parse", "HEAD^{tree}"],
+                cwd=candidate,
+                text=True,
+                capture_output=True,
+                check=True,
+            ).stdout.strip()
+            evaluated = root / "evaluated-foe"
+            evaluated.write_bytes(b"evaluated runtime")
+            executor = root / "self-improvement-foe"
+            executor.write_bytes(b"later runtime")
+            evidence = root / "evidence.json"
+            evidence.write_text(
+                json.dumps(
+                    {
+                        "evaluated_foe": {
+                            "source_tree": source_tree,
+                            "runtime_binary": digest_bytes(evaluated.read_bytes()),
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            identity = verify_evidence_identity(candidate, evaluated, evidence)
+            with self.assertRaisesRegex(ValueError, "evaluated Foe binary differs"):
+                verify_evidence_identity(candidate, executor, evidence)
+        self.assertEqual(identity["runtime_binary"], digest_bytes(b"evaluated runtime"))
 
     def test_preview_does_not_create_the_requested_retained_directory(self):
         with tempfile.TemporaryDirectory() as directory:

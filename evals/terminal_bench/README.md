@@ -638,11 +638,18 @@ run directory. This candidate is a separate Git repository that contains only
 the frozen `HEAD` commit and its ancestors. It has no remote and cannot read
 branches, worktrees, or evaluator artifacts from the parent repository.
 
+The target uses its built Foe binary to execute self-improvement. When the
+evidence describes an earlier binary, pass that exact file with
+`--evaluated-foe`. The runner binds the evidence to the earlier source and
+binary pair and records the executing binary separately. Without this option,
+the executing binary must match the evidence.
+
 Run the self-improvement workflow from the clean parent worktree:
 
 ```sh
 bazel run //evals/terminal_bench:self-improve -- \
   --candidate /path/to/clean/foe-candidate \
+  --evaluated-foe /path/to/evaluated/foe-portable \
   --evidence "$PWD/target/foe-trajectory-evidence.json" \
   --cargo /absolute/path/to/toolchain/bin/cargo \
   --cargo-home /absolute/path/to/cargo-home \

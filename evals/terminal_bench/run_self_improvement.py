@@ -141,17 +141,19 @@ def model_config(
     return answer
 
 
-def verify_evidence_identity(candidate: Path, binary: Path, evidence: Path) -> dict[str, str]:
+def verify_evidence_identity(
+    candidate: Path, evaluated_binary: Path, evidence: Path
+) -> dict[str, str]:
     report = json.loads(evidence.read_text(encoding="utf-8"))
     identity = require_evaluated_foe(
         report.get("evaluated_foe"), f"self-improvement evidence {evidence}"
     )
     candidate_tree = clean_source_tree(candidate)
-    runtime_binary = sha256_file(binary)
+    runtime_binary = sha256_file(evaluated_binary)
     if candidate_tree != identity["source_tree"]:
         raise ValueError("candidate source tree differs from the evaluated evidence")
     if runtime_binary != identity["runtime_binary"]:
-        raise ValueError("Foe binary differs from the evaluated evidence")
+        raise ValueError("evaluated Foe binary differs from the evidence")
     return identity
 
 
@@ -2278,7 +2280,17 @@ def source_review_branch_findings(review: dict[str, Any] | None) -> list[str]:
 
 def parser() -> argparse.ArgumentParser:
     answer = argparse.ArgumentParser(description=__doc__)
-    answer.add_argument("--foe", type=Path, required=True)
+    answer.add_argument(
+        "--foe",
+        type=Path,
+        required=True,
+        help="Foe runtime that executes the self-improvement workflow",
+    )
+    answer.add_argument(
+        "--evaluated-foe",
+        type=Path,
+        help="Foe binary described by the evidence; defaults to --foe",
+    )
     answer.add_argument("--candidate", type=Path, required=True)
     answer.add_argument("--evidence", type=Path, required=True)
     answer.add_argument(
@@ -2436,6 +2448,7 @@ def main(argv: list[str] | None = None) -> int:
         parent_candidate = args.candidate.resolve(strict=True)
         evidence = args.evidence.resolve(strict=True)
         binary = args.foe.resolve(strict=True)
+        evaluated_binary = (args.evaluated_foe or args.foe).resolve(strict=True)
         bundle_builder = args.bundle_builder.resolve(strict=True)
         ancestry_checker = args.ancestry_checker.resolve(strict=True)
         source_checker = args.source_checker.resolve(strict=True)
@@ -2446,7 +2459,7 @@ def main(argv: list[str] | None = None) -> int:
         ):
             if not executable.is_file():
                 raise ValueError(f"{label} must name a trusted executable file")
-        identity = verify_evidence_identity(parent_candidate, binary, evidence)
+        identity = verify_evidence_identity(parent_candidate, evaluated_binary, evidence)
         base_configuration = failed_base_configuration(evidence)
         supported_audits = supported_independent_audits(evidence, base_configuration)
         failure_contrasts = supported_failure_contrasts(evidence)
@@ -2469,6 +2482,7 @@ def main(argv: list[str] | None = None) -> int:
         "reasoning_effort": args.reasoning_effort,
         "source_review_reasoning_effort": SOURCE_REVIEW_REASONING_EFFORT,
         "service_tier": args.service_tier,
+        "self_improvement_runtime": {"runtime_binary": sha256_file(binary)},
         "chatgpt_credit_multiplier": (
             FAST_SERVICE_CREDIT_MULTIPLIER if args.service_tier == "priority" else 1.0
         ),
