@@ -145,7 +145,7 @@ unchanged.
 
 ## Validate verifier-governed completion without model spend
 
-Seven modified scenarios expose a public, read-only checker as a configured
+Nine modified scenarios expose a public completion checker as a configured
 tool. The adapter-generated execution path uses one coding episode with Sol
 and low reasoning. That episode combines a typed return with
 `done_when.verify`. Foe rejects a completion claim when the checker reports
@@ -158,9 +158,11 @@ task-owned verifier determines task quality. Results from this modified lane
 are Foe-specific convergence evidence and do not contribute to a standard
 Terminal-Bench score.
 
-The selected scenarios cover seven forms of completion:
+The selected scenarios cover nine forms of completion:
 
 - `cancel-async-tasks` executes concurrency and cancellation-cleanup probes.
+- `configure-git-webserver` performs a key-authenticated clone and push, then
+  probes the live HTTP deployment with public content.
 - `dna-assembly` checks the declared primers, annealing, temperatures, and
   assembly overhangs.
 - `dna-insert` requires every task-consistent interpretation to use one shared
@@ -173,6 +175,8 @@ The selected scenarios cover seven forms of completion:
 - `large-scale-text-editing` checks the allowed Vim grammar and a temporary
   10,000-row sample. The task-owned verifier applies the script to all one
   million rows.
+- `overfull-hbox` canonicalizes the declared synonym families, rejects every
+  other text change, and compiles the document to check for overfull boxes.
 
 Validate every checker before a provider-backed run:
 
@@ -202,10 +206,10 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
 
 Equivalent targets end in `foe-verifier-fix-git` and
 `foe-verifier-large-scale-text-editing`. Additional targets cover
-`dna-assembly`, `dna-insert`, `git-multibranch`, and `gpt2-codegolf`. These
-targets use the standard service tier and low reasoning. They construct an
-adapter-owned single-episode program with the public checker as its completion
-verifier.
+`configure-git-webserver`, `dna-assembly`, `dna-insert`, `git-multibranch`,
+`gpt2-codegolf`, and `overfull-hbox`. These targets use the standard service
+tier and low reasoning. They construct an adapter-owned single-episode program
+with the public checker as its completion verifier.
 
 Targets beginning with `foe-built-in-verifier-` invoke the coding workflow
 constructed by the Foe binary. The workflow gives 60 model calls to an

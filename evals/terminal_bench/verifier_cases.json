@@ -6,6 +6,11 @@
       "oracle": "verifier_cases/cancel_async_tasks/oracle.sh",
       "contract": "The public checker exercises bounded concurrency and cancellation cleanup without changing the task workspace."
     },
+    "configure-git-webserver": {
+      "checker": "verifier_cases/configure_git_webserver/check.sh",
+      "oracle": "verifier_cases/configure_git_webserver/oracle.sh",
+      "contract": "The public checker performs a key-authenticated Git clone and push, then requires the live HTTP endpoint to serve its own public probe content."
+    },
     "dna-assembly": {
       "checker": "verifier_cases/dna_assembly/check.pl",
       "oracle": "verifier_cases/dna_assembly/oracle.sh",
@@ -35,6 +40,11 @@
       "checker": "verifier_cases/large_scale_text_editing/check.py",
       "oracle": "verifier_cases/large_scale_text_editing/oracle.sh",
       "contract": "The public checker validates the declared Vim grammar and transforms a temporary 10,000-row prefix before comparing it with the visible expected file."
+    },
+    "overfull-hbox": {
+      "checker": "verifier_cases/overfull_hbox/check.pl",
+      "oracle": "verifier_cases/overfull_hbox/oracle.sh",
+      "contract": "The public checker preserves the task-supplied TeX and synonym files, canonicalizes every allowed synonym family to validate all input changes, and requires a clean compilation without overfull boxes."
     }
   }
 }

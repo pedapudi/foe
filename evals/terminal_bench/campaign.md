@@ -4701,3 +4701,63 @@ Raw evidence remains under
 in the
 `xhigh-single-node-clean-confirmation-first-attempt-default-20260828t1200z-20260828T114656Z/`
 directory.
+
+## Verifier-governed repeatability correction
+
+Two public completion checkers extend the modified evaluation lane to the
+remaining repeatability failures. Each checker is derived from the task
+contract and uses public probe data. The unchanged task-owned grader remains
+the quality authority.
+
+The `configure-git-webserver` checker performs a key-authenticated clone and
+push. It requires the live HTTP endpoint to serve content from its own probe.
+The `overfull-hbox` checker hashes the task-supplied TeX and synonym files. It
+canonicalizes each synonym family before hashing the complete input token
+stream. This accepts every declared synonym substitution and rejects every
+other token or punctuation change.
+
+Provider-free controls ran each checker in a fresh task container. Both
+checkers rejected the untouched workspace, accepted an independently prepared
+oracle workspace, and received reward 1.0 from the task-owned grader. The
+control report has SHA-256 digest
+`bb2fffbede3e17b8ca6c32146e3b7689df4f4336b4bf57c29d8fe9f879074cb4`.
+
+The frozen release then ran both modified tasks with GPT-5.6 Sol low on the
+standard service tier. Each coding episode owned its checker through
+`done_when.verify`. Token use remained measurement-only.
+
+The live-service episode received four findings before completion:
+
+1. `/usr/bin/git` was unavailable.
+2. `/usr/bin/ssh` was unavailable.
+3. The required SSH user did not exist.
+4. The live HTTP endpoint returned status 404 after the first deployment.
+
+The episode repaired each condition. Its final public check performed a real
+push and received the expected content over HTTP. The unchanged grader awarded
+reward 1.0. The attempt used 28 model requests, 255,242 input tokens, 164,352
+cached-input tokens, and 6,143 output tokens. Its estimated cost was $0.552161,
+and its makespan was 207.047 seconds.
+
+The LaTeX episode first changed text outside the declared synonym families.
+The checker rejected that artifact. A later legal edit still produced an
+overfull box, which the checker also rejected. The episode repaired the final
+box and completed after an empty finding list. The unchanged grader awarded
+reward 1.0.
+
+The LaTeX attempt used 24 model requests, 325,041 input tokens, 211,968
+cached-input tokens, and 3,496 output tokens. Its estimated cost was $0.606999,
+and its makespan was 167.942 seconds.
+
+The live-service manifest has SHA-256 digest
+`6db4326b1a7b2218a2cf95034629c260cd053269c2b1e03a67594b56d39c35ac`.
+The LaTeX manifest has SHA-256 digest
+`decd7d9902399cb3fa2f56ded3f0fb94798b6d186b01c7e91abb3542460c25d3`.
+Raw evidence remains in the frozen release's `target/terminal-bench-jobs/`
+directory under the corresponding `verifier-governed-` names.
+
+Together with the retained verifier-governed `dna-insert` result, the same
+frozen release converts all three repeated closed-book failures when a
+declared checker supplies authoritative corrective feedback. These modified
+results establish Foe's completion-governance efficacy. They remain separate
+from standard Terminal-Bench confirmation scores.

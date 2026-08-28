@@ -56,6 +56,8 @@ VERIFIER_CASE_DATA = [
     "verifier_cases.json",
     "verifier_cases/cancel_async_tasks/check.py",
     "verifier_cases/cancel_async_tasks/oracle.sh",
+    "verifier_cases/configure_git_webserver/check.sh",
+    "verifier_cases/configure_git_webserver/oracle.sh",
     "verifier_cases/dna_assembly/check.pl",
     "verifier_cases/dna_assembly/oracle.sh",
     "verifier_cases/dna_insert/check.pl",
@@ -68,6 +70,8 @@ VERIFIER_CASE_DATA = [
     "verifier_cases/gpt2_codegolf/oracle.sh",
     "verifier_cases/large_scale_text_editing/check.py",
     "verifier_cases/large_scale_text_editing/oracle.sh",
+    "verifier_cases/overfull_hbox/check.pl",
+    "verifier_cases/overfull_hbox/oracle.sh",
 ]
 
 VERIFIER_CASES = [
@@ -76,6 +80,12 @@ VERIFIER_CASES = [
         "development",
         "cancel-async-tasks",
         "verifier_cases/cancel_async_tasks/check.py",
+    ),
+    (
+        "configure-git-webserver",
+        "confirmation",
+        "configure-git-webserver",
+        "verifier_cases/configure_git_webserver/check.sh",
     ),
     (
         "dna-assembly",
@@ -107,6 +117,12 @@ VERIFIER_CASES = [
         "development",
         "large-scale-text-editing",
         "verifier_cases/large_scale_text_editing/check.py",
+    ),
+    (
+        "overfull-hbox",
+        "confirmation",
+        "overfull-hbox",
+        "verifier_cases/overfull_hbox/check.pl",
     ),
 ]
 

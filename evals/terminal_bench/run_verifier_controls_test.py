@@ -29,12 +29,14 @@ class VerifierControlTest(unittest.TestCase):
             set(cases),
             {
                 "cancel-async-tasks",
+                "configure-git-webserver",
                 "dna-assembly",
                 "dna-insert",
                 "fix-git",
                 "git-multibranch",
                 "gpt2-codegolf",
                 "large-scale-text-editing",
+                "overfull-hbox",
             },
         )
         self.assertTrue(cases["cancel-async-tasks"].checker.is_file())
