@@ -4701,3 +4701,77 @@ Raw evidence remains under
 in the
 `xhigh-single-node-clean-confirmation-first-attempt-default-20260828t1200z-20260828T114656Z/`
 directory.
+
+## Assessment-feedback source attempt exhausted during bounded repair
+
+A private evaluator-owned assessment compared the externally rejected
+completion-falsification candidate with a successful parent-source episode.
+The assessment binds the rejected source candidate, its source patch, both
+evaluations, and the prior trajectory diagnosis. Its diagnostics identity is
+`sha256:37b5a4a06d317252d1d91d1effef604563b4852f7be543609db0444976f7c5ea`.
+
+Foe received the assessment with the identity-bound `dna-insert` trajectory
+corpus. The generation source remained tree
+`ba0847225330c05832cfa907c2fbfd9e32c4c4a0`, and the evaluated portable binary
+remained
+`fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
+Every provider request used GPT-5.6 Sol and the standard service tier.
+
+The diagnosis used one model request. It narrowed the earlier hypothesis after
+reading the rejected candidate's external failure. Required model-authored
+falsification prose had not prevented another false acceptance. The revised
+hypothesis attributed the failure to semantic claims whose operands were not
+bound to observations of the final artifact.
+
+The first implementation used 17 model requests. It added structured operands
+to completion evidence. Each operand named a prior result and a JSON Pointer.
+The first independent source assessment used 14 requests and found two
+bypasses. A rejected `return` result could provide circular evidence, and a
+successful command could provide self-authored output without artifact
+correspondence.
+
+The first corrective implementation used 82 requests. It restricted evidence
+to fresh scalar values from `read` and `grep`. A second independent assessment
+used 16 requests and found four remaining defects:
+
+- pointer eligibility was inferred from tool names rather than owned by each
+  tool's result contract;
+- any fresh scalar could satisfy an unrelated requirement;
+- filesystem-only evidence excluded services, databases, and other live
+  interfaces;
+- authoritative verifier executions were absent from the freshness boundary.
+
+The workflow routed those findings to its one bounded final repair. That child
+used all 100 available requests and ended exhausted. It expanded the candidate
+into a general observation and derivation system across 17 files. The retained
+working tree has 383 added and 169 removed lines. The runtime reached 5,433
+lines against its 5,350-line ceiling, and the tools reached 1,774 lines against
+their 1,770-line ceiling.
+
+The final candidate checker rejected a remaining `cargo fmt --check`
+difference. The workflow produced no source bundle or adoption record. The
+candidate artifact has digest
+`sha256:54ded3f250d6b7033a5141b0a3b0e1cd84104381c57c75be6a43caaf2671d71f`.
+No Terminal-Bench activation was run, and this attempt earns no autonomous
+improvement credit.
+
+The complete attempt used 230 model requests over 3,118.891 seconds. Provider
+accounting reported 24,303,723 input tokens, 21,526,528 cached-input tokens,
+and 120,939 output tokens. The estimated cost was $22.138171.
+
+The attempt establishes that assessment feedback reaches a fresh diagnosis,
+that review findings reach corrective source children, and that independent
+review can reject plausible but bypassable kernel changes. It also establishes
+that the current repair path does not converge reliably on broad source
+changes. The repair children spent most of their capacity expanding a semantic
+provenance design and then compressing it against line ceilings.
+
+The campaign rejects the candidate without external spend. Further work on a
+general observation-provenance contract requires direct design review and a
+multi-task activation fixture before another autonomous implementation. The
+quality campaign returns to frozen multi-task evaluation and smaller
+mechanism-specific changes.
+
+The retained result is
+`/home/sunil/git/foe-identity-bound-dna-source-improvement/target/dna-insert-falsification-feedback-source-improvement-default/result.json`.
+Its source trajectory and rejected working tree remain beside that file.
