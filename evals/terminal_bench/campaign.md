@@ -5842,3 +5842,56 @@ improvement. It establishes verifier-governed quality in the modified
 Terminal-Bench lane and transfer to a stateful task. It does not establish an
 improvement to closed-book `dna-insert`, which remains a failed confirmation
 case for the frozen source release.
+
+## Post-repair reassessment activation
+
+A source candidate changed the built-in coding workflow so that every repair
+returns to the independent assessment node. The workflow scheduler also gates
+retained predecessor values when a branch does not choose their target. These
+changes prevent a repaired artifact from completing without another assessment
+and prevent an unchosen branch from firing with stale input freshness.
+
+Two priority-tier `dna-insert` attempts used the unchanged closed-book task and
+task-owned grader. Both attempts used GPT-5.6 Sol with low reasoning for
+implementation and xhigh reasoning for assessment and repair. One attempt
+passed and one failed.
+
+| Result | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| failed | 21 | 216,217 | 82,944 | 18,534 | $0.936950 | 433.607 |
+| passed | 42 | 504,791 | 225,280 | 42,016 | $2.048476 | 922.502 |
+
+The successful attempt followed implementation with assessment, repair, and a
+fresh assessment. The final assessment cited measured primer lengths,
+temperatures, and an exact reconstruction. The unchanged external grader
+awarded reward 1.0.
+
+The failed attempt followed implementation with one assessment. The assessment
+accepted a 103-nucleotide forward primer. It treated a 44-nucleotide sequence
+that matched the input as a non-annealing extension. The external grader treated
+that matching sequence as part of a 72-nucleotide annealed region and rejected
+the artifact because the maximum permitted annealing length is 45 nucleotides.
+No repair ran because the initial assessment selected its `accept` branch.
+
+The result changes the focused closed-book observation from no successes in
+three attempts to one success in two attempts. It does not qualify the source
+candidate because repeatability remains insufficient. The remaining failure
+shows that reassessment after repair cannot correct an inaccurate initial
+acceptance. An independent final assessment must inspect every candidate final
+state, including a state accepted by the first assessment.
+
+The campaign runner also reported one invalid configuration claim per attempt.
+Its static profile expected `repair-task` to be terminal. The evaluated source
+declares a nonterminal repair followed by reassessment. The resolved programs
+match the source candidate, and the external scores remain diagnostic evidence.
+The configuration validator must describe the evaluated workflow before another
+qualification attempt.
+
+The evaluated source tree is
+`git-tree-sha1:46dcb8cf1e53c47c091e75aec52dd23075d2b97b`. The runtime
+binary is
+`sha256:5ac2641078a5f5749e3f1a5498c3733c94d89e8bbdb1fdb5e520eec441f4c479`.
+The manifest has digest
+`9a022a840809ab800677e4635fd7cc87886f31d1b366527aa27f30997fed2d6c`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/post-repair-assessment-dna-activation-20260829T195146Z`.
