@@ -4996,3 +4996,57 @@ The retained run is
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/autonomous-verifier-correction-git-multibranch-development-priority-20260829T005541Z`.
 Its campaign manifest has SHA-256 digest
 `5dad221de48689a1523a6295fed9c0a60b3ad4e7ff3b5ba566056a949f7e1b77`.
+
+### Restored Git completion-checker qualification
+
+The Git completion checker now snapshots the bare repository and publication
+trees before each live probe. It restores refs, objects, files, links,
+ownership, modes, and modification times after both successful and failed
+probes. A credential-free container control rejected an untouched workspace,
+accepted the author oracle, and restored populated and unborn repository
+states. The checker has SHA-256 digest
+`a6533196c069a1786886c230088d881aedfbd57eec71b6da13e3b4c209530bfa`.
+
+The frozen workflow candidate then repeated `git-multibranch`. The
+implementation configured SSH access, synchronous branch publication, HTTPS
+service, and live processes. Independent assessment reproduced a normal push
+failure caused by validation-seeded refs. It selected the repair branch. The
+fresh repair removed those refs and publication files, repeated the complete
+clone, commit, push, and fetch workflow, and restored an empty task-ready
+repository. The root completion checker and unchanged task-owned grader both
+accepted the final state.
+
+Foe used 35 model calls, 295,863 input tokens, 109,568 cached-input tokens,
+and 20,509 output tokens. Estimated cost was $1.199187, and serial execution
+took 614.343 seconds. Every request used GPT-5.6 Sol on the priority service
+tier. The configuration claim was valid, every account conformed, and the
+adapter recorded no infrastructure failure.
+
+The retained run is
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/autonomous-verifier-correction-git-multibranch-restored-priority-20260829T010950Z`.
+Its campaign manifest has SHA-256 digest
+`2e8a95b72fd0957844428cf37a1c956643fa3d2300154a3ff965a0eaeb7a07bb`.
+
+### Seven-case verifier-governed result
+
+The same source tree, portable binary, and workflow candidate passed all
+seven development cases that have public completion checkers:
+`dna-insert`, `fix-git`, `large-scale-text-editing`, `dna-assembly`,
+`gpt2-codegolf`, `cancel-async-tasks`, and `git-multibranch`. These attempts
+used 214 model calls, 2,218,308 input tokens, 1,187,328 cached-input tokens,
+and 116,440 output tokens. Estimated cost was $6.927651, and serial execution
+took 3,284.899 seconds.
+
+The independent assessment selected repair on `dna-assembly`,
+`gpt2-codegolf`, and `git-multibranch`. Each fresh repair corrected the
+reported defect before the unchanged grader awarded score 1.0. The other four
+cases establish preservation or direct verifier-guided correction. No scored
+attempt in this seven-case set had a credential, container, executable,
+sandbox, allowance, or transport failure.
+
+This result qualifies the modified verifier-governed development lane. It
+does not satisfy the unchanged twelve-task development gate because the
+public completion checkers change the information available during execution.
+Focused closed-book runs must establish that the assessment and repair
+structure transfers without checker feedback before the campaign repeats a
+larger gate.
