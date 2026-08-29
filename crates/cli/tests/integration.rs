@@ -1074,7 +1074,7 @@ fn plan_resolves_the_builtin_workflow_without_a_provider_request() {
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let plan: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(plan["program"]["name"], "coding");
-    assert_eq!(plan["program"]["workflow"]["nodes"]["audit-and-repair-task"]["model"]["done_when"]["verify"], "check");
+    assert_eq!(plan["program"]["done_when"]["verify"], "check");
     let identity = foe_lineage::digest_of(foe_program::identity::canonical(&plan["identity_document"]).as_bytes());
     assert_eq!(plan["identity"], identity);
 }
