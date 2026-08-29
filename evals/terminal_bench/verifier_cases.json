@@ -26,7 +26,8 @@
     "git-multibranch": {
       "checker": "verifier_cases/git_multibranch/check.py",
       "oracle": "verifier_cases/git_multibranch/oracle.sh",
-      "contract": "The public checker performs password-authenticated Git pushes with distinct public content and requires both live HTTPS endpoints to serve the pushed branches within three seconds."
+      "state_control": "verifier_cases/git_multibranch/state_regression.py",
+      "contract": "The public checker performs password-authenticated Git pushes with keyboard-interactive authentication disabled, requires both live HTTPS endpoints to serve distinct pushed content within three seconds, and restores the repository and publication trees after every result."
     },
     "gpt2-codegolf": {
       "checker": "verifier_cases/gpt2_codegolf/check.sh",

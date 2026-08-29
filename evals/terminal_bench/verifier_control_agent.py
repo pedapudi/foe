@@ -18,6 +18,7 @@ from run_verifier_controls import checker_control_command
 REMOTE_CHECKER = "/tmp/foe-completion-check"
 REMOTE_SETUP = "/tmp/foe-completion-check-setup"
 REMOTE_ORACLE = "/tmp/foe-completion-oracle"
+REMOTE_STATE_CONTROL = "/tmp/foe-completion-state-control"
 
 
 class VerifierControlAgent(BaseInstalledAgent):
@@ -29,14 +30,20 @@ class VerifierControlAgent(BaseInstalledAgent):
         checker_file: str,
         setup_file: str | None = None,
         oracle_file: str,
+        state_control_file: str | None = None,
         **kwargs: Any,
     ) -> None:
         self._checker = Path(checker_file)
         self._setup = Path(setup_file) if setup_file is not None else None
         self._oracle = Path(oracle_file)
+        self._state_control = (
+            Path(state_control_file) if state_control_file is not None else None
+        )
         files = [("checker", self._checker), ("oracle", self._oracle)]
         if self._setup is not None:
             files.append(("setup", self._setup))
+        if self._state_control is not None:
+            files.append(("state control", self._state_control))
         for role, path in files:
             if not path.is_file():
                 raise FileNotFoundError(f"{role} does not exist: {path}")
@@ -52,15 +59,16 @@ class VerifierControlAgent(BaseInstalledAgent):
     async def install(self, environment: BaseEnvironment) -> None:
         await environment.upload_file(self._checker, REMOTE_CHECKER)
         await environment.upload_file(self._oracle, REMOTE_ORACLE)
+        remote_paths = [REMOTE_CHECKER, REMOTE_ORACLE]
         if self._setup is not None:
             await environment.upload_file(self._setup, REMOTE_SETUP)
+            remote_paths.append(REMOTE_SETUP)
+        if self._state_control is not None:
+            await environment.upload_file(self._state_control, REMOTE_STATE_CONTROL)
+            remote_paths.append(REMOTE_STATE_CONTROL)
         await self.exec_as_root(
             environment,
-            command=(
-                f"chmod 755 {shlex.quote(REMOTE_CHECKER)} "
-                f"{shlex.quote(REMOTE_ORACLE)}"
-                + (f" {shlex.quote(REMOTE_SETUP)}" if self._setup is not None else "")
-            ),
+            command="chmod 755 " + " ".join(map(shlex.quote, remote_paths)),
         )
         if self._setup is not None:
             prepared = await self.exec_as_root(
@@ -121,12 +129,30 @@ class VerifierControlAgent(BaseInstalledAgent):
                 "completion checker rejected the oracle state: "
                 + "; ".join(oracle_findings)
             )
+        state_control_report = None
+        if self._state_control is not None:
+            state_control = await self.exec_as_agent(
+                environment,
+                command=(
+                    f"{shlex.quote(REMOTE_STATE_CONTROL)} "
+                    f"{shlex.quote(REMOTE_CHECKER)}"
+                ),
+                cwd=environment.task_env_config.workdir,
+            )
+            if state_control.return_code != 0:
+                raise RuntimeError(
+                    "completion checker changed the oracle state or blocked "
+                    "task-like pushes: "
+                    f"{(state_control.stderr or state_control.stdout or '').strip()}"
+                )
+            state_control_report = {"accepted": True}
         self._report = {
             "negative_control": {
                 "accepted": False,
                 "findings": negative_findings,
             },
             "oracle_control": {"accepted": True, "findings": []},
+            "state_control": state_control_report,
         }
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         (self.logs_dir / "foe-verifier-controls.json").write_text(

@@ -166,8 +166,10 @@ The selected scenarios cover seven forms of completion:
 - `dna-insert` requires every task-consistent interpretation to use one shared
   boundary for the inserted sequence and both primer annealing regions.
 - `fix-git` checks that the lost commit reaches `master` in a clean worktree.
-- `git-multibranch` pushes distinct content to both branches and probes both
-  live HTTPS endpoints.
+- `git-multibranch` pushes distinct content through password-only SSH and
+  probes both live HTTPS endpoints. It temporarily replaces the two branch
+  publications, then restores the repository and publication trees that it
+  observed before the check. Restoration also runs after a failed probe.
 - `gpt2-codegolf` compiles the size-bounded source and checks four public
   continuations.
 - `large-scale-text-editing` checks the allowed Vim grammar and a temporary
@@ -185,6 +187,14 @@ state to produce at least one finding. It then applies a separate oracle and
 requires both an empty finding list and a score of `1.0` from the task-owned
 verifier. The checker runs with an empty process environment, matching Foe's
 configured-executable contract. The control agent makes no model request.
+The `git-multibranch` control begins with an unborn `main` branch and no refs.
+It runs the checker twice and compares the repository and publication state
+after each run. A temporary hook that publishes nothing forces a failed check
+and tests the same restoration rule. The control then performs ordinary
+`main` and `dev` pushes and repeats the checker against populated refs. It
+restores the absent-ref state before the task-owned verifier runs. These steps
+detect probe refs or published files that would change the external grader's
+result.
 
 Preview one verifier-governed case:
 

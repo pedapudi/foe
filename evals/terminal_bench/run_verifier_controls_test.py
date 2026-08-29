@@ -44,6 +44,8 @@ class VerifierControlTest(unittest.TestCase):
             "primer3_setup.sh",
         )
         self.assertTrue(cases["cancel-async-tasks"].oracle.is_file())
+        self.assertIsNone(cases["cancel-async-tasks"].state_control)
+        self.assertTrue(cases["git-multibranch"].state_control.is_file())
         self.assertEqual(
             cases["cancel-async-tasks"].checker.read_text(encoding="utf-8").splitlines()[0],
             "#!/usr/local/bin/python3",
@@ -93,6 +95,16 @@ class VerifierControlTest(unittest.TestCase):
             result = evaluate_control_job(job)
             self.assertEqual(result["oracle_reward"], 1.0)
             self.assertEqual(result["negative_findings"], ["artifact is missing"])
+            self.assertIsNone(result["state_control_accepted"])
+            with self.assertRaisesRegex(ValueError, "state restoration"):
+                evaluate_control_job(job, require_state_control=True)
+            value = json.loads((trial / "result.json").read_text(encoding="utf-8"))
+            value["agent_result"]["metadata"]["foe_verifier_controls"][
+                "state_control"
+            ] = {"accepted": True}
+            (trial / "result.json").write_text(json.dumps(value), encoding="utf-8")
+            result = evaluate_control_job(job, require_state_control=True)
+            self.assertIs(result["state_control_accepted"], True)
 
 
 if __name__ == "__main__":
