@@ -80,7 +80,7 @@ class CasesTest(unittest.TestCase):
             self.assertEqual(first.stat().st_mode & 0o777, 0o400)
             self.assertNotEqual(first, second)
 
-    def test_built_in_program_integrity_requires_terminal_audit_ownership(self):
+    def test_built_in_program_integrity_requires_source_owned_profile(self):
         with tempfile.TemporaryDirectory() as directory:
             trial = Path(directory) / "trial"
             episode = trial / "agent" / "foe-episode"
@@ -89,8 +89,9 @@ class CasesTest(unittest.TestCase):
             result = trial / "result.json"
             program = {
                 "name": "coding",
-                "budget": {"model_calls": 160},
+                "budget": {"model_calls": 180},
                 "sandbox": {"mode": "off"},
+                "done_when": {"verify": "check"},
                 "model": {
                     "provider": "openai-codex",
                     "model": "gpt-5.6-sol",
@@ -108,19 +109,39 @@ class CasesTest(unittest.TestCase):
                                 "done_when": {"returns": {}},
                             },
                         },
-                        "audit-and-repair-task": {
+                        "assess-task": {
                             "follows": ["task", "implement-task"],
-                            "terminal": True,
+                            "terminal": False,
+                            "branches": {
+                                "accept": [],
+                                "repair": ["repair-task"],
+                            },
                             "model": {
-                                "name": "audit-and-repair-task",
-                                "budget": {"model_calls": 100},
+                                "name": "assess-task",
+                                "budget": {"model_calls": 60},
                                 "model": {
                                     "provider": "openai-codex",
                                     "model": "gpt-5.6-sol",
-                                    "reasoning_effort": "high",
+                                    "reasoning_effort": "xhigh",
                                     "service_tier": "priority",
                                 },
-                                "done_when": {"returns": {}, "verify": "check"},
+                                "tools": ["read", "grep", "bash"],
+                                "done_when": {"returns": {}},
+                            },
+                        },
+                        "repair-task": {
+                            "follows": ["task", "implement-task", "assess-task"],
+                            "terminal": True,
+                            "model": {
+                                "name": "repair-task",
+                                "budget": {"model_calls": 60},
+                                "model": {
+                                    "provider": "openai-codex",
+                                    "model": "gpt-5.6-sol",
+                                    "reasoning_effort": "xhigh",
+                                    "service_tier": "priority",
+                                },
+                                "done_when": {"returns": {}},
                             },
                         },
                     }
@@ -145,14 +166,11 @@ class CasesTest(unittest.TestCase):
                 [],
             )
             candidate = json.loads(json.dumps(program))
-            candidate["budget"]["model_calls"] = 126
-            candidate_audit = candidate["workflow"]["nodes"][
-                "audit-and-repair-task"
-            ]
-            candidate_audit["terminal"] = False
-            del candidate_audit["model"]["done_when"]["verify"]
+            candidate["budget"]["model_calls"] = 186
+            candidate.pop("done_when")
+            candidate["workflow"]["nodes"]["repair-task"]["terminal"] = False
             candidate["workflow"]["nodes"]["falsify-completion"] = {
-                "follows": ["task", "audit-and-repair-task"],
+                "follows": ["task", "repair-task"],
                 "terminal": True,
                 "model": {
                     "name": "falsify-completion",
@@ -191,7 +209,7 @@ class CasesTest(unittest.TestCase):
             )
             gate["follows"] = ["task"]
             nested_candidate["workflow"]["nodes"]["completion-workflow"] = {
-                "follows": ["task", "audit-and-repair-task"],
+                "follows": ["task", "repair-task"],
                 "terminal": True,
                 "workflow": {"nodes": {"falsify-completion": gate}},
             }
@@ -248,9 +266,6 @@ class CasesTest(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            program["workflow"]["nodes"]["audit-and-repair-task"]["model"][
-                "model"
-            ]["reasoning_effort"] = "xhigh"
             (episode / "episode.jsonl").write_text(
                 json.dumps(
                     {
@@ -287,9 +302,6 @@ class CasesTest(unittest.TestCase):
             )
             self.assertTrue(integrity["configuration_claim_valid"])
             self.assertEqual(integrity["built_in_audit_reasoning_effort"], "xhigh")
-            program["workflow"]["nodes"]["audit-and-repair-task"]["model"][
-                "model"
-            ]["reasoning_effort"] = "high"
             program["workflow"]["nodes"]["implement-task"]["model"]["done_when"][
                 "verify"
             ] = "check"
@@ -514,10 +526,10 @@ class CasesTest(unittest.TestCase):
         self.assertIn("completion_checker=/tmp/completion-check", command)
         self.assertAlmostEqual(
             float(command[command.index("--agent-timeout-multiplier") + 1]),
-            (tasks["fix-git"].seconds * 2 + 300)
+            (tasks["fix-git"].seconds * 3 + 300)
             / tasks["fix-git"].harbor_agent_seconds,
         )
-        self.assertEqual(model_stage_count(None, None, None, True), 2)
+        self.assertEqual(model_stage_count(None, None, None, True), 3)
 
     def test_harbor_command_runs_the_closed_book_built_in_workflow(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))

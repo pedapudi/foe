@@ -42,7 +42,7 @@ DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh")
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 MIN_AUXILIARY_MODEL_CALLS = 6
-BUILTIN_WORKFLOW_MODEL_CALLS = 160
+BUILTIN_WORKFLOW_MODEL_CALLS = 180
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
 AGENT_TIMEOUT_GRACE_SECONDS = 300
 CREDENTIAL_LEASE_STARTUP_SECONDS = 900
@@ -220,7 +220,7 @@ def model_stage_count(
     built_in_workflow: bool = False,
 ) -> int:
     if built_in_workflow:
-        return 2
+        return 3
     return 1 + sum(
         value is not None
         for value in (
@@ -977,14 +977,17 @@ def built_in_program_failures(
         return failures
 
     implementation = mapping(nodes.get("implement-task"))
-    audit = mapping(nodes.get("audit-and-repair-task"))
+    assessment = mapping(nodes.get("assess-task"))
+    repair = mapping(nodes.get("repair-task"))
     implementation_program = mapping(implementation.get("model"))
-    audit_program = mapping(audit.get("model"))
+    assessment_program = mapping(assessment.get("model"))
+    repair_program = mapping(repair.get("model"))
     actual = {
         "root.name": program.get("name"),
         "root.model": model_profile(root_model),
         "root.model_calls": mapping(program.get("budget")).get("model_calls"),
         "root.sandbox": mapping(program.get("sandbox")).get("mode"),
+        "root.verify": mapping(program.get("done_when")).get("verify"),
         "workflow.nodes": tuple(sorted(nodes)),
         "implementation.follows": sequence(implementation.get("follows")),
         "implementation.terminal": implementation.get("terminal"),
@@ -995,47 +998,56 @@ def built_in_program_failures(
         "implementation.verify": mapping(
             implementation_program.get("done_when")
         ).get("verify"),
-        "audit.follows": sequence(audit.get("follows")),
-        "audit.terminal": audit.get("terminal"),
-        "audit.name": audit_program.get("name"),
-        "audit.model": model_profile(audit_program.get("model")),
-        "audit.model_calls": mapping(audit_program.get("budget")).get(
+        "assessment.follows": sequence(assessment.get("follows")),
+        "assessment.terminal": assessment.get("terminal"),
+        "assessment.branches": mapping(assessment.get("branches")),
+        "assessment.name": assessment_program.get("name"),
+        "assessment.model": model_profile(assessment_program.get("model")),
+        "assessment.model_calls": mapping(assessment_program.get("budget")).get(
             "model_calls"
         ),
-        "audit.verify": mapping(audit_program.get("done_when")).get("verify"),
+        "assessment.tools": sequence(assessment_program.get("tools")),
+        "assessment.verify": mapping(assessment_program.get("done_when")).get(
+            "verify"
+        ),
+        "repair.follows": sequence(repair.get("follows")),
+        "repair.terminal": repair.get("terminal"),
+        "repair.name": repair_program.get("name"),
+        "repair.model": model_profile(repair_program.get("model")),
+        "repair.model_calls": mapping(repair_program.get("budget")).get(
+            "model_calls"
+        ),
+        "repair.verify": mapping(repair_program.get("done_when")).get("verify"),
     }
     sol_low = ("openai-codex", "gpt-5.6-sol", "low", service_tier)
+    sol_xhigh = ("openai-codex", "gpt-5.6-sol", "xhigh", service_tier)
     expected = {
         "root.name": "coding",
         "root.model": sol_low,
         "root.model_calls": BUILTIN_WORKFLOW_MODEL_CALLS,
         "root.sandbox": "off",
-        "workflow.nodes": ("audit-and-repair-task", "implement-task"),
+        "root.verify": "check" if completion_checker else None,
+        "workflow.nodes": ("assess-task", "implement-task", "repair-task"),
         "implementation.follows": ("task",),
         "implementation.terminal": False,
         "implementation.name": "implement-task",
         "implementation.model_calls": 60,
         "implementation.verify": None,
-        "audit.follows": ("task", "implement-task"),
-        "audit.terminal": True,
-        "audit.name": "audit-and-repair-task",
-        "audit.model": actual["audit.model"],
-        "audit.model_calls": 100,
-        "audit.verify": "check" if completion_checker else None,
+        "assessment.follows": ("task", "implement-task"),
+        "assessment.terminal": False,
+        "assessment.branches": {"accept": [], "repair": ["repair-task"]},
+        "assessment.name": "assess-task",
+        "assessment.model": sol_xhigh,
+        "assessment.model_calls": 60,
+        "assessment.tools": ("read", "grep", "bash"),
+        "assessment.verify": None,
+        "repair.follows": ("task", "implement-task", "assess-task"),
+        "repair.terminal": True,
+        "repair.name": "repair-task",
+        "repair.model": sol_xhigh,
+        "repair.model_calls": 60,
+        "repair.verify": None,
     }
-    audit_model = actual["audit.model"]
-    if not (
-        len(audit_model) == 4
-        and audit_model[0:2] == ("openai-codex", "gpt-5.6-sol")
-        and audit_model[2] in REASONING_EFFORTS
-        and audit_model[3] == service_tier
-    ):
-        expected["audit.model"] = (
-            "openai-codex",
-            "gpt-5.6-sol",
-            "low|medium|high|xhigh",
-            service_tier,
-        )
     return [
         f"built-in profile {key}: expected {expected[key]!r}, recorded {value!r}"
         for key, value in actual.items()
@@ -1043,12 +1055,12 @@ def built_in_program_failures(
     ]
 
 
-def built_in_audit_reasoning_effort(
+def built_in_assessment_reasoning_effort(
     result_path: Path,
     *,
     source_candidate: bool = False,
 ) -> str:
-    """Read the resolved terminal-audit effort from one root episode."""
+    """Read the resolved independent-assessment effort from one root episode."""
     episode_path = result_path.parent / "agent" / "foe-episode" / "episode.jsonl"
     try:
         with episode_path.open(encoding="utf-8") as source:
@@ -1067,12 +1079,20 @@ def built_in_audit_reasoning_effort(
             )
         effort = terminals[0][2][2]
     else:
-        audit = nodes.get("audit-and-repair-task") if isinstance(nodes, dict) else None
-        audit_program = audit.get("model") if isinstance(audit, dict) else None
-        model = audit_program.get("model") if isinstance(audit_program, dict) else None
+        assessment = nodes.get("assess-task") if isinstance(nodes, dict) else None
+        assessment_program = (
+            assessment.get("model") if isinstance(assessment, dict) else None
+        )
+        model = (
+            assessment_program.get("model")
+            if isinstance(assessment_program, dict)
+            else None
+        )
         effort = model.get("reasoning_effort") if isinstance(model, dict) else None
     if effort not in REASONING_EFFORTS:
-        raise ValueError("the resolved built-in terminal audit has invalid reasoning effort")
+        raise ValueError(
+            "the resolved built-in independent assessment has invalid reasoning effort"
+        )
     return effort
 
 
@@ -1151,7 +1171,7 @@ def read_job_integrity(
             )
             try:
                 built_in_audit_efforts.add(
-                    built_in_audit_reasoning_effort(
+                    built_in_assessment_reasoning_effort(
                         path,
                         source_candidate=source_candidate,
                     )
@@ -1182,7 +1202,7 @@ def read_job_integrity(
             incomplete_resource_measurements.append(f"{trial}: {count} model call(s) lack provider usage")
     if len(built_in_audit_efforts) > 1:
         infrastructure_failures.append(
-            "built-in terminal-audit reasoning effort differs across trials"
+            "built-in independent-assessment reasoning effort differs across trials"
         )
     return {
         "infrastructure_failures": infrastructure_failures,
@@ -1440,7 +1460,10 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument(
         "--built-in-workflow",
         action="store_true",
-        help="exercise Foe's built-in implementation and terminal-audit workflow",
+        help=(
+            "exercise Foe's built-in implementation, independent assessment, "
+            "and conditional repair workflow"
+        ),
     )
     answer.add_argument(
         "--hard-token-limits",
@@ -1870,7 +1893,7 @@ def main(argv: list[str] | None = None) -> int:
     if workflow_candidate is not None:
         print(f"workflow      {workflow_candidate['digest']}")
     elif args.built_in_workflow:
-        print("workflow      built-in implementation and terminal audit")
+        print("workflow      built-in implementation, assessment, conditional repair")
     if source_adoption is not None:
         print(f"source bundle {source_adoption['source_bundle_identity']}")
         print(f"candidate     {source_adoption['source_candidate_identity']}")
@@ -1894,7 +1917,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.authorized_benchmark_context:
         print("task context  authorized isolated benchmark")
     if completion_checker is not None:
-        owner = "built-in terminal audit" if args.built_in_workflow else "coding episode"
+        owner = "built-in workflow root" if args.built_in_workflow else "coding episode"
         print(
             f"completion    {owner} done_when.verify "
             f"sha256:{digest(completion_checker)}"

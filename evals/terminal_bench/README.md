@@ -18,8 +18,9 @@ validation according to the
 The adapter implements Harbor's installed-agent interface. Harbor downloads a
 task image, uploads a statically linked Foe binary, and executes the task-owned
 verifier after Foe exits. Adapter-generated targets run one coding episode.
-Built-in targets invoke the implementation and terminal-audit workflow
-constructed by the Foe binary. Harbor documents the custom interface in its
+Built-in targets invoke the implementation, independent assessment, and
+conditional repair workflow constructed by the Foe binary. Harbor documents
+the custom interface in its
 [agent integration guide](https://harborframework.com/docs/agents).
 
 The installed-agent program sets `sandbox.mode` to `off`. The Harbor Docker
@@ -219,10 +220,11 @@ verifier.
 
 Targets beginning with `foe-built-in-verifier-` invoke the coding workflow
 constructed by the Foe binary. The workflow gives 60 model calls to an
-implementation episode and 60 calls to a fresh terminal audit. The campaign
-manifest records the resolved reasoning effort for the terminal audit. This
-keeps source candidates with different audit effort in distinct diagnostic
-configurations. The terminal audit owns `done_when.verify`. The adapter
+implementation episode, 60 calls to a fresh independent assessment, and 60
+calls to a conditional fresh repair. The campaign manifest records the
+resolved reasoning effort for the independent assessment. This keeps source
+candidates with different assessment effort in distinct diagnostic
+configurations. The workflow root owns `done_when.verify`. The adapter
 disables Landlock because each Terminal-Bench task already runs in its Docker
 container.
 
@@ -275,8 +277,9 @@ sandbox mode, data-flow edges, and completion ownership.
 
 ## Run the built-in workflow on closed-book tasks
 
-The primary scored targets run Foe's implementation and terminal-audit
-episodes. The development target uses the frozen twelve-task development set:
+The primary scored targets run Foe's implementation, independent assessment,
+and conditional repair workflow. The development target uses the frozen
+twelve-task development set:
 
 ```sh
 bazel run //evals/terminal_bench:foe-development
@@ -552,8 +555,8 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
 
 The confirmation target contains eight tasks. The [campaign record](campaign.md)
 gives their exposure state, acceptance rule, and stopping rule. Run two attempts
-per task. This target uses the same built-in implementation and terminal-audit
-workflow as the development target:
+per task. This target uses the same built-in implementation, independent
+assessment, and conditional repair workflow as the development target:
 
 ```sh
 bazel run //evals/terminal_bench:foe-confirmation
