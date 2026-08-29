@@ -125,7 +125,7 @@ class CasesTest(unittest.TestCase):
                                     "reasoning_effort": "xhigh",
                                     "service_tier": "priority",
                                 },
-                                "tools": ["read", "grep", "bash"],
+                                "tools": ["read", "grep", "bash", "check"],
                                 "done_when": {"returns": {}},
                             },
                         },

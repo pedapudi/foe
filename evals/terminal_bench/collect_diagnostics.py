@@ -594,9 +594,18 @@ def collect(
     binary: Path,
     run_dirs: list[Path],
     eligible_tasks: set[str],
+    selected_tasks: set[str] | None = None,
 ) -> dict[str, Any]:
     if not run_dirs:
         raise ValueError("at least one retained Terminal-Bench run is required")
+    task_filter = selected_tasks
+    selected_tasks = eligible_tasks if selected_tasks is None else selected_tasks
+    unknown_tasks = selected_tasks - eligible_tasks
+    if unknown_tasks:
+        raise ValueError(
+            "selected tasks are outside self-improvement evidence: "
+            + ", ".join(sorted(unknown_tasks))
+        )
     identity = evaluated_foe(source_root, binary)
     reports = []
     runs = []
@@ -618,7 +627,11 @@ def collect(
         if not diagnostic_paths:
             raise ValueError(f"Terminal-Bench run has no Foe diagnostics: {run_dir}")
         evaluation = evaluation_metadata(manifest, manifest_path)
+        selected_diagnoses = 0
         for path in diagnostic_paths:
+            task_directory = path.relative_to(run_dir).parts[0]
+            if task_filter is not None and task_directory not in selected_tasks:
+                continue
             path = require_confined_regular_file(
                 path, run_dir, "Foe trajectory diagnosis"
             )
@@ -663,7 +676,7 @@ def collect(
             report["verifier_feedback"] = current_feedback
             task = report.get("task")
             task_name = task.rsplit("/", 1)[-1] if isinstance(task, str) else None
-            if task_name not in eligible_tasks:
+            if task_name not in selected_tasks:
                 raise ValueError(
                     f"trajectory diagnosis is outside self-improvement evidence: {path}"
                 )
@@ -671,9 +684,14 @@ def collect(
             if not isinstance(evidence, dict) or evidence.get("runtime_build") != identity["runtime_binary"]:
                 raise ValueError(f"trajectory diagnosis has a different runtime identity: {path}")
             reports.append(compact_diagnosis(report, evaluation))
+            selected_diagnoses += 1
             if len(reports) > MAX_DIAGNOSES:
                 raise ValueError(f"self-improvement evidence exceeds {MAX_DIAGNOSES} trajectory diagnoses")
-        runs.append({**evaluation, "diagnoses": len(diagnostic_paths)})
+        if selected_diagnoses == 0:
+            raise ValueError(
+                f"Terminal-Bench run has no selected Foe diagnostics: {run_dir}"
+            )
+        runs.append({**evaluation, "diagnoses": selected_diagnoses})
     answer = {
         "schema_version": 6,
         "evaluated_foe": identity,
@@ -695,6 +713,11 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--source-root", type=Path, required=True)
     answer.add_argument("--foe", type=Path, required=True)
     answer.add_argument("--run-dir", type=Path, action="append", required=True)
+    answer.add_argument(
+        "--task",
+        action="append",
+        help="select one eligible task; repeat to select more than one",
+    )
     answer.add_argument("--cases", type=Path, required=True)
     answer.add_argument("--output", type=Path, required=True)
     return answer
@@ -710,6 +733,7 @@ def main(argv: list[str] | None = None) -> int:
             args.foe.resolve(strict=True),
             [path.resolve(strict=True) for path in args.run_dir],
             eligible_tasks,
+            set(args.task) if args.task else None,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(encoded_evidence(report), encoding="utf-8")

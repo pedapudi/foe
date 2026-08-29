@@ -341,6 +341,31 @@ class CollectDiagnosticsTest(unittest.TestCase):
         self.assertTrue(encoded.endswith("\n"))
         self.assertNotIn("\n  ", encoded)
 
+    def test_collector_selects_tasks_before_reading_unrelated_trials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, binary, run, _ = self.fixture(Path(directory))
+            (run / "task").rename(run / "example")
+            unrelated = run / "other" / "interrupted" / "agent"
+            unrelated.mkdir(parents=True)
+            (unrelated / "foe-diagnostics.json").write_text("{}\n", encoding="utf-8")
+
+            report = collect(
+                source,
+                binary,
+                [run],
+                {"example", "other"},
+                {"example"},
+            )
+
+        self.assertEqual(len(report["trajectory_diagnostics"]), 1)
+        self.assertEqual(report["runs"][0]["diagnoses"], 1)
+
+    def test_collector_rejects_a_selected_task_outside_the_evidence_set(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, binary, run, _ = self.fixture(Path(directory))
+            with self.assertRaisesRegex(ValueError, "outside self-improvement evidence"):
+                collect(source, binary, [run], {"example"}, {"sealed"})
+
     def test_collector_reloads_the_retained_task_owned_verifier_report(self):
         with tempfile.TemporaryDirectory() as directory:
             source, binary, run, _ = self.fixture(Path(directory))

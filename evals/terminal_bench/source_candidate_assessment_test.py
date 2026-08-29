@@ -1092,6 +1092,7 @@ class SourceCandidateAssessmentTest(unittest.TestCase):
                 },
                 [],
                 [],
+                [],
                 "source-change",
                 projection,
             )

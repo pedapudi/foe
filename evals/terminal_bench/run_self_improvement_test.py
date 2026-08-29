@@ -23,6 +23,7 @@ from run_self_improvement import (
     find_accepted_verification,
     instruction_candidate_from_outcome,
     line_budget_ceilings,
+    matched_source_contrast_digests,
     measure_episode,
     model_config,
     parser as self_improvement_parser,
@@ -628,7 +629,8 @@ class SelfImprovementConfigTest(unittest.TestCase):
         ]["sufficiency"]
         self.assertIn("general, source-owned, falsifiable runtime mechanism", sufficiency)
         self.assertIn("semantic task-quality error", sufficiency)
-        self.assertIn("false acceptance by a built-in terminal audit", sufficiency)
+        self.assertIn("same execution configuration", sufficiency)
+        self.assertIn("configuration difference cannot support", sufficiency)
         self.assertIn("does not require prior proof of transfer", sufficiency)
         self.assertIn("external task evaluation decides promotion", sufficiency)
         self.assertIn("Choose `insufficient-evidence`", sufficiency)
@@ -1502,12 +1504,14 @@ class DiagnosisValidatorTest(unittest.TestCase):
         values,
         requested_candidate_kind="auto",
         failure_contrasts=None,
+        matched_source_contrasts=None,
     ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             program = root / "program.json"
             program.write_text(json.dumps(PROGRAM_DOCUMENT), encoding="utf-8")
             validator = root / "diagnosis-validator"
+            contrasts = failure_contrasts or [FAILURE_CONTRAST]
             write_diagnosis_validator(
                 validator,
                 program,
@@ -1515,7 +1519,12 @@ class DiagnosisValidatorTest(unittest.TestCase):
                 EVIDENCE_SHA256,
                 BASE_CONFIGURATION,
                 [SUPPORTED_AUDIT],
-                failure_contrasts or [FAILURE_CONTRAST],
+                contrasts,
+                (
+                    [contrast["contrast_sha256"] for contrast in contrasts]
+                    if matched_source_contrasts is None
+                    else matched_source_contrasts
+                ),
                 requested_candidate_kind,
             )
             results = []
@@ -1639,6 +1648,71 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertEqual(judged[0], "")
         self.assertIn("requires branch implement-source", judged[1])
         self.assertEqual(judged[2], "")
+
+    def test_source_diagnosis_requires_a_matched_execution_configuration(self):
+        judged = self.judgments(
+            [
+                {
+                    "branch": "implement-source",
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
+                },
+                {
+                    "branch": "configure-workflow",
+                    "failure_contrast_sha256": FAILURE_CONTRAST_SHA256,
+                    "assessment_and_repair": VERIFIER_GOVERNED_ASSESSMENT,
+                },
+                {"branch": "insufficient-evidence"},
+            ],
+            matched_source_contrasts=[],
+        )
+        self.assertIn("same execution configuration", judged[0])
+        self.assertEqual(judged[1], "")
+        self.assertEqual(judged[2], "")
+
+    def test_matched_source_contrasts_are_derived_from_episode_configurations(self):
+        def diagnosis(episode_id, configuration):
+            return {
+                "evidence_identity": {"episode_id": episode_id},
+                "evaluation": {"execution_configuration": configuration},
+            }
+
+        base = {"built_in_workflow": True, "service_tier": "priority"}
+        changed = {**base, "completion_verifier": {"sha256": "sha256:" + "9" * 64}}
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "evidence.json"
+            evidence.write_text(
+                json.dumps(
+                    {
+                        "trajectory_diagnostics": [
+                            diagnosis("ep_failed_one", base),
+                            diagnosis("ep_failed_two", base),
+                            diagnosis("ep_success", base),
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                matched_source_contrast_digests(evidence, [FAILURE_CONTRAST]),
+                [FAILURE_CONTRAST_SHA256],
+            )
+
+            evidence.write_text(
+                json.dumps(
+                    {
+                        "trajectory_diagnostics": [
+                            diagnosis("ep_failed_one", base),
+                            diagnosis("ep_failed_two", base),
+                            diagnosis("ep_success", changed),
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                matched_source_contrast_digests(evidence, [FAILURE_CONTRAST]),
+                [],
+            )
 
     def test_repeated_completed_rejections_can_support_a_source_hypothesis(self):
         contrast = COMPLETED_ARTIFACT_REJECTION_CONTRAST
