@@ -5050,3 +5050,78 @@ public completion checkers change the information available during execution.
 Focused closed-book runs must establish that the assessment and repair
 structure transfers without checker feedback before the campaign repeats a
 larger gate.
+
+## Closed-book assessment and conditional repair
+
+The source-owned candidate branch produced a new portable binary with SHA-256
+digest
+`d498321e0c2b22f28943bf586713ade3703299c61bd1859a3bfb59435f63b5c2`.
+Its source tree is
+`git-tree-sha1:96087a692815a3a76b09486522dfcc181203c4c0`. The runner
+constructed the same independent-assessment and conditional fresh-repair
+workflow without a public completion checker. Every request used GPT-5.6 Sol
+on the priority service tier. Implementation used low reasoning. Assessment
+and repair used xhigh reasoning. Token limits remained measurement-only.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `dna-assembly` | 1.0 | 80 | 2,231,591 | 1,634,304 | 62,756 | $4.297990 | 1,497.823 |
+| `gpt2-codegolf` | 1.0 | 79 | 2,335,100 | 1,700,864 | 59,795 | $4.413190 | 1,631.027 |
+| `git-multibranch` | 1.0 | 19 | 168,319 | 62,464 | 11,511 | $0.678626 | 289.478 |
+| `dna-insert` attempt 1 | 0.0 | 40 | 465,882 | 247,808 | 26,850 | $1.508419 | 666.307 |
+| `dna-insert` attempt 2 | 1.0 | 15 | 91,341 | 27,136 | 6,957 | $0.406814 | 201.128 |
+| **Total** | **4.0** | **233** | **5,292,233** | **3,672,576** | **167,869** | **$11.305038** | **4,285.763** |
+
+The first `dna-assembly` implementation produced incompatible Golden Gate
+overhangs, a three-base product deletion, and two primer-pair temperature
+violations. Independent assessment derived each defect from the submitted
+primers. Fresh repair corrected the artifact, and the unchanged task-owned
+grader accepted it.
+
+The first GPT-2 implementation emitted the same repeated token for distinct
+prompts. Independent assessment found checkpoint tensor misordering,
+byte-count truncation before tokenization, and invalid empty-prompt behavior.
+Fresh repair corrected those mechanisms. The unchanged task-owned grader
+accepted the final dependency-free C program.
+
+The Git implementation left an empty task-ready repository, functioning SSH
+and HTTPS services, and synchronous branch publication. Independent
+assessment accepted it without repair. This result establishes preservation
+for a live-service task. It does not isolate another correction effect.
+
+The first `dna-insert` assessment found a one-base product deletion and sent
+it to fresh repair. The repair produced the correct plasmid product, but it
+certified melting temperatures under one sequence decomposition. The forward
+primer encoded the required insertion across its overhang and annealing
+boundary. The unchanged grader also evaluated the literal inserted sequence
+as the boundary. That interpretation produced a 22-base forward annealing
+region and a 7.321605-degree pair difference. The grader rejected the
+artifact.
+
+The second `dna-insert` implementation used the exact 39-base inserted
+sequence as its overhang. It installed and ran `oligotm`, produced adjacent
+primer boundaries, and passed independent assessment and the unchanged
+grader. The candidate is therefore 1/2 on this confirmation task. The result
+shows behavioral capacity and a repeatability gap. A general assessment rule
+must evaluate dependent constraints under every task-consistent decomposition
+of the final artifact unless evidence establishes one interpretation.
+
+The five attempts had no credential, container, executable, sandbox,
+allowance, or transport failure. Their respective campaign manifest digests
+are:
+
+- `dna-assembly`:
+  `a164d7f14f72a3a229d14e6767e0a28500d845a95e7acac9665459a0ff35a935`;
+- `gpt2-codegolf`:
+  `8c97119301f20426332c8addb8058200b147e285b066f10774880fde42339bcd`;
+- `git-multibranch`:
+  `783b0241237b7e9093d6b55232de742f99730518f5cc8bc3c97bff883a15475b`;
+- first `dna-insert` attempt:
+  `54ceaa0b6c5644aff32ade235c4d030638e038eac363798047ef621613bf9405`;
+- second `dna-insert` attempt:
+  `5339d0302c431b34699988329ef974a4786a75060bedb45436992d6a675315f0`.
+
+The three focused development cases pass closed-book. The candidate may now
+proceed to the remaining development tasks after the sequence-decomposition
+repeatability defect is addressed. Confirmation remains closed because the
+candidate has not yet completed the unchanged twelve-task development gate.
