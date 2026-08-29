@@ -979,13 +979,18 @@ def built_in_program_failures(
     implementation = mapping(nodes.get("implement-task"))
     assessment = mapping(nodes.get("assess-task"))
     repair = mapping(nodes.get("repair-task"))
+    confirmation = mapping(nodes.get("confirm-task"))
+    confirmation_repair = mapping(nodes.get("confirm-repair-task"))
     implementation_program = mapping(implementation.get("model"))
     assessment_program = mapping(assessment.get("model"))
     repair_program = mapping(repair.get("model"))
+    confirmation_program = mapping(confirmation.get("model"))
+    confirmation_repair_program = mapping(confirmation_repair.get("model"))
     actual = {
         "root.name": program.get("name"),
         "root.model": model_profile(root_model),
         "root.model_calls": mapping(program.get("budget")).get("model_calls"),
+        "root.max_episodes": mapping(program.get("budget")).get("max_episodes"),
         "root.sandbox": mapping(program.get("sandbox")).get("mode"),
         "root.verify": mapping(program.get("done_when")).get("verify"),
         "workflow.nodes": tuple(sorted(nodes)),
@@ -1001,6 +1006,7 @@ def built_in_program_failures(
         "assessment.follows": sequence(assessment.get("follows")),
         "assessment.terminal": assessment.get("terminal"),
         "assessment.branches": mapping(assessment.get("branches")),
+        "assessment.max_fires": assessment.get("max_fires"),
         "assessment.name": assessment_program.get("name"),
         "assessment.model": model_profile(assessment_program.get("model")),
         "assessment.model_calls": mapping(assessment_program.get("budget")).get(
@@ -1012,12 +1018,49 @@ def built_in_program_failures(
         ),
         "repair.follows": sequence(repair.get("follows")),
         "repair.terminal": repair.get("terminal"),
+        "repair.branches": mapping(repair.get("branches")),
+        "repair.max_fires": repair.get("max_fires"),
         "repair.name": repair_program.get("name"),
         "repair.model": model_profile(repair_program.get("model")),
         "repair.model_calls": mapping(repair_program.get("budget")).get(
             "model_calls"
         ),
+        "repair.tools": sequence(repair_program.get("tools")),
         "repair.verify": mapping(repair_program.get("done_when")).get("verify"),
+        "confirmation.follows": sequence(confirmation.get("follows")),
+        "confirmation.terminal": confirmation.get("terminal"),
+        "confirmation.branches": mapping(confirmation.get("branches")),
+        "confirmation.max_fires": confirmation.get("max_fires"),
+        "confirmation.name": confirmation_program.get("name"),
+        "confirmation.model": model_profile(confirmation_program.get("model")),
+        "confirmation.model_calls": mapping(
+            confirmation_program.get("budget")
+        ).get("model_calls"),
+        "confirmation.tools": sequence(confirmation_program.get("tools")),
+        "confirmation.verify": mapping(
+            confirmation_program.get("done_when")
+        ).get("verify"),
+        "confirmation_repair.follows": sequence(
+            confirmation_repair.get("follows")
+        ),
+        "confirmation_repair.terminal": confirmation_repair.get("terminal"),
+        "confirmation_repair.branches": mapping(
+            confirmation_repair.get("branches")
+        ),
+        "confirmation_repair.max_fires": confirmation_repair.get("max_fires"),
+        "confirmation_repair.name": confirmation_repair_program.get("name"),
+        "confirmation_repair.model": model_profile(
+            confirmation_repair_program.get("model")
+        ),
+        "confirmation_repair.model_calls": mapping(
+            confirmation_repair_program.get("budget")
+        ).get("model_calls"),
+        "confirmation_repair.tools": sequence(
+            confirmation_repair_program.get("tools")
+        ),
+        "confirmation_repair.verify": mapping(
+            confirmation_repair_program.get("done_when")
+        ).get("verify"),
     }
     sol_low = ("openai-codex", "gpt-5.6-sol", "low", service_tier)
     sol_xhigh = ("openai-codex", "gpt-5.6-sol", "xhigh", service_tier)
@@ -1025,9 +1068,16 @@ def built_in_program_failures(
         "root.name": "coding",
         "root.model": sol_low,
         "root.model_calls": BUILTIN_WORKFLOW_MODEL_CALLS,
+        "root.max_episodes": 46 if completion_checker else 10,
         "root.sandbox": "off",
         "root.verify": "check" if completion_checker else None,
-        "workflow.nodes": ("assess-task", "implement-task", "repair-task"),
+        "workflow.nodes": (
+            "assess-task",
+            "confirm-repair-task",
+            "confirm-task",
+            "implement-task",
+            "repair-task",
+        ),
         "implementation.follows": ("task",),
         "implementation.terminal": False,
         "implementation.name": "implement-task",
@@ -1035,7 +1085,11 @@ def built_in_program_failures(
         "implementation.verify": None,
         "assessment.follows": ("task", "implement-task"),
         "assessment.terminal": False,
-        "assessment.branches": {"accept": [], "repair": ["repair-task"]},
+        "assessment.branches": {
+            "accept": ["confirm-task"],
+            "repair": ["repair-task"],
+        },
+        "assessment.max_fires": 3,
         "assessment.name": "assess-task",
         "assessment.model": sol_xhigh,
         "assessment.model_calls": 60,
@@ -1047,11 +1101,52 @@ def built_in_program_failures(
         ),
         "assessment.verify": None,
         "repair.follows": ("task", "implement-task", "assess-task"),
-        "repair.terminal": True,
+        "repair.terminal": False,
+        "repair.branches": {"reassess": ["assess-task"]},
+        "repair.max_fires": 2,
         "repair.name": "repair-task",
         "repair.model": sol_xhigh,
         "repair.model_calls": 60,
+        "repair.tools": (
+            "read",
+            "grep",
+            "edit",
+            "bash",
+            *(("check",) if completion_checker else ()),
+        ),
         "repair.verify": None,
+        "confirmation.follows": ("task",),
+        "confirmation.terminal": False,
+        "confirmation.branches": {
+            "accept": [],
+            "repair": ["confirm-repair-task"],
+        },
+        "confirmation.max_fires": 26 if completion_checker else 2,
+        "confirmation.name": "confirm-task",
+        "confirmation.model": sol_xhigh,
+        "confirmation.model_calls": 60,
+        "confirmation.tools": (
+            "read",
+            "grep",
+            "bash",
+            *(("check",) if completion_checker else ()),
+        ),
+        "confirmation.verify": None,
+        "confirmation_repair.follows": ("task", "confirm-task"),
+        "confirmation_repair.terminal": False,
+        "confirmation_repair.branches": {"reassess": ["confirm-task"]},
+        "confirmation_repair.max_fires": 13 if completion_checker else 1,
+        "confirmation_repair.name": "confirm-repair-task",
+        "confirmation_repair.model": sol_xhigh,
+        "confirmation_repair.model_calls": 60,
+        "confirmation_repair.tools": (
+            "read",
+            "grep",
+            "edit",
+            "bash",
+            *(("check",) if completion_checker else ()),
+        ),
+        "confirmation_repair.verify": None,
     }
     return [
         f"built-in profile {key}: expected {expected[key]!r}, recorded {value!r}"

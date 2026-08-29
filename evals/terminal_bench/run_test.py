@@ -89,7 +89,7 @@ class CasesTest(unittest.TestCase):
             result = trial / "result.json"
             program = {
                 "name": "coding",
-                "budget": {"model_calls": 180},
+                "budget": {"model_calls": 180, "max_episodes": 46},
                 "sandbox": {"mode": "off"},
                 "done_when": {"verify": "check"},
                 "model": {
@@ -113,9 +113,10 @@ class CasesTest(unittest.TestCase):
                             "follows": ["task", "implement-task"],
                             "terminal": False,
                             "branches": {
-                                "accept": [],
+                                "accept": ["confirm-task"],
                                 "repair": ["repair-task"],
                             },
+                            "max_fires": 3,
                             "model": {
                                 "name": "assess-task",
                                 "budget": {"model_calls": 60},
@@ -131,7 +132,9 @@ class CasesTest(unittest.TestCase):
                         },
                         "repair-task": {
                             "follows": ["task", "implement-task", "assess-task"],
-                            "terminal": True,
+                            "terminal": False,
+                            "branches": {"reassess": ["assess-task"]},
+                            "max_fires": 2,
                             "model": {
                                 "name": "repair-task",
                                 "budget": {"model_calls": 60},
@@ -141,11 +144,37 @@ class CasesTest(unittest.TestCase):
                                     "reasoning_effort": "xhigh",
                                     "service_tier": "priority",
                                 },
+                                "tools": ["read", "grep", "edit", "bash", "check"],
                                 "done_when": {"returns": {}},
                             },
                         },
                     }
                 },
+            }
+            assessment_program = program["workflow"]["nodes"]["assess-task"][
+                "model"
+            ]
+            confirmation_program = json.loads(json.dumps(assessment_program))
+            confirmation_program["name"] = "confirm-task"
+            program["workflow"]["nodes"]["confirm-task"] = {
+                "follows": ["task"],
+                "terminal": False,
+                "branches": {
+                    "accept": [],
+                    "repair": ["confirm-repair-task"],
+                },
+                "max_fires": 26,
+                "model": confirmation_program,
+            }
+            repair_program = program["workflow"]["nodes"]["repair-task"]["model"]
+            confirmation_repair_program = json.loads(json.dumps(repair_program))
+            confirmation_repair_program["name"] = "confirm-repair-task"
+            program["workflow"]["nodes"]["confirm-repair-task"] = {
+                "follows": ["task", "confirm-task"],
+                "terminal": False,
+                "branches": {"reassess": ["confirm-task"]},
+                "max_fires": 13,
+                "model": confirmation_repair_program,
             }
             (episode / "episode.jsonl").write_text(
                 json.dumps(
