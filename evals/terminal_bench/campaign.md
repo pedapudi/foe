@@ -5616,3 +5616,162 @@ The retained evidence directories are:
 - `/home/sunil/git/foe-final-state-release/target/terminal-bench-jobs/final-state-release-model-extraction-authorized-20260829T145127Z`;
 - `/home/sunil/git/foe-final-state-release/target/terminal-bench-jobs/final-state-release-sanitize-measured-20260829T145904Z`;
 - `/home/sunil/git/foe-final-state-preservation/target/terminal-bench-jobs/final-state-preservation-transfer-20260829T122755Z`.
+
+## Corrected-release confirmation stopped after a repeated task failure
+
+The confirmation gate combines two retained `configure-git-webserver`
+activation attempts with seven selected task pairs. The runner completed four
+new task pairs successfully. Both `dna-insert` attempts then failed the
+unchanged task-owned grader. The remaining `log-summary-date-ranges` and
+`overfull-hbox` pairs did not run.
+
+The runner stopped after the second `dna-insert` failure because the frozen
+release could no longer satisfy the requirement that every confirmation task
+succeed at least once. Stopping preserved the task selection and avoided
+spending on a release that had already failed the gate.
+
+| Task | Successful attempts | Attempts | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `configure-git-webserver` | 2 | 2 | 698,674 | 351,744 | 47,535 | $2.479118 |
+| `build-pov-ray` | 2 | 2 | 2,450,206 | 1,503,744 | 41,298 | $5.213306 |
+| `caffe-cifar-10` | 2 | 2 | 2,828,704 | 1,822,208 | 28,900 | $5.332867 |
+| `count-dataset-tokens` | 2 | 2 | 302,040 | 105,472 | 13,933 | $1.107121 |
+| `crack-7z-hash` | 2 | 2 | 362,786 | 96,768 | 10,224 | $1.307259 |
+| `dna-insert` | 0 | 2 | 657,592 | 309,760 | 36,662 | $2.248472 |
+
+The twelve completed attempts produced ten successes across six tasks.
+Five tasks succeeded in both attempts. The attempts used 7,300,002 input
+tokens, 4,189,696 cached-input tokens, and 178,552 output tokens. Estimated
+cost was $17.688142. Every completed attempt used the priority service tier,
+the recorded source tree, and the recorded binary. No completed attempt had
+an exception, invalid configuration claim, incomplete provider usage, or
+nonconformant Foe trace.
+
+The two failures reached completed Foe outcomes with artifacts that the
+external grader rejected. One artifact produced an annealed reverse primer
+of 48 nucleotides, exceeding the permitted maximum of 45. The other produced
+forward and reverse melting temperatures that differed by 5.71994 degrees
+Celsius, exceeding the permitted maximum of 5.
+
+A third closed-book attempt used the same source tree, binary, task, model
+controls, and unchanged grader. It also failed after a completed Foe outcome.
+Its melting temperatures differed by 5.968147 degrees Celsius. The frozen
+release therefore failed all three closed-book `dna-insert` attempts.
+
+The stopped confirmation manifest has digest
+`278897f2827160c4d3c8eee3e861bb4b31b01c1eb21c0d22765a3c66daca6304`.
+The focused closed-book manifest has digest
+`0f38b81ddb4a1ac7e16f5c36d1964556a377da29c33b2402e9b46fdd110e1f1f`.
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-final-state-release/target/terminal-bench-jobs/final-state-release-confirmation-seven-pairs-20260829T151030Z`;
+- `/home/sunil/git/foe-final-state-release/target/terminal-bench-jobs/final-state-release-dna-current-control-20260829T174355Z`.
+
+## Task-owned verification corrects the repeated DNA failure
+
+A modified `dna-insert` case supplied the unchanged public task checker to
+Foe as `done_when.verify`. The source tree, binary, task files, model controls,
+service tier, and external grader matched the three closed-book failures.
+The implementation could call the checker and receive its findings before
+completion. The single attempt passed the external grader.
+
+The successful attempt used 38 model calls, 388,074 input tokens, 248,320
+cached-input tokens, and 12,521 output tokens. Estimated cost was $0.908764,
+and execution took 401.265 seconds.
+
+The evaluation command initially returned status 1 after Harbor had scored
+the attempt. The evaluation validator expected the assessment program to
+declare `read`, `grep`, and `bash`. A verifier-governed assessment also
+declares `check`. The retained program was valid, and a corrected validator
+classifies the configuration claim as valid. The raw run, task score, episode,
+and grader artifacts were not modified.
+
+The manifest has digest
+`d31ac2d57e52095307ecd5723231932586e18bfc716f126fc42dc98a9823311e`.
+The root episode has digest
+`9380dcdc75ffa9badf8375cd8762385625c2221dab7396f0af6cb8d1f4648892`.
+The Harbor trial result has digest
+`eeb281215b35ef4234bde4d5cd182d82d5f1567496ce641aa4ee897b274da865`.
+The CTRF verifier report has digest
+`6aebbe194bb997de1180f75b330be208f9a9e834691f9405c1e6402c68b03253`.
+The retained evidence directory is
+`/home/sunil/git/foe-final-state-release/target/terminal-bench-jobs/final-state-release-dna-verifier-control-20260829T175622Z`.
+
+The comparison establishes a configuration-level result. Task-owned
+verification converted one attempt on a task that failed three closed-book
+attempts with the same Foe source and binary. The comparison does not show
+that a runtime source change improves closed-book execution.
+
+## Identity-bound DNA evidence corpus
+
+The trajectory collector selected only `dna-insert` from the three retained
+run directories. The resulting corpus binds every attempt to source tree
+`git-tree-sha1:03710a51c2a14798cbe821c4005d6f310a996c5b` and runtime binary
+`sha256:1dbc2b2162e129f4afc045b3be7ec8acd8300d9acf3a89494aa06517ef1148e8`.
+
+The corpus contains three failed closed-book episodes and one successful
+verifier-governed episode. Every failure has a retained external verifier
+report and an unambiguous assertion locus. The repeated contrast has identity
+`sha256:aaff7661ab61d1454febd59bd396ac840754e71b913d17b89d1f962e13578e3b`.
+The corpus file has digest
+`e03e3c28d54e645e8d597ef01093870b0a8c34843cebff78ee7f1a48e17eb5eb`.
+
+The retained corpus is
+`/home/sunil/git/foe-final-state-release/target/final-state-release-dna-evidence.json`.
+Task selection occurs before the collector reads unrelated trial results.
+Interrupted tasks from the stopped confirmation therefore cannot invalidate
+the selected corpus.
+
+## Autonomous source candidate rejected by causal review
+
+The self-improvement workflow consumed the identity-bound DNA corpus and was
+forced to propose a source change. It produced changes to the command line,
+program schema, workflow runtime, tests, and specifications. Its internal
+source checker and two review cycles accepted the resulting tree.
+
+The run used 172 model calls, 12,411,669 input tokens, 9,904,128 cached-input
+tokens, and 84,343 output tokens. Estimated cost was $15.678675, and execution
+took 2,083.314 seconds. Every model request used GPT-5.6 Sol on the priority
+service tier. Diagnosis and implementation used low reasoning. Source review
+used xhigh reasoning.
+
+Independent causal review rejects the candidate before external evaluation.
+All three failed configurations omitted a completion verifier. The successful
+configuration supplied one. The candidate changes child and assessment
+behavior only when the command line receives `--verify`. Its mechanism was
+therefore absent from every failed configuration and cannot explain their
+outcomes or change their closed-book results.
+
+The diagnosis incorrectly treated the built-in terminal audit as if it could
+exercise a task-owned checker that the failed programs did not declare. The
+source-candidate request also prevented the workflow from selecting the
+configuration change supported by the evidence. The internal validator
+checked cited episodes and failure loci but did not prove the intervention's
+activation requirement against the failed configurations.
+
+The candidate also introduced an implicit data path across a control branch.
+That path duplicates the existing rule that `follows` declares workflow data
+flow. A valid implementation would require the repair successor to follow the
+verified node and would keep control and data edges distinct.
+
+The candidate has identity
+`sha256:578f5e7d1cf6b23d3212e653c2886521cc85da3c5018492474181bf0a80aa640`.
+Its source bundle has identity
+`sha256:422faa51c211a75ffffc2bb2b9b34d67654ccf1db8721d64d61caccea2e24dd3`.
+The result file has digest
+`b1ab8b0be03852ea0b05d53f6db30f321578668c3d6e48261c7203447c4bd3ee`.
+The root episode has digest
+`e94382915df5724ab203ea6a9ccc25d3df96a42ad5952b202d8696b2aa5cc75c`.
+
+The retained candidate and account are under
+`/home/sunil/git/foe-final-state-release/target/dna-repeatability-self-improvement`.
+The candidate remains `pending-external-evaluation` in its generated lineage
+record because the workflow completed before independent review. The campaign
+classifies it as rejected and will not spend external evaluation resources on
+it.
+
+The rejection establishes a required correction to self-improvement
+admission. A proposed mechanism must declare machine-checkable activation
+requirements. Every failed configuration in its selected causal contrast must
+satisfy those requirements. Candidate-kind selection must remain free to
+choose a workflow, tool, instruction, or source change from the evidence.
