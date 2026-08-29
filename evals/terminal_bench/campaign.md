@@ -5434,3 +5434,113 @@ The retained evidence directories are:
 This development qualification uses the standard service tier. Its quality
 result supports candidate selection. It does not establish the separate
 priority-tier execution requirement in the campaign goal.
+
+## Confirmation rejection and final-state preservation
+
+The integrated development binary began the confirmation gate on the priority
+service tier. Implementation used low reasoning. Independent assessment and
+conditional repair used xhigh reasoning. Token allowances were measurement
+only.
+
+The runner completed two attempts for each of three tasks before starting the
+fourth task:
+
+| Task | Successful attempts | Attempts | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `build-pov-ray` | 1 | 2 | 2,746,568 | 1,933,824 | 29,259 | $4.609686 | 903.966 |
+| `caffe-cifar-10` | 2 | 2 | 3,381,652 | 2,294,272 | 27,241 | $5.812049 | 4,544.793 |
+| `configure-git-webserver` | 0 | 2 | 945,693 | 481,792 | 74,188 | $3.532081 | 1,612.877 |
+
+These six attempts produced three successes. They used 7,073,913 input
+tokens, 4,709,888 cached-input tokens, and 130,688 output tokens. Estimated
+cost was $13.953815, and serial task execution took 7,061.636 seconds. Every
+completed attempt used the requested model and service tier. Every
+configuration claim was valid, every Foe trace conformed, and no completed
+attempt had an infrastructure failure.
+
+The confirmation gate requires at least fourteen successes in sixteen
+attempts. The three completed failures limited the greatest possible result to
+thirteen successes. The campaign was therefore stopped before spending model
+requests on the remaining tasks. The interrupted `count-dataset-tokens`
+attempt has no score and contributes no quality or resource measurement.
+
+The failed `build-pov-ray` attempt produced the required source files below
+`/app/povray-2.2/povsrc`. The task-owned grader required those files directly
+below `/app/povray-2.2`. Independent assessment did not identify the required
+directory shape. The second attempt used the expected directory and passed.
+
+Both `configure-git-webserver` attempts constructed a working Git repository,
+post-receive deployment, and HTTP service. Independent assessment or repair
+then reset the successful repository state so that the final HTTP request
+returned status 404. Both Foe accounts ended as completed. The unchanged
+grader rejected both final workspaces.
+
+The cancellation exposed a diagnostics limitation. The self-improvement
+collector requires a result for every scheduled task and could not select the
+three complete task pairs from a campaign that also contained an interrupted
+task. Foe therefore could not consume the valid failure pair. The product
+correction proceeded directly under the campaign rule for an unusable
+self-improvement path.
+
+The correction requires implementation, assessment, and repair to preserve
+task-required artifacts and live state after a task-authorized end-to-end
+check succeeds. Cleanup remains permitted for temporary probes. The
+correction prohibits cleanup that resets, deletes, or replaces the requested
+final state unless the task requires a pre-action or reusable-empty state.
+
+The corrected source is commit
+`313d53e135c80761eaec06cf3923e935d14cfc55`, with source tree
+`git-tree-sha1:03710a51c2a14798cbe821c4005d6f310a996c5b`. Its portable binary
+has SHA-256 digest
+`1dbc2b2162e129f4afc045b3be7ec8acd8300d9acf3a89494aa06517ef1148e8`.
+Repository tests, Clippy, formatting, deterministic examples, and line
+budgets passed. A credential-free Harbor installation check also passed before
+model execution.
+
+Two priority-tier activation attempts used the corrected binary against the
+unchanged `configure-git-webserver` task and grader. Both attempts passed.
+One assessment found repairable risks. The repair ended with the requested
+commit deployed, nginx listening on port 8080, and exact HTTP response bytes.
+The other assessment used isolated copies for destructive probes and verified
+the live repository and endpoint afterward.
+
+An unrelated priority-tier transfer attempt ran `git-multibranch`. It passed
+the unchanged grader while preserving both branch refs and their served
+content. The transfer result checks that final-state preservation does not
+prevent an assessment from testing a stateful repository.
+
+| Role | Task | Successful attempts | Attempts | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| activation | `configure-git-webserver` | 2 | 2 | 698,674 | 351,744 | 47,535 | $2.479118 | 1,056.201 |
+| transfer | `git-multibranch` | 1 | 1 | 106,877 | 23,040 | 16,219 | $0.668944 | 360.825 |
+
+All three corrected attempts completed without exceptions. Their
+configuration claims were valid, their Foe traces conformed, and their
+provider usage was complete. These results qualify the final-state
+preservation correction for full release requalification. They do not replace
+the twelve-task development gate or the sixteen-attempt confirmation gate,
+which must run against this corrected binary.
+
+The rejected confirmation manifest recorded source tree
+`git-tree-sha1:173c4c2bf8d10502397e4a674f7259dd758c1a46`. The evaluated binary
+was built from source tree
+`git-tree-sha1:cc206340db7a38b68a6513adaaa2136f053d03bd`. The trees differ only
+in this campaign record. The binary digest and task scores remain valid, but
+the source-tree association in that manifest is inaccurate. The corrected
+activation and transfer manifests bind the evaluated binary to its actual
+source tree.
+
+The retained manifest digests are:
+
+- rejected confirmation:
+  `a70b0a95b9c7b2828838a56bda85536452b33d58d6e57fba739a9b277263436d`;
+- final-state activation:
+  `2989f8244eb0cfe640faebbb152d3d9835cad1530926f8acefd60ce958ea3597`;
+- stateful transfer:
+  `ffd520ec3c6b273fbfb619fef7a3377a771fe0e5b4f460efc7c03ea2d33aba18`.
+
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-development-quality-corrections/target/terminal-bench-jobs/integrated-confirmation-20260829T094911Z`;
+- `/home/sunil/git/foe-final-state-preservation/target/terminal-bench-jobs/final-state-preservation-activation-20260829T120854Z`;
+- `/home/sunil/git/foe-final-state-preservation/target/terminal-bench-jobs/final-state-preservation-transfer-20260829T122755Z`.
