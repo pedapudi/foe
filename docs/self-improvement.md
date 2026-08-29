@@ -653,7 +653,12 @@ boundary. An undeclared post hoc grader must not rewrite episode history.
 
 Pattern checks are inexpensive and provide focused feedback. They leave
 syntax, type, integration, and policy failures uncovered. Compile and test a
-candidate in a complete source tree before promotion.
+candidate in a complete source tree before promotion. The built-in assessment
+and repair stages use the highest-authority acceptance path declared by the
+task or repository. When no authoritative path exists, they use two
+independently derived methods and establish that both exercise equivalent
+artifacts, inputs, environment, and acceptance criteria. A conflicting
+higher-authority result controls the completion decision.
 
 ### Generalizing from one task
 

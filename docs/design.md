@@ -790,6 +790,14 @@ artifact. It varies algorithm-sensitive bounds, thresholds, sample counts,
 ranges, scales, distributions, random seeds, and near-degenerate cases.
 Changing only shape or count does not establish numerical generalization.
 
+Assessment and repair use the highest-authority acceptance path declared by
+the task or repository for every decisive claim. They run that path against
+the final state. An auditor-authored surrogate does not replace a declared
+path. When no authoritative path exists, they use two independently derived
+methods and establish that both exercise equivalent artifacts, inputs,
+environment, and acceptance criteria. A conflicting higher-authority result
+controls the completion decision.
+
 All three completion schemas require one to eight `learned` observations. Each
 observation is a one-sentence claim and the sequence of a successful tool
 result in that episode's log. The runtime checks the citation and preserves

@@ -24,6 +24,14 @@ same model, credential, verifier, service-tier, and sandbox options as the
 running form. The emitted object uses the configured-program plan shape and
 can be retained before an episode starts.
 
+The built-in assessment and repair stages use a task-declared or
+repository-declared acceptance path for every decisive claim when one exists.
+When no authoritative path exists, they require two independently derived
+methods that exercise equivalent artifacts, inputs, environment, and
+acceptance criteria. These are model-facing semantic requirements in the
+resolved program. The runtime enforces the declared result schemas and cited
+event identities.
+
 Planning resolves the transport for the root model, named child programs,
 and explicit workflow model blocks. Execution applies the same resolution
 before it records `episode/start.program`. A child that inherits a model also
