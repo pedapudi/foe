@@ -731,6 +731,12 @@ builds and checks can create outputs. Each episode has a 60-call backstop. The
 root holds their additive 180-call allowance. A run without a verifier has a
 four-episode lifetime cap, including the root.
 
+All three episodes operate in the supplied execution environment. A task that
+requires a service or other live machine state requires each applicable stage
+to apply its configuration, exercise its public interface, and leave the
+required state available after completion. An unbuilt image, unapplied
+configuration, or stopped temporary probe does not establish live behavior.
+
 `--verify PATH` names an executable verifier for the built-in workflow.
 The path is canonicalized and becomes a `tool_defs` entry named `check`
 with execute authority on that file. All three episodes may call `check`
