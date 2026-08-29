@@ -8,7 +8,7 @@ fn builtin_coding_uses_low_implementation_and_xhigh_assessment_for_gpt_5_6_sol()
                 .unwrap();
         assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), Some("low"));
         let workflow = config.workflow.as_ref().unwrap();
-        for node in ["assess-task", "repair-task"] {
+        for node in ["assess-task", "repair-task", "confirm-task", "confirm-repair-task"] {
             let program = workflow.nodes[node].model.as_ref().unwrap();
             assert_eq!(program.model.as_ref().unwrap().option("reasoning_effort"), Some("xhigh"));
         }
@@ -22,7 +22,7 @@ fn builtin_coding_reserves_xhigh_sol_reasoning_for_assessment_and_repair() {
     let config = builtin_program_document("task".into(), explicit, None, None, None).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
     let workflow = config.workflow.as_ref().unwrap();
-    for node in ["assess-task", "repair-task"] {
+    for node in ["assess-task", "repair-task", "confirm-task", "confirm-repair-task"] {
         let program = workflow.nodes[node].model.as_ref().unwrap();
         assert_eq!(program.model.as_ref().unwrap().option("reasoning_effort"), Some("xhigh"));
     }
@@ -84,7 +84,7 @@ fn plan_resolves_credentials_for_root_and_workflow_models() {
 }
 
 /// docs/design.md "The command line": a bare task reserves independent
-/// implementation, independent assessment, and conditional repair episodes.
+/// implementation, assessment, correction, and blind final confirmation.
 #[test]
 fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(BUILTIN_STAGE_CALLS, 60);
@@ -93,7 +93,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
             .unwrap();
     resolve(&config).expect("the built-in workflow resolves before an episode starts");
     assert_eq!(config.budget.model_calls, 3 * BUILTIN_STAGE_CALLS);
-    assert_eq!(config.budget.max_episodes, 7);
+    assert_eq!(config.budget.max_episodes, 10);
     assert_eq!(config.budget.max_concurrent, 1);
     let workflow = config.workflow.unwrap();
     let implementation = &workflow.nodes["implement-task"];
@@ -123,7 +123,10 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(assessment.max_fires, Some(3));
     assert_eq!(
         assessment.branches,
-        std::collections::BTreeMap::from([("accept".into(), vec![]), ("repair".into(), vec!["repair-task".into()])])
+        std::collections::BTreeMap::from([
+            ("accept".into(), vec!["confirm-task".into()]),
+            ("repair".into(), vec!["repair-task".into()]),
+        ])
     );
     let assessment_program = assessment.model.as_ref().unwrap();
     assert_eq!(assessment_program.budget.model_calls, BUILTIN_STAGE_CALLS);
@@ -185,10 +188,34 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     );
     assert!(repair_program.instructions["contract"].contains("highest-authority available acceptance path"));
     assert!(repair_program.instructions["contract"].contains("two independently derived methods"));
+
+    let confirmation = &workflow.nodes["confirm-task"];
+    assert_eq!(confirmation.follows, ["task"]);
+    assert_eq!(confirmation.max_fires, Some(2));
+    assert_eq!(
+        confirmation.branches,
+        std::collections::BTreeMap::from([
+            ("accept".into(), vec![]),
+            ("repair".into(), vec!["confirm-repair-task".into()]),
+        ])
+    );
+    let confirmation_program = confirmation.model.as_ref().unwrap();
+    assert!(!confirmation_program.tools.iter().any(|tool| tool == "edit"));
+    assert!(confirmation_program.instructions["role"].contains("only the original task"));
+    assert!(confirmation_program.instructions["role"].contains("rather than trusting claims from preceding episodes"));
+
+    let confirmation_repair = &workflow.nodes["confirm-repair-task"];
+    assert_eq!(confirmation_repair.follows, ["task", "confirm-task"]);
+    assert_eq!(confirmation_repair.max_fires, Some(1));
+    assert_eq!(
+        confirmation_repair.branches,
+        std::collections::BTreeMap::from([("reassess".into(), vec!["confirm-task".into()])])
+    );
+    assert!(confirmation_repair.model.as_ref().unwrap().tools.iter().any(|tool| tool == "edit"));
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available
-/// to every built-in episode and gates both completion branches at the root.
+/// to every built-in episode and gates final confirmation at the root.
 #[test]
 fn builtin_coding_with_verify_gates_both_assessment_branches() {
     use std::os::unix::fs::PermissionsExt;
@@ -205,7 +232,7 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     assert_eq!(config.tool_defs["check"].exec, canonical);
     assert!(config.tools.iter().any(|t| t == "check"));
     let workflow = config.workflow.as_ref().unwrap();
-    for node in ["implement-task", "assess-task", "repair-task"] {
+    for node in ["implement-task", "assess-task", "repair-task", "confirm-task", "confirm-repair-task"] {
         let program = workflow.nodes[node].model.as_ref().unwrap();
         assert!(program.tools.iter().any(|t| t == "check"));
         assert_eq!(program.tool_defs["check"].exec, canonical);
@@ -215,9 +242,11 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     let gate = config.done_when.as_ref().unwrap();
     assert_eq!(gate.verify.as_deref(), Some("check"));
     assert_eq!(gate.retries, BUILTIN_VERIFIER_RETRIES);
-    assert_eq!(config.budget.max_episodes, 2 * BUILTIN_VERIFIER_RETRIES + 4);
-    assert_eq!(workflow.nodes["assess-task"].max_fires, Some(BUILTIN_VERIFIER_RETRIES + 1));
-    assert_eq!(workflow.nodes["repair-task"].max_fires, Some(BUILTIN_VERIFIER_RETRIES + 1));
+    assert_eq!(config.budget.max_episodes, 3 * BUILTIN_VERIFIER_RETRIES + 10);
+    assert_eq!(workflow.nodes["assess-task"].max_fires, Some(3));
+    assert_eq!(workflow.nodes["repair-task"].max_fires, Some(2));
+    assert_eq!(workflow.nodes["confirm-task"].max_fires, Some(2 * BUILTIN_VERIFIER_RETRIES + 2));
+    assert_eq!(workflow.nodes["confirm-repair-task"].max_fires, Some(BUILTIN_VERIFIER_RETRIES + 1));
     let done = implement.done_when.as_ref().unwrap();
     assert!(done.verify.is_none(), "implementation claims are not authoritative");
     assert!(done.returns.is_some(), "the typed handoff remains declared");
@@ -247,7 +276,7 @@ fn builtin_coding_selects_an_explicit_service_tier() {
     let config = load_program_document(&options).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("service_tier"), Some("priority"));
     let workflow = config.workflow.as_ref().unwrap();
-    for node in ["assess-task", "repair-task"] {
+    for node in ["assess-task", "repair-task", "confirm-task", "confirm-repair-task"] {
         let program = workflow.nodes[node].model.as_ref().unwrap();
         assert_eq!(program.model.as_ref().unwrap().option("service_tier"), Some("priority"));
     }

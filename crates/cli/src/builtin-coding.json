@@ -11,7 +11,7 @@
   },
   "budget": {
     "model_calls": 0,
-    "max_episodes": 7,
+    "max_episodes": 10,
     "max_concurrent": 1
   },
   "model": {},
@@ -176,7 +176,7 @@
         },
         "follows": ["task", "implement-task"],
         "branches": {
-          "accept": [],
+          "accept": ["confirm-task"],
           "repair": ["repair-task"]
         },
         "max_fires": 3
@@ -264,6 +264,175 @@
           "reassess": ["assess-task"]
         },
         "max_fires": 2
+      },
+      "confirm-task": {
+        "model": {
+          "name": "confirm-task",
+          "instructions": {
+            "contract": "The default mutation scope for a task naming files, directories, or a repository is current filesystem content. Preserve version-control history, commits, refs, object databases, reflogs, provenance, and prior versions unless the task explicitly requires changing that state. Do not enlarge mutation scope by decrypting, decompressing, decoding, reconstructing, or searching prior versions unless the task explicitly requires that representation or transformation. When required behavior must generalize beyond the supplied instance, validate it on several controlled fixtures through the same public or black-box interface available to the final artifact. Do not inspect hidden implementation state or parameters. Vary every algorithm-sensitive condition, including bounds, thresholds, sample counts, ranges, scales, distributions, random seeds, and near-degenerate cases. Changing only shape or count does not establish numerical generalization. For every decisive claim, use the highest-authority available acceptance path declared by the task or repository and run it against the final state. A bespoke surrogate does not replace that path. When no authoritative path exists, use two independently derived methods and establish that they exercise equivalent artifacts, inputs, environment, and acceptance criteria. A conflicting higher-authority result controls the decision.",
+            "environment": "",
+            "role": "Confirm independently that the final shared workspace satisfies every requirement in the original task. The workflow supplies only the original task and any root verifier findings. Inspect artifacts and run checks without editing task artifacts. Derive the acceptance interpretation from the task and current workspace rather than trusting claims from preceding episodes. Distinguish the exact contract from a nearby interpretation. Evaluate supplied artifacts and inputs through the task's stated interface. Do not require absent formats or input variants. Prioritize required observable behavior. Preserve baseline identities, allowed transformation sets, and stated structural constraints. When a requirement depends on dividing a final value into task-defined, inserted, removed, replaced, or input-matching regions, derive every decomposition consistent with the task text and the complete supplied and final values. Evaluate every dependent bound and relation within each complete decomposition. Accept only when every task-consistent decomposition passes or current evidence establishes one interpretation uniquely. For a program interface, test at least two materially different valid inputs and generate a second fixture when the workspace supplies only one. When the task requires a service or other live machine state, apply its configuration in the current environment, exercise the requested public interface, and leave the required state available after completion. After a task-authorized end-to-end check succeeds, keep the artifacts and live state that represent its requested outcome. Cleanup may remove temporary probes. It must not reset, delete, or replace a requested final state unless the task explicitly requires a pre-action or reusable-empty state. An unbuilt image, unapplied configuration, or stopped temporary probe does not satisfy live behavior. Choose `accept` only when current observations support every requirement and no unresolved risk remains. Otherwise choose `repair` and return precise findings that a fresh coding episode can reproduce. Return at least one cited `learned` observation."
+          },
+          "tools": ["read", "grep", "bash"],
+          "grants": {
+            "read": [],
+            "write": []
+          },
+          "budget": {
+            "model_calls": 0
+          },
+          "done_when": {
+            "returns": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                "findings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "maxItems": 32
+                },
+                "validation": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "minItems": 1,
+                  "maxItems": 32
+                },
+                "unresolved_risks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "maxItems": 16
+                },
+                "learned": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "claim": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 300
+                      },
+                      "seq": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": ["claim", "seq"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["summary", "findings", "validation", "unresolved_risks", "learned"],
+              "additionalProperties": false
+            }
+          },
+          "model": {}
+        },
+        "follows": ["task"],
+        "branches": {
+          "accept": [],
+          "repair": ["confirm-repair-task"]
+        },
+        "max_fires": 2
+      },
+      "confirm-repair-task": {
+        "model": {
+          "name": "confirm-repair-task",
+          "instructions": {
+            "contract": "Make the narrowest repair that resolves the reproduced defect. For a task naming files, directories, or a repository, the default mutation scope is current filesystem content. Preserve version-control history, commits, refs, object databases, reflogs, provenance, and prior versions unless the task explicitly requires changing that state. Do not enlarge mutation scope by decrypting, decompressing, decoding, reconstructing, or searching prior versions unless the task explicitly requires that representation or transformation. Use only interfaces the task authorizes. When required behavior must generalize beyond the supplied instance, validate it on several controlled fixtures through the same public or black-box interface available to the final artifact. Do not inspect hidden implementation state or parameters. Vary every algorithm-sensitive condition, including bounds, thresholds, sample counts, ranges, scales, distributions, random seeds, and near-degenerate cases. For every decisive claim, use the highest-authority available acceptance path declared by the task or repository and run it against the final state. A bespoke surrogate does not replace that path. When no authoritative path exists, use two independently derived methods and establish that they exercise equivalent artifacts, inputs, environment, and acceptance criteria. A conflicting higher-authority result controls the decision.",
+            "environment": "",
+            "role": "Repair the independent final confirmation's findings in the shared workspace. Treat every finding and unresolved risk as an obligation. Reproduce each one before changing an artifact, then resolve it or show with evidence that it cannot affect an original task requirement. Prioritize required observable behavior. Make the smallest change that satisfies the original task while preserving unrelated artifacts, baseline identities, allowed transformations, and structural constraints. After changing a value with multiple task-consistent decompositions, evaluate every dependent constraint under each complete decomposition. When the task requires a service or other live machine state, apply its configuration in the current environment, exercise the requested public interface, and leave the required state available after completion. After a task-authorized end-to-end check succeeds, keep the artifacts and live state that represent its requested outcome. Cleanup may remove temporary probes. It must not reset, delete, or replace a requested final state unless the task explicitly requires a pre-action or reusable-empty state. An unbuilt image, unapplied configuration, or stopped temporary probe does not satisfy live behavior. After the final change, run the strongest available task-relevant checks. Complete only after no task-critical risk remains. Return an empty `unresolved_risks` array, every path changed by either coding episode, every observed validation result, and at least one cited `learned` observation."
+          },
+          "tools": ["read", "grep", "edit", "bash"],
+          "grants": {
+            "read": [],
+            "write": []
+          },
+          "budget": {
+            "model_calls": 0
+          },
+          "done_when": {
+            "returns": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                "changed_paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 512
+                  },
+                  "maxItems": 64
+                },
+                "validation": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "minItems": 1,
+                  "maxItems": 32
+                },
+                "unresolved_risks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "maxItems": 0
+                },
+                "learned": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "claim": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 300
+                      },
+                      "seq": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": ["claim", "seq"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["summary", "changed_paths", "validation", "unresolved_risks", "learned"],
+              "additionalProperties": false
+            }
+          },
+          "model": {}
+        },
+        "follows": ["task", "confirm-task"],
+        "branches": {
+          "reassess": ["confirm-task"]
+        },
+        "max_fires": 1
       }
     },
     "recovery": {

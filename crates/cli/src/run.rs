@@ -336,8 +336,8 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// explicitly; without it the provider's convention path is read.
 /// `verify` names an executable verifier: it becomes a `tool_defs` entry
 /// named `check` available to every episode. The root completion gate applies
-/// to both the assessment's accept branch and the repair branch. Without a
-/// verifier, the assessment's typed choice governs completion.
+/// after independent final confirmation. Without a verifier, the final
+/// confirmation's typed choice governs completion.
 fn builtin_program_document(
     task: String,
     mut model: ModelConfig,
@@ -367,14 +367,15 @@ fn builtin_program_document(
     document["grants"] = grants.clone();
     document["budget"]["model_calls"] = serde_json::json!(3 * BUILTIN_STAGE_CALLS);
     document["task"] = serde_json::json!(task);
-    for node in ["implement-task", "assess-task", "repair-task"] {
+    for node in ["implement-task", "assess-task", "repair-task", "confirm-task", "confirm-repair-task"] {
         let program = &mut document["workflow"]["nodes"][node]["model"];
         program["instructions"]["environment"] = serde_json::json!(environment);
         program["grants"] = grants.clone();
         program["budget"]["model_calls"] = serde_json::json!(BUILTIN_STAGE_CALLS);
     }
-    document["workflow"]["nodes"]["assess-task"]["model"]["model"] = serde_json::json!(assessment_model);
-    document["workflow"]["nodes"]["repair-task"]["model"]["model"] = serde_json::json!(assessment_model);
+    for node in ["assess-task", "repair-task", "confirm-task", "confirm-repair-task"] {
+        document["workflow"]["nodes"][node]["model"]["model"] = serde_json::json!(assessment_model);
+    }
     if let Some(mode) = sandbox {
         if !matches!(mode, "best-effort" | "required" | "off") {
             return Err(format!("--sandbox {mode}: expected best-effort, required, or off"));
@@ -384,19 +385,19 @@ fn builtin_program_document(
     if let Some(check) = verify {
         let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
         let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": cwd });
-        document["budget"]["max_episodes"] = serde_json::json!(2 * BUILTIN_VERIFIER_RETRIES + 4);
+        document["budget"]["max_episodes"] = serde_json::json!(3 * BUILTIN_VERIFIER_RETRIES + 10);
         document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
         document["tool_defs"] = serde_json::json!({ "check": def });
-        for node in ["implement-task", "assess-task", "repair-task"] {
+        for node in ["implement-task", "assess-task", "repair-task", "confirm-task", "confirm-repair-task"] {
             let program = &mut document["workflow"]["nodes"][node]["model"];
             program["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
             program["tool_defs"] = serde_json::json!({ "check": def });
         }
-        for node in ["assess-task", "repair-task"] {
-            document["workflow"]["nodes"][node]["max_fires"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES + 1);
-        }
+        document["workflow"]["nodes"]["confirm-task"]["max_fires"] =
+            serde_json::json!(2 * BUILTIN_VERIFIER_RETRIES + 2);
+        document["workflow"]["nodes"]["confirm-repair-task"]["max_fires"] =
+            serde_json::json!(BUILTIN_VERIFIER_RETRIES + 1);
         document["done_when"] = serde_json::json!({ "verify": "check", "retries": BUILTIN_VERIFIER_RETRIES });
-        return serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"));
     }
     serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"))
 }

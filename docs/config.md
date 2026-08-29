@@ -24,16 +24,18 @@ same model, credential, verifier, service-tier, and sandbox options as the
 running form. The emitted object uses the configured-program plan shape and
 can be retained before an episode starts.
 
-The built-in assessment and repair stages use a task-declared or
-repository-declared acceptance path for every decisive claim when one exists.
-When no authoritative path exists, they require two independently derived
-methods that exercise equivalent artifacts, inputs, environment, and
-acceptance criteria. These are model-facing semantic requirements in the
-resolved program. The runtime enforces the declared result schemas and cited
-event identities.
+The built-in assessment, final confirmation, and repair stages use a
+task-declared or repository-declared acceptance path for every decisive claim
+when one exists. When no authoritative path exists, they require two
+independently derived methods that exercise equivalent artifacts, inputs,
+environment, and acceptance criteria. These are model-facing semantic
+requirements in the resolved program. The runtime enforces the declared result
+schemas and cited event identities.
 
 A repair in the built-in workflow returns to an independent assessment of the
-resulting workspace. Assessment may request two repairs. Only an assessment can
+resulting workspace. Assessment may request two repairs. An accepted assessment
+activates final confirmation through a control edge. Final confirmation receives
+only the original task and may request one repair. Only final confirmation can
 accept the final state.
 
 After a task-authorized end-to-end check succeeds, every built-in stage keeps

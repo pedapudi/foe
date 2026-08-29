@@ -601,10 +601,10 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
 
 /// The built-in coding workflow's shape, as `foe "task" --verify PATH`
 /// composes it when `verifier` is set and as the bare form composes it
-/// otherwise: implementation feeds an assessment choice, and its repair
-/// branch feeds a fresh coding node. Repair returns to independent assessment.
-/// A verifier governs every accepting assessment at the root. Every episode
-/// may call it while working.
+/// otherwise: implementation feeds assessment and correction, then a blind
+/// final confirmation owns completion. Its repair returns to confirmation.
+/// A verifier governs every accepting final confirmation at the root. Every
+/// episode may call it while working.
 /// The wiring itself is pinned by the unit tests over `builtin_program_document`;
 /// the bare form cannot run under a scripted transport, because the exec
 /// provider needs a `model` option no flag sets, so these runs drive the
@@ -626,10 +626,14 @@ fn coding_workflow(dir: &Path, verifier: Option<&Path>) -> Value {
     let mut assessment = node("assess-task", json!(["read"]));
     assessment["done_when"] = completion.clone();
     let mut repair = node("repair-task", json!(["read"]));
-    repair["done_when"] = completion;
+    repair["done_when"] = completion.clone();
+    let mut confirmation = assessment.clone();
+    confirmation["name"] = json!("confirm-task");
+    let mut confirmation_repair = repair.clone();
+    confirmation_repair["name"] = json!("confirm-repair-task");
     let mut value = config(dir, |c| {
         c["grants"]["write"] = json!([dir]);
-        c["budget"] = json!({ "model_calls": 12, "max_episodes": 7, "max_concurrent": 1 });
+        c["budget"] = json!({ "model_calls": 12, "max_episodes": 10, "max_concurrent": 1 });
     });
     if let Some(script) = verifier {
         let def = json!({ "check": { "exec": script, "description": "Prints one finding per line; silence is acceptance." } });
@@ -639,7 +643,11 @@ fn coding_workflow(dir: &Path, verifier: Option<&Path>) -> Value {
         assessment["tool_defs"] = def.clone();
         repair["tools"] = json!(["read", "check"]);
         repair["tool_defs"] = def.clone();
-        value["budget"]["max_episodes"] = json!(28);
+        confirmation["tools"] = json!(["read", "check"]);
+        confirmation["tool_defs"] = def.clone();
+        confirmation_repair["tools"] = json!(["read", "check"]);
+        confirmation_repair["tool_defs"] = def.clone();
+        value["budget"]["max_episodes"] = json!(46);
         value["tools"] = json!(["read", "check"]);
         value["tool_defs"] = def;
         value["done_when"] = json!({ "verify": "check", "retries": 12 });
@@ -650,7 +658,7 @@ fn coding_workflow(dir: &Path, verifier: Option<&Path>) -> Value {
             "assess-task": {
                 "model": assessment,
                 "follows": ["task", "implement-task"],
-                "branches": { "accept": [], "repair": ["repair-task"] },
+                "branches": { "accept": ["confirm-task"], "repair": ["repair-task"] },
                 "max_fires": 3
             },
             "repair-task": {
@@ -658,13 +666,25 @@ fn coding_workflow(dir: &Path, verifier: Option<&Path>) -> Value {
                 "follows": ["task", "implement-task", "assess-task"],
                 "branches": { "reassess": ["assess-task"] },
                 "max_fires": 2
+            },
+            "confirm-task": {
+                "model": confirmation,
+                "follows": ["task"],
+                "branches": { "accept": [], "repair": ["confirm-repair-task"] },
+                "max_fires": 2
+            },
+            "confirm-repair-task": {
+                "model": confirmation_repair,
+                "follows": ["task", "confirm-task"],
+                "branches": { "reassess": ["confirm-task"] },
+                "max_fires": 1
             }
         },
         "recovery": { "enabled": false }
     });
     if verifier.is_some() {
-        value["workflow"]["nodes"]["assess-task"]["max_fires"] = json!(13);
-        value["workflow"]["nodes"]["repair-task"]["max_fires"] = json!(13);
+        value["workflow"]["nodes"]["confirm-task"]["max_fires"] = json!(26);
+        value["workflow"]["nodes"]["confirm-repair-task"]["max_fires"] = json!(13);
     }
     value
 }
@@ -764,16 +784,17 @@ fn accepted_assessment_is_verified_at_the_workflow_root() {
     let config = coding_workflow(&dir, Some(&script));
     let implement = vec![text("implemented the change"), done("end")];
     let assessment = workflow_return(json!({ "branch": "accept", "summary": "independently assessed" }));
-    let (events, code) = host_run(&dir, &config, vec![implement, assessment], |_, _| Value::Null);
+    let confirmation = workflow_return(json!({ "branch": "accept", "summary": "independently confirmed" }));
+    let (events, code) = host_run(&dir, &config, vec![implement, assessment, confirmation], |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(
         events.last().unwrap()["data"]["outcome"],
-        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "independently assessed" } })
+        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "independently confirmed" } })
     );
     assert_eq!(
         node_starts(&events),
-        [("implement-task".into(), 1), ("assess-task".into(), 1)],
-        "the accepted branch ends before repair"
+        [("implement-task".into(), 1), ("assess-task".into(), 1), ("confirm-task".into(), 1)],
+        "the accepted assessment leads to final confirmation"
     );
     let evidence =
         events.iter().find(|event| event["type"] == "verification/result").expect("root verification is logged");
@@ -785,25 +806,29 @@ fn accepted_assessment_is_verified_at_the_workflow_root() {
         format!("sha256:{}", hex::encode(sha2::Sha256::digest(std::fs::read(&script).unwrap())))
     };
     assert_eq!(evidence["data"]["verifier_identity"], json!(hashed));
-    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2);
+    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 3);
 }
 
 /// The same accepted branch completes from the assessment's typed value when
-/// no verifier is configured.
+/// no verifier is configured. Final confirmation still owns completion.
 #[test]
 fn without_a_verifier_the_assessment_runs() {
     let dir = scratch("verify-absent");
     let config = coding_workflow(&dir, None);
     let implement = vec![text("implemented"), done("end")];
     let assessment = workflow_return(json!({ "branch": "accept", "summary": "assessed" }));
-    let (events, code) = host_run(&dir, &config, vec![implement, assessment], |_, _| Value::Null);
+    let confirmation = workflow_return(json!({ "branch": "accept", "summary": "confirmed" }));
+    let (events, code) = host_run(&dir, &config, vec![implement, assessment, confirmation], |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(
         events.last().unwrap()["data"]["outcome"],
-        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "assessed" } })
+        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "confirmed" } })
     );
-    assert_eq!(node_starts(&events), [("implement-task".into(), 1), ("assess-task".into(), 1)]);
-    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2);
+    assert_eq!(
+        node_starts(&events),
+        [("implement-task".into(), 1), ("assess-task".into(), 1), ("confirm-task".into(), 1)]
+    );
+    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 3);
 }
 
 /// docs/design.md "The command line": a repair branch carries the assessment
@@ -817,20 +842,60 @@ fn assessment_findings_activate_a_fresh_repair() {
     let assessment = workflow_return(json!({ "branch": "repair", "summary": "one defect" }));
     let repair = workflow_return(json!({ "branch": "reassess", "summary": "repaired" }));
     let reassessment = workflow_return(json!({ "branch": "accept", "summary": "repair independently accepted" }));
-    let (events, code) = host_run(&dir, &config, vec![implement, assessment, repair, reassessment], |_, _| Value::Null);
+    let confirmation = workflow_return(json!({ "branch": "accept", "summary": "repair independently confirmed" }));
+    let (events, code) =
+        host_run(&dir, &config, vec![implement, assessment, repair, reassessment, confirmation], |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(
         events.last().unwrap()["data"]["outcome"],
-        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "repair independently accepted" } })
+        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "repair independently confirmed" } })
     );
     assert_eq!(
         node_starts(&events),
-        [("implement-task".into(), 1), ("assess-task".into(), 1), ("repair-task".into(), 1), ("assess-task".into(), 2)]
+        [
+            ("implement-task".into(), 1),
+            ("assess-task".into(), 1),
+            ("repair-task".into(), 1),
+            ("assess-task".into(), 2),
+            ("confirm-task".into(), 1)
+        ]
+    );
+}
+
+/// docs/design.md "The command line": final confirmation inspects every
+/// accepted workspace and may send one defect to a fresh repair episode.
+#[test]
+fn final_confirmation_can_repair_an_initial_acceptance() {
+    let dir = scratch("confirmation-repair");
+    let config = coding_workflow(&dir, None);
+    let implement = vec![text("implemented"), done("end")];
+    let assessment = workflow_return(json!({ "branch": "accept", "summary": "initial acceptance" }));
+    let confirmation = workflow_return(json!({ "branch": "repair", "summary": "one final defect" }));
+    let repair = workflow_return(json!({ "branch": "reassess", "summary": "final defect repaired" }));
+    let final_confirmation = workflow_return(json!({ "branch": "accept", "summary": "final state confirmed" }));
+    let (events, code) =
+        host_run(&dir, &config, vec![implement, assessment, confirmation, repair, final_confirmation], |_, _| {
+            Value::Null
+        });
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert_eq!(
+        events.last().unwrap()["data"]["outcome"],
+        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "final state confirmed" } })
+    );
+    assert_eq!(
+        node_starts(&events),
+        [
+            ("implement-task".into(), 1),
+            ("assess-task".into(), 1),
+            ("confirm-task".into(), 1),
+            ("confirm-repair-task".into(), 1),
+            ("confirm-task".into(), 2)
+        ]
     );
 }
 
 /// docs/design.md "The command line": root verifier findings re-fire the
-/// assessment, which can activate repair before the verifier runs again.
+/// final confirmation, which can activate repair before the verifier runs again.
 #[test]
 fn root_verifier_findings_can_turn_accept_into_repair() {
     let dir = scratch("verify-then-repair");
@@ -841,29 +906,31 @@ fn root_verifier_findings_can_turn_accept_into_repair() {
     );
     let config = coding_workflow(&dir, Some(&script));
     let implement = vec![text("implemented"), done("end")];
-    let first_assessment = workflow_return(json!({ "branch": "accept", "summary": "initial acceptance" }));
-    let revised_assessment = workflow_return(json!({ "branch": "repair", "summary": "verifier finding" }));
+    let assessment = workflow_return(json!({ "branch": "accept", "summary": "initial acceptance" }));
+    let first_confirmation = workflow_return(json!({ "branch": "accept", "summary": "initial confirmation" }));
+    let revised_confirmation = workflow_return(json!({ "branch": "repair", "summary": "verifier finding" }));
     let repair = workflow_return(json!({ "branch": "reassess", "summary": "repaired" }));
-    let final_assessment = workflow_return(json!({ "branch": "accept", "summary": "repair accepted" }));
+    let final_confirmation = workflow_return(json!({ "branch": "accept", "summary": "repair confirmed" }));
     let (events, code) = host_run(
         &dir,
         &config,
-        vec![implement, first_assessment, revised_assessment, repair, final_assessment],
+        vec![implement, assessment, first_confirmation, revised_confirmation, repair, final_confirmation],
         |_, _| Value::Null,
     );
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(
         events.last().unwrap()["data"]["outcome"],
-        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "repair accepted" } })
+        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "repair confirmed" } })
     );
     assert_eq!(
         node_starts(&events),
         [
             ("implement-task".into(), 1),
             ("assess-task".into(), 1),
-            ("assess-task".into(), 2),
-            ("repair-task".into(), 1),
-            ("assess-task".into(), 3)
+            ("confirm-task".into(), 1),
+            ("confirm-task".into(), 2),
+            ("confirm-repair-task".into(), 1),
+            ("confirm-task".into(), 3)
         ]
     );
     let statuses: Vec<_> = events

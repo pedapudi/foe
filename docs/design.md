@@ -719,22 +719,26 @@ changes the current directory. A fresh assessment episode independently checks
 the task and implementation claim. It either accepts the artifacts or activates
 a fresh repair episode with its typed findings. Every repair returns to a fresh
 assessment of the resulting workspace. The bounded cycle permits two repairs.
-Only an assessment can accept the final state.
+An accepted assessment activates a final confirmation episode that receives
+only the original task. Final confirmation either accepts the workspace or
+activates one repair followed by another confirmation. Only final confirmation
+can accept the final state.
 
 The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
 fills its task, model, current-directory grants, executable inventory, sandbox
 mode, credential path, and optional verifier before resolving it as an ordinary
 program document.
 
-The implementation and repair episodes have `read`, `grep`, `edit`, and
-`bash`. The assessment episode has `read`, `grep`, and `bash`. It has no edit
-tool. All three episodes may read and write the current directory because
-builds and checks can create outputs. Each episode has a 60-call backstop. The
-root holds their aggregate 180-call allowance. A run without a verifier has a
-seven-episode lifetime cap, including the root. The assessment may fire three
-times, and the repair may fire twice.
+The implementation and both repair episodes have `read`, `grep`, `edit`, and
+`bash`. The assessment and final confirmation episodes have `read`, `grep`,
+and `bash`. They have no edit tool. All five episodes may read and write the
+current directory because builds and checks can create outputs. Each episode
+has a 60-call backstop. The root holds their aggregate 180-call allowance. A
+run without a verifier has a ten-episode lifetime cap, including the root. The
+assessment may fire three times, and its repair may fire twice. Final
+confirmation may fire twice, and its repair may fire once.
 
-All three episodes operate in the supplied execution environment. A task that
+All five episodes operate in the supplied execution environment. A task that
 requires a service or other live machine state requires each applicable stage
 to apply its configuration, exercise its public interface, and leave the
 required state available after completion. An unbuilt image, unapplied
@@ -746,26 +750,25 @@ state only when the task requires a pre-action or reusable-empty state.
 
 `--verify PATH` names an executable verifier for the built-in workflow.
 The path is canonicalized and becomes a `tool_defs` entry named `check`
-with execute authority on that file. All three episodes may call `check`
+with execute authority on that file. All five episodes may call `check`
 while working. The root declares
 `done_when: {"verify": "check", "retries": 12}`.
-The verifier therefore governs both an accepted assessment and a completed
-repair. It runs in the working directory and receives the workflow completion
-value as JSON on standard input. It prints one finding per line; exit 0 with
-empty output is acceptance. Findings re-fire the nearest model episode. An
-assessment can respond by activating repair, and a repair can correct its
-artifacts. Without `--verify`, the assessment's typed branch governs
-completion. With `--verify`, both corrective nodes may fire thirteen times.
-The root lifetime cap grows to twenty-eight episodes. This cap provides
-structural capacity for the bounded assessment cycle and all twelve verifier
-retries. The aggregate model-call allowance remains 180.
+The verifier therefore governs an accepted final confirmation. It runs in the
+working directory and receives the confirmation value as JSON on standard
+input. It prints one finding per line; exit 0 with empty output is acceptance.
+Findings re-fire final confirmation. That episode may activate its repair before
+checking the workspace again. Without `--verify`, final confirmation's typed
+branch governs completion. With `--verify`, final confirmation may fire
+twenty-six times, and its repair may fire thirteen times. The root lifetime cap
+grows to forty-six episodes. This cap covers both bounded workflow cycles and
+all twelve verifier retries. The aggregate model-call allowance remains 180.
 
 `--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
 workflow. The default is `best-effort`. A program document declares
 its own `sandbox.mode`, so `--sandbox` cannot accompany `--config`.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
-interpreters, and repository tools. All three episodes receive the recorded
+interpreters, and repository tools. All five episodes receive the recorded
 result and its limited scope. The result does not claim that unexamined paths
 lack an executable.
 
@@ -774,7 +777,11 @@ validation observations, and unresolved risks. The assessment receives that
 value and the original task in a fresh context. A repair receives both prior
 values and the original task. Its branch returns control to assessment without
 forwarding the repair claim as assessment input. The shared directory carries
-the artifacts that the fresh assessment inspects.
+the artifacts that the fresh assessment inspects. An accepted assessment sends
+only control to final confirmation. Final confirmation receives the original
+task and inspects the shared workspace without receiving prior completion
+claims. Its repair receives the confirmation findings. The repair sends only
+control back for another confirmation.
 
 When a requirement divides a final value into task-defined and input-matching
 regions, the assessment derives every decomposition consistent with the task
@@ -783,7 +790,8 @@ complete decomposition. Acceptance requires every consistent decomposition to
 pass unless current evidence establishes one interpretation uniquely. A repair
 repeats these checks after changing the value.
 
-All three stages make the narrowest mutation that satisfies the task. For a
+All five stages preserve the task's mutation boundary. The implementation and
+repair stages make the narrowest mutation that satisfies the task. For a
 task naming files, directories, or a repository, the default mutation scope is
 current filesystem content. They preserve version-control history, commits,
 refs, object databases, reflogs, provenance, and prior versions unless the task
@@ -801,15 +809,15 @@ artifact. It varies algorithm-sensitive bounds, thresholds, sample counts,
 ranges, scales, distributions, random seeds, and near-degenerate cases.
 Changing only shape or count does not establish numerical generalization.
 
-Assessment and repair use the highest-authority acceptance path declared by
-the task or repository for every decisive claim. They run that path against
-the final state. An auditor-authored surrogate does not replace a declared
-path. When no authoritative path exists, they use two independently derived
-methods and establish that both exercise equivalent artifacts, inputs,
+Assessment, final confirmation, and repair use the highest-authority acceptance
+path declared by the task or repository for every decisive claim. They run that
+path against the final state. An auditor-authored surrogate does not replace a
+declared path. When no authoritative path exists, they use two independently
+derived methods and establish that both exercise equivalent artifacts, inputs,
 environment, and acceptance criteria. A conflicting higher-authority result
 controls the completion decision.
 
-All three completion schemas require one to eight `learned` observations. Each
+All five completion schemas require one to eight `learned` observations. Each
 observation is a one-sentence claim and the sequence of a successful tool
 result in that episode's log. The runtime checks the citation and preserves
 the completed value as the typed handoff. The assessment receives the
@@ -822,12 +830,12 @@ The model is the one named by `--model`, or the default model when `--model`
 is absent. The default model is the `model` block in
 `~/.config/foe/default-model.json`, which `foe login` writes. When that block
 omits reasoning effort, GPT-5.6 Sol uses low effort for implementation. Its
-assessment and repair episodes use xhigh effort. An explicit reasoning effort
-applies to implementation. The two later Sol stages retain xhigh effort.
+assessment, final confirmation, and repair episodes use xhigh effort. An explicit reasoning effort
+applies to implementation. The four later Sol stages retain xhigh effort.
 Other models carry the root model options into every stage.
 
 `--service-tier TIER` sets the model request's `service_tier` field to
-`default` or `priority` for all three episodes. When the option is absent, the
+`default` or `priority` for all five episodes. When the option is absent, the
 default model file's value remains in effect. Otherwise the provider applies
 its own default.
 
