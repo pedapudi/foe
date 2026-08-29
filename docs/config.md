@@ -19,6 +19,14 @@ validate a document and offer completions. `foe plan --config FILE` prints
 the resolved program, its identity, and every tool definition the program's
 reachable tree can invoke, without running anything.
 
+The built-in assessment and repair stages use a task-declared or
+repository-declared acceptance path for every decisive claim when one exists.
+When no authoritative path exists, they require two independently derived
+methods that exercise equivalent artifacts, inputs, environment, and
+acceptance criteria. These are model-facing semantic requirements in the
+resolved program. The runtime enforces the declared result schemas and cited
+event identities.
+
 `crates/program` implements this document: every rule stated here is a check
 there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a
 document into the program `episode/start.program` records.

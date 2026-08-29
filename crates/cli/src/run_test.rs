@@ -130,6 +130,10 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(assessment_contract.contains("same public or black-box interface"));
     assert!(assessment_contract.contains("random seeds, and near-degenerate cases"));
     assert!(assessment_contract.contains("Changing only shape or count does not establish numerical generalization"));
+    assert!(assessment_contract.contains("highest-authority available acceptance path"));
+    assert!(assessment_contract.contains("A bespoke surrogate does not replace that path"));
+    assert!(assessment_contract.contains("two independently derived methods"));
+    assert!(assessment_contract.contains("A conflicting higher-authority result controls the decision"));
 
     let repair = &workflow.nodes["repair-task"];
     assert_eq!(repair.follows, ["task", "implement-task", "assess-task"]);
@@ -158,6 +162,8 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(
         repair_program.instructions["contract"].contains("Do not inspect hidden implementation state or parameters")
     );
+    assert!(repair_program.instructions["contract"].contains("highest-authority available acceptance path"));
+    assert!(repair_program.instructions["contract"].contains("two independently derived methods"));
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available
