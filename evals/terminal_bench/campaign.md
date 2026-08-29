@@ -5181,3 +5181,98 @@ This task supplies causal external evidence for the decomposition rule. The
 initial artifact failed a requirement that the new assessment instruction
 names. Assessment applied that instruction, repair changed the artifact, and
 the unchanged external grader accepted the result.
+
+## Development failures in live state, mutation scope, and black-box behavior
+
+The source-owned assessment release used source tree
+`git-tree-sha1:bd18e49fdccd5c86cb5dd3ee149e1e2b11d128b0` and portable
+binary
+`sha256:b7d49ac8c7a83cd87d3b00f3a94aec6319fbcbe88240891d525420c48e700772`.
+It passed nine of twelve unchanged Terminal-Bench development tasks.
+`git-multibranch`, `sanitize-git-repo`, and
+`model-extraction-relu-logits` received score 0.0.
+
+The twelve effective attempts used 382 model calls, 9,764,625 input tokens,
+6,042,112 cached-input tokens, and 296,793 output tokens. Estimated cost was
+$23.242757, and serial execution took 8,232.547 seconds. The
+provider-classified model-extraction attempt was replaced by an authorized
+attempt on the same task and unchanged grader. The replacement is the attempt
+included in these totals.
+
+The three failures exposed separate general defects in the assessment
+workflow:
+
+- `git-multibranch` lost required service state while assessment exercised the
+  implementation.
+- `sanitize-git-repo` expanded a current-content repair into changes to Git
+  history and later into changes to an encrypted archive whose transformation
+  the task did not request.
+- `model-extraction-relu-logits` validated one supplied model and did not
+  establish that the implementation generalized to the grader's hidden model.
+
+The workflow contract now requires task-required live state to remain
+available after assessment. Its default mutation scope is current filesystem
+content. History changes and representation-changing transformations require
+task language that asks for them. Black-box assessment exercises several
+controlled fixtures through the same public interface and varies the
+algorithm-sensitive conditions that govern transfer.
+
+The first correction candidate used source tree
+`git-tree-sha1:955a39d3a96eea7e97804ca1e547496bed33548d` and portable
+binary
+`sha256:7e74d5df6bfa0ccea475f986639e8ff8103def40ec12966645c691c98d9f307d`.
+It converted `git-multibranch` to score 1.0. The final account cited a fresh
+password-only clone, synchronous pushes to both branches, live SSH and HTTPS
+services, and preserved task-ready repository state.
+
+The same candidate did not convert `sanitize-git-repo`. Implementation
+preserved Git history and changed only the three contaminated plaintext files.
+Assessment decrypted a password-protected archive, found credential-shaped
+values in its data, and repair rewrote that archive. The unchanged grader
+failed only because the archive changed. This result shows that the history
+scope rule removed the original defect and exposed the separate
+representation-transformation defect.
+
+The refined candidate used source commit
+`de8094157fb0ca9c2492bc31649a021e6ae65c8c`, source tree
+`git-tree-sha1:97304e06da6e03e230cdc3a42224d231d9359ab4`, and portable
+binary
+`sha256:b4b8abd7d314e8dbba5e556474962c7f3ab11d893ff73e0153f90ce829dd97ab`.
+It converted both remaining failure cases:
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sanitize-git-repo` | 1.0 | 22 | 653,310 | 276,992 | 16,619 | $1.948449 | 390.157 |
+| `model-extraction-relu-logits` | 1.0 | 11 | 67,880 | 18,432 | 11,878 | $0.442725 | 277.275 |
+
+The passing sanitize account proved that only the three contaminated files
+changed. It scanned the current repository content without modifying the
+encrypted archive or Git history. The passing model-extraction account used
+only the public `forward()` interface. It validated the recovery algorithm on
+four controlled fixtures with different widths, seeds, parameter
+distributions, scales, signs, biases, and crossing ranges.
+
+All three corrected activation cases passed unchanged task-owned graders.
+Every provider request used GPT-5.6 Sol on the priority service tier.
+Implementation used low reasoning, and assessment used xhigh reasoning. The
+configuration claims were valid, every Foe account conformed, and the runner
+recorded no infrastructure failure.
+
+These activation results convert each failure from the source-owned
+development run. They do not establish the development threshold for one
+portable binary because the `git-multibranch` result used the preceding
+candidate. A complete twelve-task run on the refined candidate must establish
+preservation before confirmation begins.
+
+The retained campaign manifests and their SHA-256 digests are:
+
+- source-owned development:
+  `5236b7eb75bfdee0927c17dc38b954551c0dfcec186c785c2e39f2bd4067f179`;
+- authorized model-extraction replacement:
+  `40c574f15c77402ba662839203d5c1954b3018d6ff634b5d9e138f48ef967e3c`;
+- live-state and initial scope corrections:
+  `c94fe7af44c09c5516ec2a7aac5ccfe4a83b13c37f0897928a57e22778191630`;
+- explicit transformation scope:
+  `621f3d2add7ac1d4d5de8bfeef07e93a37e71ce0c0e3f407722cf2e25b3e94ff`;
+- black-box generalization:
+  `86f1644a2b04e9b90899d6e1cc1085e50249d21ab090e96bc4ffb616fc998820`.
