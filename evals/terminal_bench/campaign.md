@@ -5544,3 +5544,75 @@ The retained evidence directories are:
 - `/home/sunil/git/foe-development-quality-corrections/target/terminal-bench-jobs/integrated-confirmation-20260829T094911Z`;
 - `/home/sunil/git/foe-final-state-preservation/target/terminal-bench-jobs/final-state-preservation-activation-20260829T120854Z`;
 - `/home/sunil/git/foe-final-state-preservation/target/terminal-bench-jobs/final-state-preservation-transfer-20260829T122755Z`.
+
+## Priority-tier corrected-release development qualification
+
+The corrected release used source commit
+`313d53e135c80761eaec06cf3923e935d14cfc55`, source tree
+`git-tree-sha1:03710a51c2a14798cbe821c4005d6f310a996c5b`, and portable binary
+`sha256:1dbc2b2162e129f4afc045b3be7ec8acd8300d9acf3a89494aa06517ef1148e8`.
+The source branch remained pinned to that commit throughout qualification.
+Every manifest associated the evaluated binary with the same source tree.
+
+Every model request used GPT-5.6 Sol on the priority service tier.
+Implementation used low reasoning. Independent assessment and conditional
+repair used xhigh reasoning. Token allowances were measurement only. Tasks ran
+serially with one authoritative credential.
+
+The main development batch ran ten tasks. Every unchanged task-owned grader
+accepted its final workspace. The first `sanitize-git-repo` attempt also
+passed, but one model call lacked provider usage. Its resource totals were
+therefore incomplete. A focused replacement on the same source and binary
+pair passed with complete usage. The development aggregate uses the
+replacement and excludes the incomplete attempt.
+
+The provider-classified `model-extraction-relu-logits` task ran separately
+with the repository-owned authorization and isolation statement. The task and
+grader remained unchanged. The earlier `git-multibranch` transfer result used
+the same source and binary pair and supplies that development task's result.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 21 | 119,034 | 44,032 | 15,772 | $0.633061 | 364.568 |
+| `git-multibranch` | 1.0 | 15 | 106,877 | 23,040 | 16,219 | $0.668944 | 360.825 |
+| `fix-git` | 1.0 | 13 | 82,543 | 33,792 | 6,096 | $0.330441 | 170.420 |
+| `sqlite-db-truncate` | 1.0 | 10 | 61,590 | 11,776 | 7,306 | $0.350086 | 172.598 |
+| `sanitize-git-repo` | 1.0 | 22 | 683,158 | 345,600 | 20,669 | $1.901852 | 479.651 |
+| `large-scale-text-editing` | 1.0 | 11 | 58,438 | 20,480 | 9,351 | $0.347044 | 256.061 |
+| `gpt2-codegolf` | 1.0 | 54 | 1,255,464 | 834,560 | 47,525 | $2.967940 | 1,154.722 |
+| `fix-ocaml-gc` | 1.0 | 25 | 801,168 | 418,304 | 12,155 | $1.941878 | 1,111.878 |
+| `path-tracing-reverse` | 1.0 | 66 | 2,265,022 | 1,505,280 | 35,684 | $4.354760 | 828.971 |
+| `regex-chess` | 1.0 | 70 | 3,180,448 | 2,127,360 | 54,244 | $6.148176 | 1,532.633 |
+| `model-extraction-relu-logits` | 1.0 | 19 | 156,233 | 32,768 | 18,546 | $0.877887 | 425.007 |
+| `dna-assembly` | 1.0 | 86 | 2,023,588 | 1,475,072 | 68,564 | $4.155373 | 1,633.023 |
+
+The twelve selected attempts used 412 model calls, 10,793,563 input tokens,
+6,872,064 cached-input tokens, and 312,131 output tokens. Estimated cost was
+$24.677442, and serial task execution took 8,490.358 seconds. Every task
+received score 1.0. Every selected attempt completed without an exception,
+had a valid configuration claim, produced a conformant Foe trace, and reported
+complete provider usage. No selected attempt had a credential, container,
+sandbox, allowance, transport, or installation failure.
+
+The corrected release therefore passes all twelve development tasks. It
+exceeds the development requirement of at least eleven successes and preserves
+the three failure conversions under one binary. The release may proceed to
+the confirmation gate.
+
+The retained manifest digests are:
+
+- ten-task development batch:
+  `e6cc5f144c427d671e4b9cffa1da518a354fb14a48ce0fb64e9bf72141273dd0`;
+- authorized model extraction:
+  `4577d95f0be6373b79bc565fc4364e032b10bd5a885c167f8ba6a595de2b7be5`;
+- measured sanitization replacement:
+  `c5fa8bba7baf18541d3b7ea230aa9f1424b5e9d6a5bd25f09b93a779a9d184dc`;
+- stateful Git transfer:
+  `ffd520ec3c6b273fbfb619fef7a3377a771fe0e5b4f460efc7c03ea2d33aba18`.
+
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-final-state-release/target/terminal-bench-jobs/final-state-release-development-ten-20260829T124134Z`;
+- `/home/sunil/git/foe-final-state-release/target/terminal-bench-jobs/final-state-release-model-extraction-authorized-20260829T145127Z`;
+- `/home/sunil/git/foe-final-state-release/target/terminal-bench-jobs/final-state-release-sanitize-measured-20260829T145904Z`;
+- `/home/sunil/git/foe-final-state-preservation/target/terminal-bench-jobs/final-state-preservation-transfer-20260829T122755Z`.
