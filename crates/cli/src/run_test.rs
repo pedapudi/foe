@@ -112,6 +112,8 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(implementation_program.instructions["contract"]
         .contains("default mutation scope is current filesystem content"));
     assert!(implementation_program.instructions["contract"]
+        .contains("Do not enlarge mutation scope by decrypting, decompressing, decoding, reconstructing"));
+    assert!(implementation_program.instructions["contract"]
         .contains("do not inspect its hidden implementation or parameters"));
     let assessment = &workflow.nodes["assess-task"];
     assert_eq!(assessment.follows, ["task", "implement-task"]);
@@ -135,6 +137,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(assessment_program.instructions["role"].contains("stopped temporary probe"));
     let assessment_contract = &assessment_program.instructions["contract"];
     assert!(assessment_contract.contains("version-control history, commits, refs, object databases, reflogs"));
+    assert!(assessment_contract.contains("unless the task explicitly requires that representation or transformation"));
     assert!(assessment_contract.contains("several controlled fixtures"));
     assert!(assessment_contract.contains("same public or black-box interface"));
     assert!(assessment_contract.contains("random seeds, and near-degenerate cases"));
@@ -163,6 +166,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(repair_program.instructions["role"].contains("leave the required state available"));
     assert!(repair_program.instructions["role"].contains("stopped temporary probe"));
     assert!(repair_program.instructions["contract"].contains("narrowest repair that resolves the reproduced defect"));
+    assert!(repair_program.instructions["contract"].contains("Do not enlarge mutation scope by decrypting"));
     assert!(
         repair_program.instructions["contract"].contains("Do not inspect hidden implementation state or parameters")
     );
