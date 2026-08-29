@@ -773,7 +773,10 @@ All three stages make the narrowest mutation that satisfies the task. For a
 task naming files, directories, or a repository, the default mutation scope is
 current filesystem content. They preserve version-control history, commits,
 refs, object databases, reflogs, provenance, and prior versions unless the task
-explicitly requires changing that state.
+explicitly requires changing that state. They do not enlarge mutation scope by
+decrypting, decompressing, decoding, reconstructing, or searching prior
+versions unless the task explicitly requires that representation or
+transformation.
 
 The stages use only interfaces the task authorizes. An input described as
 black-box, private, or unknown is not inspected through its implementation,
