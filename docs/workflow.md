@@ -244,7 +244,9 @@ from a node with `branches` is fresh only when the chosen label lists the
 target, or when no label lists it. After a branch source has produced a
 value, an unchosen branch target cannot fire from freshness retained on
 another input. A forced verification or recovery firing overrides this
-gate. A node waits while any ancestor of it
+gate. When several branch sources control one target, a fresh choice by any
+one source admits the target. An earlier choice by another source does not
+suppress that fresh edge. A node waits while any ancestor of it
 is running or is itself about to fire, so that a node with two inputs fed
 by one re-fired ancestor fires once, with both inputs fresh. For an
 acyclic graph this is topological order, and nodes with no pending

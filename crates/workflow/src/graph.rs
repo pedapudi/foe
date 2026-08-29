@@ -88,12 +88,10 @@ impl Scheduler {
         let candidate = |name: &String| {
             let s = &self.state[name];
             let inputs_present = self.inputs[name].iter().all(|i| self.state[i].value.is_some());
-            let gated_out = self
-                .gates
-                .get(name)
-                .into_iter()
-                .flatten()
-                .any(|source| self.state[source].value.is_some() && !s.fresh.contains(source));
+            let gated_out = self.gates.get(name).is_some_and(|sources| {
+                sources.iter().any(|source| self.state[source].value.is_some())
+                    && sources.iter().all(|source| !s.fresh.contains(source))
+            });
             !s.running && (s.forced || (!s.fresh.is_empty() && inputs_present && !gated_out))
         };
         let candidates: BTreeSet<&String> = self.nodes.keys().filter(|n| candidate(n)).collect();

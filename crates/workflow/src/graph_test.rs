@@ -104,6 +104,45 @@ fn an_unchosen_branch_gates_stale_input_freshness() {
     assert_eq!(s.ready(), vec!["assess"], "the chosen cycle edge refreshes assessment");
 }
 
+/// docs/workflow.md "Firing": when alternative branch sources control one
+/// target, a fresh choice from either source admits it. An earlier choice by
+/// another source does not suppress that edge.
+#[test]
+fn alternative_branch_sources_admit_one_shared_target() {
+    let mut s = scheduler(json!({
+        "implement": { "tool": "write" },
+        "assess": { "tool": "check", "follows": ["implement"],
+                    "branches": { "accept": ["confirm"], "repair": ["repair"] } },
+        "repair": { "tool": "write", "follows": ["assess"],
+                    "branches": { "confirm": ["confirm"] } },
+        "confirm": { "tool": "check", "branches": { "accept": [], "repair": ["confirm-repair"] },
+                     "max_fires": 2 },
+        "confirm-repair": { "tool": "write", "follows": ["confirm"],
+                            "branches": { "reassess": ["confirm"] } }
+    }));
+    s.begin("implement");
+    s.finish("implement");
+    s.produced("implement", produced(1), None);
+    s.begin("assess");
+    s.finish("assess");
+    s.produced("assess", produced(2), Some("repair"));
+    assert_eq!(s.ready(), vec!["repair"]);
+
+    s.begin("repair");
+    s.finish("repair");
+    s.produced("repair", produced(3), Some("confirm"));
+    assert_eq!(s.ready(), vec!["confirm"], "repair admits the target that assessment did not choose");
+    s.begin("confirm");
+    s.finish("confirm");
+    s.produced("confirm", produced(4), Some("repair"));
+    assert_eq!(s.ready(), vec!["confirm-repair"]);
+
+    s.begin("confirm-repair");
+    s.finish("confirm-repair");
+    s.produced("confirm-repair", produced(5), Some("reassess"));
+    assert_eq!(s.ready(), vec!["confirm"], "the correction admits the shared confirmation target again");
+}
+
 /// docs/workflow.md "Firing": nodes with no pending dependency between
 /// them are ready together, and a join waits for every input.
 #[test]
