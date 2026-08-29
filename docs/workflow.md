@@ -241,7 +241,10 @@ so a node that any `branches` label lists is never a graph source, even
 when nothing else points at it. An edge from a
 node without `branches` is fresh after every firing of its source; an edge
 from a node with `branches` is fresh only when the chosen label lists the
-target, or when no label lists it. A node waits while any ancestor of it
+target, or when no label lists it. After a branch source has produced a
+value, an unchosen branch target cannot fire from freshness retained on
+another input. A forced verification or recovery firing overrides this
+gate. A node waits while any ancestor of it
 is running or is itself about to fire, so that a node with two inputs fed
 by one re-fired ancestor fires once, with both inputs fresh. For an
 acyclic graph this is topological order, and nodes with no pending

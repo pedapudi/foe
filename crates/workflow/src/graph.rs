@@ -51,6 +51,8 @@ pub struct Scheduler {
     pub nodes: BTreeMap<String, Node>,
     /// Data inputs in section order.
     pub inputs: BTreeMap<String, Vec<String>>,
+    /// Branch sources whose choice controls each target after the source fires.
+    pub gates: BTreeMap<String, BTreeSet<String>>,
     /// Every edge source, data and branch edges alike.
     pub preds: BTreeMap<String, BTreeSet<String>>,
     pub succs: BTreeMap<String, BTreeSet<String>>,
@@ -63,16 +65,22 @@ impl Scheduler {
     pub fn new(wf: &WorkflowConfig, task: Produced) -> Self {
         let preds = wf.predecessors();
         let mut succs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut gates: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for (target, sources) in &preds {
             for source in sources {
                 succs.entry(source.clone()).or_default().insert(target.clone());
+            }
+        }
+        for (source, node) in &wf.nodes {
+            for target in node.branches.values().flatten() {
+                gates.entry(target.clone()).or_default().insert(source.clone());
             }
         }
         let source =
             |name: &String| NodeState { forced: preds.get(name).is_none_or(BTreeSet::is_empty), ..Default::default() };
         let mut state: BTreeMap<String, NodeState> = wf.nodes.keys().map(|name| (name.clone(), source(name))).collect();
         state.insert(TASK_SOURCE.into(), NodeState { value: Some(task), ..Default::default() });
-        Self { nodes: wf.nodes.clone(), inputs: wf.inputs(), preds, succs, state }
+        Self { nodes: wf.nodes.clone(), inputs: wf.inputs(), gates, preds, succs, state }
     }
 
     /// The nodes that may fire now, in name order.
@@ -80,7 +88,13 @@ impl Scheduler {
         let candidate = |name: &String| {
             let s = &self.state[name];
             let inputs_present = self.inputs[name].iter().all(|i| self.state[i].value.is_some());
-            !s.running && (s.forced || (!s.fresh.is_empty() && inputs_present))
+            let gated_out = self
+                .gates
+                .get(name)
+                .into_iter()
+                .flatten()
+                .any(|source| self.state[source].value.is_some() && !s.fresh.contains(source));
+            !s.running && (s.forced || (!s.fresh.is_empty() && inputs_present && !gated_out))
         };
         let candidates: BTreeSet<&String> = self.nodes.keys().filter(|n| candidate(n)).collect();
         candidates

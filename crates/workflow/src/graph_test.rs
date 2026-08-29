@@ -69,6 +69,41 @@ fn readiness_follows_freshness_around_a_cycle() {
     assert_eq!(s.state["propose"].fires, 2);
 }
 
+/// docs/workflow.md "Firing": after a branch source has produced a value,
+/// an unchosen target cannot fire from freshness retained on another input.
+/// A forced firing and a later chosen branch remain eligible.
+#[test]
+fn an_unchosen_branch_gates_stale_input_freshness() {
+    let mut s = scheduler(json!({
+        "implement": { "tool": "write" },
+        "assess": { "tool": "check", "follows": ["implement"],
+                    "branches": { "accept": [], "repair": ["repair"] }, "max_fires": 3 },
+        "repair": { "tool": "write", "follows": ["implement", "assess"],
+                    "branches": { "reassess": ["assess"] }, "max_fires": 2 }
+    }));
+    s.begin("implement");
+    s.finish("implement");
+    s.produced("implement", produced(1), None);
+    assert_eq!(s.ready(), vec!["assess"]);
+
+    s.begin("assess");
+    s.finish("assess");
+    s.produced("assess", produced(2), Some("accept"));
+    assert!(s.ready().is_empty(), "the unchosen repair remains gated");
+
+    s.force("assess");
+    assert_eq!(s.ready(), vec!["assess"], "verification can force reassessment");
+    s.begin("assess");
+    s.finish("assess");
+    s.produced("assess", produced(3), Some("repair"));
+    assert_eq!(s.ready(), vec!["repair"]);
+
+    s.begin("repair");
+    s.finish("repair");
+    s.produced("repair", produced(4), Some("reassess"));
+    assert_eq!(s.ready(), vec!["assess"], "the chosen cycle edge refreshes assessment");
+}
+
 /// docs/workflow.md "Firing": nodes with no pending dependency between
 /// them are ready together, and a join waits for every input.
 #[test]
