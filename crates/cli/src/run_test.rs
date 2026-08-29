@@ -93,7 +93,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
             .unwrap();
     resolve(&config).expect("the built-in workflow resolves before an episode starts");
     assert_eq!(config.budget.model_calls, 3 * BUILTIN_STAGE_CALLS);
-    assert_eq!(config.budget.max_episodes, 4);
+    assert_eq!(config.budget.max_episodes, 7);
     assert_eq!(config.budget.max_concurrent, 1);
     let workflow = config.workflow.unwrap();
     let implementation = &workflow.nodes["implement-task"];
@@ -120,6 +120,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     let assessment = &workflow.nodes["assess-task"];
     assert_eq!(assessment.follows, ["task", "implement-task"]);
     assert!(!assessment.terminal);
+    assert_eq!(assessment.max_fires, Some(3));
     assert_eq!(
         assessment.branches,
         std::collections::BTreeMap::from([("accept".into(), vec![]), ("repair".into(), vec!["repair-task".into()])])
@@ -153,7 +154,9 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
 
     let repair = &workflow.nodes["repair-task"];
     assert_eq!(repair.follows, ["task", "implement-task", "assess-task"]);
-    assert!(repair.terminal);
+    assert!(!repair.terminal);
+    assert_eq!(repair.max_fires, Some(2));
+    assert_eq!(repair.branches, std::collections::BTreeMap::from([("reassess".into(), vec!["assess-task".into()])]));
     let repair_program = repair.model.as_ref().unwrap();
     assert_eq!(repair_program.budget.model_calls, BUILTIN_STAGE_CALLS);
     let repair_completion = repair_program.done_when.as_ref().unwrap().returns.as_ref().unwrap();
@@ -212,7 +215,7 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     let gate = config.done_when.as_ref().unwrap();
     assert_eq!(gate.verify.as_deref(), Some("check"));
     assert_eq!(gate.retries, BUILTIN_VERIFIER_RETRIES);
-    assert_eq!(config.budget.max_episodes, BUILTIN_VERIFIER_RETRIES + 4);
+    assert_eq!(config.budget.max_episodes, 2 * BUILTIN_VERIFIER_RETRIES + 4);
     assert_eq!(workflow.nodes["assess-task"].max_fires, Some(BUILTIN_VERIFIER_RETRIES + 1));
     assert_eq!(workflow.nodes["repair-task"].max_fires, Some(BUILTIN_VERIFIER_RETRIES + 1));
     let done = implement.done_when.as_ref().unwrap();

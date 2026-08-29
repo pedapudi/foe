@@ -602,8 +602,9 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
 /// The built-in coding workflow's shape, as `foe "task" --verify PATH`
 /// composes it when `verifier` is set and as the bare form composes it
 /// otherwise: implementation feeds an assessment choice, and its repair
-/// branch feeds a fresh coding node. A verifier governs both branches at the
-/// root. Every episode may call it while working.
+/// branch feeds a fresh coding node. Repair returns to independent assessment.
+/// A verifier governs every accepting assessment at the root. Every episode
+/// may call it while working.
 /// The wiring itself is pinned by the unit tests over `builtin_program_document`;
 /// the bare form cannot run under a scripted transport, because the exec
 /// provider needs a `model` option no flag sets, so these runs drive the
@@ -628,7 +629,7 @@ fn coding_workflow(dir: &Path, verifier: Option<&Path>) -> Value {
     repair["done_when"] = completion;
     let mut value = config(dir, |c| {
         c["grants"]["write"] = json!([dir]);
-        c["budget"] = json!({ "model_calls": 12, "max_episodes": 4, "max_concurrent": 1 });
+        c["budget"] = json!({ "model_calls": 12, "max_episodes": 7, "max_concurrent": 1 });
     });
     if let Some(script) = verifier {
         let def = json!({ "check": { "exec": script, "description": "Prints one finding per line; silence is acceptance." } });
@@ -638,7 +639,7 @@ fn coding_workflow(dir: &Path, verifier: Option<&Path>) -> Value {
         assessment["tool_defs"] = def.clone();
         repair["tools"] = json!(["read", "check"]);
         repair["tool_defs"] = def.clone();
-        value["budget"]["max_episodes"] = json!(16);
+        value["budget"]["max_episodes"] = json!(28);
         value["tools"] = json!(["read", "check"]);
         value["tool_defs"] = def;
         value["done_when"] = json!({ "verify": "check", "retries": 12 });
@@ -649,12 +650,14 @@ fn coding_workflow(dir: &Path, verifier: Option<&Path>) -> Value {
             "assess-task": {
                 "model": assessment,
                 "follows": ["task", "implement-task"],
-                "branches": { "accept": [], "repair": ["repair-task"] }
+                "branches": { "accept": [], "repair": ["repair-task"] },
+                "max_fires": 3
             },
             "repair-task": {
                 "model": repair,
                 "follows": ["task", "implement-task", "assess-task"],
-                "terminal": true
+                "branches": { "reassess": ["assess-task"] },
+                "max_fires": 2
             }
         },
         "recovery": { "enabled": false }
@@ -804,23 +807,25 @@ fn without_a_verifier_the_assessment_runs() {
 }
 
 /// docs/design.md "The command line": a repair branch carries the assessment
-/// value into one fresh coding child, whose typed value completes the workflow.
+/// value into one fresh coding child. A fresh assessment checks the repair and
+/// owns the completion decision.
 #[test]
 fn assessment_findings_activate_a_fresh_repair() {
     let dir = scratch("assessment-repair");
     let config = coding_workflow(&dir, None);
     let implement = vec![text("implemented"), done("end")];
     let assessment = workflow_return(json!({ "branch": "repair", "summary": "one defect" }));
-    let repair = workflow_return(json!({ "summary": "repaired" }));
-    let (events, code) = host_run(&dir, &config, vec![implement, assessment, repair], |_, _| Value::Null);
+    let repair = workflow_return(json!({ "branch": "reassess", "summary": "repaired" }));
+    let reassessment = workflow_return(json!({ "branch": "accept", "summary": "repair independently accepted" }));
+    let (events, code) = host_run(&dir, &config, vec![implement, assessment, repair, reassessment], |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(
         events.last().unwrap()["data"]["outcome"],
-        json!({ "kind": "completed", "value": { "summary": "repaired" } })
+        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "repair independently accepted" } })
     );
     assert_eq!(
         node_starts(&events),
-        [("implement-task".into(), 1), ("assess-task".into(), 1), ("repair-task".into(), 1)]
+        [("implement-task".into(), 1), ("assess-task".into(), 1), ("repair-task".into(), 1), ("assess-task".into(), 2)]
     );
 }
 
@@ -838,17 +843,28 @@ fn root_verifier_findings_can_turn_accept_into_repair() {
     let implement = vec![text("implemented"), done("end")];
     let first_assessment = workflow_return(json!({ "branch": "accept", "summary": "initial acceptance" }));
     let revised_assessment = workflow_return(json!({ "branch": "repair", "summary": "verifier finding" }));
-    let repair = workflow_return(json!({ "summary": "repaired" }));
-    let (events, code) =
-        host_run(&dir, &config, vec![implement, first_assessment, revised_assessment, repair], |_, _| Value::Null);
+    let repair = workflow_return(json!({ "branch": "reassess", "summary": "repaired" }));
+    let final_assessment = workflow_return(json!({ "branch": "accept", "summary": "repair accepted" }));
+    let (events, code) = host_run(
+        &dir,
+        &config,
+        vec![implement, first_assessment, revised_assessment, repair, final_assessment],
+        |_, _| Value::Null,
+    );
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(
         events.last().unwrap()["data"]["outcome"],
-        json!({ "kind": "completed", "value": { "summary": "repaired" } })
+        json!({ "kind": "completed", "value": { "branch": "accept", "summary": "repair accepted" } })
     );
     assert_eq!(
         node_starts(&events),
-        [("implement-task".into(), 1), ("assess-task".into(), 1), ("assess-task".into(), 2), ("repair-task".into(), 1)]
+        [
+            ("implement-task".into(), 1),
+            ("assess-task".into(), 1),
+            ("assess-task".into(), 2),
+            ("repair-task".into(), 1),
+            ("assess-task".into(), 3)
+        ]
     );
     let statuses: Vec<_> = events
         .iter()

@@ -717,7 +717,9 @@ A task given with `--config` replaces the document's own `task`. A task given
 without `--config` uses a built-in coding workflow. An implementation episode
 changes the current directory. A fresh assessment episode independently checks
 the task and implementation claim. It either accepts the artifacts or activates
-a fresh repair episode with its typed findings.
+a fresh repair episode with its typed findings. Every repair returns to a fresh
+assessment of the resulting workspace. The bounded cycle permits two repairs.
+Only an assessment can accept the final state.
 
 The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
 fills its task, model, current-directory grants, executable inventory, sandbox
@@ -728,8 +730,9 @@ The implementation and repair episodes have `read`, `grep`, `edit`, and
 `bash`. The assessment episode has `read`, `grep`, and `bash`. It has no edit
 tool. All three episodes may read and write the current directory because
 builds and checks can create outputs. Each episode has a 60-call backstop. The
-root holds their additive 180-call allowance. A run without a verifier has a
-four-episode lifetime cap, including the root.
+root holds their aggregate 180-call allowance. A run without a verifier has a
+seven-episode lifetime cap, including the root. The assessment may fire three
+times, and the repair may fire twice.
 
 All three episodes operate in the supplied execution environment. A task that
 requires a service or other live machine state requires each applicable stage
@@ -753,7 +756,9 @@ empty output is acceptance. Findings re-fire the nearest model episode. An
 assessment can respond by activating repair, and a repair can correct its
 artifacts. Without `--verify`, the assessment's typed branch governs
 completion. With `--verify`, both corrective nodes may fire thirteen times.
-The root lifetime cap grows to sixteen episodes so all twelve retries can run.
+The root lifetime cap grows to twenty-eight episodes. This cap provides
+structural capacity for the bounded assessment cycle and all twelve verifier
+retries. The aggregate model-call allowance remains 180.
 
 `--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
 workflow. The default is `best-effort`. A program document declares
@@ -767,7 +772,9 @@ lack an executable.
 The implementation returns a typed handoff with its summary, changed paths,
 validation observations, and unresolved risks. The assessment receives that
 value and the original task in a fresh context. A repair receives both prior
-values and the original task. The shared directory carries the artifacts.
+values and the original task. Its branch returns control to assessment without
+forwarding the repair claim as assessment input. The shared directory carries
+the artifacts that the fresh assessment inspects.
 
 When a requirement divides a final value into task-defined and input-matching
 regions, the assessment derives every decomposition consistent with the task

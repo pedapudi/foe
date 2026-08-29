@@ -32,6 +32,10 @@ acceptance criteria. These are model-facing semantic requirements in the
 resolved program. The runtime enforces the declared result schemas and cited
 event identities.
 
+A repair in the built-in workflow returns to an independent assessment of the
+resulting workspace. Assessment may request two repairs. Only an assessment can
+accept the final state.
+
 After a task-authorized end-to-end check succeeds, every built-in stage keeps
 the artifacts and live state that represent the requested outcome. Cleanup may
 remove temporary probes. It may reset, delete, or replace requested final

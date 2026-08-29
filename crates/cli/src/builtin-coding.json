@@ -11,7 +11,7 @@
   },
   "budget": {
     "model_calls": 0,
-    "max_episodes": 4,
+    "max_episodes": 7,
     "max_concurrent": 1
   },
   "model": {},
@@ -178,7 +178,8 @@
         "branches": {
           "accept": [],
           "repair": ["repair-task"]
-        }
+        },
+        "max_fires": 3
       },
       "repair-task": {
         "model": {
@@ -259,7 +260,10 @@
           "model": {}
         },
         "follows": ["task", "implement-task", "assess-task"],
-        "terminal": true
+        "branches": {
+          "reassess": ["assess-task"]
+        },
+        "max_fires": 2
       }
     },
     "recovery": {

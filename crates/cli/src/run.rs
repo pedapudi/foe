@@ -384,7 +384,7 @@ fn builtin_program_document(
     if let Some(check) = verify {
         let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
         let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": cwd });
-        document["budget"]["max_episodes"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES + 4);
+        document["budget"]["max_episodes"] = serde_json::json!(2 * BUILTIN_VERIFIER_RETRIES + 4);
         document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
         document["tool_defs"] = serde_json::json!({ "check": def });
         for node in ["implement-task", "assess-task", "repair-task"] {
