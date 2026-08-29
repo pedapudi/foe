@@ -32,6 +32,11 @@ acceptance criteria. These are model-facing semantic requirements in the
 resolved program. The runtime enforces the declared result schemas and cited
 event identities.
 
+After a task-authorized end-to-end check succeeds, every built-in stage keeps
+the artifacts and live state that represent the requested outcome. Cleanup may
+remove temporary probes. It may reset, delete, or replace requested final
+state only when the task requires a pre-action or reusable-empty state.
+
 Planning resolves the transport for the root model, named child programs,
 and explicit workflow model blocks. Execution applies the same resolution
 before it records `episode/start.program`. A child that inherits a model also

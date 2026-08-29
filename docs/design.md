@@ -736,6 +736,10 @@ requires a service or other live machine state requires each applicable stage
 to apply its configuration, exercise its public interface, and leave the
 required state available after completion. An unbuilt image, unapplied
 configuration, or stopped temporary probe does not establish live behavior.
+After a task-authorized end-to-end check succeeds, each stage keeps the
+artifacts and live state that represent the requested outcome. Cleanup may
+remove temporary probes. It may reset, delete, or replace requested final
+state only when the task requires a pre-action or reusable-empty state.
 
 `--verify PATH` names an executable verifier for the built-in workflow.
 The path is canonicalized and becomes a `tool_defs` entry named `check`

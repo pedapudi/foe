@@ -109,6 +109,8 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(implementation_program.instructions["environment"].contains("Fixed-path executable probe"));
     assert!(implementation_program.instructions["role"].contains("apply its configuration in the current environment"));
     assert!(implementation_program.instructions["role"].contains("leave the required state available"));
+    assert!(implementation_program.instructions["role"].contains("keep the artifacts and live state"));
+    assert!(implementation_program.instructions["role"].contains("must not reset, delete, or replace"));
     assert!(implementation_program.instructions["contract"]
         .contains("default mutation scope is current filesystem content"));
     assert!(implementation_program.instructions["contract"]
@@ -135,6 +137,8 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(assessment_program.instructions["role"].contains("every task-consistent decomposition passes"));
     assert!(assessment_program.instructions["role"].contains("exercise the requested public interface"));
     assert!(assessment_program.instructions["role"].contains("stopped temporary probe"));
+    assert!(assessment_program.instructions["role"].contains("keep the artifacts and live state"));
+    assert!(assessment_program.instructions["role"].contains("must not reset, delete, or replace"));
     let assessment_contract = &assessment_program.instructions["contract"];
     assert!(assessment_contract.contains("version-control history, commits, refs, object databases, reflogs"));
     assert!(assessment_contract.contains("unless the task explicitly requires that representation or transformation"));
@@ -169,6 +173,8 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(repair_program.instructions["role"].contains("each complete decomposition"));
     assert!(repair_program.instructions["role"].contains("leave the required state available"));
     assert!(repair_program.instructions["role"].contains("stopped temporary probe"));
+    assert!(repair_program.instructions["role"].contains("keep the artifacts and live state"));
+    assert!(repair_program.instructions["role"].contains("must not reset, delete, or replace"));
     assert!(repair_program.instructions["contract"].contains("narrowest repair that resolves the reproduced defect"));
     assert!(repair_program.instructions["contract"].contains("Do not enlarge mutation scope by decrypting"));
     assert!(
