@@ -384,6 +384,10 @@ class CasesTest(unittest.TestCase):
         self.assertEqual(tasks["compile-compcert"].cpus, 2)
         self.assertEqual(tasks["gpt2-codegolf"].memory_mb, 8192)
         self.assertEqual(tasks["mcmc-sampling-stan"].cpus, 4)
+        self.assertTrue(
+            tasks["model-extraction-relu-logits"].authorized_benchmark_context
+        )
+        self.assertFalse(tasks["fix-git"].authorized_benchmark_context)
         self.assertEqual(pricing["openai-codex/gpt-5.6-sol"].output_per_million, 20.0)
 
     def test_case_resources_require_positive_integer_values(self):
@@ -394,6 +398,18 @@ class CasesTest(unittest.TestCase):
             cases = Path(directory) / "cases.json"
             cases.write_text(json.dumps(value), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "fix-git resources"):
+                read_cases(cases)
+
+    def test_case_authorization_flag_must_be_boolean(self):
+        source = Path(__file__).with_name("cases.json")
+        value = json.loads(source.read_text(encoding="utf-8"))
+        value["tasks"]["fix-git"]["authorized_benchmark_context"] = "yes"
+        with tempfile.TemporaryDirectory() as directory:
+            cases = Path(directory) / "cases.json"
+            cases.write_text(json.dumps(value), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, "fix-git.authorized_benchmark_context"
+            ):
                 read_cases(cases)
 
     def test_harbor_command_runs_one_task_at_a_time(self):
@@ -550,7 +566,7 @@ class CasesTest(unittest.TestCase):
             any(value.startswith("completion_checker=") for value in command)
         )
 
-    def test_harbor_command_can_append_recorded_benchmark_authorization(self):
+    def test_case_metadata_appends_recorded_benchmark_authorization(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
         command = harbor_command(
             harbor=Path("/tools/harbor"),
@@ -575,7 +591,6 @@ class CasesTest(unittest.TestCase):
             runtime_digest="abc123",
             pricing=pricing["openai-codex/gpt-5.6-sol"],
             built_in_workflow=True,
-            authorized_benchmark_context=True,
         )
         index = command.index("--extra-instruction")
         self.assertEqual(command[index + 1], AUTHORIZED_BENCHMARK_CONTEXT)

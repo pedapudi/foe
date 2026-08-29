@@ -275,8 +275,12 @@ episodes must select and run task-relevant checks from the task environment.
 Harbor runs the unchanged task-owned verifier after Foe exits.
 
 Some authorized security-research tasks can trigger a provider policy
-classification before the model loop begins. Retry such a task with a fixed
-authorization and isolation statement:
+classification before the model loop begins. Their case metadata enables a
+fixed authorization and isolation statement. Multi-task targets apply the
+statement only to those tasks.
+
+Use the command-line override when an unclassified task needs the same
+statement for an ad hoc replacement attempt:
 
 ```sh
 bazel run //evals/terminal_bench:foe-development -- \
@@ -287,8 +291,8 @@ bazel run //evals/terminal_bench:foe-development -- \
 
 The option appends one repository-owned statement through Harbor's task
 context. It does not accept arbitrary prompt text. The campaign manifest
-records the exact statement. Use the option only to replace an attempt that
-the provider rejected before score-valid work began.
+records the statement and every task that received it. Use the override only
+to replace an attempt that the provider rejected before score-valid work began.
 
 ## Preview and run one assessed task
 

@@ -77,6 +77,7 @@ class Task:
     harbor_agent_seconds: int
     cpus: int
     memory_mb: int
+    authorized_benchmark_context: bool = False
 
 
 @dataclass(frozen=True)
@@ -174,6 +175,9 @@ def read_cases(
             harbor_agent_seconds=raw_agent_timeouts.get(name),
             cpus=limits.get("cpus", default_cpus),
             memory_mb=limits.get("memory_mb", default_memory_mb),
+            authorized_benchmark_context=limits.get(
+                "authorized_benchmark_context", False
+            ),
         )
         limits = (
             task.model_calls,
@@ -186,6 +190,10 @@ def read_cases(
             raise ValueError(f"cases.tasks.{name} limits must be positive integers")
         if any(type(value) is not int or value <= 0 for value in (task.cpus, task.memory_mb)):
             raise ValueError(f"cases.tasks.{name} resources must be positive integers")
+        if type(task.authorized_benchmark_context) is not bool:
+            raise ValueError(
+                f"cases.tasks.{name}.authorized_benchmark_context must be a boolean"
+            )
         tasks[name] = task
     groups: dict[str, tuple[str, ...]] = {}
     for group, names in raw_groups.items():
@@ -777,7 +785,7 @@ def harbor_command(
     ]
     for key, value in kwargs.items():
         command.extend(("--agent-kwarg", f"{key}={value}"))
-    if authorized_benchmark_context:
+    if authorized_benchmark_context or task.authorized_benchmark_context:
         command.extend(("--extra-instruction", AUTHORIZED_BENCHMARK_CONTEXT))
     if install_only:
         command.append("--install-only")
@@ -1836,8 +1844,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     token_policy = "hard allowances" if args.hard_token_limits else "measurement only"
     print(f"token limits  {token_policy}")
-    if args.authorized_benchmark_context:
-        print("task context  authorized isolated benchmark")
+    authorized_context_tasks = [
+        task.name
+        for task in selected
+        if args.authorized_benchmark_context or task.authorized_benchmark_context
+    ]
+    if authorized_context_tasks:
+        print(f"task context  authorization added to {', '.join(authorized_context_tasks)}")
     if completion_checker is not None:
         owner = "built-in terminal audit" if args.built_in_workflow else "coding episode"
         print(
@@ -2025,10 +2038,9 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "install_only": args.install_only,
             "authorized_benchmark_context": (
-                AUTHORIZED_BENCHMARK_CONTEXT
-                if args.authorized_benchmark_context
-                else None
+                AUTHORIZED_BENCHMARK_CONTEXT if authorized_context_tasks else None
             ),
+            "authorized_benchmark_context_tasks": authorized_context_tasks,
             "credential_policy": (
                 "provider_free_installation"
                 if args.install_only
