@@ -5125,3 +5125,59 @@ The three focused development cases pass closed-book. The candidate may now
 proceed to the remaining development tasks after the sequence-decomposition
 repeatability defect is addressed. Confirmation remains closed because the
 candidate has not yet completed the unchanged twelve-task development gate.
+
+### Source-owned assessment correction on DNA insertion
+
+The product-owned workflow incorporated independent assessment, conditional
+fresh repair, and the task-consistent decomposition rule. Its evaluated
+source commit was `5f336f25680a63d55b9675f42d6b32f24fc522c5`. The source
+tree was `git-tree-sha1:ed92e470d3cb94a031eded36e70939fb14f4e212`.
+The portable binary had SHA-256 digest
+`b7d49ac8c7a83cd87d3b00f3a94aec6319fbcbe88240891d525420c48e700772`.
+
+A provider-free Harbor installation check accepted the binary and its
+built-in command surface before model execution. The frozen release then ran
+the unchanged `dna-insert` task. Every request used GPT-5.6 Sol on the
+priority service tier. Implementation used low reasoning. Independent
+assessment and conditional repair used xhigh reasoning.
+
+The implementation produced primers that reconstructed the required plasmid.
+Its claimed 15-base forward annealing region ignored two additional bases that
+matched the input. Three insertion boundaries were consistent with the
+complete input and output sequences. Two decompositions violated the required
+five-degree primer-pair temperature bound.
+
+Independent assessment enumerated all three boundaries and selected the
+repair branch. Fresh repair reproduced the failures, extended the reverse
+primer, and evaluated every dependent constraint under each decomposition.
+The largest remaining temperature difference was 4.993653 degrees. The
+unchanged task-owned grader awarded score 1.0.
+
+Foe used 34 model calls, 351,017 input tokens, 131,072 cached-input tokens,
+and 29,911 output tokens. Estimated cost was $1.530429. Serial execution took
+683.297 seconds. The task, trace, provider usage, credential scan, and Harbor
+result contained no failure.
+
+The evaluation runner initially rejected the configuration claim because its
+integrity profile still described the preceding two-node workflow. It expected
+160 calls and two model stages. The source-owned workflow declares 180 calls
+and three stages. The stale profile also under-reserved credential lifetime
+and task time.
+
+The runner now validates the three declared nodes, their data-flow edges,
+models, tools, branches, completion ownership, and 60-call stage backstops. It
+reserves three model stages and the additive 180-call allowance. Re-evaluating
+the retained episode with this profile reports no infrastructure failure and
+records xhigh assessment. No additional model request was made.
+
+The retained run is
+`/home/sunil/git/foe-frozen-assessment-release/target/terminal-bench-jobs/source-owned-decomposition-dna-insert-priority-20260829T030748Z`.
+Its original campaign manifest has SHA-256 digest
+`a5bbca22af37258b6bfd5e3dae57eaa0cdd5f9c614b13e53736559f6396fc87d`.
+The manifest preserves the stale evaluator diagnostics. The episode log and
+the corrected integrity profile establish the configuration reassessment.
+
+This task supplies causal external evidence for the decomposition rule. The
+initial artifact failed a requirement that the new assessment instruction
+names. Assessment applied that instruction, repair changed the artifact, and
+the unchanged external grader accepted the result.
