@@ -5276,3 +5276,84 @@ The retained campaign manifests and their SHA-256 digests are:
   `621f3d2add7ac1d4d5de8bfeef07e93a37e71ce0c0e3f407722cf2e25b3e94ff`;
 - black-box generalization:
   `86f1644a2b04e9b90899d6e1cc1085e50249d21ab090e96bc4ffb616fc998820`.
+
+## Priority-tier autonomous validation-source qualification
+
+An identity-bound trajectory corpus contained two externally rejected
+`dna-insert` episodes and two successful episodes from the same evaluated
+source and binary pair. Both failures ended as completed Foe episodes. The
+unchanged grader rejected the same primer-temperature assertion in each
+workspace. The compact corpus has SHA-256 digest
+`610ae2fcfcbc41548e652c22cffd3ebf021fabef1a0b6a7ac7dff9f5a91db923`.
+
+Foe selected a source change from that corpus. Every generation request used
+GPT-5.6 Sol on the priority service tier. Diagnosis and implementation used
+low reasoning. Independent source review used xhigh reasoning. The source
+workflow used 41 model calls, 1,723,894 input tokens, 1,141,248 cached-input
+tokens, and 19,977 output tokens. Estimated cost was $3.186623.
+
+The candidate checker accepted the generated source with no finding. The
+change added a model-facing rule that makes terminal assessment prefer an
+acceptance path declared by the task or repository. When no such path exists,
+the assessment uses two independently derived methods and establishes their
+equivalence. The generated change modified runtime source, a Rust regression
+test, `docs/config.md`, `docs/design.md`, and `docs/self-improvement.md`.
+
+The accepted source bundle has identity
+`sha256:db48f9e24df04ff9f8a5d74464b408dc9c8123ac10e614691c07e243cefe538f`.
+The source candidate has identity
+`sha256:b2b8af03298f1a8c30873e6c6dd139a045150015e258f4238ebd28dafc03f573`.
+The retained generation result has SHA-256 digest
+`e411be2720014ea70de070e1865d475e046fe0fb8b98a72e877701fb3affb1ed`.
+
+A trusted controller rebuilt source commit
+`0a2a7460466c3664eadb6ea7103761ed74f399b9`, source tree
+`git-tree-sha1:629a808b62c3096b62757c4b13db9a28b44b4870`, into portable binary
+`sha256:a7c2721e5d5efd96fb9b95a050a6eb959e200c7cece604f993ba9baee8261670`.
+The controller verified the launched program against the source adoption in
+each task.
+
+The unchanged `dna-insert` activation received score 1.0 without an exception.
+The implementation disclosed that it could not run the task-declared
+temperature tool. Independent assessment ran that tool against the final
+artifact and used two separately implemented sequence alignments. It repaired
+the primer pair and established every task requirement from the final state.
+
+The unrelated `gpt2-codegolf` transfer also received score 1.0 without an
+exception. Its implementation disclosed repetitive output and checkpoint
+layout uncertainty. Independent assessment repaired checkpoint ordering,
+attention state, tokenization, decoding, and inference behavior. It compared
+the final cached implementation with a separately compiled full-context
+implementation. The unchanged grader accepted the resulting 4,905-byte C
+program.
+
+| Role | Task | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| activation | `dna-insert` | 1.0 | 28 | 280,666 | 135,680 | 15,256 | $0.939336 | 414.879 |
+| transfer | `gpt2-codegolf` | 1.0 | 46 | 1,072,529 | 672,256 | 27,934 | $2.428674 | 1,025.447 |
+
+Both configuration claims were valid. Every model request used GPT-5.6 Sol on
+the priority service tier. Every Foe account completed and conformed. Both
+traces reported complete usage, and the runner recorded no credential,
+container, sandbox, allowance, transport, or source-adoption failure.
+
+The activation campaign manifest has SHA-256 digest
+`e7fe11e6d475e12ebad5b463b46852334a1f7bec1dfd2516b8445b4c6c2cc4ef`.
+The transfer manifest has SHA-256 digest
+`d5bf21025427d95dc5e06886894a05334be5011ab4c6b2ed85946bd42ce8858a`.
+
+This evidence qualifies one priority-tier autonomous source improvement. It
+changes source, adds a regression test, updates every affected specification,
+passes its diagnosis task, and transfers to an unrelated task. Together with
+the qualified priority-tier verifier-governed workflow improvement, it
+satisfies the campaign requirement for two identity-bound transferable
+autonomous improvements.
+
+The source-owned three-stage development candidate now carries the generated
+validation rule in assessment and repair. The port is source commit
+`e12ce87a7ea3fb8784c98a4b39c4ed5698025b2b`, with source tree
+`git-tree-sha1:a88ef9d6771b56cb59b22c8a7b0cfc78a88b75aa`. Repository tests,
+Clippy, deterministic examples, and line budgets pass. External development
+scores remain attached to the source and binary pairs that produced them. The
+integrated three-stage candidate requires a complete twelve-task run before it
+can open confirmation.
