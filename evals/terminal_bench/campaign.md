@@ -5895,3 +5895,64 @@ The manifest has digest
 `9a022a840809ab800677e4635fd7cc87886f31d1b366527aa27f30997fed2d6c`.
 The retained evidence directory is
 `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/post-repair-assessment-dna-activation-20260829T195146Z`.
+
+## Independent final confirmation activation
+
+A source candidate made final confirmation mandatory after every accepted
+assessment. The confirmation node receives the original task through a data
+edge. Branches from assessment and confirmation repair provide control without
+forwarding their values. A confirmation finding activates one repair followed
+by another confirmation.
+
+Two priority-tier `dna-insert` attempts used the unchanged closed-book task and
+task-owned grader. Implementation used GPT-5.6 Sol with low reasoning. Every
+assessment, confirmation, and repair used GPT-5.6 Sol with xhigh reasoning.
+One attempt passed and one failed.
+
+| Result | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| passed | 54 | 666,266 | 281,088 | 54,720 | $2.747547 | 1,210.771 |
+| failed | 56 | 761,956 | 415,744 | 51,796 | $2.587066 | 1,157.985 |
+
+Both attempts ran implementation, assessment, repair, reassessment, and final
+confirmation. Both final confirmations inspected the shared workspace from the
+original task without receiving an earlier completion claim. The runner
+reported no exception, invalid configuration claim, incomplete usage record,
+credential exposure, or nonconformant Foe trace.
+
+The successful final confirmation enumerated three insertion-boundary
+interpretations and checked every corresponding primer temperature. The
+unchanged grader accepted the final artifact.
+
+The failed final confirmation also enumerated three insertion boundaries. Its
+validation varied the forward annealing segment while holding the reverse
+segment fixed at 34 nucleotides. These segment choices did not belong to one
+coupled boundary interpretation. The grader preserved the coupled partition
+that gives a 17-nucleotide forward segment and a 32-nucleotide reverse segment.
+Their melting temperatures differed by 5.397779 degrees Celsius, which exceeds
+the permitted difference of five degrees.
+
+This failure reproduces the mechanism recorded for the rejected
+completion-falsification candidate. An additional model-facing instruction did
+not make coupled decomposition reliable. Mandatory independent confirmation
+therefore remains a candidate supported by one external success, while another
+prompt revision has no promotion evidence. The exact release continues to the
+confirmation set because `dna-insert` has succeeded in one of its two required
+attempts.
+
+The two attempts used 110 model calls, 1,428,222 input tokens, 696,832
+cached-input tokens, and 106,516 output tokens. Their estimated cost was
+$5.334613.
+
+The evaluated source tree is
+`git-tree-sha1:1e2377b17d5cf8ec8d52dbe648f2e1e6eeb52be4`. The runtime
+binary is
+`sha256:81ff9d42b1b76a999b92977eacaab12ade0afa3f90881dcbd35d9de7bc8e3cd2`.
+The passing and failing manifests have respective digests
+`af8ba67b2fb904f6335a82403666a7d067402174b58badc0ad553158c9936653`
+and
+`9557ae7db7fcc26ef3de23aeb16489a1ae32e66ab83c943f807b4d25f21829cc`.
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/independent-final-confirmation-dna-activation-first-20260829T203809Z`;
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/independent-final-confirmation-dna-activation-second-20260829T205852Z`.
