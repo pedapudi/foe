@@ -5775,3 +5775,70 @@ admission. A proposed mechanism must declare machine-checkable activation
 requirements. Every failed configuration in its selected causal contrast must
 satisfy those requirements. Candidate-kind selection must remain free to
 choose a workflow, tool, instruction, or source change from the evidence.
+
+## Autonomous verifier-governed workflow candidate qualifies
+
+The diagnosis validator was strengthened before another model-backed run. A
+source diagnosis now requires every failed and successful episode in its
+selected contrast to use the same execution configuration. The retained DNA
+contrast fails that requirement because only the successful episode declared
+a completion verifier. Replaying the rejected diagnosis through the corrected
+validator produces one finding and starts no coding child.
+
+Automatic candidate selection then consumed the same identity-bound corpus.
+The diagnosis chose a verifier-governed workflow configuration in one model
+request. It preserved the implementation model, low reasoning effort,
+priority service tier, and measurement-only token policy. The candidate gives
+independent assessment and conditional fresh repair a shared allowance of 60
+model requests at xhigh reasoning. A task-owned verifier governs completion.
+
+The autonomous proposal used 12,218 input tokens and 1,394 output tokens. It
+reported no cache reads. Estimated cost was $0.076752, and execution took
+26.632 seconds. The source tree remained unchanged.
+
+The workflow candidate has digest
+`sha256:7a8e0544215fc9d00ff34275cb75aae7a6ccf2e29140d23f987c2b5472861c5f`.
+Its adopted program identity is
+`sha256:87f3317d212457068fa7cbba8b49d67b7eff8528ae9ab04c3d7ef24f63a1e3ad`.
+Its adopted state identity is
+`sha256:cee30e8d195dce1a6ea426edfac6881e94fe7319ec0cb99ab3bdc9b0572f9ed6`.
+The candidate file has digest
+`6e00f00d871acadd50852ba251aec4549e864581604149c7358ff89093f4ed8d`.
+The result file has digest
+`87545988d8ef6fe66ec287193f1c6e89643cfde2f0b8fa440f52c5b2eb2389a0`.
+The root episode has digest
+`08e722ac2f72a43a97dfb9c62b46159aa7e9c8f392711b5a68e2effd42d7c3a2`.
+
+Two fresh `dna-insert` attempts applied the retained candidate artifact. Both
+passed the unchanged external grader. These attempts followed three failed
+closed-book attempts from the same Foe source and binary. One unrelated
+`git-multibranch` attempt then applied the same candidate and passed its
+unchanged external grader while preserving the required branch state.
+
+| Role | Task | Successful attempts | Attempts | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| activation | `dna-insert` | 2 | 2 | 66 | 750,992 | 473,088 | 23,143 | $1.763711 | 718.790 |
+| transfer | `git-multibranch` | 1 | 1 | 33 | 333,707 | 166,912 | 16,661 | $1.067165 | 403.024 |
+
+All three qualification attempts completed without exceptions. Their
+configuration claims were valid, their Foe traces conformed, and every model
+call reported usage. Every root and child model block selected GPT-5.6 Sol on
+the priority service tier. Implementation used low reasoning. Assessment and
+conditional repair used xhigh reasoning. No retained artifact exposed a
+provider credential, and neither completion checker changed during a trial.
+
+The activation manifest has digest
+`34f86aebdc9420d509c1ddb9bb49601ad46478e5ec47871fc6a9ee19389549cd`.
+The transfer manifest has digest
+`bb64d18858d924bbb4a001e64fcaeb169def7dd62d1eb18fe60aa234aa1c7271`.
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-final-state-release/target/dna-verifier-workflow-self-improvement`;
+- `/home/sunil/git/foe-final-state-release/target/terminal-bench-jobs/autonomous-verifier-workflow-dna-activation-20260829T190857Z`;
+- `/home/sunil/git/foe-final-state-release/target/terminal-bench-jobs/autonomous-verifier-workflow-git-transfer-20260829T192121Z`.
+
+This result qualifies the campaign's first autonomous transferable
+improvement. It establishes verifier-governed quality in the modified
+Terminal-Bench lane and transfer to a stateful task. It does not establish an
+improvement to closed-book `dna-insert`, which remains a failed confirmation
+case for the frozen source release.
