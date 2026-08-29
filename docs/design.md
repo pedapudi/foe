@@ -769,6 +769,21 @@ complete decomposition. Acceptance requires every consistent decomposition to
 pass unless current evidence establishes one interpretation uniquely. A repair
 repeats these checks after changing the value.
 
+All three stages make the narrowest mutation that satisfies the task. For a
+task naming files, directories, or a repository, the default mutation scope is
+current filesystem content. They preserve version-control history, commits,
+refs, object databases, reflogs, provenance, and prior versions unless the task
+explicitly requires changing that state.
+
+The stages use only interfaces the task authorizes. An input described as
+black-box, private, or unknown is not inspected through its implementation,
+parameters, filesystem representation, or another side channel. When behavior
+must generalize beyond the supplied instance, assessment uses several
+controlled fixtures through the same interface available to the final
+artifact. It varies algorithm-sensitive bounds, thresholds, sample counts,
+ranges, scales, distributions, random seeds, and near-degenerate cases.
+Changing only shape or count does not establish numerical generalization.
+
 All three completion schemas require one to eight `learned` observations. Each
 observation is a one-sentence claim and the sequence of a successful tool
 result in that episode's log. The runtime checks the citation and preserves
