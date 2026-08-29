@@ -109,6 +109,10 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(implementation_program.instructions["environment"].contains("Fixed-path executable probe"));
     assert!(implementation_program.instructions["role"].contains("apply its configuration in the current environment"));
     assert!(implementation_program.instructions["role"].contains("leave the required state available"));
+    assert!(implementation_program.instructions["contract"]
+        .contains("default mutation scope is current filesystem content"));
+    assert!(implementation_program.instructions["contract"]
+        .contains("do not inspect its hidden implementation or parameters"));
     let assessment = &workflow.nodes["assess-task"];
     assert_eq!(assessment.follows, ["task", "implement-task"]);
     assert!(!assessment.terminal);
@@ -129,6 +133,12 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(assessment_program.instructions["role"].contains("every task-consistent decomposition passes"));
     assert!(assessment_program.instructions["role"].contains("exercise the requested public interface"));
     assert!(assessment_program.instructions["role"].contains("stopped temporary probe"));
+    let assessment_contract = &assessment_program.instructions["contract"];
+    assert!(assessment_contract.contains("version-control history, commits, refs, object databases, reflogs"));
+    assert!(assessment_contract.contains("several controlled fixtures"));
+    assert!(assessment_contract.contains("same public or black-box interface"));
+    assert!(assessment_contract.contains("random seeds, and near-degenerate cases"));
+    assert!(assessment_contract.contains("Changing only shape or count does not establish numerical generalization"));
 
     let repair = &workflow.nodes["repair-task"];
     assert_eq!(repair.follows, ["task", "implement-task", "assess-task"]);
@@ -152,6 +162,10 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(repair_program.instructions["role"].contains("each complete decomposition"));
     assert!(repair_program.instructions["role"].contains("leave the required state available"));
     assert!(repair_program.instructions["role"].contains("stopped temporary probe"));
+    assert!(repair_program.instructions["contract"].contains("narrowest repair that resolves the reproduced defect"));
+    assert!(
+        repair_program.instructions["contract"].contains("Do not inspect hidden implementation state or parameters")
+    );
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available
