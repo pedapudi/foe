@@ -5956,3 +5956,44 @@ The retained evidence directories are:
 
 - `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/independent-final-confirmation-dna-activation-first-20260829T203809Z`;
 - `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/independent-final-confirmation-dna-activation-second-20260829T205852Z`.
+
+## Independent confirmation succeeds twice on `overfull-hbox`
+
+The same frozen source tree and runtime binary ran two unchanged
+`overfull-hbox` attempts. Both attempts received reward 1.0 from the
+task-owned grader. Implementation used GPT-5.6 Sol with low reasoning.
+Assessment and final confirmation used GPT-5.6 Sol with xhigh reasoning.
+Every model request used the priority service tier.
+
+| Attempt | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| first | 51 | 875,927 | 579,072 | 21,444 | $1.847929 | 546.272 |
+| second | 61 | 1,188,743 | 850,432 | 24,018 | $2.173777 | 606.775 |
+
+Each attempt ran implementation, assessment, and task-only final
+confirmation. Neither assessment requested a repair. Final confirmation
+inspected the TeX log and the changed source before accepting the artifact.
+It treated the task's documented synonym families as valid matches.
+
+The runner reported no exception, invalid configuration claim, incomplete
+usage record, credential exposure, or nonconformant Foe trace. The pair used
+112 model calls, 2,064,670 input tokens, 1,429,504 cached-input tokens, and
+45,462 output tokens. Its estimated cost was $4.021706.
+
+The evaluated source tree remains
+`git-tree-sha1:1e2377b17d5cf8ec8d52dbe648f2e1e6eeb52be4`. The runtime
+binary remains
+`sha256:81ff9d42b1b76a999b92977eacaab12ade0afa3f90881dcbd35d9de7bc8e3cd2`.
+The two campaign records have respective digests
+`8eff2e0831739bd323adb8ca2013f1322504e96c50e4a7de533718e0c8e29ef0`
+and
+`0ba917a909fd9cb4df9c2a1c941f91e403d802cfd4b4e9505298eea8d95cef63`.
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/independent-final-confirmation-overfull-hbox-first-20260829T212223Z`;
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/independent-final-confirmation-overfull-hbox-second-20260829T213154Z`.
+
+The frozen release has three successful attempts among four confirmation
+attempts. Both tested tasks have succeeded. The release can incur at most one
+additional failure among the remaining twelve attempts while meeting the
+campaign requirement of fourteen successes among sixteen attempts.
