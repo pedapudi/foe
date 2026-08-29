@@ -40,9 +40,7 @@ use std::time::Duration;
 /// open page receives the final events.
 const VIEWER_GRACE: Duration = Duration::from_secs(3);
 
-const BUILTIN_IMPLEMENTATION_CALLS: u64 = 60;
-const BUILTIN_ASSESSMENT_CALLS: u64 = 60;
-const BUILTIN_REPAIR_CALLS: u64 = 60;
+const BUILTIN_STAGE_CALLS: u64 = 60;
 const BUILTIN_VERIFIER_RETRIES: u32 = 12;
 
 /// Static behavior of the built-in coding workflow. Dynamic authority,
@@ -360,7 +358,6 @@ fn builtin_program_document(
     {
         assessment_model.options.insert("reasoning_effort".into(), "xhigh".into());
     }
-    let repair_model = assessment_model.clone();
     let environment = builtin_environment(&cwd, Path::is_file);
     let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });
     let mut document: serde_json::Value =
@@ -368,21 +365,16 @@ fn builtin_program_document(
     document["version"] = serde_json::json!(foe_program::document::PROGRAM_FORMAT_VERSION);
     document["model"] = serde_json::json!(model);
     document["grants"] = grants.clone();
-    document["budget"]["model_calls"] =
-        serde_json::json!(BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_ASSESSMENT_CALLS + BUILTIN_REPAIR_CALLS);
+    document["budget"]["model_calls"] = serde_json::json!(3 * BUILTIN_STAGE_CALLS);
     document["task"] = serde_json::json!(task);
-    for (node, calls) in [
-        ("implement-task", BUILTIN_IMPLEMENTATION_CALLS),
-        ("assess-task", BUILTIN_ASSESSMENT_CALLS),
-        ("repair-task", BUILTIN_REPAIR_CALLS),
-    ] {
+    for node in ["implement-task", "assess-task", "repair-task"] {
         let program = &mut document["workflow"]["nodes"][node]["model"];
         program["instructions"]["environment"] = serde_json::json!(environment);
         program["grants"] = grants.clone();
-        program["budget"]["model_calls"] = serde_json::json!(calls);
+        program["budget"]["model_calls"] = serde_json::json!(BUILTIN_STAGE_CALLS);
     }
     document["workflow"]["nodes"]["assess-task"]["model"]["model"] = serde_json::json!(assessment_model);
-    document["workflow"]["nodes"]["repair-task"]["model"]["model"] = serde_json::json!(repair_model);
+    document["workflow"]["nodes"]["repair-task"]["model"]["model"] = serde_json::json!(assessment_model);
     if let Some(mode) = sandbox {
         if !matches!(mode, "best-effort" | "required" | "off") {
             return Err(format!("--sandbox {mode}: expected best-effort, required, or off"));

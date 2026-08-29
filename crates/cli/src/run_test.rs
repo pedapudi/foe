@@ -87,17 +87,12 @@ fn plan_resolves_credentials_for_root_and_workflow_models() {
 /// implementation, independent assessment, and conditional repair episodes.
 #[test]
 fn builtin_coding_runs_implementation_then_conditional_repair() {
-    assert_eq!(BUILTIN_IMPLEMENTATION_CALLS, 60);
-    assert_eq!(BUILTIN_ASSESSMENT_CALLS, 60);
-    assert_eq!(BUILTIN_REPAIR_CALLS, 60);
+    assert_eq!(BUILTIN_STAGE_CALLS, 60);
     let config =
         builtin_program_document("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), None, None, None)
             .unwrap();
     resolve(&config).expect("the built-in workflow resolves before an episode starts");
-    assert_eq!(
-        config.budget.model_calls,
-        BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_ASSESSMENT_CALLS + BUILTIN_REPAIR_CALLS
-    );
+    assert_eq!(config.budget.model_calls, 3 * BUILTIN_STAGE_CALLS);
     assert_eq!(config.budget.max_episodes, 4);
     assert_eq!(config.budget.max_concurrent, 1);
     let workflow = config.workflow.unwrap();
@@ -105,7 +100,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(implementation.follows, ["task"]);
     assert!(!implementation.terminal);
     let implementation_program = implementation.model.as_ref().unwrap();
-    assert_eq!(implementation_program.budget.model_calls, BUILTIN_IMPLEMENTATION_CALLS);
+    assert_eq!(implementation_program.budget.model_calls, BUILTIN_STAGE_CALLS);
     let completion = implementation_program.done_when.as_ref().unwrap().returns.as_ref().unwrap();
     assert_eq!(
         completion["required"],
@@ -120,7 +115,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
         std::collections::BTreeMap::from([("accept".into(), vec![]), ("repair".into(), vec!["repair-task".into()])])
     );
     let assessment_program = assessment.model.as_ref().unwrap();
-    assert_eq!(assessment_program.budget.model_calls, BUILTIN_ASSESSMENT_CALLS);
+    assert_eq!(assessment_program.budget.model_calls, BUILTIN_STAGE_CALLS);
     assert!(!assessment_program.tools.iter().any(|tool| tool == "edit"));
     let assessment_completion = assessment_program.done_when.as_ref().unwrap().returns.as_ref().unwrap();
     assert_eq!(
@@ -135,7 +130,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(repair.follows, ["task", "implement-task", "assess-task"]);
     assert!(repair.terminal);
     let repair_program = repair.model.as_ref().unwrap();
-    assert_eq!(repair_program.budget.model_calls, BUILTIN_REPAIR_CALLS);
+    assert_eq!(repair_program.budget.model_calls, BUILTIN_STAGE_CALLS);
     let repair_completion = repair_program.done_when.as_ref().unwrap().returns.as_ref().unwrap();
     assert_eq!(repair_completion["properties"]["unresolved_risks"]["maxItems"], 0);
     assert_eq!(repair_completion["required"], completion["required"]);
