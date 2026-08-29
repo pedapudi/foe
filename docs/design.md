@@ -759,6 +759,13 @@ validation observations, and unresolved risks. The assessment receives that
 value and the original task in a fresh context. A repair receives both prior
 values and the original task. The shared directory carries the artifacts.
 
+When a requirement divides a final value into task-defined and input-matching
+regions, the assessment derives every decomposition consistent with the task
+and complete values. It evaluates dependent bounds and relations within each
+complete decomposition. Acceptance requires every consistent decomposition to
+pass unless current evidence establishes one interpretation uniquely. A repair
+repeats these checks after changing the value.
+
 All three completion schemas require one to eight `learned` observations. Each
 observation is a one-sentence claim and the sequence of a successful tool
 result in that episode's log. The runtime checks the citation and preserves

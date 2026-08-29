@@ -129,6 +129,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     );
     assert!(assessment_program.instructions["role"].contains("two materially different valid inputs"));
     assert!(assessment_program.instructions["role"].contains("structural constraints"));
+    assert!(assessment_program.instructions["role"].contains("every task-consistent decomposition passes"));
 
     let repair = &workflow.nodes["repair-task"];
     assert_eq!(repair.follows, ["task", "implement-task", "assess-task"]);
@@ -149,6 +150,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(completion["required"].as_array().unwrap().contains(&serde_json::json!("learned")));
     assert!(repair_program.instructions["role"].contains("every path changed by either coding episode"));
     assert!(repair_program.instructions["role"].contains("Treat every finding and unresolved risk as an obligation"));
+    assert!(repair_program.instructions["role"].contains("each complete decomposition"));
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available
