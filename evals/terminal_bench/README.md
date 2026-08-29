@@ -658,6 +658,15 @@ A malformed retained verifier report stops collection. A missing or partial
 report remains visible in its trajectory diagnosis and cannot enter a repeated
 failure contrast.
 
+Source candidates require a matched configuration contrast. The runner derives
+the execution configuration for every failed and successful root episode in
+the selected contrast. The diagnosis verifier accepts `implement-source` only
+when all of those configurations are identical. A success that adds a
+completion verifier can support a workflow candidate. It cannot establish that
+a source mechanism caused failures produced without that verifier. Automatic
+selection may choose the workflow candidate. A source-restricted run must
+return `insufficient-evidence` for that contrast.
+
 Supply a clean parent worktree at the evaluated commit. The runner verifies
 its frozen tree identity, then creates `candidate-source` under the retained
 run directory. This candidate is a separate Git repository that contains only

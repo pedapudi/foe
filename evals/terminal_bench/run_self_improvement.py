@@ -431,6 +431,55 @@ def supported_failure_contrasts(evidence: Path) -> list[dict[str, Any]]:
     return answer
 
 
+def matched_source_contrast_digests(
+    evidence: Path, failure_contrasts: list[dict[str, Any]]
+) -> list[str]:
+    """Return contrasts whose failed and successful runs used one configuration."""
+    report = json.loads(evidence.read_text(encoding="utf-8"))
+    diagnoses = report.get("trajectory_diagnostics")
+    if not isinstance(diagnoses, list):
+        raise ValueError("self-improvement evidence has no trajectory_diagnostics list")
+    configurations: dict[str, dict[str, Any]] = {}
+    for index, diagnosis in enumerate(diagnoses):
+        identity = diagnosis.get("evidence_identity") if isinstance(diagnosis, dict) else None
+        episode_id = identity.get("episode_id") if isinstance(identity, dict) else None
+        evaluation = diagnosis.get("evaluation") if isinstance(diagnosis, dict) else None
+        configuration = (
+            evaluation.get("execution_configuration")
+            if isinstance(evaluation, dict)
+            else None
+        )
+        if not isinstance(episode_id, str) or not episode_id:
+            raise ValueError(f"trajectory diagnosis {index} has no episode identity")
+        if not isinstance(configuration, dict) or not configuration:
+            raise ValueError(
+                f"trajectory diagnosis {episode_id} has no execution configuration"
+            )
+        previous = configurations.get(episode_id)
+        if previous is not None and previous != configuration:
+            raise ValueError(
+                f"trajectory diagnosis {episode_id} has inconsistent execution configurations"
+            )
+        configurations[episode_id] = configuration
+
+    matched = []
+    for contrast in failure_contrasts:
+        episode_ids = [
+            *(attempt["episode_id"] for attempt in contrast["failed_attempts"]),
+            *contrast["successful_episode_ids"],
+        ]
+        missing = sorted(set(episode_ids) - configurations.keys())
+        if missing:
+            raise ValueError(
+                "repeated failure contrast has no execution configuration for "
+                + ", ".join(missing)
+            )
+        values = {canonical_json(configurations[episode_id]) for episode_id in episode_ids}
+        if len(values) == 1:
+            matched.append(contrast["contrast_sha256"])
+    return sorted(matched)
+
+
 def expected_candidate_branch(candidate_kind: str) -> str | None:
     branches = {
         "auto": None,
@@ -1206,6 +1255,7 @@ def write_diagnosis_validator(
     base_configuration: dict[str, str],
     supported_audits: list[dict[str, Any]],
     failure_contrasts: list[dict[str, Any]],
+    matched_source_contrasts: list[str],
     requested_candidate_kind: str,
     candidate_assessment_diagnostics: dict[str, Any] | None = None,
 ) -> None:
@@ -1249,6 +1299,7 @@ evidence_sha256 = {evidence_sha256!r}
 base_configuration = {base_configuration!r}
 supported_audits = {supported_audits!r}
 failure_contrasts = {failure_contrasts!r}
+matched_source_contrasts = {matched_source_contrasts!r}
 expected_branch = {expected_candidate_branch(requested_candidate_kind)!r}
 automatic_selection = {requested_candidate_kind == "auto"!r}
 candidate_assessment_base64 = {encoded_assessment!r}
@@ -1353,6 +1404,15 @@ try:
             )
         selected_contrast = matches[0]
         require_failure_coverage(candidate, selected_contrast)
+        if (
+            branch == "implement-source"
+            and selected_digest not in matched_source_contrasts
+        ):
+            raise ValueError(
+                "source diagnosis requires failed and successful episodes with "
+                "the same execution configuration; select configure-workflow "
+                "or insufficient-evidence"
+            )
     if branch == "configure-workflow":
         if "assessment_and_repair" in candidate:
             if "independent_audit" in candidate:
@@ -1445,8 +1505,9 @@ def build_config(
             "Choose `implement-source` when repeated retained failures support one general, source-owned, "
             "falsifiable runtime mechanism to test. A completed episode whose artifact fails external verification "
             "establishes a semantic task-quality error. Repeated failures may support a source hypothesis when the "
-            "retained completion evidence isolates Foe-owned behavior, including false acceptance by a built-in "
-            "terminal audit. Candidate generation does not require prior proof of transfer or task-quality "
+            "failed and successful episodes use the same execution configuration and the retained completion "
+            "evidence isolates Foe-owned behavior. A configuration difference cannot support a source candidate. "
+            "Candidate generation does not require prior proof of transfer or task-quality "
             "improvement; unchanged external task evaluation decides promotion. Choose "
             "`insufficient-evidence` when the evidence identifies no source-owned mechanism, combines incompatible "
             "failure mechanisms, or requires task-specific semantic behavior in Foe. Do not choose "
@@ -1478,7 +1539,8 @@ def build_config(
         )
     else:
         sufficiency = (
-            "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. "
+            "Choose `implement-source` when the trajectories activate a specific Foe source mechanism and the "
+            "failed and successful episodes use the same execution configuration. "
             "Choose `configure-workflow` with `assessment_and_repair` when repeated failures require independent "
             "assessment, conditional repair, and verifier findings routed to the terminal model. A retained "
             "independent-audit setting requires a repeated quality gain caused by exactly one setting. "
@@ -2457,6 +2519,9 @@ def main(argv: list[str] | None = None) -> int:
         base_configuration = failed_base_configuration(evidence)
         supported_audits = supported_independent_audits(evidence, base_configuration)
         failure_contrasts = supported_failure_contrasts(evidence)
+        matched_source_contrasts = matched_source_contrast_digests(
+            evidence, failure_contrasts
+        )
         candidate_assessment_diagnostics = None
         if args.candidate_assessment is not None:
             if args.candidate_kind != "source-change":
@@ -2569,6 +2634,7 @@ def main(argv: list[str] | None = None) -> int:
         base_configuration,
         supported_audits,
         failure_contrasts,
+        matched_source_contrasts,
         args.candidate_kind,
         candidate_assessment_diagnostics,
     )
