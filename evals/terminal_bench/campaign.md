@@ -4775,3 +4775,93 @@ mechanism-specific changes.
 The retained result is
 `/home/sunil/git/foe-identity-bound-dna-source-improvement/target/dna-insert-falsification-feedback-source-improvement-default/result.json`.
 Its source trajectory and rejected working tree remain beside that file.
+
+## Identity-bound verifier-governed workflow qualification
+
+Priority-tier evidence bound two repeated `dna-insert` failures to one matched
+success with declared verifier feedback. The evidence document has SHA-256
+digest
+`5368ea93f4c63ce89fb3621d6ac88e2ca809e14c206998ec19c0c72d64978ef0`.
+It describes source tree
+`git-tree-sha1:ba0847225330c05832cfa907c2fbfd9e32c4c4a0` and portable binary
+`sha256:fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
+
+An identity-bound self-improvement workflow selected independent read-only
+assessment, conditional fresh repair, and declared verifier governance. The
+proposal used one GPT-5.6 Sol low request on the priority service tier. It used
+13,628 input tokens and 1,197 output tokens at an estimated cost of $0.078452.
+The candidate validator and lineage adoption accepted the proposal without a
+finding.
+
+The workflow candidate has digest
+`sha256:3661e89cf08faec988eb9bd90ce9d2e1bfec88a50fa4b30b3bdd9277aea37b44`.
+The retained self-improvement result has SHA-256 digest
+`da1dbefde3ff1c101f1dbffc398ac6efbeba1f10a0aac3c073a91d0619645464`.
+
+The first external activation received score 0.0. Its implementation and
+assessment completed, and the root completion checker reported a missing
+`oligotm` executable. Foe then spent a recovery request whose model selected
+`abort`, although the graph declared a writable conditional repair. The
+unchanged grader also rejected the primer artifact. This attempt earns no
+quality credit.
+
+Two application defects were corrected before another provider request. Root
+verifier findings now use the declared `done_when.retries` path. Each finding
+re-fires the terminal assessment or repair model without a recovery request.
+A completion checker can also declare a credential-free setup executable. The
+adapter runs that executable before any model request and records its digest.
+
+An installation-only `dna-insert` run installed `primer3` in the pinned task
+container without a provider request. A separate checker-control run rejected
+the untouched workspace, accepted the author oracle, and received score 1.0
+from the unchanged task-owned grader. The setup executable has SHA-256 digest
+`5548e59e0b76a397d73b1bef82192901c966599fed387ad687f2affce390c27f`.
+
+The corrected candidate then ran its activation task and two unrelated
+transfer tasks. Every request used GPT-5.6 Sol. Implementation used low
+reasoning, while assessment and conditional repair used xhigh reasoning. Every
+request used the priority service tier, and token limits remained
+measurement-only.
+
+| Role | Task | Score | Calls | Input | Cache read | Output | Estimated cost |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| activation | `dna-insert` | 1.0 | 33 | 295,466 | 168,960 | 14,512 | $0.863848 |
+| transfer | `fix-git` | 1.0 | 18 | 133,336 | 58,880 | 5,378 | $0.428936 |
+| transfer | `large-scale-text-editing` | 1.0 | 13 | 50,809 | 12,288 | 5,815 | $0.275299 |
+| **Total** | **three tasks** | **3.0** | **64** | **479,611** | **240,128** | **25,705** | **$1.568083** |
+
+The activation implementation called the public checker four times. Three
+calls returned distinct thermodynamic findings. The implementation repaired
+the artifact after each finding, and the fourth call passed. The independent
+assessment then accepted, the root verifier accepted, and the unchanged
+grader awarded score 1.0. Root-level deterministic retry remained available
+but did not fire because the implementation had already resolved every
+finding.
+
+Both transfer implementations passed their public checkers before handoff.
+Their independent assessments, root verifiers, and unchanged graders also
+accepted. These runs establish transfer and preservation. They do not isolate
+an additional correction effect because neither transfer checker returned a
+finding.
+
+All three configuration claims were valid. Every Foe account completed and
+conformed. The adapter recorded no credential, container, checker, executable,
+sandbox, allowance, or other infrastructure failure. The three task runs took
+793.502 seconds in serial execution.
+
+This result qualifies the first identity-bound autonomous workflow
+improvement. Autonomous diagnosis selected the verifier-governed workflow
+structure. Direct engineering corrected the application path and checker
+readiness before external qualification. The result does not qualify an
+autonomous source change, which remains a separate campaign requirement.
+
+The retained run directories are:
+
+- `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/autonomous-verifier-correction-dna-activation-priority-20260828T235618Z`;
+- `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/autonomous-verifier-correction-fix-git-transfer-priority-20260829T000431Z`;
+- `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/autonomous-verifier-correction-large-scale-edit-transfer-priority-20260829T000730Z`.
+
+Their campaign manifests have respective SHA-256 digests
+`6411036a94c97e4e76dee031f9a4e2819209ba64120401ff646e276793b3c86c`,
+`9d3eadee9760c97c7a7ca886ad8151b1ac2a2668694d0f17e610e78fbdeb097f`,
+and `f4aaed026950b77ce70fdbd442f8183d4dbab25ce05430e61224fbb0f684ac05`.
