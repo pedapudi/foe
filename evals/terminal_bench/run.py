@@ -1039,7 +1039,12 @@ def built_in_program_failures(
         "assessment.name": "assess-task",
         "assessment.model": sol_xhigh,
         "assessment.model_calls": 60,
-        "assessment.tools": ("read", "grep", "bash"),
+        "assessment.tools": (
+            "read",
+            "grep",
+            "bash",
+            *(("check",) if completion_checker else ()),
+        ),
         "assessment.verify": None,
         "repair.follows": ("task", "implement-task", "assess-task"),
         "repair.terminal": True,
