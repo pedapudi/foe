@@ -592,8 +592,13 @@ requires a clean source tree and the exact evaluated binary:
 ```sh
 bazel run //evals/terminal_bench:collect-diagnostics -- \
   --run-dir "$PWD/target/terminal-bench-jobs/development-20260823T120000Z" \
+  --task dna-insert \
   --output "$PWD/target/foe-trajectory-evidence.json"
 ```
+
+Repeat `--task` to select several eligible tasks. Selection occurs before the
+collector reads trial results. A retained campaign may therefore contribute
+completed evidence even when another task in the same campaign was interrupted.
 
 The collector labels every diagnosis with its dataset, run label, token
 policy, service tier, and complete execution configuration. The configuration
