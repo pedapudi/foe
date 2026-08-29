@@ -95,6 +95,8 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
         serde_json::json!(["summary", "changed_paths", "validation", "unresolved_risks", "learned"])
     );
     assert!(implementation_program.instructions["environment"].contains("Fixed-path executable probe"));
+    assert!(implementation_program.instructions["role"].contains("apply its configuration in the current environment"));
+    assert!(implementation_program.instructions["role"].contains("leave the required state available"));
     let assessment = &workflow.nodes["assess-task"];
     assert_eq!(assessment.follows, ["task", "implement-task"]);
     assert!(!assessment.terminal);
@@ -113,6 +115,8 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(assessment_program.instructions["role"].contains("two materially different valid inputs"));
     assert!(assessment_program.instructions["role"].contains("structural constraints"));
     assert!(assessment_program.instructions["role"].contains("every task-consistent decomposition passes"));
+    assert!(assessment_program.instructions["role"].contains("exercise the requested public interface"));
+    assert!(assessment_program.instructions["role"].contains("stopped temporary probe"));
 
     let repair = &workflow.nodes["repair-task"];
     assert_eq!(repair.follows, ["task", "implement-task", "assess-task"]);
@@ -134,6 +138,8 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert!(repair_program.instructions["role"].contains("every path changed by either coding episode"));
     assert!(repair_program.instructions["role"].contains("Treat every finding and unresolved risk as an obligation"));
     assert!(repair_program.instructions["role"].contains("each complete decomposition"));
+    assert!(repair_program.instructions["role"].contains("leave the required state available"));
+    assert!(repair_program.instructions["role"].contains("stopped temporary probe"));
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available
