@@ -4865,3 +4865,134 @@ Their campaign manifests have respective SHA-256 digests
 `6411036a94c97e4e76dee031f9a4e2819209ba64120401ff646e276793b3c86c`,
 `9d3eadee9760c97c7a7ca886ad8151b1ac2a2668694d0f17e610e78fbdeb097f`,
 and `f4aaed026950b77ce70fdbd442f8183d4dbab25ce05430e61224fbb0f684ac05`.
+
+### Independent assessment correction on DNA assembly
+
+The same frozen source, binary, and workflow candidate next ran the modified
+`dna-assembly` development case. The public checker was installed with the
+same credential-free Primer3 setup. Every model request used GPT-5.6 Sol on
+the priority service tier. Implementation used low reasoning. Assessment and
+conditional repair used xhigh reasoning.
+
+The implementation produced eight primers and called the public checker five
+times. The checker accepted the final implementation artifact. Independent
+assessment then reconstructed the assembly from the submitted primer
+boundaries. It found that the four reverse primers truncated their fragments,
+which produced a 3,572-base circle instead of the required 3,591-base output.
+The assessment selected the declared repair branch and supplied the four
+required template endpoints.
+
+The fresh repair reproduced the mismatch, changed the reverse primers, and
+reconstructed the required 3,591-base sequence from the repaired boundaries.
+The public checker accepted the repaired artifact. The unchanged task-owned
+grader also awarded score 1.0.
+
+Foe used 55 model calls, 644,923 input tokens, 406,016 cached-input tokens,
+and 31,793 output tokens. Estimated cost was $1.753894, and serial execution
+took 799.897 seconds. The configuration claim was valid. Foe completed with a
+conformant account, and the adapter recorded no infrastructure failure.
+
+This result activates the candidate's independent assessment and conditional
+repair mechanism. The assessment corrected a defect that the public checker
+did not detect, so the quality gain cannot be attributed only to open-book
+verifier feedback. A closed-book run remains necessary before this task counts
+toward the unchanged twelve-task development gate.
+
+The retained run is
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/autonomous-verifier-correction-dna-assembly-development-priority-20260829T002238Z`.
+Its campaign manifest has SHA-256 digest
+`90836d86890c5cf9aeedf2f3732ae8de641b400a389cc32413e61f0c29654335`.
+
+### Independent assessment correction on GPT-2 inference
+
+The frozen candidate next ran the modified `gpt2-codegolf` development case.
+The implementation produced a 4,520-byte C program that compiled and executed.
+Its final implementation account disclosed two unresolved risks: the public
+checker rejected its generated continuation, and its tokenizer omitted GPT-2
+pre-tokenization.
+
+Independent assessment reproduced the same repeated-token output on two
+materially different prompts. It found that the program interpreted a
+TensorFlow-name-ordered checkpoint as architecture-ordered tensors. It also
+demonstrated a concrete tokenizer mismatch for the prompt `'st`. The
+assessment selected the declared repair branch and supplied both mechanisms
+as precise findings.
+
+The fresh repair corrected checkpoint tensor offsets, numeric layer mapping,
+pre-token segmentation, and boundary-aware byte-pair encoding. The final
+source occupied 4,997 bytes. It compiled with the requested command, passed
+the public continuation checker, generated different continuations for two
+prompts, and handled invalid invocations. The unchanged task-owned grader
+awarded score 1.0.
+
+Foe used 47 model calls, 759,525 input tokens, 426,496 cached-input tokens,
+and 33,072 output tokens. Estimated cost was $2.164154, and serial execution
+took 900.680 seconds. The configuration claim was valid. Foe completed with a
+conformant account, and the adapter recorded no infrastructure failure.
+
+This result independently activates the assessment-to-repair handoff on a
+second task family. The implementation did not falsely claim that its first
+artifact was correct, and the workflow preserved its risks for independent
+assessment and repair. A closed-book run remains necessary before this task
+counts toward the unchanged twelve-task development gate.
+
+The retained run is
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/autonomous-verifier-correction-gpt2-development-priority-20260829T003639Z`.
+Its campaign manifest has SHA-256 digest
+`4287b58b40d46bcf3921d4ce72034c50fba92fa8593bba90a1fab6b049ac9ec9`.
+
+### Verifier-governed cancellation transfer
+
+The frozen candidate next ran the modified `cancel-async-tasks` development
+case. The implementation created one dependency-free Python module, exercised
+bounded concurrency and cancellation cleanup, and passed the public checker.
+Independent assessment exercised additional job counts, limits, timeout
+cancellation, and signal cancellation. It accepted without requesting repair.
+The unchanged task-owned grader awarded score 1.0.
+
+Foe used 13 model calls, 38,386 input tokens, 5,120 cached-input tokens, and
+5,361 output tokens. Estimated cost was $0.242332, and serial execution took
+176.477 seconds. The configuration claim was valid. Foe completed with a
+conformant account, and the adapter recorded no infrastructure failure.
+
+This result establishes preservation on a concurrency and cancellation task.
+It does not isolate a correction effect because the assessment found no defect
+in the implementation.
+
+The retained run is
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/autonomous-verifier-correction-cancel-async-development-priority-20260829T005215Z`.
+Its campaign manifest has SHA-256 digest
+`85bedd1c3a932e7cfa569372c1c7b636c00764f5b96be695e0415fad9a7d910f`.
+
+### Git completion checker state contamination
+
+The frozen candidate next ran the modified `git-multibranch` development case.
+The implementation configured password-authenticated Git service, branch-
+selective publication, and live HTTPS endpoints. Independent assessment found
+that the implementation's public probes had left `main` and `dev` refs in the
+repository. The fresh repair removed those refs and the corresponding
+publication files. Its final checker call returned no finding.
+
+The root completion verifier then called the public checker after the repair
+episode ended. The checker pushed its own `main` and `dev` probe commits and
+left their publication files in the task environment. The task-owned grader's
+subsequent pushes could not replace the unrelated probe refs. Its HTTPS reads
+therefore returned `foe public completion probe` content, and the unchanged
+grader awarded score 0.0.
+
+This result identifies a completion-checker defect. The checker was declared
+read-only, but each invocation changed task-visible Git refs and publication
+state. Live SSH and HTTPS services survived until the external grader, so
+episode settlement did not cause this failure. The failed attempt earns no
+quality credit. Another model attempt requires a checker that restores its
+observed state after both successful and failed probes.
+
+Foe used 34 model calls, 270,387 input tokens, 88,064 cached-input tokens, and
+21,429 output tokens. Estimated cost was $1.193098, and serial execution took
+503.486 seconds. The configuration claim was valid, every Foe episode
+completed, and the adapter recorded no transport or container exception.
+
+The retained run is
+`/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/autonomous-verifier-correction-git-multibranch-development-priority-20260829T005541Z`.
+Its campaign manifest has SHA-256 digest
+`5dad221de48689a1523a6295fed9c0a60b3ad4e7ff3b5ba566056a949f7e1b77`.
