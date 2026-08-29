@@ -5357,3 +5357,80 @@ Clippy, deterministic examples, and line budgets pass. External development
 scores remain attached to the source and binary pairs that produced them. The
 integrated three-stage candidate requires a complete twelve-task run before it
 can open confirmation.
+
+## Integrated three-stage development qualification
+
+The integrated candidate used source commit
+`70261435cbe1fa9968d2793066a13001fe727526`, source tree
+`git-tree-sha1:cc206340db7a38b68a6513adaaa2136f053d03bd`, and portable
+binary
+`sha256:a33ed94e4147d31b071651b954767a51f7c80d537077a68102bdcee369146f48`.
+The provider-free Harbor installation check passed before model execution.
+The candidate remained unchanged for every development attempt.
+
+The serial development run used GPT-5.6 Sol on the standard service tier.
+Implementation used low reasoning. Independent assessment and conditional
+repair used xhigh reasoning. Token allowances were measurement-only.
+
+The provider rejected the first `model-extraction-relu-logits` request before
+returning a model response or provider usage. This attempt cannot measure task
+quality or the requested Foe configuration. A replacement attempt used the
+repository-owned authorization and isolation statement against the same
+source tree, binary, task, and unchanged grader. The replacement is the
+development result for that task.
+
+| Task | Score | Calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `cancel-async-tasks` | 1.0 | 7 | 18,972 | 3,072 | 4,982 | $0.164469 | 138.020 |
+| `git-multibranch` | 1.0 | 45 | 574,990 | 287,744 | 42,783 | $2.119742 | 996.653 |
+| `fix-git` | 1.0 | 17 | 136,549 | 27,648 | 9,135 | $0.629363 | 212.159 |
+| `sqlite-db-truncate` | 1.0 | 11 | 61,512 | 13,312 | 11,384 | $0.425805 | 246.337 |
+| `sanitize-git-repo` | 1.0 | 30 | 1,170,779 | 700,928 | 18,898 | $2.537735 | 441.424 |
+| `large-scale-text-editing` | 1.0 | 9 | 31,684 | 8,192 | 7,226 | $0.241765 | 217.427 |
+| `gpt2-codegolf` | 1.0 | 61 | 2,333,772 | 1,511,936 | 61,105 | $5.114218 | 1,421.436 |
+| `fix-ocaml-gc` | 1.0 | 27 | 768,521 | 359,424 | 9,106 | $1.962278 | 1,048.671 |
+| `path-tracing-reverse` | 1.0 | 47 | 1,630,734 | 1,137,152 | 25,546 | $2.940109 | 612.265 |
+| `regex-chess` | 1.0 | 59 | 1,360,946 | 873,472 | 47,977 | $3.258825 | 1,267.795 |
+| `model-extraction-relu-logits` | 1.0 | 11 | 44,448 | 1,536 | 7,867 | $0.329602 | 217.069 |
+| `dna-assembly` | 0.0 | 47 | 935,928 | 442,880 | 43,581 | $3.020964 | 1,005.141 |
+
+The twelve qualified attempts used 371 model calls, 9,068,835 input tokens,
+5,367,296 cached-input tokens, and 289,590 output tokens. Estimated cost was
+$22.744874, and serial task execution took 7,824.396 seconds. All twelve
+attempts completed without an exception. Every configuration claim was
+valid. Every Foe trace conformed and reported complete provider usage. The
+runner recorded no credential, container, sandbox, allowance, transport, or
+installation failure in a qualified attempt.
+
+The integrated candidate passed eleven of twelve development tasks. It
+preserved every baseline success. It also repeated the corrected
+`git-multibranch`, `sanitize-git-repo`, and
+`model-extraction-relu-logits` results under one portable binary. This result
+meets the development quality threshold and permits confirmation to begin.
+
+The `dna-assembly` assessment correctly rejected the initial primer file. It
+found incompatible cohesive ends, a duplicated overhang, an incorrect final
+sequence, and an excessive primer-pair temperature difference. Fresh repair
+corrected those defects and validated a 3,591-nucleotide reconstruction with
+the task-declared temperature tool.
+
+The unchanged grader found one remaining discrepancy. Its primer parser
+counts template bases that match the end of an overhang as part of the full
+annealing tract. The repaired `input_rev` primer therefore had a
+48-nucleotide tract under grader semantics, above the required
+45-nucleotide maximum. Foe's independently implemented reconstruction did
+not apply this overlap rule. The failure is retained as evidence that a
+surrogate must reproduce every acceptance rule that affects a boundary.
+
+The serial development campaign manifest has SHA-256 digest
+`c86c400283b215a685147080f586a7eec668527f6370eb25c88d5d2dde3374a8`.
+The authorized model-extraction replacement manifest has SHA-256 digest
+`bf229a7161d99279ae25d4e7eaa90824f2b55564cec114fa04e7e8164ef66f84`.
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-development-quality-corrections/target/terminal-bench-jobs/integrated-development-requalification-20260829T072911Z`;
+- `/home/sunil/git/foe-development-quality-corrections/target/terminal-bench-jobs/integrated-development-model-extraction-authorized-replacement-20260829T093723Z`.
+
+This development qualification uses the standard service tier. Its quality
+result supports candidate selection. It does not establish the separate
+priority-tier execution requirement in the campaign goal.
