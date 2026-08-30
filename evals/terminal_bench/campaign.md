@@ -6536,3 +6536,181 @@ interventions for this failure. Another model-only audit would repeat a
 correlated interpretation. The next candidate must change the validation
 mechanism or the evidence supplied to validation. Focused repeatability must
 precede another frozen confirmation run.
+
+## Coupled decomposition guidance identifies the mechanism but does not repeat
+
+Commit `ef29aca13d7de30a74ada280669161ad74336a08` changed the
+built-in assessment contract. It required validation to derive component
+boundaries from the complete final artifact and recompute every dependent
+component when one boundary moves. The source tree was
+`git-tree-sha1:62fc93305ecaf56aee405eaf4afdc586cfcaf3b5`. The portable
+binary was
+`sha256:c6f076bf7e53b7f9efda61ccb37c39a560abbcb4d37f2b6c7e9d3dddb4fcce99`.
+
+Two independent `dna-insert` attempts evaluated this exact candidate. Every
+request used GPT-5.6 Sol and the priority service tier. Implementation used low
+reasoning. Independent assessment, repair, and final confirmation used xhigh
+reasoning. Token limits were measurement-only.
+
+The first attempt passed the unchanged task-owned grader. The second attempt
+failed after internal confirmation accepted it. Internal validation measured
+the complete 33-nucleotide reverse primer. The grader assigned two overlapping
+bases to the inserted sequence and measured a 31-nucleotide annealing region.
+The grader measured a temperature difference of 5.828321 degrees. The allowed
+difference was 5 degrees.
+
+The two attempts used 2,085,102 input tokens, 896,512 cached-input tokens, and
+185,916 output tokens. Estimated cost was $8.831285. Their combined makespan
+was 4,030.51 seconds. Both attempts completed without an exception.
+
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/coupled-artifact-decomposition-dna-first-20260830T072316Z`;
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/coupled-artifact-decomposition-dna-second-20260830T075249Z`.
+
+The one-of-two result rejects this candidate. Recomputing components after a
+chosen boundary changes did not require validation to enumerate overlapping
+component occurrences before choosing that boundary.
+
+## Overlapping decomposition guidance passes the DNA repeatability gate
+
+Commit `eecfce6ef89c37ee3bdba7f9f8ac81e48f9a24dd` strengthened the
+same built-in contract. Validation now derives candidate divisions from the
+complete serialized artifact, enumerates repeated or overlapping component
+occurrences, and validates each task-compatible division with its own spans,
+lengths, checks, and measurements. The affected program-resolution test and
+the configuration and design specifications carry the same rule.
+
+The source tree is
+`git-tree-sha1:4d926a3c9d3107308cba2d34922598d9a101ba5b`. The portable
+binary is
+`sha256:986b6f0c7c52f3a72f787e537f52f632a32562f6c501481d55a7a01438b4f6ee`.
+The full provider-free workspace test suite, clippy, every example, and every
+line budget passed before model-backed evaluation.
+
+The first planned attempt stopped during campaign preflight because available
+disk space was below the runner's 100 GiB threshold. It started no task and
+spent no model tokens. Removing rebuildable Rust debug output restored the
+required headroom without removing retained campaign evidence. The preflight
+stop is excluded from quality and resource totals.
+
+Two independent scored `dna-insert` attempts then used the exact source and
+binary identities. Every request used GPT-5.6 Sol and the priority service
+tier. Implementation used low reasoning. Independent assessment, repair, and
+final confirmation used xhigh reasoning. Token limits were measurement-only.
+Both attempts passed the unchanged task-owned grader.
+
+In the first attempt, assessment enumerated three overlapping insertion
+boundaries and rejected the initial primer pair. A repair corrected only the
+selected boundary. Final confirmation found that the other boundary-specific
+reverse annealing regions still failed. A second repair extended the reverse
+primer and produced passing measurements for every division.
+
+The second attempt independently reproduced the mechanism. Assessment found
+that the initial reverse primer failed at the two adjacent boundaries. Repair
+extended the annealing region, and every task-compatible division then passed.
+
+The two scored attempts used 2,100,505 input tokens, 964,608 cached-input
+tokens, and 152,231 output tokens. Estimated cost was $7.974051. Their combined
+makespan was 3,351.51 seconds. Both attempts completed without an exception,
+and both Foe traces conformed.
+
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-dna-first-retry-20260830T084055Z`;
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-dna-second-20260830T091412Z`.
+
+This candidate passes the focused DNA repeatability gate. Qualification must
+also repeat on `build-pov-ray` because the same release failed both activated
+task families during frozen confirmation.
+
+## Overlapping decomposition candidate passes release-layout repeatability
+
+Two independent `build-pov-ray` attempts evaluated the same source tree and
+portable binary. Every request used GPT-5.6 Sol and the priority service tier.
+Implementation used low reasoning. Independent assessment, repair,
+reassessment, and final confirmation used xhigh reasoning. Token limits were
+measurement-only. Both attempts passed the unchanged task-owned grader.
+
+The first implementation built a working executable with reconstructed
+include files. Assessment compared its rendered image with an independent
+official-archive render. The images differed in 496 pixels. Assessment also
+identified the complete Unix release as the source, documentation, and scene
+components. Repair replaced the reconstructed documentation tree, added the
+scene tree, and established complete manifest equality. Reassessment and
+final confirmation accepted the repaired state before the external grader
+awarded reward 1.0.
+
+The second implementation selected the official source and documentation
+archives but omitted the scene archive. Assessment independently identified
+all three required Unix archives from contemporaneous release evidence. It
+withheld acceptance despite successful renders and issued a repair for the
+missing scene component. Repair added the archive and exact extracted layout.
+Reassessment and final confirmation accepted the repaired state before the
+external grader awarded reward 1.0.
+
+The two attempts used 236 model calls, 11,596,217 input tokens, 7,741,440
+cached-input tokens, and 145,560 output tokens. Estimated cost was $21.426884.
+Their combined makespan was 3,611.62 seconds. Both attempts completed without
+an exception, and both Foe traces conformed.
+
+The campaign manifests have SHA-256 digests
+`a8c85a3d0b15b891c15e830032404a4bf8a67e2c0be1fc8f1d045db626deb7aa`
+and
+`1c09b60a4d717a4d142b2765cf6553b847be2d5e85345462f9506e7f8aa0a034`.
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-build-pov-first-20260830T093738Z`;
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-build-pov-second-20260830T100811Z`.
+
+This result passes the focused release-layout repeatability gate. Across both
+activated confirmation failures, the exact candidate now has four successes
+in four independent attempts. The candidate must preserve unrelated task
+successes before its identity is frozen for another full confirmation run.
+
+## Preservation exposes one intermittent schema-coverage failure
+
+The exact candidate next ran `fix-git` and `count-dataset-tokens` serially.
+`fix-git` passed its unchanged task-owned grader. The first
+`count-dataset-tokens` attempt failed despite acceptance by independent
+assessment and final confirmation.
+
+The failed attempt found 26 science records and inspected both
+`deepseek_reasoning` and `deepseek_solution` fields. It wrote only the 63,841
+tokens from `deepseek_reasoning`. The task asks for the number of deepseek
+tokens. The unchanged grader expects the sum of both deepseek fields: 63,841
+reasoning tokens plus 15,745 solution tokens, or 79,586. The internal
+assessments treated the reasoning field as the complete requested family and
+accepted `63841`.
+
+A matched repeat used the same source and binary identities. Its
+implementation independently enumerated both deepseek fields, wrote `79586`,
+and passed independent assessment, final confirmation, and the unchanged
+task-owned grader. The pass establishes that the candidate retains the
+capability. The failed attempt remains evidence of intermittent semantic
+coverage.
+
+| Task | Score | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fix-git` | 1.0 | 159,631 | 19,968 | 10,835 | $0.783339 | 260.02 |
+| `count-dataset-tokens`, first | 0.0 | 548,213 | 231,936 | 17,815 | $1.714182 | 468.58 |
+| `count-dataset-tokens`, repeat | 1.0 | 448,315 | 141,824 | 15,881 | $1.600314 | 450.93 |
+
+Every request used GPT-5.6 Sol and the priority service tier. Implementation
+used low reasoning. Independent workflow stages used xhigh reasoning. Token
+limits were measurement-only. All three attempts completed without an
+exception, and every Foe trace conformed.
+
+The campaign manifests have SHA-256 digests
+`457e4fe2f455ce3e422cef4fefa6a6fdd09820229a023ca4cc2a16ca01d91d6d`
+and
+`362035f8623fdabb345a1556da17c01e07d789f605107b7bd0cde6d72b709ddd`.
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-preservation-20260830T103824Z`;
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-preservation-count-repeat-20260830T105142Z`.
+
+The candidate has a current success on each preservation task and four of four
+successes on the activated failure families. Its identity is frozen for the
+eight-task confirmation gate. Confirmation must retain the semantic miss in
+its quality total if the same interpretation recurs.
