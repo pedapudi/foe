@@ -6779,3 +6779,38 @@ is recorded in this section.
 
 The retained evidence directory is
 `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-frozen-confirmation-20260830T105930Z`.
+
+## Validation changes a special device before external verification
+
+The two `crack-7z-hash` attempts produced the required nine-byte
+`/app/solution.txt` value, `honeybear`. Independent confirmation extracted the
+sole archive member and compared it byte for byte with the final artifact.
+The unchanged task-owned grader awarded the second attempt reward 1.0.
+
+The first attempt received reward 0.0 because the grader could not install its
+dependencies. Its setup reported that `/dev/null` denied writes, then failed
+because `curl` and `uvx` were unavailable. The grader did not evaluate the
+solution file.
+
+The retained Foe account identifies the preceding mutation. Assessment and
+final confirmation each ran John the Ripper with `/dev/null` as the password
+cache path. John initializes its configured password-cache path with mode
+`0600` before writing it. It then reported an invalid `fsync` operation. The
+later grader observed denied writes to the special device. The assessment
+nevertheless accepted the correct artifact. This failure belongs to Foe
+because an independent validation stage changed host state outside the task
+workspace before external verification.
+
+| Task | Successful attempts | Attempts | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `crack-7z-hash` | 1 | 2 | 804,898 | 363,520 | 21,974 | $2.350400 |
+
+Both attempts completed without a Harbor exception. Their Foe traces conform,
+every model request reports usage, and the runner records no credential
+exposure. The pair establishes one successful attempt for the task while
+retaining the validation-side-effect failure in the quality total.
+
+The frozen release has nine successes among ten completed confirmation
+attempts. Six attempts remain across `dna-insert`,
+`log-summary-date-ranges`, and `overfull-hbox`. The release needs at least five
+additional successes, and each remaining task must succeed at least once.
