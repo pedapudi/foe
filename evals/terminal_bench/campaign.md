@@ -6937,3 +6937,34 @@ to program
 The calibration release has three successes among three completed tasks.
 Seventeen tasks remain, and the quality gate requires at least fourteen more
 successes.
+
+## Differential cryptanalysis succeeds without repair
+
+The `feal-differential-cryptanalysis` implementation derived an exact
+two-round differential. It used chosen plaintexts to reconstruct the
+final-round inputs and filtered the 65,536 permitted values for `key[5]`.
+The implementation reported 100 successful randomized trials and a mean
+runtime near 0.1 seconds. It incurred one equivalent bare-digest rejection
+from `edit.expected_version` and recovered on the next call.
+
+Independent assessment inspected the complete cipher and attack sources. It
+tested 200 structured and randomized key fixtures through a recording
+black-box wrapper. Every recovered key matched. Assessment also found and
+exercised a near-degenerate fixture that retained two candidates after three
+chosen pairs. The fourth pair resolved the ambiguity correctly. Fresh final
+confirmation accepted the artifact, and the unchanged task-owned grader
+awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `feal-differential-cryptanalysis` | 1.0 | 21 | 135,564 | 52,736 | 19,220 | $0.736806 | 475.954 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The root
+evidence binds the same frozen portable binary and program identities as the
+preceding calibration attempts.
+
+The calibration release has four successes among four completed tasks.
+Sixteen tasks remain, and the quality gate requires at least thirteen more
+successes.
