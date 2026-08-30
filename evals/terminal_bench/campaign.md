@@ -6714,3 +6714,68 @@ The candidate has a current success on each preservation task and four of four
 successes on the activated failure families. Its identity is frozen for the
 eight-task confirmation gate. Confirmation must retain the semantic miss in
 its quality total if the same interpretation recurs.
+
+## Frozen confirmation reaches eight successful attempts
+
+The confirmation run evaluates source commit
+`eecfce6ef89c37ee3bdba7f9f8ac81e48f9a24dd`, source tree
+`git-tree-sha1:4d926a3c9d3107308cba2d34922598d9a101ba5b`, and portable
+binary
+`sha256:986b6f0c7c52f3a72f787e537f52f632a32562f6c501481d55a7a01438b4f6ee`.
+The runner executes two attempts for each of eight confirmation tasks.
+Implementation uses GPT-5.6 Sol with low reasoning. Independent assessment,
+repair, and final confirmation use GPT-5.6 Sol with xhigh reasoning. Every
+request uses the priority service tier. Token allowances are measurement-only.
+
+The first four tasks completed eight attempts. Every attempt received reward
+1.0 from its unchanged task-owned grader.
+
+| Task | Successful attempts | Attempts | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `build-pov-ray` | 2 | 2 | 8,735,810 | 5,509,120 | 125,148 | $17.613368 |
+| `caffe-cifar-10` | 2 | 2 | 4,450,882 | 2,880,000 | 60,302 | $8.641568 |
+| `configure-git-webserver` | 2 | 2 | 498,329 | 239,104 | 35,419 | $1.840922 |
+| `count-dataset-tokens` | 2 | 2 | 616,489 | 261,120 | 32,286 | $2.171644 |
+
+The two `build-pov-ray` attempts preserved the complete official Unix release
+layout and passed independent render comparisons. One final confirmation found
+a timing-dependent process exit value in the historical C entry point. Repair
+defined an integer entry point with a zero return value before the grader ran.
+
+Both `caffe-cifar-10` attempts built Caffe 1.0 for CPU execution, trained for
+500 iterations, and produced models above the required accuracy. The second
+attempt retained a partial CIFAR-10 download after a 1,200-second timeout. It
+resumed the download, repaired a current-platform incompatibility in the mean
+utility, and completed training. Independent checks then measured both train
+and test accuracy through Caffe's public interface.
+
+The first `configure-git-webserver` attempt passed without repair. Assessment
+rejected the second implementation because root-level checks hid failures for
+an ordinary SSH login. Git rejected the root-owned repository, and the login
+could not write the publication target. Repair established shared repository
+access and validated clone, two different pushes, and HTTP responses through a
+temporary authenticated account. Reassessment and task-only final confirmation
+accepted the repaired state before the external grader awarded reward 1.0.
+
+Both `count-dataset-tokens` attempts counted `deepseek_reasoning` and
+`deepseek_solution`. Each wrote `79586`. Independent stages reproduced the
+result through the tokenizer JSON interface and a separate Qwen2 BPE path.
+These results repeat the corrected schema coverage that failed once during
+preservation qualification.
+
+Seven attempts have complete provider usage measurements. Trial
+`configure-git-webserver__rqAB35G` has one model call without provider usage.
+Its Foe trace conforms, its credential was not exposed, its episode completed,
+and the external grader awarded reward 1.0. The missing usage prevents a
+complete resource total for that attempt. The table therefore reports a lower
+bound of 14,301,510 input tokens, 8,889,344 cached-input tokens, 253,155 output
+tokens, and $30.267502 for the eight successful attempts.
+
+The confirmation requirement permits at most two failures among sixteen
+attempts. Eight attempts remain across `crack-7z-hash`, `dna-insert`,
+`log-summary-date-ranges`, and `overfull-hbox`. Each remaining task must succeed
+at least once. The run remains active, so no final confirmation manifest digest
+is recorded in this section.
+
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-frozen-confirmation-20260830T105930Z`.
