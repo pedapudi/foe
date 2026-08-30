@@ -6415,3 +6415,124 @@ a fresh confirmation run. The serial run named
 `frozen-release-confirmation-20260830` evaluates two attempts on each of the
 eight selected confirmation tasks. It uses GPT-5.6 Sol with low reasoning and
 the standard service tier.
+
+## Frozen candidate fails confirmation repeatability
+
+The confirmation run used source commit
+`fb5f5638741e49395318a8ea147c526e755c8e37`, source tree
+`git-tree-sha1:5258d61290da14d68dd3f3451503f3f89232ae0c`, and portable
+binary
+`sha256:27e4e07b3cce2820377d9c3366294b8ac10716ec58f9f88c4bf395be60dd7e93`.
+Every scored attempt used GPT-5.6 Sol with low implementation reasoning and
+the standard service tier. Independent assessment, repair, and final
+confirmation used xhigh reasoning.
+
+The runner completed four scored attempts before the release became unable to
+meet the confirmation requirement. One `build-pov-ray` attempt passed, while
+the other omitted the required root `file_id.diz`. Both `dna-insert` attempts
+failed the unchanged task-owned grader.
+
+| Task | Successful attempts | Attempts | Model calls | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `build-pov-ray` | 1 | 2 | 179 | 6,003,308 | 3,241,472 | 121,540 | $14.774733 |
+| `dna-insert` | 0 | 2 | 141 | 2,315,807 | 1,325,568 | 147,642 | $7.444023 |
+
+The four attempts used 320 model calls, 8,319,115 input tokens, 4,567,040
+cached-input tokens, and 269,182 output tokens. Estimated cost was
+$22.218756. Every attempt completed without an exception. Every model call
+reported usage, and every Foe trace conformed.
+
+One DNA artifact produced an annealed reverse region of 81 nucleotides. The
+limit was 45 nucleotides. The other artifact evaluated three nearby insertion
+boundaries while holding the 43-nucleotide reverse region fixed. The task
+grader coupled the earlier insertion boundary to a 41-nucleotide reverse
+region and measured a 5.71994 degree temperature difference. The permitted
+difference was 5 degrees.
+
+Both internal final confirmations accepted their artifacts after extensive
+custom checks. Their checks reproduced a chosen sequence decomposition rather
+than the grader's coupled forward and reverse decomposition. The two failures
+therefore share a semantic-validation mechanism despite reaching different
+assertions.
+
+The remaining twelve planned attempts could provide at most twelve additional
+successes. The completed attempts supplied one success, so the release could
+reach at most thirteen successes among sixteen attempts. The runner stopped
+before further scored work. An `overfull-hbox` attempt that had already begun
+was cancelled and is excluded from quality and resource totals.
+
+The campaign manifest has digest
+`a9e020b4993f55b42f900fb1493f075f08a858bd0cecd9ad7e2e70772e256e6f`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/frozen-release-confirmation-20260830-20260830T043133Z`.
+
+The release fails the confirmation gate. The focused preservation successes
+did not establish repeatability on either activated task family. Another full
+confirmation run requires a candidate that first passes repeated focused
+checks on the observed failure mechanisms.
+
+## Cross-trajectory diagnosis declines the confirmation failures
+
+The trajectory collector bound the two DNA failures to the evaluated source
+tree and runtime binary. The corpus contains both complete external verifier
+reports and both final internal validation timelines. Its SHA-256 digest is
+`e2b6e4b8f49f865a4e76f8323ed5946a29a2b937e6baecebc23f94bdac2a2fc1`.
+
+The self-improvement workflow consumed the corpus with automatic candidate
+selection. One GPT-5.6 Sol request used low reasoning and the standard service
+tier. It used 7,678 input tokens and 1,020 output tokens, with no cache reads.
+Estimated cost was $0.051112.
+
+The diagnosis returned `insufficient-evidence` and produced no candidate. It
+treated the reverse-length and temperature-difference assertions as separate
+failure mechanisms. It also cited the absence of a matched successful episode.
+This abstention prevented an unsupported change, while it failed to identify
+the shared decomposition error visible across the two internal validation
+timelines.
+
+The result file has digest
+`fd547f6040166c6f6a00821d98a8640529b315f90610253d8cffe0f194fc78b0`.
+The root episode has digest
+`67b69f40381ad842c372998c71ff6f4f374b98c7ea59fafdca33d5a36f2222d6`.
+The retained proposal is
+`/home/sunil/git/foe-post-repair-assessment/target/frozen-release-confirmation-dna-self-improvement`.
+
+The result identifies a self-improvement limitation. Failure-locus equality is
+too narrow for causal grouping. Cross-trajectory diagnosis must compare the
+operands and derivations behind internal completion claims with the external
+counterexamples. Such a comparison can group distinct failed assertions that
+arise from one shared semantic decision.
+
+## Higher reasoning and an added diagnosis stage do not correct primer mapping
+
+Two fresh single-node `dna-insert` attempts used GPT-5.6 Sol with xhigh
+reasoning and the standard service tier. Both attempts chose the same
+incorrect insertion boundary and failed the unchanged grader. Together they
+used 31 model calls, 297,087 input tokens, 123,392 cached-input tokens, and
+14,164 output tokens. Estimated cost was $1.027417.
+
+A separate workflow used an xhigh diagnosis child, a fresh low-reasoning
+implementation child, and xhigh independent assessment with conditional
+repair. The diagnosis selected the same incorrect insertion boundary before
+implementation began. Assessment accepted the resulting artifact. The
+unchanged grader measured the reverse annealing temperature as 55.857347
+degrees Celsius, below the required 58 degrees.
+
+The added-stage attempt used 20 model calls, 144,463 input tokens, 39,936
+cached-input tokens, and 12,517 output tokens. Estimated cost was $0.684422.
+It completed without an exception, and its Foe trace conformed.
+
+The single-node campaign manifest has digest
+`32cc1222bf7ac473abdc4b245f60cd1f989cd400d90da4ea13487d699bac2598`.
+The added-stage campaign manifest has digest
+`8b2a9ed4a4ba37bda2142045972a4d197cd3e33e50aa75c25d40b0481ad1f35d`.
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/xhigh-single-node-dna-ceiling-20260830-20260830T062714Z`;
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/xhigh-diagnosis-independent-repair-dna-20260830-20260830T063819Z`.
+
+These attempts reject reasoning effort and stage separation as sufficient
+interventions for this failure. Another model-only audit would repeat a
+correlated interpretation. The next candidate must change the validation
+mechanism or the evidence supplied to validation. Focused repeatability must
+precede another frozen confirmation run.
