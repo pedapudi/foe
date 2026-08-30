@@ -6853,3 +6853,26 @@ The campaign manifest has SHA-256 digest
 `27ae201bbcbbe5d400ef9ab1ad2d1d7671d616445fd24ec7e9335ba0ac734350`.
 The successful confirmation gate admits the unchanged frozen release to the
 twenty-task calibration set.
+
+## Calibration begins with an independently corrected chess result
+
+The frozen release began the twenty-task calibration set with one attempt per
+task. The source commit, source tree, portable binary, model routes, reasoning
+efforts, and priority service tier remain identical to confirmation.
+
+The `chess-best-move` implementation reconstructed the board image and wrote
+one mating move, `g2g4`. Independent assessment reconstructed the position,
+enumerated legal moves through a chess rules engine, and found two mating
+moves: `e2e4` and `g2g4`. It rejected the incomplete file and activated a fresh
+repair episode.
+
+Repair wrote both moves. Reassessment and final confirmation independently
+reconstructed the board, enumerated the mate set, and compared it with the two
+output lines. The unchanged task-owned grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `chess-best-move` | 1.0 | 51 | 525,004 | 247,808 | 51,829 | $2.244487 | 1,061 |
+
+The calibration release has one success among one completed task. Nineteen
+tasks remain, and the quality gate requires at least sixteen more successes.
