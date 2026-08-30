@@ -6876,3 +6876,28 @@ output lines. The unchanged task-owned grader awarded reward 1.0.
 
 The calibration release has one success among one completed task. Nineteen
 tasks remain, and the quality gate requires at least sixteen more successes.
+
+## Image-derived digest is repaired before calibration acceptance
+
+The `code-from-image` implementation could read the supplied PNG but could
+not extract the pictured pseudocode. It wrote only the six-character prefix
+given in the task and disclosed that the result might be incomplete.
+
+Independent assessment found and used the container's OCR tool. It recovered
+the complete hash construction from the image. Separate cryptographic
+implementations reproduced the calculation. Assessment therefore rejected the
+truncated file. Repair wrote the complete 64-character digest. Reassessment
+and final confirmation each recovered the pictured calculation and accepted
+the repaired file. The unchanged task-owned grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `code-from-image` | 1.0 | 43 | 537,245 | 217,088 | 24,215 | $1.851763 | 562.426 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure.
+
+The calibration release has two successes among two completed tasks.
+Eighteen tasks remain, and the quality gate requires at least fifteen more
+successes.
