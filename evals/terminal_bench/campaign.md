@@ -5997,3 +5997,216 @@ The frozen release has three successful attempts among four confirmation
 attempts. Both tested tasks have succeeded. The release can incur at most one
 additional failure among the remaining twelve attempts while meeting the
 campaign requirement of fourteen successes among sixteen attempts.
+
+## The frozen release fails the confirmation gate
+
+Six additional tasks began in three two-worker execution groups. Four tasks
+completed before the release gate became unreachable. `caffe-cifar-10`,
+`configure-git-webserver`, and `count-dataset-tokens` each passed twice.
+`build-pov-ray` failed twice.
+
+| Task | Successful attempts | Attempts | Model calls | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `build-pov-ray` | 0 | 2 | 135 | 4,159,143 | 2,596,864 | 76,910 | $8.826062 |
+| `caffe-cifar-10` | 2 | 2 | 85 | 3,873,671 | 2,454,016 | 38,281 | $7.425846 |
+| `configure-git-webserver` | 2 | 2 | 77 | 1,199,526 | 630,272 | 81,144 | $4.152005 |
+| `count-dataset-tokens` | 2 | 2 | 65 | 686,261 | 271,872 | 26,996 | $2.306225 |
+
+All eight completed attempts had valid configuration claims, conformant Foe
+traces, complete usage records, and no infrastructure failures. Their
+combined usage was 362 model calls, 9,918,601 input tokens, 5,953,024 cached
+input tokens, and 223,331 output tokens. Their estimated cost was $22.710138.
+
+The first execution group ran `build-pov-ray` and `caffe-cifar-10` concurrently
+in 3,249.253 seconds. The second group ran `configure-git-webserver` and
+`count-dataset-tokens` concurrently in 1,713.628 seconds. Both groups used
+isolated access-only credentials and finished without credential exposure.
+
+Both `build-pov-ray` attempts ended with Foe reporting completion. The
+unchanged task-owned grader rejected both workspaces at
+`tests/test_outputs.py:115`. The required path
+`/app/povray-2.2/file_id.diz` was absent. The normalized failure locus has
+digest
+`sha256:56d565772b4410a780a791fe02363ce818d008d1d598a2da4c2d472c3c313e46`.
+
+The first attempt selected split Unix archives that omitted release metadata.
+The second attempt found an official DOS distribution whose uppercase
+`FILE_ID.DIZ` did not satisfy the required lowercase layout. Both attempts
+proved consistency relative to their selected archives. Neither established
+the complete platform-appropriate release layout from evidence independent of
+those archives.
+
+The exact release therefore finished nine of twelve scored confirmation
+attempts successfully. Five of the six tested tasks succeeded at least once.
+The earlier `dna-insert` pair contributed one failure, and `build-pov-ray`
+contributed two failures. The best possible result after the remaining four
+attempts was thirteen successes among sixteen attempts, below the required
+fourteen.
+
+The third execution group started `crack-7z-hash` and
+`log-summary-date-ranges`. It was cancelled after 50.838 seconds when the
+release gate became unreachable. Neither task produced a completed trial,
+usage record, or score. These starts are excluded from all quality and cost
+totals.
+
+Across the six scored tasks, the frozen release used 584 model calls,
+13,411,493 input tokens, 8,079,360 cached-input tokens, and 375,309 output
+tokens. Its estimated cost was $32.066457. The confirmation manifest has
+digest
+`8f726ba90b38fec88816961345423ac25dc384b639b49b94c7fb25a506f469c7`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/independent-final-confirmation-remaining-20260829T214804Z`.
+
+This result rejects source tree
+`git-tree-sha1:1e2377b17d5cf8ec8d52dbe648f2e1e6eeb52be4` and runtime binary
+`sha256:81ff9d42b1b76a999b92977eacaab12ade0afa3f90881dcbd35d9de7bc8e3cd2`.
+Another release must restart confirmation from zero.
+
+## Repeated external failures become self-improvement evidence
+
+The cross-trajectory collector previously required a successful episode before
+it emitted a failure contrast. That rule excluded a new task that failed
+repeatedly. Both `build-pov-ray` failures had the same externally located
+defect, but the collector produced no contrast because the frozen release had
+never passed that task.
+
+The collector now admits two or more valid external failures with the same
+normalized locus and execution configuration. A successful episode remains
+useful comparative evidence when one exists. It is no longer required for a
+repeated-failure contrast. The source-candidate validator checks every failed
+episode and accepts an empty `successful_episode_ids` array.
+
+Regression tests cover a repeated failure without a successful comparison,
+mixed execution configurations, and malformed evidence. The Terminal-Bench
+unit target passes with the changed collector and validator. The source change
+has commit `36e3e63dcecf334bec26be5b47d3a6733ddfa119`.
+
+The corrected collector produced an identity-bound `build-pov-ray` corpus.
+The evidence has digest
+`ef98ef0d93af9ee4b3d4acd5b262415fa2518a78919cc4cde9176aed9a2c133f`.
+Its repeated-failure contrast has digest
+`sha256:235639d6258f3a887768b0eaa05d7cfa650f14df2fdf07a552657feb3855e846`.
+The corpus binds source tree
+`git-tree-sha1:1e2377b17d5cf8ec8d52dbe648f2e1e6eeb52be4` and runtime binary
+`sha256:81ff9d42b1b76a999b92977eacaab12ade0afa3f90881dcbd35d9de7bc8e3cd2`.
+It names failed root episodes `ep_5234ae2c` and `ep_e7bf948e`.
+
+This change repairs the self-improvement sensor. It does not improve task
+quality by itself. Its acceptance depends on whether an identity-bound
+candidate generated from the admitted corpus improves an unchanged external
+score and transfers beyond `build-pov-ray`.
+
+## Autonomous source candidate adds release-completeness governance
+
+The source self-improvement workflow consumed the admitted `build-pov-ray`
+corpus. Diagnosis, implementation, finalization, regression checking, and
+independent source review all ran as declared workflow stages. Every model
+stage used GPT-5.6 Sol with xhigh reasoning on the priority service tier.
+
+The candidate adds a `release_completeness` value to assessment and final
+confirmation. The value classifies evidence as `not-applicable`,
+`request-grounded`, `selected-artifacts-only`, or `incomplete`. The return
+schema permits acceptance only for the first two classifications. The latter
+two classifications must select the existing repair branch.
+
+The source change updates the built-in workflow, its command-line assembly,
+the associated regression test, and both affected specifications. The
+regression presents an internally consistent archive that omits a component
+required by independent platform evidence. Assessment cannot accept that
+state, while a repair return remains valid.
+
+The first independent source review found that the command-line package used
+1,301 production Rust lines against its 1,300-line ceiling. Autonomous
+finalization removed an unnecessary local binding and restored the count to
+1,300 lines. The candidate then passed formatting, workspace tests, Clippy,
+scope checks, benchmark-independence checks, and every repository line budget.
+
+The self-improvement run used 106 model calls, 7,925,459 input tokens,
+6,385,664 cached-input tokens, and 55,469 output tokens. Its estimated cost
+was $9.822826, and it ran for 1,373.100 seconds. The unchanged external grader
+remained outside every model stage and source checker.
+
+The candidate has source identity
+`sha256:6140b1bb9d5d0b9aafc31eb00ef98975e9f2ab26d2edebc540930ae6ed1f4f89`.
+Its source bundle has identity
+`sha256:5d900c782752cbe1fe571d448f8672acc97b84413e32eff0b52d43722bed4845`.
+Its parent program has identity
+`sha256:08a0d1426e66e340c0054270225b1decf6f6375e04b17324c48454759f453944`.
+The retained result remains `pending-external-evaluation`.
+
+The candidate is committed for isolated evaluation as
+`7dfcfe8 Require request-grounded release completeness`. Its retained
+self-improvement evidence is in
+`/home/sunil/git/foe-post-repair-assessment/target/autonomous-build-pov-source-improvement`.
+Internal acceptance establishes source integrity and lineage. Promotion still
+requires repeated improvement under the unchanged `build-pov-ray` grader and
+successful transfer to another task.
+
+## Release-completeness activation succeeds twice
+
+Two fresh `build-pov-ray` attempts evaluated the autonomous source candidate.
+Both attempts used the unchanged task instruction, container, and task-owned
+grader. Both received reward 1.0. The rejected parent release had failed both
+of its attempts on the same task.
+
+| Attempt | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| first | 51 | 1,628,203 | 939,520 | 26,679 | $3.664120 | 811.148 |
+| second | 59 | 3,485,379 | 2,354,176 | 35,082 | $6.168122 | 1,020.935 |
+
+Both attempts completed without a Harbor exception. Their Foe traces
+conformed, every model request reported usage, and the unchanged grader passed
+every test. The pair used 110 model calls, 5,113,582 input tokens, 3,293,696
+cached-input tokens, and 61,761 output tokens. Its estimated cost was
+$9.832242.
+
+Each implementation selected the complete official Unix archive set. The two
+independent assessment nodes classified completeness as `request-grounded`.
+They cited platform documentation that requires the source, documentation,
+and scene archives. They also compared fresh official downloads and complete
+archive manifests against the retained workspace.
+
+The evaluated source tree is
+`git-tree-sha1:c473b1a095deb95a902b83f3b591bf774faa0c2e`. The evaluated
+binary is
+`sha256:cc8e948b9a140fdfa16af322ae7360a96fa1f488947f6663f236c02ef201d85a`.
+Both trials verified the launched program against source-candidate identity
+`sha256:6140b1bb9d5d0b9aafc31eb00ef98975e9f2ab26d2edebc540930ae6ed1f4f89`.
+Their common source-adoption identity is
+`sha256:63cbad32929559644913aecf28a7e463d7e48e648052c606c149c3694a0e0723`.
+
+The campaign runner initially rejected its own configuration claim. Its
+source-candidate check required one workflow node marked `terminal`. The
+built-in workflow validly settles when `confirm-task` selects an empty
+successor list, so the check described an older topology rather than a runtime
+invariant.
+
+Commit `99b191b Validate source candidates by runtime invariants` removes that
+topology requirement. Source-candidate checks now require the root completion
+verifier when one is declared, validate every model route and service tier,
+and report the highest child reasoning effort. Re-evaluating both retained
+trials reports no infrastructure failure and a valid configuration claim.
+The Terminal-Bench unit target covers a workflow with no terminal marker and a
+missing root verifier.
+
+The retained activation manifest has digest
+`899fb48756ea095d4cc52564a38e34caad94417fc3e195e21f8cdf6951e59560`.
+The evidence directory is
+`/home/sunil/git/foe-autonomous-release-completeness-candidate/target/terminal-bench-jobs/autonomous-release-completeness-build-pov-activation-20260829T234955Z`.
+
+The activation establishes a repeated quality improvement on the diagnosis
+task. Transfer remains required before the source candidate can qualify as
+the campaign's second autonomous transferable improvement.
+
+## Release-completeness transfer task selection
+
+`make-doom-for-mips` is the transfer task. The selection was frozen before
+reading its instruction or any task trajectory. Its task name identifies a
+platform-specific external source build, which exercises release acquisition
+outside the POV-Ray diagnosis case. The registered allowance is 60 model
+calls and 3,600 seconds per model node.
+
+The source candidate receives one unchanged closed-book attempt. A passing
+task-owned score must accompany valid lineage, trace conformance, complete
+usage, and activation of the release-completeness classification. Failure
+rejects transfer and returns the candidate to identity-bound diagnosis.
