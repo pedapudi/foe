@@ -6901,3 +6901,39 @@ runner records no credential exposure or infrastructure failure.
 The calibration release has two successes among two completed tasks.
 Eighteen tasks remain, and the quality gate requires at least fifteen more
 successes.
+
+## Independent assessment repairs a complete video transcription
+
+The `extract-moves-from-video` implementation wrote 280 candidate commands.
+Independent assessment compared the artifact with the complete supplied
+video. It found editable prompt prefixes recorded as commands, normalized
+misspellings, split commands, and an omitted repeated move.
+
+Repair rebuilt the transcript from committed prompt and response boundaries.
+The repaired artifact contains 284 commands. Repair first supplied the bare
+64-character file digest to `edit.expected_version`. The tool rejected that
+equivalent digest, and the next call recovered by adding the `sha256:` prefix.
+
+Fresh reassessment accepted the repaired artifact after a complete 10 fps OCR
+pass. Final confirmation independently sampled the full video at 5 Hz. It
+matched 281 commands directly and resolved the remaining three through
+targeted frame and glyph-cell inspection. One OCR command reached its
+600-second timeout. Confirmation diagnosed thread oversubscription, bounded
+each OCR worker, completed the inspection, and returned `accept` on its
+fiftieth request. The unchanged task-owned grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `extract-moves-from-video` | 1.0 | 152 | 5,028,567 | 3,582,976 | 95,275 | $9.121054 | 6,290.313 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The root
+evidence binds portable binary
+`sha256:986b6f0c7c52f3a72f787e537f52f632a32562f6c501481d55a7a01438b4f6ee`
+to program
+`sha256:3d3f06d8130492234cef0d2a447bc2b42ecf2c6f0825e1fd3d3c3cc1dc5d9e88`.
+
+The calibration release has three successes among three completed tasks.
+Seventeen tasks remain, and the quality gate requires at least fourteen more
+successes.
