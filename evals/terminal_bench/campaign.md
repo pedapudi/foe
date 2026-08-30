@@ -6304,3 +6304,114 @@ the external task score. It is not qualified for promotion. The next
 candidate must preserve one platform-native archive family and its extraction
 layout across every required release component. Focused external success is
 required before another development or confirmation batch begins.
+
+## Verifier-governed POV-Ray completion converts the repeated failure
+
+A public completion checker now covers the task-declared render and the
+platform-specific release layout. The checker requires representative source,
+documentation, include, scene, and root metadata paths. It uses no hidden
+verifier digest or reference image.
+
+The control run rejected an untouched workspace, accepted an oracle-built
+workspace, and received reward 1.0 from the unchanged task-owned grader. Its
+control manifest has SHA-256 digest
+`c812c3eb407ebdb5c621a3c0484c7d149e51996d6eafb2d0f65241e1fb32cd9e`.
+The retained control evidence is in
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-verifier-controls/controls-20260830T033221Z`.
+
+One model-backed attempt used the public checker as the root
+`done_when.verify` command. The implementation built a working renderer and
+passed the checker. Independent assessment still rejected the workspace
+because its normalized ZIP extraction omitted or changed much of the official
+Unix distribution. Repair extracted the official source, documentation, and
+scene TAR archives without path normalization. Reassessment and final
+confirmation then matched all 360 files against the official manifests. The
+root verifier accepted the final workspace, and the unchanged task-owned
+grader awarded reward 1.0.
+
+The run used 86 model calls, 3,934,696 input tokens, 2,416,640 cached-input
+tokens, and 58,367 output tokens. Estimated cost was $8.206220, and execution
+took 1,467.314 seconds. Every model call reported usage. The Foe trace
+conformed, the copied checker retained its identity, and Harbor recorded no
+exception.
+
+The evaluated source tree was
+`git-tree-sha1:09bcbed719b05fb95f23822b44f2fd12bbcb4533`. The portable
+binary was
+`sha256:a13b8101372cf26cf788c6df307fa5986b6b00a3ed7b193beb2833b07794c9f6`.
+The campaign manifest has digest
+`c95a27252f9d28ec6ad9b50d9b0132d4f640e54c7f0f7e8001ab228ffd2943be`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/verifier-governed-platform-release-build-pov-20260830-20260830T033741Z`.
+
+This result establishes corrective convergence in the modified lane. It does
+not contribute to the closed-book confirmation score because the public
+checker supplied information during the episode.
+
+## Supplied probes cannot narrow a documented release
+
+The preceding closed-book trajectory exposed the remaining general defect.
+Assessment and final confirmation independently found that the official Unix
+programmer distribution contains source, documentation, and scene components.
+Both stages then excluded the scene component because the task supplied one
+scene as a render probe. This inference discarded a documented distribution
+constraint and allowed an incomplete release to pass internal assessment.
+
+Commit `fb5f563 Preserve independently required release components` adds one
+rule to assessment and final confirmation. A supplied probe, fixture,
+dependency, or example input cannot reduce an independently documented
+release component set. A component is optional only when task- or
+platform-grounded evidence identifies it as optional for the requested
+release. The resolved built-in program test and both affected specifications
+carry the same rule. Workspace tests, Clippy, formatting, deterministic
+examples, and line budgets passed.
+
+One unchanged closed-book `build-pov-ray` attempt evaluated the resulting
+source. Implementation selected all three official Unix archives. Assessment
+and final confirmation independently identified all three as the required
+component set despite the supplied scene. Both matched exact unnormalized
+archive paths and bytes against the workspace. The task-owned grader awarded
+reward 1.0 without an exception.
+
+The attempt used 42 model calls, 1,705,500 input tokens, 970,752 cached-input
+tokens, and 31,960 output tokens. Estimated cost was $3.966493, and execution
+took 813.655 seconds. Every model call reported usage, and the Foe trace
+conformed.
+
+The source is commit
+`fb5f5638741e49395318a8ea147c526e755c8e37`, with source tree
+`git-tree-sha1:5258d61290da14d68dd3f3451503f3f89232ae0c`. Its portable
+binary is
+`sha256:27e4e07b3cce2820377d9c3366294b8ac10716ec58f9f88c4bf395be60dd7e93`.
+The campaign manifest has digest
+`7f849812ae2501f5c0b1fef4850a82e26b9d22f743f01247b2b71950e625904d`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/release-component-preservation-build-pov-20260830-20260830T040503Z`.
+
+The implementation selected a correct archive set before assessment. The
+attempt therefore establishes focused quality and compatibility, while it
+does not isolate the new rule as the cause of the artifact choice.
+
+## Focused preservation passes before release confirmation
+
+The same source and binary next ran `fix-git` and `count-dataset-tokens`
+serially. Both unchanged task-owned graders awarded reward 1.0. The first task
+protects a development success involving version-control state. The second
+protects a confirmation success outside external release acquisition.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fix-git` | 1.0 | 18 | 117,255 | 30,720 | 11,131 | $0.581048 |
+| `count-dataset-tokens` | 1.0 | 32 | 480,039 | 209,408 | 14,971 | $1.465707 |
+
+Both attempts completed without an exception. Every model call reported
+usage, and both Foe traces conformed. Their campaign manifest has digest
+`ce024c2d13a5495de54cb171ce16ab4bcb590080cac97d49d14e42233fc1dc38`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/release-component-preservation-two-task-20260830-20260830T041931Z`.
+
+These three focused closed-book passes qualify the source and binary pair for
+a fresh confirmation run. The serial run named
+`frozen-release-confirmation-20260830` evaluates two attempts on each of the
+eight selected confirmation tasks. It uses GPT-5.6 Sol with low reasoning and
+the standard service tier.
