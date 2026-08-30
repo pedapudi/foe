@@ -6814,3 +6814,42 @@ The frozen release has nine successes among ten completed confirmation
 attempts. Six attempts remain across `dna-insert`,
 `log-summary-date-ranges`, and `overfull-hbox`. The release needs at least five
 additional successes, and each remaining task must succeed at least once.
+
+## Frozen release passes confirmation
+
+The remaining six attempts all received reward 1.0 from their unchanged
+task-owned graders.
+
+| Task | Successful attempts | Attempts | Input | Cache read | Output | Estimated cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `dna-insert` | 2 | 2 | 1,550,965 | 745,984 | 132,363 | $6.165578 |
+| `log-summary-date-ranges` | 2 | 2 | 395,369 | 122,880 | 24,216 | $1.623428 |
+| `overfull-hbox` | 2 | 2 | 1,720,090 | 1,032,704 | 75,574 | $4.674106 |
+
+The first `dna-insert` assessment enumerated all three overlapping insertion
+boundaries. It rejected an implementation that passed only one boundary,
+proposed a longer reverse primer, and activated a fresh repair episode. The
+repair produced a primer pair whose authoritative temperature measurements
+and reconstructed products passed for all three boundaries. Reassessment,
+final confirmation, and the external grader accepted the result. The second
+attempt also passed.
+
+The exact frozen release therefore passed fifteen of sixteen confirmation
+attempts. Every one of the eight confirmation tasks succeeded at least once.
+This exceeds the required fourteen successes while satisfying the per-task
+success condition.
+
+The sixteen attempts recorded at least 18,772,832 input tokens, 11,154,432
+cached-input tokens, and 507,282 output tokens. Their estimated cost was at
+least $45.081013. One successful `configure-git-webserver` attempt omitted
+provider usage for one model call, so the resource totals remain lower bounds.
+
+The runner classified the failed `crack-7z-hash` verifier setup as an
+infrastructure failure and rejected that attempt's configuration claim. Its
+paired attempt passed. The failed attempt remains part of the quality total,
+and the task will not be rerun during this campaign.
+
+The campaign manifest has SHA-256 digest
+`27ae201bbcbbe5d400ef9ab1ad2d1d7671d616445fd24ec7e9335ba0ac734350`.
+The successful confirmation gate admits the unchanged frozen release to the
+twenty-task calibration set.
