@@ -6210,3 +6210,97 @@ The source candidate receives one unchanged closed-book attempt. A passing
 task-owned score must accompany valid lineage, trace conformance, complete
 usage, and activation of the release-completeness classification. Failure
 rejects transfer and returns the candidate to identity-bound diagnosis.
+
+## The selected transfer does not exercise release acquisition
+
+The integrated source candidate ran one unchanged `make-doom-for-mips`
+attempt. The task-owned grader awarded reward 1.0. The implementation first
+built an executable that failed inside the supplied virtual machine. Separate
+assessment, repair, reassessment, final confirmation, and final repair then
+produced a working MIPS executable and a valid rendered frame.
+
+The passing score does not qualify release-completeness transfer. The task
+supplies its source tree, virtual machine, and data file in the container.
+The final assessment therefore classified release completeness as
+`not-applicable`. The frozen selection rule required activation of the
+release-completeness classification. The task name suggested an external
+source build, while the task instruction contained no acquisition work.
+
+The run provides independent evidence for two supporting runtime changes.
+An exhausted repair returned a partial value and allowed reassessment to
+continue. A finding from final confirmation also activated a fresh repair
+before another confirmation. The external score shows that these paths can
+recover a failing artifact without terminating the workflow.
+
+One of 173 model calls lacked provider usage. The retained episode diagnostics
+therefore provide lower bounds of 16,157,951 input tokens, 13,222,400 cached
+input tokens, and 102,716 output tokens. Estimated cost is unavailable. Serial
+execution took 4,511.557 seconds. The Foe trace conformed, no infrastructure
+failure occurred, and no credential was exposed.
+
+The evaluated source tree was
+`git-tree-sha1:073e68f7bef387178b89a099a59aa6f0a0f9b32b`. The portable
+binary was
+`sha256:f526a1ec1fc73717f1cb1efced1e820d4a724d4625c403c45afd3458a3b0f1bf`.
+The campaign manifest has digest
+`2f551b52d363b85df9efc705cbb59f2895562482a3fd83304a68f433bb4d3375`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/integrated-release-make-doom-backstop-20260830-20260830T011019Z`.
+
+## Platform-specific release layout remains unresolved
+
+The same integrated candidate next ran one unchanged `build-pov-ray` attempt.
+It downloaded the complete official ZIP archive set, built a working
+executable, rendered the supplied scene correctly, and reported completion.
+The external grader awarded reward 0.0 because
+`/app/povray-2.2/file_id.diz` was absent. The selected ZIP source archive
+placed its metadata at uppercase paths. The task-owned grader expects the
+lowercase root layout produced by the Unix source archive.
+
+This attempt used 44 model calls, 1,742,678 input tokens, 939,008 cached input
+tokens, and 33,679 output tokens. Estimated cost was $4.263863, and execution
+took 843.755 seconds. The Foe trace conformed, every model call reported
+usage, and no infrastructure failure occurred. Its manifest has digest
+`eb79d6ba04ba45540357daaa9a4fcedef0d1ed0626f3e86239559c0de2ee9904`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/integrated-release-build-pov-activation-20260830-20260830T022605Z`.
+
+Commit `f2da8ad Require platform-exact release layouts` strengthened the
+assessment and final-confirmation contracts. Acceptance requires evidence for
+the applicable platform archive format, exact path spelling and case, and an
+unnormalized manifest comparison. Regression tests and the affected
+specifications carry the same rule. Repository tests, Clippy, formatting,
+deterministic examples, and line budgets passed.
+
+A focused attempt evaluated the strengthened source. The first assessment
+rejected three handcrafted include files and an incomplete documentation
+tree. Repair acquired the official Unix documentation archive and restored
+all 40 files at exact lowercase paths. Reassessment and final confirmation
+verified that tree against independent official mirrors.
+
+The external grader still awarded reward 0.0. Assessment accepted the source
+component from the ZIP archive after an exact uppercase manifest comparison,
+while it accepted the documentation component from the Unix archive. The
+final tree therefore still lacked lowercase source metadata at the requested
+root. Case-folded agreement between archive families did not preserve the
+platform-native extraction layout across the complete release.
+
+The strengthened attempt used 115 model calls, 5,776,989 input tokens,
+3,765,760 cached input tokens, and 72,621 output tokens. Estimated cost was
+$11.003640, and execution took 1,942.715 seconds. The Foe trace conformed,
+every model call reported usage, and no infrastructure failure occurred.
+
+The evaluated source tree was
+`git-tree-sha1:09bcbed719b05fb95f23822b44f2fd12bbcb4533`. The portable
+binary was
+`sha256:a13b8101372cf26cf788c6df307fa5986b6b00a3ed7b193beb2833b07794c9f6`.
+The campaign manifest has digest
+`3edf00ea486431e033f59b91b7e1c3e5b3f5e051425908356da790e573aad8ba`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/platform-exact-release-build-pov-activation-20260830-20260830T024419Z`.
+
+The new contract improved rejection and repair behavior but did not improve
+the external task score. It is not qualified for promotion. The next
+candidate must preserve one platform-native archive family and its extraction
+layout across every required release component. Focused external success is
+required before another development or confirmation batch begins.
