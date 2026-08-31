@@ -7073,3 +7073,38 @@ episode settlement when the task environment owns the resulting processes.
 The calibration release has five successes among seven completed tasks.
 Thirteen tasks remain, and the quality gate requires at least twelve more
 successes. One additional failure remains permissible.
+
+## Final confirmation replaces a noise-sensitive optimization
+
+The `largest-eigenval` implementation cached the public `numpy.linalg.eig`
+wrapper and reduced Python dispatch overhead. Its correctness checks passed,
+and independent assessment measured a small speed advantage. Fresh final
+confirmation repeated the task's timing protocol for 31 batches. The candidate
+lost several batches at sizes 6, 8, and 10 because it still called the same
+solver as the reference.
+
+Final repair replaced the public wrapper with NumPy's real-double LAPACK eig
+gufunc and explicitly requested complex outputs. The repaired implementation
+won all 31 isolated timing batches at every required size. It also passed 228
+controlled correctness fixtures across sizes, scales, distributions, memory
+layouts, complex spectra, ties, and defective matrices.
+
+Fresh confirmation then ran 1,080 generated correctness cases and repeated
+the authoritative evaluator. It measured a speed advantage in every paired
+round and accepted the repaired implementation. The unchanged task-owned
+grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `largest-eigenval` | 1.0 | 46 | 464,168 | 219,136 | 34,433 | $1.756442 | 774.515 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The result
+demonstrates useful corrective feedback from the always-run fresh confirmation
+stage on a quality property that the implementation and first assessment both
+accepted prematurely.
+
+The calibration release has six successes among eight completed tasks. Twelve
+tasks remain, and the quality gate requires at least eleven more successes.
+One additional failure remains permissible.
