@@ -7108,3 +7108,34 @@ accepted prematurely.
 The calibration release has six successes among eight completed tasks. Twelve
 tasks remain, and the quality gate requires at least eleven more successes.
 One additional failure remains permissible.
+
+## Batching plans satisfy every structural and performance bound
+
+The `llm-inference-batching-scheduler` implementation generated two JSONL
+plans and a reproducible generator. Each plan assigns all 800 input requests
+exactly once. The plans use two global shapes and keep every request within
+its aligned sequence dimensions.
+
+Independent assessment loaded the supplied cost model from source and checked
+the complete serialized plans. It also regenerated both outputs from copied
+inputs and obtained byte-identical files. Fresh final confirmation reproduced
+the published equations independently and obtained the same metric values.
+
+Both buckets passed their four strict cost, padding, latency, and sequential
+time thresholds. The narrowest measured margins were 2.01 percent for the
+first bucket and 2.65 percent for the second. The unchanged task-owned grader
+awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `llm-inference-batching-scheduler` | 1.0 | 30 | 392,105 | 184,832 | 25,366 | $1.410345 | 549.663 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The three
+model stages agreed, and each stage supported its decision with complete-file
+checks rather than samples.
+
+The calibration release has seven successes among nine completed tasks.
+Eleven tasks remain, and the quality gate requires at least ten more
+successes. One additional failure remains permissible.
