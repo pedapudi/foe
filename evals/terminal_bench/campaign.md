@@ -7139,3 +7139,34 @@ checks rather than samples.
 The calibration release has seven successes among nine completed tasks.
 Eleven tasks remain, and the quality gate requires at least ten more
 successes. One additional failure remains permissible.
+
+## Mailman remains live after end-to-end membership tests
+
+The `mailman` implementation configured Postfix and GNU Mailman 3 for
+`reading-group@local.edu`. It created an open-subscription list, generated the
+Postfix LMTP maps, and left both services running. The required configuration
+was saved at `/etc/mailman3/mailman.cfg`.
+
+Independent assessment ran the supplied evaluator and a separate two-user
+SMTP fixture. The fixture required confirmation replies before joining and
+leaving. It also delivered announcements to every current subscriber and
+excluded a member after confirmed removal.
+
+Fresh final confirmation repeated the public SMTP and mbox behavior. It
+checked the effective list policies, the generated aliases, the SMTP and LMTP
+listeners, the active configuration, and the final empty queues. The unchanged
+task-owned grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `mailman` | 1.0 | 31 | 514,391 | 190,976 | 22,442 | $1.818890 | 632.717 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The task is
+a second calibration success involving live state that remains available
+through every workflow stage and through external grading.
+
+The calibration release has eight successes among ten completed tasks. Ten
+tasks remain, and the quality gate requires at least nine more successes. One
+additional failure remains permissible.
