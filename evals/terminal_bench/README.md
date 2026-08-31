@@ -201,7 +201,9 @@ The runner starts a pair when all of these conditions hold:
 
 - The case metadata reserves less than 8 GiB for each task.
 - The pair reserves at most 8 GiB and four CPUs in total.
-- The host has at least 14 GiB of available memory and 100 GiB of free disk.
+- Available host memory covers the pair's declared reservations plus 4 GiB
+  for Harbor, Docker, and other host work. The host also has at least 100 GiB
+  of free disk.
 - Linux full-memory pressure stays below one percent over ten seconds.
 - The host has not swapped pages out since the preceding execution.
 - The access token covers every attempt and configured model stage. Its
@@ -211,8 +213,9 @@ The runner starts a pair when all of these conditions hold:
 A task that reserves 8 GiB runs alone. A failed pair admission runs its tasks
 serially with the mutable credential. An out-of-memory result, an increased
 swap-out counter, or excessive memory pressure makes every later task serial.
-The campaign stops before starting more work when available memory falls below
-10 GiB or free disk falls below 100 GiB.
+The campaign stops before starting an execution group when available memory
+cannot cover its declared reservations plus 4 GiB of host headroom. It also
+stops when free disk falls below 100 GiB.
 
 Parallelism applies between independent assessed tasks. Diagnosis,
 implementation, conditional escalation, and audit stages inside one task keep

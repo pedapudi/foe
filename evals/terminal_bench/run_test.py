@@ -250,13 +250,15 @@ class CasesTest(unittest.TestCase):
         self.assertTrue(all(len(group) == 1 for group in execution_groups(selected, 1)))
 
     def test_host_admission_falls_back_on_pressure_and_stops_on_low_capacity(self):
+        _, _, tasks, _ = read_cases(Path(__file__).with_name("cases.json"))
+        pair = (tasks["fix-git"], tasks["cancel-async-tasks"])
         healthy = HostResources(
-            available_memory_mb=16 * 1024,
+            available_memory_mb=sum(task.memory_mb for task in pair) + 4 * 1024,
             free_disk_bytes=120 * 1024**3,
             swap_out_pages=10,
             memory_pressure_avg10=0.0,
         )
-        self.assertEqual(parallel_host_admission(healthy, None), (True, None))
+        self.assertEqual(parallel_host_admission(healthy, pair, None), (True, None))
         swapped = HostResources(
             available_memory_mb=healthy.available_memory_mb,
             free_disk_bytes=healthy.free_disk_bytes,
@@ -264,18 +266,22 @@ class CasesTest(unittest.TestCase):
             memory_pressure_avg10=healthy.memory_pressure_avg10,
         )
         self.assertEqual(
-            parallel_host_admission(swapped, healthy),
+            parallel_host_admission(swapped, pair, healthy),
             (False, "the host swapped pages out after the preceding cohort"),
         )
         low_memory = HostResources(
-            available_memory_mb=9 * 1024,
+            available_memory_mb=tasks["fix-git"].memory_mb + 4 * 1024 - 1,
             free_disk_bytes=healthy.free_disk_bytes,
             swap_out_pages=healthy.swap_out_pages,
             memory_pressure_avg10=healthy.memory_pressure_avg10,
         )
         self.assertEqual(
-            run_host_admission(low_memory),
-            (False, "available memory is below 10 GiB"),
+            run_host_admission(low_memory, (tasks["fix-git"],)),
+            (
+                False,
+                "available memory is below 6144 MiB required for 2048 MiB of "
+                "task reservations and 4096 MiB of host headroom",
+            ),
         )
 
     def test_commands_start_together_and_retain_partial_failure_codes(self):

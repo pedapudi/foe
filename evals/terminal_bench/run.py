@@ -35,8 +35,7 @@ FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
 AGENT_TIMEOUT_GRACE_SECONDS = 300
 CREDENTIAL_LEASE_STARTUP_SECONDS = 900
 CREDENTIAL_REFRESH_MARGIN_MS = 60_000
-MIN_PARALLEL_AVAILABLE_MEMORY_MB = 14 * 1024
-MIN_RUN_AVAILABLE_MEMORY_MB = 10 * 1024
+HOST_MEMORY_HEADROOM_MB = 4 * 1024
 MIN_FREE_DISK_BYTES = 100 * 1024**3
 MAX_PARALLEL_MEMORY_MB = 8 * 1024
 MAX_PARALLEL_CPUS = 4
@@ -382,12 +381,12 @@ def execution_groups(tasks: list[Task], workers: int) -> list[tuple[Task, ...]]:
 
 def parallel_host_admission(
     resources: HostResources,
+    tasks: tuple[Task, ...],
     previous: HostResources | None,
 ) -> tuple[bool, str | None]:
-    if resources.free_disk_bytes < MIN_FREE_DISK_BYTES:
-        return False, "free disk is below 100 GiB"
-    if resources.available_memory_mb < MIN_PARALLEL_AVAILABLE_MEMORY_MB:
-        return False, "available memory is below 14 GiB"
+    allowed, reason = run_host_admission(resources, tasks)
+    if not allowed:
+        return allowed, reason
     if resources.memory_pressure_avg10 >= MAX_MEMORY_PRESSURE_AVG10:
         return False, "full memory pressure reached one percent over ten seconds"
     if previous is not None and resources.swap_out_pages > previous.swap_out_pages:
@@ -395,11 +394,20 @@ def parallel_host_admission(
     return True, None
 
 
-def run_host_admission(resources: HostResources) -> tuple[bool, str | None]:
+def run_host_admission(
+    resources: HostResources,
+    tasks: tuple[Task, ...],
+) -> tuple[bool, str | None]:
     if resources.free_disk_bytes < MIN_FREE_DISK_BYTES:
         return False, "free disk is below 100 GiB"
-    if resources.available_memory_mb < MIN_RUN_AVAILABLE_MEMORY_MB:
-        return False, "available memory is below 10 GiB"
+    reserved_memory_mb = sum(task.memory_mb for task in tasks)
+    required_memory_mb = reserved_memory_mb + HOST_MEMORY_HEADROOM_MB
+    if resources.available_memory_mb < required_memory_mb:
+        return False, (
+            f"available memory is below {required_memory_mb} MiB required for "
+            f"{reserved_memory_mb} MiB of task reservations and "
+            f"{HOST_MEMORY_HEADROOM_MB} MiB of host headroom"
+        )
     return True, None
 
 
@@ -1256,10 +1264,7 @@ def main(argv: list[str] | None = None) -> int:
                 "parallel_task_memory_exclusion_mb": (
                     PARALLEL_TASK_MEMORY_EXCLUSION_MB
                 ),
-                "minimum_parallel_available_memory_mb": (
-                    MIN_PARALLEL_AVAILABLE_MEMORY_MB
-                ),
-                "minimum_run_available_memory_mb": MIN_RUN_AVAILABLE_MEMORY_MB,
+                "host_memory_headroom_mb": HOST_MEMORY_HEADROOM_MB,
                 "minimum_free_disk_bytes": MIN_FREE_DISK_BYTES,
                 "maximum_memory_pressure_avg10": MAX_MEMORY_PRESSURE_AVG10,
             },
@@ -1343,12 +1348,9 @@ def main(argv: list[str] | None = None) -> int:
                 os.chmod(lease_directory, 0o700)
                 for planned_group in planned_groups:
                     resources = host_resources(run_dir)
-                    run_allowed, run_reason = run_host_admission(resources)
-                    if not run_allowed:
-                        stopped_reason = run_reason
-                        break
                     parallel_allowed, host_reason = parallel_host_admission(
                         resources,
+                        planned_group,
                         previous_resources,
                     )
                     state = read_credential_state(credential_state)
@@ -1388,7 +1390,8 @@ def main(argv: list[str] | None = None) -> int:
                     for actual_group in actual_groups:
                         start_resources = host_resources(run_dir)
                         execution_allowed, execution_reason = run_host_admission(
-                            start_resources
+                            start_resources,
+                            actual_group,
                         )
                         if not execution_allowed:
                             stopped_reason = execution_reason
