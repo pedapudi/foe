@@ -7712,3 +7712,27 @@ does not invalidate the seven mechanically complete task-quality results.
 the same frozen release, model, reasoning policy, priority service tier, and
 serial controller. A success will complete the replacement cohort with seven
 successes from eight valid tasks.
+
+`build-cython-ext` received reward 1.0 after 2,514 seconds. Its account and
+configuration claim are valid, every provider request reports usage, and no
+infrastructure failure is recorded. The frozen release therefore passes the
+fresh holdout gate with seven successes from eight valid tasks.
+
+| Attempts | Successes | Model calls | Input | Cache read | Output | Estimated cost | Task-execution makespan |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 8 | 7 | 414 | 10,489,528 | 6,829,056 | 353,774 | $24.448990 | 16,177.794 seconds |
+
+Every valid task finished one trial without a Harbor exception. Every Foe
+account and configuration claim is valid, every provider request reports
+usage, and no valid task records an infrastructure failure. The source tree is
+`git-tree-sha1:4d926a3c9d3107308cba2d34922598d9a101ba5b`. The portable binary is
+`sha256:986b6f0c7c52f3a72f787e537f52f632a32562f6c501481d55a7a01438b4f6ee`.
+
+The original campaign manifest digest is
+`sha256:95c3fc7146b6a959ef776a6b292f793154e5d023b76b673353bb3d2e1b6c3bbf`.
+Its evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-frozen-fresh-holdout-20260831T155605Z`.
+The replacement campaign manifest digest is
+`sha256:4f8f81038ed3e620b72dd1e775cb999ac27a01cd150df82381ac014abada5a6a`.
+Its evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-frozen-fresh-holdout-replacement-20260831T194614Z`.
