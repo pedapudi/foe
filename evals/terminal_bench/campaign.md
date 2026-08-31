@@ -7663,3 +7663,10 @@ cohort. It was selected before opening its instruction or any trajectory. The
 replacement preserves the cohort's source-and-build coverage without relying
 on content that the selected provider refuses to process. The original refusal
 and its retained account remain part of the campaign record.
+
+`compile-compcert` then received reward 1.0 after 3,092 seconds. The first two
+valid attempts therefore both succeed. Together they used 5,138,839 input
+tokens, 3,596,800 cached-input tokens, 159,721 output tokens, and an estimated
+$10.801296. Both accounts conform, every provider request reports usage, and
+neither attempt records an infrastructure failure. The remaining selected
+tasks continue serially against the same frozen release.
