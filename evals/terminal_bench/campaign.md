@@ -7683,3 +7683,8 @@ The account and configuration claim are valid, every provider request reports
 usage, and no infrastructure failure is recorded. The cohort now has three
 successes from four valid attempts. Host swap-out did not increase during this
 task, so the serial controller continued with `kv-store-grpc`.
+
+`kv-store-grpc` received reward 1.0 after 1,113 seconds. The account and
+configuration claim are valid, every provider request reports usage, and no
+infrastructure failure is recorded. The cohort now has four successes from
+five valid attempts. The serial controller continued with `qemu-alpine-ssh`.
