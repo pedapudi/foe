@@ -7288,3 +7288,29 @@ public aggregation path, independent recalculation, and exact artifact bytes.
 The calibration release has twelve successes among fourteen completed tasks.
 Six tasks remain, and the quality gate requires at least five more successes.
 One additional failure remains permissible.
+
+## Independent decoders confirm a priority-ordered data merge
+
+The `multi-source-data-merger` implementation normalized the supplied JSON,
+CSV, and Parquet records into one Parquet dataset. It also reported every
+conflicting field and the value selected by the declared source priority.
+
+Independent assessment parsed all three source formats and checked the final
+schema, values, dates, conflict set, and source selections. Fresh final
+confirmation repeated the comparison through PyArrow and a separate
+standard-library Parquet decoder. The unchanged task-owned grader awarded
+reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `multi-source-data-merger` | 1.0 | 22 | 202,915 | 71,680 | 18,776 | $0.929132 | 438.131 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The final
+account cites both decoders, the source-derived oracle, the exact row set, the
+type checks, and the complete conflict comparison.
+
+The calibration release has thirteen successes among fifteen completed tasks.
+Five tasks remain, and the quality gate requires at least four more successes.
+One additional failure remains permissible.
