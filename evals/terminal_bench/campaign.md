@@ -7511,3 +7511,43 @@ both runs. Every Foe account must conform, every provider request must report
 usage, and neither run may expose a credential or suffer an infrastructure
 failure. The two-worker makespan must be no more than two-thirds of the serial
 makespan.
+
+## Serial concurrency baseline passes all four tasks
+
+The serial baseline produced four successful task executions. The controller
+completed `cancel-async-tasks` and `git-multibranch`, then stopped before
+starting `fix-git` because host-available memory fell to 9,499 MiB. Its fixed
+serial threshold is 10,240 MiB. No third-task container or provider request
+started during that stop.
+
+The controller resumed the two unstarted tasks after available memory rose to
+11,456 MiB. `fix-git` and `sqlite-db-truncate` both passed. All four task-owned
+graders therefore awarded reward 1.0 against the same source tree, binary,
+model configuration, and service tier.
+
+| Attempts | Successes | Model calls | Input | Cache read | Output | Estimated cost | Task-execution makespan |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 4 | 87 | 620,049 | 197,120 | 72,013 | $3.210824 | 1,629.481 seconds |
+
+Every task completed without a Harbor exception. Every Foe process exited
+zero, every account conforms, every provider request reports usage, and the
+adapter records no credential exposure. The task-execution makespan is the sum
+of the four serial execution groups. It excludes the interval in which no task
+ran and therefore supplies the matched serial baseline for the strict
+two-worker execution.
+
+The serial campaign manifest digests are:
+
+- first two tasks:
+  `sha256:87fb231329dfe53f3e1607f1e8d68a0fcd9f91b1aed7644888c281e0c9b3e272`;
+- resumed two tasks:
+  `sha256:ca7e9af05a59b61aefa324b7a021ca213bb7a594f2bff954757c7a7bb6489d89`.
+
+The retained evidence directories are:
+
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-frozen-concurrency-serial-20260831T034501Z`;
+- `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-frozen-concurrency-serial-remainder-20260831T040102Z`.
+
+The two-worker gate remains open. Its controller must admit both pairs before
+provider spend, and its task-execution makespan must not exceed 1,086.321
+seconds.
