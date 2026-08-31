@@ -7262,3 +7262,29 @@ checks, preserved source hash, and additional fixtures in their final account.
 The calibration release has eleven successes among thirteen completed tasks.
 Seven tasks remain, and the quality gate requires at least six more successes.
 One additional failure remains permissible.
+
+## Independent historical reconstructions select the same embedding model
+
+The `mteb-leaderboard` implementation located the final August 2025 commits of
+the public results and MTEB repositories. It derived the 28 Scandinavian tasks,
+found every model revision with complete coverage, and selected
+`GritLM/GritLM-7B` by mean task score.
+
+Independent assessment repeated the historical cutoff, benchmark definition,
+coverage enumeration, and public MTEB aggregation. Fresh final confirmation
+reconstructed the comparison again from an isolated context. All three stages
+selected the same model. The unchanged task-owned grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `mteb-leaderboard` | 1.0 | 83 | 4,172,134 | 2,981,376 | 39,352 | $6.742622 | 1,786.060 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The final
+account cites the historical repository revisions, complete-coverage set,
+public aggregation path, independent recalculation, and exact artifact bytes.
+
+The calibration release has twelve successes among fourteen completed tasks.
+Six tasks remain, and the quality gate requires at least five more successes.
+One additional failure remains permissible.
