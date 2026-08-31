@@ -7314,3 +7314,31 @@ type checks, and the complete conflict comparison.
 The calibration release has thirteen successes among fifteen completed tasks.
 Five tasks remain, and the quality gate requires at least four more successes.
 One additional failure remains permissible.
+
+## Live service checks confirm request logging and rate limiting
+
+The `nginx-request-logging` implementation installed Nginx and configured the
+required site on port 8080. It added the requested access and error logs,
+per-address rate limit, static index, custom missing-page response, and active
+service process.
+
+Independent assessment checked the effective configuration and exercised the
+public HTTP interface. Fresh final confirmation repeated the syntax, process,
+socket, content, logging, and rate-limit checks. Its concurrent request probe
+observed 11 accepted requests and 14 rate-limited responses before recovery.
+The unchanged task-owned grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `nginx-request-logging` | 1.0 | 22 | 177,286 | 46,592 | 16,819 | $0.877793 | 405.140 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The final
+account cites the effective configuration, exact document bytes, HTTP
+responses, log records, overload behavior, active process, and listening
+sockets.
+
+The calibration release has fourteen successes among sixteen completed tasks.
+Four tasks remain, and the quality gate requires at least three more successes.
+One additional failure remains permissible.
