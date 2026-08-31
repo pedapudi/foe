@@ -7398,3 +7398,33 @@ structure.
 The calibration release has sixteen successes among eighteen completed tasks.
 Two tasks remain, and either task can supply the seventeenth success required
 by the quality gate.
+
+## Two corrective cycles preserve numeric behavior and performance
+
+The `portfolio-optimization` implementation produced a compiled C extension
+that passed the repository benchmark. Independent assessment found that
+`-ffast-math` changed reduction order. It supplied valid covariance and return
+inputs whose results exceeded the required tolerance.
+
+The first repair restored strict floating-point evaluation and retained the
+required speed. Reassessment then found a positive-definite cancellation case
+where the baseline raised a domain error and the extension returned NaN. The
+second repair reproduced the baseline error behavior. Reassessment and fresh
+final confirmation then accepted the implementation. The unchanged task-owned
+grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `portfolio-optimization` | 1.0 | 84 | 1,039,423 | 530,432 | 57,421 | $3.396557 | 1,905.106 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The final
+account cites a clean rebuild, the authoritative 5,000- and 8,000-asset
+benchmarks, ten varied public-interface fixtures, and exact source inspection.
+This task demonstrates two consecutive model-discovered corrections before
+unattended acceptance and external grading.
+
+The calibration release has seventeen successes among nineteen completed
+tasks. It has met the required seventeen-success threshold. The final task
+will determine the complete twenty-task score.
