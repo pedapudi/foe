@@ -7428,3 +7428,58 @@ unattended acceptance and external grading.
 The calibration release has seventeen successes among nineteen completed
 tasks. It has met the required seventeen-success threshold. The final task
 will determine the complete twenty-task score.
+
+## A live package index installs the requested distribution
+
+The `pypi-server` implementation created `vectorops` version 0.1.0, built its
+wheel and source archive, and exposed them through a local simple-package
+index on port 8080. The package root exports the requested `dotproduct`
+function.
+
+Independent assessment installed the package through the exact requested
+index command. Fresh final confirmation repeated the installation in a clean
+virtual environment outside `/app`, verified package metadata and behavior,
+compared the hosted archives with the build outputs, and confirmed that the
+server remained live. The unchanged task-owned grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `pypi-server` | 1.0 | 23 | 117,625 | 21,504 | 12,027 | $0.633626 | 318.494 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The final
+account cites the clean installation, installed import path, package behavior,
+live process, HTTP endpoints, archive metadata, and artifact digests.
+
+## Frozen release passes the twenty-task calibration gate
+
+The frozen release received reward 1.0 on 18 of the 20 calibration tasks. The
+two failures were `fix-code-vulnerability` and `gcode-to-text`. Their retained
+accounts and grader results remain part of the quality total. The result
+exceeds the required threshold of seventeen successes.
+
+| Attempts | Successes | Model calls | Input | Cache read | Output | Estimated cost | Serial task seconds |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 20 | 18 | 947 | 28,725,126 | 19,540,480 | 654,823 | $57.651236 | 21,617 |
+
+All 20 task processes finished with exit code zero and no Harbor exception.
+Every Foe account conforms, every provider request reports usage, and the
+adapter records no credential exposure. Every resolved model configuration
+uses `openai-codex/gpt-5.6-sol` on the priority service tier. Implementation
+uses low reasoning, and independent workflow stages use xhigh reasoning.
+
+The evaluated release identities are:
+
+- source tree
+  `git-tree-sha1:4d926a3c9d3107308cba2d34922598d9a101ba5b`;
+- portable binary
+  `sha256:986b6f0c7c52f3a72f787e537f52f632a32562f6c501481d55a7a01438b4f6ee`;
+- campaign manifest
+  `sha256:ac739e060dec56b523ac16269fc3fbae54e57a4b75296745973da2db16bcadc8`.
+
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-frozen-calibration-20260830T213833Z`.
+
+This result passes the calibration gate. The sealed eight-task holdout may now
+open against the same source tree and portable binary.
