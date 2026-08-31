@@ -7483,3 +7483,31 @@ The retained evidence directory is
 
 This result passes the calibration gate. The sealed eight-task holdout may now
 open against the same source tree and portable binary.
+
+## Matched two-worker qualification protocol
+
+The concurrency qualification will run these four already-open development
+tasks in the listed order:
+
+1. `cancel-async-tasks`;
+2. `git-multibranch`;
+3. `fix-git`;
+4. `sqlite-db-truncate`.
+
+The ordering forms two resource-compatible pairs. Prior frozen development
+measurements give similar durations within each pair and predict about a
+one-half ideal makespan reduction. The cohort also avoids high-memory tasks
+and tasks with long model-call histories that would confound host concurrency
+with provider overload.
+
+One serial run will establish the matched baseline. A strict two-worker run
+will then require every task to start in a pair. Both runs use the frozen source
+tree and binary, GPT-5.6 Sol, low reasoning for implementation, xhigh reasoning
+for independent workflow stages, the priority service tier, and measurement-
+only token allowances.
+
+Qualification requires all four tasks to receive the same grader scores in
+both runs. Every Foe account must conform, every provider request must report
+usage, and neither run may expose a credential or suffer an infrastructure
+failure. The two-worker makespan must be no more than two-thirds of the serial
+makespan.
