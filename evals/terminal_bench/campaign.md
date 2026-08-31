@@ -7551,3 +7551,39 @@ The retained evidence directories are:
 The two-worker gate remains open. Its controller must admit both pairs before
 provider spend, and its task-execution makespan must not exceed 1,086.321
 seconds.
+
+## Two-worker execution preserves quality and reduces makespan
+
+The strict two-worker run started both planned pairs. All four unchanged
+task-owned graders awarded reward 1.0, matching the serial baseline. No task
+fell back to serial execution.
+
+| Attempts | Successes | Model calls | Input | Cache read | Output | Estimated cost | Task-execution makespan |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 4 | 91 | 739,626 | 251,904 | 81,102 | $3.673690 | 984.389 seconds |
+
+The first pair, `cancel-async-tasks` and `git-multibranch`, took 648.545
+seconds. The second pair, `fix-git` and `sqlite-db-truncate`, took 335.844
+seconds. Their sum is 39.6 percent below the matched serial makespan of
+1,629.481 seconds. The result exceeds the required one-third reduction and the
+fixed 1,086.321-second threshold.
+
+Each pair reserved 4,096 MiB across its task containers. The controller
+admitted each pair only after available memory covered that reservation plus
+4,096 MiB of host headroom. Full-memory pressure remained zero, and the host
+did not swap out additional pages during either pair.
+
+Every task completed without a Harbor exception. Every Foe process exited
+zero, every configuration claim is valid, every provider request reports
+usage, and the adapter records no credential exposure. Each worker received a
+private access-only credential lease. The persistent credential state was not
+shared between concurrent processes.
+
+The evaluated source tree and portable binary match the calibration release.
+The campaign manifest digest is
+`sha256:571cc2475ebf349b28960578cbd96a89f44434c3c389a807ede91b14103ecade`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-frozen-concurrency-parallel-20260831T042319Z`.
+
+The concurrency gate is complete. The sealed holdout may now run against the
+same source tree and portable binary.
