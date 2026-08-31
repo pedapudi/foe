@@ -7342,3 +7342,30 @@ sockets.
 The calibration release has fourteen successes among sixteen completed tasks.
 Four tasks remain, and the quality gate requires at least three more successes.
 One additional failure remains permissible.
+
+## Independent cryptographic checks confirm the certificate bundle
+
+The `openssl-selfsigned-cert` implementation generated the requested RSA key,
+self-signed certificate, combined PEM, verification report, and executable
+Python checker. It applied the requested file modes and certificate subject.
+
+Independent assessment verified the files through OpenSSL and the public
+checker. Fresh final confirmation compared the key and certificate public
+keys, measured the exact 365-day interval, enumerated the unique PEM component
+spans, and exercised the checker from two working directories. The unchanged
+task-owned grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `openssl-selfsigned-cert` | 1.0 | 15 | 100,589 | 24,064 | 17,614 | $0.668006 | 387.119 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The final
+account cites exact modes, key checks, matching public-key digests, certificate
+verification, the validity interval, PEM spans, report bytes, and checker
+output.
+
+The calibration release has fifteen successes among seventeen completed tasks.
+Three tasks remain, and the quality gate requires at least two more successes.
+One additional failure remains permissible.
