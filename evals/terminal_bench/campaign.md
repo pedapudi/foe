@@ -7205,3 +7205,31 @@ a valid workspace after the repair episode reached its backstop.
 The calibration release has nine successes among eleven completed tasks. Nine
 tasks remain, and the quality gate requires at least eight more successes. One
 additional failure remains permissible.
+
+## Bundle integration preserves exact history and generalizes the mapping
+
+The `merge-diff-arc-agi-task` implementation imported each supplied Git
+bundle into its required local branch. It merged the second bundle into the
+first and resolved `algo.py` with a period-three anti-diagonal mapping derived
+from the supplied examples.
+
+Independent assessment verified both complete bundle histories, the ordered
+merge parents, the checked-out branch, and a clean index and worktree. It also
+derived the mapping independently and exercised nine additional fixtures.
+Fresh final confirmation expanded the fixture range through 20 by 23 grids
+and accepted the artifact. The unchanged task-owned grader awarded reward
+1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `merge-diff-arc-agi-task` | 1.0 | 28 | 322,822 | 153,600 | 17,913 | $1.096588 | 428.084 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. All three
+model stages agreed and supported their decisions with exact history checks
+and public-interface fixtures.
+
+The calibration release has ten successes among twelve completed tasks. Eight
+tasks remain, and the quality gate requires at least seven more successes. One
+additional failure remains permissible.
