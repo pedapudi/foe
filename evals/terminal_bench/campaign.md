@@ -7369,3 +7369,32 @@ output.
 The calibration release has fifteen successes among seventeen completed tasks.
 Three tasks remain, and the quality gate requires at least two more successes.
 One additional failure remains permissible.
+
+## Independent checks accept a single-source C and Python polyglot
+
+The `polyglot-c-py` implementation wrote one source file whose C and Python
+branches both compute arbitrary-precision Fibonacci values. The C branch uses
+a base-1,000,000,000 integer representation and compiles with the requested
+GCC command.
+
+Independent assessment exercised both language interfaces and accepted the
+artifact. Fresh final confirmation compiled the complete source, compared 301
+C results with an independent decimal-string oracle, and checked the complete
+delimiter structure. Its environment did not expose a Python executable, so
+it validated that branch structurally. The unchanged task-owned grader
+exercised the required interfaces and awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `polyglot-c-py` | 1.0 | 33 | 358,501 | 150,528 | 30,359 | $1.499283 | 719.599 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The final
+account cites the complete source inventory, preprocessor output, known values,
+the exhaustive independent oracle, exact output bytes, and Python branch
+structure.
+
+The calibration release has sixteen successes among eighteen completed tasks.
+Two tasks remain, and either task can supply the seventeenth success required
+by the quality gate.
