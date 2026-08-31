@@ -19,11 +19,12 @@ least 85 percent quality on the twenty-task calibration set. It must also
 demonstrate repeatable self-improvement that transfers beyond each activation
 case.
 
-Every provider request uses GPT-5.6 Sol and the standard service tier. Low
-reasoning is the primary coding setting. Conditional escalation may use at
-most `xhigh` reasoning. Token use, estimated cost, cache use, and latency
-are measurements. Task quality is the only candidate promotion metric until
-every quality gate passes.
+Every provider request that qualifies the frozen release uses GPT-5.6 Sol and
+the priority service tier. Low reasoning is the primary coding setting.
+Conditional escalation may use at most `xhigh` reasoning. Historical
+diagnostic runs retain their recorded service tiers. Token use, estimated
+cost, cache use, and latency are measurements. Task quality is the only
+candidate promotion metric until every quality gate passes.
 
 Candidate changes may affect Foe source, a general workflow configuration, an
 instruction section of the retained self-improvement program, or a declared
@@ -81,9 +82,10 @@ least a 20 percent reduction in median estimated cost. The cost comparison may
 use conditional Sol reasoning escalation. It must preserve task quality.
 
 Planning estimates bound campaign exposure before each confirmed command.
-They do not reject a candidate that improves task quality. Development runs
-use the standard service tier and record it in the manifest. Foe records
-usage without enforcing token ceilings during ordinary quality runs.
+They do not reject a candidate that improves task quality. Runs that qualify
+the frozen release use the priority service tier and record it in the
+manifest. Foe records usage without enforcing token ceilings during ordinary
+quality runs.
 
 A retained qualification remains valid while the evaluated source tree,
 portable binary, task registry, model configuration, and task semantics remain
@@ -7736,3 +7738,56 @@ The replacement campaign manifest digest is
 `sha256:4f8f81038ed3e620b72dd1e775cb999ac27a01cd150df82381ac014abada5a6a`.
 Its evidence directory is
 `/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-frozen-fresh-holdout-replacement-20260831T194614Z`.
+
+## Frozen release satisfies the active qualification objective
+
+The frozen release at source commit
+`eecfce6ef89c37ee3bdba7f9f8ac81e48f9a24dd` satisfies every condition in the
+active release-qualification objective.
+
+| Qualification condition | Result |
+| --- | --- |
+| Reproducible harness-limited failures | The release lineage converted `git-multibranch`, `sanitize-git-repo`, and `model-extraction-relu-logits`. The combined corrected release passed all three under one binary. |
+| Development quality | 12 of 12 tasks passed. Later model-visible changes requalified their affected mechanisms under the record's smallest-affected-gate rule. |
+| Autonomous improvements | Two identity-bound improvements qualified on activation and unrelated transfer tasks. One changed workflow configuration. One changed source, added a Rust regression test, and updated three affected specifications. |
+| Confirmation quality | 15 of 16 attempts passed, and every one of the eight tasks succeeded. |
+| Calibration quality | 18 of 20 tasks passed. |
+| Fresh sealed holdout quality | 7 of 8 valid tasks passed. |
+| Credential-safe concurrency | Both two-worker pairs started, all four tasks passed, evidence and credential isolation held, and makespan fell by 39.6 percent. |
+| Model policy | Every qualifying request used GPT-5.6 Sol on the priority service tier. Implementation used low reasoning, and independent stages used at most `xhigh`. |
+| Evidence retention | Every qualifying result retains its task score, Foe account, source and binary identities, conformance result, usage, and campaign manifest. |
+
+The development qualification used source commit
+`313d53e135c80761eaec06cf3923e935d14cfc55`. The final release descends from
+that commit and from the three correction commits. Subsequent changes affected
+assessment behavior. The campaign requalified each affected failure family,
+then passed the complete confirmation, calibration, and fresh holdout gates on
+the final source and binary identities. This disposition follows the
+incremental requalification rule declared before those runs.
+
+The autonomous workflow improvement passed two `dna-insert` activation
+attempts and transferred to `git-multibranch`. The autonomous source
+improvement is commit `e12ce87a7ea3fb8784c98a4b39c4ed5698025b2b`. It changed
+the built-in assessed-coding contract, added a regression in
+`crates/cli/src/run_test.rs`, and updated `docs/config.md`, `docs/design.md`,
+and `docs/self-improvement.md`. Its activation passed `dna-insert`, and its
+unrelated transfer passed `gpt2-codegolf`. Both improvements are ancestors or
+retained identity-bound inputs of the final release.
+
+The first sealed holdout remains retained as independent evidence with two
+successes and two valid failures before its resource stop. The fresh cohort
+was selected before any task instruction or trajectory was opened. A provider
+policy refusal occurred before Foe received a model response. The replacement
+task was frozen before its instruction or trajectory was opened. The refusal
+remains retained outside the eight valid task-quality attempts.
+
+The active objective allows two confirmation failures and does not require
+zero infrastructure-attributed failures. The first `crack-7z-hash`
+confirmation attempt remains a Foe-attributed failure in the quality total.
+The task was excluded from further work by operator direction. This release
+qualification makes no broader claim that every avoidable infrastructure
+failure has been eliminated.
+
+The next Pareto campaign may optimize estimated cost while preserving these
+quality results. Cost optimization is separate from this completed quality
+qualification.
