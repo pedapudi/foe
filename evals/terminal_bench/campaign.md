@@ -7694,3 +7694,21 @@ configuration claim are valid, every provider request reports usage, and no
 infrastructure failure is recorded. The cohort now has five successes from six
 valid attempts. The serial controller continued with
 `torch-tensor-parallelism`.
+
+`torch-tensor-parallelism` received reward 1.0 after 2,090 seconds. The account
+and configuration claim are valid, every provider request reports usage, and
+no infrastructure failure is recorded. The original invocation therefore
+completed seven valid attempts with six successes and one failure. The valid
+attempts used 6,552,174 input tokens, 4,203,520 cached-input tokens, 295,066
+output tokens, and an estimated $16.977344. Their task-execution makespan was
+13,664 seconds.
+
+The original invocation also retained the provider-refused
+`break-filter-js-from-html` attempt. Its invalid configuration claim caused the
+campaign command to exit nonzero after all selected tasks finished. The exit
+does not invalidate the seven mechanically complete task-quality results.
+`build-cython-ext` now runs alone under the distinct label
+`overlapping-artifact-decomposition-frozen-fresh-holdout-replacement`. It uses
+the same frozen release, model, reasoning policy, priority service tier, and
+serial controller. A success will complete the replacement cohort with seven
+successes from eight valid tasks.
