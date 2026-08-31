@@ -7648,3 +7648,18 @@ use xhigh reasoning, and every request uses the priority service tier. The
 tasks will run serially because the prior holdout observed host swap growth
 during concurrent execution. This choice isolates task quality from host
 contention. The cohort passes with at least seven task successes.
+
+## Provider refusal replaces one fresh holdout task
+
+`adaptive-rejection-sampler` received reward 1.0 after 4,560 seconds.
+`break-filter-js-from-html` did not receive a model response. The provider
+rejected the first request as possible cybersecurity content and reported no
+usage for that request. Harbor assigned reward 0.0, but the adapter classified
+the attempt as a Foe runtime failure with incomplete resource measurement.
+This attempt does not measure task quality.
+
+`build-cython-ext` replaces the policy-incompatible task in the eight-task
+cohort. It was selected before opening its instruction or any trajectory. The
+replacement preserves the cohort's source-and-build coverage without relying
+on content that the selected provider refuses to process. The original refusal
+and its retained account remain part of the campaign record.
