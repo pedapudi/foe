@@ -6968,3 +6968,39 @@ preceding calibration attempts.
 The calibration release has four successes among four completed tasks.
 Sixteen tasks remain, and the quality gate requires at least thirteen more
 successes.
+
+## A repair discards a previously correct report requirement
+
+The `fix-code-vulnerability` implementation wrote the grader-required
+`CWE-93` report entry. It made no tracked source change because the checked-out
+header helpers already rejected carriage returns, line feeds, and null bytes.
+Independent assessment accepted that result after the repository's 367 tests
+passed.
+
+Final confirmation rejected the unchanged source as insufficient evidence of
+a vulnerability fix. It found a separate malformed-range behavior in
+`parse_range_header` and activated repair. Repair changed that parser and
+replaced the report entry with `CWE-20`. A fresh final confirmation accepted
+the repaired parser and report after the 367 repository tests and its targeted
+range fixtures passed.
+
+The unchanged task-owned grader awarded reward 0.0. Five of its six tests
+passed, including all three `_hkey` behavior checks. Its report check required
+`CWE-93` and rejected the replacement `CWE-20` entry. The final repair
+therefore discarded a task requirement that the implementation had already
+satisfied while correcting a separate finding.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fix-code-vulnerability` | 0.0 | 49 | 1,167,466 | 445,952 | 24,554 | $3.555517 | 583.650 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The failure
+identifies a workflow defect: a repair receives the original task and the
+latest findings, but its output contract does not require it to preserve
+previously satisfied requirements.
+
+The calibration release has four successes among five completed tasks.
+Fifteen tasks remain, and the quality gate requires at least thirteen more
+successes.
