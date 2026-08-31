@@ -7587,3 +7587,37 @@ The retained evidence directory is
 
 The concurrency gate is complete. The sealed holdout may now run against the
 same source tree and portable binary.
+
+## Sealed holdout records two successes before a resource stop
+
+The sealed holdout opened against the frozen release and completed its first
+four tasks. `protein-assembly` and `rstan-to-pystan` received reward 1.0.
+`pytorch-model-recovery` and `raman-fitting` received reward 0.0. All four are
+valid task-quality results.
+
+| Attempts | Successes | Model calls | Input | Cache read | Output | Estimated cost | Task-execution makespan |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 2 | 311 | 6,946,923 | 4,175,872 | 276,467 | $18.283893 | 6,065.544 seconds |
+
+Every completed task had one finished trial and no Harbor exception. Every
+Foe process exited zero, every configuration claim is valid, every provider
+request reports usage, and the adapter records no credential exposure. The
+source tree, portable binary, model, reasoning settings, and priority service
+tier match the calibration release.
+
+The first pair reserved 4,096 MiB and completed without memory pressure or
+swap growth. The second pair also reserved 4,096 MiB. The host swapped pages
+out during that pair even though its ten-second full-memory pressure was zero
+at settlement. The strict controller therefore stopped before starting the
+remaining two pairs. `sam-cell-seg`, `torch-pipeline-parallelism`, `tune-mjcf`,
+and `winning-avg-corewars` received no provider request and have no score.
+
+The campaign manifest digest is
+`sha256:f7deb416edfc8a31c60de0481c0cedc0e8e116617fcbd940366d4179a29636c8`.
+The retained evidence directory is
+`/home/sunil/git/foe-post-repair-assessment/target/terminal-bench-jobs/overlapping-artifact-decomposition-frozen-sealed-holdout-20260831T044135Z`.
+
+The holdout gate remains open. A serial continuation will evaluate the four
+unstarted tasks without changing the frozen release. At least one of the two
+failed tasks must also succeed on a reserved confirmation attempt for the
+release to reach seven successful holdout tasks.
