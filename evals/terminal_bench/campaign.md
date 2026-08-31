@@ -7670,3 +7670,10 @@ tokens, 3,596,800 cached-input tokens, 159,721 output tokens, and an estimated
 $10.801296. Both accounts conform, every provider request reports usage, and
 neither attempt records an infrastructure failure. The remaining selected
 tasks continue serially against the same frozen release.
+
+`db-wal-recovery` then received reward 0.0 after 1,166 seconds. The attempt is
+a valid task-quality failure: Harbor finished without an exception, the Foe
+account and configuration claim are valid, every provider request reports
+usage, and no infrastructure failure is recorded. The fresh cohort therefore
+has two successes from three valid attempts. The release must succeed on every
+remaining valid task to meet the predeclared seven-of-eight gate.
