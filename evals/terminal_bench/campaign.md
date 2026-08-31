@@ -7170,3 +7170,38 @@ through every workflow stage and through external grading.
 The calibration release has eight successes among ten completed tasks. Ten
 tasks remain, and the quality gate requires at least nine more successes. One
 additional failure remains permissible.
+
+## Assessment redirects a MIPS build to the supplied VM contract
+
+The `make-doom-for-mips` implementation first produced a static glibc MIPS
+executable. The file had the requested symbols, but the supplied VM terminated
+after 64 instructions and wrote no frame. Independent assessment reproduced
+that failure and identified incompatible syscall conventions. The VM expects
+custom syscall numbers 0, 1, and 2 and starts `main` directly.
+
+Repair built the missing VM-compatible runtime and reached its model-call
+backstop after writing the candidate. Post-repair assessment therefore tested
+the shared workspace instead of accepting the partial outcome. The exact
+`node vm.js` interface then initialized Doom, loaded the supplied WAD, and
+wrote a valid 640 by 400 frame.
+
+Fresh final confirmation rebuilt the executable in an isolated copy and
+obtained a byte-identical ELF. It ran the public interface twice, including a
+case that replaced an invalid pre-existing frame. Both runs produced normal
+Doom output and valid BMP data. The unchanged task-owned grader awarded reward
+1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `make-doom-for-mips` | 1.0 | 105 | 10,692,088 | 8,727,552 | 69,483 | $12.738825 | 2,103.727 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The result
+demonstrates two useful workflow properties: assessment rejected a structurally
+plausible artifact through the required interface, and reassessment recovered
+a valid workspace after the repair episode reached its backstop.
+
+The calibration release has nine successes among eleven completed tasks. Nine
+tasks remain, and the quality gate requires at least eight more successes. One
+additional failure remains permissible.
