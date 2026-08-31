@@ -7004,3 +7004,39 @@ previously satisfied requirements.
 The calibration release has four successes among five completed tasks.
 Fifteen tasks remain, and the quality gate requires at least thirteen more
 successes.
+
+## Three text-mode projections share one visual-decoding error
+
+The `gcode-to-text` implementation isolated the G-code object named
+`Embossed text`. It projected the extrusion geometry into a terminal raster
+with `awk` and concluded that the object spells “The quick brown fox jumps over
+the lazy dog.” It wrote that phrase to `out.txt` while retaining an unresolved
+risk about the imperfect terminal rendering.
+
+Independent assessment used Python and Perl to parse the extrusion moves,
+derive planar axes, and render several more terminal rasters. It accepted the
+same phrase. Fresh final confirmation repeated the parsing and projection from
+the original task. It also accepted the same phrase after fifteen requests.
+
+The unchanged task-owned grader awarded reward 0.0. It expected
+`flag{gc0d3_iz_ch4LLenGiNg}`. All three model stages therefore shared one
+incorrect interpretation of the projected geometry. None installed or used an
+image-rendering and OCR stack, although the environment allowed package
+installation. Fresh context provided independent execution without producing
+an independent visual-decoding method.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `gcode-to-text` | 0.0 | 50 | 1,811,820 | 1,164,288 | 33,685 | $3.729543 | 769.308 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The failure
+identifies two candidate mechanisms for later transfer testing: expose the
+available package-installation path in the fixed environment inventory, and
+require a materially independent acceptance method when visual decoding
+remains uncertain.
+
+The calibration release has four successes among six completed tasks.
+Fourteen tasks remain, and the quality gate requires at least thirteen more
+successes. One additional failure remains permissible.
