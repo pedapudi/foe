@@ -7621,3 +7621,30 @@ The holdout gate remains open. A serial continuation will evaluate the four
 unstarted tasks without changing the frozen release. At least one of the two
 failed tasks must also succeed on a reserved confirmation attempt for the
 release to reach seven successful holdout tasks.
+
+## Fresh eight-task holdout selection
+
+The release has already passed the development, confirmation, calibration,
+and concurrency gates. The partial holdout result remains retained as
+independent evidence. A fresh eight-task cohort will test whether its two
+failures are representative without repeating either failed task.
+
+The cohort was selected before opening any task instruction or trajectory.
+Each task is absent from every earlier campaign run. The selection covers
+eight distinct task families:
+
+1. `adaptive-rejection-sampler`, for numerical sampling;
+2. `break-filter-js-from-html`, for source transformation;
+3. `compile-compcert`, for toolchain construction;
+4. `db-wal-recovery`, for storage recovery;
+5. `financial-document-processor`, for document processing;
+6. `kv-store-grpc`, for a network service;
+7. `qemu-alpine-ssh`, for a virtual-machine service;
+8. `torch-tensor-parallelism`, for distributed machine learning.
+
+The unchanged frozen source tree and portable binary will run every task with
+GPT-5.6 Sol. Implementation uses low reasoning, independent workflow stages
+use xhigh reasoning, and every request uses the priority service tier. The
+tasks will run serially because the prior holdout observed host swap growth
+during concurrent execution. This choice isolates task quality from host
+contention. The cohort passes with at least seven task successes.
