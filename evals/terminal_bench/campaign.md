@@ -7040,3 +7040,36 @@ remains uncertain.
 The calibration release has four successes among six completed tasks.
 Fourteen tasks remain, and the quality gate requires at least thirteen more
 successes. One additional failure remains permissible.
+
+## Live Windows state survives workflow verification
+
+The `install-windows-3.11` implementation installed QEMU and its supporting
+services. It started the supplied disk image through a temporary snapshot,
+published VNC display `:1` on port 5901, and published noVNC through nginx on
+port 80. It also exposed an HMP monitor at `/tmp/qemu-monitor.sock` and left
+every required process detached under PID 1.
+
+Independent assessment negotiated a complete RFB 3.8 session and captured the
+1024 by 768 framebuffer. The framebuffer matched an independent HMP
+screendump pixel for pixel. OCR identified the Windows Program Manager and its
+desktop groups. Monitor-driven keyboard input opened and closed the Program
+Manager File menu, which demonstrated keyboard delivery outside VNC.
+
+Fresh final confirmation repeated the live-service checks. It verified the
+temporary qcow2 overlay and read-only backing image. It also exercised the
+nginx WebSocket route through port 80 and observed the QEMU RFB banner. The
+unchanged task-owned grader awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `install-windows-3.11` | 1.0 | 44 | 878,851 | 507,904 | 31,842 | $2.323790 | 1,132.502 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The case
+also demonstrates that task-required daemonized state can survive child
+episode settlement when the task environment owns the resulting processes.
+
+The calibration release has five successes among seven completed tasks.
+Thirteen tasks remain, and the quality gate requires at least twelve more
+successes. One additional failure remains permissible.
