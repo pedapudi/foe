@@ -8,6 +8,9 @@ aggregate results and promotion decisions. The [capability campaign
 record](campaign.md) defines the staged evaluation and its success criteria.
 The [cross-trajectory capability analysis](cross-trajectory-analysis.md)
 maps retained failures to product changes and promotion gates.
+The [campaign report](campaign-report.md) explains Foe's architecture,
+advantages, protected quality results, trajectory patterns, and
+self-improvement evidence from the completed campaign.
 
 The dataset reference is `terminal-bench/terminal-bench-2-1@6`. The
 [Harbor Hub dataset record](https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1/6)
