@@ -7233,3 +7233,32 @@ and public-interface fixtures.
 The calibration release has ten successes among twelve completed tasks. Eight
 tasks remain, and the quality gate requires at least seven more successes. One
 additional failure remains permissible.
+
+## Modernization preserves the required behavior under Python 3.13
+
+The `modernize-scientific-stack` implementation added a Python 3 replacement
+that reads the supplied UTF-8 configuration and measurements through current
+`pathlib`, `configparser`, and pandas interfaces. It preserved the supplied
+Python 2 source and declared minimum versions for NumPy, pandas, and
+matplotlib.
+
+Independent assessment reproduced both required station means from the CSV
+data and compared the public script output byte for byte. It also exercised
+two copied-layout fixtures with different ordering, sample counts, signs,
+scales, and Unicode text. Fresh final confirmation ran the script with
+deprecation warnings promoted to errors and accepted the artifact. The
+unchanged task-owned grader passed both of its tests and awarded reward 1.0.
+
+| Task | Score | Model calls | Input | Cache read | Output | Estimated cost | Wall seconds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `modernize-scientific-stack` | 1.0 | 15 | 86,562 | 19,456 | 12,198 | $0.520166 | 304.965 |
+
+The attempt completed without a Harbor exception. Its configuration claim is
+valid, its Foe account conforms, every provider request reports usage, and the
+runner records no credential exposure or infrastructure failure. The model
+stages cited the exact public execution, independent arithmetic, dependency
+checks, preserved source hash, and additional fixtures in their final account.
+
+The calibration release has eleven successes among thirteen completed tasks.
+Seven tasks remain, and the quality gate requires at least six more successes.
+One additional failure remains permissible.
