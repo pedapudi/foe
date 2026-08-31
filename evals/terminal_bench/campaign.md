@@ -7677,3 +7677,9 @@ account and configuration claim are valid, every provider request reports
 usage, and no infrastructure failure is recorded. The fresh cohort therefore
 has two successes from three valid attempts. The release must succeed on every
 remaining valid task to meet the predeclared seven-of-eight gate.
+
+`financial-document-processor` next received reward 1.0 after 735 seconds.
+The account and configuration claim are valid, every provider request reports
+usage, and no infrastructure failure is recorded. The cohort now has three
+successes from four valid attempts. Host swap-out did not increase during this
+task, so the serial controller continued with `kv-store-grpc`.
