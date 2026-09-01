@@ -151,26 +151,25 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 
-Ten numbers bound the source. Eight are line budgets over Rust, excluding tests
-and generated code: the kernel, which is the log and core crates together,
-stays under 4,700 lines, the configuration crate under 1,400, the tool crate
-under 1,600, the workflow executor under 1,000, the compaction policy under
-500, the viewer crate under 600, the command-line crate under 1,000, and the
-telemetry crate under 900. The kernel and the tools are budgeted apart because
-a new tool adds capability without touching the loop, so room for tools must
-not become room for the kernel. The kernel and the configuration are budgeted
-apart because the kernel measures the machine and the configuration measures
-the data model, so a document that gains a key must not buy room in the loop.
+Eleven numbers bound the source. Nine are line budgets over Rust, excluding
+tests and generated code. The kernel stays under 5,250 lines. The program
+contract stays under 1,400, tools under 1,760, workflow under 1,000, context
+under 500, view under 600, the command line under 1,300, telemetry under 1,000,
+and lineage under 500. The separate tool budget allows capability growth while
+keeping the kernel ceiling fixed. The kernel measures the machine. The program
+contract measures the data model. Their separate budgets keep a document key
+from enlarging the loop budget.
 The viewer is budgeted apart from the runtime because it delivers a record of a
 run rather than running one; its HTML, TypeScript, and CSS count toward no line
 budget at all. The command line is budgeted apart from the runtime because it
 serves a person at a terminal rather than an episode. Telemetry is budgeted
 apart because it reads a finished log rather than producing one, and no part of
-the runtime depends on it. `scripts/loc.sh` counts the eight, and continuous
-integration fails a build over any of them. The ninth number bounds the browser
-bundle at 150 KB compressed. The tenth is the stripped release binary with that
-bundle embedded, which measured 5,404,568 bytes on 2026-08-22; continuous
-integration builds the bundle before measuring and fails a build over 8 MiB.
+the runtime depends on it. `scripts/loc.sh` counts the nine Rust budgets, and
+continuous integration fails a build over any of them. Another bound limits
+the browser bundle to 150 KB compressed. The last bound is the stripped release
+binary with that bundle embedded. It measured 5,404,568 bytes on 2026-08-22.
+Continuous integration builds the bundle before measuring and fails a build
+over 8 MiB.
 
 ## Documents
 

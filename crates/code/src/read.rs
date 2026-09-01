@@ -8,7 +8,7 @@
 //! buffer boundary.
 
 use crate::{display, parse_args, resolve, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES, READ_BUFFER_BYTES};
-use foe_core::{CallCtx, Tool, ToolValue};
+use foe_core::{CallCtx, Reader, Tool, ToolValue};
 use foe_program::{Effect, ToolSpec};
 use serde::Deserialize;
 use serde_json::json;
@@ -34,23 +34,23 @@ impl Read {
             spec: ToolSpec {
                 name: "read".into(),
                 description: format!(
-                    "Read a text file with line numbers. Shows at most {OUTPUT_MAX_LINES} lines or \
-                     {kib} KiB per call, never splitting a line; when more remains, the result ends \
-                     with a notice naming the offset to continue from. Returns a sha256 version of \
-                     the complete bytes. Binary files are reported with their size rather than shown."
+                    "Read a text file with line numbers or list a directory's immediate entries. \
+                     Shows at most {OUTPUT_MAX_LINES} lines or {kib} KiB per call; when more remains, \
+                     the result names the offset to continue from. File reads return a sha256 version \
+                     of the complete bytes. Binary files are reported with their size rather than shown."
                 ),
                 instruction: Some(
-                    "Use read to look at a file before editing it, then pass its version to edit as \
-                     expected_version. For a long file, continue from the offset the truncation notice \
-                     names rather than rereading from the start."
+                    "Use read on a directory to inspect its sorted immediate entries. Read a file before \
+                     editing it, then pass its version to edit as expected_version. Continue from the \
+                     offset in a truncation notice rather than rereading from the start."
                         .into(),
                 ),
                 params: json!({
                     "type": "object",
                     "properties": {
-                        "path": {"type": "string", "description": "File path, absolute or relative to the first read root."},
-                        "offset": {"type": "integer", "minimum": 1, "description": "First line to show, 1-indexed. Default 1."},
-                        "limit": {"type": "integer", "minimum": 1, "description": format!("Maximum lines to show. Default and cap {OUTPUT_MAX_LINES}.")}
+                        "path": {"type": "string", "description": "File or directory path, absolute or relative to the first read root."},
+                        "offset": {"type": "integer", "minimum": 1, "description": "First line or directory entry to show, 1-indexed. Default 1."},
+                        "limit": {"type": "integer", "minimum": 1, "description": format!("Maximum lines or entries to show. Default and cap {OUTPUT_MAX_LINES}.")}
                     },
                     "required": ["path"],
                     "additionalProperties": false
@@ -59,6 +59,61 @@ impl Read {
             },
         }
     }
+}
+
+fn list(reader: &dyn Reader, path: &std::path::Path, shown: &str, offset: usize, limit: usize) -> ToolValue {
+    let mut entries = match reader.read_dir(path) {
+        Ok(entries) => entries,
+        Err(e) => return ToolValue::error(format!("read: {shown}: {e}")),
+    };
+    entries.sort_by(|left, right| left.path.cmp(&right.path));
+    let total = entries.len();
+    if offset > total.max(1) {
+        return ToolValue::error(format!(
+            "read: offset {offset} is past the end of {shown}, which has {total} entries"
+        ));
+    }
+    let mut rendered = String::new();
+    let mut items = Vec::new();
+    let notice = format!("[Showing entries {offset}-{total} of {total}. Use offset={} to continue.]", total + 1);
+    let row_chars = OUTPUT_MAX_CHARS.saturating_sub(notice.chars().count());
+    let mut used = 0;
+    for (index, entry) in entries.iter().enumerate().skip(offset - 1).take(limit) {
+        let kind = if entry.is_file {
+            "file"
+        } else if entry.is_dir {
+            "directory"
+        } else {
+            "other"
+        };
+        let name = display(reader.roots(), &entry.path);
+        let row = format!("{}\t{kind}\t{name}\n", index + 1);
+        let width = row.chars().count();
+        if used + width > row_chars {
+            break;
+        }
+        used += width;
+        rendered.push_str(&row);
+        items.push(json!({"path": entry.path.display().to_string(), "type": kind}));
+    }
+    let count = items.len();
+    let last = offset.saturating_sub(1) + count;
+    let truncated = last < total;
+    if total == 0 {
+        rendered = format!("[{shown} is empty: 0 entries.]");
+    } else if truncated {
+        let _ = write!(rendered, "[Showing entries {offset}-{last} of {total}. Use offset={} to continue.]", last + 1);
+    }
+    ToolValue::ok(
+        json!({"path": path.display().to_string(), "offset": offset, "total_entries": total,
+               "shown": count, "truncated": truncated, "entries": items}),
+        rendered,
+    )
+    .subject(if total == 0 {
+        format!("{shown} is empty")
+    } else {
+        format!("{shown} entries {offset}\u{2013}{last} of {total}")
+    })
 }
 
 /// What one pass over the stream established.
@@ -277,11 +332,18 @@ impl Tool for Read {
         if offset == 0 {
             return ToolValue::error("read: offset must be at least 1");
         }
+        let max_lines = a.limit.unwrap_or(OUTPUT_MAX_LINES).clamp(1, OUTPUT_MAX_LINES);
+        let metadata = match reader.metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(e) => return ToolValue::error(format!("read: {shown}: {e}")),
+        };
+        if metadata.is_dir() {
+            return list(reader.as_ref(), &path, &shown, offset, max_lines);
+        }
         let mut stream = match reader.open(&path) {
             Ok(s) => s,
             Err(e) => return ToolValue::error(format!("read: {shown}: {e}")),
         };
-        let max_lines = a.limit.unwrap_or(OUTPUT_MAX_LINES).clamp(1, OUTPUT_MAX_LINES);
         let s = match scan(stream.as_mut(), offset - 1, max_lines, OUTPUT_MAX_CHARS) {
             Ok(s) => s,
             Err(e) => return ToolValue::error(format!("read: {shown}: {e}")),
