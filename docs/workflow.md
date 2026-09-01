@@ -37,11 +37,10 @@ A graph gives four things the loop cannot.
 
 A graph with no agency inside it is a script, and a script that calls a
 model fails the first time the model's output does not fit the script's
-expectation. The design therefore gives the model authority over every
-choice the graph declares as a choice, and gives the graph authority over
-which choices exist. The model never adds an edge, reads a node it does not
-follow, invents a node, extends a budget, or skips a verification. The model
-decides, within those bounds, what to do.
+expectation. The model decides every choice that the graph declares as a
+choice. The graph determines which choices exist. The model never adds an
+edge, reads a node it does not follow, invents a node, extends a budget, or
+skips a verification. The model decides, within those bounds, what to do.
 
 ## The graph
 

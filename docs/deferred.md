@@ -150,8 +150,8 @@ key `program_lineage`, the state identity, the evidence-bundle checker,
 and the ancestry checker are implemented: the key's shape in `foe-program`,
 the rest in `foe-lineage`. The implemented `verification/result` event
 carries no digest of the verifier's input; the bundle's adoption record
-closes that gap with the attestation strength lineage-identity.md "Exact
-input binding" states.
+closes that gap with the attestation strength that lineage-identity.md
+"Verification matched to the retained candidate" states.
 
 ## Bazel targets for the browser bundle and the Python package
 

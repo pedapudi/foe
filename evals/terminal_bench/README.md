@@ -469,7 +469,7 @@ tasks from `cases.json`. Confirmation, calibration, and calibration-holdout
 evidence remains unavailable to self-improvement.
 
 The self-improvement workflow derives this digest from the corpus through its
-declared `collect-trajectory-diagnostics` tool node. The tool identity binds
+declared `collect-trajectory-diagnostics` tool node. The tool identity includes
 the collector source, imported modules, `cases.json`, and the corpus manifest.
 The runner derives the same report before model spend and requires the
 workflow result to match it byte for byte.
@@ -494,9 +494,10 @@ one causal contrast, one intervention, and the controls and falsification
 condition needed to evaluate that intervention.
 
 The diagnosis node's completion verifier is a generated executable declared
-through `done_when.verify`. The runner writes it before the episode; it
-applies the same identity-bound candidate validation the runner applies
-after the episode, judging the returned typed diagnosis. A workflow,
+through `done_when.verify`. The runner writes it before the episode. It
+requires the diagnosis to name the retained source tree, runtime binary,
+evidence digest, and execution controls. The runner applies the same checks
+after the episode. A workflow,
 instruction, or tool candidate is therefore accepted inside the episode as
 an authoritative `verification/result` event in the diagnosis child's log,
 and findings return to the same child. A source diagnosis and a typed
@@ -520,12 +521,12 @@ controls whether the coding node fires. The coding node lists `task` and
 `diagnose-runtime` under `follows`, which carries both values into its clean
 context. The raw trajectory digest remains inside the diagnosis child. The
 coding child locates the affected implementation, test, and specification
-files. Its write authority covers runtime crates, specifications, and examples.
+files. Its write grants cover runtime crates, specifications, and examples.
 It cannot write evaluation code or benchmark material.
 
 When the diagnosis chooses `configure-workflow`, the runner validates the
 typed independent-audit setting. It writes `workflow-candidate.json` beside
-the retained result. The candidate digest binds the setting to the evaluated
+the retained result. The candidate digest includes the setting, evaluated
 source tree, binary, evidence file, and preserved execution controls. The
 setting must appear in at least two successful attempts in the supplied
 evidence.
@@ -534,16 +535,17 @@ When the diagnosis chooses `revise-instructions`, the runner validates the
 typed revision against the retained `program.json`: the named section key
 resolves to exactly one instruction section, and the old text occurs exactly
 once in it. It writes `instruction-candidate.json` beside the retained
-result, with the same identity and evidence bindings a workflow candidate
-carries.
+result. The candidate carries the same source-tree, runtime-binary,
+evidence-digest, and execution-control fields as a workflow candidate.
 
 When the diagnosis chooses `define-tool`, the typed result carries the tool's
 name, description, executable content, and that content's digest, because the
-diagnosis episode holds no write authority. The runner checks that the digest
+diagnosis episode holds no write grant. The runner checks that the digest
 matches the content and the description is nonempty, writes
 `tool-candidate.json`, and retains the executable beside it as
 `tool-candidate-executable`. The candidate records the name, description, and
-digest under the same identity and evidence bindings.
+digest with the same source-tree, runtime-binary, evidence-digest, and
+execution-control fields.
 
 The diagnosis prompt targets four requests and has a 20-call, 1,800-second
 loop backstop. The implementation has 28-call and 3,600-second safety
@@ -567,8 +569,8 @@ cannot consume the self-improvement episode.
 The candidate checker repeats formatting, workspace tests, Clippy, and line
 counts under the supplied Cargo cache. It rejects a line count above the
 recorded baseline ceiling. The coding child uses this checker as the line-count
-authority because the repository script reports only absolute limits. Its only
-generated-file write authority is the candidate's private
+source because the repository script reports only absolute limits. Its only
+generated-file write permission covers the candidate's private
 `target/foe-self-improvement-check` directory. Read grants
 cover Cargo and Rustup metadata and installed C headers. Execute grants cover
 the pinned toolchain and candidate build directory. They also cover Cargo's
@@ -581,7 +583,7 @@ cannot expand the checker's existing Landlock domain. The runner repeats
 validation after the episode with the complete workspace test suite.
 
 The no-spend form generates the complete workflow document. It runs that
-document through `foe plan`. A schema, authority, or construction error
+document through `foe plan`. A schema, permission, or construction error
 therefore fails before the runner reports that the workflow is ready.
 
 The coding child receives read-only access to the candidate worktree's Git
@@ -590,9 +592,9 @@ candidate checker operate when the candidate is a linked Git worktree.
 
 The runner validates the artifact after Foe exits. A valid artifact remains
 accepted when the episode exhausted its reporting budget after producing the
-files. A source candidate binds the base Git tree and every changed file
-digest. A workflow candidate binds the independent-audit setting and preserved
-controls. `direct_implementation_required` is true when deterministic
+files. A source candidate records the base Git tree and every changed file
+digest. A workflow candidate records the independent-audit setting and
+preserved controls. `direct_implementation_required` is true when deterministic
 validation finds an error or the workflow produces no candidate.
 
 The runner records every accepted candidate as a lineage transition under

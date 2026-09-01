@@ -14,8 +14,8 @@ Self-improvement means that foe performs five operations in one assessed run:
 2. Give the checker findings to a model episode.
 3. Change the implementation, regression test, and specification together.
 4. Verify the changed source with an executable outside the writable tree.
-5. Preserve the episode tree as evidence of authority, resource use, and
-   information flow.
+5. Preserve the episode tree as evidence of permitted effects, resource use,
+   and information flow.
 
 The implemented example extends the built-in `read` tool with a canonical
 `total_bytes` field. The model must preserve rendered output, add a regression
@@ -39,16 +39,22 @@ produced every admitted trajectory.
 
 The Terminal-Bench self-improvement workflow invokes a declared deterministic
 collector as its first tool node. The collector reads the corpus and produces
-a bounded diagnostic digest. Its executable identity binds the collector
+a bounded diagnostic digest. Its executable identity includes the collector
 modules, corpus manifest, and task-selection file. A preflight derivation must
 produce the same bytes as the recorded workflow result. The diagnosis child
-receives only that result and has no authority to read the raw corpus.
+receives only that result and has no read grant for the raw corpus.
 
 The corpus accepts development and opened capability-search tasks. It rejects
-confirmation, calibration, and holdout tasks. The workflow binds every
-candidate to the source tree and runtime binary that produced its evidence.
-Task execution, corpus snapshotting, and promotion remain separate operations.
-Autonomous cross-run promotion remains unsupported.
+confirmation, calibration, and holdout tasks. Before implementation, the
+workflow compares the corpus source-tree and runtime-binary digests with the
+candidate checkout and executable. A mismatch stops the workflow before a
+model call changes source. The corpus must also identify one failed execution
+configuration without an independent audit. The workflow preserves that
+configuration's model, reasoning effort, service tier, and token policy.
+[Program lineage and transition
+evidence](lineage-identity.md#definitions) defines source-revision and runtime
+matching. Task execution, corpus snapshotting, and promotion remain separate
+operations. Autonomous cross-run promotion remains unsupported.
 
 ## Workflow structure
 
@@ -79,8 +85,8 @@ A successful attempt satisfies six independent conditions:
 3. The episode tree contains successful `read`, `edit`, and `check` results.
 4. Both declared workflow nodes finish.
 5. The root and child episodes record completed outcomes.
-6. The trace evaluator accepts authority, budget, reconstruction, outcome,
-   and workflow-provenance evidence.
+6. The trace evaluator accepts declared-permission, budget, reconstruction,
+   outcome, and workflow-provenance evidence.
 
 The runner checks the first five conditions directly and invokes
 [`evals/trace_quality.py`](../evals/trace_quality.py) for the sixth. The
@@ -97,8 +103,9 @@ archives and compiled after the model-backed attempts.
 
 The measurements below were collected on 2026-08-22 from three fresh runs of
 `openai-codex/gpt-5.6-sol`. Every run used the same program identity and
-runtime binary. The program identity hashes stable behavior, authority
-shape, budgets, child and workflow definitions, and runtime contributions.
+runtime binary. The program identity hashes stable behavior, tool effects,
+grant kinds and counts, budgets, child and workflow definitions, and runtime
+contributions.
 The runtime build hash identifies the binary that enforced the contract.
 
 | property | recorded value |
@@ -176,7 +183,7 @@ output tokens in total. Verifier-call completion removes one request from each
 such trajectory. Differences in edit batching prevent attribution of the
 entire before-and-after token difference to this rule.
 
-### Evidence outside the model's authority
+### Evidence outside the model's write permissions
 
 The model can execute the checker through its declared tool, but it cannot
 write the checker or the repository checkout. The runner invokes the checker
@@ -285,7 +292,7 @@ the change. Feed that finding into the same child through `done_when`.
 Workflow-level retries are appropriate only when the program intends a fresh
 episode with fresh context and has budgeted another episode.
 
-### Giving the model authority over its evaluator
+### Allowing the model to modify its evaluator
 
 An evaluator that the candidate can rewrite cannot establish acceptance.
 Keep the evaluator executable outside writable roots. Run an external grader
@@ -403,8 +410,8 @@ opens the episode in the viewer.
 
 foe can express bounded self-improvement as a two-node workflow. Deterministic
 evaluation supplies evidence, and one terminal model episode changes the
-source under narrow authority. A declared verifier closes the loop without a
-redundant completion request.
+source with write permission limited to the disposable source copy. A declared
+verifier closes the loop without a redundant completion request.
 
 The measured task succeeded in three fresh provider-backed attempts. Every
 candidate passed the external checker, compiled, and passed the affected

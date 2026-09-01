@@ -264,7 +264,7 @@ without making it a prerequisite for product progress.
 | 2 | deterministic environment manifest | latency, cost, and reliability | 114 missing-command results | fewer missing-command probes with no task regression |
 | 3 | conditional fresh validation and repair child | accuracy | 25 completed-but-failed trials | activation-task gain and no development verifier regression |
 | 4 | persistent process handles | capability | background process fails the deterministic probe | server survives across calls, teardown is bounded, trace remains conformant |
-| 5 | staged self-improvement with a causal gate | development velocity | five runs produced no effective candidate | one identity-bound candidate changes an activated mechanism and passes paired evaluation |
+| 5 | staged self-improvement with a causal gate | development velocity | five runs produced no effective candidate | one candidate generated from source-revision- and runtime-matched evidence changes an activated mechanism and passes paired evaluation |
 | 6 | bounded edit confirmation | token cost and latency | repeated 43,308-character edit renderings | paired savings when the bound activates and no accuracy loss |
 | 7 | log-backed result queries and archived slices | long-horizon token cost | individual results replay up to 472,280 characters | lower price-weighted cost on long tasks with equivalent verifier accuracy |
 

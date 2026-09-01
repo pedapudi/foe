@@ -55,7 +55,8 @@ The release must satisfy all of these quality conditions:
 
 The self-improvement evidence must satisfy all of these conditions:
 
-1. Identity-bound cross-trajectory evidence must produce at least two accepted
+1. Cross-trajectory evidence matched to one source revision and runtime binary
+   must produce at least two accepted
    improvements.
 2. At least one improvement must change source, add a regression test, and
    update every affected specification.
@@ -137,7 +138,8 @@ revised candidate must satisfy these conditions:
 
 1. Convert three reproducible harness-limited failures into task-owned grader
    successes.
-2. Produce two accepted, identity-bound improvements through the declared
+2. Produce two accepted improvements from source-revision- and runtime-matched
+   evidence through the declared
    self-improvement workflow. One improvement must change Foe source, add a
    regression test, and update every affected specification.
 3. Show at least two successes from three unchanged Terminal-Bench attempts
@@ -416,15 +418,15 @@ The two successful attempts used 73 model calls, 1,442,052 input tokens,
 estimated cost was $3.483303. The low-only attempt has one response without a
 usage record, so its complete resource total is unavailable.
 
-The identity-bound self-improvement workflow read the three retained
-diagnoses. Its first diagnosis selected the measured audit intervention but
+The self-improvement workflow read three retained diagnoses from the evaluated
+source revision and runtime binary. Its first diagnosis selected the measured audit intervention but
 copied an unsupported six-call value into its typed setting. Commit `7a045e2`
-moved that factual binding into the deterministic evidence resolver. The
+moved resolution of that value into the deterministic evidence resolver. The
 repaired workflow then used one Luna-low request and produced the
 accepted workflow candidate
 `sha256:d8ce2e7acbb626c18b552619d7c53bb7be0ad7eeff7496211395c05e10b23bbb`.
-The candidate binds the measured 60-call Sol `xhigh` audit to the evaluated
-source, binary, evidence digest, and preserved low-effort controls.
+The candidate records the measured 60-call Sol `xhigh` audit with the
+evaluated source, binary, evidence digest, and preserved low-effort controls.
 
 The generated candidate then ran on unchanged, closed-book Terminal-Bench
 without the public completion verifier. The low child used 14 calls, and the
@@ -466,12 +468,12 @@ The attempts used 35 and 45 calls. Together they used 1,648,448 input tokens,
 1,005,056 cached-input tokens, and 55,875 output tokens. Their estimated cost
 was $4.093090.
 
-The three trajectory diagnoses formed a 54,575-byte identity-bound evidence
-file. One Luna `low` request used 18,339 input tokens and 703 output
+The three trajectory diagnoses formed a 54,575-byte evidence file for one
+source revision and runtime binary. One Luna `low` request used 18,339 input tokens and 703 output
 tokens to diagnose the repeated audit contrast. The self-improvement runner
 then produced the accepted workflow candidate
 `sha256:8237704f9221b80d7219a43d07eacacac9cc8d6753fb4a420cc993da771460b5`.
-The candidate binds the 60-call Sol `xhigh` audit to the evaluated source,
+The candidate records the 60-call Sol `xhigh` audit with the evaluated source,
 binary, evidence digest, and low-effort execution controls.
 
 This result repeats the GPT-2 self-improvement mechanism on a different task.
@@ -546,8 +548,8 @@ The retained local evidence is stored under these paths:
 
 ## Source-level self-improvement result
 
-On 2026-08-25, identity-bound trajectory evidence asked the self-improvement
-workflow to change Foe source. The requested behavior made the built-in
+On 2026-08-25, the self-improvement workflow received trajectory evidence for
+one source revision and runtime binary. It was asked to change Foe source. The requested behavior made the built-in
 terminal audit authoritative whenever the command names a completion
 verifier.
 
@@ -719,8 +721,8 @@ and repair allowances are added to the implementation allowance.
    retained run, source identity, and runtime identity. It includes request
    growth, replayed results, final validation activity, verifier failures, and
    cited log sequences.
-7. Run identity-bound self-improvement. Use Sol `low` for diagnosis and
-   implementation. Use Sol `xhigh` for the independent source audit and at
+7. Run self-improvement with source-revision- and runtime-matched evidence.
+   Use Sol `low` for diagnosis and implementation. Use Sol `xhigh` for the independent source audit and at
    most Sol `xhigh` for conditional escalation.
 8. Validate each generated candidate outside the self-improvement episode.
    Implement the diagnosed change directly when the generated candidate is
@@ -882,12 +884,12 @@ An instruction candidate contains one revision whose old text occurs exactly
 once in the named section of the named program document. A tool candidate
 contains one tool_defs entry with the executable's content digest, and the
 executable file is retained beside the candidate. Every candidate's digest
-binds its content to the evaluated source, binary, evidence, and preserved
+includes its content, evaluated source, binary, evidence, and preserved
 execution controls.
 
 The diagnosis node declares a runner-generated validator as its completion
 verifier through `done_when.verify`. The validator judges the returned typed
-diagnosis with the same identity-bound candidate validation the runner
+diagnosis with the same source-revision and runtime-binary validation the runner
 applies after the episode, so an accepted workflow, instruction, or tool
 candidate is an authoritative `verification/result` event in the diagnosis
 episode's log, and findings return to the same episode. A source diagnosis
@@ -946,7 +948,7 @@ a nonconformant partial trace. Its task quality remains part of the result. Its
 resource use is excluded from the exact totals. The runner gives Harbor an
 outer timeout equal to all possible Foe stage allowances plus five minutes.
 
-The identity-bound evidence digest contained the five single-episode
+The source-revision- and runtime-matched evidence digest contained the five single-episode
 trajectories. Its evaluated source identity was
 `git-tree-sha1:267cbce2b9da0d6eff3970acb335986050db0ead`. The retained file is
 `target/current-source-gpt2-trajectory-evidence.json`.
@@ -969,7 +971,7 @@ did not identify an enforceable Foe mechanism.
 This result validates abstention from an unsupported source candidate. It
 does not satisfy the campaign requirement for a verified self-improvement.
 The campaign therefore requires a direct product improvement and a new
-identity-bound contrast that activates a specific Foe mechanism.
+contrast from one source revision and runtime that activates a specific Foe mechanism.
 
 The retained self-improvement result is
 `target/current-source-gpt2-self-improvement-sufficiency-run/result.json`.
@@ -980,7 +982,7 @@ and
 The excluded timeout trial is retained under
 `target/terminal-bench-jobs/sol-low-high-audit-gpt2-confirmation-3-20260824T063905Z`.
 
-## Recorded identity-bound workflow contrast
+## Recorded source-revision- and runtime-matched workflow contrast
 
 On 2026-08-24, a matched contrast used source tree
 `git-tree-sha1:fec3eaa8cb39c6e005fa787aa6c46d0ce48d821e` and binary
@@ -1014,12 +1016,12 @@ The retained runs are:
 
 The bounded self-improvement input contains the three bare failures and two
 audited successes. The remaining audited trajectory stays in the raw archive.
-The identity-bound digest is
+The source-revision- and runtime-matched digest is
 `target/gpt2-workflow-contrast-trajectory-evidence.json`.
 
 ## Recorded workflow self-improvement and candidate validation
 
-On 2026-08-24, Foe read the identity-bound workflow contrast and selected a
+On 2026-08-24, Foe read the source-revision- and runtime-matched workflow contrast and selected a
 general independent audit after implementation. One GPT-5.6 Luna request with
 high reasoning produced the workflow candidate. The request used 20,144 input
 tokens and 1,686 output tokens. It took 31.632 seconds and cost an estimated
@@ -1031,7 +1033,7 @@ the default service tier and measurement-only token policy.
 
 The candidate is
 `sha256:1ce8dd0b3c1ce3f16e305d20e9d27848b1c8212d9636dccfc7aa7cfdc4da233a`.
-It binds source tree
+It records source tree
 `git-tree-sha1:fec3eaa8cb39c6e005fa787aa6c46d0ce48d821e`, runtime binary
 `sha256:b2a4ba85d8858b5b3bfd860e31d345ee8d9fe06b6784075004c1a4891a54fe43`,
 and the evidence digest. The external candidate validator accepted it without
@@ -1259,7 +1261,7 @@ schema output under `foe plan --schema`. The installer now uses the supported
 form. A provider-free installation trial passed in the pinned task container
 before the five scored runs.
 
-The identity-bound evidence file is
+The source-revision- and runtime-matched evidence file is
 `/home/sunil/git/foe-terminal-audit-transient-retry/target/standard-built-in-verifier-five-case-evidence.json`.
 It contains five typed trajectory diagnoses. Completed outcomes retain their
 typed status and omit repeated model-authored completion prose. This keeps the
@@ -1293,7 +1295,7 @@ and cost an estimated $0.749144. The result isolated live machine state as the
 quality mechanism. It did not reveal the task-owned grader to either model
 episode.
 
-An identity-bound evidence digest combined the two closed-book failures, the
+A source-revision- and runtime-matched evidence digest combined the two closed-book failures, the
 public-checker success, and successful `fix-git` and
 `path-tracing-reverse` trajectories. The file is
 `/home/sunil/git/foe-terminal-audit-transient-retry/target/git-multibranch-verifier-contrast-evidence.json`.
@@ -1311,7 +1313,7 @@ test under Landlock, which produced an unrelated denial. The checker omits
 listener tests during the confined candidate check. Full post-episode
 validation still runs the complete workspace suite.
 
-A second identity-bound attempt reached its in-episode completion gate after
+A second source-revision- and runtime-matched attempt reached its in-episode completion gate after
 the listener exclusion. The coding child again added `session` to the built-in
 tool surface. The confined check accepted the candidate because it excluded
 the entire command-line package. External validation then failed the existing
@@ -1325,7 +1327,7 @@ changes built-in workflow behavior must therefore preserve the remaining
 command-line invariants before its coding child can complete. Post-episode
 validation remains the final candidate authority.
 
-A third identity-bound attempt exercised the command-line completion gate. The
+A third source-revision- and runtime-matched attempt exercised the command-line completion gate. The
 gate returned compiler and workflow-ceiling findings to the coding child. Two
 correction requests repaired the compiler error but left the workflow ceiling
 invalid. Foe ended blocked with `verification-unsatisfiable`, and external
@@ -1376,7 +1378,7 @@ and cost an estimated $0.685828. The collector combined the failed closed-book
 and successful verifier-governed trajectories under source tree
 `git-tree-sha1:f59396ab8951576779a2d004b8581614c1c89178` and runtime binary
 `sha256:f1acce966eeef2b489578ee33833e86255333911cf8e48cfae16d426fa80404d`.
-The identity-bound feedback is
+The source-revision- and runtime-matched feedback is
 `/home/sunil/git/foe-live-state-source-candidate-xhigh-audit/target/live-state-generation-feedback.json`.
 
 A source generation informed by those trajectories identified the executor
@@ -1439,7 +1441,7 @@ and its trace conformed with zero violations.
 
 The live-environment source change therefore converts one reproducible
 harness-limited failure and transfers across unrelated task families. Both the
-direct implementation and the artifact produced from identity-bound feedback
+direct implementation and the artifact produced from source-revision- and runtime-matched feedback
 satisfy the task-quality criterion. The smaller direct implementation remains
 the preferred source-review candidate.
 
@@ -1575,7 +1577,7 @@ The retained jobs are the six directories whose names begin with
 
 ## Recorded task-derived audit source candidate
 
-An identity-bound evidence file combined the failed closed-book DNA attempt,
+A source-revision- and runtime-matched evidence file combined the failed closed-book DNA attempt,
 the successful verifier-governed DNA attempt, and a successful closed-book
 GPT-2 control. It bound source tree
 `git-tree-sha1:2fbeddc6173fe764824960931884815a37dd443a` and runtime binary
@@ -1758,7 +1760,7 @@ The closed-book evidence is retained in these directories:
 The verifier-governed evidence is retained at
 `/home/sunil/git/foe-dna-self-improvement-candidate/target/terminal-bench-jobs/verifier-governed-conditional-reaudit-dna-20260825T213729Z`.
 
-An identity-bound self-improvement run then considered a general workflow
+A source-revision- and runtime-matched self-improvement run then considered a general workflow
 change from this contrast. The Luna diagnosis used four model calls and cost an
 estimated $0.0143. It returned `insufficient-evidence` because one task family
 did not support a general rule for deriving executable acceptance checks. No
@@ -1922,7 +1924,7 @@ negative-control findings, Harbor exit codes, and task-owned rewards.
 
 ## Cross-trajectory evidence-capacity qualification
 
-The identity-bound collector ran against seven retained diagnoses from source
+The source-revision- and runtime-matched collector ran against seven retained diagnoses from source
 tree `git-tree-sha1:2fbeddc6173fe764824960931884815a37dd443a` and runtime
 binary
 `sha256:f3d38553a3b3766bf928b1b4686cc802b532ab3691aff52459160427275d28cb`.
@@ -2322,10 +2324,11 @@ assertions with no violation. The transfer is retained under
 Its campaign manifest SHA-256 is
 `af29e1083042665f56fc42bd86f10ed7a3ecd3fe437b0449c5afd9c06efcb90d`.
 
-The candidate therefore satisfies the source-improvement transfer gate: it is
-identity-bound, accepted without direct repair, includes source, test, and
-specification changes, scores 3.0 of 3.0 on its activation case, and scores
-1.0 on an unrelated task. The reviewed implementation remains the production
+The candidate therefore satisfies the source-improvement transfer gate. Its
+evidence matches the source revision and runtime binary. It was accepted
+without direct repair and includes source, test, and specification changes.
+It scores 3.0 of 3.0 on its activation case and 1.0 on an unrelated task. The
+reviewed implementation remains the production
 candidate because it enforces the same mechanism with stronger exact checks.
 
 Direct review found two correctness gaps in the autonomously generated gate.
@@ -2749,7 +2752,7 @@ acceptance rule.
 
 ## Autonomous source-review capacity failure and workflow repair
 
-An identity-bound source-improvement attempt used the repeated `dna-insert`
+The source-improvement attempt used source-revision- and runtime-matched evidence from the repeated `dna-insert`
 contrast and retained assessment feedback for a rejected source candidate. All
 model requests used GPT-5.6 Sol. The attempt used the default service tier, so
 it does not contribute to the priority-tier campaign gates.
@@ -2813,7 +2816,7 @@ missing. The source checker still rejects an absent or invalid artifact.
 
 ## Autonomous repository-validation candidate rejection
 
-The repaired self-improvement workflow repeated the same identity-bound source
+The repaired self-improvement workflow repeated the same source-revision- and runtime-matched source
 request with the priority service tier. Diagnosis used one call, implementation
 used 30, read-only review used seven, and verifier-owned finalization used one.
 The workflow completed in 483.273 seconds. The external source checker accepted
@@ -3113,7 +3116,7 @@ declared insert as one semantic operand and remained within the five-degree
 limit.
 
 The release is rejected at confirmation. These paired successful and failed
-trajectories become identity-bound evidence for targeted self-improvement.
+trajectories become source-revision- and runtime-matched evidence for targeted self-improvement.
 They do not authorize another unchanged qualification or confirmation run.
 Only a source candidate that changes one diagnosed mechanism may repeat its
 affected activation and transfer cases.
@@ -3182,7 +3185,7 @@ model-visible program. It therefore does not invalidate any completed
 qualification. The repeatability campaign manifest has SHA-256 digest
 `83b8acfb95fc3df4295478856aaae5c46d20e6940c5ea576b3b6ddac8df70600`.
 
-## Identity-bound source candidate for completion auditing
+## Source-revision- and runtime-matched candidate for completion auditing
 
 The self-improvement workflow consumed only the three retained `dna-insert`
 trajectories. The corpus contained two failures and one success from the exact
@@ -3282,7 +3285,7 @@ local evidence worktree.
 
 The rejected completion-falsification candidate recreated the mechanism of an
 earlier rejected completion-audit candidate on a different parent source tree.
-The self-improvement controller already had an identity-bound assessment of
+The self-improvement controller already had an assessment, matched to its source revision and runtime binary, of
 the earlier candidate. A source-tree equality check prevented the diagnosis
 from using that assessment with the frozen release.
 
@@ -3311,7 +3314,7 @@ service tier. No model request was made.
 The controller and documentation changes do not alter the frozen release,
 task registry, model-visible evaluated program, or task semantics. Completed
 release qualification therefore remains valid. The next provider spend is one
-identity-bound source-generation workflow. A resulting candidate receives
+source-revision- and runtime-matched source-generation workflow. A resulting candidate receives
 only its affected activation gate before any transfer or qualification work.
 
 ## Assessment-guided independent-evidence candidate
@@ -3783,7 +3786,7 @@ Raw evidence remains under
 
 The frozen candidate is 2/3 on `dna-assembly`. The one false acceptance still
 identifies a valid audit defect. It does not supply the two matching failures
-required for an identity-bound repeated-failure contrast. The campaign will
+required for a repeated-failure contrast from one source revision and runtime binary. The campaign will
 not treat that single failure as sufficient evidence for an autonomous source
 change. The 11/12 development disposition remains unchanged.
 
@@ -3830,7 +3833,7 @@ longer implies that semantic review findings were resolved.
 The Terminal-Bench evaluation unit suite and Python compilation pass. A
 retrospective check rejects the retained candidate because its finalization
 returned no typed value. The revised workflow passes a no-spend `foe plan`
-against the same identity-bound evidence and parent. Campaign commit
+against the same source-revision- and runtime-matched evidence and parent. Campaign commit
 `f0bc01b` contains the controller, regression tests, and operator
 documentation. The repair changes no evaluated Foe runtime, so the 11/12
 development result remains valid. The next provider-backed action is one
@@ -3964,7 +3967,7 @@ has SHA-256 digest
 Raw evidence remains under
 `/home/sunil/git/foe-second-independent-audit-candidate/target/terminal-bench-jobs/standard-autonomous-second-audit-dna-activation-20260827T233755Z`.
 
-The source candidate scored 1/3, which matches its identity-bound parent. It
+The source candidate scored 1/3, which matches the parent evaluated from the same source revision and runtime. It
 does not establish an activation improvement, so the campaign rejects it and
 does not spend an unrelated transfer attempt.
 
@@ -4055,7 +4058,7 @@ remain under
 ## Final source-review feedback
 
 On 2026-08-27, the exact aggregate candidate used the rejected source-candidate
-assessment in one identity-bound source-improvement run. Every request used
+assessment in one source-revision- and runtime-matched source-improvement run. Every request used
 GPT-5.6 Sol and the standard service tier. Token limits remained
 measurement-only.
 
@@ -4453,7 +4456,7 @@ The rejected-profile manifest has SHA-256 digest
 Raw evidence remains under
 `/home/sunil/git/foe-audit-evidence-repair-transfer/target/terminal-bench-jobs/frozen-release-confirmation-second-attempts-default-20260828T081120Z`.
 
-The campaign then collected an identity-bound self-improvement corpus from
+The campaign then collected a source-revision- and runtime-matched self-improvement corpus from
 the two closed-book `dna-insert` failures and the successful xhigh episode.
 The corpus contains one repeated failure contrast at
 `tests/test_outputs.py:100`, where both completed artifacts exceeded the
@@ -4496,7 +4499,7 @@ Raw evidence remains under
 
 ## Rejected autonomous source attempt and direct completion-evidence repair
 
-Foe received the identity-bound `dna-insert` trajectory corpus described
+Foe received the source-revision- and runtime-matched `dna-insert` trajectory corpus described
 above. The candidate source matched source tree
 `ba0847225330c05832cfa907c2fbfd9e32c4c4a0` and portable binary
 `fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
@@ -4564,8 +4567,9 @@ The repaired source has these identities:
 - portable binary
   `sha256:4da1e11ac7e63d6ba36c0ba2f956b6a43c2d9930a286d5fd2c8a71984dc07253`.
 
-The identity-bound candidate checker and its full validation mode returned no
-finding. Workspace tests and Clippy passed. Bazel built the portable binary,
+The candidate checker required matching source-revision and runtime-binary
+fields. Its full validation mode returned no finding. Workspace tests and
+Clippy passed. Bazel built the portable binary,
 and the deterministic exec-transport example completed against that binary.
 The kernel remains at its 5,350-line ceiling. External Terminal-Bench results
 have not yet qualified this source candidate.
@@ -4712,7 +4716,7 @@ The assessment binds the rejected source candidate, its source patch, both
 evaluations, and the prior trajectory diagnosis. Its diagnostics identity is
 `sha256:37b5a4a06d317252d1d91d1effef604563b4852f7be543609db0444976f7c5ea`.
 
-Foe received the assessment with the identity-bound `dna-insert` trajectory
+Foe received the assessment with the source-revision- and runtime-matched `dna-insert` trajectory
 corpus. The generation source remained tree
 `ba0847225330c05832cfa907c2fbfd9e32c4c4a0`, and the evaluated portable binary
 remained
@@ -4778,9 +4782,10 @@ The retained result is
 `/home/sunil/git/foe-identity-bound-dna-source-improvement/target/dna-insert-falsification-feedback-source-improvement-default/result.json`.
 Its source trajectory and rejected working tree remain beside that file.
 
-## Identity-bound verifier-governed workflow qualification
+## Source-revision- and runtime-matched workflow qualification
 
-Priority-tier evidence bound two repeated `dna-insert` failures to one matched
+Priority-tier evidence recorded two repeated `dna-insert` failures from one
+matched
 success with declared verifier feedback. The evidence document has SHA-256
 digest
 `5368ea93f4c63ce89fb3621d6ac88e2ca809e14c206998ec19c0c72d64978ef0`.
@@ -4788,7 +4793,7 @@ It describes source tree
 `git-tree-sha1:ba0847225330c05832cfa907c2fbfd9e32c4c4a0` and portable binary
 `sha256:fdcc8989a1757929fd477a4a315011fe35456434f41a2ec65a4c91467eda6e58`.
 
-An identity-bound self-improvement workflow selected independent read-only
+A source-revision- and runtime-matched self-improvement workflow selected independent read-only
 assessment, conditional fresh repair, and declared verifier governance. The
 proposal used one GPT-5.6 Sol low request on the priority service tier. It used
 13,628 input tokens and 1,197 output tokens at an estimated cost of $0.078452.
@@ -4851,8 +4856,9 @@ conformed. The adapter recorded no credential, container, checker, executable,
 sandbox, allowance, or other infrastructure failure. The three task runs took
 793.502 seconds in serial execution.
 
-This result qualifies the first identity-bound autonomous workflow
-improvement. Autonomous diagnosis selected the verifier-governed workflow
+This result qualifies the first autonomous workflow improvement generated from
+source-revision- and runtime-matched evidence. Autonomous diagnosis selected
+the verifier-governed workflow
 structure. Direct engineering corrected the application path and checker
 readiness before external qualification. The result does not qualify an
 autonomous source change, which remains a separate campaign requirement.
@@ -5281,8 +5287,8 @@ The retained campaign manifests and their SHA-256 digests are:
 
 ## Priority-tier autonomous validation-source qualification
 
-An identity-bound trajectory corpus contained two externally rejected
-`dna-insert` episodes and two successful episodes from the same evaluated
+A trajectory corpus for one source revision and runtime binary contained two
+externally rejected `dna-insert` episodes and two successful episodes from the same evaluated
 source and binary pair. Both failures ended as completed Foe episodes. The
 unchanged grader rejected the same primer-temperature assertion in each
 workspace. The compact corpus has SHA-256 digest
@@ -5348,8 +5354,8 @@ This evidence qualifies one priority-tier autonomous source improvement. It
 changes source, adds a regression test, updates every affected specification,
 passes its diagnosis task, and transfers to an unrelated task. Together with
 the qualified priority-tier verifier-governed workflow improvement, it
-satisfies the campaign requirement for two identity-bound transferable
-autonomous improvements.
+satisfies the campaign requirement for two transferable autonomous
+improvements generated from source-revision- and runtime-matched evidence.
 
 The source-owned three-stage development candidate now carries the generated
 validation rule in assessment and repair. The port is source commit
@@ -5704,7 +5710,7 @@ verification converted one attempt on a task that failed three closed-book
 attempts with the same Foe source and binary. The comparison does not show
 that a runtime source change improves closed-book execution.
 
-## Identity-bound DNA evidence corpus
+## Source-revision- and runtime-matched DNA evidence corpus
 
 The trajectory collector selected only `dna-insert` from the three retained
 run directories. The resulting corpus binds every attempt to source tree
@@ -5726,7 +5732,7 @@ the selected corpus.
 
 ## Autonomous source candidate rejected by causal review
 
-The self-improvement workflow consumed the identity-bound DNA corpus and was
+The self-improvement workflow consumed the source-revision- and runtime-matched DNA corpus and was
 forced to propose a source change. It produced changes to the command line,
 program schema, workflow runtime, tests, and specifications. Its internal
 source checker and two review cycles accepted the resulting tree.
@@ -5787,7 +5793,7 @@ contrast fails that requirement because only the successful episode declared
 a completion verifier. Replaying the rejected diagnosis through the corrected
 validator produces one finding and starts no coding child.
 
-Automatic candidate selection then consumed the same identity-bound corpus.
+Automatic candidate selection then consumed the same source-revision- and runtime-matched corpus.
 The diagnosis chose a verifier-governed workflow configuration in one model
 request. It preserved the implementation model, low reasoning effort,
 priority service tier, and measurement-only token policy. The candidate gives
@@ -6083,7 +6089,8 @@ mixed execution configurations, and malformed evidence. The Terminal-Bench
 unit target passes with the changed collector and validator. The source change
 has commit `36e3e63dcecf334bec26be5b47d3a6733ddfa119`.
 
-The corrected collector produced an identity-bound `build-pov-ray` corpus.
+The corrected collector produced a `build-pov-ray` corpus for one source
+revision and runtime binary.
 The evidence has digest
 `ef98ef0d93af9ee4b3d4acd5b262415fa2518a78919cc4cde9176aed9a2c133f`.
 Its repeated-failure contrast has digest
@@ -6094,8 +6101,8 @@ The corpus binds source tree
 It names failed root episodes `ep_5234ae2c` and `ep_e7bf948e`.
 
 This change repairs the self-improvement sensor. It does not improve task
-quality by itself. Its acceptance depends on whether an identity-bound
-candidate generated from the admitted corpus improves an unchanged external
+quality by itself. Its acceptance depends on whether a candidate generated
+from the admitted corpus improves an unchanged external
 score and transfers beyond `build-pov-ray`.
 
 ## Autonomous source candidate adds release-completeness governance
@@ -6211,7 +6218,8 @@ calls and 3,600 seconds per model node.
 The source candidate receives one unchanged closed-book attempt. A passing
 task-owned score must accompany valid lineage, trace conformance, complete
 usage, and activation of the release-completeness classification. Failure
-rejects transfer and returns the candidate to identity-bound diagnosis.
+rejects transfer and returns the candidate to diagnosis from evidence matched
+to the source revision and runtime binary.
 
 ## The selected transfer does not exercise release acquisition
 
@@ -7749,7 +7757,7 @@ active release-qualification objective.
 | --- | --- |
 | Reproducible harness-limited failures | The release lineage converted `git-multibranch`, `sanitize-git-repo`, and `model-extraction-relu-logits`. The combined corrected release passed all three under one binary. |
 | Development quality | 12 of 12 tasks passed. Later model-visible changes requalified their affected mechanisms under the record's smallest-affected-gate rule. |
-| Autonomous improvements | Two identity-bound improvements qualified on activation and unrelated transfer tasks. One changed workflow configuration. One changed source, added a Rust regression test, and updated three affected specifications. |
+| Autonomous improvements | Two improvements generated from source-revision- and runtime-matched evidence qualified on activation and unrelated transfer tasks. One changed workflow configuration. One changed source, added a Rust regression test, and updated three affected specifications. |
 | Confirmation quality | 15 of 16 attempts passed, and every one of the eight tasks succeeded. |
 | Calibration quality | 18 of 20 tasks passed. |
 | Fresh sealed holdout quality | 7 of 8 valid tasks passed. |
@@ -7771,8 +7779,9 @@ improvement is commit `e12ce87a7ea3fb8784c98a4b39c4ed5698025b2b`. It changed
 the built-in assessed-coding contract, added a regression in
 `crates/cli/src/run_test.rs`, and updated `docs/config.md`, `docs/design.md`,
 and `docs/self-improvement.md`. Its activation passed `dna-insert`, and its
-unrelated transfer passed `gpt2-codegolf`. Both improvements are ancestors or
-retained identity-bound inputs of the final release.
+unrelated transfer passed `gpt2-codegolf`. Each improvement either appears in
+the final release's ancestry or supplied a retained input matched to the final
+release's source revision and runtime binary.
 
 The first sealed holdout remains retained as independent evidence with two
 successes and two valid failures before its resource stop. The fresh cohort

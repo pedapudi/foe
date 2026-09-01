@@ -4,21 +4,72 @@ Status: implemented. The configuration parser accepts the
 `program_lineage` key, the identity computation omits it, and the
 `foe-lineage` crate derives the state identity, checks an evidence
 bundle against its canonical manifest, and verifies an ancestry claim
-through two resolvers. The authoritative `verification/result` event
-carries no digest of the verifier's input, because the log format freezes
-an implemented type's data; the adoption record retained in the evidence
-bundle carries the candidate's identity members instead. "Exact input
-binding" states the resolution and its attestation strength. The crate's
-`build-bundle` binary completes a bundle assembled outside the runtime, and
+through two resolvers. The authoritative `verification/result` event carries
+no digest of the verifier's input because the log format freezes an
+implemented type's data. The adoption record instead carries the retained
+candidate's identity members. "Verification matched to the retained
+candidate" states what this proves and the attestation's limits. The crate's
+`build-bundle` binary completes a bundle assembled outside the runtime.
 "Harness adoptions" defines the states the self-improvement runner records.
+
+## Definitions
+
+**Program identity.** A resolved program has a SHA-256 digest called its
+program identity. The digest covers configured behavior, including
+instructions, tool specifications, grant kinds and counts, budgets,
+completion and context policies, child programs, workflows, runtime text, and
+the runtime build. The stable schema field is `program_identity`.
+
+Program identity excludes the task, model route, sandbox mode, concrete grant
+paths, and `program_lineage`. It is a compatibility fingerprint for the
+resolved program members that it covers. A shared identity does not claim that
+different model routes or deployment environments behave identically.
+
+**Program-matched evidence.** Evidence is program-matched when it records the
+program identity that produced it and a consumer confirms that the identity
+equals the program the evidence claims to describe. The comparison prevents
+one program's results from being attributed to another program.
+
+**Source-revision-matched evidence.** Evaluation tooling also records the Git
+tree digest of the source used to build Foe. Evidence is
+source-revision-matched when that digest equals the starting tree of the
+candidate being changed. This comparison prevents a diagnosis of one
+checkout from being applied as though it described another checkout.
+
+**Episode-linked evidence.** A claim is episode-linked when it identifies the
+episode log and event sequence that contain its supporting observation. The
+`learned` return field uses a sequence number within the same episode. A
+lineage transition uses `verification_log` and `verification_seq` within its
+retained evidence bundle.
+
+**Permissions and effect control.** A program declares tool effects and
+grants for filesystem access, executable access, networking, child episodes,
+and task-lifetime processes. Construction rejects a tool whose declared
+effect exceeds those grants. Dispatch supplies only the capability handles
+allowed for that effect.
+
+**Authority.** In Foe specifications, authority means the complete set of
+effects that a program may exercise through its declared tools, grants, and
+child programs. Prose should name the specific permission when the narrower
+term is sufficient. Examples include read permission for a directory, write
+permission for a source tree, and permission to start a named child program.
+
+**Cross-trajectory evidence.** A trajectory corpus persists evidence from
+several episodes so a later workflow can compare their results. Collection,
+diagnosis, and implementation can occur at different times or in different
+worktrees. The Terminal-Bench self-improvement runner checks that the
+evidence's source revision and runtime binary match the candidate checkout and
+executable. It then requires the corpus to identify one failed execution
+configuration without an independent audit. That configuration supplies the
+model, reasoning effort, service tier, and token policy that a candidate must
+preserve. A mismatch stops that workflow before it spends a model call or
+modifies source. Program-matched evidence is a separate lineage property. The
+runner does not use it as this reuse check.
 
 ## Scope of the existing identity
 
-A resolved program has a content hash called its program identity. The hash
-covers instructions, tool specifications, grant kinds and counts, budgets,
-completion and context policies, child programs, workflows, runtime text,
-and the runtime build. [design.md](design.md#programs-and-identity) specifies
-the complete input.
+A resolved program has the program identity defined above.
+[design.md](design.md#programs-and-identity) specifies the complete input.
 
 Program identity is a portable compatibility fingerprint. It omits the task,
 model route, sandbox mode, and concrete grant paths. Two episodes with the
@@ -44,8 +95,8 @@ three parts:
 - the parent program identity;
 - a content-addressed evidence bundle from the episode that proposed the
   child;
-- an accepted verifier result that the retained adoption record binds to
-  the child program identity.
+- an accepted verifier result that the retained adoption record associates
+  with the child program identity.
 
 A chain of valid transitions is a program lineage. The first state in the
 chain is its root. Each ancestry claim has a state identity derived from
@@ -158,7 +209,8 @@ accepted verifier result. The manifest names the record in
 `adoption_record` as it names the proposal log. The child configuration is
 absent from the bundle because it contains the bundle address. An artifact
 manifest is a checker-defined list of candidate files and their content
-digests. "Exact input binding" states what the record establishes.
+digests. "Verification matched to the retained candidate" states what the
+record establishes.
 
 The `foe-lineage` crate carries a `build-bundle` binary so the canonical
 form has one implementation for builders outside the runtime. Given a
@@ -192,8 +244,8 @@ string. The other two statuses omit `error`. The event carries no digest of
 the verifier's input; the adoption record of the evidence bundle carries
 the candidate's identity members instead.
 
-`verifier_identity` binds the execution to the verifier that the parent
-program declared. It hashes the complete tool specification and its
+`verifier_identity` identifies the verifier that the parent program declared
+and the runtime invoked. It hashes the complete tool specification and its
 implementation identity. A configured executable uses its content hash at
 invocation time. A built-in verifier uses the runtime build. The first
 implementation excludes host tools because the current host-tool contract
@@ -209,29 +261,30 @@ Seven rules govern a valid transition.
 1. **One state per episode.** A transition affects only episodes launched
    from the child state. It never changes a running episode's program,
    sandbox policy, or budget.
-2. **Exact child binding.** The adoption record names the program identity
-   recomputed from the child state's canonical identity document.
-3. **Exact input binding.** The candidate the verifier judged is the one
-   the bundle retains. The adoption record carries the pairing of the
-   candidate's identity members with the accepted verification's
-   coordinates that a checker can test.
+2. **Child identity matches retained program.** The adoption record names the
+   program identity recomputed from the child state's canonical identity
+   document.
+3. **Verification matches retained candidate.** The bundle retains the
+   candidate that the verifier judged. The adoption record associates the
+   candidate's identity members with testable coordinates for the accepted
+   verification.
 4. **Parent-owned admission.** The verifier is present in the parent
    program's reachable child-program and workflow tree. A verifier introduced
    by the candidate can admit only a later transition.
 5. **Protected verifier implementation.** The verifier identity observed at
    invocation equals the identity recorded in the parent program. A proposing
    episode cannot replace its verifier and retain valid evidence.
-6. **Separate authority decision.** Lineage records provenance and supplies
-   no grant. The launcher validates the child configuration and applies its
-   deployment policy before starting an episode.
+6. **Permissions remain a launch decision.** Lineage records provenance and
+   supplies no grant. The launcher validates the child configuration and
+   applies its deployment policy before starting an episode.
 7. **Evidence before adoption.** The proposal episode has ended, its evidence
    bundle is complete, and its transition verifier has accepted before the
    launcher constructs the lineage-bearing child state.
 
 The deployment policy may permit unattended adoption. For example, it can
-require the child's effective authority to remain within a predeclared
-ceiling. A wider deployment requires authority that the launcher already
-holds; the lineage record cannot create that authority.
+require the child's filesystem, executable, network, and spawn permissions to
+remain within a predeclared ceiling. A wider deployment requires permissions
+that the launcher already holds. The lineage record cannot create a grant.
 
 ## Verifying an ancestry claim
 
@@ -283,20 +336,19 @@ program identities only; the derived state identity stays internal to
 the checker. Without `--states` and `--evidence`, a configuration that
 carries a claim is reported as carrying it, unverified.
 
-## Exact input binding
+## Verification matched to the retained candidate
 
 The `verification/result` event carries no digest of the verifier's input.
 The log format freezes an implemented type's data, so such a member cannot
 be added to the existing event.
 
 The adoption record closes the resulting gap. The checker requires an
-accepted `verification/result` at the coordinates both the claim and the
-record name, and steps 8 and 9 bind the record to the retained identity
-document, the retained artifact manifest, and the recomputed child
-identity, so exact input binding, transition rule 3, is verified. The
-record is written by the bundle builder rather than by the runtime that
-invoked the verifier, so it attests the pairing only as strongly as the
-bundle that carries it.
+accepted `verification/result` at the coordinates named by both the claim and
+the record. Steps 8 and 9 match the record with the retained identity
+document, artifact manifest, and recomputed child identity. These checks
+establish transition rule 3. The bundle builder writes the record rather
+than the runtime that invoked the verifier. Its claim about the pairing is
+therefore only as strong as the bundle that carries it.
 
 One further check is weakened by the shape of the identity document rather
 than by the event. Step 14 compares the recorded verifier identity with
@@ -334,7 +386,8 @@ can be admitted through a transition.
 
 ## Harness adoptions
 
-The identity-bound self-improvement runner
+The self-improvement runner that checks source-revision and runtime-binary
+matches before implementation
 (`evals/terminal_bench/run_self_improvement.py`) records every accepted
 candidate as a transition between program states. Nothing in this section
 changes how a state derives its identity document; the states the runner

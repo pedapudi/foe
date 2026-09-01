@@ -5,8 +5,8 @@ Date: 2026-08-31
 ## Executive summary
 
 Foe is a runtime for unattended coding agents. It combines a model loop,
-declared authority, typed outcomes, bounded episode trees, append-only
-evidence, executable completion checks, and declared workflows. Its design
+declared permissions and effect controls, typed outcomes, bounded episode
+trees, append-only evidence, executable completion checks, and declared workflows. Its design
 aims to replace the approval, progress monitoring, and completion decisions
 that a person supplies in an interactive coding session.
 
@@ -53,7 +53,7 @@ Terminal-Bench submission protocol.
 
 ## Scope and evidence
 
-The score authority was the unchanged task-owned grader from
+The unchanged task-owned grader supplied the final score. It came from
 [Terminal-Bench 2.1](https://hub.harborframework.com/datasets/terminal-bench/terminal-bench-2-1/6),
 executed by Harbor after Foe exited. The benchmark release contains 89 tasks.
 The official protocol requires repeated trials across the complete set. The
@@ -75,7 +75,7 @@ This report uses three evidence collections.
 
 The raw task workspaces and episode trees remain outside Git because they
 contain large benchmark artifacts, complete model traffic, and credential
-material used inside task containers. Each retained campaign manifest binds
+material used inside task containers. Each retained campaign manifest records
 the task, source tree, portable binary, program identity, grader result,
 resource use, and Foe conformance result. The full historical record gives the
 local evidence paths and manifest digests.
@@ -99,12 +99,15 @@ episode-count, and concurrency allowances. Child reservations and releases
 are recorded. This structure supports unattended execution while preserving
 a finite resource envelope.
 
-### Declared authority
+### Declared permissions and effect controls
 
 A program names the directories, executables, child programs, and network
-authority it can use. Built-in tools enforce path grants. On supported Linux
-hosts, the sandbox can compile grants into Landlock restrictions. The
-authority shape participates in program identity.
+access it can use. Built-in tools enforce path grants. On supported Linux
+hosts, the sandbox can compile grants into Landlock restrictions. Tool
+effects and the kinds and counts of grants participate in program identity.
+[Program lineage and transition
+evidence](../../docs/lineage-identity.md#definitions) defines Foe's broader
+term, authority, as the complete set of effects a program may exercise.
 
 The Terminal-Bench adapter ran Foe with `sandbox.mode` set to `off`. Docker
 was the isolation boundary. The campaign therefore tested behavior inside a
@@ -120,8 +123,8 @@ bounded rendering shown to the model. [log-format.md](../../docs/log-format.md)
 defines reconstruction and obligation-pairing rules.
 
 Program identity covers stable model-visible behavior, tool definitions,
-workflow structure, authority shape, and runtime-owned instructions. Campaign
-manifests add source-tree and binary digests. This separation allowed the
+workflow structure, tool effects, grant kinds and counts, and runtime-owned
+instructions. Campaign manifests add source-tree and binary digests. This separation allowed the
 campaign to distinguish model variance, workflow behavior, implementation
 changes, and deployment faults.
 
@@ -162,10 +165,10 @@ binary identified below. They do not measure the consolidated program.
 A program can declare an executable under `done_when.verify`. Foe runs the
 verifier when the model attempts completion. Findings return to the same model
 episode as an observation. An empty successful result completes the episode.
-The verifier executable remains outside the model's write authority.
+The verifier executable remains outside the model's write grants.
 
-This mechanism gives semantic completion to an external authority when a task
-or repository provides one. Without a verifier, typed returns and model
+This mechanism gives the completion decision to an external verifier when a
+task or repository provides one. Without a verifier, typed returns and model
 judgment govern completion. The campaign shows a material difference between
 those two conditions.
 
@@ -177,8 +180,9 @@ and specification, and verifies the result outside the writable tree.
 [self-improvement.md](../../docs/self-improvement.md) documents three repeated
 successes on that bounded change.
 
-The Terminal-Bench campaign extended the pattern with identity-bound
-cross-trajectory evidence and unchanged external evaluation. That machinery
+The Terminal-Bench campaign extended the pattern with cross-trajectory
+evidence matched to its source revision and runtime binary. Unchanged
+external evaluation assessed each candidate. That machinery
 was campaign infrastructure. The reviewed repository state documents
 automatic improvement selection and general reliability as unsupported.
 
@@ -186,11 +190,11 @@ automatic improvement selection and general reliability as unsupported.
 
 | Advantage | Design mechanism | Campaign evidence | Evidence boundary |
 | --- | --- | --- | --- |
-| Unattended execution | Fixed task, predeclared grants, loop detection, budgets, and typed outcomes | Every scored protected task ran without a human approval step | Five artifact and outcome mismatches show that autonomous termination still needs stronger semantic authority |
+| Unattended execution | Fixed task, predeclared grants, loop detection, budgets, and typed outcomes | Every scored protected task ran without a human approval step | Five artifact and outcome mismatches show that autonomous termination still needs stronger semantic validation |
 | Reconstructable evidence | Append-only root and child accounts, program identity, source and binary digests | Every scored protected account passed trace conformance; failures could be attributed to exact stages and tool results | Conformance establishes runtime-account consistency rather than task correctness |
 | Corrective workflows | Fresh assessment, bounded repair, reassessment, and final confirmation | Repair activated in 17 protected attempts; 15 received a passing external grade | No paired no-repair control isolates the average causal effect |
 | Governed completion | External verifier findings can reject completion and return corrective feedback | A public checker converted repeated DNA and release-layout failures in modified evaluation cases | Modified cases measure convergence and are outside the standard score |
-| Transferable self-improvement | Identity-bound evidence, typed diagnosis, isolated source candidate, external activation and transfer | Two generated improvements passed an activation case and an unrelated transfer case | The harder final semantic correction required direct engineering |
+| Transferable self-improvement | Evidence matched to the evaluated source revision and runtime binary; typed diagnosis; isolated source candidate; external activation and transfer | Two generated improvements passed an activation case and an unrelated transfer case | The harder final semantic correction required direct engineering |
 | Inspectable runtime | Strict source budgets keep the kernel and supporting components small | At report publication, `scripts/loc.sh` counted 5,248 production Rust lines in the kernel | Source size improves reviewability; it does not prove safety or benchmark efficacy |
 
 ## Campaign design
@@ -345,8 +349,8 @@ chains:
   boundaries.
 
 Fresh context was useful when the later stage applied a materially different
-test. The quality benefit came from method diversity and corrective authority,
-rather than the mere presence of another model call.
+test. The quality benefit came from method diversity and permission to correct
+the artifact, rather than the mere presence of another model call.
 
 ### Independent model stages can share one blind spot
 
@@ -405,7 +409,7 @@ The diagnostic field `artifact_outcome_mismatch` was therefore true in 5 of
 44 scored attempts.
 
 Typed outcomes made each divergence visible. Their semantic accuracy depended
-on the completion authority. A model-only final confirmation could still
+on who or what decided completion. A model-only final confirmation could still
 accept a wrong artifact. A fixed workflow limit could still reject a correct
 artifact. The evidence supports wider loop backstops during quality evaluation
 and verifier-governed completion when an authoritative check exists.
@@ -444,8 +448,9 @@ Any reduction must preserve access to evidence that later validation needs.
 ### Qualified workflow improvement
 
 Three closed-book `dna-insert` attempts had failed after Foe reported
-completion. One verifier-governed attempt passed. An identity-bound diagnosis
-selected a verifier-governed assessment-and-repair workflow in one model call.
+completion. One verifier-governed attempt passed. A diagnosis from evidence
+matched to the evaluated source revision and runtime binary selected a
+verifier-governed assessment-and-repair workflow in one model call.
 Candidate generation used 12,218 input tokens, 1,394 output tokens, and an
 estimated $0.076752.
 
@@ -459,9 +464,10 @@ not establish a closed-book correction for DNA primer interpretation.
 
 ### Qualified source improvement
 
-Another identity-bound corpus contained two rejected and two successful DNA
-episodes. Foe generated a source change that required assessment to use a
-task-declared or repository-declared acceptance path. When no authoritative
+Another corpus matched to one source revision and runtime binary contained two
+rejected and two successful DNA episodes. Foe generated a source change that
+required assessment to use a task-declared or repository-declared acceptance
+path. When no authoritative
 path existed, the rule required two independently derived equivalent methods.
 
 The generation workflow used 41 model calls, 1,723,894 input tokens,
@@ -471,8 +477,9 @@ Rust regression test, and updated three affected specifications. The unchanged
 `dna-insert` activation and the unrelated `gpt2-codegolf` transfer both passed.
 
 This result proves that Foe can produce a source, test, and specification
-change from identity-bound trajectory evidence and transfer the resulting
-behavior once. It does not estimate repeatability across source changes.
+change from trajectory evidence matched to its source revision and runtime
+binary. The resulting behavior transferred once. This result does not
+estimate repeatability across source changes.
 
 ### Limits of the improvement loop
 
@@ -515,8 +522,8 @@ inspectable.
 
 Verifier-governed completion is the clearest mechanism-level quality result.
 It supplied external findings before termination and converted repeated
-failure cases in the modified lane. The external grader remained the final
-authority.
+failure cases in the modified lane. The external grader supplied the final
+quality decision.
 
 ### Advantages that remain hypotheses
 
@@ -529,8 +536,8 @@ Independent verification improved several artifacts and also repeated shared
 semantic errors. The resulting quality and cost point may be useful, but its
 position on a cross-harness Pareto frontier is unknown.
 
-Declared authority remains an architectural advantage with partial campaign
-coverage. Built-in path grants operated during the trials. Landlock was
+Declared permissions and effect controls remain an architectural advantage
+with partial campaign coverage. Built-in path grants operated during the trials. Landlock was
 disabled inside Docker, so the campaign does not support a kernel-sandbox
 quality or security claim.
 
@@ -551,8 +558,8 @@ state it judges.
 
 The trajectory corpus supports five priorities.
 
-1. Use task- or repository-owned verification as the primary completion
-   authority whenever it is available. Keep standard closed-book scoring
+1. Use task- or repository-owned verification to make the completion decision
+   whenever it is available. Keep standard closed-book scoring
    separate from verifier-governed convergence measurement.
 2. Carry explicit requirement coverage across repairs. Revalidate every
    previously satisfied requirement after any model stage changes the
@@ -607,7 +614,8 @@ assigning the frozen release's quality result to that implementation.
 Foe completed a demanding staged campaign with strong selected-task quality.
 The frozen release passed 40 of 44 scored protected attempts, including 18 of
 20 calibration tasks and 7 of 8 fresh holdout tasks. It also preserved a
-conformant, identity-bound account for every valid attempt.
+conformant account matched to the source revision and runtime binary for every
+valid attempt.
 
 The campaign validates Foe's central integration: declared workflows,
 external verification, bounded correction, typed outcomes, and reconstructable
@@ -618,7 +626,7 @@ The campaign also establishes the remaining boundary. Model-only verification ca
 share semantic errors, validation can damage the state it judges, and a deep
 verification graph can consume most of the run's calls and context. Foe's
 path toward a Pareto-leading unattended harness is stronger completion
-authority, safer state handling, materially independent validation, and
+checks, safer state handling, materially independent validation, and
 lower-cost evidence reuse.
 
 Self-improvement is proven at bounded scale. Two generated changes transferred
