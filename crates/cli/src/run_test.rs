@@ -1,15 +1,17 @@
 use super::*;
 
 #[test]
-fn builtin_coding_uses_low_reasoning_for_gpt_5_6_sol() {
+fn builtin_coding_uses_low_implementation_and_xhigh_assessment_for_gpt_5_6_sol() {
     for provider in ["openai", "openai-codex"] {
         let config =
             builtin_program_document("task".into(), ModelConfig::new(provider, "gpt-5.6-sol"), None, None, None)
                 .unwrap();
         assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), Some("low"));
         let workflow = config.workflow.as_ref().unwrap();
-        let audit = workflow.nodes["audit-and-repair-task"].model.as_ref().unwrap();
-        assert_eq!(audit.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
+        for node in ["assess-task", "repair-task"] {
+            let program = workflow.nodes[node].model.as_ref().unwrap();
+            assert_eq!(program.model.as_ref().unwrap().option("reasoning_effort"), Some("xhigh"));
+        }
     }
 }
 
@@ -19,15 +21,20 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
     explicit.options.insert("reasoning_effort".into(), "high".into());
     let config = builtin_program_document("task".into(), explicit, None, None, None).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
-    let audit = config.workflow.as_ref().unwrap().nodes["audit-and-repair-task"].model.as_ref().unwrap();
-    assert_eq!(audit.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
+    let workflow = config.workflow.as_ref().unwrap();
+    for node in ["assess-task", "repair-task"] {
+        let program = workflow.nodes[node].model.as_ref().unwrap();
+        assert_eq!(program.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
+    }
 
     let config =
         builtin_program_document("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None)
             .unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), None);
-    let audit = config.workflow.as_ref().unwrap().nodes["audit-and-repair-task"].model.as_ref().unwrap();
-    assert_eq!(audit.model.as_ref().unwrap().option("reasoning_effort"), None);
+    for node in config.workflow.as_ref().unwrap().nodes.values() {
+        let program = node.model.as_ref().unwrap();
+        assert_eq!(program.model.as_ref().map(|m| m.option("reasoning_effort")).unwrap_or(None), None);
+    }
 }
 
 #[test]
@@ -60,17 +67,21 @@ fn builtin_key_file_uses_the_providers_credential_option() {
 }
 
 /// docs/design.md "The command line": a bare task reserves independent
-/// implementation and audit episodes, and the audit receives the task and
-/// implementation claim in a fresh context.
+/// implementation, independent assessment, and conditional repair episodes.
 #[test]
-fn builtin_coding_runs_implementation_then_independent_audit() {
+fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(BUILTIN_IMPLEMENTATION_CALLS, 60);
-    assert_eq!(BUILTIN_AUDIT_CALLS, 60);
+    assert_eq!(BUILTIN_ASSESSMENT_CALLS, 60);
+    assert_eq!(BUILTIN_REPAIR_CALLS, 60);
     let config =
         builtin_program_document("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), None, None, None)
             .unwrap();
     resolve(&config).expect("the built-in workflow resolves before an episode starts");
-    assert_eq!(config.budget.model_calls, BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_AUDIT_CALLS);
+    assert_eq!(
+        config.budget.model_calls,
+        BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_ASSESSMENT_CALLS + BUILTIN_REPAIR_CALLS
+    );
+    assert_eq!(config.budget.max_episodes, 4);
     assert_eq!(config.budget.max_concurrent, 1);
     let workflow = config.workflow.unwrap();
     let implementation = &workflow.nodes["implement-task"];
@@ -84,12 +95,38 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
         serde_json::json!(["summary", "changed_paths", "validation", "unresolved_risks", "learned"])
     );
     assert!(implementation_program.instructions["environment"].contains("Fixed-path executable probe"));
-    let audit = &workflow.nodes["audit-and-repair-task"];
-    assert_eq!(audit.follows, ["task", "implement-task"]);
-    assert!(audit.terminal);
-    let audit_program = audit.model.as_ref().unwrap();
-    assert_eq!(audit_program.budget.model_calls, BUILTIN_AUDIT_CALLS);
-    assert_eq!(audit_program.done_when.as_ref().unwrap().returns.as_ref().unwrap(), completion);
+    let contract = &implementation_program.instructions["contract"];
+    assert!(contract.contains("limit mutations to current filesystem state"));
+    assert!(contract.contains("leave it operational"));
+    assert!(contract.contains("strongest task-authorized interface"));
+    assert!(contract.contains("every completion-critical requirement"));
+    let assessment = &workflow.nodes["assess-task"];
+    assert_eq!(assessment.follows, ["task", "implement-task"]);
+    assert!(!assessment.terminal);
+    assert_eq!(
+        assessment.branches,
+        std::collections::BTreeMap::from([("accept".into(), vec![]), ("repair".into(), vec!["repair-task".into()])])
+    );
+    let assessment_program = assessment.model.as_ref().unwrap();
+    assert_eq!(assessment_program.budget.model_calls, BUILTIN_ASSESSMENT_CALLS);
+    assert!(!assessment_program.tools.iter().any(|tool| tool == "edit"));
+    let assessment_completion = assessment_program.done_when.as_ref().unwrap().returns.as_ref().unwrap();
+    assert_eq!(
+        assessment_completion["required"],
+        serde_json::json!(["summary", "findings", "validation", "unresolved_risks", "learned"])
+    );
+    assert_eq!(&assessment_program.instructions["contract"], contract);
+    assert!(assessment_program.instructions["role"].contains("without editing task artifacts"));
+    assert!(assessment_program.instructions["role"].contains("materially different valid inputs"));
+
+    let repair = &workflow.nodes["repair-task"];
+    assert_eq!(repair.follows, ["task", "implement-task", "assess-task"]);
+    assert!(repair.terminal);
+    let repair_program = repair.model.as_ref().unwrap();
+    assert_eq!(repair_program.budget.model_calls, BUILTIN_REPAIR_CALLS);
+    let repair_completion = repair_program.done_when.as_ref().unwrap().returns.as_ref().unwrap();
+    assert_eq!(repair_completion["properties"]["unresolved_risks"]["maxItems"], 0);
+    assert_eq!(repair_completion["required"], completion["required"]);
     assert_eq!(completion["properties"]["validation"]["minItems"], 1);
     // The `learned` completion evidence is bounded: one to eight claims,
     // each citing the successful tool result that supports it.
@@ -99,15 +136,15 @@ fn builtin_coding_runs_implementation_then_independent_audit() {
     assert_eq!(learned["items"]["required"], serde_json::json!(["claim", "seq"]));
     assert_eq!(learned["items"]["additionalProperties"], serde_json::json!(false));
     assert!(completion["required"].as_array().unwrap().contains(&serde_json::json!("learned")));
-    assert!(audit_program.instructions["role"].contains("every path changed by either episode"));
-    assert!(audit_program.instructions["role"].contains("reproduce or challenge every claim"));
+    assert_eq!(&repair_program.instructions["contract"], contract);
+    assert!(repair_program.instructions["role"].contains("every changed path"));
+    assert!(repair_program.instructions["role"].contains("Treat every finding and unresolved risk as an obligation"));
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available
-/// to both built-in episodes and assigns `done_when.verify` to the terminal
-/// audit. The audit remains unconditional and owns checked completion.
+/// to every built-in episode and gates both completion branches at the root.
 #[test]
-fn builtin_coding_with_verify_makes_terminal_audit_authoritative() {
+fn builtin_coding_with_verify_gates_both_assessment_branches() {
     use std::os::unix::fs::PermissionsExt;
     let dir = std::env::temp_dir().join(format!("foe-cli-verify-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -122,13 +159,19 @@ fn builtin_coding_with_verify_makes_terminal_audit_authoritative() {
     assert_eq!(config.tool_defs["check"].exec, canonical);
     assert!(config.tools.iter().any(|t| t == "check"));
     let workflow = config.workflow.as_ref().unwrap();
+    for node in ["implement-task", "assess-task", "repair-task"] {
+        let program = workflow.nodes[node].model.as_ref().unwrap();
+        assert!(program.tools.iter().any(|t| t == "check"));
+        assert_eq!(program.tool_defs["check"].exec, canonical);
+        assert!(program.done_when.as_ref().unwrap().verify.is_none());
+    }
     let implement = workflow.nodes["implement-task"].model.as_ref().unwrap();
-    assert!(implement.tools.iter().any(|t| t == "check"));
-    assert_eq!(implement.tool_defs["check"].exec, canonical);
-    let audit = workflow.nodes["audit-and-repair-task"].model.as_ref().unwrap();
-    assert!(audit.tools.iter().any(|t| t == "check"));
-    assert_eq!(audit.tool_defs["check"].exec, canonical);
-    assert_eq!(audit.done_when.as_ref().unwrap().verify.as_deref(), Some("check"));
+    let gate = config.done_when.as_ref().unwrap();
+    assert_eq!(gate.verify.as_deref(), Some("check"));
+    assert_eq!(gate.retries, BUILTIN_VERIFIER_RETRIES);
+    assert_eq!(config.budget.max_episodes, BUILTIN_VERIFIER_RETRIES + 4);
+    assert_eq!(workflow.nodes["assess-task"].max_fires, Some(BUILTIN_VERIFIER_RETRIES + 1));
+    assert_eq!(workflow.nodes["repair-task"].max_fires, Some(BUILTIN_VERIFIER_RETRIES + 1));
     let done = implement.done_when.as_ref().unwrap();
     assert!(done.verify.is_none(), "implementation claims are not authoritative");
     assert!(done.returns.is_some(), "the typed handoff remains declared");
@@ -157,8 +200,11 @@ fn builtin_coding_selects_an_explicit_service_tier() {
     };
     let config = load_program_document(&options).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("service_tier"), Some("priority"));
-    let audit = config.workflow.as_ref().unwrap().nodes["audit-and-repair-task"].model.as_ref().unwrap();
-    assert_eq!(audit.model.as_ref().unwrap().option("service_tier"), Some("priority"));
+    let workflow = config.workflow.as_ref().unwrap();
+    for node in ["assess-task", "repair-task"] {
+        let program = workflow.nodes[node].model.as_ref().unwrap();
+        assert_eq!(program.model.as_ref().unwrap().option("service_tier"), Some("priority"));
+    }
 
     let invalid = Options { service_tier: Some("fastest".into()), ..options };
     assert_eq!(load_program_document(&invalid).unwrap_err(), "--service-tier fastest: expected default or priority");

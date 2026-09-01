@@ -11,7 +11,7 @@
   },
   "budget": {
     "model_calls": 0,
-    "max_episodes": 3,
+    "max_episodes": 4,
     "max_concurrent": 1
   },
   "model": {},
@@ -21,8 +21,9 @@
         "model": {
           "name": "implement-task",
           "instructions": {
+            "contract": "Treat the task text and repository checks as authority. Unless the task says otherwise, limit mutations to current filesystem state and preserve history, prior versions, archives, encodings, and hidden implementation details. Exercise required live behavior through its public interface and leave it operational. Preserve required final state after validation. Validate through the strongest task-authorized interface. Cite successful tool results for every completion-critical requirement.",
             "environment": "",
-            "role": "Implement the task in the current directory, which is the root of every relative path. Inspect the workspace, make the requested changes, and run relevant checks after the final change. Each tool result begins with its log sequence as `[seq N]`. Return at least one `learned` claim whose `seq` cites such a result. Also report changed artifacts, validation, and unresolved risks."
+            "role": "Implement the task in the current directory, which is the root of every relative path. Inspect the workspace, make the smallest sufficient change, and run relevant checks after the final change. Each tool result begins with its log sequence as `[seq N]`. Report changed artifacts, validation, unresolved risks, and cited completion evidence."
           },
           "tools": ["read", "grep", "edit", "bash"],
           "grants": {
@@ -95,12 +96,97 @@
         },
         "follows": ["task"]
       },
-      "audit-and-repair-task": {
+      "assess-task": {
         "model": {
-          "name": "audit-and-repair-task",
+          "name": "assess-task",
           "instructions": {
+            "contract": "Treat the task text and repository checks as authority. Unless the task says otherwise, limit mutations to current filesystem state and preserve history, prior versions, archives, encodings, and hidden implementation details. Exercise required live behavior through its public interface and leave it operational. Preserve required final state after validation. Validate through the strongest task-authorized interface. Cite successful tool results for every completion-critical requirement.",
             "environment": "",
-            "role": "Independently determine whether the shared workspace satisfies the original task. Treat the implementation episode's completion claim and its cited `learned` observations as unverified. Independently reproduce or challenge every claim relevant to completion. Repair every defect you find. After the final edit, run the strongest task-relevant checks. Return at least one cited `learned` observation and report every path changed by either episode, including valid implementation changes that required no audit edit."
+            "role": "Independently assess whether the shared workspace satisfies the original task. Treat implementation claims as unverified. Inspect and test without editing task artifacts. Use the task's stated interface without inventing absent requirements. For black-box or parameterized behavior, test materially different valid inputs through the same public interface. Choose `accept` only with evidence for every requirement and no unresolved risk. Otherwise choose `repair` and return reproducible findings."
+          },
+          "tools": ["read", "grep", "bash"],
+          "grants": {
+            "read": [],
+            "write": []
+          },
+          "budget": {
+            "model_calls": 0
+          },
+          "done_when": {
+            "returns": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                "findings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "maxItems": 32
+                },
+                "validation": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "minItems": 1,
+                  "maxItems": 32
+                },
+                "unresolved_risks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "maxItems": 16
+                },
+                "learned": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "claim": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 300
+                      },
+                      "seq": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": ["claim", "seq"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["summary", "findings", "validation", "unresolved_risks", "learned"],
+              "additionalProperties": false
+            }
+          },
+          "model": {}
+        },
+        "follows": ["task", "implement-task"],
+        "branches": {
+          "accept": [],
+          "repair": ["repair-task"]
+        }
+      },
+      "repair-task": {
+        "model": {
+          "name": "repair-task",
+          "instructions": {
+            "contract": "Treat the task text and repository checks as authority. Unless the task says otherwise, limit mutations to current filesystem state and preserve history, prior versions, archives, encodings, and hidden implementation details. Exercise required live behavior through its public interface and leave it operational. Preserve required final state after validation. Validate through the strongest task-authorized interface. Cite successful tool results for every completion-critical requirement.",
+            "environment": "",
+            "role": "Repair the independent assessment's findings in the shared workspace. Treat every finding and unresolved risk as an obligation. Reproduce each finding before changing an artifact. Resolve it with the smallest sufficient change or show why it cannot affect a task requirement. Run relevant checks after the final change. Complete only after no task-critical risk remains. Return no unresolved risks, every changed path, observed validation results, and cited completion evidence."
           },
           "tools": ["read", "grep", "edit", "bash"],
           "grants": {
@@ -142,7 +228,7 @@
                     "type": "string",
                     "maxLength": 1000
                   },
-                  "maxItems": 16
+                  "maxItems": 0
                 },
                 "learned": {
                   "type": "array",
@@ -172,7 +258,7 @@
           },
           "model": {}
         },
-        "follows": ["task", "implement-task"],
+        "follows": ["task", "implement-task", "assess-task"],
         "terminal": true
       }
     },
