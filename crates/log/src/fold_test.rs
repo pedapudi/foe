@@ -700,6 +700,7 @@ fn every_event_variant_round_trips() {
             value: reserved,
             rendered: "r".into(),
             error: None,
+            failure: None,
             duration_ms: 2,
         }),
         EventData::WorkflowBranch(WorkflowBranch {
@@ -715,6 +716,7 @@ fn every_event_variant_round_trips() {
             action: "retry".into(),
             target: Some("survey".into()),
             note: None,
+            failure: None,
             intervention: 1,
         }),
         EventData::VerificationResult(VerificationResult {

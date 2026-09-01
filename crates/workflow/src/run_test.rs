@@ -1,4 +1,7 @@
-use super::{classify_tool, empty_after_child, run, Trouble, WorkflowParams};
+use super::{
+    classify_tool, empty_after_child, handoff_failure, run, section, trouble_from_failure, Trouble, WorkflowParams,
+};
+use crate::graph::Produced;
 use foe_core::budget::Pool;
 use foe_core::loop_::{Log, Params};
 use foe_core::registry::{Handles, Registry};
@@ -47,7 +50,7 @@ impl Tool for Scripted {
 
 /// Records allocated identifiers and launch requests, and starts no child.
 #[derive(Default)]
-struct NoSpawner(Mutex<(u64, Vec<String>)>);
+struct NoSpawner(Mutex<(u64, Vec<String>)>, std::sync::atomic::AtomicBool);
 
 impl Spawner for NoSpawner {
     fn allocate_id(&self) -> String {
@@ -58,7 +61,10 @@ impl Spawner for NoSpawner {
 
     fn launch(&self, _child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
         self.0.lock().unwrap().1.push(req.task);
-        Err(CapError::ProcessStart("this test spawns nothing".into()))
+        match self.1.load(std::sync::atomic::Ordering::Relaxed) {
+            true => Err(CapError::Invalid("retryable test failure".into())),
+            false => Err(CapError::ProcessStart("this test spawns nothing".into())),
+        }
     }
 }
 
@@ -224,6 +230,11 @@ impl Fixture {
         self
     }
 
+    fn retryable_spawn_failure(self) -> Self {
+        self.spawner.1.store(true, std::sync::atomic::Ordering::Relaxed);
+        self
+    }
+
     fn calls(&self, name: &str) -> Vec<(Value, Instant, Instant)> {
         self.calls[name].lock().unwrap().clone()
     }
@@ -308,6 +319,178 @@ fn recoveries(events: &[Event]) -> Vec<&foe_log::WorkflowRecovery> {
 
 fn count(events: &[Event], kind: &str) -> usize {
     events.iter().filter(|e| e.data.type_name() == kind).count()
+}
+
+/// docs/workflow.md "Bounded model handoffs": section framing and the
+/// separator after `task` count toward the predecessor-text bound.
+#[test]
+fn model_handoff_measurement_matches_the_child_task_framing() {
+    let header = section("producer", "").chars().count();
+    let exact = "x".repeat(foe_core::result_budget::TURN_BUDGET_CHARS - header);
+    let produced = Produced { value: json!("complete"), rendered: exact, seq: 9 };
+    assert!(handoff_failure(&[("producer".into(), produced.clone())], true).is_none());
+    let task = Produced { value: json!("run"), rendered: "run".into(), seq: 1 };
+    let rejected = handoff_failure(&[("task".into(), task), ("producer".into(), produced)], true).unwrap();
+    assert_eq!(rejected.cause, "limit-exceeded");
+    assert!(!rejected.include_inputs, "recovery receives the evidence references in the failure detail");
+    assert!(
+        rejected.detail.contains("`producer` at seq 9") && rejected.detail.contains("50000"),
+        "{}",
+        rejected.detail
+    );
+    assert!(!rejected.detail.contains(&"x".repeat(100)), "the rejected body does not enter recovery");
+    assert_eq!(rejected.failure.as_ref().unwrap().details["inputs"][0]["seq"], 9);
+}
+
+/// docs/workflow.md "Bounded model handoffs": a model predecessor uses
+/// the same bound and can be re-fired when its declaration permits it.
+#[test]
+fn oversized_model_to_model_handoff_is_recoverable() {
+    let producer: Node = serde_json::from_value(json!({
+        "model": { "name": "producer", "instructions": { "r": "produce" }, "tools": ["block"],
+                   "grants": { "read": ["/work"] }, "budget": { "model_calls": 1 } },
+        "max_fires": 2
+    }))
+    .unwrap();
+    assert!(producer.model.is_some() && producer.max_fires == Some(2));
+    let value = Produced { value: json!({ "complete": true }), rendered: "model evidence ".repeat(4_000), seq: 17 };
+    let failure = handoff_failure(&[("producer".into(), value)], true).unwrap();
+    assert_eq!(failure.cause, "limit-exceeded");
+    assert!(!failure.settled);
+}
+
+/// docs/workflow.md "Bounded model handoffs": recovery for an oversized
+/// model predecessor receives references and sizes without the rejected body.
+#[tokio::test]
+async fn model_handoff_recovery_receives_only_evidence_references() {
+    let body = "SECRET_HANDOFF_BODY".repeat(3_000);
+    let mut fx = Fixture::new(
+        "bounded-model-handoff",
+        &[],
+        json!({ "nodes": {
+            "producer": { "model": {
+                "name": "producer", "instructions": { "r": "produce" }, "tools": ["block"],
+                "grants": { "read": [fx_root("bounded-model-handoff")] }, "budget": { "model_calls": 1 }
+            }, "empty": body, "max_fires": 2 },
+            "consumer": { "model": {
+                "name": "consumer", "instructions": { "r": "consume" }, "tools": ["block"],
+                "grants": { "read": [fx_root("bounded-model-handoff")] }, "budget": { "model_calls": 1 }
+            }, "follows": ["producer"], "terminal": true }
+        } }),
+    )
+    .retryable_spawn_failure()
+    .respond(recover(json!({ "action": "skip" })))
+    .respond(recover(json!({ "action": "abort", "code": "goal-unreachable", "message": "too large" })));
+    let (outcome, events) = fx.run().await;
+    assert!(matches!(outcome, Outcome::Blocked { code: BlockedCode::GoalUnreachable, .. }));
+    assert_eq!(fx.spawner.0.lock().unwrap().1.len(), 1, "the consumer child never starts");
+    let system: Vec<&foe_log::InboxItem> = events
+        .iter()
+        .filter_map(|event| match &event.data {
+            EventData::InboxItem(item) if item.source == foe_log::InboxSource::System => Some(item),
+            _ => None,
+        })
+        .collect();
+    let foe_log::ContentBlock::Text { text } = &system.last().unwrap().content[0] else { panic!() };
+    assert!(text.contains("`producer` at seq") && text.contains("rendered characters"), "{text}");
+    assert!(!text.contains("SECRET_HANDOFF_BODY"), "the rejected body entered recovery");
+    let recovery = recoveries(&events);
+    let failure = recovery.last().unwrap().failure.as_ref().unwrap();
+    assert_eq!(
+        (recovery.last().unwrap().cause.as_str(), failure.code),
+        ("limit-exceeded", ToolFailureCode::LimitExceeded)
+    );
+    assert_eq!(failure.details["inputs"][0]["name"], "producer");
+    let EventData::WorkflowNodeEnd(end) = &events
+        .iter()
+        .find(|event| matches!(&event.data, EventData::WorkflowNodeEnd(end) if end.node == "consumer"))
+        .unwrap()
+        .data
+    else {
+        panic!()
+    };
+    assert_eq!(end.failure.as_ref().unwrap().details, failure.details);
+}
+
+/// docs/workflow.md "Bounded model handoffs": the failure route depends
+/// on the typed code and retryability rather than the message wording.
+#[test]
+fn handoff_failure_routing_does_not_parse_its_message() {
+    let classify = |message: &str| {
+        trouble_from_failure(foe_log::ToolFailure {
+            code: ToolFailureCode::LimitExceeded,
+            message: message.into(),
+            retryable: true,
+            details: json!({ "limit": "workflow-handoff-characters" }),
+        })
+    };
+    let (first, second) = (classify("too much text"), classify("different words"));
+    assert_eq!((&first.cause, first.settled), (&second.cause, second.settled));
+    assert_eq!(first.cause, "limit-exceeded");
+}
+
+/// docs/workflow.md "Bounded model handoffs": a tool result that would
+/// overfill a model child remains complete in the workflow log. The child
+/// and a recovery request do not start when no model producer can narrow it.
+#[tokio::test]
+async fn oversized_tool_to_model_handoff_fails_before_a_child_starts() {
+    let body = "complete evidence ".repeat(foe_core::result_budget::TURN_BUDGET_CHARS / 10);
+    let mut fx = Fixture::new(
+        "bounded-handoff",
+        &["large"],
+        json!({ "nodes": {
+            "source": { "tool": "large" },
+            "consumer": { "model": {
+                "name": "consumer", "instructions": { "r": "use source" }, "tools": ["block"],
+                "grants": { "read": [fx_root("bounded-handoff")] }, "budget": { "model_calls": 1 }
+            }, "follows": ["source"], "terminal": true }
+        } }),
+    )
+    .tool("large", vec![ToolValue::ok(json!({ "complete": true }), body.clone())], 0);
+    let (outcome, events) = fx.run().await;
+    assert!(matches!(outcome, Outcome::Failed { ref error } if error.contains("workflow handoff")), "{outcome:?}");
+    assert!(fx.spawner.0.lock().unwrap().1.is_empty(), "the rejected child was not launched");
+    assert_eq!(count(&events, "model/request"), 0, "a deterministic producer cannot be amended");
+    let EventData::WorkflowNodeEnd(source) = &events
+        .iter()
+        .find(|event| matches!(&event.data, EventData::WorkflowNodeEnd(end) if end.node == "source"))
+        .unwrap()
+        .data
+    else {
+        panic!()
+    };
+    assert_eq!(source.value, json!({ "complete": true }));
+    assert_eq!(source.rendered, body, "the producer's evidence remains complete");
+    let EventData::WorkflowNodeStart(consumer) = &events
+        .iter()
+        .find(|event| matches!(&event.data, EventData::WorkflowNodeStart(start) if start.node == "consumer"))
+        .unwrap()
+        .data
+    else {
+        panic!()
+    };
+    assert!(consumer.child_id.is_none(), "a rejected handoff names no child episode");
+}
+
+/// docs/workflow.md "Bounded model handoffs": tool nodes bind complete
+/// canonical values without applying the model-context limit.
+#[tokio::test]
+async fn tool_to_tool_binding_keeps_large_canonical_values() {
+    let payload = "v".repeat(foe_core::result_budget::TURN_BUDGET_CHARS + 1);
+    let mut fx = Fixture::new(
+        "large-binding",
+        &["source", "consume"],
+        json!({ "nodes": {
+            "source": { "tool": "source" },
+            "consume": { "tool": "consume", "args": { "payload": { "$node": "source", "pointer": "/payload" } },
+                         "follows": ["source"], "terminal": true }
+        } }),
+    )
+    .tool("source", vec![ToolValue::ok(json!({ "payload": payload }), "x".repeat(60_000))], 0)
+    .tool("consume", vec![], 0);
+    let (outcome, _) = fx.run().await;
+    assert!(matches!(outcome, Outcome::Completed { .. }), "{outcome:?}");
+    assert_eq!(fx.calls("consume")[0].0["payload"].as_str().unwrap().len(), 50_001);
 }
 
 /// docs/workflow.md "Firing": a model child receives no budget and starts
