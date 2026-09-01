@@ -280,9 +280,10 @@ tool definition's `network` field.
 
 A `task_session` grant permits a session process group to survive episode
 settlement. The `session` call must also request `lifetime: "task"`. At
-settlement the runtime transfers cleanup responsibility to the environment
-that owns the foe invocation. [tools.md](tools.md#session) specifies the
-lifecycle and the cleanup requirement.
+start, the runtime places the session in the invocation-owned task cgroup
+when cgroup v2 enforcement is available. At settlement the runtime transfers
+cleanup responsibility to the environment that owns the foe invocation.
+[tools.md](tools.md#session) specifies the lifecycle and cleanup requirement.
 
 The runtime opens each granted directory once when the episode starts, and
 every read and write below it names a path relative to that open directory.
@@ -525,9 +526,11 @@ Object. Optional.
 |---|---|---|---|
 | `mode` | string | `best-effort` | `best-effort`, `required`, or `off` |
 
-`best-effort` applies whatever the kernel supports and records the Landlock
-version obtained. `required` refuses to start when Landlock is unavailable.
-`off` applies no kernel restriction and records that fact.
+`best-effort` applies the available Landlock features and attempts a
+delegated cgroup v2 process boundary. It records the enforcement obtained.
+`required` refuses to start unless Landlock and a delegated cgroup boundary
+are both available. `off` applies no Landlock restriction, uses process-group
+cleanup, and records observational subtree cleanup.
 
 The rules themselves are compiled from `grants` and `tool_defs`; there is
 nothing else to declare.

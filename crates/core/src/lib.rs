@@ -31,6 +31,7 @@ pub mod grants;
 pub mod identity;
 pub mod inbox;
 pub mod loop_;
+pub mod process_boundary;
 pub mod protocol;
 pub mod registry;
 pub mod result_budget;

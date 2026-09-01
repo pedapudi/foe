@@ -274,6 +274,10 @@ pub struct SandboxInfo {
     /// Older logs omit it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effective_access: Option<SandboxAccess>,
+    /// How the runtime owns descendant processes. Absent in logs written
+    /// before process-subtree reporting was added.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_boundary: Option<ProcessBoundaryInfo>,
 }
 
 /// The effective sandbox surface and the reason for each non-declared path.
@@ -300,6 +304,28 @@ pub struct SandboxPath {
     /// Present when the rule names one exact executable image.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessBoundaryInfo {
+    pub kind: ProcessBoundaryKind,
+    pub subtree_cleanup: SubtreeCleanup,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProcessBoundaryKind {
+    CgroupV2,
+    ProcessGroup,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubtreeCleanup {
+    Enforced,
+    Observational,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

@@ -295,7 +295,12 @@ mod episode {
             identity: "sha256:test".into(),
             task: "count the lines".into(),
             runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
-            sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0, effective_access: None },
+            sandbox: SandboxInfo {
+                mode: SandboxMode::Off,
+                landlock_abi: 0,
+                effective_access: None,
+                process_boundary: None,
+            },
             effective_budget: None,
         };
         let outcome = run(Params {

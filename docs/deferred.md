@@ -88,7 +88,22 @@ executable under a user-space kernel, and seccomp filters the system calls an
 executable may make. Each would be selected by configuration and recorded in
 `episode/start`. No backend other than Landlock is implemented. No event type
 or configuration key is reserved; `sandbox.mode` is the only sandbox key, and
-`episode/start.sandbox` records only the Landlock version obtained.
+`episode/start.sandbox` records the Landlock version and process-boundary
+enforcement obtained.
+
+## Cgroup resource controllers
+
+The runtime uses cgroup v2 to own and clean an episode's process subtree. It
+does not configure the memory, processor, process-count, or I/O controllers.
+The program budget has no fields for those resources, so deriving controller
+values from token, model-call, elapsed-time, or concurrency limits would
+invent a relationship the program did not declare.
+
+Resource enforcement requires explicit program vocabulary for each resource,
+including units and inheritance rules. The runtime can then write supported
+controller files and record each enforced value. A host without a requested
+controller would record that limit as observational in `best-effort` mode and
+would refuse it in `required` mode.
 
 ## MCP as a tool source
 
@@ -187,10 +202,11 @@ implemented. No event type or configuration key is reserved.
 
 On macOS the kernel facility comparable to Landlock is the sandbox profile
 language used by the `sandbox-exec` mechanism. A macOS backend would compile
-grants into such a profile. macOS sandboxing is not implemented; on macOS
+grants into such a profile. macOS sandboxing is not implemented. On macOS,
 `sandbox.mode: "best-effort"` applies no restriction and records
-`landlock_abi: 0`, and `sandbox.mode: "required"` refuses to start. No event
-type or configuration key is reserved.
+`landlock_abi: 0` with observational process-group cleanup.
+`sandbox.mode: "required"` refuses to start. No event type or configuration
+key is reserved.
 
 ## Anonymous executable images
 

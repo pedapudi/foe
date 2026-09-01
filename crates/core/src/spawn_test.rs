@@ -112,7 +112,7 @@ pub(crate) fn nesting_child(dir: &Path) -> Vec<OsString> {
     script(dir, "nesting-foe.sh", NESTING_CHILD)
 }
 
-fn script(dir: &Path, name: &str, body: &str) -> Vec<OsString> {
+pub(crate) fn script(dir: &Path, name: &str, body: &str) -> Vec<OsString> {
     let script = dir.join(name);
     std::fs::write(&script, body).unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();

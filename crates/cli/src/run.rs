@@ -17,6 +17,7 @@ use foe_core::executable::{ExecutableTree, InheritedExecutables};
 use foe_core::grants::{RootReader, RootWriter};
 use foe_core::identity::runtime_info;
 use foe_core::loop_::{self, Log, Params};
+use foe_core::process_boundary::{BoundaryPaths, ProcessOwnership};
 use foe_core::protocol::{stdout_mirror, Host};
 use foe_core::registry::{Handles, Registry};
 use foe_core::sandbox::{Policy, Sandbox};
@@ -554,7 +555,11 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let sandbox = Arc::new(Sandbox::new(program.sandbox.mode).map_err(|e| e.to_string())?);
-    let mut unconfined = Unconfined::new(sandbox, Policy::for_episode(&program, &executables, &log_dir));
+    let process = ProcessOwnership::enter(program.sandbox.mode, &lineage.episode_id, lineage.process_boundary.clone())
+        .map_err(|e| e.to_string())?;
+    let mut policy = Policy::for_episode(&program, &executables, &log_dir);
+    process.authorize(&mut policy);
+    let mut unconfined = Unconfined::new(sandbox, policy);
     // Telemetry is resolved before confinement: the capture directory must
     // be writable after the sandbox closes, so it is created now and
     // granted like any other write root. A broken enablement file warns
@@ -595,7 +600,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         identity: identity.hash,
         task,
         runtime: runtime_info,
-        sandbox: confined.parts().0.info(),
+        sandbox: confined.parts().0.info_with_process(process.info()),
         effective_budget: Some(limits.clone()),
     };
     let telemetry_log_dir = log_dir.clone();
@@ -610,6 +615,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         context,
         start,
         host: options.host,
+        process,
     };
     let outcome = runtime()?.block_on(episode(setup))?;
     if let Some(settings) = &telemetry {
@@ -640,10 +646,12 @@ struct Setup {
     context: Option<Arc<dyn ContextPolicy>>,
     start: EpisodeStart,
     host: bool,
+    process: ProcessOwnership,
 }
 
 async fn episode(setup: Setup) -> Result<Outcome, String> {
-    let Setup { program, executables, limits, log_dir, confined, viewer, transport, host, context, start } = setup;
+    let Setup { program, executables, limits, log_dir, confined, viewer, transport, host, context, start, process } =
+        setup;
     let id = start.id.clone();
     let log = Arc::new(
         Log::create_or_open(&log_dir, host.then(stdout_mirror)).map_err(|e| format!("{}: {e}", log_dir.display()))?,
@@ -681,17 +689,21 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         extra_builtin_specs(),
         connections,
     )
-    .map_err(|e| format!("spawner: {e}"))?;
+    .map_err(|e| format!("spawner: {e}"))?
+    .with_boundary(process.boundary());
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
     let (sandbox, policy) = confined.parts();
     let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel);
-    let sessions = Arc::new(LocalSessions::new(
-        sandbox.clone(),
-        policy.clone(),
-        log_dir.join("spill"),
-        foe_code::SESSION_MAX_ALIVE,
-        program.grants.task_session,
-    ));
+    let sessions = Arc::new(
+        LocalSessions::new(
+            sandbox.clone(),
+            policy.clone(),
+            log_dir.join("spill"),
+            foe_code::SESSION_MAX_ALIVE,
+            program.grants.task_session,
+        )
+        .with_boundary(process.boundary()),
+    );
     let host_tools = if host { protocol.tools(&program) } else { Vec::new() };
     let parent = start.parent_id.is_some().then_some(&protocol);
     let mut builtins: Vec<Box<dyn Tool>> = foe_code::all();

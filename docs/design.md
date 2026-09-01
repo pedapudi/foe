@@ -286,12 +286,20 @@ tool call left without a result receives a synthetic error result. The
 record of a completed run is therefore never mistakable for the record of
 one killed mid-flight.
 
+On a host with delegated cgroup v2, each child owns a nested process
+boundary. The parent waits for the direct child while it reads the child's
+log stream. After the direct child exits, the parent kills the boundary and
+waits until its subtree is empty. It then writes `spawn/end` and
+`budget/release`, returns capacity to the pool, and wakes waiters. A detached
+descendant therefore cannot outlive the lease that accounted for its child.
+
 A process session normally ends at episode settlement. A program with the
 `task_session` grant may request task lifetime when it starts a session.
-Settlement then records the process and process-group identities and
-transfers cleanup responsibility to the environment that owns the foe
-invocation. Every remaining group member retains its sandbox restrictions
-after foe exits.
+The session enters the invocation-owned task cgroup before its command runs.
+Settlement records the process and process-group identities and transfers
+cleanup responsibility to the environment that owns the foe invocation.
+Every remaining group member retains its sandbox restrictions after foe
+exits.
 
 Ending a child that a model meant to keep is a poor answer, so a parent
 that means to wait says so: the `wait` tool returns once every child it
@@ -571,6 +579,9 @@ limit, and no child starts; the model reads that result like any other.
 A parent observes a child as settled only after it has appended `spawn/end`
 and `budget/release` and returned the child's reservation to the pool, so
 anything waiting on the child sees the account of it already closed.
+On a host that enforces a cgroup v2 boundary, the child's entire process
+subtree is empty before those events are appended. A process-group fallback
+is recorded as observational because a detached descendant can escape it.
 
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent
@@ -627,6 +638,7 @@ as further processes. Restrictions only narrow at each spawn.
    host            no restriction applied by foe, ever
      │
      └─ episode    Landlock: declared roots, exact runtime executables, own log dir
+          │        cgroup v2: episode subtree and a sibling task-session boundary
           │        network: open for the transport or a reachable network tool
           │
           ├─ tool  Landlock: subset of the episode's; network closed
@@ -648,9 +660,15 @@ removed from executables. Denied accesses are captured from the audit log and wr
 the episode log as `sandbox/denied` events. A blocked attempt therefore
 becomes evidence in the record.
 
-`sandbox.mode` controls behavior when Landlock is unavailable. `best-effort`,
-the default, applies what the kernel supports and records which version it
-got. `required` refuses to start. `off` applies nothing.
+On Linux with a delegated cgroup v2 hierarchy, the runtime also creates one
+process boundary for the episode tree and one for task-lifetime sessions.
+Child boundaries nest inside the episode tree. The runtime kills and empties
+a child boundary before it releases the child's budget reservation.
+
+`sandbox.mode` controls both mechanisms. `best-effort`, the default, applies
+the available Landlock features and attempts a cgroup boundary. `required`
+requires Landlock and a delegated cgroup. `off` applies no Landlock rules and
+uses observational process-group cleanup.
 
 The process that launched foe is never restricted, because it holds the
 transport and the credentials, and restricting it would break the host.

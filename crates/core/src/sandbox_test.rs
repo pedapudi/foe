@@ -29,7 +29,12 @@ fn policy(config: &ProgramDocument, log_dir: &Path) -> Policy {
 fn off_records_zero_and_required_needs_landlock() {
     assert_eq!(
         Sandbox::new(SandboxMode::Off).unwrap().info(),
-        SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0, effective_access: None }
+        SandboxInfo {
+            mode: SandboxMode::Off,
+            landlock_abi: 0,
+            effective_access: None,
+            process_boundary: None,
+        }
     );
     let required = Sandbox::new(SandboxMode::Required);
     if probe_abi() == 0 {

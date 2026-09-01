@@ -2,6 +2,8 @@ use super::*;
 use crate::budget::Pool;
 use crate::exec::tests::scratch;
 use crate::loop_::Log;
+use crate::process_boundary::command_in;
+use crate::process_boundary::tests::{remove_test_boundary, test_boundary};
 use crate::spawn::tests::{parent_config, wait_for};
 use foe_log::{EpisodeStart, EventData, Outcome, RuntimeInfo, SandboxInfo, SandboxMode};
 use std::path::Path;
@@ -247,6 +249,53 @@ fn a_task_session_requires_authority_and_survives_settlement() {
     sessions.stop(1).unwrap();
 }
 
+/// docs/sandbox.md "Process ownership": a task-lifetime session enters the
+/// invocation-owned task cgroup before its command executes, so a child
+/// episode can settle without returning capacity around a live process.
+#[test]
+fn a_task_session_starts_in_the_task_boundary() {
+    let Ok((boundary, invocation)) = test_boundary("task-session") else {
+        return;
+    };
+    let boundary = Arc::new(boundary);
+    let dir = scratch("session", "task-cgroup");
+    let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
+    let mut policy = Policy { exec: vec!["/bin/bash".into()], ..Policy::default() };
+    policy.add_runtime_control(boundary.task_procs().parent().unwrap().to_path_buf());
+    let sessions =
+        LocalSessions::new(sandbox, policy, dir.join("spill"), 4, true).with_boundary(Some(boundary.clone()));
+    let mut request = shell(&dir, "sleep 30");
+    request.lifetime = SessionLifetime::Task;
+    let status = sessions.start(request).unwrap();
+    let mut members = String::new();
+    for _ in 0..100_000 {
+        members = std::fs::read_to_string(boundary.task_procs()).unwrap();
+        if !members.trim().is_empty() {
+            break;
+        }
+        std::thread::yield_now();
+    }
+    assert!(!members.trim().is_empty(), "the session entered the task boundary before it ran");
+    let child = boundary.child("settling-child").unwrap();
+    let ready = dir.join("child-ready");
+    let argv = ["/bin/sh".into(), "-c".into(), format!("echo ready > '{}'; sleep 30", ready.display()).into()];
+    let mut episode_process = command_in(&child.process_procs(), &argv).spawn().unwrap();
+    for _ in 0..100_000 {
+        if ready.is_file() {
+            break;
+        }
+        std::thread::yield_now();
+    }
+    assert!(ready.is_file(), "the episode process entered its boundary");
+    child.terminate().unwrap();
+    episode_process.wait().unwrap();
+    let members = std::fs::read_to_string(boundary.task_procs()).unwrap();
+    assert!(!members.trim().is_empty(), "child settlement preserves the task-owned session");
+    sessions.stop(status.id).unwrap();
+    drop(sessions);
+    remove_test_boundary(&boundary, &invocation);
+}
+
 /// `Sessions::take_exited` reports each session's end exactly once, whether
 /// the process exited on its own or a stop ended it, and never a live one.
 #[test]
@@ -275,7 +324,12 @@ fn start() -> EpisodeStart {
         identity: "sha256:0".into(),
         task: "t".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
-        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0, effective_access: None },
+        sandbox: SandboxInfo {
+            mode: SandboxMode::Off,
+            landlock_abi: 0,
+            effective_access: None,
+            process_boundary: None,
+        },
         effective_budget: None,
     }
 }

@@ -8,7 +8,8 @@ outside it.
 
 Stability: the event envelope, the event types marked implemented, and the
 seeding rules are frozen at version 2. Adding an event type is compatible.
-Changing an existing type's data requires a new log version.
+Adding an optional field with a defined absence meaning is compatible.
+Changing or removing a required field requires a new log version.
 
 ## Directory layout
 
@@ -97,6 +98,10 @@ nothing emits it.
         }
       ],
       "connect_tcp": ["model transport in program"]
+    },
+    "process_boundary": {
+      "kind": "cgroup-v2",
+      "subtree_cleanup": "enforced"
     }
   },
   "effective_budget": {
@@ -131,6 +136,13 @@ written before this field was implemented omit it and remain readable. On
 resume, this recorded allowance takes precedence over the mutable launch
 metadata beside the log. A log that omits the field falls back to that
 metadata or to its declared program budget.
+
+`process_boundary.kind` is `cgroup-v2` or `process-group`.
+`subtree_cleanup` is `enforced` only when the runtime owns the recursive
+process subtree through cgroup v2. It is `observational` for process-group
+cleanup. The optional `reason` explains a `best-effort` fallback. An absent
+`process_boundary` means the log predates this field and makes no claim about
+subtree cleanup.
 
 `episode/end` — implemented. Always the last event.
 
@@ -489,6 +501,13 @@ matching `budget/release`.
 ```json
 { "child_id": "ep_9c21", "outcome": { "kind": "completed", "value": {} } }
 ```
+
+For a process that started, the parent publishes `spawn/end` only after the
+direct child has exited and its stdout reader has finished. When the child
+uses an enforced cgroup v2 process boundary, the parent first kills the
+boundary and waits until its recursive `populated` state is zero. The
+matching `budget/release`, pool capacity return, and waiter notification
+follow.
 
 ### Teams
 

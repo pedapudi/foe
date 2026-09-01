@@ -276,6 +276,10 @@ export function renderInfo(s: Summary | null): HTMLElement {
     const landlock = abi === null ? "" : abi === 0 ? "landlock unavailable" : `landlock abi ${abi}`;
     rows.push(["sandbox", parts([landlock, s.sandbox.mode])]);
   }
+  const boundary = s.sandbox.processBoundary;
+  if (boundary) {
+    rows.push(["process cleanup", parts([boundary.kind, boundary.subtreeCleanup, boundary.reason])]);
+  }
   // The identity is what says whether two episodes ran one program, so the
   // details name it. The whole hash is long; the row sets its first eight
   // characters and carries the rest in its tooltip.
