@@ -75,6 +75,7 @@ fn identity_hashes_harness_text_exec_content_and_children() {
         assert_eq!(texts[key], json!(value));
     }
     assert_eq!(first.document["tools"][1]["exec_sha256"], json!(super::sha256_hex(b"v1")));
+    assert_eq!(first.document["tools"][1]["exec_name"], json!("tool.sh"));
     assert!(first.document["programs"]["kid"].as_str().unwrap().starts_with("sha256:"));
     std::fs::write(&exec, "v2").unwrap();
     assert_eq!(
@@ -98,8 +99,29 @@ fn identity_hashes_the_exec_transport_bytes_retained_at_construction() {
     let constructed = program_with(&root, configure).unwrap();
     let first = compute(&constructed, &[], &runtime()).unwrap();
     assert_eq!(first.document["runtime"]["exec_transport_sha256"], json!(super::sha256_hex(b"first")));
+    assert_eq!(first.document["runtime"]["exec_transport_name"], json!("transport"));
     std::fs::write(&executable, "second").unwrap();
     assert_eq!(compute(&constructed, &[], &runtime()).unwrap().hash, first.hash);
     let reconstructed = program_with(&root, configure).unwrap();
     assert_ne!(compute(&reconstructed, &[], &runtime()).unwrap().hash, first.hash);
+}
+
+#[test]
+fn identity_distinguishes_configured_names_for_the_same_executable() {
+    let root = tmp("identity-executable-name");
+    let target = root.join("multicall");
+    std::fs::write(&target, "same bytes").unwrap();
+    std::fs::set_permissions(&target, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    std::os::unix::fs::symlink(&target, root.join("first")).unwrap();
+    std::os::unix::fs::symlink(&target, root.join("second")).unwrap();
+    let configured = |name: &str| {
+        program_with(&root, |value| {
+            value["tools"] = json!(["tool"]);
+            value["tool_defs"] = json!({"tool": {"exec": root.join(name), "description": "multicall executable"}});
+        })
+        .unwrap()
+    };
+    let first = compute(&configured("first"), &[], &runtime()).unwrap();
+    let second = compute(&configured("second"), &[], &runtime()).unwrap();
+    assert_ne!(first.hash, second.hash, "the configured basename selects multicall behavior");
 }

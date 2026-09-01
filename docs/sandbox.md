@@ -161,10 +161,13 @@ writes a content-addressed image under a private runtime directory outside
 every declared write root. It tries the parent of the episode log directory,
 `/tmp`, and `/var/tmp`, in that order. Construction fails when no location can
 be separated from the declared write roots. The image has no write bits, and
-the runtime retains a read-only descriptor for its inode. Invocation checks
-that descriptor against the retained bytes and digest, maps it to a
-collision-free child descriptor, and executes it through `/proc/self/fd`.
-The source pathname is never reopened.
+the runtime retains a read-only descriptor for its inode. Construction checks
+the stored bytes against the retained bytes. Child-episode initialization
+repeats that check before accepting an inherited descriptor. Invocation maps
+the descriptor to a collision-free child descriptor and executes it through
+`/proc/self/fd`. The stored image and argument zero use the basename from the
+configured absolute path. This preserves dispatch by BusyBox, coreutils, and
+other multicall executables. The source pathname is never reopened.
 
 The episode process receives internal read and write access to the storage
 parent so it can remove the private directory after confinement. Tool and
@@ -260,9 +263,8 @@ denials to the restricting process without privilege and without a daemon.
   credentials and the host tools, and the runtime never restricts it.
 - Another process running as the same operating-system user. Such a process
   can alter files owned by that user, including private executable images.
-  The runtime detects a changed image immediately before launch and refuses
-  to execute it. A hostile concurrent mutation after that check remains
-  inside the host trust boundary.
+  Processes that run with the same user identity are inside the host trust
+  boundary.
 - The network of the episode process when it holds the transport. An
   episode with a `model` block connects to the provider itself, and
   Landlock has no rule that names a remote host, so outbound TCP is open

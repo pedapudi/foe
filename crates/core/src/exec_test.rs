@@ -106,6 +106,39 @@ fn a_committed_elf_runs_after_its_source_is_replaced_under_landlock() {
 }
 
 #[test]
+fn a_configured_multicall_executable_keeps_its_configured_name() {
+    let dir = scratch("exec", "multicall-name");
+    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3,
+        "name": "multicall executable test",
+        "instructions": {"role": "test"},
+        "tools": ["configured"],
+        "tool_defs": {"configured": {"exec": "/bin/echo", "description": "test executable"}},
+        "grants": {"read": [dir]},
+        "budget": {"model_calls": 1},
+        "sandbox": {"mode": "required"},
+        "task": "test"
+    }))
+    .unwrap();
+    let program = foe_program::document::resolve(&config).unwrap();
+    let executables = crate::executable::ExecutableTree::materialize(&program, &dir.join("episode")).unwrap();
+    let executable = executables.tools["configured"].clone();
+    assert_eq!(executable.stored_path().file_name().unwrap(), "echo");
+    let policy = Policy::for_episode(&program, &executables, &dir);
+    let executor = LocalExecutor::new(
+        Arc::new(Sandbox::new(SandboxMode::Required).unwrap()),
+        policy,
+        dir.join("spill"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let mut req = request(program.tool_defs["configured"].exec.to_str().unwrap(), &["committed"], &dir);
+    req.executable = Some(executable);
+    let result = executor.run(req).unwrap();
+    assert_eq!(result.exit_code, Some(0), "{}", String::from_utf8_lossy(&result.stderr));
+    assert_eq!(result.stdout, b"committed\n");
+}
+
+#[test]
 fn construction_rejects_a_source_without_an_execute_bit() {
     let dir = scratch("exec", "non-executable");
     let source = dir.join("tool");
@@ -160,22 +193,6 @@ fn executable_storage_is_outside_a_write_root_that_contains_the_log() {
     assert!(!executables.tools["configured"].stored_path().starts_with(&dir));
     std::fs::write(&source, "#!/bin/sh\nprintf 'changed\\n'\n").unwrap();
     assert_eq!(executor.run(req).unwrap().stdout, b"safe\n");
-}
-
-#[test]
-fn a_changed_private_image_is_refused_before_user_code_runs() {
-    let dir = scratch("exec", "changed-private-image");
-    let source = dir.join("tool");
-    let marker = dir.join("ran");
-    std::fs::write(&source, format!("#!/bin/sh\ntouch {}\n", marker.display())).unwrap();
-    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let (executor, req, executables) = configured_executor("changed-image", &source, SandboxMode::Required, Vec::new());
-    let stored = executables.tools["configured"].stored_path();
-    std::fs::set_permissions(stored, std::fs::Permissions::from_mode(0o700)).unwrap();
-    std::fs::write(stored, "#!/bin/sh\ntouch changed\n").unwrap();
-    let error = executor.run(req).unwrap_err().to_string();
-    assert!(error.contains("committed executable"), "{error}");
-    assert!(!marker.exists(), "the changed executable did not start");
 }
 
 #[test]

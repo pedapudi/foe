@@ -48,6 +48,7 @@ pub fn compute(
         if program.tool_defs.contains_key(&spec.name) {
             let image = program.executable_images.get(&spec.name).expect("a resolved executable has an image");
             entry["exec_sha256"] = Value::String(image.sha256.clone());
+            entry["exec_name"] = Value::String(image.basename.to_string_lossy().into_owned());
         }
         tools.push(entry);
     }
@@ -68,6 +69,7 @@ pub fn compute(
     let mut runtime = serde_json::to_value(runtime)?;
     if let Some(image) = &program.transport_executable {
         runtime["exec_transport_sha256"] = Value::String(image.sha256.clone());
+        runtime["exec_transport_name"] = Value::String(image.basename.to_string_lossy().into_owned());
     }
     let document = json!({
         "name": program.name,

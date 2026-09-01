@@ -509,7 +509,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         .transpose()?
         .flatten();
     let program = match &inherited {
-        Some(executables) => resolve_with_executables(&config, &executables.bytes()),
+        Some(executables) => resolve_with_executables(&config, &executables.images()),
         None => resolve(&config),
     }
     .map_err(|e| format!("config: {e}"))?;
