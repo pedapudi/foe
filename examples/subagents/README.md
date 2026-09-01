@@ -1,12 +1,12 @@
 # Subagents demo
 
-A parent program that delegates reading to child episodes and keeps editing
+A parent contract that delegates reading to child episodes and keeps editing
 for itself. The runner creates a small Python project, runs the episode
 against a scripted model transport, and checks the parent's log, both
 children's logs, and the edited files.
 
 The parent lists the `spawn` and `wait` tools, and `grants.spawn` names the
-one child program it may start, `survey`. `programs.survey` is a complete child
+one child contract it may start, `survey`. `child_contracts.survey` is a complete child
 configuration: its own instructions, tools, grants, and budget. It omits
 `version`, `task`, `model`, and `sandbox`, which a child inherits. The
 child's grants are a subset of the parent's; construction refuses a child
@@ -16,15 +16,15 @@ that reaches further than its parent.
 
 Linux, and `/usr/bin/python3` for the transport script and the runner's
 checks. The demo needs no model credential and makes no provider request:
-`model.provider` is `exec`, and the program it names answers every request
-with fixed chunks. Both the parent and each child run that program, one
+`model.provider` is `exec`, and the contract it names answers every request
+with fixed chunks. Both the parent and each child run that contract, one
 process per request.
 
-The program is `transport.py` in this directory. The runner copies it to
+The contract is `transport.py` in this directory. The runner copies it to
 `tools/transport.py` inside the project it creates, together with the helper
 module it imports from `examples/support`, and the configuration names the
 copy. The copy is what makes the demo runnable: a model transport is a
-program the episode starts, and such a program reads only inside the
+contract the episode starts, and such a contract reads only inside the
 episode's read roots, so a script left in this directory could not read its
 helper module.
 
@@ -89,7 +89,7 @@ start the transport its inherited `model` block names.
 
 Budget is one pool held by the root episode. The parent declares 40 model
 calls, 320,000 input tokens, 80,000 output tokens, and 1,800 seconds. A
-`spawn` call names no amount, so the reservation is what the child program
+`spawn` call names no amount, so the reservation is what the child contract
 declares: 8 calls, 48,000 input tokens, and 12,000 output tokens. Both
 reservations stand at once, so 16 of the parent's 40 calls are held for its
 children while they run. When a child settles, the runtime debits what the
@@ -113,13 +113,13 @@ the child and the amount taken from the remainder, then a `spawn/start` with
 
 ```json
 {"seq": 12, "type": "budget/reserve", "data": { "child_id": "ep_ff6cef6d", "reserved": { "model_calls": 8, "input_tokens": 48000, "output_tokens": 12000, "seconds": 1800, "episodes": 1 } }}
-{"seq": 13, "type": "spawn/start", "data": { "child_id": "ep_ff6cef6d", "program": "survey", "context": "fresh", "call_id": "tc_spawn_config" }}
+{"seq": 13, "type": "spawn/start", "data": { "child_id": "ep_ff6cef6d", "contract": "survey", "context": "fresh", "call_id": "tc_spawn_config" }}
 ```
 
 The child's own log is at `children/<child-id>/episode.jsonl` under the
 parent's log directory, beside the configuration the child was launched
 with. Its `episode/start.parent_id` names the parent, and its
-`episode/start.program` is the child program: no write root, no spawn root,
+`episode/start.contract` is the child contract: no write root, no spawn root,
 and a budget of 8 calls against the parent's 40. When the child finishes,
 the parent's log gains an `inbox/item` with source `child` carrying the
 report, a second one stating that the child ended, a `spawn/end` with the
@@ -130,7 +130,7 @@ child's outcome, and a `budget/release` with what the child spent:
 ```
 
 The runner checks all of this. In the parent's log it requires two
-reservations of the amount the `survey` program declares, two `spawn/start`
+reservations of the amount the `survey` contract declares, two `spawn/start`
 events with a fresh context, and one `wait` result that lands after all four
 settlement events. It requires two children that ended `completed`, each
 releasing less than it reserved, and four messages from children, of which
@@ -148,7 +148,7 @@ tree: the parent with both children hanging under it on a solid connector,
 each with its own outcome. Selecting a child shows that child's
 conversation. The details region counts the selected episode's model calls,
 input tokens, and output tokens against the limits its own
-`episode/start.program.budget` declares. The trajectory region above the
+`episode/start.contract.budget` declares. The trajectory region above the
 main region draws each child's span inside the parent's.
 
 ## Against a real model

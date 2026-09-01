@@ -32,7 +32,7 @@ sh_binary(
         "//:foe",
         "//:Cargo.toml",
         "//evals:score-trace",
-        "//evals:foe_source_identity.py",
+        "//evals:foe_build.py",
         "@harness_bench//:development_tasks",
         "@harness_bench//:task_015_yaml",
         "@harness_bench//:task_043_yaml",
@@ -61,7 +61,7 @@ sh_binary(
         "//:foe",
         "//:Cargo.toml",
         "//evals:score-trace",
-        "//evals:foe_source_identity.py",
+        "//evals:foe_build.py",
         "@harness_bench//:confirmation_tasks",
         "@harness_bench//:task_085_yaml",
         "@harness_bench//:task_096_yaml",
@@ -72,7 +72,7 @@ sh_binary(
 sh_binary(
     name = "collect-evidence",
     srcs = ["collect_evidence.py"],
-    data = ["//evals:foe_source_identity.py"],
+    data = ["//evals:foe_build.py"],
     visibility = ["//visibility:public"],
 )
 
@@ -85,7 +85,7 @@ sh_binary(
     ],
     data = [
         "//:foe",
-        "//evals:foe_source_identity.py",
+        "//evals:foe_build.py",
     ],
     visibility = ["//visibility:public"],
 )
@@ -98,7 +98,7 @@ sh_test(
         "run_foe_test.py",
         "collect_evidence.py",
         "collect_evidence_test.py",
-        "//evals:foe_source_identity.py",
+        "//evals:foe_build.py",
         "knowledge_qa_claim_scoring.patch",
         "run_self_improvement.py",
         "run_self_improvement_test.py",

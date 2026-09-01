@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "review-and-test",
   "instructions": {
     "10-role": "You lead a team working in a Python repository. You make the code change yourself.",
@@ -21,7 +21,7 @@
     "max_episodes": 3,
     "max_concurrent": 2
   },
-  "programs": {
+  "child_contracts": {
     "reviewer": {
       "name": "reviewer",
       "instructions": {

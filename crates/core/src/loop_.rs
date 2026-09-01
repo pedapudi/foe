@@ -13,14 +13,14 @@ use crate::inbox::Inbox;
 use crate::registry::{Handles, Registry};
 use crate::spawn::Router;
 use crate::{result_budget, ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
+use foe_contract::document::{completion_evidence_required, ResolvedContract};
+use foe_contract::harness_text as text;
 use foe_log::{
     fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
     Event, EventData, ExhaustedLimit, HeaderReason, InboxItem, InboxSource, LogError, Message, ModelRequest, Outcome,
     RequestHeader, RetryCause, StopReason, ThinkingBlock, ToolCall, ToolResult, ToolSchema, Usage, VerificationResult,
     VerificationStatus, SUMMARY_REQUEST_PREFIX,
 };
-use foe_program::document::{completion_evidence_required, ResolvedProgram};
-use foe_program::harness_text as text;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -129,7 +129,7 @@ pub fn initialize(log: &Log, start: &EpisodeStart) -> Result<(), LogError> {
 pub struct Params {
     pub log: Arc<Log>,
     pub start: EpisodeStart,
-    pub program: ResolvedProgram,
+    pub contract: ResolvedContract,
     pub registry: Arc<Registry>,
     pub handles: Handles,
     pub transport: Arc<dyn Transport>,
@@ -310,7 +310,7 @@ pub async fn verify_recorded(
     let event = log.append(EventData::VerificationResult(VerificationResult {
         step,
         tool: verifier.into(),
-        verifier_identity: registry.verifier_identity(verifier, runtime_build),
+        verifier_fingerprint: registry.verifier_fingerprint(verifier, runtime_build),
         status,
         findings,
         error,
@@ -381,7 +381,7 @@ impl Episode {
                 self.append_inbox(InboxSource::System, text::FINAL_REQUEST)?;
             }
             post_session_exits(&self.p.log, self.p.sessions.as_ref())?;
-            self.write_header(self.p.registry.system_prompt(&self.p.program.instructions), self.p.registry.schemas())?;
+            self.write_header(self.p.registry.system_prompt(&self.p.contract.instructions), self.p.registry.schemas())?;
             let message = match self.request(Request::Step).await? {
                 Answer::Message { message, .. } => message,
                 Answer::Interrupted => continue,
@@ -486,7 +486,7 @@ impl Episode {
                 }
             };
             let (header_seq, header) = self.header.clone().expect("header written before the request");
-            let configured = self.p.program.model.as_ref().and_then(|m| m.max_output_tokens);
+            let configured = self.p.contract.model.as_ref().and_then(|m| m.max_output_tokens);
             let max_output_tokens = match lock(&self.p.pool).request_max_output(configured) {
                 Ok(cap) => cap,
                 Err(limit) => return Ok(Answer::Ended(Outcome::Exhausted { limit })),
@@ -644,7 +644,7 @@ impl Episode {
         duration_ms: u64,
         synthetic: bool,
     ) -> Result<ToolResult, RuntimeError> {
-        let cite = completion_evidence_required(self.p.program.done_when.as_ref());
+        let cite = completion_evidence_required(self.p.contract.done_when.as_ref());
         append_result(&self.p.log, &self.spill_dir, self.step, call, value, archive, duration_ms, synthetic, cite)
     }
 
@@ -673,14 +673,14 @@ impl Episode {
             let message = blocked.value["message"].as_str().expect("block schema validates the message").to_string();
             return Ok(Some(Outcome::Blocked { code, message }));
         }
-        let threshold = self.p.program.budget.loop_threshold as usize;
+        let threshold = self.p.contract.budget.loop_threshold as usize;
         if let Some(outcome) = self.p.log.with_events(|events| looping(events, threshold)) {
             return Ok(Some(outcome));
         }
         let finished = message.tool_calls.is_empty() && !message.interrupted && message.stop != StopReason::Length;
         let verifier_called = self
             .p
-            .program
+            .contract
             .done_when
             .as_ref()
             .and_then(|done| done.verify.as_deref())
@@ -698,7 +698,7 @@ impl Episode {
             (finished || verifier_called).then(|| Value::String(message.text.clone()))
         };
         let Some(candidate) = candidate else { return Ok(None) };
-        if completion_evidence_required(self.p.program.done_when.as_ref()) {
+        if completion_evidence_required(self.p.contract.done_when.as_ref()) {
             let findings = learned_findings(&self.p.log, &candidate);
             if !findings.is_empty() {
                 let message = text::fill(text::INVALID_ARGS, &[("name", text::RETURN_NAME), ("reason", &findings)]);
@@ -706,7 +706,7 @@ impl Episode {
                 return Ok(None);
             }
         }
-        let Some(done) = self.p.program.done_when.clone().filter(|d| d.verify.is_some()) else {
+        let Some(done) = self.p.contract.done_when.clone().filter(|d| d.verify.is_some()) else {
             return Ok(Some(Outcome::Completed { value: candidate }));
         };
         let verifier = done.verify.clone().unwrap_or_default();
@@ -866,7 +866,7 @@ struct InnerCalls {
 impl crate::Composer for InnerCalls {
     async fn call(&self, name: &str, args: Value) -> Result<(Value, bool), RuntimeError> {
         if [crate::COMPOSING_TOOL, text::BLOCK_NAME, text::RETURN_NAME].contains(&name) {
-            let message = format!("`{name}` is not callable from a `{}` program", crate::COMPOSING_TOOL);
+            let message = format!("`{name}` is not callable from a `{}` contract", crate::COMPOSING_TOOL);
             return Ok((serde_json::json!({ "error": message }), true));
         }
         let index = self.index.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -881,7 +881,7 @@ impl crate::Composer for InnerCalls {
         let started = Instant::now();
         let value =
             self.registry.dispatch(&self.handles, &call, self.step, self.spill_dir.clone(), self.deadline, None).await;
-        // The program receives the canonical value even when the log holds
+        // The contract receives the canonical value even when the log holds
         // a spill locator in its place.
         let canonical = value.value.clone();
         let ms = started.elapsed().as_millis() as u64;
@@ -1122,7 +1122,7 @@ fn close_open(text: &str) -> String {
 }
 
 fn signature(name: &str, args: &Value, result: &Value) -> String {
-    format!("{name} {} -> {}", foe_program::identity::canonical(args), foe_program::identity::canonical(result))
+    format!("{name} {} -> {}", foe_contract::fingerprint::canonical(args), foe_contract::fingerprint::canonical(result))
 }
 
 /// The two forms of lack of progress in docs/design.md "Blocking conditions

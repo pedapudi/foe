@@ -38,7 +38,7 @@ project_dir="$run_dir/project"
 log_dir="$run_dir/episode"
 mkdir -p "$project_dir/src" "$project_dir/tools" "$project_dir/support"
 
-# The model transport is a program the episode starts, so it reads only
+# The model transport is a contract the episode starts, so it reads only
 # inside the episode's read roots. Both it and the helper module it imports
 # are copied into the project, which every episode in this tree may read.
 cp "$example_dir/transport.py" "$project_dir/tools/transport.py"
@@ -116,7 +116,7 @@ def require(condition, message):
 
 parent = events(root)
 start = data_of(parent, "episode/start")[0]
-program = start["program"]
+contract = start["contract"]
 reserved = data_of(parent, "budget/reserve")
 released = data_of(parent, "budget/release")
 starts = data_of(parent, "spawn/start")
@@ -125,14 +125,14 @@ reports = [item for item in data_of(parent, "inbox/item") if item["source"] == "
 
 require(len(starts) == 2, f"the parent started {len(starts)} children rather than two")
 require(all(s["context"] == "fresh" for s in starts), "a child was started with a context other than fresh")
-require(all(s["program"] == "survey" for s in starts), "a child ran a program other than survey")
+require(all(s["contract"] == "survey" for s in starts), "a child ran a contract other than survey")
 require(len(reserved) == 2, f"the parent recorded {len(reserved)} reservations rather than two")
-declared = program["programs"]["survey"]["budget"]
+declared = contract["child_contracts"]["survey"]["budget"]
 for reserve in reserved:
     require(
         reserve["reserved"]["model_calls"] == declared["model_calls"],
         f"a reservation took {reserve['reserved']['model_calls']} calls rather than the {declared['model_calls']} "
-        "the survey program declares",
+        "the survey contract declares",
     )
 require(len(ends) == 2 and len(released) == 2, "a child settled without a spawn/end and a budget/release")
 waited = [e["seq"] for e in parent if e["type"] == "tool/result" and e["data"]["name"] == "wait"]
@@ -159,17 +159,17 @@ require(len(children) == 2, f"{len(children)} child logs were written rather tha
 for directory in children:
     child = events(directory)
     child_start = data_of(child, "episode/start")[0]
-    child_program = child_start["program"]
+    child_contract = child_start["contract"]
     require(child_start["parent_id"] == start["id"], f"{directory.name}: the child names another parent")
-    require(child_program["grants"].get("write", []) == [], f"{directory.name}: the child holds a write grant")
-    require(child_program["grants"].get("spawn", []) == [], f"{directory.name}: the child may spawn")
-    require(program["grants"]["write"] != [], "the parent holds no write grant, so the child is no narrower")
+    require(child_contract["grants"].get("write", []) == [], f"{directory.name}: the child holds a write grant")
+    require(child_contract["grants"].get("spawn", []) == [], f"{directory.name}: the child may spawn")
+    require(contract["grants"]["write"] != [], "the parent holds no write grant, so the child is no narrower")
     require(
-        child_program["budget"]["model_calls"] < program["budget"]["model_calls"],
+        child_contract["budget"]["model_calls"] < contract["budget"]["model_calls"],
         f"{directory.name}: the child's call budget is not below the parent's",
     )
     require(
-        "notify" in child_program["tools"] and "edit" not in child_program["tools"],
+        "notify" in child_contract["tools"] and "edit" not in child_contract["tools"],
         f"{directory.name}: the child's tools are not the read-only set",
     )
     outcome = data_of(child, "episode/end")[0]["outcome"]

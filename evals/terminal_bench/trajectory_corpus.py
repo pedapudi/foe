@@ -18,7 +18,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from foe_source_identity import evaluated_foe, require_evaluated_foe
+from foe_build import evaluated_foe, require_evaluated_foe
 
 
 SCHEMA_VERSION = 1
@@ -118,7 +118,7 @@ def _trial_task(path: Path) -> str:
     return task.rsplit("/", 1)[-1]
 
 
-def _validate_episode_identity(path: Path, runtime_binary: str) -> None:
+def _validate_episode_runtime(path: Path, runtime_binary: str) -> None:
     starts = []
     with path.open(encoding="utf-8") as lines:
         for line_number, line in enumerate(lines, 1):
@@ -135,11 +135,11 @@ def _validate_episode_identity(path: Path, runtime_binary: str) -> None:
     data = starts[0].get("data")
     runtime = data.get("runtime") if isinstance(data, dict) else None
     if not isinstance(runtime, dict) or runtime.get("build") != runtime_binary:
-        raise ValueError(f"Foe episode log has a different runtime identity: {path}")
+        raise ValueError(f"Foe episode log has a different runtime fingerprint: {path}")
 
 
 def _validate_retained_evidence(
-    run_dir: Path, tasks: list[str], identity: dict[str, str]
+    run_dir: Path, tasks: list[str], evaluated: dict[str, str]
 ) -> None:
     trial_results = _trial_result_paths(run_dir)
     for path in trial_results:
@@ -155,12 +155,12 @@ def _validate_retained_evidence(
         raise ValueError(f"Terminal-Bench run has no Foe trajectory diagnostics: {run_dir}")
     for path in diagnostics:
         value = json.loads(path.read_text(encoding="utf-8"))
-        evidence = value.get("evidence_identity") if isinstance(value, dict) else None
+        evidence = value.get("evidence_fingerprints") if isinstance(value, dict) else None
         if (
             not isinstance(evidence, dict)
-            or evidence.get("runtime_build") != identity["runtime_binary"]
+            or evidence.get("runtime_build") != evaluated["runtime_binary"]
         ):
-            raise ValueError(f"Foe trajectory diagnostics have a different runtime identity: {path}")
+            raise ValueError(f"Foe trajectory diagnostics have a different runtime fingerprint: {path}")
         task = value.get("task")
         if not isinstance(task, str) or task.rsplit("/", 1)[-1] not in tasks:
             raise ValueError(f"Foe trajectory diagnostics are outside their campaign: {path}")
@@ -172,7 +172,7 @@ def _validate_retained_evidence(
     if not episodes:
         raise ValueError(f"Terminal-Bench run has no Foe episode logs: {run_dir}")
     for path in episodes:
-        _validate_episode_identity(path, identity["runtime_binary"])
+        _validate_episode_runtime(path, evaluated["runtime_binary"])
 
 
 def _case_groups(contents: bytes, context: Path) -> tuple[str, dict[str, str]]:
@@ -218,7 +218,7 @@ def _role(path: Path) -> str:
         return "verifier_artifact"
     if path.name == "foe-diagnostics.json":
         return "trajectory_diagnostics"
-    if path.name in ("config.json", "foe-invocation.json", "foe-program.json"):
+    if path.name in ("config.json", "foe-invocation.json", "foe-contract.json"):
         return "adapter_invocation"
     return "adapter_diagnostics"
 
@@ -336,7 +336,7 @@ def snapshot_corpus(
     nested = next((run for run in selected if root == run or root.is_relative_to(run)), None)
     if nested is not None:
         raise ValueError(f"trajectory corpus must remain outside its source run: {nested}")
-    identity = evaluated_foe(source_root, binary)
+    evaluated = evaluated_foe(source_root, binary)
     cases_path = Path(cases).resolve(strict=True)
     cases_contents = cases_path.read_bytes()
     dataset, membership = _case_groups(cases_contents, cases_path)
@@ -346,10 +346,10 @@ def snapshot_corpus(
         campaign = json.loads(campaign_path.read_bytes())
         if not isinstance(campaign, dict):
             raise ValueError(f"Terminal-Bench campaign is not a JSON object: {campaign_path}")
-        campaign_identity = require_evaluated_foe(
+        campaign_evaluated = require_evaluated_foe(
             campaign.get("evaluated_foe"), f"Terminal-Bench campaign {campaign_path}"
         )
-        if campaign_identity != identity:
+        if campaign_evaluated != evaluated:
             raise ValueError(
                 f"Terminal-Bench campaign evaluates a different Foe source or binary: {campaign_path}"
             )
@@ -362,7 +362,7 @@ def snapshot_corpus(
                 "trajectory corpus accepts only development or capability-search cases: "
                 + ", ".join(outside)
             )
-        _validate_retained_evidence(run_dir, tasks, identity)
+        _validate_retained_evidence(run_dir, tasks, evaluated)
         prepared.append((run_dir, tasks, _relative_file_paths(run_dir)))
 
     cases_reference = _store_object(root, cases_contents)
@@ -394,7 +394,7 @@ def snapshot_corpus(
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
-        "evaluated_foe": identity,
+        "evaluated_foe": evaluated,
         "dataset": dataset,
         "cases": cases_reference,
         "runs": runs,

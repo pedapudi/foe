@@ -49,7 +49,7 @@ class TrajectoryCorpusTest(unittest.TestCase):
             capture_output=True,
             check=True,
         ).stdout.strip()
-        identity = {
+        evaluated = {
             "source_tree": f"git-tree-sha1:{tree}",
             "runtime_binary": "sha256:" + hashlib.sha256(b"foe runtime").hexdigest(),
         }
@@ -79,7 +79,7 @@ class TrajectoryCorpusTest(unittest.TestCase):
             "schema_version": 1,
             "dataset": "terminal-bench/example@1",
             "label": "development-evidence",
-            "evaluated_foe": identity,
+            "evaluated_foe": evaluated,
             "tasks": [{"name": task, "model_calls": 60, "seconds": 900}],
         }
         (run / "campaign.json").write_text(json.dumps(campaign), encoding="utf-8")
@@ -105,9 +105,9 @@ class TrajectoryCorpusTest(unittest.TestCase):
         (trial / "agent" / "foe-diagnostics.json").write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
+                    "schema_version": 4,
                     "task": f"terminal-bench/{task}",
-                    "evidence_identity": {"runtime_build": identity["runtime_binary"]},
+                    "evidence_fingerprints": {"runtime_build": evaluated["runtime_binary"]},
                 }
             )
             + "\n",
@@ -121,7 +121,7 @@ class TrajectoryCorpusTest(unittest.TestCase):
                 {
                     "seq": 1,
                     "type": "episode/start",
-                    "data": {"runtime": {"build": identity["runtime_binary"]}},
+                    "data": {"runtime": {"build": evaluated["runtime_binary"]}},
                 }
             )
             + "\n",

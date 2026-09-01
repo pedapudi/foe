@@ -488,7 +488,7 @@ export class Topbar {
   readonly el: HTMLElement;
   readonly status = new StatusPill();
   private readonly up: HTMLButtonElement;
-  private readonly crumbs = h("nav", { class: "crumbs", "aria-label": "lineage" });
+  private readonly crumbs = h("nav", { class: "crumbs", "aria-label": "episode path" });
   private crumbDigest = "";
 
   constructor(handlers: { up(): void; select(id: string): void }) {

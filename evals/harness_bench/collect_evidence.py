@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from foe_source_identity import require_evaluated_foe
+from foe_build import require_evaluated_foe
 
 MAX_EVIDENCE_BYTES = 20_000
 
@@ -41,8 +41,8 @@ def log_summary(path: Path) -> dict[str, Any]:
     usages = [message.get("usage", {}) for message in assistant]
     return {
         "log": str(path),
-        "program": starts[0].get("program", {}).get("name") if starts else None,
-        "outcome": outcome_identity(ends[-1]) if ends else None,
+        "contract": starts[0].get("contract", {}).get("name") if starts else None,
+        "outcome": outcome_summary(ends[-1]) if ends else None,
         "model_calls": sum(event.get("type") == "model/request" for event in values),
         "usage": {
             "input_tokens": sum(item.get("input", 0) for item in usages if isinstance(item, dict)),
@@ -61,7 +61,7 @@ def log_summary(path: Path) -> dict[str, Any]:
     }
 
 
-def outcome_identity(value: Any) -> dict[str, Any] | None:
+def outcome_summary(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     return {key: value[key] for key in ("kind", "code", "limit", "message") if key in value}
@@ -74,7 +74,7 @@ def recorded_outcome(result: dict[str, Any]) -> dict[str, Any] | None:
             value = json.loads(result.get("stdout", ""))
         except (TypeError, json.JSONDecodeError):
             value = None
-    return outcome_identity(value)
+    return outcome_summary(value)
 
 
 def request_progression(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -172,7 +172,7 @@ def optimization_summary(path: Path) -> dict[str, Any]:
     }
 
 
-def require_matching_identity(
+def require_same_evaluated_foe(
     expected: dict[str, str], actual: dict[str, str], actual_context: str
 ) -> None:
     for field in ("source_tree", "runtime_binary"):
@@ -190,19 +190,19 @@ def collect(
 ) -> dict[str, Any]:
     micro = read_json(micro_report)
     harness = read_json(harness_report)
-    micro_identity = require_evaluated_foe(
+    micro_evaluated = require_evaluated_foe(
         micro.get("evaluated_foe"), f"micro evaluation report {micro_report}"
     )
-    harness_identity = require_evaluated_foe(
+    harness_evaluated = require_evaluated_foe(
         harness.get("evaluated_foe"), f"Harness-Bench report {harness_report}"
     )
-    require_matching_identity(micro_identity, harness_identity, f"Harness-Bench report {harness_report}")
+    require_same_evaluated_foe(micro_evaluated, harness_evaluated, f"Harness-Bench report {harness_report}")
     for path in optimization_results or []:
         result = read_json(path)
-        identity = require_evaluated_foe(
+        evaluated = require_evaluated_foe(
             result.get("evaluated_foe"), f"self-improvement result {path}"
         )
-        require_matching_identity(micro_identity, identity, f"self-improvement result {path}")
+        require_same_evaluated_foe(micro_evaluated, evaluated, f"self-improvement result {path}")
     micro_rows = []
     for result in micro.get("results", []):
         if not isinstance(result, dict):
@@ -213,7 +213,7 @@ def collect(
             "task": result.get("task"),
             "strict_success": result.get("strict_success"),
             "components": result.get("components"),
-            "outcome": outcome_identity(result.get("outcome")),
+            "outcome": outcome_summary(result.get("outcome")),
             "usage": result.get("usage"),
         }
         if result.get("strict_success") is not True:
@@ -253,7 +253,7 @@ def collect(
     return {
         "schema_version": 1,
         "purpose": "Evidence for one general Foe runtime improvement. Benchmark-specific rules are excluded from candidate source.",
-        "evaluated_foe": micro_identity,
+        "evaluated_foe": micro_evaluated,
         "micro": {"aggregate": micro.get("aggregate"), "attempts": micro_rows},
         "harness_bench": {"summary": harness.get("summary"), "attempts": harness_rows},
         "prior_self_improvement_attempts": [optimization_summary(path) for path in optimization_results or []],

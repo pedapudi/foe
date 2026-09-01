@@ -110,7 +110,7 @@ impl Spawner for BudgetedSpawner {
         }
         let start = EventData::SpawnStart {
             child_id: child_id.clone(),
-            program: req.program.clone(),
+            contract: req.contract.clone(),
             context: req.context,
             call_id: req.call_id.clone(),
         };

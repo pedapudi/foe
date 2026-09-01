@@ -8,21 +8,21 @@ fn event(seq: u64, time: i64, data: EventData) -> Event {
     Event { seq, time, data }
 }
 
-fn start(program: serde_json::Value) -> EventData {
+fn start(contract: serde_json::Value) -> EventData {
     EventData::EpisodeStart(EpisodeStart {
         id: "ep_1".into(),
         parent_id: None,
         fork_origin: None,
         team_id: None,
-        program,
-        identity: "sha256:aa".into(),
+        contract,
+        contract_fingerprint: "sha256:aa".into(),
         task: "do it".into(),
         runtime: RuntimeInfo { version: "0.1.0".into(), build: "sha256:bb".into() },
         sandbox: SandboxInfo {
             mode: foe_log::SandboxMode::Off,
             landlock_abi: 0,
-            effective_access: None,
-            process_boundary: None,
+            resolved_permissions: Default::default(),
+            process_boundary: Default::default(),
         },
         effective_budget: None,
     })
@@ -281,11 +281,11 @@ fn an_unknown_recovery_action_emits_only_the_closed_unknown_term() {
 
 #[test]
 fn known_values_are_the_configured_paths_the_log_directory_and_the_home_user() {
-    let program = serde_json::json!({
+    let contract = serde_json::json!({
         "grants": { "read": ["/app/repo", "/"], "write": [] },
         "model": { "token_file": "/home/rowan/.config/token.json" },
     });
-    let events = vec![event(0, 1000, start(program))];
+    let events = vec![event(0, 1000, start(contract))];
     let facts = extract(&events, "/var/log/foe/ep_1");
     let values: Vec<&str> = facts.known.iter().map(|k| k.value.as_str()).collect();
     assert!(values.contains(&"/app/repo"));
@@ -327,7 +327,7 @@ fn verification(seq: u64, status: foe_log::VerificationStatus, findings: &[&str]
         EventData::VerificationResult(foe_log::VerificationResult {
             step: 1,
             tool: "check".into(),
-            verifier_identity: "sha256:cc".into(),
+            verifier_fingerprint: "sha256:cc".into(),
             status,
             findings: findings.iter().map(|f| f.to_string()).collect(),
             error: None,
@@ -375,7 +375,7 @@ fn node_end(seq: u64, node: &str) -> Event {
 
 /// The workflow of the built-in coding configuration in shape: a model
 /// node feeding a terminal model node.
-fn review_program() -> serde_json::Value {
+fn review_contract() -> serde_json::Value {
     serde_json::json!({ "workflow": { "nodes": {
         "implement-task": { "model": { "name": "implement-task" }, "follows": ["task"] },
         "audit-and-repair-task": { "model": { "name": "audit-and-repair-task" },
@@ -399,7 +399,7 @@ fn provenance_is_verifier_when_the_last_verification_accepted() {
 #[test]
 fn provenance_is_reviewed_for_a_terminal_model_node_fed_by_a_model_node() {
     let events = vec![
-        event(0, 1000, start(review_program())),
+        event(0, 1000, start(review_contract())),
         node_start(1, "implement-task", vec![]),
         node_end(2, "implement-task"),
         node_start(3, "audit-and-repair-task", vec![2]),
@@ -416,12 +416,12 @@ fn provenance_is_model_report_when_nothing_verified_or_reviewed() {
     let plain = vec![event(0, 1000, start(serde_json::json!({}))), completed(1)];
     assert_eq!(extract(&plain, "/logs").provenance, Some("model-report"));
     // A terminal model node fed by a tool node is no independent review.
-    let program = serde_json::json!({ "workflow": { "nodes": {
+    let contract = serde_json::json!({ "workflow": { "nodes": {
         "survey": { "tool": "grep" },
         "write-up": { "model": { "name": "write-up" }, "follows": ["survey"], "terminal": true }
     } } });
     let events = vec![
-        event(0, 1000, start(program)),
+        event(0, 1000, start(contract)),
         node_start(1, "survey", vec![]),
         node_end(2, "survey"),
         node_start(3, "write-up", vec![2]),

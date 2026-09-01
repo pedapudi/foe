@@ -16,7 +16,7 @@ pub struct Node {
     pub parent_id: Option<String>,
     pub fork_origin: Option<ForkOrigin>,
     pub team_id: Option<String>,
-    /// `program.name` from `episode/start`, when the program has one.
+    /// `contract.name` from `episode/start`, when the contract has one.
     pub name: Option<String>,
     /// Set once `episode/end` is in the log.
     pub outcome: Option<Outcome>,
@@ -41,7 +41,7 @@ impl Node {
             parent_id: start.parent_id.clone(),
             fork_origin: start.fork_origin.clone(),
             team_id: start.team_id.clone(),
-            name: start.program["name"].as_str().map(str::to_string),
+            name: start.contract["name"].as_str().map(str::to_string),
             outcome: None,
             usage: Usage::default(),
             children: Vec::new(),

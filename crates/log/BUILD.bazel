@@ -7,7 +7,7 @@ rust_library(
     crate_name = "foe_log",
     crate_root = "src/lib.rs",
     edition = crate_edition(),
-    version = "0.1.0",
+    version = "0.2.0",
     visibility = ["//visibility:public"],
     deps = all_crate_deps(normal = True),
     proc_macro_deps = all_crate_deps(proc_macro = True),

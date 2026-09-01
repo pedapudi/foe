@@ -18,7 +18,7 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
                     "type": "episode/start",
                     "data": {
                         "id": "ep_1",
-                        "identity": "sha256:program",
+                        "contract_fingerprint": "sha256:contract",
                         "runtime": {"build": "sha256:runtime"},
                     },
                 },
@@ -89,7 +89,7 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
                     "data": {
                         "id": "ep_2",
                         "parent_id": "ep_1",
-                        "program": {
+                        "contract": {
                             "name": "implementation",
                             "model": {"provider": "openai-codex", "model": "gpt-5.6-sol"},
                         },
@@ -125,8 +125,8 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
             )
             report = diagnose_episode(root, trial_result=trial)
 
-        self.assertEqual(report["evidence_identity"]["runtime_build"], "sha256:runtime")
-        self.assertEqual(report["schema_version"], 3)
+        self.assertEqual(report["evidence_fingerprints"]["runtime_build"], "sha256:runtime")
+        self.assertEqual(report["schema_version"], 4)
         self.assertEqual(report["usage"]["model_calls"], 3)
         self.assertEqual(report["usage"]["input_tokens"], 325)
         self.assertEqual(report["usage"]["cache_read_tokens"], 145)
@@ -147,7 +147,7 @@ class TrajectoryDiagnosticsTest(unittest.TestCase):
                     "type": "episode/start",
                     "data": {
                         "id": "ep_failed",
-                        "identity": "sha256:program",
+                        "contract_fingerprint": "sha256:contract",
                         "runtime": {"build": "sha256:runtime"},
                     },
                 },

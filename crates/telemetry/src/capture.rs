@@ -3,9 +3,9 @@
 //! every episode it wrote, and printing what emission would write.
 //!
 //! The switch is a JSON file holding `{"capture": PATH}`. It is a
-//! machine-level file rather than part of a program's configuration because
-//! telemetry observes an episode without changing it: the same program
-//! observed and unobserved must keep one program identity. A `~/`-relative
+//! machine-level file rather than part of a contract's configuration because
+//! telemetry observes an episode without changing it: the same contract
+//! observed and unobserved must keep one contract fingerprint. A `~/`-relative
 //! capture resolves against the home the file was found under.
 //!
 //! Where that file lives is a path convention this crate does not own — a

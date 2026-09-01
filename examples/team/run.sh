@@ -38,7 +38,7 @@ project_dir="$run_dir/project"
 log_dir="$run_dir/episode"
 mkdir -p "$project_dir/src" "$project_dir/tests" "$project_dir/tools" "$project_dir/support"
 
-# The model transport is a program the episode starts, so it reads only
+# The model transport is a contract the episode starts, so it reads only
 # inside the episode's read roots. Both it and the helper module it imports
 # are copied into the project, which every episode in this tree may read.
 cp "$example_dir/transport.py" "$project_dir/tools/transport.py"
@@ -155,7 +155,7 @@ delivered = data_of(lead, "team/delivered")
 reports = [item for item in data_of(lead, "inbox/item") if item["source"] == "child"]
 
 require(len(starts) == 2, f"the lead started {len(starts)} members rather than two")
-members = {start["program"]: start["child_id"] for start in starts}
+members = {start["contract"]: start["child_id"] for start in starts}
 require(sorted(members) == ["reviewer", "tester"], f"the members are {sorted(members)}")
 for name, member_id in members.items():
     phases = [entry["phase"] for entry in roster if entry["member_id"] == member_id]

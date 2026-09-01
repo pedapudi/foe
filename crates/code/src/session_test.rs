@@ -71,7 +71,7 @@ async fn start_runs_the_command_under_the_bash_contract() {
     assert_eq!(v.rendered.as_deref(), Some("[session 1: postgres \u{b7} started]\n"));
     assert_eq!(v.subject.as_deref(), Some("session 1: postgres \u{b7} started"));
     let req = fake.started.lock().unwrap().pop().unwrap();
-    assert_eq!(req.program, std::path::PathBuf::from("/bin/bash"));
+    assert_eq!(req.command, std::path::PathBuf::from("/bin/bash"));
     assert_eq!(req.args, ["-c", "postgres -D data"]);
     assert_eq!(req.name, "postgres");
     assert_eq!(req.lifetime, SessionLifetime::Episode);

@@ -56,7 +56,7 @@ test("a prompt the sections do not compose is left whole", () => {
   assert.equal(parts.appended, "Something else entirely.");
 });
 
-test("a program that declares no instruction leaves the prompt whole", () => {
+test("a contract that declares no instruction leaves the prompt whole", () => {
   const parts = promptParts("A prompt.", {});
   assert.equal(parts.named, false);
   assert.equal(parts.appended, "A prompt.");
@@ -108,7 +108,7 @@ test("a changed route is named first", () => {
 });
 
 test("a prompt whose declared sections held names what followed them", () => {
-  // The runtime composes both prompts from the instructions the program
+  // The runtime composes both prompts from the instructions the contract
   // declares, so the sections are the same and the appended tool
   // instructions are what a changed tool set moved.
   const sections = compose(INSTRUCTIONS["10-role"], INSTRUCTIONS["20-style"]);

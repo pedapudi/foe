@@ -1,7 +1,7 @@
-//! The out-of-tree transport seam: a program that answers model requests.
+//! The out-of-tree transport seam: a command that answers model requests.
 //!
 //! A `model` block of the form `{ "provider": "exec", "exec": "/abs/path",
-//! "model": "name" }` names a program. For every model request the program
+//! "model": "name" }` names a command. For every model request the command
 //! is started once through the episode's [`Executor`], with the network
 //! allowed and the model name as its single argument. It reads one JSON
 //! object from standard input and writes `model/chunk` lines to standard
@@ -18,12 +18,12 @@
 //! `tools` and `messages` are the `request/header` and `model/request`
 //! fields of the log format. `options` is every key of the `model` block
 //! other than `provider`, `model`, `max_output_tokens`, and `exec`, so a
-//! program can be told where its own credential lives. The program runs
+//! command can be told where its own credential lives. The command runs
 //! under the episode's sandbox narrowed as for a configured executable: it
 //! may read the read roots, and it may open TCP connections. Its standard
 //! error is quoted in the error when it exits without a final chunk.
 //!
-//! The chunks arrive after the program exits rather than as it writes
+//! The chunks arrive after the command exits rather than as it writes
 //! them, because the executor captures output whole. Nothing in the record
 //! differs; only the latency of the first chunk does.
 
@@ -31,9 +31,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use foe_core::executable::Executable;
+use foe_contract::ModelConfig;
+use foe_core::captured_executable::CapturedExecutable;
 use foe_core::{Chunk, ExecRequest, Executor, ModelRequestBody, Transport};
-use foe_program::ModelConfig;
 use serde::Deserialize;
 
 use crate::TransportError;
@@ -47,35 +47,35 @@ pub const TIMEOUT: std::time::Duration = crate::http::READ_TIMEOUT;
 const STDERR_QUOTE: usize = 2000;
 
 pub struct ExecTransport {
-    program: PathBuf,
+    command: PathBuf,
     model: String,
     max_output_tokens: Option<u32>,
     options: BTreeMap<String, String>,
     executor: Arc<dyn Executor>,
-    executable: Arc<Executable>,
+    executable: Arc<CapturedExecutable>,
 }
 
 impl ExecTransport {
     pub fn new(config: &ModelConfig, executor: Arc<dyn Executor>) -> Result<ExecTransport, TransportError> {
         let path = PathBuf::from(config.option("exec").unwrap_or_default());
         let executable =
-            Executable::load(&path).map_err(|reason| TransportError::Exec { path: path.clone(), reason })?;
+            CapturedExecutable::load(&path).map_err(|reason| TransportError::Exec { path: path.clone(), reason })?;
         Self::new_with_executable(config, executor, executable)
     }
 
     pub fn new_with_executable(
         config: &ModelConfig,
         executor: Arc<dyn Executor>,
-        executable: Arc<Executable>,
+        executable: Arc<CapturedExecutable>,
     ) -> Result<ExecTransport, TransportError> {
-        let program = PathBuf::from(config.option("exec").unwrap_or_default());
-        if !program.is_absolute() {
-            return Err(TransportError::Exec { path: program, reason: "is not an absolute path".into() });
+        let command = PathBuf::from(config.option("exec").unwrap_or_default());
+        if !command.is_absolute() {
+            return Err(TransportError::Exec { path: command, reason: "is not an absolute path".into() });
         }
         let options =
             config.options.iter().filter(|(k, _)| k.as_str() != "exec").map(|(k, v)| (k.clone(), v.clone())).collect();
         Ok(ExecTransport {
-            program,
+            command,
             model: config.model.clone(),
             max_output_tokens: config.max_output_tokens,
             options,
@@ -84,7 +84,7 @@ impl ExecTransport {
         })
     }
 
-    /// The line written to the program's standard input.
+    /// The line written to the command's standard input.
     pub fn request_line(&self, req: &ModelRequestBody) -> String {
         let line = serde_json::json!({
             "type": "model/request",
@@ -117,10 +117,10 @@ impl Transport for ExecTransport {
 
     async fn stream(&self, req: ModelRequestBody, sink: &mut (dyn foe_core::ChunkSink + Send)) {
         let request = ExecRequest {
-            program: self.program.clone(),
-            executable: Some(self.executable.clone()),
+            command: self.command.clone(),
+            captured_executable: Some(self.executable.clone()),
             args: vec![self.model.clone()],
-            cwd: self.program.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/")),
+            cwd: self.command.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/")),
             env: BTreeMap::new(),
             timeout: TIMEOUT,
             network: true,
@@ -132,7 +132,7 @@ impl Transport for ExecTransport {
         let joined = tokio::task::spawn_blocking(move || executor.run(request)).await;
         let result = match joined {
             Ok(Ok(result)) => result,
-            Ok(Err(e)) => return sink.push(fail(format!("starting {}: {e}", self.program.display()), false)),
+            Ok(Err(e)) => return sink.push(fail(format!("starting {}: {e}", self.command.display()), false)),
             Err(e) => return sink.push(fail(format!("executor worker failed: {e}"), true)),
         };
         let stdout = String::from_utf8_lossy(&result.stdout);
@@ -158,10 +158,10 @@ impl Transport for ExecTransport {
         let tail = tail.trim();
         let suffix = if tail.is_empty() { String::new() } else { format!(": {tail}") };
         sink.push(match (result.timed_out, result.exit_code) {
-            (true, _) => fail(format!("{} ran past {} s{suffix}", self.program.display(), TIMEOUT.as_secs()), true),
-            (false, Some(0)) => fail(format!("{} exited without a final chunk{suffix}", self.program.display()), true),
-            (false, Some(code)) => fail(format!("{} exited with code {code}{suffix}", self.program.display()), false),
-            (false, None) => fail(format!("{} was killed{suffix}", self.program.display()), true),
+            (true, _) => fail(format!("{} ran past {} s{suffix}", self.command.display(), TIMEOUT.as_secs()), true),
+            (false, Some(0)) => fail(format!("{} exited without a final chunk{suffix}", self.command.display()), true),
+            (false, Some(code)) => fail(format!("{} exited with code {code}{suffix}", self.command.display()), false),
+            (false, None) => fail(format!("{} was killed{suffix}", self.command.display()), true),
         });
     }
 }
@@ -185,7 +185,7 @@ mod tests {
 
     impl Executor for PlainExecutor {
         fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError> {
-            let policy = Policy { exec_files: req.executable.iter().cloned().collect(), ..Policy::default() };
+            let policy = Policy { exec_files: req.captured_executable.iter().cloned().collect(), ..Policy::default() };
             let spill = scratch_dir("exec-spill");
             let executor = LocalExecutor::new(
                 Arc::new(Sandbox::new(SandboxMode::Off).unwrap()),
@@ -204,9 +204,9 @@ mod tests {
         path
     }
 
-    fn transport(program: &std::path::Path) -> ExecTransport {
+    fn transport(command: &std::path::Path) -> ExecTransport {
         let mut config = ModelConfig::new("exec", "local-model");
-        config.options.insert("exec".into(), program.to_string_lossy().into_owned());
+        config.options.insert("exec".into(), command.to_string_lossy().into_owned());
         config.options.insert("api_key_file".into(), "/keys/x".into());
         ExecTransport::new(&config, Arc::new(PlainExecutor)).unwrap()
     }
@@ -226,9 +226,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_program_receives_the_request_line_and_its_chunks_are_relayed() {
+    async fn the_contract_receives_the_request_line_and_its_chunks_are_relayed() {
         // Echoes the request to standard error for the assertion, then answers.
-        let program = script(
+        let command = script(
             "answer",
             r#"cat >&2
 echo '{"type":"model/chunk","request_id":"rq_01","chunk":{"kind":"text","delta":"Hello "}}'
@@ -236,7 +236,7 @@ echo '{"type":"model/chunk","request_id":"rq_01","chunk":{"kind":"text","delta":
 echo '{"type":"model/chunk","request_id":"rq_01","chunk":{"kind":"done","stop":"end","usage":{"input":3,"output":2,"cache_read":0}}}'
 echo ignored after the final chunk"#,
         );
-        let transport = transport(&program);
+        let transport = transport(&command);
         assert_eq!(transport.route().provider, "exec");
         let line = transport.request_line(&request());
         let value: serde_json::Value = serde_json::from_str(&line).unwrap();
@@ -248,7 +248,7 @@ echo ignored after the final chunk"#,
         assert_eq!(value["messages"][0]["role"], "user");
         assert_eq!(value["max_output_tokens"], 100);
         assert_eq!(value["options"], serde_json::json!({ "api_key_file": "/keys/x" }), "exec is not an option");
-        std::fs::write(&program, "#!/bin/sh\nexit 99\n").unwrap();
+        std::fs::write(&command, "#!/bin/sh\nexit 99\n").unwrap();
         let mut chunks = Vec::new();
         transport.stream(request(), &mut chunks).await;
         assert_eq!(
@@ -263,9 +263,9 @@ echo ignored after the final chunk"#,
 
     #[tokio::test]
     async fn exits_without_a_final_chunk_are_errors_quoting_standard_error() {
-        let program = script("crash", "echo 'boom: no key' >&2; exit 3");
+        let command = script("crash", "echo 'boom: no key' >&2; exit 3");
         let mut chunks = Vec::new();
-        transport(&program).stream(request(), &mut chunks).await;
+        transport(&command).stream(request(), &mut chunks).await;
         assert_eq!(chunks.len(), 1);
         match &chunks[0] {
             Chunk::Error { message, retryable } => {
@@ -274,9 +274,9 @@ echo ignored after the final chunk"#,
             }
             other => panic!("{other:?}"),
         }
-        let program = script("silent", "exit 0");
+        let command = script("silent", "exit 0");
         let mut chunks = Vec::new();
-        transport(&program).stream(request(), &mut chunks).await;
+        transport(&command).stream(request(), &mut chunks).await;
         match &chunks[0] {
             Chunk::Error { message, retryable } => {
                 assert!(retryable);
@@ -284,9 +284,9 @@ echo ignored after the final chunk"#,
             }
             other => panic!("{other:?}"),
         }
-        let program = script("garbage", "echo not json");
+        let command = script("garbage", "echo not json");
         let mut chunks = Vec::new();
-        transport(&program).stream(request(), &mut chunks).await;
+        transport(&command).stream(request(), &mut chunks).await;
         match &chunks[0] {
             Chunk::Error { message, retryable } => {
                 assert!(!retryable);
@@ -297,7 +297,7 @@ echo ignored after the final chunk"#,
     }
 
     #[test]
-    fn a_relative_program_path_is_refused() {
+    fn a_relative_contract_path_is_refused() {
         let mut config = ModelConfig::new("exec", "m");
         config.options.insert("exec".into(), "bin/model".into());
         let err = ExecTransport::new(&config, Arc::new(PlainExecutor)).err().unwrap().to_string();

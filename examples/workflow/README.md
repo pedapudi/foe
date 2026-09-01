@@ -63,9 +63,9 @@ shape and reports the completion as `terminal apply`.
   accepts the result. Each output line would become a verifier finding and
   re-fire `apply`.
 
-The root program defines the maximum tools and paths available to child
-nodes. This limit is the authority ceiling. Each model node runs as a child
-program with a subset of the root tools and grants. The root budget reserves
+The root contract defines the maximum tools and paths available to child
+nodes. This limit is the permission ceiling. Each model node runs as a child
+contract with a subset of the root tools and grants. The root budget reserves
 budget for each child and releases the unused reservation after the child
 ends.
 

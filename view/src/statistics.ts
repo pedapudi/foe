@@ -20,8 +20,8 @@ export interface StatisticsEpisode {
   startTime: number;
   /** Absent while the episode runs. */
   endTime: number | null;
-  /** `episode/start.program`, whose `budget` declares the limits. */
-  program: Record<string, unknown>;
+  /** `episode/start.contract`, whose `budget` declares the limits. */
+  contract: Record<string, unknown>;
   /** Depth below the scope's own root, which is 0 for that root. */
   depth: number;
   /** The outcome once `episode/end` is read, which the run table names. */
@@ -89,7 +89,7 @@ export interface WallClock {
 
 /** One declared budget limit and what the scope spent against it. */
 export interface Limit {
-  /** The limit's key in `program.budget`. */
+  /** The limit's key in `contract.budget`. */
   key: string;
   /** What the limit bounds, in words. */
   name: string;
@@ -192,14 +192,14 @@ function stepsOf(episode: StatisticsEpisode): Step[] {
 
 /** The declared budget of the scope's root, which is the pool its children draw on. */
 function limitsOf(root: StatisticsEpisode, counts: Record<string, number>): Limit[] {
-  const budget = obj(obj(root.program).budget);
+  const budget = obj(obj(root.contract).budget);
   const declared: [string, string, string, number, string][] = [
     ["model_calls", "model calls", "calls", counts.requests!, "one per `model/request`, retried attempts included"],
     ["input_tokens", "input tokens", "tokens", counts.input!, "input over every `assistant/message`"],
     ["output_tokens", "output tokens", "tokens", counts.output!, "output over every `assistant/message`"],
     ["seconds", "wall clock", "seconds", counts.seconds!, "from the root's `episode/start` to its end"],
     ["max_episodes", "episodes", "episodes", counts.episodes!, "one per log under this episode, itself included"],
-    ["max_depth", "depth", "levels", counts.depth!, "the deepest lineage below this episode"],
+    ["max_depth", "depth", "levels", counts.depth!, "the deepest episode nesting below this episode"],
   ];
   const out: Limit[] = [];
   for (const [key, name, unit, used, counted] of declared) {

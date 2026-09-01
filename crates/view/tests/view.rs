@@ -49,7 +49,7 @@ fn fixture() -> PathBuf {
 }
 
 /// A directory of episode directories: two independent runs of one
-/// program, one of which spawned a child, beside a directory that holds no
+/// contract, one of which spawned a child, beside a directory that holds no
 /// log at all.
 fn collection() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/collection")

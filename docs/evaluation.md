@@ -16,14 +16,14 @@ trace evaluator then checks the episode log and every child log.
 
 | guarantee | generated case | conformance condition |
 |---|---|---|
-| declared authority | granted and forbidden built-in reads | The forbidden read returns an error. |
+| declared permissions | granted and forbidden built-in reads | The forbidden read returns an error. |
 | reconstructable evidence | every generated episode | Ordinary requests and tool results derive from prior events. |
 | typed outcomes | four termination cases | Each outcome uses its closed variant and expected process exit. |
 | hierarchical budgets | a workflow model-node child | Reservations, releases, and measured child spend agree. |
 | workflow provenance | a model choice and terminal tool node | Firings and branches follow the declared graph. |
 | compaction continuity | two reads and a forced compaction | Typed state preserves obligations and successful file calls. |
 
-The default authority case uses foe's capability handles with the kernel
+The default permissions case uses Foe's capability handles with the kernel
 sandbox disabled. The case therefore runs on systems without Landlock. A
 stronger optional case runs `/usr/bin/cat` under `sandbox.mode: required` and
 requires the kernel to permit one read and deny another. The case also checks
@@ -100,7 +100,7 @@ The `observations` object reports facts that affect interpretation. These
 facts include observed Landlock ABIs, denied capability calls, child counts,
 workflow counts, successful compactions, and the number of trace corruptions
 the runner performed. An episode whose recorded Landlock ABI is not an integer
-fails its declared authority check and counts under the ABI key `invalid`.
+fails its declared permissions check and counts under the ABI key `invalid`.
 
 ### Exit statuses
 
@@ -129,7 +129,7 @@ Every reported configuration identifies:
 
 - the Git tree object of the clean Foe source checkout;
 - the SHA-256 digest of the Foe binary that ran the episode;
-- the foe program identity and runtime build hash recorded by the episode;
+- the Foe contract fingerprint and runtime build hash recorded by the episode;
 - the provider, model identifier, and model options;
 - the benchmark name, dataset version, and task identifier;
 - the root input-token, output-token, model-call, episode, concurrency, and
@@ -221,7 +221,7 @@ when it hit no deployment fault and all five component checks pass:
 
 - `artifact_correct`: the external executable grader accepts the workspace or returned value;
 - `outcome_correct`: foe records a completed outcome;
-- `mechanism_exercised`: the required authority, typed evidence, child, workflow, or compaction evidence appears in the log;
+- `mechanism_exercised`: the required permissions, typed evidence, child, workflow, or compaction evidence appears in the log;
 - `trace_conformant`: the deterministic trace evaluator finds no contract violation;
 - `within_budget`: every model response reported its usage, and input,
   output, and model-call usage stay within their respective limits.
@@ -234,7 +234,7 @@ Each mechanism check names the trajectory evidence its task requires, so a
 component failure states which evidence was absent. The typed configuration
 case resolves the path cited in the returned finding and requires it to name a
 file the episode read without error, which separates a grounded citation from
-a plausible one. The delegated case requires both declared child programs to
+a plausible one. The delegated case requires both declared child contracts to
 run with fresh context, read-only grants, completed outcomes, bounded typed
 reports, and one explicit wait call. The workflow case requires all four
 declared nodes to start and settle. It also requires selection of the apply
@@ -365,7 +365,7 @@ figures reported beside them.
 | micro declared migration workflow | higher strict accuracy; higher tokens and latency | typed dataflow separates evidence, decision, and application, while the write grant excludes application code; the two model nodes add requests | medium |
 | micro compaction ledger continuity and CompactBench locked-obligation cases | higher retention of the task, completion rule, file history, child outcomes, and verifier findings | foe carries these fields from typed events rather than asking the summary model to remember them | medium |
 | micro delegated order quotation | lower latency only against a sequential delegation baseline; no expected advantage against tuned parallel subagents | foe starts independent children concurrently and preserves their typed reports, while Claude Code and Codex CLI can also run parallel agents | low |
-| selected Harness-Bench permission-sensitive and long-running tasks | higher strict completion when completion includes policy and trace conformance | declared authority, typed outcomes, hierarchical budgets, and request reconstruction are part of the score | medium |
+| selected Harness-Bench permission-sensitive and long-running tasks | higher strict completion when completion includes policy and trace conformance | declared permissions, typed outcomes, hierarchical budgets, and request reconstruction are part of the score | medium |
 | Terminal-Bench and SWE-bench Verified broad coding sets | no expected advantage | mature vendor harnesses have more tool tuning, language integrations, and benchmark exposure; foe's control mechanisms add overhead that these scorers mostly ignore | high |
 
 The minimal lookup is a controlled harness-overhead benchmark. Give every
@@ -413,14 +413,14 @@ Start with its software-engineering, long-running autonomy,
 permission-sensitive, and evidence-grounded categories. These categories
 exercise foe's grants, bounded execution, complete logs, and recovery behavior.
 Audit only the tasks used for a local diagnostic. Record the upstream commit,
-every local patch digest, and the resulting evaluator identity.
+every local patch digest, and the resulting evaluator digest.
 
 Some process-quality fields use a model judge. Report those fields as
 diagnostics. Executable completion remains the primary result.
 
 ### Terminal-Bench
 
-Status: primary score-authority integration.
+Status: primary source for comparative scores.
 
 [Terminal-Bench 2.1](https://www.tbench.ai/news/terminal-bench-2-1) is a
 versioned set of 89 tasks. Its release corrected 28 tasks from version 2.0 and
@@ -432,7 +432,7 @@ submissions.
 Use a thin Harbor adapter for Foe. Audit all 89 tasks before calibration, then
 freeze a 10 to 20 task sample for three trials per task. A complete official
 run follows only when calibration supports its accuracy and cost target.
-Terminal-Bench completion alone does not establish Foe's trace or authority
+Terminal-Bench completion alone does not establish Foe's trace or permissions
 guarantees, so every trial also receives the local conformance evaluation.
 
 ### CompactBench
@@ -446,7 +446,7 @@ an otherwise identical configuration whose context fits without compaction.
 
 The project is recent and lacks peer-reviewed validation. Treat its results as
 a regression signal. Keep foe's deterministic task, completion-condition, and
-file-list checks as the conformance authority.
+file-list checks as the conformance source of truth.
 
 ### AgentDojo
 
@@ -460,7 +460,7 @@ completion and unauthorized effects.
 
 Map AgentDojo tools to foe host tools with declared effects. Score benign task
 completion, attack success, and foe policy denial as separate metrics. The
-simulated services exercise tool authority and untrusted observations. They do
+simulated services exercise tool permissions and untrusted observations. They do
 not replace the Landlock executable probe.
 
 ### SWE-bench Verified
@@ -474,7 +474,7 @@ widely used executable scorer.
 
 Use SWE-bench after the harness-focused integrations. Its pass rate measures
 coding outcome well. It provides limited direct pressure on declared
-authority, typed outcomes, hierarchical budgets, and reconstructable logs.
+permissions, typed outcomes, hierarchical budgets, and reconstructable logs.
 
 ### RE-Bench
 
@@ -502,7 +502,7 @@ An external benchmark adapter performs four operations:
    by dataset version, task identifier, and attempt identifier.
 
 The benchmark evaluator runs outside the episode's write grant. An episode
-therefore cannot alter its grader. Child programs reserve from the same root
+therefore cannot alter its grader. Child contracts reserve from the same root
 budget, which keeps single-episode and multi-episode configurations comparable.
 
 ## Current limits
@@ -528,6 +528,6 @@ reliability claim needs the attempt counts stated under comparable metrics
 above. Two of the five mechanism checks rest partly on conditions the runtime
 enforces regardless of the trajectory: the declared workflow fires its own
 nodes, and the write grant already forbids the migration case from touching
-application code. Those conditions confirm that authority held, and the
+application code. Those conditions confirm that permissions held, and the
 model-dependent signal in those two cases comes from the chosen branch and the
 graded artifact.

@@ -15,8 +15,8 @@
 //! the context.
 //!
 //! A rendering the budget cuts is returned beside the shortened value for
-//! immutable archiving. A program with `retrieve` receives an opaque cursor
-//! in the notice. Other programs receive the instruction to narrow and
+//! immutable archiving. A contract with `retrieve` receives an opaque cursor
+//! in the notice. Other execution contracts receive the instruction to narrow and
 //! repeat the original call. A numbered window from `read` is cut to its
 //! head alone. Every other rendering keeps its head and its tail because a
 //! command's output carries its verdict at both ends.
@@ -28,7 +28,7 @@
 
 use crate::retrieval::ArchivedRendering;
 use crate::{fitting, ToolCall, ToolValue};
-use foe_program::harness_text as text;
+use foe_contract::harness_text as text;
 
 /// Characters of tool-result text one model turn may show, divided between
 /// the calls of that turn. One call is already bounded below this by the

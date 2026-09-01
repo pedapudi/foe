@@ -1,4 +1,4 @@
-//! The running form: load the program document, restrict the process, compose
+//! The running form: load the contract document, restrict the process, compose
 //! the runtime's parts, run one episode, and report the outcome.
 //!
 //! Order matters in [`run`]. Everything that reads a file outside the
@@ -9,28 +9,28 @@
 //! applied on the main thread before the asynchronous runtime starts, so
 //! every thread of the episode inherits it.
 
+use foe_contract::document::{resolve, resolve_with_executables, ResolvedContract};
+use foe_contract::fingerprint::{compute, Fingerprint};
+use foe_contract::{Budget, ContractDocument, ModelConfig, ToolSpec};
 use foe_core::budget::Pool;
+use foe_core::captured_executable::{CapturedExecutableTree, InheritedExecutables};
 use foe_core::confine::{Confined, Unconfined};
 use foe_core::context::ContextPolicy;
 use foe_core::exec::LocalExecutor;
-use foe_core::executable::{ExecutableTree, InheritedExecutables};
+use foe_core::fingerprint::runtime_info;
 use foe_core::grants::{RootReader, RootWriter};
-use foe_core::identity::runtime_info;
 use foe_core::loop_::{self, Log, Params};
 use foe_core::process_boundary::ProcessOwnership;
 use foe_core::protocol::{stdout_mirror, Host};
 use foe_core::registry::{Handles, Registry};
 use foe_core::sandbox::{Policy, Sandbox};
 use foe_core::session::LocalSessions;
-use foe_core::spawn::{ChildLaunch as Lineage, ProcessConnections, ProcessSpawner, Router, Uplink};
+use foe_core::spawn::{ChildLaunch, ProcessConnections, ProcessSpawner, Router, Uplink};
 use foe_core::team::{self, Team};
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
-use foe_log::seed::{SeedHeader, SeedProgram};
+use foe_log::seed::{SeedContract, SeedHeader};
 use foe_log::{ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
-use foe_program::document::{resolve, resolve_with_executables, ResolvedProgram};
-use foe_program::identity::{compute, Identity};
-use foe_program::{Budget, ModelConfig, ProgramDocument, ToolSpec};
 use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -48,9 +48,9 @@ const BUILTIN_ASSESSMENT_CALLS: u64 = 60;
 const BUILTIN_REPAIR_CALLS: u64 = 60;
 const BUILTIN_VERIFIER_RETRIES: u32 = 12;
 
-/// Static behavior of the built-in coding workflow. Dynamic authority,
+/// Static behavior of the built-in coding workflow. Dynamic permissions,
 /// environment, model, verifier, and task values are filled below.
-const BUILTIN_PROGRAM_DOCUMENT: &str = include_str!("builtin-coding.json");
+const BUILTIN_CONTRACT_DOCUMENT: &str = include_str!("builtin-coding.json");
 const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
@@ -71,7 +71,7 @@ const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
 ];
 
 /// The built-in coding workflow declares these standard command roots for
-/// its shell-based tools. Configured programs choose their own execute roots.
+/// its shell-based tools. Configured contracts choose their own execute roots.
 const BUILTIN_EXECUTE_ROOTS: &[&str] = &["/bin", "/usr/bin", "/usr/local/bin"];
 
 fn builtin_environment(cwd: &Path, present: impl Fn(&Path) -> bool) -> String {
@@ -110,7 +110,7 @@ pub struct Options {
 }
 
 /// The built-in tools implemented outside the registry: the coding tools
-/// and the lead's team tools. Identity and the registry receive this same
+/// and the lead's team tools. Fingerprint and the registry receive this same
 /// list, so `foe plan` and a run agree.
 pub fn extra_builtin_specs() -> Vec<ToolSpec> {
     foe_code::all()
@@ -122,13 +122,13 @@ pub fn extra_builtin_specs() -> Vec<ToolSpec> {
 }
 
 /// Adds exact interpreter access for every selected built-in executable
-/// in the reachable program tree.
-pub fn add_builtin_runtime_access(policy: &mut Policy, program: &ResolvedProgram) -> Result<(), String> {
-    for (program_key, descendant) in
-        program.program_tree(foe_program::document::ProgramTreeSelection::ExecutableReachable)
+/// in the reachable contract tree.
+pub fn add_builtin_runtime_access(policy: &mut Policy, contract: &ResolvedContract) -> Result<(), String> {
+    for (contract_key, descendant) in
+        contract.contract_tree(foe_contract::document::ContractTreeSelection::ExecutableReachable)
     {
         for (path, purpose) in foe_code::required_executables(&descendant.tools) {
-            policy.add_executable(Path::new(path), format!("{purpose} selected by {program_key}.tools"))?;
+            policy.add_executable(Path::new(path), format!("{purpose} selected by {contract_key}.tools"))?;
         }
     }
     Ok(())
@@ -138,26 +138,26 @@ pub fn add_builtin_runtime_access(policy: &mut Policy, program: &ResolvedProgram
 /// transport. A descendant inherits the enclosing Landlock domain before
 /// it opens its own credential.
 #[cfg(feature = "transport")]
-pub fn add_transport_runtime_access(policy: &mut Policy, program: &ResolvedProgram) -> Result<(), String> {
-    for (program_key, descendant) in
-        program.program_tree(foe_program::document::ProgramTreeSelection::ExecutableReachable)
+pub fn add_transport_runtime_access(policy: &mut Policy, contract: &ResolvedContract) -> Result<(), String> {
+    for (contract_key, descendant) in
+        contract.contract_tree(foe_contract::document::ContractTreeSelection::ExecutableReachable)
     {
         let Some(model) = &descendant.model else { continue };
-        let plan = foe_transport::plan(model).map_err(|e| format!("{program_key}.model: {e}"))?;
+        let plan = foe_transport::plan(model).map_err(|e| format!("{contract_key}.model: {e}"))?;
         if let Some(path) = plan.credential_path {
-            policy.add_read_file(path, format!("credential for model transport in {program_key}"));
+            policy.add_read_file(path, format!("credential for model transport in {contract_key}"));
         }
     }
     Ok(())
 }
 
 #[cfg(not(feature = "transport"))]
-pub fn add_transport_runtime_access(_policy: &mut Policy, _program: &ResolvedProgram) -> Result<(), String> {
+pub fn add_transport_runtime_access(_policy: &mut Policy, _program: &ResolvedContract) -> Result<(), String> {
     Ok(())
 }
 
-pub fn identity(program: &ResolvedProgram) -> Result<Identity, String> {
-    compute(program, &extra_builtin_specs(), &runtime_info()).map_err(|e| e.to_string())
+pub fn fingerprint(contract: &ResolvedContract) -> Result<Fingerprint, String> {
+    compute(contract, &extra_builtin_specs(), &runtime_info()).map_err(|e| e.to_string())
 }
 
 pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
@@ -166,11 +166,11 @@ pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
 
 /// The compaction policy a `context` block with `compact: true` resolves
 /// to, with the window taken from the block or from the provider table for
-/// the model named. `None` when the program never compacts. An unknown
+/// the model named. `None` when the contract never compacts. An unknown
 /// model with no `window_tokens` is a construction error.
-pub fn context_policy(program: &ResolvedProgram) -> Result<Option<foe_context::Policy>, String> {
-    let Some(cfg) = program.context.clone().filter(|c| c.compact) else { return Ok(None) };
-    let model = program.model.as_ref();
+pub fn context_policy(contract: &ResolvedContract) -> Result<Option<foe_context::Policy>, String> {
+    let Some(cfg) = contract.context.clone().filter(|c| c.compact) else { return Ok(None) };
+    let model = contract.model.as_ref();
     let window = cfg.window_tokens.or_else(|| model.and_then(known_window)).ok_or_else(|| {
         let named = model.map_or("the host's model".to_string(), |m| format!("{}/{}", m.provider, m.model));
         format!(
@@ -179,7 +179,7 @@ pub fn context_policy(program: &ResolvedProgram) -> Result<Option<foe_context::P
         )
     })?;
     let max_output = model.and_then(|m| m.max_output_tokens).map_or(0, u64::from);
-    Ok(Some(foe_context::Policy::new(cfg, window, max_output, program.done_when.as_ref())))
+    Ok(Some(foe_context::Policy::new(cfg, window, max_output, contract.done_when.as_ref())))
 }
 
 #[cfg(feature = "transport")]
@@ -194,9 +194,9 @@ fn known_window(_model: &ModelConfig) -> Option<u64> {
 
 /// Who this episode is. A child reads the launch metadata its parent wrote;
 /// a root draws a fresh id.
-fn read_lineage(log_dir: Option<&Path>) -> Result<Lineage, String> {
-    let file = log_dir.map(|d| d.join("lineage.json")).filter(|f| f.is_file());
-    let Some(file) = file else { return Ok(Lineage { episode_id: fresh_id(), ..Lineage::default() }) };
+fn read_child_launch(log_dir: Option<&Path>) -> Result<ChildLaunch, String> {
+    let file = log_dir.map(|d| d.join("child-launch.json")).filter(|f| f.is_file());
+    let Some(file) = file else { return Ok(ChildLaunch { episode_id: fresh_id(), ..ChildLaunch::default() }) };
     let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", file.display()))
 }
@@ -210,49 +210,53 @@ fn fresh_id() -> String {
 /// Where the episode's log lives and who the episode is: a fresh directory
 /// seeded from `--fork`, an existing log continued or repaired, or a new
 /// log. docs/log-format.md "Seeding" states the fork and resume flows.
-fn episode_directory(options: &Options, identity: &str, task: &str) -> Result<(PathBuf, Lineage), String> {
+fn episode_directory(
+    options: &Options,
+    contract_fingerprint: &str,
+    task: &str,
+) -> Result<(PathBuf, ChildLaunch), String> {
     if let Some(source) = &options.fork {
         let at = options.at.expect("the parser pairs --fork with --at");
         return fork(source, at, options.log_dir.clone(), task);
     }
     if let Some(dir) = options.log_dir.as_deref().filter(|dir| dir.join(foe_log::fold::LOG_FILE).is_file()) {
-        return resume(dir, identity);
+        return resume(dir, contract_fingerprint);
     }
-    let lineage = read_lineage(options.log_dir.as_deref())?;
-    let dir = options.log_dir.clone().unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
-    Ok((dir, lineage))
+    let launch = read_child_launch(options.log_dir.as_deref())?;
+    let dir = options.log_dir.clone().unwrap_or_else(|| PathBuf::from(".foe").join(&launch.episode_id));
+    Ok((dir, launch))
 }
 
 /// Seeds a fresh episode from a prefix of the log in `source` and appends
 /// the running form's task as a `system` inbox item: the one `task` item
 /// per log is the copied one at seq 1, and `system` is the runtime's
 /// channel for text the model must see.
-fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(PathBuf, Lineage), String> {
-    let lineage = Lineage { episode_id: fresh_id(), ..Lineage::default() };
-    let dest = dest.unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
+fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(PathBuf, ChildLaunch), String> {
+    let launch = ChildLaunch { episode_id: fresh_id(), ..ChildLaunch::default() };
+    let dest = dest.unwrap_or_else(|| PathBuf::from(".foe").join(&launch.episode_id));
     let in_dest = |e: LogError| format!("{}: {e}", dest.display());
     if dest.join(foe_log::fold::LOG_FILE).is_file() {
         return Err(format!("{} already holds a log; a fork starts a fresh one", dest.display()));
     }
     std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
-    let header = SeedHeader { new_id: lineage.episode_id.clone(), parent_id: None, team_id: None, program: None };
+    let header = SeedHeader { new_id: launch.episode_id.clone(), parent_id: None, team_id: None, contract: None };
     foe_log::seed::seed(source, at, &dest, header).map_err(|e| format!("--fork {}: {e}", source.display()))?;
     let mut writer = foe_log::append::Writer::open(&dest, None).map_err(in_dest)?;
     let content = vec![ContentBlock::Text { text: task.to_string() }];
     let item = InboxItem { source: InboxSource::System, content, from: None, message_id: None };
     writer.append(EventData::InboxItem(item)).map_err(in_dest)?;
     writer.sync().map_err(in_dest)?;
-    Ok((dest, lineage))
+    Ok((dest, launch))
 }
 
-/// Continues the episode whose log is in `dir` under the same program. A
+/// Continues the episode whose log is in `dir` under the same contract. A
 /// log ending at an event boundary with every binding obligation closed is
 /// continued in place; one cut short mid-line or with an obligation open
 /// is seeded at its last clean boundary into a fresh directory beside it,
 /// which the run then continues. A prepared seeded log, ending at
-/// `seed/end`, is continued as it stands with no identity comparison,
-/// because a seeded `episode/start` records its source's program.
-fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
+/// `seed/end`, is continued as it stands with no fingerprint comparison,
+/// because a seeded `episode/start` records its source's contract.
+fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunch), String> {
     let dir = dir.canonicalize().map_err(|e| format!("{}: {e}", dir.display()))?;
     let in_dir = |e: LogError| format!("{}: {e}", dir.display());
     let (events, consumed) = foe_log::fold::read_from(&dir, 0).map_err(in_dir)?;
@@ -263,34 +267,34 @@ fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
         return Err(format!("{dir}: episode {id} already ended; a finished log is forked, not resumed: foe \"task\" --fork {dir} --at SEQ"));
     }
     let spawned_start = start.parent_id.is_some() && start.effective_budget.is_some();
-    let mut lineage = read_lineage(Some(&dir))?;
-    lineage.effective_budget = start.effective_budget.clone().or(lineage.effective_budget);
+    let mut launch = read_child_launch(Some(&dir))?;
+    launch.effective_budget = start.effective_budget.clone().or(launch.effective_budget);
     if spawned_start {
-        lineage.expected_program_identity = Some(start.identity.clone());
+        launch.expected_contract_fingerprint = Some(start.contract_fingerprint.clone());
     }
-    lineage.episode_id = start.id.clone();
-    lineage.parent_id = start.parent_id.clone();
-    lineage.team_id = start.team_id.clone();
+    launch.episode_id = start.id.clone();
+    launch.parent_id = start.parent_id.clone();
+    launch.team_id = start.team_id.clone();
     let torn = std::fs::metadata(dir.join(foe_log::fold::LOG_FILE)).is_ok_and(|m| m.len() > consumed);
     let prepared = !torn && events.last().is_some_and(|e| matches!(e.data, EventData::SeedEnd {}));
-    if start.identity != identity && (!prepared || spawned_start) {
-        let (dir, recorded) = (dir.display(), &start.identity);
-        return Err(format!("{dir}: resuming requires the program that ran: the log records identity {recorded}; the given program document resolves to {identity}"));
+    if start.contract_fingerprint != contract_fingerprint && (!prepared || spawned_start) {
+        let (dir, recorded) = (dir.display(), &start.contract_fingerprint);
+        return Err(format!("{dir}: resuming requires the contract that ran: the log records fingerprint {recorded}; the given contract document resolves to {contract_fingerprint}"));
     }
     if prepared {
-        return Ok((dir, lineage));
+        return Ok((dir, launch));
     }
     if !torn && foe_log::fold::open_obligations(&events).is_empty() {
-        return Ok((dir, lineage));
+        return Ok((dir, launch));
     }
     let new_id = fresh_id();
     let dest = dir.parent().unwrap_or(Path::new(".")).join(&new_id);
     std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
     let header = SeedHeader {
         new_id: new_id.clone(),
-        parent_id: lineage.parent_id.clone(),
-        team_id: lineage.team_id.clone(),
-        program: None,
+        parent_id: launch.parent_id.clone(),
+        team_id: launch.team_id.clone(),
+        contract: None,
     };
     foe_log::seed::seed(&dir, events.len() as u64, &dest, header).map_err(in_dir)?;
     eprintln!(
@@ -298,13 +302,13 @@ fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
         dir.display(),
         dest.display()
     );
-    Ok((dest, Lineage { episode_id: new_id, ..lineage }))
+    Ok((dest, ChildLaunch { episode_id: new_id, ..launch }))
 }
 
-/// The program document to run: the document named by `--config`, with the
+/// The contract document to run: the document named by `--config`, with the
 /// command-line task replacing its own, or the built-in coding workflow
 /// for a bare task.
-fn load_program_document(options: &Options) -> Result<ProgramDocument, String> {
+fn load_contract_document(options: &Options) -> Result<ContractDocument, String> {
     let Some(path) = &options.config else {
         let task = options.task.clone().ok_or(USAGE_BARE)?;
         let mut model = match &options.model {
@@ -321,7 +325,7 @@ fn load_program_document(options: &Options) -> Result<ProgramDocument, String> {
             }
             model.options.insert("service_tier".into(), tier.clone());
         }
-        return builtin_program_document(
+        return builtin_contract_document(
             task,
             model,
             options.key_file.as_deref(),
@@ -338,11 +342,11 @@ fn load_program_document(options: &Options) -> Result<ProgramDocument, String> {
             "--service-tier"
         };
         return Err(format!(
-            "{option} applies to the built-in coding workflow; a program document declares its own behavior"
+            "{option} applies to the built-in coding workflow; a contract document declares its own behavior"
         ));
     }
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut config = foe_program::document::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut config = foe_contract::document::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     if let Some(task) = &options.task {
         config.task = task.clone();
     }
@@ -384,13 +388,13 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// named `check` available to every episode. The root completion gate applies
 /// to both the assessment's accept branch and the repair branch. Without a
 /// verifier, the assessment's typed choice governs completion.
-fn builtin_program_document(
+fn builtin_contract_document(
     task: String,
     mut model: ModelConfig,
     key_file: Option<&Path>,
     verify: Option<&Path>,
     sandbox: Option<&str>,
-) -> Result<ProgramDocument, String> {
+) -> Result<ContractDocument, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
     let explicit_reasoning = model.option("reasoning_effort").is_some();
     apply_builtin_model_defaults(&mut model);
@@ -412,8 +416,8 @@ fn builtin_program_document(
         "read": [cwd], "write": [cwd], "execute": BUILTIN_EXECUTE_ROOTS
     });
     let mut document: serde_json::Value =
-        serde_json::from_str(BUILTIN_PROGRAM_DOCUMENT).map_err(|e| format!("built-in program template: {e}"))?;
-    document["version"] = serde_json::json!(foe_program::document::PROGRAM_FORMAT_VERSION);
+        serde_json::from_str(BUILTIN_CONTRACT_DOCUMENT).map_err(|e| format!("built-in contract template: {e}"))?;
+    document["version"] = serde_json::json!(foe_contract::document::CONTRACT_FORMAT_VERSION);
     document["model"] = serde_json::json!(model);
     document["grants"] = grants.clone();
     document["budget"]["model_calls"] =
@@ -424,10 +428,10 @@ fn builtin_program_document(
         ("assess-task", BUILTIN_ASSESSMENT_CALLS),
         ("repair-task", BUILTIN_REPAIR_CALLS),
     ] {
-        let program = &mut document["workflow"]["nodes"][node]["model"];
-        program["instructions"]["environment"] = serde_json::json!(environment);
-        program["grants"] = grants.clone();
-        program["budget"]["model_calls"] = serde_json::json!(calls);
+        let contract = &mut document["workflow"]["nodes"][node]["model"];
+        contract["instructions"]["environment"] = serde_json::json!(environment);
+        contract["grants"] = grants.clone();
+        contract["budget"]["model_calls"] = serde_json::json!(calls);
     }
     document["workflow"]["nodes"]["assess-task"]["model"]["model"] = serde_json::json!(assessment_model);
     document["workflow"]["nodes"]["repair-task"]["model"]["model"] = serde_json::json!(repair_model);
@@ -444,17 +448,17 @@ fn builtin_program_document(
         document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
         document["tool_defs"] = serde_json::json!({ "check": def });
         for node in ["implement-task", "assess-task", "repair-task"] {
-            let program = &mut document["workflow"]["nodes"][node]["model"];
-            program["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
-            program["tool_defs"] = serde_json::json!({ "check": def });
+            let contract = &mut document["workflow"]["nodes"][node]["model"];
+            contract["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
+            contract["tool_defs"] = serde_json::json!({ "check": def });
         }
         for node in ["assess-task", "repair-task"] {
             document["workflow"]["nodes"][node]["max_fires"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES + 1);
         }
         document["done_when"] = serde_json::json!({ "verify": "check", "retries": BUILTIN_VERIFIER_RETRIES });
-        return serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"));
+        return serde_json::from_value(document).map_err(|e| format!("built-in contract document: {e}"));
     }
-    serde_json::from_value(document).map_err(|e| format!("built-in program document: {e}"))
+    serde_json::from_value(document).map_err(|e| format!("built-in contract document: {e}"))
 }
 
 #[cfg(feature = "transport")]
@@ -473,25 +477,27 @@ mod tests;
 
 /// One line naming the transport a `model` block resolves to, for `foe plan`.
 #[cfg(feature = "transport")]
-pub fn describe_transport(program: &ResolvedProgram) -> String {
-    let Some(model) = &program.model else { return "no model".into() };
+pub fn describe_transport(contract: &ResolvedContract) -> String {
+    let Some(model) = &contract.model else { return "no model".into() };
     foe_transport::plan(model)
         .map(|plan| {
-            plan.describe_with_exec_sha256(program.transport_executable.as_ref().map(|image| image.sha256.as_str()))
+            plan.describe_with_exec_sha256(
+                contract.captured_transport.as_ref().map(|captured| captured.sha256.as_str()),
+            )
         })
         .unwrap_or_else(|e| e.to_string())
 }
 
 #[cfg(not(feature = "transport"))]
-pub fn describe_transport(program: &ResolvedProgram) -> String {
-    let model = program.model.as_ref().expect("called only for a model");
+pub fn describe_transport(contract: &ResolvedContract) -> String {
+    let model = contract.model.as_ref().expect("called only for a model");
     format!("{}/{}: this binary was built without the transport feature", model.provider, model.model)
 }
 
-/// Fills provider defaults before program construction, including the
-/// credential path that `episode/start.program` records.
+/// Fills provider defaults before contract construction, including the
+/// credential path that `episode/start.contract` records.
 #[cfg(feature = "transport")]
-fn prepare_model(config: &mut ProgramDocument) -> Result<(), String> {
+fn prepare_model(config: &mut ContractDocument) -> Result<(), String> {
     if let Some(model) = &mut config.model {
         *model = foe_transport::plan(model).map_err(|e| e.to_string())?.model;
     }
@@ -499,18 +505,18 @@ fn prepare_model(config: &mut ProgramDocument) -> Result<(), String> {
 }
 
 #[cfg(not(feature = "transport"))]
-fn prepare_model(_config: &mut ProgramDocument) -> Result<(), String> {
+fn prepare_model(_config: &mut ContractDocument) -> Result<(), String> {
     Ok(())
 }
 
 /// Resolves the constructed `model` block into a transport before the
 /// process restricts itself. The credential path joins the sandbox policy
-/// as a readable file. An `exec` provider's program joins it as an
+/// as a readable file. An `exec` provider's contract joins it as an
 /// executable, run through the episode's own executor.
 #[cfg(feature = "transport")]
 fn built_in_transport(
     model: &ModelConfig,
-    executable: Option<Arc<foe_core::executable::Executable>>,
+    executable: Option<Arc<foe_core::captured_executable::CapturedExecutable>>,
     unconfined: &mut Unconfined,
     log_dir: &Path,
 ) -> Result<Arc<dyn Transport>, String> {
@@ -527,7 +533,7 @@ fn built_in_transport(
 #[cfg(not(feature = "transport"))]
 fn built_in_transport(
     _model: &ModelConfig,
-    _executable: Option<Arc<foe_core::executable::Executable>>,
+    _executable: Option<Arc<foe_core::captured_executable::CapturedExecutable>>,
     _unconfined: &mut Unconfined,
     _log_dir: &Path,
 ) -> Result<Arc<dyn Transport>, String> {
@@ -535,64 +541,64 @@ fn built_in_transport(
 }
 
 pub fn run(options: Options) -> Result<ExitCode, String> {
-    let mut config = load_program_document(&options)?;
+    let mut config = load_contract_document(&options)?;
     prepare_model(&mut config)?;
     let task = config.task.clone();
     let inherited = options
         .log_dir
         .as_deref()
-        .filter(|dir| dir.join("lineage.json").is_file())
-        .map(|dir| read_lineage(Some(dir)))
+        .filter(|dir| dir.join("child-launch.json").is_file())
+        .map(|dir| read_child_launch(Some(dir)))
         .transpose()?
-        .filter(|lineage| lineage.parent_id.is_some())
-        .map(|lineage| InheritedExecutables::read(&lineage.episode_id))
+        .filter(|launch| launch.parent_id.is_some())
+        .map(|launch| InheritedExecutables::read(&launch.episode_id))
         .transpose()?
         .flatten();
-    let program = match &inherited {
-        Some(executables) => resolve_with_executables(&config, &executables.images()),
+    let contract = match &inherited {
+        Some(executables) => resolve_with_executables(&config, &executables.captured_bytes()),
         None => resolve(&config),
     }
     .map_err(|e| format!("config: {e}"))?;
-    let identity = identity(&program)?;
-    let (log_dir, lineage) = episode_directory(&options, &identity.hash, &task)?;
-    if let Some(expected) = &lineage.expected_program_identity {
-        if expected != &identity.hash {
+    let fingerprint = fingerprint(&contract)?;
+    let (log_dir, launch) = episode_directory(&options, &fingerprint.hash, &task)?;
+    if let Some(expected) = &launch.expected_contract_fingerprint {
+        if expected != &fingerprint.hash {
             return Err(format!(
-                "lineage.json: expected program identity {expected}, but the child document resolves to {}",
-                identity.hash
+                "child-launch.json: expected contract fingerprint {expected}, but the child document resolves to {}",
+                fingerprint.hash
             ));
         }
     }
-    let limits = lineage.effective_budget.clone().unwrap_or_else(|| program.budget.clone());
+    let limits = launch.effective_budget.clone().unwrap_or_else(|| contract.budget.clone());
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let executables = match &inherited {
-        Some(inherited) => ExecutableTree::from_inherited(&program, inherited),
-        None => ExecutableTree::materialize(&program, &log_dir),
+        Some(inherited) => CapturedExecutableTree::from_inherited(&contract, inherited),
+        None => CapturedExecutableTree::materialize(&contract, &log_dir),
     }
     .map_err(|e| format!("configured executable: {e}"))?;
-    if let Some(source) = lineage.fork_source.as_ref().filter(|_| !log_dir.join(foe_log::fold::LOG_FILE).is_file()) {
-        let at = lineage.fork_at.ok_or("lineage.json: fork_source requires fork_at")?;
+    if let Some(source) = launch.fork_source.as_ref().filter(|_| !log_dir.join(foe_log::fold::LOG_FILE).is_file()) {
+        let at = launch.fork_at.ok_or("child-launch.json: fork_source requires fork_at")?;
         let header = SeedHeader {
-            new_id: lineage.episode_id.clone(),
-            parent_id: lineage.parent_id.clone(),
-            team_id: lineage.team_id.clone(),
-            program: Some(SeedProgram {
-                program: program.to_value(),
-                identity: identity.hash.clone(),
+            new_id: launch.episode_id.clone(),
+            parent_id: launch.parent_id.clone(),
+            team_id: launch.team_id.clone(),
+            contract: Some(SeedContract {
+                contract: contract.to_value(),
+                contract_fingerprint: fingerprint.hash.clone(),
                 effective_budget: limits.clone(),
             }),
         };
         foe_log::seed::seed(source, at, &log_dir, header)
-            .map_err(|e| format!("lineage.json fork_source {}: {e}", source.display()))?;
+            .map_err(|e| format!("child-launch.json fork_source {}: {e}", source.display()))?;
     }
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
-    let sandbox = Arc::new(Sandbox::new(program.sandbox.mode).map_err(|e| e.to_string())?);
-    let process = ProcessOwnership::enter(program.sandbox.mode, &lineage.episode_id, lineage.process_boundary.clone())
+    let sandbox = Arc::new(Sandbox::new(contract.sandbox.mode).map_err(|e| e.to_string())?);
+    let process = ProcessOwnership::enter(contract.sandbox.mode, &launch.episode_id, launch.process_boundary.clone())
         .map_err(|e| e.to_string())?;
     let mut policy =
-        Policy::for_episode(&program, &executables, &log_dir).map_err(|e| format!("sandbox access: {e}"))?;
-    add_builtin_runtime_access(&mut policy, &program).map_err(|e| format!("sandbox access: {e}"))?;
-    add_transport_runtime_access(&mut policy, &program).map_err(|e| format!("sandbox access: {e}"))?;
+        Policy::for_episode(&contract, &executables, &log_dir).map_err(|e| format!("sandbox permissions: {e}"))?;
+    add_builtin_runtime_access(&mut policy, &contract).map_err(|e| format!("sandbox permissions: {e}"))?;
+    add_transport_runtime_access(&mut policy, &contract).map_err(|e| format!("sandbox permissions: {e}"))?;
     process.authorize(&mut policy).map_err(|e| e.to_string())?;
     let mut unconfined = Unconfined::new(sandbox, policy);
     // Telemetry is resolved before confinement: the capture directory must
@@ -618,29 +624,29 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
             crate::open_browser(&bound.url());
         }
     }
-    let context = context_policy(&program)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
+    let context = context_policy(&contract)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
     let runtime_info = runtime_info();
-    let transport = match &program.model {
+    let transport = match &contract.model {
         Some(model) => Some(built_in_transport(model, executables.transport.clone(), &mut unconfined, &log_dir)?),
         None if options.host => None,
         None => return Err("no model: give --model and --key-file, add a `model` block, or run under --host".into()),
     };
     let confined = unconfined.enter().map_err(|e| e.to_string())?;
     let start = EpisodeStart {
-        id: lineage.episode_id,
-        parent_id: lineage.parent_id,
+        id: launch.episode_id,
+        parent_id: launch.parent_id,
         fork_origin: None,
-        team_id: lineage.team_id,
-        program: program.to_value(),
-        identity: identity.hash,
+        team_id: launch.team_id,
+        contract: contract.to_value(),
+        contract_fingerprint: fingerprint.hash,
         task,
         runtime: runtime_info,
-        sandbox: confined.parts().0.info_with_process(process.info(), confined.parts().1),
+        sandbox: confined.parts().0.info(process.info(), confined.parts().1),
         effective_budget: Some(limits.clone()),
     };
     let telemetry_log_dir = log_dir.clone();
     let setup = Setup {
-        program,
+        contract,
         executables,
         limits,
         log_dir,
@@ -671,8 +677,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
 /// itself. It carries a [`Confined`] rather than a policy, so nothing
 /// assembled here can widen what the kernel already holds.
 struct Setup {
-    program: ResolvedProgram,
-    executables: ExecutableTree,
+    contract: ResolvedContract,
+    executables: CapturedExecutableTree,
     limits: Budget,
     log_dir: PathBuf,
     confined: Confined,
@@ -685,7 +691,7 @@ struct Setup {
 }
 
 async fn episode(setup: Setup) -> Result<Outcome, String> {
-    let Setup { program, executables, limits, log_dir, confined, viewer, transport, host, context, start, process } =
+    let Setup { contract, executables, limits, log_dir, confined, viewer, transport, host, context, start, process } =
         setup;
     let id = start.id.clone();
     let log = Arc::new(
@@ -718,7 +724,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let spawner = ProcessSpawner::new_with_executables(
         id,
         log_dir.clone(),
-        program.clone(),
+        contract.clone(),
         executables.clone(),
         limits,
         extra_builtin_specs(),
@@ -735,19 +741,19 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
             policy.clone(),
             log_dir.join("spill"),
             foe_code::SESSION_MAX_ALIVE,
-            program.grants.task_session,
+            contract.grants.task_session,
         )
         .with_boundary(process.boundary()),
     );
-    let host_tools = if host { protocol.tools(&program) } else { Vec::new() };
+    let host_tools = if host { protocol.tools(&contract) } else { Vec::new() };
     let parent = start.parent_id.is_some().then_some(&protocol);
     let mut builtins: Vec<Box<dyn Tool>> = foe_code::all();
     builtins.push(foe_core::retrieval::tool(log.clone()));
     builtins.extend(team::tools(team.clone(), parent));
-    let registry = Registry::new_with_executables(&program, &executables, host_tools, builtins)
+    let registry = Registry::new_with_executables(&contract, &executables, host_tools, builtins)
         .map_err(|e| format!("config: {e}"))?;
-    let write = program.grants.write.clone();
-    let reader = RootReader::new(program.grants.read.clone()).map_err(|e| format!("grants.read: {e}"))?;
+    let write = contract.grants.write.clone();
+    let reader = RootReader::new(contract.grants.read.clone()).map_err(|e| format!("grants.read: {e}"))?;
     let writer = match write.is_empty() {
         true => None,
         false => Some(Arc::new(RootWriter::new(write).map_err(|e| format!("grants.write: {e}"))?) as Arc<dyn Writer>),
@@ -756,20 +762,20 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         reader: Some(Arc::new(reader)),
         writer,
         executor: Some(Arc::new(executor)),
-        spawner: (!program.grants.spawn.is_empty()).then(|| spawner.clone()),
+        spawner: (!contract.grants.spawn.is_empty()).then(|| spawner.clone()),
         sessions: Some(sessions.clone()),
     };
     let server = match viewer {
         Some(bound) => Some(bound.serve(&log_dir).await.map_err(|e| e.to_string())?),
         None => None,
     };
-    let workflow = program.workflow.clone();
+    let workflow = contract.workflow.clone();
     let registry = Arc::new(registry);
     let children = Some(router.clone());
     let params = Params {
         log,
         start,
-        program,
+        contract,
         registry,
         handles,
         transport,

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Create and validate identity-bound tool-definition candidates."""
+"""Create and validate tool definitions against retained evidence."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def validate_definition(value: Any) -> dict[str, str]:
     """Return one normalized tool definition with a self-consistent digest.
 
     The definition carries the executable content itself, because the
-    diagnosis episode that proposes it holds no write authority; the
+    diagnosis episode that proposes it holds no write permission; the
     runner retains the content as a file beside the candidate.
     """
     required = {"name", "description", "executable", "executable_sha256"}
@@ -52,7 +52,7 @@ def create(
     base_configuration: dict[str, str],
     tool: dict[str, str],
 ) -> dict[str, Any]:
-    """Bind one tool_defs entry to the evaluated source, binary, and evidence.
+    """Associate one tool_defs entry with its evaluated source, binary, and evidence.
 
     `tool` names the entry: its name, description, and executable content
     digest. The executable file itself is retained beside the candidate
@@ -79,7 +79,7 @@ def create(
 def validate(
     value: Any, executable: bytes, evaluated_foe: dict[str, str] | None = None
 ) -> dict[str, Any]:
-    """Validate a complete candidate against the retained executable bytes."""
+    """Validate a complete candidate against the captured executable bytes."""
     required = {
         "schema_version",
         "candidate_kind",
@@ -95,7 +95,7 @@ def validate(
         raise ValueError(f"tool candidate schema_version must be {SCHEMA_VERSION}")
     if value.get("candidate_kind") != KIND:
         raise ValueError(f"tool candidate candidate_kind must be {KIND}")
-    identity = validate_evaluated_foe(value.get("evaluated_foe"), evaluated_foe, label="tool candidate")
+    evaluated = validate_evaluated_foe(value.get("evaluated_foe"), evaluated_foe, label="tool candidate")
     tool = value.get("tool")
     if not isinstance(tool, dict):
         raise ValueError("tool candidate tool is invalid")
@@ -105,7 +105,7 @@ def validate(
     if value.get("digest") != candidate_digest(body):
         raise ValueError("tool candidate digest does not match its contents")
     return create(
-        identity,
+        evaluated,
         value.get("evidence_sha256"),
         validate_base_configuration(value.get("base_configuration")),
         tool,

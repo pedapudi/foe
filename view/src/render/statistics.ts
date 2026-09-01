@@ -561,7 +561,7 @@ export class StatisticsView {
     if (stats.limits.length === 0) {
       return this.figure(
         "budget",
-        h("div", { class: "sub" }, "this episode's program declares no limit"),
+        h("div", { class: "sub" }, "this episode's contract declares no limit"),
         "Nothing bounds this scope but the runtime's own caps.",
       );
     }
@@ -593,7 +593,7 @@ export class StatisticsView {
     return this.figure(
       "budget",
       h("table", { class: "stats-table" }, h("tbody", null, rows)),
-      "Every limit the program declares, against what this scope spent. A child draws on the pool its root holds, so the tree scope is what the limit actually bounds.",
+      "Every limit the contract declares, against what this scope spent. A child draws on the pool its root holds, so the tree scope is what the limit actually bounds.",
     );
   }
 

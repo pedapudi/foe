@@ -7,10 +7,10 @@ rust_library(
     crate_name = "foe_context",
     crate_root = "src/lib.rs",
     edition = crate_edition(),
-    version = "0.1.0",
+    version = "0.2.0",
     visibility = ["//visibility:public"],
     deps = [
-        "//crates/program:foe_program",
+        "//crates/contract:foe_contract",
         "//crates/core:foe_core",
         "//crates/log:foe_log",
     ] + all_crate_deps(normal = True),

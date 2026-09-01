@@ -20,7 +20,7 @@ fn source(dir: &std::path::Path) -> Vec<Event> {
 }
 
 fn header() -> SeedHeader {
-    SeedHeader { new_id: "ep_new".into(), parent_id: Some("ep_parent".into()), team_id: None, program: None }
+    SeedHeader { new_id: "ep_new".into(), parent_id: Some("ep_parent".into()), team_id: None, contract: None }
 }
 
 #[test]
@@ -34,7 +34,7 @@ fn seed_repairs_orphan_tool_calls_and_marks_the_boundary() {
     assert_eq!(start.id, "ep_new");
     assert_eq!(start.parent_id.as_deref(), Some("ep_parent"));
     assert_eq!(start.fork_origin, Some(ForkOrigin { episode_id: "ep_src".into(), seq: 6 }));
-    assert_eq!(start.task, "do it", "fields other than id, lineage, and origin are copied");
+    assert_eq!(start.task, "do it", "fields other than id and episode relations are copied");
     let EventData::ToolResult(repair) = &written[6].data else { panic!("{:?}", written[6]) };
     assert!(repair.synthetic && repair.is_error);
     assert_eq!((repair.call_id.as_str(), repair.rendered.as_str()), ("tc_2", ORPHAN_RENDERED));

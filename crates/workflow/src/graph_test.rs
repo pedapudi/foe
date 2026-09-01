@@ -1,5 +1,5 @@
 use super::{Produced, Scheduler};
-use foe_program::workflow::WorkflowConfig;
+use foe_contract::workflow::WorkflowConfig;
 use serde_json::json;
 
 fn scheduler(nodes: serde_json::Value) -> Scheduler {

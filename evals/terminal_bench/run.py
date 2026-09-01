@@ -929,7 +929,7 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument(
         "--workflow-candidate",
         type=Path,
-        help="identity-bound workflow configuration produced by self-improvement",
+        help="workflow configuration whose source and runtime fingerprints match the retained evidence",
     )
     answer.add_argument("--label", default="baseline")
     answer.add_argument("--jobs-dir", type=Path, default=Path("target/terminal-bench-jobs"))
@@ -1083,13 +1083,13 @@ def main(argv: list[str] | None = None) -> int:
     if workflow_candidate_path is not None:
         try:
             evaluated_source = source_tree(source_root)
-            identity = {
+            evaluated = {
                 "source_tree": evaluated_source,
                 "runtime_binary": f"sha256:{runtime_digest}",
             }
             workflow_candidate = validate_workflow_candidate(
                 json.loads(workflow_candidate_path.read_text(encoding="utf-8")),
-                identity,
+                evaluated,
             )
             audit = require_matching_candidate_run(
                 workflow_candidate,

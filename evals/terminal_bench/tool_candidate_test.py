@@ -32,7 +32,7 @@ def fixture():
 
 
 class ToolCandidateTest(unittest.TestCase):
-    def test_candidate_binds_identity_evidence_controls_and_executable(self):
+    def test_candidate_binds_evaluated_build_evidence_controls_and_executable(self):
         candidate = fixture()
         self.assertEqual(validate(candidate, EXECUTABLE.encode()), candidate)
         self.assertEqual(validate(candidate, EXECUTABLE.encode(), IDENTITY), candidate)

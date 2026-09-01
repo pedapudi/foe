@@ -27,7 +27,7 @@ foe --config <path> --host [--log-dir <path>]
 `--host` selects this protocol. Standard output then carries the log, and
 standard input carries the host's answers. Without `--host`, standard output
 carries one JSON line at the end, the outcome, so that a shell or another
-program invoking foe reads a single result; the log still goes to the file.
+contract invoking foe reads a single result; the log still goes to the file.
 The two modes are exclusive, and this document describes `--host` only.
 
 The host supplies a configuration file. foe validates it, writes
@@ -196,7 +196,7 @@ an answer outstanding, foe ends the episode as `exhausted` with limit
 naming the tool. A `cancel` ends an outstanding wait the same way, with an
 error result naming the tool and the reason.
 
-A program that declares no `seconds` gives its waits no wall-clock bound.
+A contract that declares no `seconds` gives its waits no wall-clock bound.
 Two rules keep such an episode from waiting on an answer that can never
 arrive. A configuration with a `host_tools` entry is refused at
 construction when the process has no host, because the tool named there has
@@ -206,7 +206,7 @@ states.
 
 What remains unbounded is a call a live host has received and not yet
 answered. The host owes that answer. foe waits for it, and `cancel` is what
-ends the wait when the host decides to give no answer. A program that means
+ends the wait when the host decides to give no answer. A contract that means
 to wait a long time therefore does one of two things: it declares a
 `seconds` budget large enough for the longest answer it expects, or it
 declares none and relies on its host to answer or to cancel.
@@ -221,9 +221,9 @@ in the tree and answers each one. Answers carry the same tag so that the root
 parent can route them down.
 
 The parent also passes read-only descriptors for every configured
-executable reachable from the selected child program. A sealed manifest
+executable reachable from the selected child contract. A sealed manifest
 associates each descriptor with its configuration key and digest. The child
-constructs its identity and executor from those descriptors, so it never
+constructs its contract fingerprint and executor from those descriptors, so it never
 reopens the parent's configured executable paths. It retains close-on-exec
 copies and closes the inherited descriptor numbers before starting any model
 transport, tool, verifier, or descendant.
@@ -250,10 +250,10 @@ the child's recursive process boundary before it publishes settlement. A
 detached descendant therefore cannot outlive the child reservation.
 
 The parent writes the child's episode and task cgroup paths in
-`lineage.json` beside the child log. These paths are runtime launch metadata.
-They do not participate in program identity or enter the episode log. A
+`child-launch.json` beside the child log. These paths are runtime launch metadata.
+They do not participate in the contract fingerprint or enter the episode log. A
 child enters the prepared boundary before its runtime code executes. The
-child refuses lineage metadata whose episode path differs from its current
+child refuses launch metadata whose episode path differs from its current
 cgroup or whose task path lies outside the invocation hierarchy.
 
 A child's `notify`, `send`, and `team` tools are host tools from the child's

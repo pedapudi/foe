@@ -22,7 +22,7 @@ class WorkflowCandidateTest(unittest.TestCase):
             {"reasoning_effort": "high", "model_calls": 60},
         )
 
-    def test_candidate_binds_identity_evidence_controls_and_audit(self):
+    def test_candidate_binds_evaluated_build_evidence_controls_and_audit(self):
         candidate = self.fixture()
         self.assertEqual(validate(candidate), candidate)
         self.assertEqual(
@@ -51,7 +51,7 @@ class WorkflowCandidateTest(unittest.TestCase):
                 token_policy="measurement_only",
             )
 
-    def test_candidate_accepts_a_sha256_git_tree_identity(self):
+    def test_candidate_accepts_a_sha256_git_tree_fingerprint(self):
         candidate = create(
             {
                 "source_tree": "git-tree-sha256:" + "4" * 64,

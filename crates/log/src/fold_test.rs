@@ -58,15 +58,15 @@ pub fn start(id: &str) -> EpisodeStart {
         parent_id: None,
         fork_origin: None,
         team_id: None,
-        program: serde_json::json!({ "name": "p" }),
-        identity: "sha256:0".into(),
+        contract: serde_json::json!({ "name": "p" }),
+        contract_fingerprint: "sha256:0".into(),
         task: "do it".into(),
         runtime: RuntimeInfo { version: "0.1.0".into(), build: "unknown".into() },
         sandbox: SandboxInfo {
             mode: SandboxMode::Off,
             landlock_abi: 0,
-            effective_access: None,
-            process_boundary: None,
+            resolved_permissions: Default::default(),
+            process_boundary: Default::default(),
         },
         effective_budget: None,
     }
@@ -447,7 +447,7 @@ fn pairings() -> Vec<(EventData, EventData)> {
         (
             EventData::SpawnStart {
                 child_id: "ep_c".into(),
-                program: "survey".into(),
+                contract: "survey".into(),
                 context: SpawnContext::Fresh,
                 call_id: "tc_s".into(),
             },
@@ -713,7 +713,7 @@ fn every_event_variant_round_trips() {
         EventData::BudgetRelease { child_id: "k".into(), spent: BudgetAmount::default() },
         EventData::SpawnStart {
             child_id: "k".into(),
-            program: "p".into(),
+            contract: "p".into(),
             context: SpawnContext::Fork,
             call_id: "c".into(),
         },
@@ -780,7 +780,7 @@ fn every_event_variant_round_trips() {
         EventData::VerificationResult(VerificationResult {
             step: 3,
             tool: "check".into(),
-            verifier_identity: "sha256:aa".into(),
+            verifier_fingerprint: "sha256:aa".into(),
             status: VerificationStatus::Findings,
             findings: vec!["missing test".into()],
             error: None,
@@ -854,25 +854,19 @@ fn a_failure_marks_the_tool_result_as_an_error() {
     assert!(matches!(fold(&events), Err(LogError::Invalid { seq: 6, rule }) if rule.contains("is_error")));
 }
 
-/// docs/log-format.md `episode/start`: the process boundary is an optional
-/// compatible field whose absence carries no cleanup claim.
+/// docs/log-format.md `episode/start`: the sandbox record includes resolved
+/// permissions and the process cleanup mechanism.
 #[test]
-fn sandbox_process_boundary_is_optional_and_round_trips() {
-    let old: SandboxInfo = serde_json::from_value(serde_json::json!({
-        "mode": "best-effort", "landlock_abi": 7
-    }))
-    .unwrap();
-    assert_eq!(old.process_boundary, None);
-
+fn sandbox_process_boundary_and_permissions_round_trip() {
     let info = SandboxInfo {
         mode: SandboxMode::BestEffort,
         landlock_abi: 7,
-        effective_access: None,
-        process_boundary: Some(ProcessBoundaryInfo {
+        resolved_permissions: Default::default(),
+        process_boundary: ProcessBoundaryInfo {
             kind: ProcessBoundaryKind::CgroupV2,
             subtree_cleanup: SubtreeCleanup::Enforced,
             reason: None,
-        }),
+        },
     };
     let json = serde_json::to_value(&info).unwrap();
     assert_eq!(json["process_boundary"]["kind"], "cgroup-v2");

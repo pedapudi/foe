@@ -75,7 +75,7 @@ def check(condition: bool, message: str) -> None:
         raise SystemExit(f"budget-exhausted example: {message}")
 
 
-limit = of("episode/start")[0]["program"]["budget"]["model_calls"]
+limit = of("episode/start")[0]["contract"]["budget"]["model_calls"]
 end = of("episode/end")[0]["outcome"]
 check(events[-1]["type"] == "episode/end", "the log ends with episode/end")
 check(end["kind"] == "exhausted", f"the outcome is exhausted, not {end['kind']}")

@@ -40,14 +40,14 @@ async fn run_with(fx: &Fixture, sandbox: Sandbox, composer: Arc<FakeComposer>, a
     Python::new().call(args, &ctx).await
 }
 
-async fn run_program(source: &str, composer: Arc<FakeComposer>) -> ToolValue {
+async fn run_source(source: &str, composer: Arc<FakeComposer>) -> ToolValue {
     let fx = Fixture::new();
     let sandbox = Sandbox::new(SandboxMode::Off).unwrap();
-    run_with(&fx, sandbox, composer, json!({ "program": source })).await
+    run_with(&fx, sandbox, composer, json!({ "source": source })).await
 }
 
 #[tokio::test]
-async fn a_program_composes_inner_calls_and_returns_a_derived_value() {
+async fn source_composes_inner_calls_and_returns_a_derived_value() {
     if !interpreter_present() {
         return;
     }
@@ -58,7 +58,7 @@ async fn a_program_composes_inner_calls_and_returns_a_derived_value() {
                   \x20   second = call_tool(\"read\", {\"path\": \"gone\"})\n\
                   \x20   print(\"looked\")\n\
                   \x20   return {\"matches\": first[\"value\"][\"matches\"], \"read_failed\": second[\"is_error\"]}\n";
-    let value = run_program(source, composer.clone()).await;
+    let value = run_source(source, composer.clone()).await;
     assert!(!value.is_error, "{:?}", value.rendered);
     assert_eq!(value.value["returned"], json!({ "matches": 17, "read_failed": true }));
     let derivation = &value.value["derivation"];
@@ -66,7 +66,7 @@ async fn a_program_composes_inner_calls_and_returns_a_derived_value() {
     assert_eq!(derivation["inner_calls"], json!(2));
     assert_eq!(derivation["errors"], json!(1));
     assert_eq!(derivation["by_tool"], json!({ "grep": 1, "read": 1 }));
-    assert_eq!(value.value["stdout"], json!("looked\n"), "the program's own output is a diagnostic");
+    assert_eq!(value.value["stdout"], json!("looked\n"), "the source's own output is a diagnostic");
     let recorded = composer.calls.lock().unwrap();
     assert_eq!(recorded[0].0, "grep");
     assert_eq!(recorded[1].1, json!({ "path": "gone" }));
@@ -83,14 +83,14 @@ async fn the_environment_is_empty() {
         return;
     }
     let source = "import os\ndef main():\n    return dict(os.environ)\n";
-    let value = run_program(source, Arc::new(FakeComposer::default())).await;
+    let value = run_source(source, Arc::new(FakeComposer::default())).await;
     assert!(!value.is_error, "{:?}", value.rendered);
     let env = value.value["returned"].as_object().unwrap();
     assert!(env.keys().all(|key| key == "LC_CTYPE"), "{env:?}");
 }
 
 /// docs/code-mode.md "Confinement": the interpreter reads `/usr` alone, so
-/// a program that opens a workspace file fails where Landlock enforces.
+/// source that opens a workspace file fails where Landlock enforces.
 #[tokio::test]
 async fn a_workspace_open_is_denied_under_enforcement() {
     if !interpreter_present() {
@@ -108,7 +108,7 @@ async fn a_workspace_open_is_denied_under_enforcement() {
         "def main():\n    try:\n        open({:?})\n        return \"opened\"\n    except OSError:\n        return \"denied\"\n",
         target.to_str().unwrap()
     );
-    let value = run_with(&fx, sandbox, Arc::new(FakeComposer::default()), json!({ "program": source })).await;
+    let value = run_with(&fx, sandbox, Arc::new(FakeComposer::default()), json!({ "source": source })).await;
     assert!(!value.is_error, "{:?}", value.rendered);
     assert_eq!(value.value["returned"], json!("denied"));
 }
@@ -118,8 +118,7 @@ async fn fail_ends_the_call_as_an_error() {
     if !interpreter_present() {
         return;
     }
-    let value =
-        run_program("def main():\n    fail(\"not enough evidence\")\n", Arc::new(FakeComposer::default())).await;
+    let value = run_source("def main():\n    fail(\"not enough evidence\")\n", Arc::new(FakeComposer::default())).await;
     assert!(value.is_error);
     assert_eq!(value.value["error"]["message"], json!("not enough evidence"));
     assert_eq!(value.value["error"]["derivation"]["complete"], json!(false));
@@ -131,20 +130,20 @@ async fn an_uncaught_exception_is_an_error_carrying_the_traceback() {
     if !interpreter_present() {
         return;
     }
-    let value = run_program("def main():\n    return 1 // 0\n", Arc::new(FakeComposer::default())).await;
+    let value = run_source("def main():\n    return 1 // 0\n", Arc::new(FakeComposer::default())).await;
     assert!(value.is_error);
     let message = value.value["error"]["message"].as_str().unwrap();
     assert!(message.contains("ZeroDivisionError"), "{message}");
 }
 
 #[tokio::test]
-async fn the_inner_call_bound_ends_the_program() {
+async fn the_inner_call_bound_ends_the_source() {
     if !interpreter_present() {
         return;
     }
     let source = "def main():\n    for _ in range(150):\n        call_tool(\"t\", {})\n    return 0\n";
     let composer = Arc::new(FakeComposer::default());
-    let value = run_program(source, composer.clone()).await;
+    let value = run_source(source, composer.clone()).await;
     assert!(value.is_error);
     let message = value.value["error"]["message"].as_str().unwrap();
     assert!(message.contains(&PYTHON_INNER_CALL_MAX.to_string()), "{message}");
@@ -161,7 +160,7 @@ async fn the_memory_cap_ends_an_allocation() {
         return;
     }
     let source = "def main():\n    return len(\"a\" * (600 * 1024 * 1024))\n";
-    let value = run_program(source, Arc::new(FakeComposer::default())).await;
+    let value = run_source(source, Arc::new(FakeComposer::default())).await;
     assert!(value.is_error);
     let message = value.value["error"]["message"].as_str().unwrap();
     assert!(message.contains("MemoryError"), "{message}");
@@ -174,7 +173,7 @@ async fn the_timeout_kills_the_interpreter() {
     }
     let fx = Fixture::new();
     let sandbox = Sandbox::new(SandboxMode::Off).unwrap();
-    let args = json!({ "program": "def main():\n    while True:\n        pass\n", "timeout_seconds": 1 });
+    let args = json!({ "source": "def main():\n    while True:\n        pass\n", "timeout_seconds": 1 });
     let value = run_with(&fx, sandbox, Arc::new(FakeComposer::default()), args).await;
     assert!(value.is_error);
     let message = value.value["error"]["message"].as_str().unwrap();
@@ -192,7 +191,7 @@ async fn a_missing_interpreter_is_an_error_naming_the_path() {
     ctx.composer = Some(Arc::new(FakeComposer::default()));
     let mut tool = Python::new();
     tool.bin = "/nonexistent/python3".into();
-    let value = tool.call(json!({ "program": "def main():\n    return 0\n" }), &ctx).await;
+    let value = tool.call(json!({ "source": "def main():\n    return 0\n" }), &ctx).await;
     assert!(value.is_error);
     assert!(value.rendered.unwrap().contains("/nonexistent/python3"));
 }
@@ -200,7 +199,7 @@ async fn a_missing_interpreter_is_an_error_naming_the_path() {
 #[tokio::test]
 async fn the_source_bound_is_checked_before_the_interpreter_starts() {
     let source = format!("# {}\ndef main():\n    return 0\n", "x".repeat(PYTHON_SOURCE_MAX_BYTES));
-    let value = run_program(&source, Arc::new(FakeComposer::default())).await;
+    let value = run_source(&source, Arc::new(FakeComposer::default())).await;
     assert!(value.is_error);
     assert!(value.rendered.unwrap().contains(&PYTHON_SOURCE_MAX_BYTES.to_string()));
 }
@@ -212,13 +211,13 @@ async fn a_dispatch_without_a_composer_is_an_error() {
     let sandbox = Arc::new(Sandbox::new(SandboxMode::Off).unwrap());
     let executor = Arc::new(LocalExecutor::new(sandbox, Policy::default(), fx.root().join("spill"), cancel));
     let ctx = ctx_with_executor(&fx, executor);
-    let value = Python::new().call(json!({ "program": "def main():\n    return 0\n" }), &ctx).await;
+    let value = Python::new().call(json!({ "source": "def main():\n    return 0\n" }), &ctx).await;
     assert!(value.is_error);
     assert!(value.rendered.unwrap().contains("composer"));
 }
 
 /// docs/code-mode.md: one scripted episode whose model turn submits a
-/// program composing several inner calls. The episode completes, the log
+/// Python source composing several inner calls. The episode completes, the log
 /// records each inner call and its result, derived messages carry the
 /// outer result alone, and the folded log balances.
 mod episode {
@@ -254,22 +253,22 @@ mod episode {
         let fx = Fixture::new();
         fx.write("data.txt", "one\ntwo\nthree\n");
         let root = fx.root();
-        let program = "def main():\n\
+        let source = "def main():\n\
                        \x20   data = call_tool(\"read\", {\"path\": \"data.txt\"})\n\
                        \x20   if data[\"is_error\"]:\n\
                        \x20       fail(data[\"value\"][\"error\"])\n\
                        \x20   missing = call_tool(\"read\", {\"path\": \"missing.txt\"})\n\
                        \x20   return {\"lines\": len(data[\"value\"][\"content\"].splitlines()), \"missing\": missing[\"is_error\"]}\n";
-        let config: foe_program::ProgramDocument = serde_json::from_value(json!({
-            "version": 3, "name": "compose", "instructions": { "role": "compose" },
+        let config: foe_contract::ContractDocument = serde_json::from_value(json!({
+            "version": 4, "name": "compose", "instructions": { "role": "compose" },
             "tools": ["python", "read"],
             "grants": { "read": [root], "write": [root] },
             "budget": { "model_calls": 4 }, "task": "count the lines"
         }))
         .unwrap();
-        let resolved = foe_program::document::resolve(&config).unwrap();
+        let resolved = foe_contract::document::resolve(&config).unwrap();
         let registry = Arc::new(Registry::new(&resolved, vec![], crate::all()).unwrap());
-        let args = json!({ "program": program }).to_string();
+        let args = json!({ "source": source }).to_string();
         let turn = vec![
             Chunk::ToolCallStart { id: "tc_py".into(), name: "python".into() },
             Chunk::ToolCallDelta { id: "tc_py".into(), delta: args },
@@ -293,22 +292,22 @@ mod episode {
             parent_id: None,
             fork_origin: None,
             team_id: None,
-            program: resolved.to_value(),
-            identity: "sha256:test".into(),
+            contract: resolved.to_value(),
+            contract_fingerprint: "sha256:test".into(),
             task: "count the lines".into(),
             runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
             sandbox: SandboxInfo {
                 mode: SandboxMode::Off,
                 landlock_abi: 0,
-                effective_access: None,
-                process_boundary: None,
+                resolved_permissions: Default::default(),
+                process_boundary: Default::default(),
             },
             effective_budget: None,
         };
         let outcome = run(Params {
             log: log.clone(),
             start,
-            program: resolved.clone(),
+            contract: resolved.clone(),
             registry,
             handles,
             transport: Arc::new(Scripted(Mutex::new(VecDeque::from([turn])))),

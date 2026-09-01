@@ -2,6 +2,9 @@ use super::{
     classify_tool, empty_after_child, handoff_failure, run, section, trouble_from_failure, Trouble, WorkflowParams,
 };
 use crate::graph::Produced;
+use foe_contract::document::resolve;
+use foe_contract::workflow::Node;
+use foe_contract::{ContractDocument, Effect, ToolSpec};
 use foe_core::budget::Pool;
 use foe_core::loop_::{Log, Params};
 use foe_core::registry::{Handles, Registry};
@@ -12,9 +15,6 @@ use foe_log::{
     BlockedCode, Chunk, EpisodeStart, Event, EventData, ModelRoute, Outcome, RuntimeInfo, SandboxInfo, SandboxMode,
     StopReason, ToolFailureCode, Usage,
 };
-use foe_program::document::resolve;
-use foe_program::workflow::Node;
-use foe_program::{Effect, ProgramDocument, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::io::{self, Write};
@@ -217,7 +217,7 @@ impl Fixture {
         let mut names: Vec<&str> = vec!["block"];
         names.extend(tools);
         let config = json!({
-            "version": 3, "name": "wf", "instructions": { "r": "test" }, "tools": names,
+            "version": 4, "name": "wf", "instructions": { "r": "test" }, "tools": names,
             "grants": { "read": [dir] }, "budget": { "model_calls": 10 }, "task": "run the graph",
             "workflow": workflow
         });
@@ -284,12 +284,12 @@ impl Fixture {
     }
 
     async fn run_result(&mut self) -> Result<(Outcome, Vec<Event>), foe_core::RuntimeError> {
-        let config: ProgramDocument = serde_json::from_value(self.config.clone()).unwrap();
-        let program = resolve(&config).unwrap();
+        let config: ContractDocument = serde_json::from_value(self.config.clone()).unwrap();
+        let contract = resolve(&config).unwrap();
         let log_dir = self.dir.join("episode");
         std::fs::create_dir_all(&log_dir).unwrap();
         let log = Arc::new(Log::create_or_open(&log_dir, self.mirror.take()).unwrap());
-        let registry = Registry::new(&program, vec![], std::mem::take(&mut self.tools)).unwrap();
+        let registry = Registry::new(&contract, vec![], std::mem::take(&mut self.tools)).unwrap();
         let (stop, stop_rx) = tokio::sync::watch::channel(None);
         let stop_after = self.stop_after;
         // The sender lives for the whole run: dropping it would make every
@@ -311,29 +311,29 @@ impl Fixture {
                 parent_id: None,
                 fork_origin: None,
                 team_id: None,
-                program: program.to_value(),
-                identity: "sha256:test".into(),
+                contract: contract.to_value(),
+                contract_fingerprint: "sha256:test".into(),
                 task: "run the graph".into(),
                 runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
                 sandbox: SandboxInfo {
                     mode: SandboxMode::Off,
                     landlock_abi: 0,
-                    effective_access: None,
-                    process_boundary: None,
+                    resolved_permissions: Default::default(),
+                    process_boundary: Default::default(),
                 },
                 effective_budget: None,
             },
-            pool: Arc::new(Mutex::new(Pool::new(program.budget.clone()))),
+            pool: Arc::new(Mutex::new(Pool::new(contract.budget.clone()))),
             registry: Arc::new(registry),
             handles: Handles::default(),
             transport: Arc::new(responses),
             stop: stop_rx,
             children: None,
             sessions: None,
-            program: program.clone(),
+            contract: contract.clone(),
             context: None,
         };
-        let params = WorkflowParams { episode, workflow: program.workflow.unwrap(), spawner: self.spawner.clone() };
+        let params = WorkflowParams { episode, workflow: contract.workflow.unwrap(), spawner: self.spawner.clone() };
         let outcome = run(params).await;
         stopper.abort();
         let outcome = outcome?;
@@ -1112,7 +1112,7 @@ async fn a_firing_still_running_when_the_seconds_budget_elapses_is_abandoned() {
 }
 
 /// docs/workflow.md "Completion": the stop signal ends the wait for the
-/// firings still running, whether or not the program declares `seconds`.
+/// firings still running, whether or not the contract declares `seconds`.
 /// The clock is virtual; see
 /// `a_firing_still_running_when_the_seconds_budget_elapses_is_abandoned`.
 #[tokio::test(start_paused = true)]

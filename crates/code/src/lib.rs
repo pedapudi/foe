@@ -58,9 +58,9 @@ pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
 pub const SESSION_MAX_ALIVE: usize = 8;
 /// Absolute path of the interpreter the `python` tool starts.
 pub const PYTHON_BIN: &str = "/usr/bin/python3";
-/// Longest `python` program source, in bytes.
+/// Longest `python` source, in bytes.
 pub const PYTHON_SOURCE_MAX_BYTES: usize = 64 * 1024;
-/// Inner tool calls one `python` program may dispatch.
+/// Inner tool calls one `python` source may dispatch.
 pub const PYTHON_INNER_CALL_MAX: u32 = 100;
 /// Address-space limit of the interpreter process, in bytes.
 pub const PYTHON_MEMORY_MAX_BYTES: u64 = 512 << 20;
@@ -97,7 +97,7 @@ pub(crate) const SHELL_COMMAND_NUL_ERROR: &str = "command contains U+0000; proce
 
 /// The complete environment of the shell, identical for `bash` and
 /// `session`. The runtime sets exactly what it is given and inherits
-/// nothing, so the shell needs a search path to find programs; `HOME` is
+/// nothing, so the shell needs a search path to find commands; `HOME` is
 /// the working directory, since the tools have no other writable location.
 #[cfg(feature = "exec")]
 pub(crate) fn shell_environment(cwd: &Path) -> std::collections::BTreeMap<String, String> {

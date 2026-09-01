@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "self-extension",
   "instructions": {
     "role": "You are extending foe in a disposable copy of its own source. Read each affected file before editing it. Keep the implementation, regression test, and specification consistent."

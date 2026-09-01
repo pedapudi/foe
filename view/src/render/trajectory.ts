@@ -24,7 +24,7 @@ import type { CausalityEpisode, CausalityLayout, ConversationScope } from "../ca
 import { currentFontScale } from "../chrome.js";
 import { clear, fmtDuration, fmtTime, h } from "../dom.js";
 import { outcomeLabel } from "../fold.js";
-import { shortIdentity } from "../lineage.js";
+import { shortFingerprint } from "../episode-tree.js";
 import type {
   Axis,
   PlacedDecision,
@@ -248,7 +248,7 @@ export class TrajectoryView {
       this.episodes
         .map(
           (e) =>
-            `${e.id}:${e.depth}:${e.identity}:${e.lastSeq}:${e.startTime}:${e.endTime ?? "-"}:${e.marks.length}:${e.firings.length}:${e.decisions.length}:${e.outcome ? e.outcome.kind : ""}`,
+            `${e.id}:${e.depth}:${e.contractFingerprint}:${e.lastSeq}:${e.startTime}:${e.endTime ?? "-"}:${e.marks.length}:${e.firings.length}:${e.decisions.length}:${e.outcome ? e.outcome.kind : ""}`,
         )
         .join("|"),
     ].join("~");
@@ -355,7 +355,7 @@ export class TrajectoryView {
     figure.appendChild(edges);
 
     // A bracket in the gutter between the labels and the plot spans the
-    // rows of one program, so that runs which are comparable read as a
+    // rows of one contract, so that runs which are comparable read as a
     // set. Nothing else in the figure claims that gutter.
     const groups = svg("g", { class: "traj-groups" });
     for (const group of layout.groups) {
@@ -366,8 +366,8 @@ export class TrajectoryView {
       this.card.attach(
         bracket,
         () => `${group.runs} runs of ${group.name}`,
-        () => "one program: equal `episode/start.identity`",
-        () => shortIdentity(group.identity),
+        () => "one contract: equal `episode/start.contract_fingerprint`",
+        () => shortFingerprint(group.contractFingerprint),
       );
       groups.appendChild(bracket);
     }
@@ -397,13 +397,13 @@ export class TrajectoryView {
       }
     }
 
-    // The label names the program. The episode id stands beside it in the
+    // The label names the contract. The episode id stands beside it in the
     // sidebar and in the breadcrumbs, so the row does not repeat it.
     const label = svg("text", { class: "traj-label", x: row.labelX, y: row.y + 3.5 });
     label.textContent = row.label;
     label.addEventListener("click", () => this.handlers.select(row.id));
     // The card carries the id the label no longer prints, and the whole
-    // program name when the column was too narrow to set it.
+    // contract name when the column was too narrow to set it.
     this.card.attach(
       label,
       () => row.name,

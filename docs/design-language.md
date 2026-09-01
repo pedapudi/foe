@@ -33,7 +33,7 @@ changing theme is a re-skin with no re-render.
 
 Four rules govern their use.
 
-- `good` and `bad` are earned by direction and never by identity. A child
+- `good` and `bad` are earned by direction and never by category. A child
   episode is not coloured for being a child. An outcome is `good` when it is
   `completed`, `bad` when it is `failed`, `caution` when it is `exhausted`,
   and `flat` when it is `blocked`, because `blocked` is a recognized state
@@ -92,7 +92,7 @@ The four channels that do carry kind are assigned as follows.
   longest bar would be the darkest thing in the figure and the channel of
   short marks would disappear. Opacity separates the parts within one
   channel, which is the register's depth channel. Structure that measures
-  nothing, such as a lineage connector, a depth guide, or a group bracket,
+  nothing, such as an episode-tree connector, a depth guide, or a group bracket,
   takes `--v2-rule` and never an ink.
 
 The sixteen themes are copied from `console.css` without modification:

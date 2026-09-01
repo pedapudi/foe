@@ -3,7 +3,7 @@
 foe calls a model through one of its built-in clients or leaves the call to
 the process that launched it. This document covers the built-in clients:
 which providers exist, where their credentials live, how `foe login` sets
-them up, how a program of your own becomes a provider, and what each
+them up, how a transport executable becomes a provider, and what each
 provider cannot express.
 
 ## Quick start
@@ -28,7 +28,7 @@ The built-in coding workflow uses low reasoning effort for its implementation
 episode with `gpt-5.6-sol` through `openai` or `openai-codex`. Its independent
 assessment and conditional repair episodes use xhigh effort. An explicit
 `reasoning_effort` in the default model file applies to all three episodes.
-Programs given through `--config` use their model blocks without this coding
+Execution contracts given through `--config` use their model blocks without this coding
 default.
 
 ## Providers
@@ -44,7 +44,7 @@ decides the wire format, the kind of credential, and the default endpoint.
 | `openrouter` | OpenRouter, one key for many models | API key | the key |
 | `openai-codex` | a ChatGPT subscription through the Codex backend | OAuth token, obtained in the browser | nothing typed; a browser sign-in |
 | `vertex` | Google Cloud Vertex AI: Gemini models, and Claude models by name | Google credentials | the credentials file, the project, the location |
-| `exec` | a program of your own | none; the program holds its own | nothing; there is no login |
+| `exec` | a transport executable | none; the process holds its own | nothing; there is no login |
 
 One `model` block per provider, each the smallest that runs after
 `foe login`:
@@ -59,9 +59,14 @@ One `model` block per provider, each the smallest that runs after
 { "provider": "exec", "model": "openai/gpt-5", "exec": "/home/user/project/tools/litellm-transport" }
 ```
 
+During execution-contract construction, Foe captures each configured
+executable's bytes, digest, source path, and invocation name. Every later
+invocation uses the captured executable. Replacing, modifying, or deleting the
+source cannot change the run.
+
 `foe plan --config FILE` prints a `model` line naming the resolved wire
 format and credential path. For the `exec` provider it also prints the
-absolute source path and the SHA-256 digest of the retained executable
+absolute source path and the SHA-256 digest of the captured executable
 bytes. An unknown provider produces an error that lists the known names.
 
 ## The `model` block
@@ -86,7 +91,7 @@ Every provider-specific option is a flat string. The options by provider:
 | `reasoning_effort` | `openai`, `openai-codex` | sent as `reasoning.effort`; models without reasoning reject it |
 | `service_tier` | `openai`, `openai-codex` | sent as the Responses API `service_tier` request field |
 | `include_thoughts` | `vertex` with Gemini models | `"false"` leaves `thinkingConfig` out, for models without thinking |
-| `exec` | `exec` | absolute path of the program; required |
+| `exec` | `exec` | absolute source path of the transport executable; required |
 
 The public OpenAI Responses API accepts `max_output_tokens`. The ChatGPT
 Codex backend used by `openai-codex` rejects that field, so foe omits it on
@@ -101,11 +106,11 @@ OpenAI-shaped providers it includes the version prefix,
 `https://chatgpt.com/backend-api` and `/codex/responses` is appended. For
 `vertex` it is the regional origin, derived from `location` when absent.
 
-Model selection does not participate in identity. A system that needs to
+Model selection does not participate in the contract fingerprint. A system that needs to
 record which model ran reads it from the log. The executable bytes of an
 `exec` transport are an exception because they implement runtime behavior.
 Their digest and configured basename participate in the runtime portion of
-program identity.
+the contract fingerprint.
 
 ### Context windows
 
@@ -128,7 +133,7 @@ used.
 | `vertex` | `claude-` | 200000 |
 
 `openai-compatible` and `exec` know no windows, because the model behind
-them is whatever the server or program answers for.
+them is whatever the server or contract answers for.
 
 ## Where credentials live
 
@@ -146,7 +151,7 @@ user id. No environment variable is read, including `HOME`.
 A `model` block may omit its credential field. The transport then reads the
 provider's convention file. An explicit `api_key_file`, `token_file`, or
 `credentials_file` in the block replaces it. Whichever file is used, its
-path is written into the `model` block that `episode/start.program`
+path is written into the `model` block that `episode/start.contract`
 records, so the log says which credential ran.
 
 The convention file's shape depends on the credential kind.
@@ -202,7 +207,7 @@ with PKCE against `https://auth.openai.com`. When the browser returns to the
 listener with a code, the command exchanges it for a token at
 `https://auth.openai.com/oauth/token`, writes the token file, and prints
 the last four characters of the account id. A busy port 1455 is reported
-with the instruction to stop the program using it.
+with the instruction to stop the contract using it.
 
 For `vertex`, the command asks for the credentials file, offering
 `~/.config/gcloud/application_default_credentials.json` as the default, then
@@ -230,15 +235,15 @@ the effective reasoning effort.
 
 ## The `exec` transport
 
-A `model` block whose provider is `exec` names a program. This is the seam
-for a provider that foe does not know: a program written in any language
-answers each model request and holds whatever credential it needs.
+A `model` block whose provider is `exec` names a transport executable. This
+is the seam for a provider that foe does not know. A process implemented in
+any language answers each model request and holds whatever credential it needs.
 
 ```json
 "model": { "provider": "exec", "exec": "/home/user/project/tools/litellm-transport", "model": "openai/gpt-5", "api_key_file": "/home/user/project/.secrets/openai.key" }
 ```
 
-For every model request the program is started once, through the same
+For every model request the transport process is started once, through the same
 executor that runs configured tools, with the network allowed and the model
 name as its single argument. It reads one JSON object from standard input
 and writes `model/chunk` lines to standard output in the shape
@@ -253,25 +258,22 @@ stdout: {"type":"model/chunk","request_id":"rq_01","chunk":{"kind":"text","delta
 `tools` and `messages` have the shapes of the log's `request/header.tools`
 and `model/request.messages`. `options` carries every key of the `model`
 block other than `provider`, `model`, `max_output_tokens`, and `exec`, which
-is how the program learns where its own credential lives. The program runs
+is how the process learns where its own credential lives. The process runs
 under the episode's sandbox narrowed as for a configured tool: it reads the
 read roots and the loader directories, it may open TCP connections, it
 reads the resolver configuration that turns a host name into an address,
 and it starts with an empty environment. A credential file it reads must
 therefore lie under a read root.
 
-Construction reads the transport executable once and retains the exact
-bytes. Each request runs a descriptor for a private image of those bytes.
-The source path is never reopened after construction, so replacement,
-in-place modification, and deletion cannot change the transport mid-episode.
+Every request uses the captured transport executable.
 
-The chunks reach the episode when the program exits, because the executor
-captures output whole. A program that exits without a final `done` or
+The chunks reach the episode when the transport process exits because the
+executor captures output whole. A process that exits without a final `done` or
 `error` chunk produces an error quoting its standard error; a non-zero exit
 is not retried, an exit of zero without a final chunk is.
 
 [`examples/exec-transport/`](../examples/exec-transport/) holds two such
-programs and the configuration that runs them: `litellm-transport`, of
+transport executables and the configuration that runs them: `litellm-transport`, of
 about fifty lines, which answers through `litellm`, and
 `scripted-transport.py`, which answers with fixed chunks so that the
 example runs without a credential. Its README states which lines to
@@ -346,7 +348,7 @@ and no notion of a refusal. Each provider maps onto it with these losses.
 | `openai-compatible`, `openrouter` | a `content_filter` finish becomes a non-retryable error; a failed tool result has no field and travels as text; reasoning blocks are never replayed, because the API has no item for them; the reasoning stream fields are a convention of DeepSeek, vLLM, and llama.cpp rather than part of the specification |
 | `vertex` with Gemini | `SAFETY`, `RECITATION`, `BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII`, `MALFORMED_FUNCTION_CALL`, and a blocked prompt become non-retryable errors; function calls have no ids, so the transport numbers them per response and results are matched by function name; a thought signature is replayed on a part of the kind it arrived on, and a signature whose part has no counterpart in the replayed turn is dropped; schema keywords the API rejects, `additionalProperties` and every `$`-prefixed keyword, are removed from tool declarations |
 | `vertex` with Claude | as `anthropic` |
-| `exec` | chunks arrive after the program exits rather than as it writes them |
+| `exec` | chunks arrive after the transport process exits rather than as it writes them |
 
 Every provider replays reasoning only to the route that produced it. The
 runtime fixes the model for the whole episode, so every block in a log came

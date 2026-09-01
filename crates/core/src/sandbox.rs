@@ -11,11 +11,11 @@
 //! itself rather than through a `pre_exec` hook. The effect is the same: the
 //! child inherits the narrower domain before it executes anything.
 
-use crate::executable::{Executable, ExecutableTree};
+use crate::captured_executable::{CapturedExecutable, CapturedExecutableTree};
 use crate::executable_support;
 use crate::RuntimeError;
-use foe_log::{SandboxAccess, SandboxInfo, SandboxMode, SandboxPath};
-use foe_program::document::{ProgramTreeSelection, ResolvedProgram};
+use foe_contract::document::{ContractTreeSelection, ResolvedContract};
+use foe_log::{ResolvedPathPermission, ResolvedPermissions, SandboxInfo, SandboxMode};
 use landlock::{
     Access, AccessFs, AccessNet, BitFlags, CompatLevel, Compatible, LandlockStatus, NetPort, PathBeneath, PathFd,
     Ruleset, RulesetAttr, RulesetCreated, RulesetCreatedAttr, RulesetStatus, Scope, ABI,
@@ -50,11 +50,11 @@ pub struct Policy {
     pub write: Vec<PathBuf>,
     /// Files that may be executed.
     pub exec: Vec<PathBuf>,
-    /// Executable inodes committed during program construction.
-    pub exec_files: Vec<Arc<Executable>>,
+    /// Captured executable inodes retained during contract construction.
+    pub exec_files: Vec<Arc<CapturedExecutable>>,
     /// Storage parents available only to the episode process during cleanup.
     pub runtime_storage: Vec<PathBuf>,
-    /// Explicit program grants that remain available to subprocesses after
+    /// Explicit contract grants that remain available to subprocesses after
     /// the executable that starts them receives its narrower policy.
     pub delegated_exec: Vec<PathBuf>,
     /// Single files readable in full. Resolver configuration is present
@@ -79,7 +79,7 @@ pub struct Policy {
     #[doc(hidden)]
     pub runtime_control_files: Vec<PathBuf>,
     #[doc(hidden)]
-    pub access: SandboxAccess,
+    pub permissions: ResolvedPermissions,
 }
 
 impl Policy {
@@ -97,7 +97,7 @@ impl Policy {
 
     /// The complete descendant envelope an episode must reserve before
     /// Landlock can narrow it. Planning and execution share this walk.
-    pub fn for_plan(config: &ResolvedProgram) -> Result<Policy, String> {
+    pub fn for_plan(config: &ResolvedContract) -> Result<Policy, String> {
         let mut policy = Policy {
             read: config.grants.read.clone(),
             write: config.grants.write.clone(),
@@ -107,65 +107,65 @@ impl Policy {
         };
         policy.record_declared(config);
         policy.record_implicit_reads();
-        let programs = config.program_tree(ProgramTreeSelection::ExecutableReachable);
-        for (program_key, program) in &programs {
-            for path in &program.grants.execute {
-                policy.add_executable(path, format!("declared by {program_key}.grants.execute"))?;
+        let contracts = config.contract_tree(ContractTreeSelection::ExecutableReachable);
+        for (contract_key, contract) in &contracts {
+            for path in &contract.grants.execute {
+                policy.add_executable(path, format!("declared by {contract_key}.grants.execute"))?;
             }
-            for (name, image) in &program.executable_images {
+            for (name, executable) in &contract.captured_executables {
                 policy.add_image(
-                    &image.path,
-                    &image.sha256,
-                    &image.bytes,
-                    format!("selected configured tool {program_key}.tool_defs.{name}"),
+                    &executable.source_path,
+                    &executable.sha256,
+                    &executable.bytes,
+                    format!("selected configured tool {contract_key}.tool_defs.{name}"),
                 )?;
-                if program.tool_defs[name].network {
-                    policy.reserve_network(format!("{program_key}.tool_defs.{name}.network is true"));
+                if contract.tool_defs[name].network {
+                    policy.reserve_network(format!("{contract_key}.tool_defs.{name}.network is true"));
                 }
             }
-            if let Some(image) = &program.transport_executable {
+            if let Some(executable) = &contract.captured_transport {
                 policy.add_image(
-                    &image.path,
-                    &image.sha256,
-                    &image.bytes,
-                    format!("executable model transport {program_key}.model.exec"),
+                    &executable.source_path,
+                    &executable.sha256,
+                    &executable.bytes,
+                    format!("executable model transport {contract_key}.model.exec"),
                 )?;
             }
-            if program.model.is_some() {
-                policy.reserve_network(format!("model transport in {program_key}"));
+            if contract.model.is_some() {
+                policy.reserve_network(format!("model transport in {contract_key}"));
             }
         }
-        if programs.len() > 1 {
+        if contracts.len() > 1 {
             let executable = std::env::current_exe().map_err(|e| format!("running foe executable: {e}"))?;
             policy.add_executable(&executable, "child episode launcher".into())?;
         }
         Ok(policy)
     }
 
-    /// The planned envelope plus committed inodes and paths that exist only
+    /// The planned envelope plus captured inodes and paths that exist only
     /// after the episode directory has been chosen.
     pub fn for_episode(
-        config: &ResolvedProgram,
-        executables: &ExecutableTree,
+        config: &ResolvedContract,
+        executables: &CapturedExecutableTree,
         log_dir: &Path,
     ) -> Result<Policy, String> {
         let mut policy = Self::for_plan(config)?;
         policy.exec_files = executables.reachable();
         for path in executables.cleanup_roots() {
             policy.runtime_storage.push(path.clone());
-            policy.record_read_write(path, "private committed-executable storage cleanup", None);
+            policy.record_read_write(path, "private captured-executable storage cleanup", None);
         }
         policy.log_dir = Some(log_dir.to_path_buf());
         policy.record_read_write(log_dir.to_path_buf(), "episode log and spill directory", None);
         Ok(policy)
     }
 
-    /// Narrows one pathname executable to itself and the current program's
+    /// Narrows one pathname executable to itself and the current contract's
     /// explicit subprocess grants.
     pub fn for_executable(&self, executable: &Path, network: bool) -> Result<Policy, String> {
         let mut policy = self.narrowed();
         for path in &self.delegated_exec {
-            policy.add_executable(path, "delegated by this program's grants.execute".into())?;
+            policy.add_executable(path, "delegated by this contract's grants.execute".into())?;
         }
         policy.add_executable(executable, "selected executable".into())?;
         if network {
@@ -174,17 +174,21 @@ impl Policy {
         Ok(policy)
     }
 
-    /// Narrows one configured executable to its committed inode and the
-    /// current program's explicit subprocess grants.
-    pub fn for_immutable_executable(&self, executable: Arc<Executable>, network: bool) -> Result<Policy, String> {
+    /// Narrows one configured executable to its captured inode and the
+    /// current contract's explicit subprocess grants.
+    pub fn for_immutable_executable(
+        &self,
+        executable: Arc<CapturedExecutable>,
+        network: bool,
+    ) -> Result<Policy, String> {
         let mut policy = self.narrowed();
         for path in &self.delegated_exec {
-            policy.add_executable(path, "delegated by this program's grants.execute".into())?;
+            policy.add_executable(path, "delegated by this contract's grants.execute".into())?;
         }
         policy.add_image(
-            &executable.source,
+            &executable.source_path,
             &executable.sha256,
-            executable.image(),
+            executable.bytes(),
             "selected configured executable".into(),
         )?;
         policy.exec_files.push(executable);
@@ -203,24 +207,24 @@ impl Policy {
             ..Policy::default()
         };
         for path in policy.read.clone() {
-            policy.record_read(path, "declared by this program's grants.read", None);
+            policy.record_read(path, "declared by this contract's grants.read", None);
         }
         for path in policy.write.clone() {
-            policy.record_write(path, "declared by this program's grants.write", None);
+            policy.record_write(path, "declared by this contract's grants.write", None);
         }
-        policy.access.bind_tcp = policy.bind_tcp.clone();
+        policy.permissions.bind_tcp = policy.bind_tcp.clone();
         policy.record_implicit_reads();
         policy
     }
 
-    fn record_declared(&mut self, config: &ResolvedProgram) {
+    fn record_declared(&mut self, config: &ResolvedContract) {
         for path in &config.grants.read {
-            self.record_read(path.clone(), "declared by program.grants.read", None);
+            self.record_read(path.clone(), "declared by contract.grants.read", None);
         }
         for path in &config.grants.write {
-            self.record_write(path.clone(), "declared by program.grants.write", None);
+            self.record_write(path.clone(), "declared by contract.grants.write", None);
         }
-        self.access.bind_tcp = config.grants.bind.clone();
+        self.permissions.bind_tcp = config.grants.bind.clone();
     }
 
     fn record_implicit_reads(&mut self) {
@@ -292,30 +296,30 @@ impl Policy {
         if !self.bind_tcp.contains(&port) {
             self.bind_tcp.push(port);
         }
-        self.access.bind_tcp = self.bind_tcp.clone();
+        self.permissions.bind_tcp = self.bind_tcp.clone();
     }
 
     fn reserve_network(&mut self, reason: String) {
         self.connect_tcp = true;
-        self.access.connect_tcp.push(reason.clone());
+        self.permissions.connect_tcp.push(reason.clone());
         if let Ok(path) = std::fs::canonicalize("/etc/resolv.conf") {
             self.add_read_file(path, format!("DNS resolver configuration for {reason}"));
         }
     }
 
-    pub fn effective_access(&self) -> SandboxAccess {
-        let mut access = self.access.clone();
-        access.read.sort_by(path_order);
-        access.read.dedup();
-        access.write.sort_by(path_order);
-        access.write.dedup();
-        access.execute.sort_by(path_order);
-        access.execute.dedup();
-        access.bind_tcp.sort_unstable();
-        access.bind_tcp.dedup();
-        access.connect_tcp.sort();
-        access.connect_tcp.dedup();
-        access
+    pub fn resolved_permissions(&self) -> ResolvedPermissions {
+        let mut permissions = self.permissions.clone();
+        permissions.read.sort_by(path_order);
+        permissions.read.dedup();
+        permissions.write.sort_by(path_order);
+        permissions.write.dedup();
+        permissions.execute.sort_by(path_order);
+        permissions.execute.dedup();
+        permissions.bind_tcp.sort_unstable();
+        permissions.bind_tcp.dedup();
+        permissions.connect_tcp.sort();
+        permissions.connect_tcp.dedup();
+        permissions
     }
 
     /// Gives only the runtime control of a cgroup directory after the
@@ -332,11 +336,11 @@ impl Policy {
     }
 
     fn record_read(&mut self, path: PathBuf, reason: impl Into<String>, sha256: Option<String>) {
-        self.access.read.push(access_path(path, reason, sha256));
+        self.permissions.read.push(permission_path(path, reason, sha256));
     }
 
     fn record_write(&mut self, path: PathBuf, reason: impl Into<String>, sha256: Option<String>) {
-        self.access.write.push(access_path(path, reason, sha256));
+        self.permissions.write.push(permission_path(path, reason, sha256));
     }
 
     fn record_read_write(&mut self, path: PathBuf, reason: impl Into<String>, sha256: Option<String>) {
@@ -346,15 +350,15 @@ impl Policy {
     }
 
     fn record_execute(&mut self, path: PathBuf, reason: &str, sha256: Option<String>) {
-        self.access.execute.push(access_path(path, reason, sha256));
+        self.permissions.execute.push(permission_path(path, reason, sha256));
     }
 }
 
-fn access_path(path: PathBuf, reason: impl Into<String>, sha256: Option<String>) -> SandboxPath {
-    SandboxPath { path: path.to_string_lossy().into_owned(), reason: reason.into(), sha256 }
+fn permission_path(path: PathBuf, reason: impl Into<String>, sha256: Option<String>) -> ResolvedPathPermission {
+    ResolvedPathPermission { path: path.to_string_lossy().into_owned(), reason: reason.into(), sha256 }
 }
 
-fn path_order(a: &SandboxPath, b: &SandboxPath) -> std::cmp::Ordering {
+fn path_order(a: &ResolvedPathPermission, b: &ResolvedPathPermission) -> std::cmp::Ordering {
     (&a.path, &a.reason, &a.sha256).cmp(&(&b.path, &b.reason, &b.sha256))
 }
 
@@ -390,19 +394,14 @@ impl Sandbox {
         Ok(Sandbox { mode, abi })
     }
 
-    /// What `episode/start` records.
-    pub fn info(&self) -> SandboxInfo {
-        SandboxInfo { mode: self.mode, landlock_abi: self.abi, effective_access: None, process_boundary: None }
-    }
-
     /// What `episode/start` records after process-subtree ownership has
     /// been selected for this run.
-    pub fn info_with_process(&self, process_boundary: foe_log::ProcessBoundaryInfo, policy: &Policy) -> SandboxInfo {
+    pub fn info(&self, process_boundary: foe_log::ProcessBoundaryInfo, policy: &Policy) -> SandboxInfo {
         SandboxInfo {
             mode: self.mode,
             landlock_abi: self.abi,
-            effective_access: Some(policy.effective_access()),
-            process_boundary: Some(process_boundary),
+            resolved_permissions: policy.resolved_permissions(),
+            process_boundary,
         }
     }
 

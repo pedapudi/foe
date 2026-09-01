@@ -92,7 +92,7 @@ class MicroTaskTests(unittest.TestCase):
             config = task.config(workspace.resolve(), Path(metadata["check"]).resolve(), route)
 
         self.assertIn("wait", config["tools"])
-        for child in config["programs"].values():
+        for child in config["child_contracts"].values():
             returned = child["done_when"]["returns"]
             self.assertEqual(returned["properties"]["symbols"]["maxItems"], 4)
             self.assertEqual(returned["properties"]["rule"]["maxLength"], 800)
@@ -206,13 +206,13 @@ class MicroTaskTests(unittest.TestCase):
             log = case / "episode"
             completed = {"kind": "completed", "value": {"module": "module.py"}}
             root_events = [event("assistant/message", {"tool_calls": [{"name": "wait", "args": {}}]})]
-            for program, child in [("pricing-survey", "pricing"), ("inventory-survey", "inventory")]:
-                root_events.append(event("spawn/start", {"program": program, "context": "fresh"}))
-                root_events.append(event("spawn/end", {"program": program, "outcome": completed}))
+            for contract, child in [("pricing-survey", "pricing"), ("inventory-survey", "inventory")]:
+                root_events.append(event("spawn/start", {"contract": contract, "context": "fresh"}))
+                root_events.append(event("spawn/end", {"contract": contract, "outcome": completed}))
                 write_log(
                     log / "children" / child / "episode.jsonl",
                     [
-                        event("episode/start", {"program": {"grants": {"read": ["/workspace"]}}}),
+                        event("episode/start", {"contract": {"grants": {"read": ["/workspace"]}}}),
                         event("episode/end", {"outcome": completed}),
                     ],
                 )

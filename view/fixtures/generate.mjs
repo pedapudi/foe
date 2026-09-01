@@ -4,8 +4,8 @@
 // tests can compare them with the derived-messages rule.
 //
 // The four workflow fixtures are an exception: the foe runtime writes them.
-// `workflowRun` below assembles a configuration, a scripted model program,
-// and a scripted verification program, runs the `foe` binary over them, and
+// `workflowRun` below assembles a configuration, a scripted model contract,
+// and a scripted verification contract, runs the `foe` binary over them, and
 // copies the logs here with the machine's own paths replaced. A declared
 // graph has rules a hand-written log would satisfy only by accident, so the
 // fixtures come from the runtime that enforces them.
@@ -50,19 +50,29 @@ const tool = (call_id, name, rendered, is_error = false) => ({ role: "tool", cal
 const tools = [
   { name: "read", description: "Read a file.\nReturns numbered lines.", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
   { name: "bash", description: "Run a command.", parameters: { type: "object", properties: { cmd: { type: "string" } }, required: ["cmd"] } },
-  { name: "spawn", description: "Spawn a child program.", parameters: { type: "object", properties: { program: { type: "string" }, task: { type: "string" } } } },
+  { name: "spawn", description: "Spawn a child contract.", parameters: { type: "object", properties: { contract: { type: "string" }, task: { type: "string" } } } },
   { name: "block", description: "Report that the task cannot proceed.", parameters: { type: "object", properties: { code: { type: "string" }, message: { type: "string" } } } },
 ];
 
-const program = (name, budget) => ({
+const contract = (name, budget) => ({
   name,
   instructions: { charter: "You fix failing tests with the smallest change." },
   tools: tools.map((t) => t.name),
   budget,
 });
 
-const runtime = { version: "0.1.0", build: "sha256:0f0f" };
+const runtime = { version: "0.2.0", build: "sha256:0f0f" };
 const model = { provider: "replay", model: "recorded-1" };
+const sandboxRecord = (mode = "best-effort", landlockAbi = 7) => ({
+  mode,
+  landlock_abi: landlockAbi,
+  resolved_permissions: {},
+  process_boundary: {
+    kind: "process-group",
+    subtree_cleanup: "observational",
+    reason: "the fixture uses the portable process boundary",
+  },
+});
 
 // Root episode: a team lead that spawns one child, survives one interrupted
 // request, and completes.
@@ -72,7 +82,7 @@ function root() {
   const taskText = "Fix the failing parser test.";
   const readCall = { id: "tc_01", name: "read", args: { path: "tests/parser_test.py" } };
   const readRendered = "1\timport pytest\n2\tfrom parser import parse\n3\t\n4\tdef test_parse():\n5\t    assert parse('a') == ['a']";
-  const spawnCall = { id: "tc_02", name: "spawn", args: { program: "survey", task: "List the parser tests." } };
+  const spawnCall = { id: "tc_02", name: "spawn", args: { contract: "survey", task: "List the parser tests." } };
   const bashCall = { id: "tc_03", name: "bash", args: { cmd: "pytest tests/parser_test.py" } };
 
   log.ev("episode/start", {
@@ -80,11 +90,11 @@ function root() {
     parent_id: null,
     fork_origin: null,
     team_id: null,
-    program: program("fix-test", { model_calls: 10, input_tokens: 80000, output_tokens: 20000 }),
-    identity: "sha256:aaaa",
+    contract: contract("fix-test", { model_calls: 10, input_tokens: 80000, output_tokens: 20000 }),
+    contract_fingerprint: "sha256:aaaa",
     task: taskText,
     runtime,
-    sandbox: { mode: "best-effort", landlock_abi: 7 },
+    sandbox: sandboxRecord(),
   });
   const task = log.ev("inbox/item", { source: "task", content: [text(taskText)], from: null, message_id: null });
   const header = log.ev("request/header", { reason: "initial", system: "You fix failing tests with the smallest change.", tools, model });
@@ -129,7 +139,7 @@ function root() {
     interrupted: false,
   });
   log.ev("budget/reserve", { child_id: "ep_child", reserved: { model_calls: 3, input_tokens: 16000, output_tokens: 4000 } });
-  log.ev("spawn/start", { child_id: "ep_child", program: "survey", context: "fresh", call_id: "tc_02" });
+  log.ev("spawn/start", { child_id: "ep_child", contract: "survey", context: "fresh", call_id: "tc_02" });
   log.ev("team/roster", { member_id: "ep_child", name: "surveyor", description: "Lists parser tests.", phase: "provisioning" });
   log.ev("team/roster", { member_id: "ep_child", name: "surveyor", description: "Lists parser tests.", phase: "active" }, 300);
   log.ev("team/message", { message_id: "tm_01", from: "ep_root", to: "ep_child", content: [text("Report the count when done.")] });
@@ -184,11 +194,11 @@ function child() {
     parent_id: "ep_root",
     fork_origin: null,
     team_id: "ep_root",
-    program: program("survey", { model_calls: 3, input_tokens: 16000, output_tokens: 4000 }),
-    identity: "sha256:bbbb",
+    contract: contract("survey", { model_calls: 3, input_tokens: 16000, output_tokens: 4000 }),
+    contract_fingerprint: "sha256:bbbb",
     task: taskText,
     runtime,
-    sandbox: { mode: "best-effort", landlock_abi: 7 },
+    sandbox: sandboxRecord(),
   });
   const task = log.ev("inbox/item", { source: "task", content: [text(taskText)], from: null, message_id: null });
   const header = log.ev("request/header", { reason: "initial", system: "You survey a repository and report.", tools: tools.slice(0, 2), model });
@@ -224,7 +234,7 @@ function fork(rootLog) {
   const messages2 = [user(text(taskText)), assistant("I will read the test first.", [readCall]), tool("tc_01", "read", readRendered), user(text("Budget: 8 model calls remain."))];
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_20", header_seq: header, consumed: [11], messages: messages2 });
   const block = { id: "tc_20", name: "block", args: { code: "missing-capability", message: "The edit tool is not available." } };
-  log.ev("assistant/message", { step: 2, request_id: "rq_20", text: "The program lacks an edit tool.", tool_calls: [block], stop: "tool", usage: { input: 500, output: 25, cache_read: 400 }, interrupted: false });
+  log.ev("assistant/message", { step: 2, request_id: "rq_20", text: "The contract lacks an edit tool.", tool_calls: [block], stop: "tool", usage: { input: 500, output: 25, cache_read: 400 }, interrupted: false });
   log.ev("tool/result", { step: 2, call_id: "tc_20", name: "block", value: { code: "missing-capability" }, rendered: "blocked: missing-capability", is_error: false, spill: null, duration_ms: 0, synthetic: false });
   log.ev("episode/end", { outcome: { kind: "blocked", code: "missing-capability", message: "The edit tool is not available." } });
   return log;
@@ -277,11 +287,11 @@ function compact() {
     parent_id: null,
     fork_origin: null,
     team_id: null,
-    program: { ...program("rename-helper", { model_calls: 10, input_tokens: 80000, output_tokens: 20000 }), context: { compact: true, window_tokens: 4000, reserve_tokens: 500, keep_recent_tokens: 40 } },
-    identity: "sha256:cccc",
+    contract: { ...contract("rename-helper", { model_calls: 10, input_tokens: 80000, output_tokens: 20000 }), context: { compact: true, window_tokens: 4000, reserve_tokens: 500, keep_recent_tokens: 40 } },
+    contract_fingerprint: "sha256:cccc",
     task: taskText,
     runtime,
-    sandbox: { mode: "best-effort", landlock_abi: 7 },
+    sandbox: sandboxRecord(),
   });
   const task = log.ev("inbox/item", { source: "task", content: [text(taskText)], from: null, message_id: null });
   const header = log.ev("request/header", { reason: "initial", system: "You fix failing tests with the smallest change.", tools: summaryTools, model });
@@ -324,32 +334,32 @@ function compact() {
 function overlapParent() {
   const log = new Log(1730000000000);
   const taskText = "Survey the crates and summarize.";
-  const spawnCall = { id: "tc_p1", name: "spawn", args: { program: "surveyor", task: "Read every crate manifest." } };
-  const writeCall = { id: "tc_p3", name: "spawn", args: { program: "writer", task: "Explain the budget rule and tighten the parser." } };
+  const spawnCall = { id: "tc_p1", name: "spawn", args: { contract: "surveyor", task: "Read every crate manifest." } };
+  const writeCall = { id: "tc_p3", name: "spawn", args: { contract: "writer", task: "Explain the budget rule and tighten the parser." } };
   const readCall = { id: "tc_p2", name: "read", args: { path: "Cargo.toml" } };
   log.ev("episode/start", {
     id: "ep_over_parent",
     parent_id: null,
     fork_origin: null,
     team_id: null,
-    program: program("lead", { model_calls: 20, input_tokens: 160000, output_tokens: 40000 }),
-    identity: "sha256:cccc",
+    contract: contract("lead", { model_calls: 20, input_tokens: 160000, output_tokens: 40000 }),
+    contract_fingerprint: "sha256:cccc",
     task: taskText,
     runtime,
-    sandbox: { mode: "best-effort", landlock_abi: 7 },
+    sandbox: sandboxRecord(),
   });
   const task = log.ev("inbox/item", { source: "task", content: [text(taskText)], from: null, message_id: null });
   const header = log.ev("request/header", { reason: "initial", system: "You lead a survey.", tools, model });
   log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_p1", header_seq: header, consumed: [task], messages: [user(text(taskText))] }, 1000);
   log.ev("assistant/message", { step: 1, request_id: "rq_p1", text: "Spawning a surveyor.", tool_calls: [spawnCall], stop: "tool", usage: { input: 400, output: 20, cache_read: 0 }, interrupted: false }, 900);
   log.ev("budget/reserve", { child_id: "ep_over_child", reserved: { model_calls: 8, input_tokens: 64000, output_tokens: 16000 } });
-  log.ev("spawn/start", { child_id: "ep_over_child", program: "surveyor", context: "fresh", call_id: "tc_p1" }, 90);
+  log.ev("spawn/start", { child_id: "ep_over_child", contract: "surveyor", context: "fresh", call_id: "tc_p1" }, 90);
   // The parent keeps working while the child runs.
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_p2", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 500);
   log.ev("assistant/message", { step: 2, request_id: "rq_p2", text: "Reading the workspace manifest.", tool_calls: [readCall, writeCall], stop: "tool", usage: { input: 500, output: 18, cache_read: 400 }, interrupted: false }, 700);
   log.ev("tool/result", { step: 2, call_id: "tc_p2", name: "read", value: { path: "Cargo.toml" }, rendered: "1\t[workspace]\n2\tresolver = \"2\"", is_error: false, spill: null, subject: "Cargo.toml lines 1–2 of 2", duration_ms: 1400, synthetic: false }, 1400);
   log.ev("budget/reserve", { child_id: "ep_rich", reserved: { model_calls: 6, input_tokens: 48000, output_tokens: 12000 } });
-  log.ev("spawn/start", { child_id: "ep_rich", program: "writer", context: "fresh", call_id: "tc_p3" }, 90);
+  log.ev("spawn/start", { child_id: "ep_rich", contract: "writer", context: "fresh", call_id: "tc_p3" }, 90);
   log.ev("spawn/end", { child_id: "ep_rich", outcome: { kind: "completed", value: "The parser now propagates the error." } }, 2200);
   log.ev("budget/release", { child_id: "ep_rich", spent: { model_calls: 2, input_tokens: 2200, output_tokens: 429 } });
   log.ev("tool/result", { step: 2, call_id: "tc_p3", name: "spawn", value: "The parser now propagates the error.", rendered: "The parser now propagates the error.", is_error: false, spill: null, duration_ms: 2290, synthetic: false });
@@ -372,11 +382,11 @@ function overlapChild() {
     parent_id: "ep_over_parent",
     fork_origin: null,
     team_id: null,
-    program: program("surveyor", { model_calls: 8, input_tokens: 64000, output_tokens: 16000 }),
-    identity: "sha256:dddd",
+    contract: contract("surveyor", { model_calls: 8, input_tokens: 64000, output_tokens: 16000 }),
+    contract_fingerprint: "sha256:dddd",
     task: taskText,
     runtime,
-    sandbox: { mode: "best-effort", landlock_abi: 7 },
+    sandbox: sandboxRecord(),
   });
   const task = log.ev("inbox/item", { source: "task", content: [text(taskText)], from: null, message_id: null });
   const header = log.ev("request/header", { reason: "initial", system: "You read manifests.", tools: tools.slice(0, 2), model });
@@ -465,11 +475,11 @@ function rich() {
     parent_id: "ep_over_parent",
     fork_origin: null,
     team_id: null,
-    program: program("writer", { model_calls: 6, input_tokens: 48000, output_tokens: 12000 }),
-    identity: "sha256:eeee",
+    contract: contract("writer", { model_calls: 6, input_tokens: 48000, output_tokens: 12000 }),
+    contract_fingerprint: "sha256:eeee",
     task: taskText,
     runtime,
-    sandbox: { mode: "best-effort", landlock_abi: 7 },
+    sandbox: sandboxRecord(),
   });
   const task = log.ev("inbox/item", { source: "task", content: [text(taskText)], from: null, message_id: null });
   const header = log.ev("request/header", { reason: "initial", system: "You explain and edit.", tools, model });
@@ -508,8 +518,8 @@ const BINARY = join(dir, "..", "..", "target", "release", "foe");
 const PROJECT = "/home/user/project";
 const TOOLS = "/home/user/tools";
 
-/** A scripted model program: one model/request line in, model/chunk lines out. */
-const MODEL_PROGRAM = `#!/usr/bin/env python3
+/** A scripted model contract: one model/request line in, model/chunk lines out. */
+const MODEL_SCRIPT = `#!/usr/bin/python3
 """Answers model requests for the workflow fixture.
 
 The answer is chosen from the tools the request offers and from a counter
@@ -522,7 +532,7 @@ import json
 import os
 import sys
 
-STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state")
+STATE = "__STATE__"
 
 
 def bump(name):
@@ -580,8 +590,8 @@ else:
     done(rid, "end", 4260, 210)
 `;
 
-/** A scripted verification program: one finding on its first run, none after. */
-const CHECK_PROGRAM = `#!/usr/bin/env python3
+/** A scripted verification contract: one finding on its first run, none after. */
+const CHECK_SCRIPT = `#!/usr/bin/python3
 """Stands in for a project's checker in the workflow fixture.
 
 Prints one finding and exits 1 the first time it runs and prints none and
@@ -592,7 +602,7 @@ decision that retries it.
 import os
 import sys
 
-path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state", "check")
+path = os.path.join("__STATE__", "check")
 n = int(open(path).read().strip()) if os.path.exists(path) else 0
 open(path, "w").write(str(n + 1))
 
@@ -633,7 +643,7 @@ function workflowConfig(root) {
     ...extra,
   });
   return {
-    version: 3,
+    version: 4,
     name: "survey-propose-apply",
     instructions: { role: "The ceiling of a declared workflow. Each model node carries its own instructions." },
     tools: ["read", "grep", "edit", "bash", "check"],
@@ -712,8 +722,8 @@ function workflowRun() {
     mkdirSync(join(root, "project", "src"), { recursive: true });
     mkdirSync(join(root, "state"), { recursive: true });
     writeFileSync(join(root, "project", "src", "collate.py"), SOURCE);
-    for (const [name, body] of [["model", MODEL_PROGRAM], ["check", CHECK_PROGRAM]]) {
-      writeFileSync(join(root, name), body);
+    for (const [name, body] of [["model", MODEL_SCRIPT], ["check", CHECK_SCRIPT]]) {
+      writeFileSync(join(root, name), body.replaceAll("__STATE__", join(root, "state")));
       chmodSync(join(root, name), 0o755);
     }
     const config = join(root, "config.json");
@@ -723,7 +733,7 @@ function workflowRun() {
       encoding: "utf8",
     });
     if (run.status !== 0) {
-      throw new Error(`${BINARY} exited with ${run.status}: ${run.stderr}`);
+      throw new Error(`${BINARY} exited with ${run.status}: ${run.stderr}${run.stdout}`);
     }
     const outcome = JSON.parse(run.stdout.trim().split("\n").pop());
     if (outcome.kind !== "completed") {
@@ -735,13 +745,31 @@ function workflowRun() {
     const settle = (text) => text.split(`${root}/project`).join(PROJECT).split(root).join(TOOLS);
     const read = (path) => settle(readFileSync(path, "utf8"));
     const episode = read(join(logs, "episode.jsonl"));
-    writeFileSync(join(dir, "workflow.jsonl"), episode);
+    const events = episode.split("\n").filter((line) => line.trim() !== "").map(JSON.parse);
+    const ids = new Map([[events[0].data.id, "ep_c5785a1e"]]);
+    const stableChildren = new Map([
+      ["propose:1", "ep_8936e375"],
+      ["propose:2", "ep_b0f26af9"],
+      ["apply:1", "ep_d82415c7"],
+    ]);
+    for (const event of events) {
+      if (event.type !== "workflow/node-start" || !event.data.child_id) continue;
+      const stable = stableChildren.get(`${event.data.node}:${event.data.fire}`);
+      if (stable) ids.set(event.data.child_id, stable);
+    }
+    const normalizeIds = (text) => {
+      for (const [actual, stable] of ids) text = text.split(actual).join(stable);
+      return text;
+    };
+    writeFileSync(join(dir, "workflow.jsonl"), normalizeIds(episode));
     const names = [];
-    for (const line of episode.split("\n").filter((l) => l.trim() !== "")) {
-      const event = JSON.parse(line);
+    for (const event of events) {
       if (event.type !== "workflow/node-start" || !event.data.child_id) continue;
       const name = `workflow-${event.data.node.replace(/_/g, "-")}-${event.data.fire}.jsonl`;
-      writeFileSync(join(dir, name), read(join(logs, "children", event.data.child_id, "episode.jsonl")));
+      writeFileSync(
+        join(dir, name),
+        normalizeIds(read(join(logs, "children", event.data.child_id, "episode.jsonl"))),
+      );
       names.push(name);
     }
     console.log(`workflow.jsonl and ${names.join(", ")} written by ${BINARY}`);

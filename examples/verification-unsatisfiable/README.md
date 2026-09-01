@@ -10,7 +10,7 @@ process exits with code 2.
 
 This is the shape of failure an operator meets most often in practice. The
 model states that the TODO comment is gone and the file still holds it, and
-a program settles the disagreement. `examples/recovery-exhausted` shows an
+a contract settles the disagreement. `examples/recovery-exhausted` shows an
 episode blocked because the provider never answered. This one shows an
 episode blocked while every part of the machinery worked, which is the harder
 case to recognize without a log.
@@ -20,7 +20,7 @@ A verifier is any executable written to the contract in
 standard input, it accepts by exiting zero and printing nothing, and it
 reports findings by exiting zero and printing one per line. Any other exit
 status is a failure of the verifier itself and ends the episode as `failed`.
-`todo-check` in this directory is such a program in two lines: it greps the
+`todo-check` in this directory is such a contract in two lines: it greps the
 source directory for TODO comments and maps grep's exit status 1, meaning no
 match, onto the acceptance the contract asks for.
 

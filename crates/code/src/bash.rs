@@ -10,8 +10,8 @@ use crate::{
     parse_args, process_output, shell_environment, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES,
     SHELL, SHELL_COMMAND_NUL_ERROR,
 };
+use foe_contract::{Effect, ToolSpec};
 use foe_core::{CallCtx, ExecRequest, Tool, ToolValue, SUBJECT_MAX};
-use foe_program::{Effect, ToolSpec};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
@@ -87,8 +87,8 @@ impl Tool for Bash {
             timeout = timeout.min(deadline.saturating_duration_since(Instant::now()));
         }
         let req = ExecRequest {
-            program: PathBuf::from(SHELL),
-            executable: None,
+            command: PathBuf::from(SHELL),
+            captured_executable: None,
             args: vec!["-c".into(), a.command.clone()],
             env: shell_environment(&cwd),
             cwd,

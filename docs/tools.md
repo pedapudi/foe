@@ -1,11 +1,12 @@
 # Tools
 
 A tool is a function the model may call during an episode. It has a
-specification, which is what the model sees and what identity hashes, and an
+specification, which is what the model sees and what the contract fingerprint
+hashes, and an
 implementation, which runs when the model calls it. [design.md](design.md)
 defines the specification (`ToolSpec`), the declared effect, and how the
 registry checks effects against grants. This document specifies where tools
-come from, the contract for tools that are executables, the six built-in
+come from, the execution rules for tools that are commands, the six built-in
 coding tools, archived result retrieval, and the budget that bounds what one
 model turn's results show.
 
@@ -32,8 +33,8 @@ Each name resolves against three sources, checked in this order.
    `tools`: a `done_when.returns` schema adds it to the registry, and
    [config.md](config.md) specifies that key.
 2. **Configured executables.** Entries in `tool_defs`, each naming an
-   executable by absolute path. Any program with a command line becomes a
-   tool without modification.
+   executable by absolute path. Any executable that accepts command-line
+   arguments can become a tool without modification.
 3. **Host tools.** Implemented by the process that launched the episode and
    called over the [host protocol](protocol.md). The runtime emits a
    `host/tool-call` event and records the host's answer as the result.
@@ -90,15 +91,15 @@ also omit it; the receiving runtime assigns `operation-failed` with
 ## Reporting a blocked episode
 
 The `block` built-in lets the model end an episode with a typed blocked
-outcome. Every program receives `goal-unreachable`, `ambiguous-task`, and
-`missing-capability` in the tool's `code` enum. A program that lists `spawn`
+outcome. Every contract receives `goal-unreachable`, `ambiguous-task`, and
+`missing-capability` in the tool's `code` enum. A contract that lists `spawn`
 and has a non-empty `grants.spawn` also receives `child-blocked`, which states
-that its child episodes prevent further progress. Other programs cannot
+that its child episodes prevent further progress. Other execution contracts cannot
 report that condition.
 
 The resolved parameter schema is shared by the request header and dispatch
 validation. A call outside that schema returns an `invalid-call` failure.
-The schema participates in program identity.
+The schema participates in the contract fingerprint.
 
 ## Archived result retrieval
 
@@ -107,11 +108,11 @@ of an earlier result in the same episode. Its effect is `pure`. It receives
 no filesystem handle. The runtime reads only its own log and rendering
 archives, which are episode evidence.
 
-A program declares `retrieve` before the episode starts, and its schema is
+A contract declares `retrieve` before the episode starts, and its schema is
 present in every request the episode makes, like any declared tool's: the
-model-visible header is a property of the program, fixed for the episode's
+model-visible header is a property of the contract, fixed for the episode's
 lifetime, and a stable header is served from the provider's prompt cache. A
-shortening notice names a cursor only when the program declares the tool.
+shortening notice names a cursor only when the contract declares the tool.
 
 The tool has one argument, `cursor`. A shortening notice or an aged-result
 residue supplies this opaque string. The model copies the whole string and
@@ -182,12 +183,12 @@ under this contract.
   episode's `spill/` directory, and the captured text ends with a line
   naming that file.
 
-Construction reads a configured executable once. Its retained bytes supply
-both the digest in program identity and the private executable image used by
-every call. The basename from the configured pathname also participates in
-identity and becomes argument zero for multicall dispatch. The configured
-pathname remains the name reported to the model and in errors. It is never
-reopened for execution.
+During execution-contract construction, Foe captures each configured
+executable's bytes, digest, source path, and invocation name. Every later
+invocation uses the captured executable. Replacing, modifying, or deleting the
+source cannot change the run. The configured source path remains the command
+reported to the model and in errors. The invocation name becomes argument zero
+for multicall dispatch and participates in the contract fingerprint.
 
 ## Built-in coding tools
 
@@ -213,7 +214,7 @@ the first `read` root, and paths in results are shown relative to it.
 | `edit` | writes | `path`; optional `expected_version` from `read`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; an expected version must match the current bytes; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff`, `previous_version`, `version` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
 | `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `lifetime`, `episode` by default or `task`; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule; task lifetime requires `grants.task_session` | `session`, `name`, `lifetime`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`; `bytes`; `signal` |
-| `python` | execs | `program`, source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
+| `python` | execs | `source`, Python source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
 
 The limits in the table are constants in the crate, and every tool
 description sent to the model is formatted from the same constants.
@@ -232,7 +233,7 @@ model received.
 | `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
 | `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
 | `session` | `session 2: postgres · alive, 41 lines` for a poll, `session 2: exit 0 after 84s` for a stop or for a poll after the end | the error, which names the session id or what refused the start |
-| `python` | `python: 6 call(s), 0 error(s), 123 bytes returned`, the derivation and the returned size | the first line of what ended the program, after the call count |
+| `python` | `python: 6 call(s), 0 error(s), 123 bytes returned`, the derivation and the returned size | the first line of what ended the source, after the call count |
 
 A tool reports what the call did rather than what it was asked for, because
 the arguments are already in the log: `grep` states how many matches it
@@ -441,7 +442,7 @@ When delegated cgroup v2 is available, a task-lifetime session enters the
 invocation-owned task cgroup before its command runs. It does not enter the
 starting episode's cgroup. The episode can therefore settle and release its
 child reservation while the task environment continues to own the session.
-The process-group identity remains the interface for `poll`, `signal`, and
+The process-group identifier remains the interface for `poll`, `signal`, and
 `stop`.
 
 `poll` takes `session` and returns what both streams produced since the
@@ -490,7 +491,7 @@ The explicit grant accepts this cleanup obligation on a host without such
 an environment. [log-format.md](log-format.md#open-obligations) specifies
 the synthetic result.
 
-Sessions have no terminal: a program that requires a PTY sees a pipe.
+Sessions have no terminal: a command that requires a PTY sees a pipe.
 Network access follows the policy a `bash` call runs under: outbound
 closed, binding limited to the TCP ports `grants.bind` lists. A session is
 how a granted port is served across calls — a server it holds keeps its
@@ -499,16 +500,16 @@ design; no grant kind opens it.
 
 ### `python`
 
-The tool runs one model-written program in an isolated interpreter whose
-only capability is calling this episode's tools, and returns the value the
-program's zero-argument `main` computed. The runtime records every inner
+The tool runs model-written Python source in an isolated interpreter whose
+only capability is calling this episode's tools, and returns the value its
+zero-argument `main` computed. The runtime records every inner
 call in the log; the model sees the returned value, a derivation summary,
 and the process's own output as diagnostics. [code-mode.md](code-mode.md)
-specifies the contract, the confinement, the bounds, and the log
+specifies the source, confinement, bounds, and log
 representation; [log-format.md](log-format.md) specifies the
 `tool/inner-call` event. The interpreter is `/usr/bin/python3`, named by
 absolute path; a machine without it returns an ordinary error naming the
-path. The tool is inert for every program that does not list it, and the
+path. The tool is inert for every contract that does not list it, and the
 built-in coding workflow does not list it.
 
 ## The turn budget
@@ -547,8 +548,8 @@ rewrite an earlier turn, which the append-only rule forbids.
 ### What a cut keeps
 
 A rendering that exceeds its part is archived before the shortened result
-is appended. A program that includes `retrieve` receives an opaque cursor
-for the complete rendering. A program without `retrieve` receives an
+is appended. A contract that includes `retrieve` receives an opaque cursor
+for the complete rendering. A contract without `retrieve` receives an
 instruction to narrow and repeat the original call.
 
 Which end is kept depends on the shape of the rendering, because the two

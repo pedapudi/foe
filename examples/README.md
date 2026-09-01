@@ -9,7 +9,7 @@ Eleven examples are started by `run.sh` and two by `run.py`:
 
 ```sh
 sh examples/minimal/run.sh
-python3 examples/embed-in-a-program/run.py
+python3 examples/embed-an-execution-contract/run.py
 ```
 
 `scripts/examples.sh` runs all thirteen against one binary and reports how
@@ -46,20 +46,20 @@ example needs Linux with Landlock; the rest run anywhere foe builds.
 | have children report to each other rather than only to me | [team](team/) |
 | fix the order of the work and let the model choose only within it | [workflow](workflow/) |
 | prove the agent cannot read what I did not grant | [sandbox](sandbox/) |
-| drive foe from my own program | [embed-in-a-program](embed-in-a-program/) |
+| drive foe from my own contract | [embed-an-execution-contract](embed-an-execution-contract/) |
 | have foe evaluate and improve its own source, test, and specification | [self-extension](self-extension/) |
 | reach a model foe has no provider for | [exec-transport](exec-transport/), [host-transport](host-transport/) |
 
 ## When a run does not succeed
 
-An episode ends in one of four ways, and a program that runs unattended has
+An episode ends in one of four ways, and a contract that runs unattended has
 to recognise all of them. These three examples produce the ones that are not
 success, so that the log an operator will one day have to read is one they
 have seen before.
 
 | outcome | what it means | example |
 |---|---|---|
-| `exhausted` | the program did not break; it ran out of the allowance the configuration gave it | [budget-exhausted](budget-exhausted/) |
+| `exhausted` | the contract did not break; it ran out of the allowance the configuration gave it | [budget-exhausted](budget-exhausted/) |
 | `blocked` · `recovery-exhausted` | the provider failed every attempt the retry ceiling allowed | [recovery-exhausted](recovery-exhausted/) |
 | `blocked` · `verification-unsatisfiable` | the model reported the work finished and the declared verifier disagreed, repeatedly | [verification-unsatisfiable](verification-unsatisfiable/) |
 
@@ -67,13 +67,13 @@ have seen before.
 
 | example | mechanism |
 |---|---|
-| [minimal](minimal/) | the smallest model-backed coding program |
+| [minimal](minimal/) | the smallest model-backed coding contract |
 | [wrap-a-binary](wrap-a-binary/) | an executable serving as both a model tool and a `done_when` verifier |
-| [subagents](subagents/) | child programs under narrower grants, with budget reserved from the parent's pool and returned |
+| [subagents](subagents/) | child contracts under narrower grants, with budget reserved from the parent's pool and returned |
 | [team](team/) | children exchanging durable peer messages through their lead |
 | [workflow](workflow/) | declared tool and model nodes, typed branching, verification, and recovery |
-| [sandbox](sandbox/) | a configured executable under required Landlock with the available process ownership reported |
-| [embed-in-a-program](embed-in-a-program/) | the Python SDK: a program supplying the model, its own host tools, and acting on the outcome |
+| [sandbox](sandbox/) | a configured executable under a required Landlock policy |
+| [embed-an-execution-contract](embed-an-execution-contract/) | the Python SDK: a contract supplying the model, its own host tools, and acting on the outcome |
 | [self-extension](self-extension/) | a direct episode and an evaluator-to-terminal-node workflow improving a disposable copy of foe's source, test, and specification |
 | [exec-transport](exec-transport/) | an executable translating foe's requests for another model client |
 | [host-transport](host-transport/) | a host process supplying model chunks over the line protocol |
@@ -96,9 +96,9 @@ holds its markers. It reports
 Run it against the materialized configuration a runner leaves in its run
 directory.
 
-[`embed-in-a-program`](embed-in-a-program/) carries no configuration file,
-because the Python package builds the document in memory. Its program is
-the `foe.Program` that `triage_program` returns in `run.py`.
+[`embed-an-execution-contract`](embed-an-execution-contract/) carries no configuration file,
+because the Python package builds the document in memory. Its contract is
+the `foe.ExecutionContract` that `triage_contract` returns in `run.py`.
 
 Every example that runs without a provider names the `exec` provider and
 points it at a transport script. [`support/README.md`](support/) explains

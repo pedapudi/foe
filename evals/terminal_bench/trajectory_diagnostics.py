@@ -229,13 +229,13 @@ def diagnose_episode(
         outcomes_by_episode[episode_id] = (
             episode_outcome if isinstance(episode_outcome, dict) else None
         )
-        program = episode_start.get("program") if isinstance(episode_start.get("program"), dict) else {}
-        model = program.get("model") if isinstance(program.get("model"), dict) else {}
+        contract = episode_start.get("contract") if isinstance(episode_start.get("contract"), dict) else {}
+        model = contract.get("model") if isinstance(contract.get("model"), dict) else {}
         episode_rows.append(
             {
                 "episode_id": episode_id,
                 "parent_id": episode_start.get("parent_id"),
-                "program": program.get("name"),
+                "contract": contract.get("name"),
                 "model": (
                     f"{model.get('provider')}/{model.get('model')}"
                     if isinstance(model.get("provider"), str) and isinstance(model.get("model"), str)
@@ -339,9 +339,9 @@ def diagnose_episode(
     ]
     runtime = start.get("runtime") if isinstance(start.get("runtime"), dict) else {}
     return {
-        "schema_version": 3,
-        "evidence_identity": {
-            "program_identity": start.get("identity"),
+        "schema_version": 4,
+        "evidence_fingerprints": {
+            "contract_fingerprint": start.get("contract_fingerprint"),
             "runtime_build": runtime.get("build"),
             "episode_id": start.get("id"),
             "task_checksum": facts["task_checksum"],

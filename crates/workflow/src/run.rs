@@ -12,6 +12,12 @@
 
 use crate::bind;
 use crate::graph::{Produced, Scheduler};
+use foe_contract::document::ResolvedContract;
+use foe_contract::harness_text as text;
+use foe_contract::schema::conforms;
+use foe_contract::tools::Source;
+use foe_contract::workflow::{ancestors, Node, WorkflowConfig};
+use foe_contract::{Effect, ToolSpec};
 use foe_core::budget::Pool;
 use foe_core::loop_::{initialize, lock, settle, until, verify_recorded, wait_stop, Log, Params, Recorder};
 use foe_core::registry::{Handles, Registry};
@@ -23,12 +29,6 @@ use foe_log::{
     InboxSource, Message, ModelRequest, Outcome, RequestHeader, SpawnContext, ToolCall, ToolResult, WorkflowBranch,
     WorkflowNodeEnd, WorkflowNodeStart, WorkflowRecovery,
 };
-use foe_program::document::ResolvedProgram;
-use foe_program::harness_text as text;
-use foe_program::schema::conforms;
-use foe_program::tools::Source;
-use foe_program::workflow::{ancestors, Node, WorkflowConfig};
-use foe_program::{Effect, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::future::Future;
@@ -66,7 +66,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
         pool: p.pool,
         stop: p.stop,
         spawner: params.spawner,
-        program: p.program,
+        contract: p.contract,
         runtime_build,
         task,
         step: AtomicU32::new(0),
@@ -94,9 +94,9 @@ struct Shared {
     pool: Arc<Mutex<Pool>>,
     stop: watch::Receiver<Option<String>>,
     spawner: Arc<dyn Spawner>,
-    program: ResolvedProgram,
+    contract: ResolvedContract,
     /// `episode/start.runtime.build`, which a `verification/result` records
-    /// as the identity of a built-in or host verifier.
+    /// as the fingerprint of a built-in or host verifier.
     runtime_build: String,
     /// The invocation task as the value of the `task` source, at every depth.
     task: Produced,
@@ -265,7 +265,7 @@ fn section(name: &str, body: &str) -> String {
 fn handoff_failure(inputs: &[(String, Produced)], retryable: bool) -> Option<Trouble> {
     let (mut characters, mut seen, mut sources, mut evidence) = (0usize, false, Vec::new(), Vec::new());
     for (name, produced) in inputs {
-        if name != foe_program::workflow::TASK_SOURCE {
+        if name != foe_contract::workflow::TASK_SOURCE {
             characters = characters
                 .saturating_add(section(name, &produced.rendered).chars().count())
                 .saturating_add(usize::from(seen) * 2);
@@ -401,7 +401,7 @@ impl Executor {
     }
 
     fn handoff_can_narrow(&self, inputs: &[(String, Produced)]) -> bool {
-        inputs.iter().filter(|(name, _)| name != foe_program::workflow::TASK_SOURCE).any(|(name, _)| {
+        inputs.iter().filter(|(name, _)| name != foe_contract::workflow::TASK_SOURCE).any(|(name, _)| {
             let mut candidates = ancestors(&self.sched.preds, name);
             candidates.insert(name.clone());
             candidates.iter().any(|name| {
@@ -478,7 +478,7 @@ impl Executor {
                         format!("node `{}` would fire again beyond its max_fires of {bound}", self.full(&name));
                     return Ok(Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message });
                 }
-                let cap = self.shared.program.budget.max_concurrent as usize;
+                let cap = self.shared.contract.budget.max_concurrent as usize;
                 if node.model.is_some() && lock(&self.shared.pool).active_children() >= cap {
                     deferred = true;
                     continue;
@@ -569,16 +569,16 @@ impl Executor {
                 }
             }
         } else if node.model.is_some() {
-            let program = &sh.program.workflow_programs[&full];
+            let contract = &sh.contract.workflow_contracts[&full];
             let reserve = BudgetAmount {
-                model_calls: Some(program.budget.model_calls),
-                input_tokens: program.budget.input_tokens,
-                output_tokens: program.budget.output_tokens,
-                seconds: program.budget.seconds,
+                model_calls: Some(contract.budget.model_calls),
+                input_tokens: contract.budget.input_tokens,
+                output_tokens: contract.budget.output_tokens,
+                seconds: contract.budget.seconds,
                 episodes: None,
             };
             let task = sections.join("\n\n");
-            let req = SpawnRequest { program: full.clone(), task, context: SpawnContext::Fresh, reserve, call_id };
+            let req = SpawnRequest { contract: full.clone(), task, context: SpawnContext::Fresh, reserve, call_id };
             match sh.spawner.launch(child_id.expect("a model node has an allocated child id"), req) {
                 Ok(handle) => Box::pin(async move { output_of(handle.run.wait().await.0, false) }),
                 Err(CapError::Log(e)) => return Err(e.into()),
@@ -743,7 +743,7 @@ impl Executor {
     /// to recovery at the completing node. A nested workflow completes
     /// with its value as it stands.
     async fn complete(&mut self, name: &str, fire: u32, value: Value) -> Result<Option<Outcome>, RuntimeError> {
-        let done = self.shared.program.done_when.clone().filter(|_| self.prefix.is_empty());
+        let done = self.shared.contract.done_when.clone().filter(|_| self.prefix.is_empty());
         let Some(done) = done else {
             return Ok(Some(Outcome::Completed { value }));
         };
@@ -908,7 +908,7 @@ impl Executor {
         let step = self.next_step();
         let request_id = format!("rq_{step:04}");
         let messages = vec![Message::User { content }];
-        let configured = sh.program.model.as_ref().and_then(|m| m.max_output_tokens);
+        let configured = sh.contract.model.as_ref().and_then(|m| m.max_output_tokens);
         let max_output_tokens = match lock(&sh.pool).request_max_output(configured) {
             Ok(cap) => cap,
             Err(limit) => return Ok(Decision::End(Outcome::Exhausted { limit })),

@@ -1,4 +1,4 @@
-"""Program construction and the document it emits, per docs/config.md."""
+"""Execution-contract construction and the document it emits, per docs/config.md."""
 
 from __future__ import annotations
 
@@ -32,8 +32,8 @@ class Experiment:
     budget_hours: float | None = None
 
 
-def make_program() -> foe.Program:
-    return foe.Program(
+def make_contract() -> foe.ExecutionContract:
+    return foe.ExecutionContract(
         name="zicato-proposer",
         instructions={"20-grounding": "Ground every claim.", "10-charter": "You propose experiments."},
         tools=["read", "grep", mutation_usage],
@@ -47,8 +47,28 @@ def make_program() -> foe.Program:
     )
 
 
+def test_every_runtime_builtin_is_available_to_contract_construction() -> None:
+    contract = foe.ExecutionContract(
+        name="all-builtins",
+        instructions={"role": "Exercise the built-in tool catalogue."},
+        tools=sorted(foe.BUILTIN_TOOLS),
+        grants=foe.Grants(read=["/tmp"], write=["/tmp"], spawn=["child"]),
+        budget=foe.Budget(model_calls=1),
+        child_contracts={
+            "child": foe.ExecutionContract(
+                name="child",
+                instructions={"role": "Finish the child task."},
+                tools=["read"],
+                grants=foe.Grants(read=["/tmp"]),
+                budget=foe.Budget(model_calls=1),
+            )
+        },
+    )
+    assert set(contract.to_dict()["tools"]) == foe.BUILTIN_TOOLS
+
+
 EXPECTED = {
-    "version": 3,
+    "version": 4,
     "name": "zicato-proposer",
     "instructions": {"10-charter": "You propose experiments.", "20-grounding": "Ground every claim."},
     "tools": ["read", "grep", "mutation_usage", "validate_patches"],
@@ -85,7 +105,7 @@ EXPECTED = {
 
 
 def test_to_json_round_trips_to_the_expected_document() -> None:
-    assert json.loads(make_program().to_json()) == EXPECTED
+    assert json.loads(make_contract().to_json()) == EXPECTED
 
 
 def test_host_tools_entry_has_the_four_specified_fields() -> None:
@@ -94,14 +114,14 @@ def test_host_tools_entry_has_the_four_specified_fields() -> None:
         """Count references to a symbol."""
         return {}
 
-    program = foe.Program(
+    contract = foe.ExecutionContract(
         name="p",
         instructions={"role": "r"},
         tools=[count_refs],
         grants=foe.Grants(read=["/src"]),
         budget=foe.Budget(model_calls=1),
     )
-    entry = program.to_dict()["host_tools"]["count_refs"]
+    entry = contract.to_dict()["host_tools"]["count_refs"]
     assert set(entry) == {"description", "instruction", "params", "effect"}
     assert entry["description"] == "Count references to a symbol."
     assert entry["instruction"] == "Call it once per mutation point."
@@ -118,7 +138,7 @@ def test_host_tools_entry_has_the_four_specified_fields() -> None:
 
 
 def test_verified_callable_generates_a_pure_one_parameter_host_tool() -> None:
-    doc = make_program().to_dict()
+    doc = make_contract().to_dict()
     entry = doc["host_tools"]["validate_patches"]
     assert entry["effect"] == "pure"
     assert list(entry["params"]["properties"]) == ["candidate"]
@@ -126,13 +146,13 @@ def test_verified_callable_generates_a_pure_one_parameter_host_tool() -> None:
 
 
 def test_to_json_with_task_appends_task_and_omits_model() -> None:
-    doc = json.loads(make_program().to_json("Propose the next experiment."))
+    doc = json.loads(make_contract().to_json("Propose the next experiment."))
     assert doc["task"] == "Propose the next experiment."
     assert "model" not in doc
 
 
 def test_returns_derives_schema_from_a_dataclass() -> None:
-    program = foe.Program(
+    contract = foe.ExecutionContract(
         name="p",
         instructions={"role": "r"},
         tools=["read"],
@@ -140,7 +160,7 @@ def test_returns_derives_schema_from_a_dataclass() -> None:
         budget=foe.Budget(model_calls=1),
         done_when=foe.Returns(Experiment),
     )
-    assert program.to_dict()["done_when"] == {
+    assert contract.to_dict()["done_when"] == {
         "returns": {
             "type": "object",
             "description": "A proposed experiment.",
@@ -156,7 +176,7 @@ def test_returns_derives_schema_from_a_dataclass() -> None:
 
 
 def test_verified_accepts_a_tool_name_and_combines_with_returns() -> None:
-    program = foe.Program(
+    contract = foe.ExecutionContract(
         name="p",
         instructions={"role": "r"},
         tools=["read", validate_patches],
@@ -164,7 +184,7 @@ def test_verified_accepts_a_tool_name_and_combines_with_returns() -> None:
         budget=foe.Budget(model_calls=1),
         done_when=foe.Verified(verify="validate_patches", retries=1, returns=Experiment),
     )
-    done_when = program.to_dict()["done_when"]
+    done_when = contract.to_dict()["done_when"]
     assert done_when["verify"] == "validate_patches"
     assert done_when["retries"] == 1
     assert done_when["returns"]["required"] == ["title", "steps"]
@@ -177,7 +197,7 @@ def test_host_tool_colliding_with_a_builtin_is_an_error() -> None:
         return ""
 
     with pytest.raises(foe.ConfigError, match="tools: host tool 'read' collides with the built-in tool"):
-        foe.Program(
+        foe.ExecutionContract(
             name="p",
             instructions={"role": "r"},
             tools=[read],
@@ -188,7 +208,7 @@ def test_host_tool_colliding_with_a_builtin_is_an_error() -> None:
 
 def test_unknown_tool_name_is_an_error() -> None:
     with pytest.raises(foe.ConfigError, match="tools: 'ruff' names no built-in tool"):
-        foe.Program(
+        foe.ExecutionContract(
             name="p",
             instructions={"role": "r"},
             tools=["ruff"],
@@ -203,7 +223,7 @@ def test_effect_beyond_grants_is_an_error() -> None:
         """Write a note."""
 
     with pytest.raises(foe.ConfigError, match="declares effect writes and grants.write is empty"):
-        foe.Program(
+        foe.ExecutionContract(
             name="p",
             instructions={"role": "r"},
             tools=[write_note],
@@ -211,7 +231,7 @@ def test_effect_beyond_grants_is_an_error() -> None:
             budget=foe.Budget(model_calls=1),
         )
     with pytest.raises(foe.ConfigError, match="'edit' declares effect writes"):
-        foe.Program(
+        foe.ExecutionContract(
             name="p",
             instructions={"role": "r"},
             tools=["edit"],
@@ -221,7 +241,7 @@ def test_effect_beyond_grants_is_an_error() -> None:
 
 
 def test_relative_grant_path_is_an_error() -> None:
-    program = foe.Program(
+    contract = foe.ExecutionContract(
         name="p",
         instructions={"role": "r"},
         tools=["read"],
@@ -229,33 +249,33 @@ def test_relative_grant_path_is_an_error() -> None:
         budget=foe.Budget(model_calls=1),
     )
     with pytest.raises(foe.ConfigError, match="grants.read: 'src' is not an absolute path"):
-        program.to_dict()
+        contract.to_dict()
 
 
-def test_tool_defs_and_child_programs_serialize() -> None:
-    child = foe.Program(
+def test_tool_defs_and_child_contracts_serialize() -> None:
+    child = foe.ExecutionContract(
         name="survey",
         instructions={"role": "You survey."},
         tools=["read"],
         grants=foe.Grants(read=["/src"]),
         budget=foe.Budget(model_calls=3),
     )
-    program = foe.Program(
+    contract = foe.ExecutionContract(
         name="lead",
         instructions={"role": "You lead."},
         tools=["read", "ruff", "spawn"],
         tool_defs={"ruff": foe.ToolDef(exec="/usr/bin/ruff", description="Lint.", network=False, timeout_seconds=30)},
         grants=foe.Grants(read=["/src"], spawn=["survey"]),
         budget=foe.Budget(model_calls=10, max_depth=2),
-        programs={"survey": child},
+        child_contracts={"survey": child},
         sandbox="off",
     )
-    doc = program.to_dict()
+    doc = contract.to_dict()
     assert doc["tool_defs"] == {"ruff": {"exec": "/usr/bin/ruff", "description": "Lint.", "timeout_seconds": 30}}
     assert doc["grants"] == {"read": ["/src"], "spawn": ["survey"]}
     assert doc["budget"] == {"model_calls": 10, "max_depth": 2}
     assert doc["sandbox"] == {"mode": "off"}
-    assert doc["programs"] == {
+    assert doc["child_contracts"] == {
         "survey": {
             "name": "survey",
             "instructions": {"role": "You survey."},
@@ -266,9 +286,9 @@ def test_tool_defs_and_child_programs_serialize() -> None:
     }
 
 
-def test_identity_runs_plan_and_returns_the_hash(fake_binary: Path) -> None:
-    program = make_program()
-    identity = program.identity(fake_binary)
-    assert identity.startswith("sha256:")
-    assert len(identity) == len("sha256:") + 64
-    assert program.identity(fake_binary) == identity
+def test_fingerprint_runs_plan_and_returns_the_hash(fake_binary: Path) -> None:
+    contract = make_contract()
+    fingerprint = contract.fingerprint(fake_binary)
+    assert fingerprint.startswith("sha256:")
+    assert len(fingerprint) == len("sha256:") + 64
+    assert contract.fingerprint(fake_binary) == fingerprint

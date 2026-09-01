@@ -7,13 +7,13 @@ answers the protocol over the binary's standard input and standard output,
 and returns a typed outcome. The binary is the runtime; it owns the episode
 loop, the log, the grants, and the sandbox. The package performs no model
 call and executes no tool of its own. Both are routed to callables the
-embedding program supplies.
+embedding application supplies.
 
 The package lives in `python/foe`, targets Python 3.11 and later, and
 depends on the standard library alone. It ships `py.typed` and passes
 `mypy --strict`, so an editor sees every type from the source. Nothing in
 the package reads an environment variable; credentials live in the
-embedding program's transport.
+embedding application's transport.
 
 ## A complete example
 
@@ -43,7 +43,7 @@ def validate_patches(candidate: str) -> list[str]:
     return [s for s in ("Hypothesis", "Method") if s not in candidate]
 
 
-program = foe.Program(
+contract = foe.ExecutionContract(
     name="zicato-proposer",
     instructions={"10-charter": "You propose experiments.", "20-grounding": "Ground every claim."},
     tools=["read", "grep", mutation_usage],
@@ -57,7 +57,7 @@ async def main() -> None:
     from foe.adapters.litellm import litellm_transport
 
     transport = litellm_transport("anthropic/claude-opus-5", api_key=Path("~/.config/foe/key").expanduser().read_text().strip())
-    outcome = await program.run(
+    outcome = await contract.run(
         task="Propose the next experiment.",
         transport=transport,
         binary="/usr/local/bin/foe",
@@ -87,11 +87,11 @@ when the binary asks.
 
 | name | role |
 |---|---|
-| `foe.Program(...)` | a program document without a task |
-| `program.to_dict()`, `program.to_json()` | the document, without `task` and without `model` |
-| `program.identity(binary)` | the program's identity hash, computed by `foe plan` |
-| `await program.run(task, ...)` | run one episode to its outcome |
-| `await program.start(task, ...)` | run one episode and return a `Handle` |
+| `foe.ExecutionContract(...)` | a contract document without a task |
+| `contract.to_dict()`, `contract.to_json()` | the document, without `task` and without `model` |
+| `contract.fingerprint(binary)` | the contract fingerprint computed by `foe plan` |
+| `await contract.run(task, ...)` | run one episode to its outcome |
+| `await contract.start(task, ...)` | run one episode and return a `Handle` |
 | `handle.steer(text)`, `handle.cancel()`, `handle.wait()` | steer, stop, or await a running episode |
 | `foe.run_config(doc, ...)`, `foe.start_config(doc, ...)` | the same two operations on a complete document written by hand |
 | `foe.serve(log_dir, binary=...)` | serve a log directory through the binary's viewer |
@@ -103,10 +103,10 @@ when the binary asks.
 | `foe.Event` | one log event, as delivered to `on_event` |
 | `foe.adapters.litellm.litellm_transport` | the reference transport adapter |
 
-### `Program`
+### `ExecutionContract`
 
 ```python
-foe.Program(
+foe.ExecutionContract(
     *,
     name: str,
     instructions: Mapping[str, str],
@@ -115,13 +115,13 @@ foe.Program(
     budget: foe.Budget,
     tool_defs: Mapping[str, foe.ToolDef] | None = None,
     done_when: foe.Verified | foe.Returns | None = None,
-    programs: Mapping[str, foe.Program] | None = None,
+    child_contracts: Mapping[str, foe.ExecutionContract] | None = None,
     sandbox: str | None = None,
 )
 ```
 
-Each argument maps to the key of the same name in config.md. `programs`
-holds child programs; a child is a `Program` whose `version` and `sandbox`
+Each argument maps to the key of the same name in config.md. `child_contracts`
+holds child contracts; a child is an `ExecutionContract` whose `version` and `sandbox`
 are omitted from the document because they are inherited. `sandbox` is
 `best-effort`, `required`, or `off`; when None the key is omitted and the
 runtime's default applies.
@@ -138,7 +138,7 @@ checks are:
   and one whose effect is `execs` needs a non-empty `tool_defs`; the
   built-in `edit` needs `grants.write` and `spawn` needs `grants.spawn`;
 - every path in `grants`, `ToolDef.exec`, and `ToolDef.cwd` is absolute;
-- every name in `grants.spawn` is a key of `programs`;
+- every name in `grants.spawn` is a key of `child_contracts`;
 - a `Verified` verifier given by name is a tool in `tools`.
 
 The runtime repeats every check when it reads the document and performs
@@ -151,33 +151,33 @@ and `Grants.spawn` are omitted when empty.
 ### `to_json` and `to_dict`
 
 `to_dict(task=None)` returns the document as a dict; `to_json(task=None)`
-returns it as a string. Without a task the result is the program alone,
-which is the input to identity. With a task the result is a complete
+returns it as a string. Without a task the result is the execution contract
+alone, which is the input to fingerprinting. With a task the result is a complete
 document except for the `model` block, which the package never writes: a
-host that runs a program supplies the transport itself.
+host that runs a contract supplies the transport itself.
 
 Instruction sections are written in lexicographic key order, and object
-keys under `tool_defs`, `host_tools`, and `programs` are sorted, so the same
-program produces the same bytes on every machine. The `tools` list keeps
-the order given, because that order participates in identity.
+keys under `tool_defs`, `host_tools`, and `child_contracts` are sorted, so the same
+contract produces the same bytes on every machine. The `tools` list keeps
+the order given, because that order participates in the fingerprint.
 
-### `identity`
+### `fingerprint`
 
-`program.identity(binary)` writes the document to a temporary file with a
+`contract.fingerprint(binary)` writes the document to a temporary file with a
 placeholder task and runs `foe plan --json --config FILE`. It returns the
-`identity` string the binary prints, of the form `sha256:<hex>`. The task
-does not participate in identity, so the placeholder has no effect on the
-value.
+`contract_fingerprint` string the binary prints, of the form `sha256:<hex>`.
+The task does not participate in the fingerprint, so the placeholder has no
+effect on the value.
 
 What `foe plan` reads: the document, and the files it names by absolute
 path, which it hashes. What it never does: open a socket, read a
 credential, start a child process, or write a log. An evaluation harness can
-therefore compute identity on a machine that cannot run the program.
+therefore compute the fingerprint on a machine that cannot run the contract.
 
 ### `run` and `start`
 
 ```python
-await program.run(
+await contract.run(
     task: str,
     *,
     transport: Transport,
@@ -228,8 +228,8 @@ await foe.run_config(
 ```
 
 These take a complete document, as a dict or as the path of a JSON file,
-and run it the way `Program.run` does. They exist for a document written
-by hand or produced by another program. The document must carry `task` and
+and run it the way `ExecutionContract.run` does. They exist for a document written
+by hand or produced by another contract. The document must carry `task` and
 must not carry `model`. `tools` supplies the implementation of every name
 in the document's `host_tools`; a missing implementation is an error before
 launch.
@@ -292,7 +292,7 @@ rendered, is_error)` to set all three fields itself.
 The decorator returns the function unchanged, so the name it is bound to
 still refers to it. `HostTool` holds the renderer privately and offers no
 accessor for it, so binding the decorated function to `_` leaves the
-program no way to call it again. A program that needs the text the model
+contract no way to call it again. A contract that needs the text the model
 saw reads the `rendered` field of the `tool/result` event from the log.
 
 An exception inside the function becomes an error result: `value` is
@@ -333,7 +333,7 @@ The arguments for `return` are invalid: value: expected type object, found null
 ```
 
 The wrapper exists only on the call. `foe.Completed.value` holds the
-declared object itself, so a program reading the outcome never sees the
+declared object itself, so a contract reading the outcome never sees the
 `value` key. A transport, a test double, or an evaluation harness that
 produces the `return` call on the model's behalf must write the wrapper,
 because nothing between the model and the runtime adds it.
@@ -360,7 +360,7 @@ receives a `ReadFS` when it asks for one. No Python capability produces the
 `ReadFS` offers `read_bytes`, `read_text`, `exists`, `walk`, and `resolve`.
 `WriteFS` offers `write_bytes`, `write_text`, and `mkdir`; `write_bytes`
 stages beside the target and renames, so a reader never sees a partial
-file. `Exec.run(program, args, cwd=, env=, timeout=, stdin=)` starts a
+file. `Exec.run(command, args, cwd=, env=, timeout=, stdin=)` starts a
 declared executable with a fixed argument vector and no shell, and returns
 an `ExecResult` with `exit_code`, `stdout`, `stderr`, `timed_out`, and
 `duration_ms`.
@@ -375,7 +375,7 @@ process the episode starts. The host process is never sandboxed, because
 it holds the credentials, so a host tool that reaches the filesystem
 without its handle is outside both checks.
 
-## The transport adapter contract
+## The transport adapter protocol
 
 A transport is an async callable that receives one request dict and yields
 chunk dicts.
@@ -406,7 +406,7 @@ reported the same way.
 The package calls the transport once per `model/request`, and the runtime
 has at most one outstanding request at a time, so the transport never runs
 concurrently with itself within one episode. When the document has child
-programs, requests from child episodes carry an `episode_id` on the event;
+contracts, requests from child episodes carry an `episode_id` on the event;
 the package echoes it on every answer, as protocol.md requires.
 
 ### The reference adapter
@@ -425,8 +425,8 @@ every other exception is reported with `retryable` false.
 The library is imported when `litellm_transport` is called, so importing
 `foe` does not require it. Install it with `pip install foe[litellm]`. Pass
 `api_key` explicitly; the adapter reads no environment variable. No other
-adapter ships with the package. A program that talks to a provider directly
-writes its own transport against the contract above.
+adapter ships with the package. An application that talks to a provider
+directly writes its own transport against the protocol above.
 
 ## The outcome union
 
@@ -438,7 +438,7 @@ Each member is a frozen dataclass that supports pattern matching.
 
 | outcome | fields | meaning |
 |---|---|---|
-| `Completed` | `value` | the program's termination condition was met |
+| `Completed` | `value` | the execution contract's completion rule was met |
 | `Blocked` | `code`, `message` | the agent recognized that it cannot proceed; `code` is from the closed vocabulary in log-format.md |
 | `Exhausted` | `limit` | a resource limit was reached; one of `model_calls`, `input_tokens`, `output_tokens`, `context_window`, `seconds`, `depth`, `episodes`, `concurrency` |
 | `Failed` | `error` | the runtime could not continue |
@@ -464,7 +464,7 @@ written. Every exchange between the two passes through the binary's log,
 so a log directory produced through the package replays and views the
 same way as one produced by the binary alone.
 
-A program that needs the binary's other commands invokes them directly;
+An application that needs the binary's other commands invokes them directly;
 the schema and tool listings of `foe plan` have no wrapper in the package.
 
 ## Testing without the binary

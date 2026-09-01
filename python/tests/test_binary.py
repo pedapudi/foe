@@ -16,6 +16,26 @@ BINARY = Path(__file__).resolve().parents[2] / "target" / "debug" / "foe"
 
 
 @pytest.mark.skipif(not BINARY.is_file(), reason="target/debug/foe has not been built")
+def test_python_and_runtime_builtin_catalogues_agree(tmp_path: Path) -> None:
+    child = foe.ExecutionContract(
+        name="child",
+        instructions={"role": "Finish the child task."},
+        tools=["read"],
+        grants=foe.Grants(read=[tmp_path]),
+        budget=foe.Budget(model_calls=1),
+    )
+    contract = foe.ExecutionContract(
+        name="all-builtins",
+        instructions={"role": "Exercise the built-in tool catalogue."},
+        tools=sorted(foe.BUILTIN_TOOLS),
+        grants=foe.Grants(read=[tmp_path], write=[tmp_path], spawn=["child"]),
+        budget=foe.Budget(model_calls=1),
+        child_contracts={"child": child},
+    )
+    assert contract.fingerprint(BINARY).startswith("sha256:")
+
+
+@pytest.mark.skipif(not BINARY.is_file(), reason="target/debug/foe has not been built")
 def test_the_built_binary_completes_an_episode_with_a_host_tool(tmp_path: Path) -> None:
     seen: list[str] = []
 
@@ -29,7 +49,7 @@ def test_the_built_binary_completes_an_episode_with_a_host_tool(tmp_path: Path) 
     def _(value: dict[str, Any]) -> str:
         return f"{value['count']} references"
 
-    program = foe.Program(
+    contract = foe.ExecutionContract(
         name="binary-test",
         instructions={"role": "You are under test."},
         tools=["read", mutation_usage],
@@ -38,7 +58,7 @@ def test_the_built_binary_completes_an_episode_with_a_host_tool(tmp_path: Path) 
     )
     events: list[foe.Event] = []
     outcome = asyncio.run(
-        program.run(
+        contract.run(
             task="Count references.",
             transport=scripted(
                 [
@@ -56,4 +76,4 @@ def test_the_built_binary_completes_an_episode_with_a_host_tool(tmp_path: Path) 
     result = next(e for e in events if e.type == "tool/result")
     assert result.data["rendered"] == "3 references"
     assert [e.type for e in events][-1] == "episode/end"
-    assert program.identity(BINARY).startswith("sha256:")
+    assert contract.fingerprint(BINARY).startswith("sha256:")

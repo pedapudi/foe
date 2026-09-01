@@ -18,11 +18,11 @@ use std::sync::Arc;
 
 const CGROUP_MOUNT: &str = "/sys/fs/cgroup";
 const ENTER_SCRIPT: &str = "printf '%s\\n' \"$$\" > \"$1\" || exit 125; shift; exec \"$@\"";
-/// Fixed executable used to enter a cgroup before the requested program.
+/// Fixed executable used to enter a cgroup before the requested command.
 pub const PROCESS_BOUNDARY_LAUNCHER: &str = "/bin/sh";
 
 /// Runtime launch metadata that a parent writes for a child. These paths
-/// describe host state and do not participate in program identity.
+/// describe host state and do not participate in the contract fingerprint.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BoundaryPaths {
     pub episode: PathBuf,
@@ -157,7 +157,7 @@ impl ProcessBoundary {
         let current = current_cgroup()?;
         if current != paths.episode.join("process") {
             return Err(RuntimeError::Sandbox(
-                "cgroup v2: lineage.json process_boundary does not name the process's current cgroup".into(),
+                "cgroup v2: child-launch.json process_boundary does not name the process's current cgroup".into(),
             ));
         }
         let invocation = paths
@@ -167,7 +167,7 @@ impl ProcessBoundary {
             .and_then(Path::parent);
         if invocation.is_none_or(|path| paths.task != path.join("task")) {
             return Err(RuntimeError::Sandbox(
-                "cgroup v2: lineage.json process_boundary does not name the invocation task cgroup".into(),
+                "cgroup v2: child-launch.json process_boundary does not name the invocation task cgroup".into(),
             ));
         }
         require_boundary_files(&paths.episode)?;

@@ -39,7 +39,7 @@ the one inside it.
 3. **The shell.** Two thin rings, the outer fainter than the inner: the
    ejecta expanding, and the record that persists after the burst.
 4. **The limit.** A dashed circle outside everything. The longest spike
-   stops short of it. This is the declared budget and authority: the bound
+   stops short of it. This is the declared budget and permissions: the bound
    inside which everything the episode does stays.
 
 The argument of the mark is the gap between the longest spike and the

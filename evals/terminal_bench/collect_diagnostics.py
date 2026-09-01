@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Collect identity-bound trajectory diagnoses for Foe self-improvement."""
+"""Collect trajectory diagnoses after checking source and runtime fingerprints."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from foe_source_identity import evaluated_foe, require_evaluated_foe
+from foe_build import evaluated_foe, require_evaluated_foe
 from trajectory_corpus import load_manifest, read_object
 
 MAX_DIAGNOSES = 24
@@ -154,21 +154,17 @@ def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[s
     return answer
 
 
-def request_rows(report: dict[str, Any], usage: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return request rows with an episode identity for every schema version."""
+def request_rows(usage: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return request rows after validating their episode identifiers."""
     rows = usage.get("per_request", [])
     if not isinstance(rows, list):
         raise ValueError("trajectory usage.per_request is not a list")
-    root_identity = report.get("evidence_identity")
-    root_episode = root_identity.get("episode_id") if isinstance(root_identity, dict) else None
     answer = []
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             raise ValueError(f"trajectory request {index} is not an object")
         if isinstance(row.get("episode_id"), str):
             answer.append(row)
-        elif report.get("schema_version") == 1 and isinstance(root_episode, str):
-            answer.append({**row, "episode_id": root_episode})
         else:
             raise ValueError(f"trajectory request {index} has no string episode_id")
     return answer
@@ -182,7 +178,7 @@ def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dic
         key: report.get(key)
         for key in (
             "schema_version",
-            "evidence_identity",
+            "evidence_fingerprints",
             "task",
             "outcome",
             "verifier_reward",
@@ -198,7 +194,7 @@ def compact_diagnosis(report: dict[str, Any], evaluation: dict[str, Any]) -> dic
         {
             "evaluation": evaluation,
             "usage": compact_usage,
-            "input_growth_landmarks": input_growth_landmarks(request_rows(report, usage)),
+            "input_growth_landmarks": input_growth_landmarks(request_rows(usage)),
             "largest_replayed_results": report.get("largest_replayed_results", [])[:3],
             "tool_failures": report.get("tool_failures", [])[:3],
             "repeated_calls": report.get("repeated_calls", [])[:3],
@@ -260,7 +256,7 @@ def collect(
 ) -> dict[str, Any]:
     if not run_dirs:
         raise ValueError("at least one retained Terminal-Bench run is required")
-    identity = evaluated_foe(source_root, binary)
+    evaluated = evaluated_foe(source_root, binary)
     documents = []
     for run_dir in run_dirs:
         manifest_path = run_dir / "campaign.json"
@@ -276,11 +272,11 @@ def collect(
                 ],
             )
         )
-    return collect_documents(identity, documents, eligible_tasks)
+    return collect_documents(evaluated, documents, eligible_tasks)
 
 
 def collect_documents(
-    identity: dict[str, str],
+    evaluated: dict[str, str],
     documents: list[tuple[Path, dict[str, Any], list[tuple[Path, dict[str, Any]]]]],
     eligible_tasks: set[str],
 ) -> dict[str, Any]:
@@ -288,10 +284,10 @@ def collect_documents(
     reports = []
     runs = []
     for manifest_path, manifest, diagnostics in documents:
-        manifest_identity = require_evaluated_foe(
+        manifest_evaluated = require_evaluated_foe(
             manifest.get("evaluated_foe"), f"Terminal-Bench manifest {manifest_path}"
         )
-        if manifest_identity != identity:
+        if manifest_evaluated != evaluated:
             raise ValueError(
                 f"Terminal-Bench manifest {manifest_path} evaluates a different Foe source or binary"
             )
@@ -307,16 +303,16 @@ def collect_documents(
                 raise ValueError(
                     f"trajectory diagnosis is outside development evidence: {path}"
                 )
-            evidence = report.get("evidence_identity")
-            if not isinstance(evidence, dict) or evidence.get("runtime_build") != identity["runtime_binary"]:
-                raise ValueError(f"trajectory diagnosis has a different runtime identity: {path}")
+            evidence = report.get("evidence_fingerprints")
+            if not isinstance(evidence, dict) or evidence.get("runtime_build") != evaluated["runtime_binary"]:
+                raise ValueError(f"trajectory diagnosis has a different runtime fingerprint: {path}")
             reports.append(compact_diagnosis(report, evaluation))
             if len(reports) > MAX_DIAGNOSES:
                 raise ValueError(f"self-improvement evidence exceeds {MAX_DIAGNOSES} trajectory diagnoses")
         runs.append({**evaluation, "diagnoses": len(diagnostics)})
     answer = {
         "schema_version": 4,
-        "evaluated_foe": identity,
+        "evaluated_foe": evaluated,
         "runs": runs,
         "evaluation_summary": evaluation_summary(reports),
         "trajectory_diagnostics": reports,
@@ -337,16 +333,16 @@ def encoded_evidence(report: dict[str, Any]) -> str:
 def collect_from_corpus(
     corpus_manifest: Path,
     cases: Path,
-    expected_identity: dict[str, str],
+    expected_evaluated: dict[str, str],
 ) -> dict[str, Any]:
     """Collect diagnostics from an immutable trajectory corpus."""
     manifest, corpus_root = load_manifest(corpus_manifest)
     if read_object(corpus_root, manifest.get("cases")) != cases.read_bytes():
         raise ValueError("trajectory corpus was selected by a different cases file")
-    identity = require_evaluated_foe(
+    evaluated = require_evaluated_foe(
         manifest.get("evaluated_foe"), f"trajectory corpus {corpus_manifest}"
     )
-    if identity != expected_identity:
+    if evaluated != expected_evaluated:
         raise ValueError("trajectory corpus evaluates a different Foe source or binary")
     runs = manifest.get("runs")
     if not isinstance(runs, list) or not runs:
@@ -380,7 +376,7 @@ def collect_from_corpus(
                 diagnostics,
             )
         )
-    return collect_documents(identity, documents, development_tasks(cases))
+    return collect_documents(evaluated, documents, development_tasks(cases))
 
 
 def parser() -> argparse.ArgumentParser:

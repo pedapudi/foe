@@ -1,8 +1,11 @@
-# Program document
+# Execution-contract document
 
-An episode is defined by one JSON program document. This specification states every
-key, the domain of every value, and every default. The Python package
-generates this document; a person may also write it by hand.
+An execution contract is the validated configuration Foe runs for one
+episode: instructions, tools, permissions, budgets, completion rules, model
+selection, child contracts, and workflow. Rust represents a source document as
+`ContractDocument` and its resolved form as `ResolvedContract`. Schema fields
+use `contract_*` where a prefix is needed. This specification defines every
+configuration key, value domain, and default.
 
 Three rules shape the format.
 
@@ -15,25 +18,27 @@ Three rules shape the format.
   derived rather than declared.
 
 `foe plan --schema` emits a JSON Schema for this format, so an editor can
-validate a document and offer completions. `foe plan --config FILE` prints the
-resolved program and its identity. It also prints every reachable tool
-definition and effective sandbox envelope. The command runs no program or
-configured executable.
+validate a document and offer completions. `foe plan --config FILE` prints
+the resolved contract, its fingerprint, and every tool definition the contract's
+reachable tree can invoke, without running anything.
 
-`crates/program` implements this document: every rule stated here is a check
+`crates/contract` implements this document: every rule stated here is a check
 there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a
-document into the program `episode/start.program` records.
+document into the contract `episode/start.contract` records.
 
-Resolution constructs the complete program tree once. The tree contains
-every nested program and every workflow model node with inherited settings,
-canonical paths, and configured-executable content digests. Planning,
-identity, sandbox construction, reservation, and spawning use that same
-tree. A later filesystem lookup cannot redefine the program.
+Resolution constructs the complete contract tree once. During
+execution-contract construction, Foe captures each configured executable's
+bytes, digest, source path, and invocation name. Every later invocation uses
+the captured executable, so replacing, modifying, or deleting the source
+cannot change the run. The tree also contains every nested contract and every
+workflow model node with inherited settings and canonical paths. Planning,
+fingerprinting, sandbox construction, reservation, and spawning use that same
+tree.
 
 ## JSON Schema subset
 
 Two keys hold a schema written by the document's author: `host_tools.*.params`
-and `done_when.returns`. A workflow model node holds a program of its own, so
+and `done_when.returns`. A workflow model node holds a contract of its own, so
 its `done_when.returns` is a third. Every one of them is read as JSON Schema
 Draft 2020-12, whose dialect URI is
 `https://json-schema.org/draft/2020-12/schema`. A schema may omit `$schema`;
@@ -65,7 +70,7 @@ subschema, and the keyword. `pattern`, `format`, `oneOf`, `allOf`, `not`,
 A declared constraint is either enforced at every value boundary or refused
 before the episode starts, so a schema in a document that runs is a schema the
 log evidences in full. An author who needs a shape outside the subset
-expresses it in a `done_when.verify` tool, which is a program and has no such
+expresses it in a `done_when.verify` tool, which is a contract and has no such
 limit.
 
 The subset covers every schema the Python package derives from a type
@@ -85,7 +90,7 @@ episode.
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "name": "fix-parser-test",
 
   "instructions": {
@@ -136,7 +141,7 @@ episode.
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "name": "hello",
   "instructions": { "role": "You are a coding agent." },
   "tools": ["read", "grep", "edit", "bash"],
@@ -157,12 +162,12 @@ is omitted.
 ### `version`
 
 Integer. Required. The configuration format version. This document describes
-version 3.
+version 4.
 
 ### `name`
 
-String. Required. A short name for the program. Shown in the viewer and
-written into the log. It participates in identity.
+String. Required. A short name for the contract. Shown in the viewer and
+written into the log. It participates in fingerprint.
 
 ### `instructions`
 
@@ -179,8 +184,8 @@ across machines, which keeps the request prefix byte-identical across runs.
 An author who needs a specific order prefixes keys with digits, as in
 `10-role`, `20-style`.
 
-Both key and text participate in identity. Renaming a key changes the
-rendered order, so it changes what the model sees, so it changes identity.
+Both key and text participate in fingerprint. Renaming a key changes the
+rendered order, so it changes what the model sees, so it changes fingerprint.
 
 ### `tools`
 
@@ -189,7 +194,7 @@ List of strings. Required, with at least one entry.
 Each string names a tool. The order of the list is the order in which eligible
 tool schemas are sent to the model. It is also the order in which tool
 instructions are appended to the system prompt. The order therefore
-participates in identity.
+participates in fingerprint.
 
 A name resolves against three sources, checked in this order:
 
@@ -227,12 +232,11 @@ without a shell. Standard input is `/dev/null`. Standard output and standard
 error are captured. The exit code is reported as part of the result. An exit
 code other than zero is a result rather than an error.
 
-Construction reads the executable once, verifies that its source file is
-executable, and retains those exact bytes. Their SHA-256 digest participates
-in identity. The configured basename also participates because multicall
-executables use it to select behavior. Every invocation uses a descriptor for
-a private image of the retained bytes. Replacing, modifying, or deleting the
-configured path after construction cannot change what runs.
+During execution-contract construction, Foe captures the configured
+executable's bytes, digest, source path, and invocation name. The digest and
+invocation name participate in the fingerprint. Every later invocation uses
+the captured executable. Source replacement, modification, or deletion cannot
+change the run.
 
 Declaring an entry in `tool_defs` permits the episode to execute that file.
 The file does not need a `grants.execute` entry. An explicit execute grant
@@ -243,7 +247,7 @@ permits subprocesses of a tool, such as a compiler started by `bash`.
 Object mapping tool name to a specification. Optional. Each entry describes
 a tool that the host process implements and answers over the
 [protocol](protocol.md). The specification is in the document so that
-identity is computable from the document alone; the host supplies only the
+fingerprint is computable from the document alone; the host supplies only the
 implementation.
 
 | field | type | required | meaning |
@@ -265,7 +269,7 @@ Object. Required. Names what the episode may reach.
 | `read` | list of strings | yes, at least one | absolute directories the episode may read |
 | `write` | list of strings | no | absolute directories the episode may write; default empty |
 | `execute` | list of strings | no | absolute files or directories that a tool subprocess may read and execute; default empty |
-| `spawn` | list of strings | no | names from `programs` the episode may start; default empty |
+| `spawn` | list of strings | no | names from `child_contracts` the episode may start; default empty |
 | `bind` | list of integers | no | TCP ports, 1 to 65535, that a process of the episode may bind; default empty |
 | `task_session` | boolean | no | permits `session start` with `lifetime: "task"`; default false |
 
@@ -314,12 +318,12 @@ An `edit` in `tools` with an empty `write` list is an error. A `spawn` in
 `tools` with an empty `spawn` list is an error.
 
 The built-in `block` tool derives its code enum from this grant and the
-`tools` list. A program that lists `spawn` and has a non-empty `spawn` grant
+`tools` list. A contract that lists `spawn` and has a non-empty `spawn` grant
 receives `child-blocked` in addition to the three general model-reported
 codes. The resolved schema is shown to the model, enforced at dispatch, and
-included in program identity.
+included in contract fingerprint.
 
-The kinds present and the count of each participate in identity. The paths
+The kinds present and the count of each participate in fingerprint. The paths
 do not.
 
 ### `budget`
@@ -340,14 +344,14 @@ Object. Required.
 `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`, and
 `max_episodes` apply to the whole tree below this episode. A child's budget
 is reserved from its parent's remainder. The child reports what its whole
-subtree used. A child program that declares a larger limit runs under its
+subtree used. A child contract that declares a larger limit runs under its
 reserved share.
 
-The declared budget participates in program identity. A child reservation is
+The declared budget participates in contract fingerprint. A child reservation is
 an episode input and leaves that declaration unchanged. The parent records
 the reservation in `budget/reserve`. The child records the complete effective
 allowance in `episode/start.effective_budget` and enforces that allowance.
-Two executions of one declared child retain one program identity when their
+Two executions of one declared child retain one contract fingerprint when their
 available shares differ.
 
 The runtime charges provider-reported input after each completed response.
@@ -377,7 +381,7 @@ The episode share a spawn asks for depends on whether the child can start
 descendants at all. A child that can start none asks for one episode, so a
 leaf does not hold its parent's whole allowance against its siblings. A
 child that can start descendants asks for the `max_episodes` its own
-program declares. An entry in `grants.spawn` and a model node in the
+contract declares. An entry in `grants.spawn` and a model node in the
 child's `workflow` each make the child able to start descendants, and the
 model node counts at every level of nested workflows.
 
@@ -411,7 +415,7 @@ rather than a judgment of the candidate: the episode ends as `failed` with
 the exit code and both output streams as its error. For a host tool or a
 built-in tool, the candidate is the single argument and the returned value
 is a list of finding strings; an error result is likewise a failure of the
-verifier. A verifier is therefore a program written to this contract; a
+verifier. A verifier is therefore a contract written to this contract; a
 general-purpose linter is wrapped by a short script that reads the
 candidate, runs the linter, prints its findings, and exits with status zero
 whether or not it found any.
@@ -422,7 +426,7 @@ objects. Each object pairs a one-sentence `claim` string with an integer
 the standard exit through which an episode exports observations. A schema
 that requires `learned` must declare this non-empty array shape.
 
-In an agent-loop program, listing `learned` in the schema's `required` array
+In an agent-loop contract, listing `learned` in the schema's `required` array
 makes the citations a completion condition. Every tool result shown to that
 episode starts with its log sequence as `[seq N]`. Before completion, the
 runtime requires at least one observation. Each `seq` must name a successful
@@ -445,7 +449,7 @@ the authoritative verifier invocation remain separate tool executions.
 Every authoritative invocation is recorded as one `verification/result`
 event in the episode's own log — the accepted run that completes the
 episode, each findings run, and a failed run — carrying the verifier's
-identity at invocation; [log-format.md](log-format.md#verification)
+fingerprint at invocation; [log-format.md](log-format.md#verification)
 specifies the event. The model never sees it: findings reach the model
 only through the `verify` inbox item.
 
@@ -470,7 +474,7 @@ For any other model, and under a host that supplies the transport, it is
 required, and its absence is a construction error naming the key. When
 given, it must exceed `reserve_tokens` plus `keep_recent_tokens`.
 
-The block participates in identity.
+The block participates in fingerprint.
 
 ```json
 "context": { "compact": true }
@@ -493,7 +497,7 @@ The provider name is opaque to the configuration format. Whether a build
 knows it is decided where the transport is composed; `foe plan` reports the
 resolved transport, or says the name is unknown and lists the known ones.
 
-A child program may declare its own `model` block. A child that omits the
+A child contract may declare its own `model` block. A child that omits the
 block inherits the nearest ancestor's block. The same rule applies to model
 nodes in a workflow and to descendants of those nodes.
 
@@ -501,7 +505,7 @@ A block may omit its credential field. The transport then reads
 `~/.config/foe/credentials/<provider>.json`, the file `foe login` writes,
 with the home directory taken from the passwd database. An explicit
 `api_key_file`, `token_file`, or `credentials_file` replaces it. The path
-that was used is written into the block that `episode/start.program`
+that was used is written into the block that `episode/start.contract`
 records. Nothing is read from the environment.
 
 One block per provider:
@@ -518,7 +522,7 @@ One block per provider:
 
 [models.md](models.md) specifies every option, the credential file shapes,
 and what each provider cannot express. The `model` block does not
-participate in identity: the model is runtime infrastructure, and a system
+participate in fingerprint: the model is runtime infrastructure, and a system
 that needs to record which model ran reads it from the log's
 `request/header` events.
 
@@ -537,82 +541,55 @@ version obtained. `required` refuses to start when Landlock is unavailable.
 The rules themselves are compiled from `grants` and `tool_defs`; there is
 nothing else to declare.
 
-### `program_lineage`
+### `child_contracts`
 
-Object. Optional. Root only: a nested program and a workflow model node
-cannot carry it. An ancestry claim relating this program state to a parent
-state through a content-addressed evidence bundle.
-[lineage-identity.md](lineage-identity.md) specifies the claim, the bundle,
-and the checker that verifies the claim.
-
-| field | type | meaning |
-|---|---|---|
-| `parent.program_identity` | string | the parent state's program identity |
-| `parent.state_identity` | string | the parent state's identity, selecting one ancestry claim among those that can accompany a single program identity |
-| `evidence` | string | SHA-256 digest of the evidence bundle's canonical manifest |
-| `verification_log` | string | bundle-relative path of the log holding the verifier result |
-| `verification_seq` | integer | `seq` of that result inside `verification_log` |
-
-Each digest is `sha256:` followed by 64 lowercase hex digits, and
-`verification_log` uses forward slashes with no empty, `.`, or `..`
-component. The parser checks the member types and rejects an unknown
-member; the digest and path forms are enforced where a claim is verified,
-by the checker [lineage-identity.md](lineage-identity.md) specifies. The
-key does not participate in identity: a configuration with
-`program_lineage` resolves to the same program identity as one without it.
-The resolved program retains the claim, so `episode/start.program` records
-it. A configuration without the key describes a root state, the first in a
-lineage.
-
-### `programs`
-
-Object mapping program name to a nested configuration. Optional. Each value
-is a full program document without `version`, `task`, or `sandbox`.
+Object mapping contract name to a nested configuration. Optional. Each value
+is a full contract document without `version`, `task`, or `sandbox`.
 The `model` block is optional and follows the inheritance rule above. A name
 listed in `grants.spawn` must appear here.
 
-A child program's grants must be a subset of its parent's, checked at
+A child contract's grants must be a subset of its parent's, checked at
 construction. A child may set `task_session` only when its parent sets it.
-Each child program's identity participates in the parent's identity. Its
-tool list may differ from its parent's. The effective tool
-authority `foe plan` reports covers the root, each descendant program a
+Each child contract's fingerprint participates in the parent's fingerprint. Its
+tool list may differ from its parent's. The reachable-tool report from
+`foe plan` covers the root, each descendant contract that
 `grants.spawn` entry reaches, and each workflow model node. A declaration
-no such path reaches stays in the resolved program and is absent from the
+no such path reaches stays in the resolved contract and is absent from the
 report, because no episode can invoke it.
 
 ### `workflow`
 
 Object. Optional. A declared graph of nodes that replaces the free loop
 for this episode. [workflow.md](workflow.md) specifies every key under it
-and every construction rule. The document's authority and budget are the
-ceiling the graph draws from: a tool node names a tool in `tools`, and a
-model node's program is a child program in the sense of `programs` whose
-tools, configured executable authority, host tool definitions, filesystem
-grants, spawn grants with their descendant programs, and spend limits all
-lie within the document's own. A child program may carry a `workflow` of
+and every construction rule. The document's permissions and budget are the
+ceiling the graph draws from. A tool node names a tool in `tools`. A
+model node's contract is a child contract in the sense of `child_contracts` whose
+tools, configured executables, host tool definitions, filesystem
+grants, spawn grants with their descendant child contracts, and spend limits all
+lie within the document's own. A child contract may carry a `workflow` of
 its own. A model node may declare `empty` so that a blocked or exhausted
 child contributes that value and downstream work continues. The graph
 may contain at most 4,096 edge references across all nested workflows. The
 count includes every `follows` entry, branch successor, and
 `recovery.follows` entry. Construction checks this count before building
-graph indexes. The graph participates in identity as workflow.md "Identity"
+graph indexes. The graph participates in fingerprint as workflow.md "Fingerprint"
 lists.
 
 ### `task`
 
 String. Required. What this episode is to do. Written into the log as the
-first inbox item. The task does not participate in identity; two episodes of
-the same program with different tasks share an identity.
+first inbox item. The task does not participate in the fingerprint. Two episodes
+of the same contract with different tasks share a fingerprint.
 
-## Identity summary
+## Fingerprint summary
 
-The following participate in identity: `name`, `instructions`, `tools` and
+The following participate in the fingerprint: `name`, `instructions`, `tools` and
 their order, each entry of `tool_defs` including the executable's content
 hash, the kinds and counts in `grants`, `budget`, `done_when`, `context`,
-every entry of `programs`, `workflow`, and the runtime's version and build.
+every entry of `child_contracts`, `workflow`, and the runtime's version and build.
 
-The following do not participate: the paths in `grants`, `model`, `sandbox`,
-`program_lineage`, and `task`.
+The following do not participate: concrete paths in `grants`, `model`,
+`sandbox`, and `task`.
 
 ## Errors
 

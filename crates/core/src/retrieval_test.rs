@@ -1,26 +1,26 @@
 use super::*;
-use crate::test_util::{program_with, tmp, ScratchDir};
+use crate::test_util::{contract_with, tmp, ScratchDir};
 use foe_log::{
     AssistantMessage, EpisodeStart, InboxItem, InboxSource, RuntimeInfo, SandboxInfo, SandboxMode, StopReason,
     ToolCall, ToolResult, Usage,
 };
 
 fn start(root: &Path) -> EpisodeStart {
-    let program = program_with(root, |_| {}).unwrap();
+    let contract = contract_with(root, |_| {}).unwrap();
     EpisodeStart {
         id: "ep_retrieve".into(),
         parent_id: None,
         fork_origin: None,
         team_id: None,
-        program: program.to_value(),
-        identity: "sha256:test".into(),
+        contract: contract.to_value(),
+        contract_fingerprint: "sha256:test".into(),
         task: "test retrieval".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: SandboxInfo {
             mode: SandboxMode::Off,
             landlock_abi: 0,
-            effective_access: None,
-            process_boundary: None,
+            resolved_permissions: Default::default(),
+            process_boundary: Default::default(),
         },
         effective_budget: None,
     }
@@ -190,7 +190,7 @@ async fn retrieval_from_a_seed_does_not_open_the_source_episode() {
         &source_dir,
         source.events().len() as u64,
         &dest,
-        foe_log::seed::SeedHeader { new_id: "ep_seeded".into(), parent_id: None, team_id: None, program: None },
+        foe_log::seed::SeedHeader { new_id: "ep_seeded".into(), parent_id: None, team_id: None, contract: None },
     )
     .unwrap();
     drop(source);

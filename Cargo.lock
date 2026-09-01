@@ -244,14 +244,13 @@ checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
 
 [[package]]
 name = "foe"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "foe-code",
  "foe-context",
+ "foe-contract",
  "foe-core",
- "foe-lineage",
  "foe-log",
- "foe-program",
  "foe-telemetry",
  "foe-transport",
  "foe-view",
@@ -266,12 +265,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "foe-adoption"
+version = "0.2.0"
+dependencies = [
+ "foe-contract",
+ "foe-log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "foe-code"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
+ "foe-contract",
  "foe-core",
- "foe-program",
  "grep-matcher",
  "grep-regex",
  "grep-searcher",
@@ -286,25 +297,38 @@ dependencies = [
 
 [[package]]
 name = "foe-context"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
+ "foe-contract",
  "foe-core",
  "foe-log",
- "foe-program",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
+name = "foe-contract"
+version = "0.2.0"
+dependencies = [
+ "foe-log",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "foe-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "cap-std",
  "command-fds",
+ "foe-contract",
  "foe-log",
- "foe-program",
  "hex",
  "ignore",
  "landlock",
@@ -318,42 +342,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "foe-lineage"
-version = "0.1.0"
-dependencies = [
- "foe-log",
- "foe-program",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
 name = "foe-log"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "foe-program"
-version = "0.1.0"
-dependencies = [
- "foe-log",
- "hex",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
  "thiserror",
 ]
 
 [[package]]
 name = "foe-telemetry"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "foe-log",
  "hex",
@@ -366,13 +365,13 @@ dependencies = [
 
 [[package]]
 name = "foe-transport"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "base64",
+ "foe-contract",
  "foe-core",
  "foe-log",
- "foe-program",
  "nix",
  "ring",
  "rustls",
@@ -387,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "foe-view"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "foe-log",
  "serde",
@@ -399,12 +398,12 @@ dependencies = [
 
 [[package]]
 name = "foe-workflow"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
+ "foe-contract",
  "foe-core",
  "foe-log",
- "foe-program",
  "serde",
  "serde_json",
  "tempfile",

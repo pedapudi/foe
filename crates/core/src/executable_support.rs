@@ -1,4 +1,4 @@
-//! Interpreters that the kernel opens while starting an executable image.
+//! Interpreters that the kernel opens while starting an executable.
 //!
 //! A Landlock execute rule for a script or dynamically linked ELF image is
 //! insufficient by itself. The kernel also executes the script interpreter

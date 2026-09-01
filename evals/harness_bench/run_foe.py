@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from foe_source_identity import evaluated_foe
+from foe_build import evaluated_foe
 
 
 BENCHMARK_COMMIT = "1025086a446653702b80cfb48babbeec35db6b2c"
@@ -213,7 +213,7 @@ def model_route(value: str, reasoning_effort: str | None = None) -> dict[str, st
     return route
 
 
-def program(task: Task, workspace: Path, prompt: str, route: dict[str, str], tools: dict[str, Path]) -> dict[str, Any]:
+def contract(task: Task, workspace: Path, prompt: str, route: dict[str, str], tools: dict[str, Path]) -> dict[str, Any]:
     names = ["read", "grep", "edit", "bash"]
     tool_defs: dict[str, Any] = {}
     read_paths = [str(workspace)]
@@ -240,7 +240,7 @@ def program(task: Task, workspace: Path, prompt: str, route: dict[str, str], too
         }
     writes = [str(workspace / relative) for relative in task.write_paths]
     return {
-        "version": 3,
+        "version": 4,
         "name": "harness-bench-" + task.identifier,
         "instructions": {
             "10-role": "Complete the benchmark task autonomously in the granted workspace.",
@@ -352,8 +352,8 @@ def run_attempt(
     except Exception as error:
         negative_control = {}
         negative_control_error = repr(error)
-    config = program(task, workspace.resolve(), prompt, route, tools)
-    config_path = case / "program.json"
+    config = contract(task, workspace.resolve(), prompt, route, tools)
+    config_path = case / "contract.json"
     write_json(config_path, config)
     started = time.monotonic()
     infrastructure_error = None
@@ -436,7 +436,7 @@ def run_attempt(
         "paths": {
             "workspace": str(workspace),
             "episode": str(log_dir),
-            "program": str(config_path),
+            "contract": str(config_path),
         },
     }
     write_json(case / "attempt.json", record)
@@ -447,7 +447,7 @@ def run_attempt(
 
 
 def preview(
-    selected: list[Task], attempts: int, route: dict[str, str], foe_identity: dict[str, str]
+    selected: list[Task], attempts: int, route: dict[str, str], evaluated: dict[str, str]
 ) -> dict[str, Any]:
     rows = [
         {
@@ -464,7 +464,7 @@ def preview(
         "benchmark": "Harness-Bench",
         "benchmark_commit": BENCHMARK_COMMIT,
         "benchmark_patch": BENCHMARK_PATCH,
-        "evaluated_foe": foe_identity,
+        "evaluated_foe": evaluated,
         "model": route,
         "tasks": rows,
         "maximum": {
@@ -495,7 +495,7 @@ def main() -> int:
     if args.attempts < 1:
         raise SystemExit("--attempts must be positive")
     try:
-        foe_identity = evaluated_foe(args.source_root, args.foe)
+        evaluated = evaluated_foe(args.source_root, args.foe)
     except ValueError as error:
         raise SystemExit(str(error)) from error
     route = model_route(args.model, args.reasoning_effort)
@@ -505,7 +505,7 @@ def main() -> int:
     missing = [task.identifier for task in selected if task.identifier not in task_dirs]
     if missing:
         raise SystemExit("benchmark source does not contain: " + ", ".join(missing))
-    maximum = preview(selected, args.attempts, route, foe_identity)
+    maximum = preview(selected, args.attempts, route, evaluated)
     print(json.dumps(maximum, indent=2, sort_keys=True))
     if not args.confirm_spend:
         print("No model calls were launched. Pass --confirm-spend after reviewing the maximum.", file=sys.stderr)

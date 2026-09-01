@@ -1,10 +1,11 @@
 # Deferred features
 
-This document lists features that the design anticipates and version 2 does
-not implement. Each section states what the feature is, that it is absent,
+This document lists features that the design anticipates and log format
+version 3 does not implement. Each section states what the feature is, that it is absent,
 and which log event types, event field values, or configuration keys are
 reserved for it. A reserved event type has a variant in `crates/log/src/lib.rs`
-so that a version 2 reader parses a later log; nothing in version 2 emits it.
+so that a log format version 3 reader parses a later log. The current runtime
+emits none of these reserved events.
 A feature with nothing reserved is listed so that a reader does not search
 for it.
 
@@ -95,11 +96,11 @@ enforcement obtained.
 
 The runtime uses cgroup v2 to own and clean an episode's process subtree. It
 does not configure the memory, processor, process-count, or I/O controllers.
-The program budget has no fields for those resources, so deriving controller
-values from token, model-call, elapsed-time, or concurrency limits would
-invent a relationship the program did not declare.
+The execution-contract budget has no fields for those resources. Deriving
+controller values from token, model-call, elapsed-time, or concurrency limits
+would invent a relationship the contract did not declare.
 
-Resource enforcement requires explicit program vocabulary for each resource,
+Resource enforcement requires explicit contract vocabulary for each resource,
 including units and inheritance rules. The runtime can then write supported
 controller files and record each enforced value. A host without a requested
 controller would record that limit as observational in `best-effort` mode and
@@ -140,7 +141,7 @@ configuration key is reserved.
 
 ## Default adoption of the python tool
 
-The built-in `python` tool lets the model write a short program that calls
+The built-in `python` tool lets the model write a short Python script that calls
 several tools and returns a combined value; inner results remain in the
 log and never re-enter the conversation. [code-mode.md](code-mode.md)
 specifies the implemented tool and the `tool/inner-call` event. What is
@@ -156,18 +157,6 @@ type or configuration key is reserved. A cost-sensitive deployment may
 propose this behavior after Foe passes its quality gates and paired held-out
 evaluation shows that skipping the review preserves task quality.
 
-## Program lineage
-
-Program lineage relates immutable program states through content-addressed
-proposal evidence and a verifier declared by the parent state.
-[lineage-identity.md](lineage-identity.md) specifies it. The configuration
-key `program_lineage`, the state identity, the evidence-bundle checker,
-and the ancestry checker are implemented: the key's shape in `foe-program`,
-the rest in `foe-lineage`. The implemented `verification/result` event
-carries no digest of the verifier's input; the bundle's adoption record
-closes that gap with the attestation strength that lineage-identity.md
-"Verification matched to the retained candidate" states.
-
 ## Bazel targets for the browser bundle and the Python package
 
 Bazel is the primary build interface: every Rust crate is a Bazel target,
@@ -180,19 +169,19 @@ configuration key is reserved.
 
 ## A TypeScript SDK
 
-A TypeScript SDK would do for a Node.js program what the Python package does:
+A TypeScript SDK would do for a Node.js application what the Python package does:
 build a configuration, launch the binary, and serve the host protocol with a
-transport the program supplies. The TypeScript SDK is not implemented. No
+transport the contract supplies. The TypeScript SDK is not implemented. No
 event type or configuration key is reserved.
 
 ## Additional viewer axes
 
-The viewer organizes episodes by lineage: one tree of parents and children
+The viewer organizes episodes as one tree of parents and children
 per root episode, with the conversation, the raw events, the diffs, the
 declared workflow, and the statistics of the selected episode beside it.
 Two further axes
-would organize the same logs differently. One is program identity, so that
-every episode of one program is compared side by side. The other is the
+would organize the same logs differently. One is contract fingerprint, so that
+every episode of one contract is compared side by side. The other is the
 individual tool call, so that every call of one tool across episodes is
 listed together; the statistics view already totals durations by tool name,
 and listing the calls themselves is what is absent. Neither axis is
@@ -208,9 +197,9 @@ grants into such a profile. macOS sandboxing is not implemented. On macOS,
 `sandbox.mode: "required"` refuses to start. No event type or configuration
 key is reserved.
 
-## Anonymous executable images
+## Anonymous captured-executable storage
 
-Linux `O_TMPFILE` can hold construction-committed executable bytes in an
+Linux `O_TMPFILE` can hold executable bytes captured during contract construction in an
 unnamed regular inode. The inode can be granted through Landlock and invoked
 through `/proc/self/fd`, unlike a memfd, which Landlock rejects as a rule
 target. Tests with a shell script and a copied dynamically linked shell
@@ -219,10 +208,10 @@ anonymous form because it compares its requested utility name with
 `/proc/self/exe`, whose target has no configured basename. Opening a named
 image and unlinking it before execution also adds a deleted-path suffix to
 that target. BusyBox and other self-path-dependent executables have the same
-class of requirement. Foe uses a named private image that preserves the
-configured basename.
-Anonymous images remain deferred until they can preserve self-path semantics
-for common executables. No event type or configuration key is reserved.
+class of requirement. Foe stores each captured executable in a named private
+file that preserves the configured basename. Anonymous storage remains
+deferred until it can preserve self-path semantics for common executables. No
+event type or configuration key is reserved.
 
 ## Unicode normalization in the scrubber
 

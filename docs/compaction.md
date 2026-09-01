@@ -66,7 +66,7 @@ earlier summary already covers are never read again.
 
 The summary is one model call through the episode's ordinary transport.
 Its system prompt is a constant the runtime owns; an author cannot change
-it, and identity hashes it. The prompt tells the model that a transcript is
+it, and the contract fingerprint hashes it. The prompt tells the model that a transcript is
 being condensed, names the five headings the output must carry, in order,
 and forbids continuing the conversation, calling tools, or addressing
 anyone.
@@ -97,7 +97,7 @@ has no part in it:
 | `done_when` | the configured completion condition, rendered in one line |
 | `outstanding_findings` | the text of the latest verifier report, which is unresolved while the episode runs |
 | `files.read`, `files.written`, `files.edited` | the `path` argument of every `read`, `write`, and `edit` call in the covered span whose result was not an error, joined with every earlier summary's lists, sorted, without duplicates |
-| `children` | every child that ended within the covered span, with the program its `spawn/start` named and its outcome, after those earlier summaries carried |
+| `children` | every child that ended within the covered span, with the contract its `spawn/start` named and its outcome, after those earlier summaries carried |
 | `covered` | the first and last `seq` of the span this compaction summarized directly |
 | `budget_remaining` | the episode's remaining model calls, input tokens, output tokens, and seconds when the compaction began |
 
@@ -182,14 +182,14 @@ still fits within the window itself; when the projection passes the
 window, the episode ends as `exhausted` with limit `context_window`. The next
 step projects again and may attempt a new compaction.
 
-## Identity
+## Contract fingerprint
 
-The `context` block participates in identity. So do the summarization
+The `context` block participates in the contract fingerprint. So do the summarization
 prompt, the transcript rendering, the continuation rendering, the fields of
 the continuation state, and a policy version number that is raised
-whenever any of those changes in meaning. Two episodes of the same program
-therefore compact under the same rules, and a change to the rules changes
-identity.
+whenever any of those changes in meaning. Two episodes of the same contract
+therefore compact under the same rules. A change to the rules changes the
+fingerprint.
 
 ## Enabling it
 

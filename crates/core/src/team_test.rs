@@ -179,15 +179,15 @@ async fn spawn_tool_runs_a_child_whose_notify_and_end_reach_the_lead() {
     );
     let tools = tools(team.clone(), None);
     let spawn = tools.iter().find(|t| t.spec().name == "spawn").unwrap();
-    let args = serde_json::json!({ "program": "worker", "task": "do it", "name": "w1" });
+    let args = serde_json::json!({ "contract": "worker", "task": "do it", "name": "w1" });
     let value = spawn.call(args.clone(), &ctx(Some(spawner.clone()))).await;
     assert!(!value.is_error, "{:?}", value.rendered);
     let child_id = value.value["child_id"].as_str().unwrap().to_string();
     assert!(spawn.call(args, &ctx(Some(spawner.clone()))).await.is_error, "roster names are unique");
-    let config: foe_program::ProgramDocument =
+    let config: foe_contract::ContractDocument =
         serde_json::from_slice(&std::fs::read(dir.join("children").join(&child_id).join("config.json")).unwrap())
             .unwrap();
-    assert_eq!(config.tools, ["notify"], "the child's tools are the program's; notify is built in");
+    assert_eq!(config.tools, ["notify"], "the child's tools are the contract's; notify is built in");
 
     wait_for(|| (uplink.0.lock().unwrap().len() == 2).then_some(()));
     let steer = tools.iter().find(|t| t.spec().name == "steer").unwrap();
@@ -328,6 +328,6 @@ async fn wait_until_matches_unconsumed_arrivals_by_source_child_and_session() {
 #[test]
 fn every_team_tool_schema_stays_inside_the_implemented_subset() {
     for spec in super::builtin_specs() {
-        foe_program::schema::check(format!("tools.{}.params", spec.name), &spec.params).unwrap();
+        foe_contract::schema::check(format!("tools.{}.params", spec.name), &spec.params).unwrap();
     }
 }

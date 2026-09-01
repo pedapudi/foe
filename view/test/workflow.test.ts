@@ -25,7 +25,7 @@ function run(): Workflow {
   const fold = new EpisodeFold("workflow", { stream: false });
   const events = fixture("workflow.jsonl");
   for (const ev of events) fold.push(ev);
-  const workflow = readWorkflow(fold.summary.program, events);
+  const workflow = readWorkflow(fold.summary.contract, events);
   assert.ok(workflow, "the fixture episode declares a workflow");
   return workflow;
 }
@@ -126,7 +126,7 @@ test("a recovery names the node that failed, its action, and its cause", () => {
   const recovery = workflow.recoveries[0]!;
   assert.equal(recovery.node, "verify_change");
   assert.equal(recovery.action, "retry");
-  assert.equal(recovery.cause, "tool-error");
+  assert.equal(recovery.cause, "process-exit");
   assert.equal(recovery.target, "verify_change");
   assert.equal(recovery.intervention, 1);
 });

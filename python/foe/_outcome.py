@@ -12,7 +12,7 @@ from typing import Any, Mapping
 
 @dataclass(frozen=True, slots=True)
 class Completed:
-    """The program's termination condition was met."""
+    """The contract's termination condition was met."""
 
     value: Any
 

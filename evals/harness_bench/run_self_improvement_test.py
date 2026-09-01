@@ -45,18 +45,18 @@ def repository(root: Path, content: str = "[workspace]\n") -> None:
 
 
 class SelfImprovementTest(unittest.TestCase):
-    def identity_fixture(self, root: Path) -> tuple[Path, Path, Path, dict[str, str]]:
+    def evaluated_fixture(self, root: Path) -> tuple[Path, Path, Path, dict[str, str]]:
         candidate = root / "candidate"
         repository(candidate)
         binary = root / "foe"
         binary.write_bytes(b"runtime")
-        identity = {
+        evaluated = {
             "source_tree": run_self_improvement.clean_source_tree(candidate),
             "runtime_binary": run_self_improvement.sha256_file(binary),
         }
         evidence = root / "evidence.json"
-        evidence.write_text(json.dumps({"evaluated_foe": identity}), encoding="utf-8")
-        return candidate, binary, evidence, identity
+        evidence.write_text(json.dumps({"evaluated_foe": evaluated}), encoding="utf-8")
+        return candidate, binary, evidence, evaluated
 
     def test_workflow_has_a_finite_allowance_and_default_coding_tools(self) -> None:
         self.assertEqual(
@@ -104,52 +104,52 @@ class SelfImprovementTest(unittest.TestCase):
 
     def test_matching_candidate_and_binary_are_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            candidate, binary, evidence, identity = self.identity_fixture(Path(directory))
+            candidate, binary, evidence, evaluated = self.evaluated_fixture(Path(directory))
             self.assertEqual(
-                run_self_improvement.verify_evidence_identity(candidate, binary, evidence),
-                identity,
+                run_self_improvement.verify_evaluated_build(candidate, binary, evidence),
+                evaluated,
             )
 
-    def test_missing_evidence_identity_is_rejected(self) -> None:
+    def test_missing_evaluated_evidence_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            candidate, binary, evidence, _ = self.identity_fixture(Path(directory))
+            candidate, binary, evidence, _ = self.evaluated_fixture(Path(directory))
             evidence.write_text("{}", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "lacks evaluated_foe"):
-                run_self_improvement.verify_evidence_identity(candidate, binary, evidence)
+                run_self_improvement.verify_evaluated_build(candidate, binary, evidence)
 
     def test_another_source_tree_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            candidate, binary, evidence, _ = self.identity_fixture(root)
+            candidate, binary, evidence, _ = self.evaluated_fixture(root)
             other = root / "other"
             repository(other, "[workspace]\nmembers = []\n")
             report = json.loads(evidence.read_text(encoding="utf-8"))
             report["evaluated_foe"]["source_tree"] = run_self_improvement.clean_source_tree(other)
             evidence.write_text(json.dumps(report), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "candidate source tree differs"):
-                run_self_improvement.verify_evidence_identity(candidate, binary, evidence)
+                run_self_improvement.verify_evaluated_build(candidate, binary, evidence)
 
     def test_dirty_candidate_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            candidate, binary, evidence, _ = self.identity_fixture(Path(directory))
+            candidate, binary, evidence, _ = self.evaluated_fixture(Path(directory))
             (candidate / "untracked").write_text("content", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "source tree is not clean"):
-                run_self_improvement.verify_evidence_identity(candidate, binary, evidence)
+                run_self_improvement.verify_evaluated_build(candidate, binary, evidence)
 
     def test_another_runtime_binary_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            candidate, binary, evidence, _ = self.identity_fixture(Path(directory))
+            candidate, binary, evidence, _ = self.evaluated_fixture(Path(directory))
             binary.write_bytes(b"different runtime")
             with self.assertRaisesRegex(ValueError, "runtime binary differs"):
-                run_self_improvement.verify_evidence_identity(candidate, binary, evidence)
+                run_self_improvement.verify_evaluated_build(candidate, binary, evidence)
 
-    def test_identity_mismatches_precede_episode_directory_creation(self) -> None:
+    def test_evaluated_build_mismatches_precede_episode_directory_creation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            candidate, binary, evidence, identity = self.identity_fixture(root)
+            candidate, binary, evidence, evaluated = self.evaluated_fixture(root)
             mismatches = {
-                "source": {**identity, "source_tree": "git-tree-sha1:" + "c" * 40},
-                "binary": {**identity, "runtime_binary": "sha256:" + "d" * 64},
+                "source": {**evaluated, "source_tree": "git-tree-sha1:" + "c" * 40},
+                "binary": {**evaluated, "runtime_binary": "sha256:" + "d" * 64},
             }
             for name, mismatch in mismatches.items():
                 with self.subTest(name=name):

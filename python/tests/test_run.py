@@ -14,14 +14,14 @@ import foe
 from scripted import scripted, text_response, tool_response
 
 
-def program_with(
+def contract_with(
     tools: list[str | foe.HostTool],
     *,
     model_calls: int = 5,
     output_tokens: int | None = None,
     done_when: foe.DoneWhen | None = None,
-) -> foe.Program:
-    return foe.Program(
+) -> foe.ExecutionContract:
+    return foe.ExecutionContract(
         name="test",
         instructions={"role": "You are under test."},
         tools=tools,
@@ -55,7 +55,7 @@ def test_full_run_with_host_tool(fake_binary: Path, tmp_path: Path) -> None:
     events: list[foe.Event] = []
     log_dir = tmp_path / "episode"
     outcome = asyncio.run(
-        program_with(["read", mutation_usage]).run(
+        contract_with(["read", mutation_usage]).run(
             task="Count references.",
             transport=transport,
             binary=fake_binary,
@@ -102,7 +102,7 @@ def test_full_run_with_host_tool(fake_binary: Path, tmp_path: Path) -> None:
 def test_runtime_output_allowance_clamps_the_host_setting(fake_binary: Path, tmp_path: Path) -> None:
     requests: list[dict[str, Any]] = []
     outcome = asyncio.run(
-        program_with(["read"], output_tokens=30).run(
+        contract_with(["read"], output_tokens=30).run(
             task="Finish.",
             transport=scripted([text_response("Done.")], requests),
             binary=fake_binary,
@@ -122,7 +122,7 @@ def test_host_tool_exception_becomes_an_error_result(fake_binary: Path, tmp_path
 
     events: list[foe.Event] = []
     outcome = asyncio.run(
-        program_with(["read", explode]).run(
+        contract_with(["read", explode]).run(
             task="t",
             transport=scripted([tool_response(("explode", {"reason": "boom"})), text_response("ok")]),
             binary=fake_binary,
@@ -155,7 +155,7 @@ def test_steer_arrives_as_an_inbox_item(fake_binary: Path, tmp_path: Path) -> No
     async def scenario() -> foe.Outcome:
         nonlocal gate
         gate = asyncio.Event()
-        handle = await program_with(["read"]).start(
+        handle = await contract_with(["read"]).start(
             task="t", transport=transport, binary=fake_binary, log_dir=tmp_path / "episode", on_event=events.append
         )
         while not any(e.type == "model/request" for e in events):
@@ -194,7 +194,7 @@ def test_cancel_ends_the_episode_as_failed(fake_binary: Path, tmp_path: Path) ->
         yield {"kind": "done", "stop": "end", "usage": {"input": 0, "output": 0, "cache_read": 0}}
 
     async def scenario() -> tuple[foe.Outcome, foe.Handle]:
-        handle = await program_with(["read"]).start(
+        handle = await contract_with(["read"]).start(
             task="t", transport=transport, binary=fake_binary, log_dir=tmp_path / "episode"
         )
         await started.wait()
@@ -208,7 +208,7 @@ def test_cancel_ends_the_episode_as_failed(fake_binary: Path, tmp_path: Path) ->
 
 def test_blocked_outcome(fake_binary: Path, tmp_path: Path) -> None:
     outcome = asyncio.run(
-        program_with(["read", "block"]).run(
+        contract_with(["read", "block"]).run(
             task="t",
             transport=scripted([tool_response(("block", {"code": "ambiguous-task", "message": "Which test?"}))]),
             binary=fake_binary,
@@ -220,7 +220,7 @@ def test_blocked_outcome(fake_binary: Path, tmp_path: Path) -> None:
 
 def test_exhausted_outcome(fake_binary: Path, tmp_path: Path) -> None:
     outcome = asyncio.run(
-        program_with(["read"], model_calls=1).run(
+        contract_with(["read"], model_calls=1).run(
             task="t",
             transport=scripted([tool_response(("read", {"path": "/x"}))]),
             binary=fake_binary,
@@ -236,7 +236,7 @@ def test_failed_outcome_from_a_transport_exception(fake_binary: Path, tmp_path: 
         yield {}
 
     outcome = asyncio.run(
-        program_with(["read"]).run(task="t", transport=transport, binary=fake_binary, log_dir=tmp_path / "episode")
+        contract_with(["read"]).run(task="t", transport=transport, binary=fake_binary, log_dir=tmp_path / "episode")
     )
     assert outcome == foe.Failed("ConnectionError: no route to provider")
 
@@ -250,13 +250,13 @@ def test_returns_and_verify(fake_binary: Path, tmp_path: Path) -> None:
         attempts.append(candidate)
         return [] if candidate.get("title") else ["title is missing"]
 
-    program = program_with(
+    contract = contract_with(
         ["read"],
         done_when=foe.Verified(verify=check, returns={"type": "object", "properties": {"title": {"type": "string"}}}),
     )
     requests: list[dict[str, Any]] = []
     outcome = asyncio.run(
-        program.run(
+        contract.run(
             task="t",
             transport=scripted(
                 [
@@ -276,7 +276,7 @@ def test_returns_and_verify(fake_binary: Path, tmp_path: Path) -> None:
 
 def test_run_config_from_a_file(fake_binary: Path, tmp_path: Path) -> None:
     config = tmp_path / "config.json"
-    config.write_text(program_with(["read"]).to_json("t"))
+    config.write_text(contract_with(["read"]).to_json("t"))
     outcome = asyncio.run(
         foe.run_config(
             config, transport=scripted([text_response("hello")]), binary=fake_binary, log_dir=tmp_path / "episode"
@@ -286,11 +286,11 @@ def test_run_config_from_a_file(fake_binary: Path, tmp_path: Path) -> None:
 
 
 def test_run_config_rejects_a_model_block_and_missing_tools(fake_binary: Path, tmp_path: Path) -> None:
-    doc = program_with(["read"]).to_dict("t")
+    doc = contract_with(["read"]).to_dict("t")
     doc["model"] = {"provider": "anthropic", "model": "m", "api_key_file": "/k"}
     with pytest.raises(ValueError, match="no `model` block"):
         asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
-    doc = program_with(["read"]).to_dict("t")
+    doc = contract_with(["read"]).to_dict("t")
     doc["host_tools"] = {"missing": {"description": "d", "params": {"type": "object"}, "effect": "pure"}}
     doc["tools"].append("missing")
     with pytest.raises(ValueError, match="host_tools: no implementation was supplied for missing"):

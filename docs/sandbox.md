@@ -1,14 +1,19 @@
 # Sandbox
 
-An episode's grants name what it may reach: directories to read, directories
-to write, executables to run, child programs to start, and TCP ports to
-bind. On Linux, the
-runtime compiles those grants into a Landlock ruleset and applies it to the
-episode process and to every process the episode starts. The runtime also
-places each invocation in a delegated cgroup v2 hierarchy when the host
-provides one. Landlock restricts access. The cgroup owns process subtrees so
-that a new session or process group cannot escape cleanup. This document
-specifies both mechanisms and states which guarantees the host enforces.
+An episode's `grants` object declares permissions to read, write, execute,
+start child contracts, and bind TCP ports. The runtime adds the exact support
+permissions required to exercise those grants. The resulting set is called
+the resolved permissions.
+
+On Linux, the runtime compiles the resolved permissions into a Landlock
+ruleset. It applies that ruleset to the episode and every process the episode
+starts. The runtime also places each invocation in a delegated cgroup v2
+hierarchy when the host provides one. Landlock restricts access. The cgroup
+owns process subtrees so a new session or process group cannot escape cleanup.
+
+The sandbox mode, Landlock ABI, and process-boundary record state what the
+host actually enforced. This document specifies the permission resolution and
+those enforcement mechanisms.
 
 The implementations are `crates/core/src/sandbox.rs` and
 `crates/core/src/process_boundary.rs`. The executable runner in
@@ -17,19 +22,24 @@ The implementations are `crates/core/src/sandbox.rs` and
 
 ## What is compiled
 
-A policy is the list of what one process may reach. The policy of an episode
-is derived from its configuration, log directory, and runtime-owned cgroup
-paths. The cgroup paths are launch metadata and are not program grants.
+A policy is the resolved permission set for one process. An episode policy is
+derived from its execution contract, log directory, and runtime-owned cgroup
+paths. The cgroup paths are launch metadata rather than configured grants.
+
+During execution-contract construction, Foe captures each configured
+executable's bytes, digest, source path, and invocation name. Every later
+invocation uses the captured executable. Replacing, modifying, or deleting the
+source cannot change the run.
 
 | source | access granted |
 |---|---|
 | each `grants.read` directory | read files, list directories |
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
-| each `grants.execute` file or directory in the program and its reachable descendants | read and execute the file or every file below the directory, including from a tool subprocess |
-| each selected configured tool and executable model transport in the program and its reachable descendants | execute and read the retained executable image |
-| the running `foe` binary, when a child program is reachable | execute and read that file, so the episode can start children |
+| each `grants.execute` file or directory in the contract and its reachable descendants | read and execute the file or every file below the directory, including from a tool subprocess |
+| each selected configured tool and executable model transport in the contract and its reachable descendants | execute and read the captured executable |
+| the running `foe` binary, when a child contract is reachable | execute and read that file, so the episode can start children |
 | the shell or Python interpreter required by a selected built-in tool | execute and read that exact file |
-| an executable image's absolute shebang interpreter or ELF dynamic loader | execute and read that exact file |
+| a captured executable's absolute shebang interpreter or ELF dynamic loader | execute and read that exact file |
 | each credential file resolved by a reachable `model` block | read that file before confinement and reserve it for a descendant that inherits this domain |
 | the episode's own log directory | read and write |
 | the library directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib` | read |
@@ -42,30 +52,31 @@ paths. The cgroup paths are launch metadata and are not program grants.
 | each `grants.bind` port | bind TCP on that port, in the episode and in every process it starts |
 | TCP | bind: listed ports only; connect: all ports or none |
 
-The runtime reads each selected configured image and each exact executable
-file before confinement. An ELF image names its dynamic loader in a
-`PT_INTERP` program header. A script names its interpreter in the first line.
-The policy grants execute access to that exact loader or interpreter. Library
-directories remain readable because the loader searches them for shared
-objects. They carry no execute access.
+The runtime reads each selected configured executable and each exact support
+executable before confinement. An ELF executable names its dynamic loader in
+a `PT_INTERP` program header. A script names its interpreter in the first
+line. The policy grants execute access to that exact loader or interpreter.
+Library directories remain readable because the loader searches them for
+shared objects. They carry no execute permission.
 
-An execute grant on a directory permits executable files below that directory.
-The runtime does not enumerate a mutable directory to infer support files. A
-script below such a directory must also receive its interpreter through an
-exact execute grant, a selected configured image, or a selected built-in tool.
+An execute grant on a directory permits executable files below that
+directory. The runtime does not enumerate a mutable directory to infer
+support files. A script below such a directory must receive its interpreter
+through an exact execute grant, a selected configured executable, or a
+selected built-in tool.
 
 A shebang must name an absolute interpreter directly. A shebang that names
 `/usr/bin/env` is rejected because `env` selects another executable through a
-path search. The error asks the program author to name that interpreter in the
-shebang. This rule keeps the executable surface derivable before the episode
-starts.
+path search. The error asks the contract author to name that interpreter in
+the shebang. This rule keeps the executable surface derivable before the
+episode starts.
 
-Configured tools and executable model transports run from retained copies of
-the bytes used for program identity. The runtime stores each copy in a private
-directory outside every declared write root and keeps its file descriptor
-open. Replacing or deleting the configured source path cannot change the
-executable bytes. The sandbox rule names the retained inode. The account names
-the source path and content digest so a reader can identify those bytes.
+Configured tools and executable model transports run from the captured bytes.
+The runtime stores each copy outside every declared write root and keeps its
+file descriptor open. Replacing or deleting the configured source path cannot
+change the bytes that run. A permission record names the construction-time
+source path and content digest so a reader can identify the captured bytes.
+
 A file under a read root is readable and is never executable through that
 grant alone. A project script runs when a `tool_defs` entry names the file or
 when an explicit execute grant covers it.
@@ -119,15 +130,17 @@ ruleset and receives a further one, so an executable or child can reach
 less than the episode and never more. The kernel allows sixteen nested
 rulesets; an episode tree of depth sixteen is the practical limit.
 
-Because a ruleset only narrows, an episode reserves what the reachable
-programs below it need before it restricts itself. A child's read, write, and
-execute roots lie inside its parent's corresponding roots. Its bind ports lie
-among its parent's bind ports. Configuration resolution checks that
-containment. The ancestor also reserves configured executable images,
-executable model transports, built-in interpreters, and outbound TCP required
-by reachable descendants. A declaration is reachable through a
-`grants.spawn` entry or a workflow model node. Each descendant applies a
-narrower policy for its own reachable subtree.
+Because a ruleset only narrows, an episode reserves the permissions required
+by the reachable contracts below it before it restricts itself. A child's
+read, write, and execute roots lie inside its parent's corresponding roots.
+Its bind ports lie among its parent's bind ports. Contract resolution checks
+that containment.
+
+The ancestor also reserves captured configured executables, executable model
+transports, built-in interpreters, and outbound TCP required by reachable
+descendants. A declaration is reachable through a `grants.spawn` entry or a
+workflow model node. Each descendant applies a narrower policy for its own
+reachable subtree.
 
 ## The episode process
 
@@ -160,14 +173,14 @@ and no type expresses.
 The episode keeps:
 
 - read on its read roots, write on its write roots;
-- execute on every explicit execute grant in its reachable program tree;
-- execute on every selected configured executable image and required exact
+- execute on every explicit execute grant in its reachable contract tree;
+- execute on every selected captured executable and required exact
   interpreter in that tree;
-- execute on its own binary when a child program is reachable;
+- execute on its own binary when a child contract is reachable;
 - read on the credential files resolved by its reachable model transports;
 - read and write on its own log directory, which holds its children's
   directories and its spill files;
-- read on the library, system, and device paths;
+- the loader, system, and device paths;
 - outbound TCP when the episode calls a model transport or a reachable
   configured tool declares `network: true`;
 - inbound TCP on the ports `grants.bind` lists and, when the episode serves
@@ -177,32 +190,28 @@ The episode keeps:
 
 ## Process ownership
 
-On a host with a delegated cgroup v2 hierarchy, one foe invocation owns two
+On a host with a delegated cgroup v2 hierarchy, one Foe invocation owns two
 boundaries. The episode boundary contains the root episode and every child
 episode. The task boundary contains only sessions that hold the
-`task_session` grant and request task lifetime.
+`task_session` permission and request task lifetime.
 
 Each episode runs in a process leaf below its episode boundary. A parent
 creates a nested boundary for each child. The child enters its process leaf
-through a runtime-owned wrapper before the child runtime executes. A child
-can create further boundaries below its own boundary without placing a
-process in an internal cgroup.
+through a runtime-owned wrapper before the child runtime executes.
 
 A task-lifetime session enters the invocation's task boundary before its
 command executes. It never enters the child episode boundary. Child
-settlement can therefore empty and remove the child boundary while the task
-session continues under the task environment's ownership.
+settlement can therefore remove the child boundary while the task session
+continues under the task environment's ownership.
 
-The parent reads a child's log stream while it waits for the direct child
-process. When that process exits, the parent writes `1` to the child's
-`cgroup.kill`. The kernel kills every descendant even when a descendant
-forked concurrently or created another process group or session. The parent
-waits for recursive `populated 0`, removes the boundary, and then publishes
-the child's settlement. `spawn/end`, `budget/release`, capacity return, and
-waiter notification therefore occur after subtree cleanup.
+When a direct child exits, the parent writes `1` to the child's
+`cgroup.kill`. The kernel kills every descendant, including processes that
+created another process group or session. The parent waits for recursive
+`populated 0`, removes the boundary, and publishes the child's settlement.
 
-The boundary path is runtime launch metadata in the child's `lineage.json`.
-It does not participate in program identity and never appears in a model
+The boundary path is runtime launch metadata in the child's
+`child-launch.json`.
+It does not participate in the contract fingerprint or enter a model
 request. The log records the selected mechanism without recording the host
 path.
 
@@ -212,29 +221,29 @@ subtree cleanup because a descendant can create a new group or session.
 
 ## Executables
 
-A configured executable runs under the episode's ruleset narrowed once more.
-The narrowed policy keeps the read roots, write roots, explicit execute
-grants, library paths, system paths, and device paths. It also keeps execute
-access to its retained image and required exact interpreter. The log
-directory, credential file, and other configured executables are omitted. It
-keeps the episode's bind ports, so a server started by a shell or held by a
-session listens on a granted port. It keeps outbound TCP when the tool
-definition sets `network: true`.
+A configured executable runs under the episode's ruleset narrowed once
+more. The narrowed policy keeps the read roots, write roots, explicit execute
+grants, library paths, system paths, and device paths. It also keeps execute on
+the captured inode and its exact interpreter. It drops the log directory, key
+file, and execute access to other configured tools. It keeps the episode's
+bind ports. A server started by a shell or held by a session can listen on a
+granted port. Outbound TCP remains available when the tool definition sets
+`network: true`.
 
-Construction reads the source file once and retains those exact bytes. It
-writes a private image under a runtime directory outside every declared write
-root. Images with the same digest and configured basename share one held
-inode. Construction tries the parent of the episode log directory, `/tmp`, and
+Foe stores the captured bytes in a private file under a runtime directory
+outside every declared write root. Captured executables with the same digest
+and invocation name share one
+held inode. Construction tries the parent of the episode log directory, `/tmp`, and
 `/var/tmp`, in that order. Each attempt combines directory creation with the
 filesystem checks for that directory. A filesystem mounted with `noexec` is
 skipped. Construction fails when no writable, executable location can be
 separated from the declared write roots.
 
-The image has no write bits, and the runtime retains a read-only descriptor
+The captured executable has no write bits, and the runtime retains a read-only descriptor
 for its inode. Construction checks its mode, mount flags, and stored bytes.
 Child-episode initialization repeats the mode and byte checks before accepting
 an inherited descriptor. Invocation maps the descriptor to a collision-free
-child descriptor and executes it through `/proc/self/fd`. The stored image and
+child descriptor and executes it through `/proc/self/fd`. The stored file and
 argument zero use the basename from the configured absolute path. This
 preserves dispatch by BusyBox, coreutils, and other multicall executables. The
 source pathname is never reopened.
@@ -242,20 +251,21 @@ source pathname is never reopened.
 The episode process receives internal read and write access to the storage
 parent so it can remove the private directory after confinement. Tool and
 session policies omit this access. A configured write root that contains the
-episode log therefore does not expose an image stored at a separate location.
+episode log therefore does not expose a captured executable stored elsewhere.
 
 A script receives its descriptor path as `$0`. A script that needs adjacent
 resources uses its declared working directory or an absolute configured path.
 
-Private executable images exist for the lifetime of their runtime owners.
+Captured executables exist for the lifetime of their runtime owners.
 The last owner removes the private directory. Task-lifetime sessions use the
-session launcher and do not retain a configured tool or transport image.
+session launcher and do not retain a configured tool or transport executable.
 
-A parent passes executable images for the selected child's full declared
-program tree. The sealed manifest associates every configuration key with an
-image digest and configured basename. Repeated references to one image share
-one descriptor. The child reads each descriptor once and constructs identity
-from those retained bytes. Its sandbox grants execute access only to images
+A parent passes captured executables for the selected child's full declared
+contract tree. The sealed manifest associates every configuration key with an
+executable digest and invocation name. Repeated references to one captured
+executable share one descriptor. The child reads each descriptor once and
+constructs its contract fingerprint from those retained bytes. Its sandbox
+grants execute access only to captured executables
 reachable through spawn grants and workflow nodes. Descriptor remapping
 preserves standard input, standard output, standard error, and every source
 descriptor when source and target numbers overlap.
@@ -292,10 +302,10 @@ narrowing, because the child applies its own policy to itself at startup.
 Two independent rules keep that policy inside the parent's policy.
 
 Resolving the configuration checks containment before any process starts:
-each child program's read, write, and execute roots must lie within its
-parent program's corresponding roots, and its bind ports among its parent's.
+each child contract's read, write, and execute roots must lie within its
+parent contract's corresponding roots, and its bind ports among its parent's.
 The rule applies at every level of
-`programs`. A document that fails the check is refused with the dotted key of
+`child_contracts`. A document that fails the check is refused with the dotted key of
 the offending root, and no episode begins.
 
 The kernel enforces the same containment whatever the document says. The
@@ -304,24 +314,27 @@ Landlock domain passes to every thread and process created afterwards, so
 the child inherits the parent's domain before it executes. The child's own
 ruleset nests inside that one, and the child's reach is the intersection.
 
-## Effective access report
+## Resolved permissions and enforcement
 
-`foe plan` reports one effective sandbox envelope for the root and each
-reachable descendant program. Each read, write, or execute path includes the
-reason it is present. A retained configured image includes its content digest.
-The report also names bind ports and every reason outbound TCP is reserved.
-For a configured executable, the path is its construction-time source. The
-digest identifies the retained image that the sandbox authorizes without
-reopening that source.
-For a sandbox mode other than `off`, the plan includes the exact cgroup entry
-shell with a conditional reason. The host decides whether cgroup delegation
-is available when an episode starts.
+`foe plan` reports the resolved permissions for the root and each reachable
+descendant contract. Every read, write, or execute path includes its reason.
+A captured executable includes its content digest. The report also names bind
+ports and every reason outbound TCP remains available.
 
-`episode/start.sandbox.effective_access` records the policy compiled for that
-episode. This record includes runtime paths that a configuration-only plan
-cannot name, such as the episode log directory and delegated cgroup paths. The
-sandbox mode and ABI state which parts the host kernel enforced. Logs that
-predate the field omit it.
+For a captured executable, the path is its construction-time source. The
+digest identifies the captured bytes without reopening that source. For a
+sandbox mode other than `off`, the plan includes the exact cgroup entry shell
+with a conditional reason. The host decides whether cgroup delegation is
+available when an episode starts.
+
+`episode/start.sandbox.resolved_permissions` records the permission set
+compiled for that episode. It includes runtime paths unavailable to a
+configuration-only plan, such as the episode log directory and delegated
+cgroup paths.
+
+The resolved permission set states what the runtime attempted to permit.
+`sandbox.mode`, `landlock_abi`, and `process_boundary` state what the host
+enforced.
 
 ## Modes
 
@@ -338,16 +351,13 @@ list is a function of the number, given in the table above. A reader of the
 log who sees `landlock_abi: 4` knows that the filesystem and TCP were
 enforced and that signals and audit logging were not.
 
-`required` retains its Landlock guarantee. Process ownership has a separate
-recorded guarantee because the program contract has no key that requires
-cgroup delegation. Treating `required` as a cgroup requirement would reject
-existing programs on hosts that enforce their declared filesystem and
-network permissions but do not delegate cgroups.
+`required` requires Landlock. Process ownership has a separate recorded
+guarantee because the execution contract has no key that requires cgroup
+delegation.
 
 `episode/start.sandbox.process_boundary` records `cgroup-v2` with enforced
 subtree cleanup or `process-group` with observational cleanup. The optional
-reason explains why cgroup ownership was unavailable. An absent field means
-the log predates process-boundary reporting and makes no cleanup claim.
+reason explains why cgroup ownership was unavailable.
 
 ## Denied accesses
 
@@ -366,7 +376,7 @@ denials to the restricting process without privilege and without a daemon.
 - The host process. The process that launched `foe` holds the model
   credentials and the host tools, and the runtime never restricts it.
 - Another process running as the same operating-system user. Such a process
-  can alter files owned by that user, including private executable images.
+  can alter files owned by that user, including captured executable files.
   Processes that run with the same user identity are inside the host trust
   boundary.
 - The network of the episode process when it holds the transport. An
@@ -375,6 +385,5 @@ denials to the restricting process without privilege and without a daemon.
   for that process and for nothing it starts without `network: true`.
 - Anything on a kernel below the tier that enforces it, as listed in the
   table. A log records the tier, so a reader knows what held.
-- Resource quantities. The cgroup hierarchy owns and cleans process
-  subtrees, but foe sets no memory, processor, process-count, or I/O
-  controller limits. The budget has no fields for those quantities.
+- Resources other than files, TCP, signals, and abstract sockets. Memory,
+  processor time, and process count are bounded by the budget alone.

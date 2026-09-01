@@ -23,14 +23,14 @@ Harness-Bench is an external diagnostic fixture source. Its results do not
 support comparisons with other harnesses.
 
 A separate target runs two confirmation tasks that remain outside the
-self-improvement workflow's authority. The tasks cover flaky-test diagnosis
+self-improvement workflow's permissions. The tasks cover flaky-test diagnosis
 and offline answers that must identify insufficient evidence. A candidate is
 one source commit paired with one comparison configuration. Run the
 confirmation target only after freezing both. The adapter creates an isolated
 Python environment with `pytest` for the flaky-test task. Both the model-visible
 test tool and the unchanged grader use that environment. The test wrapper
-resolves the Python executable relative to its own location, so its Foe program
-identity remains stable across retained attempt directories.
+resolves the Python executable relative to its own location, so its Foe contract
+fingerprint remains stable across retained attempt directories.
 
 ## Review the maximum spend
 
@@ -71,10 +71,10 @@ bazel run //evals/harness_bench:foe-development -- \
   --confirm-spend
 ```
 
-Each attempt retains its workspace, Foe program, complete episode tree,
+Each attempt retains its workspace, Foe contract, complete episode tree,
 negative-control grade, final programmatic grade, usage, trace result, and
 process outcome. Grading runs after Foe exits. The grader source remains
-outside Foe's read and write authority.
+outside Foe's read and write permissions.
 
 The development and confirmation reports identify the evaluated Foe source
 with the Git tree object of a clean checkout. They identify the executable
@@ -125,9 +125,9 @@ bytes. This bound keeps the model input focused on assessed failures and
 resource use.
 
 The micro and Harness-Bench reports must name the same source tree and runtime
-binary. The collector rejects a missing identity or a disagreement and carries
-the common identity into the evidence file. A prior self-improvement result
-supplied with `--optimization-result` must carry the same identity.
+binary fingerprint. The collector rejects a missing value or mismatch and
+carries the evaluated pair into the evidence file. A prior self-improvement
+result supplied with `--optimization-result` must carry the same pair.
 
 Create a clean sibling worktree before launching self-improvement:
 

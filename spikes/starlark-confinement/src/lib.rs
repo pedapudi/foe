@@ -106,7 +106,7 @@ pub enum EvalFailure {
         limit: u64,
         usage: Usage,
     },
-    /// The program called `fail(message)`.
+    /// The contract called `fail(message)`.
     Fail {
         message: String,
         usage: Usage,
@@ -225,7 +225,7 @@ fn classify(message: String, limits: &Limits, usage: Usage) -> EvalFailure {
 /// zero-argument `main` with dispatch enabled, under every bound in
 /// `limits`. `cancel` may be set from another thread at any time;
 /// evaluation then stops at the next forward-progress check.
-pub fn run_program(
+pub fn run_contract(
     source: &str,
     limits: &Limits,
     dispatcher: ToolDispatcher,
@@ -234,7 +234,7 @@ pub fn run_program(
     if source.len() > limits.source_bytes {
         return Err(EvalFailure::SourceTooLarge { bytes: source.len(), limit: limits.source_bytes });
     }
-    let ast = AstModule::parse("program.star", source.to_owned(), &confined_dialect())
+    let ast = AstModule::parse("contract.star", source.to_owned(), &confined_dialect())
         .map_err(|e| EvalFailure::Parse { message: e.to_string() })?;
     let globals = confined_globals();
     let host = ToolHost {

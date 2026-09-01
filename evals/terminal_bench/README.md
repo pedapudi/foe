@@ -22,14 +22,14 @@ task image, uploads a statically linked Foe binary, runs one Foe episode, and
 executes the task-owned verifier. Harbor documents the custom interface in its
 [agent integration guide](https://harborframework.com/docs/agents).
 
-The installed-agent program sets `sandbox.mode` to `off`. The Harbor Docker
+The installed-agent contract sets `sandbox.mode` to `off`. The Harbor Docker
 container is the isolation boundary for the task. Disabling Landlock inside
 the container removes host-kernel compatibility from the quality measurement.
 The recorded episode must report sandbox mode `off` and no observed Landlock
 ABI. A different sandbox record invalidates the trial as infrastructure data.
 
 The self-improvement runner executes candidate changes on the host. Its
-program retains `sandbox.mode: best-effort` because the Docker isolation
+contract retains `sandbox.mode: best-effort` because the Docker isolation
 boundary does not cover that process.
 
 ## Prerequisites
@@ -60,7 +60,7 @@ private copy stays outside Harbor job directories and Foe episode directories.
 A parallel pair receives two private access-only credentials. Each file
 contains the access token and expiry. The account identifier is included when
 present. Each file omits the rotating refresh token. Its file mode prevents an
-accidental write. The task identity may own the file and can change its mode,
+accidental write. The task's operating-system user may own the file and change its mode,
 so the mode does not provide an integrity boundary. Foe fails locally if the
 credential reaches its sixty-second refresh margin. The adapter uses a
 distinct remote path for each credential. It compares the bytes after the
@@ -108,7 +108,7 @@ The target makes no provider request. It writes a typed report under
 `target/terminal-bench-capability-probes/`.
 
 The report describes the benchmark image as supplied. Do not install optional
-utilities to make the report pass. The coding program receives the observed
+utilities to make the report pass. The coding contract receives the observed
 working directory and fixed-path executable availability. A missing optional
 utility therefore changes tool selection without invalidating the benchmark.
 An installation failure or a missing task-required capability is an
@@ -116,7 +116,7 @@ infrastructure failure and must not contribute a quality score.
 
 Every installed-agent preflight runs `foe plan --schema`. This command checks
 the installed binary without reading a default model or provider credential.
-The later task program names its model and credential file explicitly.
+The later task contract names its model and credential file explicitly.
 
 ## Validate verifier-governed completion without model spend
 
@@ -183,7 +183,7 @@ credential-free prerequisite installer before any model request. Every target
 uses the default service tier and low reasoning. The task registry supplies a
 60-call loop backstop.
 
-The configured executable's bytes participate in Foe's program identity. The
+The configured executable's bytes participate in Foe's contract fingerprint. The
 adapter also downloads the checker after the episode and compares its digest
 with the source digest. A changed checker invalidates the trial as
 infrastructure evidence.
@@ -315,7 +315,7 @@ default is a twenty-call hard backstop with a four-request planning target.
 Each stage receives the task's full time backstop. An early typed return
 releases the remaining work immediately. The runner prices each child from
 the model route recorded in its episode log. Omitting
-`--diagnosis-model` preserves the single-episode coding program.
+`--diagnosis-model` preserves the single-episode coding contract.
 
 A cheap diagnosis can conditionally request deeper reasoning from the primary
 model before implementation:
@@ -450,7 +450,7 @@ bazel run //evals/terminal_bench:foe-trajectory-corpus -- snapshot \
 The corpus stores retained files as immutable SHA-256-addressed objects. Its
 canonical manifest uses relative logical paths and contains no source-run
 absolute paths. Repeated snapshots reuse identical objects. Snapshotting
-refuses protected task groups, identity mismatches, reported credential
+refuses protected task groups, source or runtime fingerprint mismatches, reported credential
 exposure, and trajectories produced by a different runtime binary. Keep the
 corpus under an ignored local directory. Git retains its implementation and
 reviewed aggregate results rather than raw runs.
@@ -469,8 +469,9 @@ tasks from `cases.json`. Confirmation, calibration, and calibration-holdout
 evidence remains unavailable to self-improvement.
 
 The self-improvement workflow derives this digest from the corpus through its
-declared `collect-trajectory-diagnostics` tool node. The tool identity includes
-the collector source, imported modules, `cases.json`, and the corpus manifest.
+declared `collect-trajectory-diagnostics` tool node. The tool's captured
+executable digest reflects the collector source, imported modules, `cases.json`,
+and the corpus manifest.
 The runner derives the same report before model spend and requires the
 workflow result to match it byte for byte.
 
@@ -509,7 +510,7 @@ trajectories isolate an activated source mechanism. It chooses
 `configure-workflow` when an independent audit stage supplies a repeated
 quality gain. It chooses `revise-instructions` when the repeated causal
 difference is procedural guidance that one instruction section of the
-retained program document can carry. It chooses `define-tool` when one
+retained contract document can carry. It chooses `define-tool` when one
 missing executable tool explains the gap. It chooses `insufficient-evidence`
 when the contrast identifies only model capability or requires semantic task
 knowledge absent from the log. That choice ends the workflow before a coding
@@ -532,7 +533,7 @@ setting must appear in at least two successful attempts in the supplied
 evidence.
 
 When the diagnosis chooses `revise-instructions`, the runner validates the
-typed revision against the retained `program.json`: the named section key
+typed revision against the retained `contract.json`: the named section key
 resolves to exactly one instruction section, and the old text occurs exactly
 once in it. It writes `instruction-candidate.json` beside the retained
 result. The candidate carries the same source-tree, runtime-binary,
@@ -597,24 +598,21 @@ digest. A workflow candidate records the independent-audit setting and
 preserved controls. `direct_implementation_required` is true when deterministic
 validation finds an error or the workflow produces no candidate.
 
-The runner records every accepted candidate as a lineage transition under
-the retained run directory's `lineage/` tree. It writes the evidence
-bundle — the episode tree, the adoption's state document as the child
-identity document, and an artifact manifest over the retained candidate
-files — and completes the bundle through the lineage crate's
-`build-bundle` binary, invoked with the pinned toolchain, which writes the
-adoption record and canonical manifest and prints the bundle's content
-address. The record cites the accepted diagnosis-validator result for a
-workflow, instruction, or tool candidate, and the accepted candidate-check
-result for a source candidate. The parent state is the evaluated
-program's identity document, retained from the resolved plan. The parent
-and child state documents land in `lineage/states/` and the bundle in
-`lineage/evidence/`, the layout the checker's resolvers read. The result's
-`adoption` member records the addresses, identities, and verification
-coordinates.
-[`docs/lineage-identity.md`](../../docs/lineage-identity.md) "Harness
-adoptions" states the one state-document rule: every adoption materializes
-the program document that will run under it.
+The runner records every accepted candidate as a portable adoption bundle
+under `adoption/bundles/` in the retained run directory. The bundle contains
+the proposal episode tree, the candidate fingerprint document, an artifact
+manifest over the retained candidate files, and the accepted verifier result.
+The adoption record may also name the evaluated contract fingerprint as the
+candidate's intended predecessor.
+
+The `foe-adoption` builder writes the canonical manifest and adoption record.
+Its standalone verifier then checks the completed bundle without executing
+the candidate or opening any external file. The runner accepts the bundle
+only when the verifier fingerprint appears in its external adoption policy.
+The result's `adoption` member records the bundle address, directory, contract
+fingerprint, optional predecessor fingerprint, verifier fingerprint, and
+verification coordinates. [`docs/adoption.md`](../../docs/adoption.md)
+specifies the portable format and verification rules.
 
 Apply a retained workflow candidate to any permitted task set with:
 
@@ -627,7 +625,7 @@ bazel run //evals/terminal_bench:foe-development -- \
 
 The requested model, primary reasoning effort, service tier, and token policy
 must match the candidate. The current Foe source tree and binary must also
-match its recorded identity.
+match its recorded fingerprints.
 
 Capability conversion still requires a separate benchmark rerun. Candidate
 promotion remains outside the workflow. The workflow mechanism and evidence
@@ -656,14 +654,14 @@ manifest. A task whose Harbor process started retains that status even when its
 result is incomplete. Tasks whose processes did not start receive an explicit
 `not_started` record. The runner exits unsuccessfully.
 
-The adapter runs `foe plan` against the task-specific program inside the task
-container before its first provider request. An invalid program is a setup
+The adapter runs `foe plan` against the task-specific contract inside the task
+container before its first provider request. An invalid contract is a setup
 error with zero model spend. It is excluded from task accuracy and must be
 replaced before a repeated result is complete.
 
 The Harbor trial's `agent/foe-episode/` directory is the complete native Foe
 episode tree. It contains `episode.jsonl`, child episodes, spill values, and
-renderings. The neighboring files include the generated Foe program, Foe
+renderings. The neighboring files include the generated Foe contract, Foe
 standard output, Foe standard error, the typed process exit status, and the
 runtime conformance report. The adapter sums provider-reported input, output,
 and cache-read tokens into the Harbor agent context. It also records Foe's
@@ -685,7 +683,7 @@ A trajectory corpus is also local evidence. Keep it under an ignored
 directory with enough space for complete episode spill values and verifier
 artifacts. The `verify` subcommand checks canonical encoding, every object
 address, and every recorded byte count. The `inspect` subcommand reports the
-corpus identity, tasks, runs, file count, object count, and storage size
+corpus manifest digest, tasks, runs, file count, object count, and storage size
 without materializing a run directory:
 
 ```sh

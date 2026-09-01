@@ -1,12 +1,12 @@
 # Team demo
 
-A lead program with two child programs that talk to each other. The runner
+A lead contract with two child contracts that talk to each other. The runner
 creates a small Python project, runs the episode against a scripted model
 transport, and checks the lead's log, both member logs, and the changed
 file.
 
 A team is the set of episodes spawned by one episode, the lead. The lead
-lists `spawn` and `team`; `grants.spawn` names the two programs it may
+lists `spawn` and `team`; `grants.spawn` names the two child contracts it may
 start, `reviewer` and `tester`. Each member lists `send`, to message a
 teammate by roster name, and `notify`, to report to the lead. Every child an
 episode spawns is a member of that episode's team, so no further declaration
@@ -17,15 +17,15 @@ members, who report back while the lead waits.
 
 Linux, and `/usr/bin/python3` for the transport script, the project's own
 checks, and the runner's checks. The demo needs no model credential and
-makes no provider request: `model.provider` is `exec`, and the program it
+makes no provider request: `model.provider` is `exec`, and the contract it
 names answers every request with fixed chunks. The lead and both members run
-that program, one process per request.
+that contract, one process per request.
 
-The program is `transport.py` in this directory. The runner copies it to
+The contract is `transport.py` in this directory. The runner copies it to
 `tools/transport.py` inside the project it creates, together with the helper
 module it imports from `examples/support`, and the configuration names the
 copy. The copy is what makes the demo runnable: a model transport is a
-program the episode starts, and such a program reads only inside the
+contract the episode starts, and such a contract reads only inside the
 episode's read roots, so a script left in this directory could not read its
 helper module. Each member is granted the same read root as the lead, so the
 one copy serves all three episodes.
@@ -84,7 +84,7 @@ events, so the lead can see who is still active without any other state.
 ```
 
 The description is the task the member was spawned with. A member's roster
-name is the `name` the `spawn` call gives, and the program name when it gives
+name is the `name` the `spawn` call gives, and the contract name when it gives
 none, which is how the reviewer addresses `send` to `tester`.
 
 ## The mailbox fold
@@ -118,7 +118,7 @@ outcome. That is how both reports and both endings reach the lead.
 ## What to look for
 
 The lead's log holds two `spawn/start` events and two `budget/reserve`
-events, each taking the 12 calls the member program declares. It holds a
+events, each taking the 12 calls the member contract declares. It holds a
 `team/roster` event for each phase change of each member, and a
 `team/message` and `team/delivered` pair for each of the two `send` calls.
 It ends with four `inbox/item` events with source `child`, and a `spawn/end`

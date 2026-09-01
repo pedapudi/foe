@@ -73,7 +73,7 @@ def failed_outcome(request: dict[str, Any]) -> None:
     )
 
 
-def authority(request: dict[str, Any]) -> None:
+def permissions(request: dict[str, Any]) -> None:
     request_id = request["request_id"]
     messages = request["messages"]
     if not any(message.get("role") == "tool" for message in messages):
@@ -133,7 +133,7 @@ def sandbox(request: dict[str, Any]) -> None:
         call(request_id, "denied-read", "cat", {"args": [request["options"]["denied_file"]]})
         done(request_id, "tool")
         return
-    emit(request_id, {"kind": "text", "delta": "The authority probe completed."})
+    emit(request_id, {"kind": "text", "delta": "The permissions probe completed."})
     done(request_id, "end")
 
 
@@ -145,7 +145,7 @@ def main() -> None:
         "eval-blocked-outcome": blocked_outcome,
         "eval-exhausted-outcome": exhausted_outcome,
         "eval-failed-outcome": failed_outcome,
-        "eval-authority": authority,
+        "eval-permissions": permissions,
         "eval-workflow": workflow,
         "eval-compaction": compaction,
         "eval-sandbox": sandbox,

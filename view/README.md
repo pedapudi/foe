@@ -53,7 +53,7 @@ pnpm fixtures       # regenerates fixtures/*.jsonl from fixtures/generate.mjs
 `viewer.css` contains `</style`, because the host page inlines each file
 into the matching element.
 
-The tests cover the derived-messages rule, the episode fold, the lineage
+The tests cover the derived-messages rule, the episode fold, the episode tree,
 helpers and the per-row measure, the trajectory layout, the causal model,
 the four depths it is read at and its layout, the workflow graph
 and its layout, the statistics, the pane sizes, the appearance catalogue,
@@ -79,7 +79,7 @@ The fixtures are twelve episode logs.
 
 Seven of the twelve are literal in `generate.mjs`. The four workflow logs
 are written by the runtime. `workflowRun` assembles a configuration, a
-scripted model program, and a scripted verification program in a temporary
+scripted model contract, and a scripted verification contract in a temporary
 directory, runs `target/release/foe` over them, and copies the logs here
 with that directory's path replaced by `/home/user/project` and
 `/home/user/tools`. Everything else in those four files is the bytes the
@@ -224,11 +224,11 @@ stores only the sizes a grip has set.
 The **episodes** region draws the tree as a line-art figure. A spawned
 child hangs under its `parent_id` with a solid edge; a fork hangs under its
 `fork_origin` with a dashed edge. Each row shows a dot coloured by outcome,
-the program name, the episode id, and a second line reading the outcome
+the contract name, the episode id, and a second line reading the outcome
 word with a `blocked` code or an `exhausted` limit.
 
 The **details** region shows the selected episode's model calls and tokens
-consumed against the budget declared in `episode/start.program.budget`, the
+consumed against the budget declared in `episode/start.contract.budget`, the
 Landlock ABI, the fork origin, parent, team, timing, and task. Its text
 wraps and the region scrolls as a whole.
 
@@ -263,7 +263,7 @@ tool call is a short tick off that row with its mark at the end, and no
 return edge is drawn: the lane continuing past the tick is the return.
 `spawn` is not special-cased; it is simply the call whose tick opens a
 lane. A workflow node the run entered twice is one row and a loop edge
-back up to it, not two rows.
+back up to it rather than two rows.
 
 A lane holds the lowest free column while it is open and releases it when
 it closes, so column is occupancy rather than tree depth; tree depth is
@@ -271,7 +271,7 @@ carried by the label's indent instead. The layout claims no room past its
 own marks and holds no opinion about what stands beside them: it reports
 the width its strokes take and gives each row an indent, and the caller
 places the text column. Lane colour is cycled over five
-tones mixed from the theme's own tokens and carries branch identity alone.
+tones mixed from the theme's own tokens and distinguishes branches alone.
 Hue carries the outcome, and carries it only on the marks: a ring in
 `--v2-good`, `--v2-caution` or `--v2-flat` at the foot of a lane that
 completed, exhausted its budget or was blocked, a cross in `--v2-bad` for
@@ -345,7 +345,7 @@ The main region has five tabs.
 - **workflow**: the graph the episode declares, drawn with the run over it.
   Every declared node, edge, and branch label is drawn whether or not the
   run reached it; what fired is solid, accented, and coloured by outcome
-  direction. Present only for an episode whose program declares a graph.
+  direction. Present only for an episode whose contract declares a graph.
   `src/workflow.ts` reads the graph and places it and
   `src/render/workflow.ts` draws it.
 - **statistics**: nine figures over the selected episode, or over that
@@ -466,7 +466,7 @@ src/attribution.ts            where every request's input tokens came from
 src/source.ts                 static and live event sources
 src/fold.ts                   one episode log to rows, a summary, marks, and firings
 src/messages.ts               the derived-messages rule
-src/lineage.ts                the tree, the shared fork prefix, the per-row measure
+src/episode-tree.ts           the tree, the shared fork prefix, the per-row measure
 src/prompt.ts                 a system prompt read back into its sections
 src/marks.ts                  the six states a row or a figure's leaf draws
 src/render/conversation.ts    the dialogue rows

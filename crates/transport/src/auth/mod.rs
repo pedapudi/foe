@@ -23,7 +23,7 @@ pub trait Auth: Send + Sync {
     fn headers(&self) -> Result<Vec<(String, String)>, AuthError>;
 }
 
-/// A source that adds nothing, for programs that hold their own credentials.
+/// A source that adds nothing, for contracts that hold their own credentials.
 pub struct NoAuth;
 
 impl Auth for NoAuth {
@@ -69,7 +69,7 @@ pub enum AuthKind {
     TokenFile { account_header: Option<&'static str>, token_url: &'static str, client_id: &'static str },
     #[cfg(feature = "google")]
     Google,
-    /// The program holds its own credentials.
+    /// The contract holds its own credentials.
     None,
 }
 

@@ -18,14 +18,14 @@ _SPEC.loader.exec_module(collect_evidence)
 
 
 class CollectEvidenceTest(unittest.TestCase):
-    identity = {
+    evaluated = {
         "source_tree": "git-tree-sha1:" + "a" * 40,
         "runtime_binary": "sha256:" + "b" * 64,
     }
 
     def test_outcome_excludes_returned_artifact(self) -> None:
         outcome = {"kind": "completed", "value": {"large": "x" * 10_000}}
-        self.assertEqual(collect_evidence.outcome_identity(outcome), {"kind": "completed"})
+        self.assertEqual(collect_evidence.outcome_summary(outcome), {"kind": "completed"})
 
     def test_mechanism_excludes_budget_event_payloads(self) -> None:
         compact = collect_evidence.compact_mechanism(
@@ -56,13 +56,13 @@ class CollectEvidenceTest(unittest.TestCase):
             harness_path.write_text(json.dumps(harness), encoding="utf-8")
             return collect_evidence.collect(micro_path, harness_path)
 
-    def test_matching_report_identities_are_carried_into_evidence(self) -> None:
-        evidence = self.collect_reports(self.identity, self.identity)
-        self.assertEqual(evidence["evaluated_foe"], self.identity)
+    def test_matching_evaluated_builds_are_carried_into_evidence(self) -> None:
+        evidence = self.collect_reports(self.evaluated, self.evaluated)
+        self.assertEqual(evidence["evaluated_foe"], self.evaluated)
 
-    def test_missing_report_identity_is_rejected(self) -> None:
+    def test_missing_evaluated_build_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "micro evaluation report .* lacks evaluated_foe"):
-            self.collect_reports(None, self.identity)
+            self.collect_reports(None, self.evaluated)
 
     def test_source_and_binary_mismatches_are_rejected(self) -> None:
         for field, replacement in (
@@ -70,22 +70,22 @@ class CollectEvidenceTest(unittest.TestCase):
             ("runtime_binary", "sha256:" + "d" * 64),
         ):
             with self.subTest(field=field):
-                other = {**self.identity, field: replacement}
+                other = {**self.evaluated, field: replacement}
                 with self.assertRaisesRegex(ValueError, f"different {field}"):
-                    self.collect_reports(self.identity, other)
+                    self.collect_reports(self.evaluated, other)
 
-    def test_prior_self_improvement_identity_must_match(self) -> None:
+    def test_prior_self_improvement_build_must_match(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             micro = root / "micro.json"
             harness = root / "harness.json"
             result = root / "self-improvement.json"
             micro.write_text(
-                json.dumps({"results": [], "aggregate": {}, "evaluated_foe": self.identity}),
+                json.dumps({"results": [], "aggregate": {}, "evaluated_foe": self.evaluated}),
                 encoding="utf-8",
             )
             harness.write_text(
-                json.dumps({"attempts": [], "summary": {}, "evaluated_foe": self.identity}),
+                json.dumps({"attempts": [], "summary": {}, "evaluated_foe": self.evaluated}),
                 encoding="utf-8",
             )
             result.write_text(
@@ -93,7 +93,7 @@ class CollectEvidenceTest(unittest.TestCase):
                     {
                         "episode": str(root / "episode"),
                         "evaluated_foe": {
-                            **self.identity,
+                            **self.evaluated,
                             "runtime_binary": "sha256:" + "d" * 64,
                         },
                     }

@@ -83,7 +83,7 @@ fn cgroup_ownership_reports_its_launcher_and_control_paths() {
     let ownership = ProcessOwnership::enforced(ProcessBoundary { paths: paths.clone() }, None);
     let mut policy = Policy::default();
     ownership.authorize(&mut policy).unwrap();
-    let access = policy.effective_access();
+    let access = policy.resolved_permissions();
     assert!(access.execute.iter().any(|entry| {
         entry.path == std::fs::canonicalize(PROCESS_BOUNDARY_LAUNCHER).unwrap().to_string_lossy()
             && entry.reason == "cgroup process-boundary launcher"
@@ -96,7 +96,7 @@ fn cgroup_ownership_reports_its_launcher_and_control_paths() {
 /// parent placed it in before launch.
 #[test]
 fn inherited_metadata_cannot_move_a_process_to_another_boundary() {
-    let Ok((boundary, invocation)) = test_boundary("lineage-boundary") else {
+    let Ok((boundary, invocation)) = test_boundary("child-boundary") else {
         return;
     };
     let error = ProcessBoundary::enter(boundary.paths.clone()).err().unwrap().to_string();

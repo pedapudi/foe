@@ -22,7 +22,7 @@ import {
 } from "../src/causality.js";
 import type { CausalityEpisode, CausalityLayout } from "../src/causality.js";
 import { EpisodeFold } from "../src/fold.js";
-import { buildTree, flatten } from "../src/lineage.js";
+import { buildTree, flatten } from "../src/episode-tree.js";
 import type { Summary } from "../src/fold.js";
 import { fixture } from "./helpers.js";
 import { obj, str } from "../src/types.js";
@@ -559,8 +559,8 @@ test("a workflow node entered twice shows both passes, labelled", () => {
   assert.deepEqual(
     scope.segments.filter((s) => s.episodeId === "ep_c5785a1e").map((s) => [s.from, s.to]),
     [
-      [8, 13],
-      [19, 24],
+      [6, 13],
+      [17, 24],
     ],
   );
 });

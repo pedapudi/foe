@@ -14,7 +14,7 @@ CODING_INSTRUCTION = (
     "You are a coding agent working in the current directory, which is the root "
     "of every relative path. Make the requested change, then verify it by running "
     "the relevant build or tests before you finish. For a task that defines a "
-    "program interface, completion requires at least two materially different "
+    "contract interface, completion requires at least two materially different "
     "behavioral inputs, including one that stresses parsing, length, or state."
 )
 EVALUATION_LOOP_THRESHOLD = 8
@@ -98,7 +98,7 @@ def describe_container_environment(working_directory: str, probe_output: str) ->
     )
 
 
-def build_program(
+def build_contract(
     instruction: str,
     model_name: str,
     credential_path: str,
@@ -120,7 +120,7 @@ def build_program(
     escalation_reasoning_effort: str | None = None,
     escalation_model_calls: int = 0,
 ) -> dict[str, Any]:
-    """Build the recorded Foe program used for one Terminal-Bench trial."""
+    """Build the recorded Foe contract used for one Terminal-Bench trial."""
     if "/" not in model_name:
         raise ValueError("model must have the form provider/model")
     provider, model = model_name.split("/", 1)
@@ -168,8 +168,8 @@ def build_program(
         completion_contract.update(
             {"verify": "check", "retries": COMPLETION_CHECK_RETRIES}
         )
-    program = {
-        "version": 3,
+    contract = {
+        "version": 4,
         "name": "terminal-bench-coding",
         "instructions": {"environment": environment_facts, "role": CODING_INSTRUCTION},
         "tools": coding_tools,
@@ -187,13 +187,13 @@ def build_program(
         "task": instruction,
     }
     if completion_checker is not None:
-        program["done_when"] = completion_contract
+        contract["done_when"] = completion_contract
     if (
         diagnosis_model_name is None
         and unresolved_diagnosis_reasoning_effort is None
         and escalation_reasoning_effort is None
     ):
-        return program
+        return contract
     diagnosis_provider = diagnosis_model = None
     if diagnosis_model_name is not None:
         if "/" not in diagnosis_model_name:
@@ -248,7 +248,7 @@ def build_program(
         "required": ["facts", "implementation_steps", "verification_steps"],
         "additionalProperties": False,
     }
-    program["budget"].update(
+    contract["budget"].update(
         {
             "model_calls": (
                 model_calls
@@ -273,12 +273,12 @@ def build_program(
         "Implement the task using the typed diagnosis as advice. Confirm its claims against "
         "the repository. Make the requested change, run the strongest available verification "
         "after the final change, and leave files and services in the state the task requires. "
-        "For a program interface, exercise at least two materially different behavioral inputs, "
+        "For a contract interface, exercise at least two materially different behavioral inputs, "
         "including one that stresses parsing, length, or state."
         if diagnosis_model_name is not None
         else "Implement the task. Inspect the current workspace, make the requested change, run "
         "the strongest available verification after the final change, and leave files and "
-        "services in the state the task requires. For a program interface, exercise at least two "
+        "services in the state the task requires. For a contract interface, exercise at least two "
         "materially different behavioral inputs, including one that stresses parsing, length, "
         "or state."
     )
@@ -312,7 +312,7 @@ def build_program(
             "terminal": terminal,
         }
 
-    program["workflow"] = {
+    contract["workflow"] = {
         "nodes": {
             "implement-task": implementation_node(
                 (
@@ -327,8 +327,8 @@ def build_program(
         "recovery": {"enabled": False},
     }
     if unresolved_diagnosis_reasoning_effort is not None:
-        del program["workflow"]["nodes"]["implement-task"]
-        program["workflow"]["nodes"].update(
+        del contract["workflow"]["nodes"]["implement-task"]
+        contract["workflow"]["nodes"].update(
             {
                 "implement-resolved-task": implementation_node(
                     "implement-resolved-task",
@@ -343,7 +343,7 @@ def build_program(
             }
         )
     if diagnosis_model_name is not None:
-        program["workflow"]["nodes"]["diagnose-task"] = {
+        contract["workflow"]["nodes"]["diagnose-task"] = {
             "model": {
                 "name": "diagnose-coding-task",
                 "instructions": {
@@ -380,17 +380,17 @@ def build_program(
             "follows": ["task"],
         }
         if unresolved_diagnosis_reasoning_effort is not None:
-            program["workflow"]["nodes"]["diagnose-task"]["branches"] = {
+            contract["workflow"]["nodes"]["diagnose-task"]["branches"] = {
                 "implement": ["implement-resolved-task"],
                 "investigate-unresolved-facts": ["diagnose-unresolved-task"],
             }
-            program["workflow"]["nodes"]["diagnose-task"]["model"]["instructions"]["role"] += (
+            contract["workflow"]["nodes"]["diagnose-task"]["model"]["instructions"]["role"] += (
                 " Choose branch `implement` only when every fact required to implement and "
                 "verify the task is resolved by evidence. Choose branch "
                 "`investigate-unresolved-facts` when any implementation-critical fact remains "
                 "uncertain."
             )
-            program["workflow"]["nodes"]["diagnose-unresolved-task"] = {
+            contract["workflow"]["nodes"]["diagnose-unresolved-task"] = {
                 "model": {
                     "name": "diagnose-unresolved-task",
                     "instructions": {
@@ -429,7 +429,7 @@ def build_program(
                 "follows": ["task", "diagnose-task"],
             }
     if escalation_reasoning_effort is not None:
-        program["workflow"]["nodes"]["audit-and-repair-task"] = {
+        contract["workflow"]["nodes"]["audit-and-repair-task"] = {
             "model": {
                 "name": "audit-and-repair-task",
                 "instructions": {
@@ -438,7 +438,7 @@ def build_program(
                         "Independently determine whether the shared workspace satisfies the original task. "
                         "Treat the implementation episode's completion claim as unverified. Inspect the "
                         "artifacts and run checks that distinguish plausible incorrect implementations. "
-                        "For a program interface, test at least two materially different valid inputs. "
+                        "For a contract interface, test at least two materially different valid inputs. "
                         "Generate a second valid fixture when the workspace supplies only one. "
                         "Repair every defect you find. After the final edit, run the strongest available "
                         "task-relevant checks. Complete with the workspace in the state the task requires. "
@@ -466,7 +466,7 @@ def build_program(
             "follows": ["task", "implement-task"],
             "terminal": True,
         }
-    return program
+    return contract
 
 
 def estimate_usage_cost(
@@ -517,8 +517,8 @@ def read_episode_summary(
         route = None
         if starts:
             start_data = starts[0].get("data") if isinstance(starts[0].get("data"), dict) else {}
-            program = start_data.get("program") if isinstance(start_data.get("program"), dict) else {}
-            model = program.get("model") if isinstance(program.get("model"), dict) else {}
+            contract = start_data.get("contract") if isinstance(start_data.get("contract"), dict) else {}
+            model = contract.get("model") if isinstance(contract.get("model"), dict) else {}
             if isinstance(model.get("provider"), str) and isinstance(model.get("model"), str):
                 route = f"{model['provider']}/{model['model']}"
         for event in events:

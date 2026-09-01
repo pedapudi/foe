@@ -12,13 +12,13 @@ from harbor.agents.installed.base import BaseInstalledAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-from capability_probe_support import build_probe_program, evaluate_probe_episode
+from capability_probe_support import build_probe_contract, evaluate_probe_episode
 from foe_agent_support import schema_preflight_command
 
 
 REMOTE_BINARY = "/usr/local/bin/foe"
 REMOTE_TRANSPORT = "/tmp/foe-capability-transport.sh"
-REMOTE_PROGRAM = "/tmp/foe-capability-program.json"
+REMOTE_PROGRAM = "/tmp/foe-capability-contract.json"
 
 
 class CapabilityProbeAgent(BaseInstalledAgent):
@@ -69,17 +69,17 @@ class CapabilityProbeAgent(BaseInstalledAgent):
         del instruction, context
         pwd = await self.exec_as_agent(environment, command="/bin/pwd")
         working_directory = (pwd.stdout or "").strip()
-        program = build_probe_program(
+        contract = build_probe_contract(
             REMOTE_TRANSPORT,
             working_directory,
         )
         self.logs_dir.mkdir(parents=True, exist_ok=True)
-        local_program = self.logs_dir / "foe-program.json"
-        local_program.write_text(
-            json.dumps(program, indent=2, sort_keys=True) + "\n",
+        local_contract = self.logs_dir / "foe-contract.json"
+        local_contract.write_text(
+            json.dumps(contract, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        await environment.upload_file(local_program, REMOTE_PROGRAM)
+        await environment.upload_file(local_contract, REMOTE_PROGRAM)
         logs = PurePosixPath(self.environment_logs_dir)
         episode = (logs / "foe-episode").as_posix()
         result = await self.exec_as_agent(

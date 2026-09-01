@@ -25,7 +25,7 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert_eq!(v.value["duration_ms"], 1500);
     assert_eq!(v.rendered.as_deref(), Some("[exit 2 in 1.50s]\nout\n--- stderr ---\nerr\n"));
     let req = exec.last().unwrap();
-    assert_eq!(req.program, PathBuf::from("/bin/bash"));
+    assert_eq!(req.command, PathBuf::from("/bin/bash"));
     assert_eq!(req.args, ["-c", "false"]);
     assert_eq!(req.cwd, fx.root());
     assert_eq!(req.timeout, Duration::from_secs(BASH_DEFAULT_TIMEOUT_SECS));

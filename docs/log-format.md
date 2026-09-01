@@ -6,10 +6,10 @@ budget accounting, and team state are all derived from it. This document
 specifies the log completely. Nothing that reaches a model request may exist
 outside it.
 
-Stability: the event envelope, the event types marked implemented, and the
-seeding rules are frozen at version 2. Adding an event type is compatible.
-Adding an optional field with a defined absence meaning is compatible.
-Changing or removing a required field requires a new log version.
+Stability: the event envelope, the required fields of implemented event
+types, and the seeding rules are frozen at version 3. Adding an event type
+or an optional field with a reader default is compatible. Removing or
+changing a required field requires a new log version.
 
 ## Directory layout
 
@@ -65,8 +65,8 @@ this before appending.
 
 ## Event types
 
-Status is one of: **implemented** in version 2, or **reserved**, meaning the
-type is defined so that future logs remain readable by version 2 tools, and
+Status is one of: **implemented** in version 3, or **reserved**, meaning the
+type is defined so that future logs remain readable by version 3 tools, and
 nothing emits it.
 
 ### Lifecycle
@@ -79,25 +79,25 @@ nothing emits it.
   "parent_id": null,
   "fork_origin": null,
   "team_id": null,
-  "program": {},
-  "identity": "sha256:…",
+  "contract": {},
+  "contract_fingerprint": "sha256:…",
   "task": "Fix the failing parser test.",
-  "runtime": { "version": "0.1.0", "build": "sha256:…" },
+  "runtime": { "version": "0.2.0", "build": "sha256:…" },
   "sandbox": {
     "mode": "best-effort",
     "landlock_abi": 7,
-    "effective_access": {
+    "resolved_permissions": {
       "read": [
         { "path": "/lib", "reason": "shared-library lookup" }
       ],
       "execute": [
         {
           "path": "/opt/tools/check",
-          "reason": "selected configured tool program.tool_defs.check",
+          "reason": "selected configured tool contract.tool_defs.check",
           "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         }
       ],
-      "connect_tcp": ["model transport in program"]
+      "connect_tcp": ["model transport in contract"]
     },
     "process_boundary": {
       "kind": "cgroup-v2",
@@ -120,33 +120,27 @@ nothing emits it.
 `parent_id` names the spawning episode. `fork_origin` is
 `{ "episode_id": "…", "seq": N }` when the log was seeded from a prefix of
 another log. `team_id` names the lead episode when this episode is a team
-member. `program` is the resolved configuration with `task` removed.
-`landlock_abi` is 0 when Landlock was unavailable. `effective_access` records
-the filesystem and network surface compiled for the episode. Each filesystem
-entry names its reason. An exact executable may carry the SHA-256 digest of
-the bytes retained during program construction. The `connect_tcp` array names
-each reason outbound TCP was reserved; an empty array means it was denied on
-a kernel that enforces network rules. Logs written before this field was
-implemented omit it and remain readable.
+member. `contract` is the resolved configuration with `task` removed.
+`landlock_abi` is 0 when Landlock was unavailable. `resolved_permissions`
+records the filesystem and network permissions compiled for the episode.
+Each filesystem entry gives the reason it is present. A captured executable
+entry may include the SHA-256 digest of its construction-time bytes.
+`connect_tcp` gives every reason outbound TCP remains available.
 
-The path of a retained configured executable names its construction-time
-source. The digest identifies the retained image that the sandbox authorizes.
-The runtime does not reopen the source after construction.
+The configured path identifies the source that Foe captured. The digest
+identifies the bytes that later invocations use. Foe does not reopen that
+source after contract construction.
+
+`mode` and `landlock_abi` state the filesystem and network enforcement the
+host provided. `process_boundary` states whether descendant-process cleanup
+is enforced by cgroup v2 or observed through a process group. Its optional
+`reason` explains why cgroup ownership was unavailable.
 
 `effective_budget` is the allowance the episode enforces. Its fields have the meanings and defaults in
 [config.md](config.md#budget). A spawned episode can have an effective
-allowance below `program.budget`; this leaves `identity` unchanged. Logs
-written before this field was implemented omit it and remain readable. On
-resume, this recorded allowance takes precedence over the mutable launch
-metadata beside the log. A log that omits the field falls back to that
-metadata or to its declared program budget.
-
-`process_boundary.kind` is `cgroup-v2` or `process-group`.
-`subtree_cleanup` is `enforced` only when the runtime owns the recursive
-process subtree through cgroup v2. It is `observational` for process-group
-cleanup. The optional `reason` explains why cgroup ownership was unavailable.
-An absent `process_boundary` means the log predates this field and makes no
-claim about subtree cleanup.
+allowance below `contract.budget`; this leaves `contract_fingerprint`
+unchanged. On resume, the recorded allowance takes precedence over the
+mutable launch metadata beside the log.
 
 `episode/end` — implemented. Always the last event.
 
@@ -297,6 +291,24 @@ rendering in the log is the rendering every request carries, and no earlier
 event is ever rewritten. A reader that wants the whole result reads
 `value`.
 
+An error result written by the runtime has `is_error: true` and a
+`failure` object:
+
+```json
+{
+  "code": "capability-denied",
+  "message": "read: /private: outside every granted root",
+  "retryable": false,
+  "details": { "path": "/private" }
+}
+```
+
+The code vocabulary and retry rule are specified in
+[tools.md](tools.md#failures). The message is explanatory text. Runtime
+decisions use the other fields. Successful results omit `failure`. The
+field is optional when reading so logs written before typed failures remain
+valid. An older error without the field retains its `is_error` value.
+
 When `done_when.returns` requires `learned`, `rendered` starts with
 `[seq N]`, where N is this event's `seq`. A `learned` observation cites that
 number. The prefix is runtime metadata and lies outside any complete
@@ -388,7 +400,7 @@ which follows with the inner `call_id` and the outer call's step, closes
 it. That result never enters derived messages: the outer result alone
 reaches the model. A host tool dispatched this way also produces its
 `host/tool-call` event as usual. The event is additive; no frozen
-version 2 payload changed for it, and a reader compiled before the
+version 3 payload changed for it, and a reader compiled before the
 variant existed rejects a log that carries it.
 
 ### Verification
@@ -405,7 +417,7 @@ messages; the model sees findings only through the `verify` inbox item.
 {
   "step": 3,
   "tool": "check",
-  "verifier_identity": "sha256:…",
+  "verifier_fingerprint": "sha256:…",
   "status": "findings",
   "findings": ["tests/parser_test.py::test_nested_brackets fails"],
   "duration_ms": 412
@@ -416,8 +428,8 @@ messages; the model sees findings only through the `verify` inbox item.
 the same strings the `verify` inbox item carries, and is empty for
 `accepted` and for `failed`. `error` is present only for `failed` and
 states why the verifier could not judge; the episode then ends as
-`failed`. `verifier_identity` identifies what ran. For a `tool_defs`
-executable it is the SHA-256 digest committed during program construction.
+`failed`. `verifier_fingerprint` identifies what ran. For a `tool_defs`
+executable it is the SHA-256 digest committed during contract construction.
 Every invocation uses those committed bytes. For a built-in or host tool it
 is the runtime build hash from `episode/start.runtime.build`.
 
@@ -492,7 +504,7 @@ returns to the pool. This is how one `max_episodes` bounds a whole tree.
 `spawn/start` — implemented.
 
 ```json
-{ "child_id": "ep_9c21", "program": "survey", "context": "fresh", "call_id": "tc_05" }
+{ "child_id": "ep_9c21", "contract": "survey", "context": "fresh", "call_id": "tc_05" }
 ```
 
 `context` is `fresh` or `fork`. `call_id` names the tool call that spawned the
@@ -505,13 +517,6 @@ matching `budget/release`.
 ```json
 { "child_id": "ep_9c21", "outcome": { "kind": "completed", "value": {} } }
 ```
-
-For a process that started, the parent publishes `spawn/end` only after the
-direct child has exited and its stdout reader has finished. When the child
-uses an enforced cgroup v2 process boundary, the parent first kills the
-boundary and waits until its recursive `populated` state is zero. The
-matching `budget/release`, pool capacity return, and waiter notification
-follow.
 
 ### Teams
 
@@ -549,9 +554,9 @@ redelivered when the target restarts. The target deduplicates by
 `sandbox/denied` — reserved. An access the kernel refused, captured from
 the audit log. Reading Landlock audit records requires the `CAP_AUDIT_READ`
 capability or access to the audit daemon's log, which an unprivileged foe
-process does not have, so nothing emits this event in version 2. The type
+process does not have, so nothing emits this event in version 3. The type
 is defined so that a privileged deployment or a later version can emit it
-and a version 2 reader will render it.
+and a version 3 reader will render it.
 
 ```json
 { "pid": 4120, "comm": "ruff", "path": "/etc/shadow", "access": "read" }
@@ -569,7 +574,10 @@ counts the node's firings from 1. `inputs` lists the `seq` of the events
 that produced the values the node receives: the `workflow/node-end` of
 each predecessor, the `workflow/recovery` that skipped one, or the
 `inbox/item` at seq 1 for the built-in `task` source. `child_id`
-names the child episode of a model node and is absent otherwise.
+names the child episode of a model node. It is absent when the model node's
+predecessor sections exceed the 50,000-character rendered-predecessor bound in
+[workflow.md](workflow.md#bounded-model-handoffs). That firing ends before a
+child is allocated.
 
 ```json
 { "node": "survey", "fire": 1, "inputs": [4], "child_id": "ep_9c21" }
@@ -577,10 +585,17 @@ names the child episode of a model node and is absent otherwise.
 
 `workflow/node-end` — implemented. The firing ended. `value` is the node's
 canonical output and `rendered` the text its successors receive. When the
-firing failed, `error` states why and `value` is null. An optional model
-node whose child ended blocked or exhausted is the one exception: `error`
-states the child outcome, and `value` and `rendered` carry the node's
-declared `empty` output.
+firing failed, `error` states why and `value` is null. A typed failure also
+appears in `failure`, using the structure specified for `tool/result`. An
+optional model node whose child ended blocked or exhausted is the one
+exception: `error` states the child outcome, and `value` and `rendered` carry
+the node's declared `empty` output.
+
+An oversized model handoff records a failed end for the receiving model node.
+The log retains complete predecessor values and renderings. A completed
+predecessor carries them in its node-end event. A skipped predecessor derives
+them from the contract's declared `empty` value and its recovery event. The
+receiving end's error names the producing events and their rendered sizes.
 
 ```json
 { "node": "survey", "fire": 1, "value": {}, "rendered": "…", "duration_ms": 1200 }
@@ -596,10 +611,11 @@ declared `empty` output.
 `cause` names what failed, `action` is `retry`, `amend`, `skip`, or
 `abort`, `target` names the node a retry or amend re-fires, `note` carries
 the text an amend appends, and `intervention` counts decisions in this
-episode from 1.
+episode from 1. When a typed failure triggered recovery, `failure` retains
+its code, message, retryability, and structured details.
 
 ```json
-{ "node": "derive", "fire": 1, "cause": "tool-error", "action": "retry", "target": "survey", "intervention": 1 }
+{ "node": "derive", "fire": 1, "cause": "operation-failed", "action": "retry", "target": "survey", "intervention": 1 }
 ```
 
 ### Compaction
@@ -733,7 +749,7 @@ by the runtime, the viewer, and the Python package identically.
 6. Each `tool/result` becomes a `tool` message carrying `rendered`, except
    one whose opening record is a `tool/inner-call`: an inner result
    contributes nothing, because the outer composing call's result is the
-   only account of the program that reaches the model.
+   only account of the contract that reaches the model.
 7. Events of any other type contribute nothing.
 
 A `model/request` whose `request_id` starts with `cmp_`, and the
@@ -772,8 +788,8 @@ Given a source log and a boundary `seq` N:
 
 1. Write a fresh `episode/start` at `seq` 0 with a new `id` and `fork_origin`
    set to the source episode and N. An ordinary fork copies the other fields.
-   A spawned fork records the spawned child's declared program, program
-   identity, and effective runtime allowance. It copies the remaining fields.
+   A spawned fork records the spawned child's declared contract, contract
+   fingerprint, and effective runtime allowance. It copies the remaining fields.
 2. Copy source events with `seq` in `[1, N)`, renumbering `seq` to be
    contiguous.
 3. Drop a copied `request/retry` that the boundary separated from the
@@ -816,10 +832,11 @@ fresh id, its `fork_origin` names the source, and the task the launch
 carries is appended as a live `system` inbox item after `seed/end`,
 because rule 1 copies the `task` item and the format admits one per log.
 Launching with `--log-dir DIR` where DIR holds a log without `episode/end`
-resumes that episode under the program that ran it — refused, with both
-identities named, when the given configuration's identity differs from
-`episode/start.identity`, except for a log ending at `seed/end`, whose
-`episode/start` records its source's program. A log that ends at an event
+resumes that episode under the execution contract that ran it. The launch is
+refused, with both fingerprints named, when the given configuration's
+fingerprint differs from `episode/start.contract_fingerprint`. A log ending at
+`seed/end` instead uses the execution contract recorded by its source's
+`episode/start`. A log that ends at an event
 boundary with every binding obligation closed, including one ending at
 `seed/end`, is appended to as it stands; one cut short mid-line or with a
 binding obligation open is seeded at N equal to its count of complete
@@ -831,7 +848,7 @@ responses replayed from `assistant/chunk` events rather than requested.
 ## Blocked codes
 
 The `code` of a `blocked` outcome is one of the following. The list is closed
-in version 2. A supervising episode routes on it.
+in version 3. A supervising episode routes on it.
 
 | code | meaning |
 |---|---|
@@ -839,7 +856,7 @@ in version 2. A supervising episode routes on it.
 | `looping-reasoning` | the same assistant text repeated across consecutive steps |
 | `goal-unreachable` | the model reported that the task cannot be completed as stated |
 | `ambiguous-task` | the model reported that the task admits incompatible readings |
-| `missing-capability` | the task needs a tool or grant the program lacks |
+| `missing-capability` | the task needs a tool or grant the contract lacks |
 | `verification-unsatisfiable` | `done_when` retries were spent with findings still present |
 | `child-blocked` | a child episode was blocked and the parent cannot proceed |
 | `recovery-exhausted` | request retries were spent, or a workflow reached a recovery bound |
@@ -847,7 +864,9 @@ in version 2. A supervising episode routes on it.
 
 The model reports `goal-unreachable`, `ambiguous-task`, and
 `missing-capability` by calling the built-in `block` tool with the code and a
-message. The runtime detects the rest.
+message. A contract that lists `spawn` and has a non-empty `grants.spawn` may
+also report `child-blocked`. The runtime detects the looping and verification
+codes. The workflow executor produces the recovery codes.
 
 ## Exhausted limits
 
@@ -855,7 +874,7 @@ The `limit` of an `exhausted` outcome is one of `model_calls`,
 `input_tokens`, `output_tokens`, `context_window`, `seconds`, `depth`,
 `episodes`, `concurrency`. `context_window` means that the projected request
 exceeded the model window and the compaction attempt did not produce a usable
-summary. It is independent of the program's input-token allowance.
+summary. It is independent of the contract's input-token allowance.
 
 ## Size
 

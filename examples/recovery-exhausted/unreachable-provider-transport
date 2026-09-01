@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Answers every model request with the same retryable provider error.
 
-The message is the one a program reports when the host name of the model
+The message is the one a contract reports when the host name of the model
 endpoint does not resolve. Marking the error retryable is what a transport
 does for a condition that a later attempt could survive, and it is what
 makes the runtime retry with a growing delay rather than fail at once.

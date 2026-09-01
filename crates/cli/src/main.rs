@@ -5,15 +5,14 @@
 
 #![forbid(unsafe_code)]
 
-mod lineage;
 #[cfg(feature = "transport")]
 mod login;
 mod plan;
 mod run;
 mod telemetry;
 
-use foe_program::tools::{block_spec, resolve_specs, Source};
-use foe_program::SCHEMA;
+use foe_contract::tools::{block_spec, resolve_specs, Source};
+use foe_contract::SCHEMA;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
@@ -56,10 +55,10 @@ const fn form(name: Text, args: Text, about: Text) -> Form {
 /// The forms, the running one first: it is what `foe` does without a command
 /// word, and what the top-level help describes.
 const FORMS: &[Form] = &[
-    form("", "[TASK]", "run one bounded episode: the task named here, or the task a program document names"),
+    form("", "[TASK]", "run one bounded episode: the task named here, or the task a contract document names"),
     form("login", "[PROVIDER]", "configure a provider's credential and the default model, or list the providers"),
     form("view", "DIR", "write a log directory as one self-contained page, or serve it"),
-    form("plan", "", "print a resolved program with its identity, its transport, its tools, and its effective tool authority; bare, list the built-in tools"),
+    form("plan", "", "print a resolved contract with its fingerprint, transport, reachable tools, and resolved permissions; bare, list the built-in tools"),
     form("telemetry", "LOG...", "print, for finished episode logs, the payload telemetry emission writes"),
 ];
 
@@ -68,7 +67,7 @@ const FORMS: &[Form] = &[
 /// is not accepted, and one present here is documented. `--help` is accepted
 /// by every form and so appears once, under no command.
 const OPTS: &[Opt] = &[
-    opt("", "--config", "FILE", "the built-in coding workflow", "the program document to run"),
+    opt("", "--config", "FILE", "the built-in coding workflow", "the contract document to run"),
     opt("", "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
     opt("", "--service-tier", "TIER", "the model configuration's value", "request service tier: default or priority"),
     opt(
@@ -96,17 +95,9 @@ const OPTS: &[Opt] = &[
     opt("login", "--status", "", "", "print the default model and every configured credential path"),
     opt("view", "--serve", "", "", "serve the directory instead of writing the page to standard output"),
     opt("view", "--port", "N", "an ephemeral port, printed as the first line", "the port to serve on"),
-    opt("plan", "--config", "FILE", "the built-in tools alone", "the program document to resolve"),
+    opt("plan", "--config", "FILE", "the built-in tools alone", "the contract document to resolve"),
     opt("plan", "--json", "", "", "print one JSON object instead of the report"),
-    opt("plan", "--schema", "", "", "print the JSON Schema of the program document and nothing else"),
-    opt("plan", "--states", "DIR", "", "directory of ancestor state documents, one <hex>.json each"),
-    opt(
-        "plan",
-        "--evidence",
-        "DIR",
-        "a carried ancestry claim is reported, not verified",
-        "directory of evidence bundles, one <hex> directory per content address; with --states, verifies the claim",
-    ),
+    opt("plan", "--schema", "", "", "print the JSON Schema of the contract document and nothing else"),
     opt("telemetry", "--json", "", "", "print that payload as JSON instead of a summary"),
 ];
 
@@ -220,7 +211,7 @@ enum Command {
     Run(run::Options),
     Login { provider: Option<String>, model: Option<String>, status: bool },
     View { dir: PathBuf, serve: bool, port: u16 },
-    Plan { config: Option<PathBuf>, json: bool, states: Option<PathBuf>, evidence: Option<PathBuf> },
+    Plan { config: Option<PathBuf>, json: bool },
     Schema,
     Telemetry { logs: Vec<String>, json: bool },
     Help(&'static Form),
@@ -257,20 +248,16 @@ fn command(argv: &[String]) -> Result<Command, String> {
         },
         "plan" => {
             let (schema, json) = (args.switch("--schema"), args.switch("--json"));
-            let mut dir = |flag| args.value(flag).map(PathBuf::from);
-            let (config, states, evidence) = (dir("--config"), dir("--states"), dir("--evidence"));
-            if schema && (config.is_some() || json || states.is_some() || evidence.is_some()) {
+            let config = args.value("--config").map(PathBuf::from);
+            if schema && (config.is_some() || json) {
                 return Err("`foe plan --schema` prints the schema and takes no other option".into());
             }
-            if !schema && states.is_some() != evidence.is_some() {
-                return Err("verifying an ancestry claim takes both --states DIR and --evidence DIR".into());
-            }
-            if config.is_none() && (json || evidence.is_some()) {
-                return Err("`foe plan` resolves no program without --config FILE".into());
+            if config.is_none() && json {
+                return Err("`foe plan` resolves no contract without --config FILE".into());
             }
             match schema {
                 true => Command::Schema,
-                false => Command::Plan { config, json, states, evidence },
+                false => Command::Plan { config, json },
             }
         }
         "login" => Command::Login {
@@ -327,7 +314,7 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
     match command {
         Command::Help(form) => printed(&help(form)),
         Command::Schema => printed(SCHEMA),
-        Command::Plan { config, json, states, evidence } => plan(config.as_deref(), json, states.zip(evidence)),
+        Command::Plan { config, json } => plan(config.as_deref(), json),
         Command::View { dir, serve, port } => view(&dir, serve, port),
         Command::Login { provider, model, status } => login(provider, model, status),
         Command::Telemetry { logs, json } => telemetry::preview(&logs, json).map(|()| ExitCode::SUCCESS),
@@ -356,98 +343,83 @@ fn open_browser(url: &str) {
     }
 }
 
-fn load(config: &Path) -> Result<foe_program::document::ResolvedProgram, String> {
-    foe_program::document::load(config).map_err(|e| format!("{}: {e}", config.display()))
+fn load(config: &Path) -> Result<foe_contract::document::ResolvedContract, String> {
+    foe_contract::document::load(config).map_err(|e| format!("{}: {e}", config.display()))
 }
 
-/// Resolves the program and prints it with its identity. Without `--config`,
+/// Resolves the contract and prints it with its fingerprint. Without `--config`,
 /// lists the built-in tools the binary carries instead, one row per tool.
-/// `--json` prints one object with `identity`, `identity_document` — the
-/// canonical serialized form the identity hash is computed over — and
-/// `program`, which the Python package parses, `context` with the
+/// `--json` prints one object with `contract_fingerprint`, `fingerprint_document` — the
+/// canonical serialized form the fingerprint hash is computed over — and
+/// `contract`, which the Python package parses, `context` with the
 /// compaction policy in one line
-/// when the program compacts, and `workflow` when the program declares one:
+/// when the contract compacts, and `workflow` when the contract declares one:
 /// its cycles, the nodes sharing write roots, its terminal nodes, and its
 /// declared edge references and firings against their fixed bounds. Both
 /// forms report the resolved tools with the source each name resolved in
-/// and the tool authority reachable from the root. `ancestry` carries the
-/// `--states` and `--evidence` directories: given, the program's ancestry
-/// claim is verified through `foe_lineage`; absent, a carried claim is
-/// reported unverified. Without `--json`, a workflow is followed by the
-/// report docs/workflow.md "Firing" describes.
-fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>) -> Result<ExitCode, String> {
+/// and the tools reachable from the root. Without `--json`, a
+/// workflow is followed by the report docs/workflow.md "Firing" describes.
+fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
     let Some(config) = config else {
         let builtins = std::iter::once(block_spec(false)).chain(run::extra_builtin_specs());
         return printed(&builtins.map(|spec| tool_row(&spec, "built-in")).collect::<String>());
     };
-    let program = load(config)?;
-    let identity = run::identity(&program)?;
-    let value = program.to_value();
-    let transport = program.model.as_ref().map(|_| run::describe_transport(&program));
-    let context = run::context_policy(&program)?.map(|policy| policy.describe());
-    let authority = plan::authority(&program)?;
-    let sandbox_access = plan::sandbox_access(&program)?;
-    let checked = ancestry
-        .map(|(states, evidence)| {
-            lineage::verify(&identity.document, program.program_lineage.clone(), &states, &evidence)
-        })
-        .transpose()?;
+    let contract = load(config)?;
+    let fingerprint = run::fingerprint(&contract)?;
+    let value = contract.to_value();
+    let transport = contract.model.as_ref().map(|_| run::describe_transport(&contract));
+    let context = run::context_policy(&contract)?.map(|policy| policy.describe());
+    let reachable_tools = plan::reachable_tools(&contract)?;
+    let resolved_permissions = plan::resolved_permissions(&contract)?;
     if json {
-        let overlaps = plan::write_overlaps(&program)?;
-        let workflow = program.workflow.as_ref().map(|wf| {
+        let overlaps = plan::write_overlaps(&contract)?;
+        let workflow = contract.workflow.as_ref().map(|wf| {
             serde_json::json!({
                 "cycles": plan::cycles(wf), "write_overlaps": overlaps,
                 "terminal": wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k).collect::<Vec<_>>(),
                 "edge_references": wf.edge_references(),
-                "max_edge_references": foe_program::workflow::MAX_EDGE_REFERENCES,
+                "max_edge_references": foe_contract::workflow::MAX_EDGE_REFERENCES,
                 "possible_firings": wf.possible_firings(),
-                "max_possible_firings": foe_program::workflow::MAX_POSSIBLE_FIRINGS,
+                "max_possible_firings": foe_contract::workflow::MAX_POSSIBLE_FIRINGS,
             })
         });
         let report = serde_json::json!({
-            "identity": identity.hash, "identity_document": identity.document, "program": value,
-            "transport": transport, "workflow": workflow, "context": context, "authority": authority,
-            "sandbox_access": sandbox_access,
-            "lineage": checked.as_ref().map(lineage::value),
+            "contract_fingerprint": fingerprint.hash, "fingerprint_document": fingerprint.document, "contract": value,
+            "transport": transport, "workflow": workflow, "context": context,
+            "reachable_tools": reachable_tools, "resolved_permissions": resolved_permissions,
         });
         println!("{report}");
     } else {
-        println!("identity  {}", identity.hash);
+        println!("fingerprint  {}", fingerprint.hash);
         println!("model     {}", transport.as_deref().unwrap_or("answered by the host over the protocol"));
         if let Some(context) = &context {
             println!("context   {context}");
         }
-        if checked.is_none() && program.program_lineage.is_some() {
-            println!("lineage   an ancestry claim is carried, not verified; verify with --states DIR --evidence DIR");
-        }
         println!("{}", serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?);
-        if program.workflow.is_some() {
-            print!("{}", plan::workflow_report(&program)?);
+        if contract.workflow.is_some() {
+            print!("{}", plan::workflow_report(&contract)?);
         }
-        print!("tools\n{}", tool_rows(config, &program)?);
-        print!("{}", plan::authority_report(&authority));
-        print!("{}", plan::sandbox_report(&sandbox_access));
-        if let Some(report) = &checked {
-            print!("{}", lineage::rendered(report));
-        }
+        print!("tools\n{}", tool_rows(config, &contract)?);
+        print!("{}", plan::reachable_tools_report(&reachable_tools));
+        print!("{}", plan::permissions_report(&resolved_permissions));
     }
     Ok(ExitCode::SUCCESS)
 }
 
 /// One tool row: the name, the source its name resolved in, the effect, and
 /// the first sentence of the description.
-fn tool_row(spec: &foe_program::ToolSpec, source: &str) -> String {
+fn tool_row(spec: &foe_contract::ToolSpec, source: &str) -> String {
     let effect = serde_json::to_value(spec.effect).ok().and_then(|v| v.as_str().map(str::to_string));
     let text = &spec.description;
     let first = text[..text.find(". ").map_or(text.len(), |i| i + 1)].trim_end();
     format!("{:<10} {:<10} {:<7} {first}\n", spec.name, source, effect.unwrap_or_default())
 }
 
-/// The resolved tools of the root program, one row each.
-fn tool_rows(config: &Path, program: &foe_program::document::ResolvedProgram) -> Result<String, String> {
+/// The resolved tools of the root contract, one row each.
+fn tool_rows(config: &Path, contract: &foe_contract::document::ResolvedContract) -> Result<String, String> {
     let extra = run::extra_builtin_specs();
-    let specs = resolve_specs(program, &extra).map_err(|e| format!("{}: {e}", config.display()))?;
-    let sources = plan::tool_sources(program, &extra)?;
+    let specs = resolve_specs(contract, &extra).map_err(|e| format!("{}: {e}", config.display()))?;
+    let sources = plan::tool_sources(contract, &extra)?;
     let named = |i: usize| match sources.get(i) {
         Some(Source::Builtin) => "built-in",
         Some(Source::Configured) => "tool_defs",

@@ -27,7 +27,7 @@ function episode(name: string, depth = 0): StatisticsEpisode {
     events,
     startTime: s.startTime,
     endTime: s.endTime,
-    program: s.program,
+    contract: s.contract,
     depth,
     outcome: s.outcome,
   };
@@ -164,7 +164,7 @@ test("tools are grouped by name with their call count and total duration", () =>
   assert.equal(bars[2]!.w, (3 / 9) * 100);
 });
 
-test("a limit the program does not declare is left out", () => {
+test("a limit the contract does not declare is left out", () => {
   const out = stats([["compact.jsonl", 0]]);
   assert.deepEqual(out.limits.map((l) => l.key), ["model_calls", "input_tokens", "output_tokens"]);
   const input = out.limits.find((l) => l.key === "input_tokens")!;
@@ -205,7 +205,7 @@ test("the context curve places one series per episode against the declared limit
   assert.equal(points[points.length - 1]!.x, curve.plot.right);
   assert.equal(curve.peak, 1900);
   assert.equal(curve.peakY, points[2]!.y, "the axis labels the peak where the peak sits");
-  assert.ok(curve.budget, "the program declares a token limit");
+  assert.ok(curve.budget, "the contract declares a token limit");
   assert.equal(curve.budget!.inputTokens, 80000);
   assert.equal(curve.budget!.y, curve.plot.top, "the declared limit sets the top of the plot");
   // A larger input sits higher, because y grows downwards.
@@ -214,7 +214,7 @@ test("the context curve places one series per episode against the declared limit
 
 test("with no declared token limit the curve scales to its own peak", () => {
   const one = episode("root.jsonl");
-  const out = computeStatistics([{ ...one, program: { ...one.program, budget: { model_calls: 10 } } }], 0);
+  const out = computeStatistics([{ ...one, contract: { ...one.contract, budget: { model_calls: 10 } } }], 0);
   const names = new Map(out.episodes.map((id) => [id, id]));
   const curve = layoutContextCurve(out, names, 400, 160);
   assert.equal(curve.budget, null);

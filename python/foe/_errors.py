@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 class ConfigError(ValueError):
-    """A program was declared in a way the configuration format rejects.
+    """A contract was declared in a way the configuration format rejects.
 
     The message names the key and the rule, as docs/config.md requires of
     every construction error.

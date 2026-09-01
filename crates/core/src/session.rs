@@ -6,8 +6,8 @@
 //! evidence files. A stop sends SIGTERM to the group, waits
 //! [`TERM_GRACE`], and sends SIGKILL, so nothing the session started
 //! survives it. Settlement stops episode-lifetime sessions. It releases a
-//! task-lifetime session to the enclosing task environment when the program
-//! holds that authority. See docs/tools.md "session".
+//! task-lifetime session to the enclosing task environment when the contract
+//! holds that permission. See docs/tools.md "session".
 
 use crate::exec::{end_group, CAPTURE_LIMIT};
 use crate::process_boundary::{command_in, ProcessBoundary, PROCESS_BOUNDARY_LAUNCHER};
@@ -222,11 +222,11 @@ impl Sessions for LocalSessions {
             .then(|| self.boundary.as_ref().map(|boundary| boundary.task_procs()))
             .flatten();
         let argv: Vec<_> =
-            std::iter::once(req.program.as_os_str().to_owned()).chain(req.args.iter().map(Into::into)).collect();
+            std::iter::once(req.command.as_os_str().to_owned()).chain(req.args.iter().map(Into::into)).collect();
         let mut cmd = match &task_procs {
             Some(procs) => command_in(procs, &argv),
             None => {
-                let mut command = Command::new(&req.program);
+                let mut command = Command::new(&req.command);
                 command.args(&req.args);
                 command
             }
@@ -238,7 +238,7 @@ impl Sessions for LocalSessions {
             .stdin(Stdio::piped())
             .stdout(stdout_stdio)
             .stderr(stderr_stdio);
-        let mut narrowed = self.policy.for_executable(&req.program, false).map_err(CapError::ProcessStart)?;
+        let mut narrowed = self.policy.for_executable(&req.command, false).map_err(CapError::ProcessStart)?;
         if let Some(procs) = task_procs {
             narrowed
                 .add_executable(Path::new(PROCESS_BOUNDARY_LAUNCHER), "cgroup process-boundary launcher".into())

@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "evaluate-and-improve-foe",
   "instructions": {
     "role": "This workflow evaluates a disposable Foe source slice and gives the findings to one model node that improves the source."

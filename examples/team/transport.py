@@ -2,8 +2,8 @@
 """Model chunks for the team demo: a lead and its two members.
 
 The lead and both members run their own episode, and each episode calls
-this program once per model request. The request says which episode is
-asking, because each program is offered a different set of tools: the lead
+this contract once per model request. The request says which episode is
+asking, because each contract is offered a different set of tools: the lead
 holds `spawn`, the tester holds `bash`, and the reviewer holds neither.
 
 The lead waits for both members with one `wait` call, which returns when
@@ -101,13 +101,13 @@ def lead(request: dict) -> None:
             request,
             "tc_spawn_reviewer",
             "spawn",
-            {"program": "reviewer", "task": "Review the change to src/cli.py, which adds a --dry-run flag."},
+            {"contract": "reviewer", "task": "Review the change to src/cli.py, which adds a --dry-run flag."},
         )
         call(
             request,
             "tc_spawn_tester",
             "spawn",
-            {"program": "tester", "task": "Run `python3 -B tests/check.py` and report the result."},
+            {"contract": "tester", "task": "Run `python3 -B tests/check.py` and report the result."},
         )
         done(request, "tool")
         return

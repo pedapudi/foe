@@ -44,7 +44,7 @@ cat > "$project_dir/README.md" <<'EOF'
 A small Python package with one module. Build it with `python -m build`.
 EOF
 
-# The transport program runs under the episode's sandbox, which grants it
+# The transport process runs under the episode's sandbox, which grants it
 # the read roots and its own file. Both files it opens must therefore lie
 # under a read root, so the runner copies them into the project.
 cp "$example_dir/scripted-transport.py" "$project_dir/tools/scripted-transport.py"

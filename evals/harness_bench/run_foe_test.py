@@ -17,7 +17,7 @@ _SPEC.loader.exec_module(run_foe)
 
 
 class HarnessBenchAdapterTest(unittest.TestCase):
-    def test_evaluator_patch_identity_matches_the_pinned_patch(self) -> None:
+    def test_evaluator_patch_fingerprint_matches_the_pinned_patch(self) -> None:
         patch = Path(__file__).with_name("knowledge_qa_claim_scoring.patch")
         digest = "sha256:" + hashlib.sha256(patch.read_bytes()).hexdigest()
         self.assertEqual(run_foe.BENCHMARK_PATCH, digest)
@@ -67,7 +67,7 @@ class HarnessBenchAdapterTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             tool = root / "tools" / "test"
-            config = run_foe.program(
+            config = run_foe.contract(
                 run_foe.TASKS["085-flaky-test-root-cause"],
                 root,
                 "task",
@@ -120,7 +120,7 @@ class HarnessBenchAdapterTest(unittest.TestCase):
         self.assertIsNone(run_foe.grade_score({"checks": []}))
 
     def test_report_preview_identifies_the_evaluated_source_and_binary(self) -> None:
-        identity = {
+        evaluated = {
             "source_tree": "git-tree-sha1:" + "a" * 40,
             "runtime_binary": "sha256:" + "b" * 64,
         }
@@ -128,9 +128,9 @@ class HarnessBenchAdapterTest(unittest.TestCase):
             [run_foe.TASKS["015-security-injection-defense"]],
             1,
             {"provider": "p", "model": "m"},
-            identity,
+            evaluated,
         )
-        self.assertEqual(report["evaluated_foe"], identity)
+        self.assertEqual(report["evaluated_foe"], evaluated)
 
 
 if __name__ == "__main__":

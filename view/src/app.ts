@@ -9,8 +9,8 @@ import type { ConnectionState, Crumb } from "./chrome.js";
 import { clear, h } from "./dom.js";
 import { EpisodeFold } from "./fold.js";
 import type { Patch, Summary } from "./fold.js";
-import { buildTree, flatten, sharedPrefix } from "./lineage.js";
-import type { TreeNode } from "./lineage.js";
+import { buildTree, flatten, sharedPrefix } from "./episode-tree.js";
+import type { TreeNode } from "./episode-tree.js";
 import { loadPanes, onPanesChange, rowGrip, setTrajectoryHeight, sidebarGrip } from "./panes.js";
 import { ConversationView } from "./render/conversation.js";
 import { DiffView, renderNoDiff } from "./render/diff.js";
@@ -324,10 +324,10 @@ export class App implements Sink {
     this.renderMain();
   }
 
-  /** True when the episode's program declares a graph, which the tab needs. */
+  /** True when the episode's contract declares a graph, which the tab needs. */
   private declaresWorkflow(id: string): boolean {
     const summary = this.episodes.get(id)?.fold.summary;
-    return summary !== undefined && declaredWorkflow(summary.program) !== null;
+    return summary !== undefined && declaredWorkflow(summary.contract) !== null;
   }
 
   /**
@@ -408,7 +408,7 @@ export class App implements Sink {
   }
 
   /** Chain of episodes from the root down to the selected one. */
-  private lineage(): Crumb[] {
+  private episodePath(): Crumb[] {
     const map = this.summaryMap();
     const chain: Crumb[] = [];
     let id = this.selected;
@@ -432,7 +432,7 @@ export class App implements Sink {
     const roots = buildTree(summaries, this.orderIds);
     const width = Math.max(160, this.treeHost.clientWidth - 16);
     const structural = summaries
-      .map((s) => [s.id, s.name, s.identity, s.parentId, s.forkOrigin?.episodeId, s.forkOrigin?.seq, s.outcome ? JSON.stringify(s.outcome) : "", s.lastSeq >= 0 ? 1 : 0].join(""))
+      .map((s) => [s.id, s.name, s.contractFingerprint, s.parentId, s.forkOrigin?.episodeId, s.forkOrigin?.seq, s.outcome ? JSON.stringify(s.outcome) : "", s.lastSeq >= 0 ? 1 : 0].join(""))
       .join("");
     const treeDigest = [structural, this.selected, this.cursor, this.compare.join(","), width, this.orderIds.join(",")].join("");
     if (treeDigest !== this.treeDigest) {
@@ -458,7 +458,7 @@ export class App implements Sink {
       clear(this.infoHost);
       this.infoHost.appendChild(renderInfo(s));
     }
-    // The program name arrives with `episode/start`, after the first
+    // The contract name arrives with `episode/start`, after the first
     // selection is made, so the title is set on every sidebar redraw.
     this.title.textContent = s ? `${s.name} · ${s.id}` : "";
     const causality = this.causalityEpisodes(roots);
@@ -479,7 +479,7 @@ export class App implements Sink {
     // as tall as its own channels, so the height follows the drawing rather
     // than the row count.
     setTrajectoryHeight(this.trajectory.rowsHeight(), this.trajectory.chromeHeight(), currentFontScale());
-    this.topbar.setCrumbs(this.lineage());
+    this.topbar.setCrumbs(this.episodePath());
     this.renderTabs();
   }
 
@@ -490,7 +490,7 @@ export class App implements Sink {
       return {
         id: s.id,
         name: s.name,
-        identity: s.identity,
+        contractFingerprint: s.contractFingerprint,
         depth,
         startTime: s.startTime,
         endTime: s.endTime,
@@ -556,7 +556,7 @@ export class App implements Sink {
       return;
     }
     const summary = state.fold.summary;
-    this.workflow.update(readWorkflow(summary.program, state.fold.events), id);
+    this.workflow.update(readWorkflow(summary.contract, state.fold.events), id);
     const names = new Map<string, string>();
     for (const s of this.summaries()) names.set(s.id, s.name === s.id ? s.id : `${s.name} ${s.id}`);
     this.statistics.update(this.statisticsScope(id), names, this.rootScopes());
@@ -574,7 +574,7 @@ export class App implements Sink {
             events: state.fold.events,
             startTime: s.startTime,
             endTime: s.endTime,
-            program: s.program,
+            contract: s.contract,
             depth,
             outcome: s.outcome,
           },

@@ -1,11 +1,11 @@
 // The episode fold: rows for the conversation pane, the summary for the tree
-// pane, and the lineage helpers, against the fixture logs.
+// pane, and the episode-tree helpers, against the fixture logs.
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EpisodeFold, completionProvenance, provenanceText } from "../src/fold.js";
 import type { AssistantRow, CompactionRow, NoteRow, Row, ToolRow, UserRow } from "../src/fold.js";
-import { buildTree, flatten, sharedPrefix, siblingShares, spentTokens } from "../src/lineage.js";
+import { buildTree, flatten, sharedPrefix, siblingShares, spentTokens } from "../src/episode-tree.js";
 import { fixture } from "./helpers.js";
 
 function fold(name: string, stream = false): EpisodeFold {
@@ -54,7 +54,7 @@ test("a stream that is answered is not marked interrupted when the episode ends"
   assert.deepEqual(turns.map((t) => t.interrupted), [false, false, true, false]);
 });
 
-test("summary carries lineage, budget, usage, and sandbox from the log", () => {
+test("summary carries episode relations, budget, usage, and sandbox from the log", () => {
   const s = fold("root.jsonl").summary;
   assert.equal(s.id, "ep_root");
   assert.equal(s.name, "fix-test");
@@ -66,7 +66,15 @@ test("summary carries lineage, budget, usage, and sandbox from the log", () => {
   assert.equal(s.usage.input, 410 + 520 + 610 + 680);
   assert.equal(s.usage.output, 28 + 31 + 14 + 9);
   assert.equal(s.usage.cacheRead, 400 + 520 + 600);
-  assert.deepEqual(s.sandbox, { mode: "best-effort", landlockAbi: 7, processBoundary: null });
+  assert.deepEqual(s.sandbox, {
+    mode: "best-effort",
+    landlockAbi: 7,
+    processBoundary: {
+      kind: "process-group",
+      subtreeCleanup: "observational",
+      reason: "the fixture uses the portable process boundary",
+    },
+  });
   assert.equal(s.outcome?.kind, "completed");
   assert.deepEqual([...s.children.keys()], ["ep_child"]);
   assert.equal(s.roster.get("ep_child")?.phase, "active");
@@ -80,10 +88,11 @@ test("summary carries the recorded process cleanup guarantee", () => {
     type: "episode/start",
     data: {
       id: "ep_boundary",
-      program: {},
+      contract: {},
       sandbox: {
         mode: "best-effort",
         landlock_abi: 7,
+        resolved_permissions: {},
         process_boundary: { kind: "cgroup-v2", subtree_cleanup: "enforced" },
       },
     },
@@ -333,7 +342,7 @@ test("a branch and a recovery become decisions naming what was chosen or done", 
     ],
   );
   assert.equal(s.decisions[0]!.detail, "widen leads to survey");
-  assert.match(s.decisions[2]!.detail, /^tool-error on firing 1 · re-fires verify_change$/);
+  assert.match(s.decisions[2]!.detail, /^process-exit on firing 1 · re-fires verify_change$/);
 });
 
 test("an episode that runs the free loop records no firing and no decision", () => {
@@ -344,7 +353,7 @@ test("an episode that runs the free loop records no firing and no decision", () 
 
 test("a verification becomes one compact row and joins the summary", () => {
   const f = new EpisodeFold("ep_v", { stream: false });
-  f.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_v", program: {} } });
+  f.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_v", contract: {} } });
   f.push({
     seq: 1,
     time: 2,
@@ -370,7 +379,7 @@ test("a verification becomes one compact row and joins the summary", () => {
 test("completion provenance derives verifier, reviewed, and model report", () => {
   const completed = { type: "episode/end", data: { outcome: { kind: "completed", value: "v" } } };
   const loop = new EpisodeFold("ep_a", { stream: false });
-  loop.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_a", program: { done_when: { verify: "check" } } } });
+  loop.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_a", contract: { done_when: { verify: "check" } } } });
   loop.push({
     seq: 1,
     time: 2,
@@ -381,7 +390,7 @@ test("completion provenance derives verifier, reviewed, and model report", () =>
   assert.deepEqual(completionProvenance(loop.summary), { kind: "verifier", verifier: "check" });
   assert.equal(provenanceText({ kind: "verifier", verifier: "check" }), "verified by check");
 
-  const program = {
+  const contract = {
     workflow: {
       nodes: {
         "implement-task": { model: { name: "implement-task" }, follows: ["task"] },
@@ -394,7 +403,7 @@ test("completion provenance derives verifier, reviewed, and model report", () =>
     },
   };
   const wf = new EpisodeFold("ep_b", { stream: false });
-  wf.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_b", program } });
+  wf.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_b", contract } });
   wf.push({ seq: 1, time: 2, type: "workflow/node-start", data: { node: "implement-task", fire: 1, inputs: [] } });
   wf.push({
     seq: 2,
@@ -414,7 +423,7 @@ test("completion provenance derives verifier, reviewed, and model report", () =>
   assert.equal(provenanceText({ kind: "reviewed", verifier: "" }), "independently reviewed");
 
   const plain = new EpisodeFold("ep_c", { stream: false });
-  plain.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_c", program: {} } });
+  plain.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_c", contract: {} } });
   plain.push({ ...completed, seq: 1, time: 2 });
   assert.deepEqual(completionProvenance(plain.summary), { kind: "model-report", verifier: "" });
   assert.equal(provenanceText({ kind: "model-report", verifier: "" }), "model report");

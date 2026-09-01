@@ -93,7 +93,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
             capture_output=True,
             check=True,
         ).stdout.strip()
-        identity = {
+        evaluated = {
             "source_tree": f"git-tree-sha1:{tree}",
             "runtime_binary": "sha256:" + hashlib.sha256(b"foe").hexdigest(),
         }
@@ -103,7 +103,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
         (run / "campaign.json").write_text(
             json.dumps(
                 {
-                    "evaluated_foe": identity,
+                    "evaluated_foe": evaluated,
                     "dataset": "terminal-bench/example@1",
                     "label": "development",
                     "model": "openai-codex/gpt-5.6-luna",
@@ -127,9 +127,9 @@ class CollectDiagnosticsTest(unittest.TestCase):
         (agent / "foe-diagnostics.json").write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
-                    "evidence_identity": {
-                        "runtime_build": identity["runtime_binary"],
+                    "schema_version": 4,
+                    "evidence_fingerprints": {
+                        "runtime_build": evaluated["runtime_binary"],
                         "episode_id": "ep_root",
                     },
                     "task": "terminal-bench/example",
@@ -152,22 +152,22 @@ class CollectDiagnosticsTest(unittest.TestCase):
                         "model_calls": 3,
                         "estimated_cost_usd": 0.01,
                         "per_request": [
-                            {"seq": 1, "input_tokens": 100},
-                            {"seq": 5, "input_tokens": 900},
-                            {"seq": 9, "input_tokens": 500},
+                            {"seq": 1, "episode_id": "ep_root", "input_tokens": 100},
+                            {"seq": 5, "episode_id": "ep_root", "input_tokens": 900},
+                            {"seq": 9, "episode_id": "ep_root", "input_tokens": 500},
                         ],
                     },
                 }
             ),
             encoding="utf-8",
         )
-        return source / "Cargo.toml", binary, run, identity
+        return source / "Cargo.toml", binary, run, evaluated
 
-    def test_collector_binds_diagnostics_to_source_and_binary(self):
+    def test_collector_matches_diagnostics_to_source_and_binary(self):
         with tempfile.TemporaryDirectory() as directory:
-            source, binary, run, identity = self.fixture(Path(directory))
+            source, binary, run, evaluated = self.fixture(Path(directory))
             report = collect(source, binary, [run], {"example"})
-        self.assertEqual(report["evaluated_foe"], identity)
+        self.assertEqual(report["evaluated_foe"], evaluated)
         self.assertEqual(report["schema_version"], 4)
         diagnosis = report["trajectory_diagnostics"][0]
         self.assertEqual(diagnosis["task"], "terminal-bench/example")
@@ -217,15 +217,15 @@ class CollectDiagnosticsTest(unittest.TestCase):
             source, binary, run, _ = self.fixture(Path(directory))
             path = next(run.glob("*/*/agent/foe-diagnostics.json"))
             report = json.loads(path.read_text(encoding="utf-8"))
-            report["evidence_identity"]["runtime_build"] = "sha256:" + "0" * 64
+            report["evidence_fingerprints"]["runtime_build"] = "sha256:" + "0" * 64
             path.write_text(json.dumps(report), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "different runtime identity"):
+            with self.assertRaisesRegex(ValueError, "different runtime fingerprint"):
                 collect(source, binary, [run], {"example"})
 
     def test_corpus_collection_matches_direct_collection(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source, binary, run, identity = self.fixture(root)
+            source, binary, run, evaluated = self.fixture(root)
             campaign_path = run / "campaign.json"
             campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
             campaign["tasks"] = [{"name": "example"}]
@@ -249,7 +249,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
                     {
                         "seq": 1,
                         "type": "episode/start",
-                        "data": {"runtime": {"build": identity["runtime_binary"]}},
+                        "data": {"runtime": {"build": evaluated["runtime_binary"]}},
                     }
                 )
                 + "\n",
@@ -272,7 +272,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
                 source, binary, [run], cases, root / "corpus"
             )
             direct = collect(source, binary, [run], {"example"})
-            from_corpus = collect_from_corpus(manifest, cases, identity)
+            from_corpus = collect_from_corpus(manifest, cases, evaluated)
         self.assertEqual(from_corpus, direct)
 
     def test_input_growth_resets_when_a_second_child_starts_lower(self):

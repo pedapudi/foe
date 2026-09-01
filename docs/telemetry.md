@@ -26,10 +26,10 @@ Four properties follow.
 - **Preview is emission.** `foe telemetry` runs the emission and prints
   the result, so what a person reviews is what a run wrote, down to the
   pseudonyms.
-- **Enablement is outside the program.** The switch is a machine-level
-  file, never a key in a program configuration, so turning telemetry on or
-  off changes no program identity: the same program observed and unobserved
-  is one program.
+- **Enablement is outside the contract.** The switch is a machine-level
+  file, never a key in a contract configuration, so turning telemetry on or
+  off changes no contract fingerprint: the same contract observed and unobserved
+  is one contract.
 
 ## Enabling, emitting, inspecting
 
@@ -188,7 +188,7 @@ Six layers run over those two fields, in order.
    `var`, `tmp`, `opt`, `home`, `root`, `dev`, `proc`, `sys`, `run`, `mnt`,
    `srv`, `boot`, `log`, `share`, `local`, `include`. The directory names
    common to source trees: `src`, `lib`, `test`, `tests`, `docs`, `target`,
-   `build`, `dist`, `node_modules`, `git`. The system files and programs
+   `build`, `dist`, `node_modules`, `git`. The system files and commands
    that are the same on every machine, among them `null`, `bash`,
    `useradd`, `systemctl`, `nginx`, `sshd_config`, `passwd`, `hosts`, and
    `resolv.conf`. Everything else is replaced. Relative paths are included,
@@ -217,7 +217,7 @@ pass would see.
 
 The key is 32 bytes read from the system random source on first use and
 stored at `<out-dir>/key` with mode 0600. It is never emitted, never
-logged, and not part of any identity.
+logged, and not part of the contract fingerprint.
 
 Keyed hashing is what makes a pseudonym irrecoverable: an unkeyed hash of a
 user name falls to a word list in milliseconds. The pseudonym for one value
@@ -227,7 +227,7 @@ cross-installation joins are impossible. That is a property of the design.
 
 ### Digest collisions
 
-The runtime's own identifiers — program identity, build hash, episode
+The runtime's own identifiers — contract fingerprint, build hash, episode
 identifiers — travel in dedicated schema fields that the scrubber never
 scans. Inside the two free-text fields, a long hexadecimal run is masked
 even when it is probably a commit hash. Losing a commit hash from an error
@@ -281,7 +281,7 @@ A field that answers no question is not emitted. This table is the gate.
 | field | the question it answers |
 |---|---|
 | `service.name` | which system produced this trace |
-| `foe.program.identity` | which program configuration ran |
+| `foe.contract.fingerprint` | which contract configuration ran |
 | `foe.runtime.version`, `foe.runtime.build` | which build produced the log |
 | `foe.schema.version`, `foe.taxonomy.version`, `foe.ruleset.version` | may these two payloads be compared, or did the fields, the buckets, or the rules change between them |
 | `foe.scrub.*` | how much of the free text was replaced, by type |

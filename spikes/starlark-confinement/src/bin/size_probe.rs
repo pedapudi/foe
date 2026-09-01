@@ -7,11 +7,11 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use starlark_confinement_spike::fixed_dispatcher;
-use starlark_confinement_spike::run_program;
+use starlark_confinement_spike::run_contract;
 use starlark_confinement_spike::Limits;
 
 fn main() {
-    let result = run_program(
+    let result = run_contract(
         "def main():\n    r = call_tool('probe', {'n': 1})\n    return {'ok': not r.is_error}\n",
         &Limits::generous(),
         fixed_dispatcher(serde_json::json!({"n": 1})),

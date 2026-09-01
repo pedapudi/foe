@@ -1,6 +1,6 @@
 """Transport adapters.
 
 An adapter turns a provider client into the transport callable
-`foe.Program.run` accepts. Each adapter imports its provider library only
+`foe.ExecutionContract.run` accepts. Each adapter imports its provider library only
 when constructed, so the core package has no dependencies.
 """

@@ -171,7 +171,7 @@ fn a_result_without_a_rendering_is_rendered_and_counted() {
 }
 
 /// docs/tools.md "What a cut keeps": every shortened rendering is retained,
-/// and a program with retrieve receives an opaque cursor in the notice.
+/// and a contract with retrieve receives an opaque cursor in the notice.
 #[test]
 fn a_cut_retains_the_complete_rendering_and_offers_retrieval() {
     let mut values = vec![value(60_000), value(60_000)];

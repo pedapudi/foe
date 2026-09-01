@@ -12,7 +12,7 @@
 //! built-in `task` source holds its value before the first firing and is
 //! nobody's ancestor, so a node that follows only `task` fires at the start.
 
-use foe_program::workflow::{ancestors, Node, WorkflowConfig, TASK_SOURCE};
+use foe_contract::workflow::{ancestors, Node, WorkflowConfig, TASK_SOURCE};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;

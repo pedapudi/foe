@@ -13,7 +13,7 @@
 // down the row is the order of containment: the episode, the nodes of its
 // graph, and the calls it made.
 
-import { programRuns } from "./lineage.js";
+import { contractRuns } from "./episode-tree.js";
 import type { Outcome } from "./types.js";
 
 /**
@@ -102,8 +102,8 @@ export interface NodeDecision {
 export interface TrajectoryEpisode {
   id: string;
   name: string;
-  /** `episode/start.identity`, which is equal for two runs of one program. */
-  identity: string;
+  /** `episode/start.contract_fingerprint`, equal for two runs of one contract. */
+  contractFingerprint: string;
   /** Depth in the episode tree, which indents the row label. */
   depth: number;
   startTime: number;
@@ -206,7 +206,7 @@ export interface TrajectoryRow {
   guides: RowGuide[];
   /** Left edge of the row's own label. */
   labelX: number;
-  /** The program name shortened to the room the column leaves it. */
+  /** The contract name shortened to the room the column leaves it. */
   label: string;
 }
 
@@ -232,15 +232,15 @@ export interface Plot {
 }
 
 /**
- * The rows of one program, bracketed beside the plot. A bracket is drawn
- * only where two or more roots carry one identity, because a bracket
+ * The rows of one contract, bracketed beside the plot. A bracket is drawn
+ * only where two or more roots carry one fingerprint, because a bracket
  * around a single row groups nothing.
  */
-export interface ProgramGroup {
-  identity: string;
-  /** The program name, which every root of the group shares. */
+export interface ContractGroup {
+  contractFingerprint: string;
+  /** The contract name, which every root of the group shares. */
   name: string;
-  /** Roots in the group, which is how many runs of the program there are. */
+  /** Roots in the group, which is how many runs of the contract there are. */
   runs: number;
   x: number;
   y1: number;
@@ -249,7 +249,7 @@ export interface ProgramGroup {
 
 export interface TrajectoryLayout {
   rows: TrajectoryRow[];
-  groups: ProgramGroup[];
+  groups: ContractGroup[];
   connectors: Connector[];
   ticks: AxisTick[];
   plot: Plot;
@@ -746,13 +746,13 @@ function domainOf(
 }
 
 /**
- * One bracket per program with more than one root in the figure, spanning
+ * One bracket per contract with more than one root in the figure, spanning
  * every row of those roots, placed in the gutter between the label column
  * and the plot.
  */
-function groupsFor(episodes: TrajectoryEpisode[], rows: TrajectoryRow[], x: number): ProgramGroup[] {
-  return programRuns(episodes).map((span) => ({
-    identity: span.identity,
+function groupsFor(episodes: TrajectoryEpisode[], rows: TrajectoryRow[], x: number): ContractGroup[] {
+  return contractRuns(episodes).map((span) => ({
+    contractFingerprint: span.contractFingerprint,
     name: span.name,
     runs: span.runs,
     x,

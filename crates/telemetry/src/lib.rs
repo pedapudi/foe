@@ -15,7 +15,7 @@
 //! rather than simulating what an emission would do.
 //!
 //! Running the binary is the opt-in. There is no configuration key, no
-//! identity change, and no environment variable, and this crate opens no
+//! fingerprint change, and no environment variable, and this crate opens no
 //! network connection and calls no model.
 
 #![forbid(unsafe_code)]
@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 
 /// Changes whenever an emitted field is added, removed, renamed, or given a
 /// different meaning. Every payload carries it as a resource attribute.
-pub const SCHEMA_VERSION: &str = "4";
+pub const SCHEMA_VERSION: &str = "5";
 
 /// The fraction of the input tokens the cache served, absent when no input
 /// token was recorded: an unmeasured spend has no fraction rather than a
@@ -172,7 +172,7 @@ pub fn emission(events: &[Event], log_dir: &str, key: Vec<u8>) -> Result<Emissio
 fn resource_attributes(facts: &Facts, report: &Report) -> Vec<Attribute> {
     let mut attributes = vec![
         text("service.name", "foe"),
-        text("foe.program.identity", facts.identity.clone()),
+        text("foe.contract.fingerprint", facts.contract_fingerprint.clone()),
         text("foe.runtime.version", facts.runtime_version.clone()),
         text("foe.runtime.build", facts.runtime_build.clone()),
         text("foe.schema.version", SCHEMA_VERSION),

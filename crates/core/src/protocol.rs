@@ -8,10 +8,10 @@
 
 use crate::loop_::{append_inbox_item, lock, until, wait_stop, Log};
 use crate::{CallCtx, ChunkSink, ModelRequestBody, Tool, ToolValue, Transport};
+use foe_contract::document::ResolvedContract;
+use foe_contract::tools::host_spec;
+use foe_contract::ToolSpec;
 use foe_log::{Chunk, EventData, ExhaustedLimit, InboxItem, InboxSource, ModelRoute, ToolFailure, ToolFailureCode};
-use foe_program::document::ResolvedProgram;
-use foe_program::tools::host_spec;
-use foe_program::ToolSpec;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -244,10 +244,10 @@ impl Host {
         Arc::new(HostTransport { host: self.clone() })
     }
 
-    /// One implementation per `host_tools` entry of `program`, with the
+    /// One implementation per `host_tools` entry of `contract`, with the
     /// specification taken from the document.
-    pub fn tools(&self, program: &ResolvedProgram) -> Vec<Box<dyn Tool>> {
-        program.host_tools.iter().map(|(name, def)| self.tool(host_spec(name, def))).collect()
+    pub fn tools(&self, contract: &ResolvedContract) -> Vec<Box<dyn Tool>> {
+        contract.host_tools.iter().map(|(name, def)| self.tool(host_spec(name, def))).collect()
     }
 
     /// A tool that emits `host/tool-call` and waits for the host's

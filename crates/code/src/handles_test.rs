@@ -205,7 +205,7 @@ impl Executor for ProcessGroupExecutor {
         use std::io::Read;
         use std::os::unix::process::CommandExt;
         let started = Instant::now();
-        let mut child = Command::new(&req.program)
+        let mut child = Command::new(&req.command)
             .args(&req.args)
             .current_dir(&req.cwd)
             .env_clear()

@@ -99,7 +99,7 @@ retries = of("request/retry")
 check(len(retries) == 4, f"one request/retry per attempt that follows one; there are {len(retries)}")
 check([r["delay_ms"] for r in retries] == [500, 1000, 2000, 4000], "the delay doubles, and the fifth is never waited")
 check([r["attempt"] for r in retries] == [1, 2, 3, 4], "each retry names the attempt that failed")
-check(all(r["cause"] == "provider" for r in retries), "the cause recorded is provider, which the program reported")
+check(all(r["cause"] == "provider" for r in retries), "the cause recorded is provider, which the contract reported")
 
 # Every request/retry is followed by the model/request it announces.
 kinds = [e["type"] for e in events]

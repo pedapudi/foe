@@ -20,7 +20,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 
-use foe_program::ModelConfig;
+use foe_contract::ModelConfig;
 
 use super::AuthKind;
 use crate::paths;
@@ -125,7 +125,7 @@ impl BrowserLogin {
         use super::token_file::codex;
         let port = endpoints.callback_port;
         let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|e| {
-            format!("cannot listen on 127.0.0.1:{port} for the login callback: {e}; stop the program using that port")
+            format!("cannot listen on 127.0.0.1:{port} for the login callback: {e}; stop the contract using that port")
         })?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
         let redirect_uri = codex::redirect_uri(port);

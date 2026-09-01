@@ -34,7 +34,7 @@ class HarnessError(Exception):
 
 def base_config(name: str, root: Path, transport: Path) -> dict[str, Any]:
     return {
-        "version": 3,
+        "version": 4,
         "name": name,
         "instructions": {"role": "Follow the deterministic evaluation task."},
         "tools": ["read"],
@@ -88,10 +88,10 @@ def failed_config(root: Path, transport: Path) -> dict[str, Any]:
     return config
 
 
-def authority_config(root: Path, transport: Path) -> dict[str, Any]:
+def permissions_config(root: Path, transport: Path) -> dict[str, Any]:
     allowed = root / "allowed"
     denied = root / "denied" / "secret.txt"
-    config = base_config("eval-authority", allowed, transport)
+    config = base_config("eval-permissions", allowed, transport)
     config["model"].update(
         {"allowed_file": str(allowed / "a.txt"), "denied_file": str(denied)}
     )
@@ -265,7 +265,7 @@ def check_sandbox_probe(log_dir: Path) -> list[str]:
     return findings
 
 
-def check_authority_probe(log_dir: Path) -> list[str]:
+def check_permissions_probe(log_dir: Path) -> list[str]:
     events = probe_events(log_dir)
     findings = []
     results = {
@@ -342,8 +342,8 @@ def first_event(events: list[dict[str, Any]], event_type: str) -> dict[str, Any]
     return next(event for event in events if event["type"] == event_type)
 
 
-def corrupt_authority(events: list[dict[str, Any]]) -> None:
-    first_event(events, "episode/start")["data"]["program"]["grants"]["read"][0] = "relative"
+def corrupt_permissions(events: list[dict[str, Any]]) -> None:
+    first_event(events, "episode/start")["data"]["contract"]["grants"]["read"][0] = "relative"
 
 
 def corrupt_request_messages(events: list[dict[str, Any]]) -> None:
@@ -370,7 +370,7 @@ def corrupt_compaction_task(events: list[dict[str, Any]]) -> None:
 
 def mutation_checks(run_root: Path, logs: dict[str, Path]) -> int:
     cases: list[tuple[str, str, Mutation]] = [
-        ("declared_authority", "typed-outcome", corrupt_authority),
+        ("declared_permissions", "typed-outcome", corrupt_permissions),
         ("reconstructable_evidence", "typed-outcome", corrupt_request_messages),
         ("typed_outcomes", "typed-outcome", corrupt_typed_value),
         ("hierarchical_budgets", "workflow-provenance", corrupt_child_spend),
@@ -439,7 +439,7 @@ def run(args: argparse.Namespace, run_root: Path) -> int:
         "blocked-outcome": (blocked_config(fixtures, transport), 2),
         "exhausted-outcome": (exhausted_config(fixtures, transport), 3),
         "failed-outcome": (failed_config(fixtures, transport), 1),
-        "declared-authority": (authority_config(fixtures, transport), 0),
+        "declared-permissions": (permissions_config(fixtures, transport), 0),
         "workflow-provenance": (workflow_config(fixtures, transport), 0),
         "context-compaction": (compaction_config(fixtures, transport), 0),
     }
@@ -452,16 +452,16 @@ def run(args: argparse.Namespace, run_root: Path) -> int:
         logs[name], case_findings = run_case(binary, run_root, name, config, expected_exit)
         findings.extend(case_findings)
     findings.extend(check_outcome_cases(logs))
-    authority_findings = check_authority_probe(logs["declared-authority"])
+    permission_findings = check_permissions_probe(logs["declared-permissions"])
     compaction_findings = check_compaction_probe(logs["context-compaction"], fixtures)
     sandbox_findings = check_sandbox_probe(logs["kernel-sandbox"]) if args.include_kernel_sandbox else []
-    findings.extend(authority_findings + compaction_findings + sandbox_findings)
+    findings.extend(permission_findings + compaction_findings + sandbox_findings)
 
     report = evaluate(logs.values())
     report["observations"]["kernel_denial_probe"] = (
         ("passed" if not sandbox_findings else "failed") if args.include_kernel_sandbox else "not_requested"
     )
-    report["observations"]["capability_denial_probe"] = "passed" if not authority_findings else "failed"
+    report["observations"]["capability_denial_probe"] = "passed" if not permission_findings else "failed"
     report["observations"]["compaction_continuation_probe"] = (
         "passed" if not compaction_findings else "failed"
     )

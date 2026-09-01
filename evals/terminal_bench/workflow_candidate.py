@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Create and validate identity-bound workflow configuration candidates."""
+"""Create and validate workflow configurations against retained evidence."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ MIN_AUDIT_MODEL_CALLS = 6
 MAX_AUDIT_MODEL_CALLS = 120
 
 
-def _hash_identity(value: Any, prefix: str, digits: int) -> bool:
+def _has_fingerprint_shape(value: Any, prefix: str, digits: int) -> bool:
     return (
         isinstance(value, str)
         and value.startswith(prefix)
@@ -32,7 +32,7 @@ def candidate_digest(value: dict[str, Any]) -> str:
 
 def require_sha256(label: str, value: Any) -> str:
     """Return `value` when it is a `sha256:` digest string."""
-    if not _hash_identity(value, "sha256:", 64):
+    if not _has_fingerprint_shape(value, "sha256:", 64):
         raise ValueError(f"{label} is invalid")
     return value
 
@@ -40,16 +40,16 @@ def require_sha256(label: str, value: Any) -> str:
 def validate_evaluated_foe(
     value: Any, evaluated_foe: dict[str, str] | None = None, label: str = "candidate"
 ) -> dict[str, str]:
-    """Return one validated Foe source and binary identity."""
+    """Return one validated Foe source tree and runtime-binary fingerprint."""
     if not isinstance(value, dict) or set(value) != {"source_tree", "runtime_binary"}:
         raise ValueError(f"{label} evaluated_foe is invalid")
     source_tree = value.get("source_tree")
     if not (
-        _hash_identity(source_tree, "git-tree-sha1:", 40)
-        or _hash_identity(source_tree, "git-tree-sha256:", 64)
+        _has_fingerprint_shape(source_tree, "git-tree-sha1:", 40)
+        or _has_fingerprint_shape(source_tree, "git-tree-sha256:", 64)
     ):
         raise ValueError(f"{label} evaluated_foe.source_tree is invalid")
-    if not _hash_identity(value.get("runtime_binary"), "sha256:", 64):
+    if not _has_fingerprint_shape(value.get("runtime_binary"), "sha256:", 64):
         raise ValueError(f"{label} evaluated_foe.runtime_binary is invalid")
     if evaluated_foe is not None and value != evaluated_foe:
         raise ValueError(f"{label} evaluates a different Foe source or binary")
@@ -99,7 +99,7 @@ def create(
     base_configuration: dict[str, str],
     independent_audit: dict[str, Any],
 ) -> dict[str, Any]:
-    """Bind a workflow setting to the evaluated source, binary, and evidence."""
+    """Associate a workflow setting with its evaluated source, binary, and evidence."""
     body = {
         "schema_version": SCHEMA_VERSION,
         "candidate_kind": KIND,
@@ -112,7 +112,7 @@ def create(
 
 
 def validate(value: Any, evaluated_foe: dict[str, str] | None = None) -> dict[str, Any]:
-    """Validate a complete candidate and optionally require one Foe identity."""
+    """Validate a complete candidate and optionally require one evaluated Foe build."""
     required = {
         "schema_version",
         "candidate_kind",
@@ -128,14 +128,14 @@ def validate(value: Any, evaluated_foe: dict[str, str] | None = None) -> dict[st
         raise ValueError(f"workflow candidate schema_version must be {SCHEMA_VERSION}")
     if value.get("candidate_kind") != KIND:
         raise ValueError(f"workflow candidate candidate_kind must be {KIND}")
-    identity = value.get("evaluated_foe")
-    validate_evaluated_foe(identity, evaluated_foe, label="workflow candidate")
+    evaluated = value.get("evaluated_foe")
+    validate_evaluated_foe(evaluated, evaluated_foe, label="workflow candidate")
     evidence_sha256 = require_sha256("workflow candidate evidence_sha256", value.get("evidence_sha256"))
     body = {key: value[key] for key in required - {"digest"}}
     if value.get("digest") != candidate_digest(body):
         raise ValueError("workflow candidate digest does not match its contents")
     return create(
-        identity,
+        evaluated,
         evidence_sha256,
         validate_base_configuration(value.get("base_configuration")),
         validate_independent_audit(value.get("independent_audit")),

@@ -3,35 +3,35 @@ use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::{Handles, Registry};
 use crate::test_util::{
-    call, done, program_with, text as text_chunk, tmp, turn, Probe, ScratchDir, ScriptedTransport, Verifier,
+    call, contract_with, done, text as text_chunk, tmp, turn, Probe, ScratchDir, ScriptedTransport, Verifier,
 };
 use crate::{Tool, Transport};
+use foe_contract::document::ResolvedContract;
+use foe_contract::harness_text as text;
+use foe_contract::Effect;
 use foe_log::{
     BlockedCode, Chunk, Covered, EpisodeStart, Event, EventData, ExhaustedLimit, InboxSource, Outcome, RuntimeInfo,
     SandboxInfo, SandboxMode, StopReason, Usage, VerificationStatus,
 };
-use foe_program::document::ResolvedProgram;
-use foe_program::harness_text as text;
-use foe_program::Effect;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
 
-fn start(program: &ResolvedProgram) -> EpisodeStart {
+fn start(contract: &ResolvedContract) -> EpisodeStart {
     EpisodeStart {
         id: "ep_test".into(),
         parent_id: None,
         fork_origin: None,
         team_id: None,
-        program: program.to_value(),
-        identity: "sha256:test".into(),
+        contract: contract.to_value(),
+        contract_fingerprint: "sha256:test".into(),
         task: "do the thing".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: SandboxInfo {
             mode: SandboxMode::Off,
             landlock_abi: 0,
-            effective_access: None,
-            process_boundary: None,
+            resolved_permissions: Default::default(),
+            process_boundary: Default::default(),
         },
         effective_budget: None,
     }
@@ -41,7 +41,7 @@ struct Fixture {
     scratch: Option<ScratchDir>,
     dir: std::path::PathBuf,
     log: Arc<Log>,
-    program: ResolvedProgram,
+    contract: ResolvedContract,
     tools: Vec<Box<dyn Tool>>,
     transport: Arc<dyn Transport>,
     context: Option<Arc<dyn ContextPolicy>>,
@@ -56,14 +56,14 @@ impl Fixture {
         let root = tmp(name);
         let dir = root.join("episode");
         std::fs::create_dir_all(&dir).unwrap();
-        let program = program_with(&root, edit).unwrap();
+        let contract = contract_with(&root, edit).unwrap();
         let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
         let (stop, stop_rx) = watch::channel(None);
         Self {
             scratch: Some(root),
             dir,
             log,
-            program,
+            contract,
             tools: vec![],
             transport: Arc::new(ScriptedTransport::new(responses)),
             context: None,
@@ -94,20 +94,20 @@ impl Fixture {
     }
 
     async fn run(mut self) -> (Outcome, Vec<Event>) {
-        if self.program.tools.iter().any(|name| name == crate::retrieval::NAME) {
+        if self.contract.tools.iter().any(|name| name == crate::retrieval::NAME) {
             self.tools.push(crate::retrieval::tool(self.log.clone()));
         }
-        let registry = Arc::new(Registry::new(&self.program, vec![], self.tools).unwrap());
-        let mut episode_start = start(&self.program);
+        let registry = Arc::new(Registry::new(&self.contract, vec![], self.tools).unwrap());
+        let mut episode_start = start(&self.contract);
         episode_start.parent_id = self.parent_id;
         let params = Params {
             log: self.log.clone(),
             start: episode_start,
-            program: self.program.clone(),
+            contract: self.contract.clone(),
             registry,
             handles: Handles::default(),
             transport: self.transport,
-            pool: Arc::new(Mutex::new(Pool::new(self.program.budget.clone()))),
+            pool: Arc::new(Mutex::new(Pool::new(self.contract.budget.clone()))),
             stop: self.stop_rx,
             children: None,
             sessions: self.sessions,
@@ -197,7 +197,7 @@ async fn a_turn_without_tool_calls_completes_with_its_text() {
 
 /// docs/compaction.md "When it fails": a failed summary for a request that
 /// exceeds the model window reports the window, independent of any input
-/// allowance in the program budget.
+/// allowance in the contract budget.
 #[tokio::test]
 async fn failed_compaction_beyond_the_model_window_names_the_context_window() {
     let fx = Fixture::new("loop-context-window", |_| {}, vec![]).context(FailedWindowCompaction);
@@ -234,7 +234,7 @@ struct Shared(Arc<Probe>);
 
 #[async_trait::async_trait]
 impl Tool for Shared {
-    fn spec(&self) -> &foe_program::ToolSpec {
+    fn spec(&self) -> &foe_contract::ToolSpec {
         self.0.spec()
     }
     async fn call(&self, args: serde_json::Value, ctx: &crate::CallCtx) -> crate::ToolValue {
@@ -510,7 +510,7 @@ async fn block_ends_the_episode_with_the_reported_code() {
     assert_eq!(outcome, Outcome::Blocked { code: BlockedCode::MissingCapability, message: "no network".into() });
 }
 
-/// docs/log-format.md "Blocked codes": a program allowed to start children
+/// docs/log-format.md "Blocked codes": a contract allowed to start children
 /// can report that blocked children prevent the parent from proceeding.
 #[tokio::test]
 async fn a_parent_can_end_with_child_blocked() {
@@ -520,7 +520,7 @@ async fn a_parent_can_end_with_child_blocked() {
             let root = v["grants"]["read"][0].clone();
             v["tools"] = json!(["block", "spawn"]);
             v["grants"]["spawn"] = json!(["worker"]);
-            v["programs"] = json!({ "worker": {
+            v["child_contracts"] = json!({ "worker": {
                 "name": "worker", "instructions": { "role": "work" }, "tools": ["block"],
                 "grants": { "read": [root] }, "budget": { "model_calls": 1 }
             }});
@@ -604,7 +604,7 @@ async fn every_authoritative_verification_is_recorded_as_one_event() {
     assert_eq!(recorded[0].status, VerificationStatus::Findings);
     assert_eq!(recorded[0].findings, vec!["missing test".to_string()]);
     assert_eq!((recorded[0].tool.as_str(), recorded[0].error.as_deref()), ("check", None));
-    assert_eq!(recorded[0].verifier_identity, "unknown", "a built-in verifier carries the runtime build hash");
+    assert_eq!(recorded[0].verifier_fingerprint, "unknown", "a built-in verifier carries the runtime build hash");
     assert_eq!(recorded[1].status, VerificationStatus::Accepted);
     assert!(recorded[1].findings.is_empty(), "an accepted run reports no finding");
     let EventData::ModelRequest(second) =
@@ -613,7 +613,7 @@ async fn every_authoritative_verification_is_recorded_as_one_event() {
         panic!()
     };
     let serialized = serde_json::to_string(&second.messages).unwrap();
-    assert!(!serialized.contains("verifier_identity"), "the event never enters derived messages");
+    assert!(!serialized.contains("verifier_fingerprint"), "the event never enters derived messages");
 }
 
 /// A verifier that fails rather than judges is recorded as `failed` with
@@ -682,7 +682,7 @@ async fn verifier_findings_on_the_last_model_call_leave_the_episode_exhausted() 
 }
 
 #[tokio::test]
-async fn a_returns_program_completes_only_through_the_return_tool() {
+async fn a_returns_contract_completes_only_through_the_return_tool() {
     let edit =
         |v: &mut serde_json::Value| v["done_when"] = json!({ "returns": { "type": "object", "required": ["n"] } });
     let fx = Fixture::new(
@@ -714,11 +714,11 @@ fn learned_return_schema() -> serde_json::Value {
     })
 }
 
-struct LargeError(foe_program::ToolSpec);
+struct LargeError(foe_contract::ToolSpec);
 
 #[async_trait::async_trait]
 impl Tool for LargeError {
-    fn spec(&self) -> &foe_program::ToolSpec {
+    fn spec(&self) -> &foe_contract::ToolSpec {
         &self.0
     }
 
@@ -878,7 +878,7 @@ async fn a_shortened_result_records_its_complete_rendering_first() {
             _ => None,
         })
         .collect();
-    // The header is a property of the program: one header, present from the
+    // The header is a property of the contract: one header, present from the
     // first request, carrying every declared tool including retrieve.
     assert_eq!(headers.len(), 1);
     assert!(headers[0].tools.iter().any(|tool| tool.name == "retrieve"));
@@ -909,21 +909,21 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
         &src,
         11,
         &dest,
-        foe_log::seed::SeedHeader { new_id: "ep_fork".into(), parent_id: None, team_id: None, program: None },
+        foe_log::seed::SeedHeader { new_id: "ep_fork".into(), parent_id: None, team_id: None, contract: None },
     )
     .unwrap();
     let root = src.parent().unwrap().to_path_buf();
-    let program = program_with(&root, |v| v["tools"] = json!(["p"])).unwrap();
+    let contract = contract_with(&root, |v| v["tools"] = json!(["p"])).unwrap();
     let log = Arc::new(Log::create_or_open(&dest, None).unwrap());
     let (_, stop_rx) = watch::channel(None);
     let params = Params {
         log: log.clone(),
-        start: start(&program),
-        program: program.clone(),
-        registry: Arc::new(Registry::new(&program, vec![], vec![Box::new(Probe::new("p", Effect::Pure))]).unwrap()),
+        start: start(&contract),
+        contract: contract.clone(),
+        registry: Arc::new(Registry::new(&contract, vec![], vec![Box::new(Probe::new("p", Effect::Pure))]).unwrap()),
         handles: Handles::default(),
         transport: Arc::new(ScriptedTransport::new(vec![turn("forked end", vec![])])),
-        pool: Arc::new(Mutex::new(Pool::new(program.budget.clone()))),
+        pool: Arc::new(Mutex::new(Pool::new(contract.budget.clone()))),
         stop: stop_rx,
         children: None,
         sessions: None,
@@ -1041,7 +1041,7 @@ async fn wait_until_observes_a_session_exit_while_it_blocks() {
         fx.log.clone(),
         Arc::new(NoSink),
         Arc::new(crate::spawn::Router::new()),
-        Arc::new(Mutex::new(crate::budget::Pool::new(fx.program.budget.clone()))),
+        Arc::new(Mutex::new(crate::budget::Pool::new(fx.contract.budget.clone()))),
     ));
     fx.tools.extend(crate::team::tools(team, None));
     let (outcome, events) = fx.run().await;
@@ -1087,12 +1087,12 @@ fn tolerant_parsing_closes_what_a_truncated_stream_left_open() {
 /// inner call, one whose arguments are not an object, and one naming an
 /// excluded control tool.
 struct ComposeProbe {
-    spec: foe_program::ToolSpec,
+    spec: foe_contract::ToolSpec,
 }
 
 #[async_trait::async_trait]
 impl Tool for ComposeProbe {
-    fn spec(&self) -> &foe_program::ToolSpec {
+    fn spec(&self) -> &foe_contract::ToolSpec {
         &self.spec
     }
 

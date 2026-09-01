@@ -2,7 +2,7 @@
 """Model chunks for the subagents demo: a parent and its survey children.
 
 The parent and every child run their own episode, and each episode calls
-this program once per model request. The request says which episode is
+this contract once per model request. The request says which episode is
 asking: the parent is the episode offered the `spawn` tool, and a survey
 child is offered `notify` instead.
 
@@ -73,7 +73,7 @@ def parent(request: dict) -> None:
         for module in MODULES:
             name = Path(module).stem
             task = f"Report every place {module} reads the configuration key `timeout`."
-            call(request, f"tc_spawn_{name}", "spawn", {"program": "survey", "name": f"{name}-survey", "task": task})
+            call(request, f"tc_spawn_{name}", "spawn", {"contract": "survey", "name": f"{name}-survey", "task": task})
         done(request, "tool")
         return
     if not called(request, "wait"):

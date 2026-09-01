@@ -19,7 +19,7 @@ fn sessions(name: &str, limit: usize) -> (LocalSessions, ScratchDir) {
 fn shell(cwd: &Path, command: &str) -> SessionRequest {
     SessionRequest {
         name: "bash".into(),
-        program: "/bin/bash".into(),
+        command: "/bin/bash".into(),
         args: vec!["-c".into(), command.into()],
         env: BTreeMap::new(),
         cwd: cwd.to_path_buf(),
@@ -226,7 +226,7 @@ fn a_session_group_outlives_its_leader_and_still_settles() {
 /// Settlement records one ownership transfer and leaves the group alive for
 /// the enclosing task environment.
 #[test]
-fn a_task_session_requires_authority_and_survives_settlement() {
+fn a_task_session_requires_permission_and_survives_settlement() {
     let (denied, dir) = sessions("task-denied", 4);
     let mut req = shell(&dir, "sleep 30");
     req.lifetime = SessionLifetime::Task;
@@ -325,15 +325,15 @@ fn start() -> EpisodeStart {
         parent_id: None,
         fork_origin: None,
         team_id: None,
-        program: serde_json::json!({}),
-        identity: "sha256:0".into(),
+        contract: serde_json::json!({}),
+        contract_fingerprint: "sha256:0".into(),
         task: "t".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: SandboxInfo {
             mode: SandboxMode::Off,
             landlock_abi: 0,
-            effective_access: None,
-            process_boundary: None,
+            resolved_permissions: Default::default(),
+            process_boundary: Default::default(),
         },
         effective_budget: None,
     }
@@ -383,7 +383,7 @@ async fn settlement_records_the_implicit_stop_and_the_log_stays_valid() {
 }
 
 /// docs/log-format.md `tool/result`: settlement records a task-lifetime
-/// session as released while alive, with the process identity and the new
+/// session as released while alive, with the process fingerprint and the new
 /// owner. The release produces no exit inbox item.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn settlement_records_task_ownership_without_stopping_the_process() {

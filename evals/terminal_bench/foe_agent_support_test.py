@@ -7,7 +7,7 @@ from pathlib import Path
 
 from foe_agent_support import (
     FIXED_EXECUTABLE_PATHS,
-    build_program,
+    build_contract,
     describe_container_environment,
     estimate_usage_cost,
     fixed_executable_probe_command,
@@ -16,7 +16,7 @@ from foe_agent_support import (
 )
 
 
-class ProgramTest(unittest.TestCase):
+class ContractTest(unittest.TestCase):
     def test_schema_preflight_requires_no_default_model(self):
         self.assertEqual(
             schema_preflight_command("/usr/local/bin/foe"),
@@ -37,8 +37,8 @@ class ProgramTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "incomplete observation set"):
             describe_container_environment("/app", "sh=/bin/sh")
 
-    def test_program_declares_container_authority_and_split_allowances(self):
-        program = build_program(
+    def test_contract_declares_container_permissions_and_split_allowances(self):
+        contract = build_contract(
             "repair it",
             "openai-codex/gpt-5.6-sol",
             "/tmp/private.json",
@@ -50,11 +50,11 @@ class ProgramTest(unittest.TestCase):
             reasoning_effort="low",
         )
         self.assertEqual(
-            program["grants"],
+            contract["grants"],
             {"read": ["/workspace", "/"], "write": ["/"]},
         )
         self.assertEqual(
-            program["budget"],
+            contract["budget"],
             {
                 "model_calls": 12,
                 "input_tokens": 120_000,
@@ -63,19 +63,19 @@ class ProgramTest(unittest.TestCase):
                 "loop_threshold": 8,
             },
         )
-        self.assertEqual(program["sandbox"], {"mode": "off"})
-        self.assertEqual(program["model"]["reasoning_effort"], "low")
-        self.assertEqual(program["model"]["service_tier"], "priority")
-        self.assertEqual(program["model"]["token_file"], "/tmp/private.json")
-        self.assertNotIn("api_key_file", program["model"])
-        self.assertEqual(program["task"], "repair it")
+        self.assertEqual(contract["sandbox"], {"mode": "off"})
+        self.assertEqual(contract["model"]["reasoning_effort"], "low")
+        self.assertEqual(contract["model"]["service_tier"], "priority")
+        self.assertEqual(contract["model"]["token_file"], "/tmp/private.json")
+        self.assertNotIn("api_key_file", contract["model"])
+        self.assertEqual(contract["task"], "repair it")
         self.assertIn(
             "two materially different behavioral inputs",
-            program["instructions"]["role"],
+            contract["instructions"]["role"],
         )
 
-    def test_program_omits_soft_token_measurements_from_the_allowance(self):
-        program = build_program(
+    def test_contract_omits_soft_token_measurements_from_the_allowance(self):
+        contract = build_contract(
             "repair it",
             "openai-codex/gpt-5.6-luna",
             "/tmp/private.json",
@@ -87,12 +87,12 @@ class ProgramTest(unittest.TestCase):
             reasoning_effort="low",
         )
         self.assertEqual(
-            program["budget"],
+            contract["budget"],
             {"model_calls": 20, "seconds": 600, "loop_threshold": 8},
         )
 
     def test_completion_checker_governs_root_and_workflow_coding_nodes(self):
-        program = build_program(
+        contract = build_contract(
             "repair it",
             "openai-codex/gpt-5.6-sol",
             "/tmp/private.json",
@@ -106,19 +106,19 @@ class ProgramTest(unittest.TestCase):
             escalation_reasoning_effort="high",
             escalation_model_calls=10,
         )
-        self.assertEqual(program["tool_defs"]["check"]["exec"], "/tmp/completion-check")
-        self.assertEqual(program["done_when"]["verify"], "check")
-        self.assertEqual(program["done_when"]["retries"], 12)
-        self.assertIn("check", program["tools"])
+        self.assertEqual(contract["tool_defs"]["check"]["exec"], "/tmp/completion-check")
+        self.assertEqual(contract["done_when"]["verify"], "check")
+        self.assertEqual(contract["done_when"]["retries"], 12)
+        self.assertIn("check", contract["tools"])
         for name in ("implement-task", "audit-and-repair-task"):
-            node = program["workflow"]["nodes"][name]["model"]
-            self.assertEqual(node["done_when"], program["done_when"])
-            self.assertEqual(node["tool_defs"], program["tool_defs"])
+            node = contract["workflow"]["nodes"][name]["model"]
+            self.assertEqual(node["done_when"], contract["done_when"])
+            self.assertEqual(node["tool_defs"], contract["tool_defs"])
             self.assertIn("check", node["tools"])
 
     def test_completion_checker_requires_an_absolute_path(self):
         with self.assertRaisesRegex(ValueError, "completion checker must be an absolute path"):
-            build_program(
+            build_contract(
                 "repair it",
                 "openai-codex/gpt-5.6-sol",
                 "/tmp/private.json",
@@ -131,9 +131,9 @@ class ProgramTest(unittest.TestCase):
                 completion_checker="relative-check",
             )
 
-    def test_program_rejects_unqualified_model(self):
+    def test_contract_rejects_unqualified_model(self):
         with self.assertRaisesRegex(ValueError, "provider/model"):
-            build_program(
+            build_contract(
                 "repair it",
                 "gpt-5.6-sol",
                 "/tmp/private.json",
@@ -145,8 +145,8 @@ class ProgramTest(unittest.TestCase):
                 reasoning_effort="low",
             )
 
-    def test_program_can_diagnose_then_implement_in_separate_model_episodes(self):
-        program = build_program(
+    def test_contract_can_diagnose_then_implement_in_separate_model_episodes(self):
+        contract = build_contract(
             "repair it",
             "openai-codex/gpt-5.6-sol",
             "/tmp/private.json",
@@ -160,7 +160,7 @@ class ProgramTest(unittest.TestCase):
             diagnosis_reasoning_effort="high",
             diagnosis_model_calls=6,
         )
-        nodes = program["workflow"]["nodes"]
+        nodes = contract["workflow"]["nodes"]
         diagnosis = nodes["diagnose-task"]["model"]
         implementation = nodes["implement-task"]["model"]
         self.assertEqual(diagnosis["model"]["model"], "gpt-5.6-luna")
@@ -185,13 +185,13 @@ class ProgramTest(unittest.TestCase):
         self.assertEqual(implementation["budget"]["model_calls"], 20)
         self.assertEqual(implementation["budget"]["seconds"], 600)
         self.assertEqual(implementation["budget"]["loop_threshold"], 8)
-        self.assertEqual(program["budget"]["model_calls"], 26)
-        self.assertEqual(program["budget"]["seconds"], 1200)
+        self.assertEqual(contract["budget"]["model_calls"], 26)
+        self.assertEqual(contract["budget"]["seconds"], 1200)
         self.assertEqual(nodes["implement-task"]["follows"], ["task", "diagnose-task"])
         self.assertTrue(nodes["implement-task"]["terminal"])
 
     def test_default_diagnosis_allowance_is_a_backstop(self):
-        program = build_program(
+        contract = build_contract(
             "repair it",
             "openai-codex/gpt-5.6-sol",
             "/tmp/private.json",
@@ -203,12 +203,12 @@ class ProgramTest(unittest.TestCase):
             reasoning_effort="low",
             diagnosis_model_name="openai-codex/gpt-5.6-luna",
         )
-        diagnosis = program["workflow"]["nodes"]["diagnose-task"]["model"]
+        diagnosis = contract["workflow"]["nodes"]["diagnose-task"]["model"]
         self.assertEqual(diagnosis["budget"]["model_calls"], 20)
-        self.assertEqual(program["budget"]["model_calls"], 80)
+        self.assertEqual(contract["budget"]["model_calls"], 80)
 
-    def test_program_can_escalate_to_a_fresh_repair_episode(self):
-        program = build_program(
+    def test_contract_can_escalate_to_a_fresh_repair_episode(self):
+        contract = build_contract(
             "repair it",
             "openai-codex/gpt-5.6-sol",
             "/tmp/private.json",
@@ -225,7 +225,7 @@ class ProgramTest(unittest.TestCase):
             escalation_model_calls=18,
             environment_facts="Working directory: /workspace. gcc=/usr/bin/gcc.",
         )
-        nodes = program["workflow"]["nodes"]
+        nodes = contract["workflow"]["nodes"]
         self.assertFalse(nodes["implement-task"]["terminal"])
         self.assertEqual(nodes["implement-task"]["model"]["budget"]["model_calls"], 60)
         self.assertEqual(nodes["diagnose-task"]["model"]["budget"]["seconds"], 900)
@@ -252,12 +252,12 @@ class ProgramTest(unittest.TestCase):
         )
         self.assertEqual(repair["follows"], ["task", "implement-task"])
         self.assertTrue(repair["terminal"])
-        self.assertEqual(program["budget"]["max_episodes"], 4)
-        self.assertEqual(program["budget"]["model_calls"], 84)
-        self.assertEqual(program["budget"]["seconds"], 2700)
+        self.assertEqual(contract["budget"]["max_episodes"], 4)
+        self.assertEqual(contract["budget"]["model_calls"], 84)
+        self.assertEqual(contract["budget"]["seconds"], 2700)
 
-    def test_program_routes_unresolved_cheap_diagnosis_to_deeper_diagnosis(self):
-        program = build_program(
+    def test_contract_routes_unresolved_cheap_diagnosis_to_deeper_diagnosis(self):
+        contract = build_contract(
             "repair it",
             "openai-codex/gpt-5.6-sol",
             "/tmp/private.json",
@@ -273,7 +273,7 @@ class ProgramTest(unittest.TestCase):
             unresolved_diagnosis_reasoning_effort="xhigh",
             unresolved_diagnosis_model_calls=20,
         )
-        nodes = program["workflow"]["nodes"]
+        nodes = contract["workflow"]["nodes"]
         self.assertNotIn("implement-task", nodes)
         self.assertEqual(
             nodes["diagnose-task"]["branches"],
@@ -307,13 +307,13 @@ class ProgramTest(unittest.TestCase):
         )
         self.assertTrue(nodes["implement-resolved-task"]["terminal"])
         self.assertTrue(nodes["implement-after-unresolved-diagnosis"]["terminal"])
-        self.assertEqual(program["budget"]["max_episodes"], 4)
-        self.assertEqual(program["budget"]["model_calls"], 86)
-        self.assertEqual(program["budget"]["seconds"], 5400)
+        self.assertEqual(contract["budget"]["max_episodes"], 4)
+        self.assertEqual(contract["budget"]["model_calls"], 86)
+        self.assertEqual(contract["budget"]["seconds"], 5400)
 
-    def test_program_rejects_tight_auxiliary_backstops(self):
+    def test_contract_rejects_tight_auxiliary_backstops(self):
         with self.assertRaisesRegex(ValueError, "diagnosis model calls must be at least 6"):
-            build_program(
+            build_contract(
                 "repair it",
                 "openai-codex/gpt-5.6-sol",
                 "/tmp/private.json",
@@ -327,7 +327,7 @@ class ProgramTest(unittest.TestCase):
                 diagnosis_model_calls=5,
             )
         with self.assertRaisesRegex(ValueError, "escalation model calls must be at least 6"):
-            build_program(
+            build_contract(
                 "repair it",
                 "openai-codex/gpt-5.6-sol",
                 "/tmp/private.json",
@@ -344,7 +344,7 @@ class ProgramTest(unittest.TestCase):
             ValueError,
             "unresolved diagnosis model calls must be at least 6",
         ):
-            build_program(
+            build_contract(
                 "repair it",
                 "openai-codex/gpt-5.6-sol",
                 "/tmp/private.json",
@@ -373,17 +373,17 @@ class ProgramTest(unittest.TestCase):
             "unresolved_diagnosis_reasoning_effort": "xhigh",
         }
         with self.assertRaisesRegex(ValueError, "requires a diagnosis model"):
-            build_program(**arguments)
+            build_contract(**arguments)
         with self.assertRaisesRegex(ValueError, "cannot be combined"):
-            build_program(
+            build_contract(
                 **arguments,
                 diagnosis_model_name="openai-codex/gpt-5.6-luna",
                 escalation_reasoning_effort="xhigh",
                 escalation_model_calls=6,
             )
 
-    def test_program_can_escalate_without_a_diagnosis_episode(self):
-        program = build_program(
+    def test_contract_can_escalate_without_a_diagnosis_episode(self):
+        contract = build_contract(
             "repair it",
             "openai-codex/gpt-5.6-sol",
             "/tmp/private.json",
@@ -396,7 +396,7 @@ class ProgramTest(unittest.TestCase):
             escalation_reasoning_effort="xhigh",
             escalation_model_calls=25,
         )
-        nodes = program["workflow"]["nodes"]
+        nodes = contract["workflow"]["nodes"]
         self.assertNotIn("diagnose-task", nodes)
         self.assertEqual(nodes["implement-task"]["model"]["name"], "implement-task")
         self.assertEqual(nodes["implement-task"]["follows"], ["task"])
@@ -408,9 +408,9 @@ class ProgramTest(unittest.TestCase):
             nodes["audit-and-repair-task"]["model"]["budget"],
             {"model_calls": 25, "seconds": 900, "loop_threshold": 8},
         )
-        self.assertEqual(program["budget"]["max_episodes"], 3)
-        self.assertEqual(program["budget"]["model_calls"], 85)
-        self.assertEqual(program["budget"]["seconds"], 1800)
+        self.assertEqual(contract["budget"]["max_episodes"], 3)
+        self.assertEqual(contract["budget"]["model_calls"], 85)
+        self.assertEqual(contract["budget"]["seconds"], 1800)
 
 
 class EpisodeSummaryTest(unittest.TestCase):
@@ -516,7 +516,7 @@ class EpisodeSummaryTest(unittest.TestCase):
                 events = [
                     {
                         "type": "episode/start",
-                        "data": {"program": {"model": {"provider": "openai-codex", "model": model}}},
+                        "data": {"contract": {"model": {"provider": "openai-codex", "model": model}}},
                     },
                     {"type": "model/request", "data": {}},
                     {"type": "assistant/message", "data": {"usage": usage}},

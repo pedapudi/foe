@@ -1,21 +1,21 @@
-//! `python`: one model-written program through an isolated interpreter,
+//! `python`: one model-written Python source through an isolated interpreter,
 //! composing this episode's tools.
 //!
-//! The tool writes a foe-owned shim and the program to the interpreter's
+//! The tool writes a foe-owned shim and the source to the interpreter's
 //! standard input and serves the shim's dispatch socket: each `call_tool`
 //! line becomes one inner dispatch through the episode's [`Composer`],
 //! which records it. The interpreter runs under the executor with a policy
 //! of its own — read on `/usr`, execute on the interpreter, write on
-//! nothing, no network, an empty environment — so the program's only door
-//! to the world is that socket. docs/code-mode.md specifies the contract.
+//! nothing, no network, an empty environment — so the source's only door
+//! to the world is that socket. docs/code-mode.md specifies the source.
 
 use crate::{
     parse_args, BASH_DEFAULT_TIMEOUT_SECS, PYTHON_BIN, PYTHON_DIAGNOSTIC_MAX_CHARS, PYTHON_INNER_CALL_MAX,
     PYTHON_MEMORY_MAX_BYTES, PYTHON_SOURCE_MAX_BYTES,
 };
+use foe_contract::{Effect, ToolSpec};
 use foe_core::sandbox::Policy;
 use foe_core::{CallCtx, Composer, ExecRequest, ExecResult, Tool, ToolValue};
-use foe_program::{Effect, ToolSpec};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -38,7 +38,7 @@ pub struct Python {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Args {
-    program: String,
+    source: String,
     timeout_seconds: Option<u64>,
 }
 
@@ -65,7 +65,7 @@ impl Python {
             spec: ToolSpec {
                 name: foe_core::COMPOSING_TOOL.into(),
                 description: format!(
-                    "Run a Python program in an isolated interpreter whose only capability is \
+                    "Run Python source in an isolated interpreter whose only capability is \
                      calling this episode's tools. The source defines a zero-argument main() \
                      returning a JSON-serializable value. call_tool(name, args) performs one tool \
                      call and returns {{\"value\": ..., \"is_error\": bool}}; fail(message) ends the \
@@ -75,17 +75,17 @@ impl Python {
                      (default {BASH_DEFAULT_TIMEOUT_SECS})."
                 ),
                 instruction: Some(
-                    "Use python when one program calling several tools can return a small derived \
+                    "Use python when one source calling several tools can return a small derived \
                      value in place of their full renderings."
                         .into(),
                 ),
                 params: json!({
                     "type": "object",
                     "properties": {
-                        "program": {"type": "string", "description": "Python source defining a zero-argument main()."},
+                        "source": {"type": "string", "description": "Python source defining a zero-argument main()."},
                         "timeout_seconds": {"type": "integer", "minimum": 1, "description": format!("Wall-clock limit. Default {BASH_DEFAULT_TIMEOUT_SECS}.")}
                     },
-                    "required": ["program"],
+                    "required": ["source"],
                     "additionalProperties": false
                 }),
                 effect: Effect::Execs,
@@ -121,7 +121,7 @@ async fn respond(write: &mut OwnedWriteHalf, line: Value) -> bool {
 }
 
 /// What the serve loop learned: the value `main` returned, or the failure
-/// that ended the program, and the derivation tally.
+/// that ended the source, and the derivation tally.
 #[derive(Default)]
 struct Served {
     done: Option<Value>,
@@ -182,7 +182,7 @@ async fn serve(stream: tokio::net::UnixStream, composer: Arc<dyn Composer>) -> S
 
 /// The outer result from what the serve loop learned and how the process
 /// ended. The derivation reports every inner call that completed, whether
-/// or not the program did.
+/// or not the source did.
 fn outcome(served: Served, res: ExecResult) -> ToolValue {
     let (stdout, stderr) = (tail(&res.stdout), tail(&res.stderr));
     let derivation = |complete: bool| json!({ "complete": complete, "inner_calls": served.calls, "errors": served.errors, "by_tool": served.by_tool });
@@ -252,12 +252,12 @@ impl Tool for Python {
                 "python: dispatched without a composer; the tool runs only in the agent loop",
             );
         };
-        if a.program.len() > PYTHON_SOURCE_MAX_BYTES {
+        if a.source.len() > PYTHON_SOURCE_MAX_BYTES {
             return ToolValue::failed(
                 foe_core::ToolFailureCode::LimitExceeded,
-                format!("python: the program is {} bytes; the bound is {PYTHON_SOURCE_MAX_BYTES}", a.program.len()),
+                format!("python: the source is {} bytes; the bound is {PYTHON_SOURCE_MAX_BYTES}", a.source.len()),
                 true,
-                json!({ "limit": "source_bytes", "actual": a.program.len(), "maximum": PYTHON_SOURCE_MAX_BYTES }),
+                json!({ "limit": "source_bytes", "actual": a.source.len(), "maximum": PYTHON_SOURCE_MAX_BYTES }),
             );
         }
         if !self.bin.is_file() {
@@ -278,11 +278,11 @@ impl Tool for Python {
         let script = format!(
             "{}\n{}\n\n_foe_run()\n",
             SHIM.replace("__FOE_MEMORY__", &PYTHON_MEMORY_MAX_BYTES.to_string()),
-            a.program
+            a.source
         );
         let req = ExecRequest {
-            program: self.bin.clone(),
-            executable: None,
+            command: self.bin.clone(),
+            captured_executable: None,
             args: vec!["-I".into(), "-".into()],
             cwd: PathBuf::from("/"),
             env: BTreeMap::new(),

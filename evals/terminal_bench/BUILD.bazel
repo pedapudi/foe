@@ -70,7 +70,7 @@ sh_binary(
 sh_binary(
     name = "foe-trajectory-corpus",
     srcs = ["trajectory_corpus.py"],
-    data = ["//evals:foe_source_identity.py"],
+    data = ["//evals:foe_build.py"],
     visibility = ["//visibility:public"],
 )
 
@@ -226,7 +226,7 @@ sh_binary(
     data = [
         "//:Cargo.toml",
         "//:foe-portable",
-        "//evals:foe_source_identity.py",
+        "//evals:foe_build.py",
         "cases.json",
         "run.py",
         "trajectory_corpus.py",
@@ -246,7 +246,7 @@ sh_binary(
     ],
     data = [
         "//:foe-portable",
-        "//evals:foe_source_identity.py",
+        "//evals:foe_build.py",
         "cases.json",
         "collect_diagnostics.py",
         "foe_agent_support.py",
@@ -264,15 +264,15 @@ sh_test(
     name = "unit_tests",
     srcs = ["run_unit_tests.sh"],
     data = [
-        "//crates/lineage:build-bundle",
-        "//crates/lineage:check-ancestry",
+        "//crates/adoption:build-adoption-bundle",
+        "//crates/adoption:verify-adoption-bundle",
         "cases.json",
         "capability_probe_agent.py",
         "capability_probe_support.py",
         "capability_probe_support_test.py",
         "collect_diagnostics.py",
         "collect_diagnostics_test.py",
-        "//evals:foe_source_identity.py",
+        "//evals:foe_build.py",
         "foe_agent.py",
         "foe_agent_support.py",
         "foe_agent_support_test.py",

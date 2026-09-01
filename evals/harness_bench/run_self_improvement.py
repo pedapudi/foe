@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256_file
+from foe_build import clean_source_tree, require_evaluated_foe, sha256_file
 
 
 LIMITS = {"model_calls": 12, "input_tokens": 300_000, "output_tokens": 20_000, "seconds": 1_200}
@@ -37,27 +37,27 @@ def route(value: str) -> dict[str, str]:
     return {"provider": provider, "model": model}
 
 
-def verify_evidence_identity(candidate: Path, binary: Path, evidence: Path) -> dict[str, str]:
+def verify_evaluated_build(candidate: Path, binary: Path, evidence: Path) -> dict[str, str]:
     try:
         report = json.loads(evidence.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ValueError(f"cannot read self-improvement evidence {evidence}: {error}") from error
     if not isinstance(report, dict):
         raise ValueError(f"self-improvement evidence {evidence} does not contain a JSON object")
-    identity = require_evaluated_foe(report.get("evaluated_foe"), f"self-improvement evidence {evidence}")
+    evaluated = require_evaluated_foe(report.get("evaluated_foe"), f"self-improvement evidence {evidence}")
     candidate_tree = clean_source_tree(candidate)
-    if candidate_tree != identity["source_tree"]:
+    if candidate_tree != evaluated["source_tree"]:
         raise ValueError(
             "candidate source tree differs from evaluated evidence: "
-            f"{candidate_tree} and {identity['source_tree']}"
+            f"{candidate_tree} and {evaluated['source_tree']}"
         )
     runtime_binary = sha256_file(binary)
-    if runtime_binary != identity["runtime_binary"]:
+    if runtime_binary != evaluated["runtime_binary"]:
         raise ValueError(
             "self-improvement runtime binary differs from evaluated evidence: "
-            f"{runtime_binary} and {identity['runtime_binary']}"
+            f"{runtime_binary} and {evaluated['runtime_binary']}"
         )
-    return identity
+    return evaluated
 
 
 def source_hashes(root: Path) -> dict[str, str]:
@@ -218,7 +218,7 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
         "instructions": {
             "10-role": "Implement the supplied typed diagnosis as one general Foe runtime improvement.",
             "20-scope": "Confirm the relevant source excerpts, then change runtime source, a regression test, and every affected specification. Do not repeat broad diagnosis. Do not change evaluation code, benchmark adapters, tasks, graders, budgets, or model routes. Do not encode benchmark identifiers, fixture values, or grader rules.",
-            "30-quality": "Prefer a small behavioral change supported by more than one observation. Preserve trace reconstruction, declared authority, separate token budgets, and explicit completion semantics. A successful tool action alone never proves that an open-ended task is complete.",
+            "30-quality": "Prefer a small behavioral change supported by more than one observation. Preserve trace reconstruction, declared permissions, separate token budgets, and explicit completion semantics. A successful tool action alone never proves that an open-ended task is complete.",
             "40-validation": "This implementation has nine model requests. Read each changed file before editing it. Reserve the final two requests for tests, specifications, and check. Use bash for focused diagnostics and tests that the contained environment supports. The check validates candidate shape, whitespace, and line budgets. Full repository validation runs outside this episode. State the expected accuracy, token, latency, and compatibility effects in the final result.",
         },
         "tools": [*CODING_TOOLS, "check"],
@@ -234,7 +234,7 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
         "done_when": {"verify": "check", "retries": 2},
     }
     return {
-        "version": 3,
+        "version": 4,
         "name": "assessed-evidence-self-improvement",
         "instructions": {"role": "Run the declared evidence collection and self-improvement workflow."},
         "tools": [*CODING_TOOLS, "evidence", "check"],
@@ -292,7 +292,7 @@ def main() -> int:
     if not (candidate / "Cargo.toml").is_file() or not evidence.is_file():
         raise SystemExit("--candidate must be a Foe checkout and --evidence must be a file")
     try:
-        foe_identity = verify_evidence_identity(candidate, args.foe.resolve(), evidence)
+        evaluated = verify_evaluated_build(candidate, args.foe.resolve(), evidence)
     except ValueError as error:
         raise SystemExit(str(error)) from error
     temporary: tempfile.TemporaryDirectory[str] | None = None
@@ -308,12 +308,12 @@ def main() -> int:
         root = Path(temporary.name)
     check = root / "candidate-check"
     checker(check, candidate)
-    program_path = root / "program.json"
-    write_json(program_path, config(candidate, evidence, check, model))
+    contract_path = root / "contract.json"
+    write_json(contract_path, config(candidate, evidence, check, model))
     log_dir = root / "episode"
     started = time.monotonic()
     result = subprocess.run(
-        [str(args.foe.resolve()), "--config", str(program_path), "--log-dir", str(log_dir), "--headless"],
+        [str(args.foe.resolve()), "--config", str(contract_path), "--log-dir", str(log_dir), "--headless"],
         text=True,
         capture_output=True,
         timeout=LIMITS["seconds"] + 30,
@@ -322,7 +322,7 @@ def main() -> int:
     measured, outcome = episode_measurement(log_dir)
     record = {
         **preview,
-        "evaluated_foe": foe_identity,
+                "evaluated_foe": evaluated,
         "duration_seconds": round(time.monotonic() - started, 3),
         "exit_code": result.returncode,
         "stdout": result.stdout.strip(),
