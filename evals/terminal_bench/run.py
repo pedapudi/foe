@@ -641,6 +641,7 @@ def harbor_command(
     runtime_digest: str,
     pricing: Pricing,
     completion_checker: Path | None = None,
+    completion_checker_setup: Path | None = None,
     hard_token_limits: bool = False,
     install_only: bool = False,
     authorized_benchmark_context: bool = False,
@@ -682,6 +683,10 @@ def harbor_command(
         kwargs["escalation_model_calls"] = escalation_model_calls
     if completion_checker is not None:
         kwargs["completion_checker"] = completion_checker
+    if completion_checker_setup is not None:
+        if completion_checker is None:
+            raise ValueError("completion checker setup requires a completion checker")
+        kwargs["completion_checker_setup"] = completion_checker_setup
     command = [
         "/usr/bin/env",
         f"PYTHONPATH={agent_module.parent}",
@@ -947,6 +952,11 @@ def parser() -> argparse.ArgumentParser:
         help="read-only checker used by done_when.verify; requires one selected task",
     )
     answer.add_argument(
+        "--completion-checker-setup",
+        type=Path,
+        help="credential-free prerequisite installer run before the completion checker",
+    )
+    answer.add_argument(
         "--hard-token-limits",
         action="store_true",
         help="enforce the planning token estimates as Foe allowances",
@@ -969,6 +979,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("a task may be selected only once")
         if args.completion_checker is not None and len(selected_names) != 1:
             raise ValueError("--completion-checker requires exactly one selected task")
+        if args.completion_checker_setup is not None and args.completion_checker is None:
+            raise ValueError("--completion-checker-setup requires --completion-checker")
         if not 1 <= args.attempts <= 3:
             raise ValueError("--attempts must be between 1 and 3")
         if not SAFE_LABEL.fullmatch(args.label):
@@ -1030,6 +1042,11 @@ def main(argv: list[str] | None = None) -> int:
         completion_checker = (
             args.completion_checker.resolve(strict=True)
             if args.completion_checker is not None
+            else None
+        )
+        completion_checker_setup = (
+            args.completion_checker_setup.resolve(strict=True)
+            if args.completion_checker_setup is not None
             else None
         )
         harbor = args.harbor.resolve(strict=True)
@@ -1212,6 +1229,8 @@ def main(argv: list[str] | None = None) -> int:
             "completion    done_when.verify "
             f"sha256:{digest(completion_checker)}"
         )
+    if completion_checker_setup is not None:
+        print(f"checker setup sha256:{digest(completion_checker_setup)}")
     if args.service_tier == "priority":
         print(f"Fast credits  {FAST_SERVICE_CREDIT_MULTIPLIER:g}x Standard ChatGPT credits")
     if args.install_only:
@@ -1356,6 +1375,14 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "path": str(completion_checker),
                     "sha256": digest(completion_checker),
+                    "setup": (
+                        {
+                            "path": str(completion_checker_setup),
+                            "sha256": digest(completion_checker_setup),
+                        }
+                        if completion_checker_setup is not None
+                        else None
+                    ),
                 }
                 if completion_checker is not None
                 else None
@@ -1406,6 +1433,7 @@ def main(argv: list[str] | None = None) -> int:
             runtime_digest=runtime_digest,
             pricing=selected_pricing,
             completion_checker=completion_checker,
+            completion_checker_setup=completion_checker_setup,
             hard_token_limits=args.hard_token_limits,
             install_only=args.install_only,
             authorized_benchmark_context=args.authorized_benchmark_context,

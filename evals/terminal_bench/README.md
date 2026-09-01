@@ -121,7 +121,7 @@ The later task program names its model and credential file explicitly.
 
 ## Validate verifier-governed completion without model spend
 
-Three modified scenarios expose a public, read-only checker as a configured
+Nine modified scenarios expose a public, read-only checker as a configured
 tool. One Sol-low coding episode combines a typed return with
 `done_when.verify`. Foe rejects a completion claim when the checker reports
 findings. The model receives those findings and can continue within the
@@ -133,13 +133,25 @@ task-owned verifier determines task quality. Results from this modified lane
 are Foe-specific convergence evidence and do not contribute to a standard
 Terminal-Bench score.
 
-The selected scenarios cover three forms of completion:
+The selected scenarios cover file edits, repository state, live services,
+compiled artifacts, concurrency, and scientific calculations:
 
 - `cancel-async-tasks` executes concurrency and cancellation-cleanup probes.
+- `configure-git-webserver` checks authenticated Git publication and live HTTP
+  content.
+- `dna-assembly` checks primer binding, temperatures, and compatible assembly
+  overhangs.
+- `dna-insert` checks each input-output insertion boundary and primer
+  interpretation.
 - `fix-git` checks that the lost commit reaches `master` in a clean worktree.
+- `git-multibranch` checks distinct content through authenticated pushes and
+  two live HTTPS endpoints.
+- `gpt2-codegolf` checks compilation, source size, and four held-aside
+  continuations.
 - `large-scale-text-editing` checks the allowed Vim grammar and a temporary
   10,000-row sample. The task-owned verifier applies the script to all one
   million rows.
+- `overfull-hbox` checks synonym canonicalization and clean TeX compilation.
 
 Validate every checker before a provider-backed run:
 
@@ -167,11 +179,10 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
   --confirm-spend
 ```
 
-Equivalent targets end in `foe-verifier-fix-git` and
-`foe-verifier-large-scale-text-editing`. These targets use the default service
-tier, low reasoning for implementation, and high reasoning for an independent
-audit. The implementation retains 60 model calls. The audit receives 25
-additional calls. These values are loop backstops.
+The other target suffixes match the case names above. The DNA targets run a
+credential-free prerequisite installer before any model request. Every target
+uses the default service tier and low reasoning. The task registry supplies a
+60-call loop backstop.
 
 The configured executable's bytes participate in Foe's program identity. The
 adapter also downloads the checker after the episode and compares its digest

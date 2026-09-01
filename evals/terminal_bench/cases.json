@@ -6,8 +6,10 @@
   },
   "harbor_agent_timeouts": {
     "adaptive-rejection-sampler": 900,
+    "bn-fit-modify": 3600,
     "break-filter-js-from-html": 1200,
     "build-cython-ext": 900,
+    "build-pmars": 900,
     "cancel-async-tasks": 900,
     "circuit-fibsqrt": 3600,
     "cobol-modernization": 900,
@@ -19,21 +21,31 @@
     "dna-assembly": 1800,
     "extract-elf": 900,
     "feal-linear-cryptanalysis": 1800,
+    "filter-js-from-html": 1800,
     "financial-document-processor": 1200,
     "fix-git": 900,
     "fix-ocaml-gc": 3600,
     "git-leak-recovery": 900,
     "git-multibranch": 900,
     "gpt2-codegolf": 900,
+    "headless-terminal": 900,
     "hf-model-inference": 900,
+    "kv-store-grpc": 900,
     "large-scale-text-editing": 1200,
+    "largest-eigenval": 900,
+    "llm-inference-batching-scheduler": 1800,
     "make-mips-interpreter": 1800,
     "mcmc-sampling-stan": 1800,
     "model-extraction-relu-logits": 900,
+    "multi-source-data-merger": 900,
+    "nginx-request-logging": 900,
     "password-recovery": 900,
     "path-tracing": 1800,
     "path-tracing-reverse": 1800,
     "polyglot-rust-c": 900,
+    "pytorch-model-cli": 900,
+    "qemu-alpine-ssh": 900,
+    "qemu-startup": 900,
     "query-optimize": 900,
     "regex-chess": 3600,
     "regex-log": 900,
@@ -42,8 +54,42 @@
     "schemelike-metacircular-eval": 2400,
     "sparql-university": 900,
     "sqlite-db-truncate": 900,
+    "sqlite-with-gcov": 900,
+    "torch-tensor-parallelism": 900,
     "train-fasttext": 3600,
     "vulnerable-secret": 900,
+    "build-pov-ray": 12000,
+    "caffe-cifar-10": 3600,
+    "chess-best-move": 900,
+    "code-from-image": 1200,
+    "configure-git-webserver": 900,
+    "count-dataset-tokens": 900,
+    "crack-7z-hash": 1800,
+    "dna-insert": 1800,
+    "extract-moves-from-video": 1800,
+    "feal-differential-cryptanalysis": 1800,
+    "fix-code-vulnerability": 900,
+    "gcode-to-text": 900,
+    "install-windows-3.11": 3600,
+    "log-summary-date-ranges": 900,
+    "mailman": 1800,
+    "make-doom-for-mips": 900,
+    "merge-diff-arc-agi-task": 900,
+    "modernize-scientific-stack": 600,
+    "mteb-leaderboard": 3600,
+    "openssl-selfsigned-cert": 900,
+    "overfull-hbox": 750,
+    "polyglot-c-py": 900,
+    "portfolio-optimization": 3600,
+    "protein-assembly": 1800,
+    "pypi-server": 900,
+    "pytorch-model-recovery": 900,
+    "raman-fitting": 900,
+    "rstan-to-pystan": 1800,
+    "sam-cell-seg": 7200,
+    "torch-pipeline-parallelism": 900,
+    "tune-mjcf": 900,
+    "winning-avg-corewars": 3600,
     "write-compressor": 900
   },
   "pricing": {
@@ -82,51 +128,92 @@
       "fix-git",
       "sqlite-db-truncate",
       "sanitize-git-repo",
-      "large-scale-text-editing"
+      "large-scale-text-editing",
+      "gpt2-codegolf",
+      "fix-ocaml-gc",
+      "path-tracing-reverse",
+      "regex-chess",
+      "model-extraction-relu-logits",
+      "dna-assembly"
     ],
     "capability_search": [
       "password-recovery",
-      "path-tracing-reverse",
       "polyglot-rust-c",
       "regex-log",
-      "regex-chess",
       "write-compressor",
-      "fix-ocaml-gc",
-      "dna-assembly",
-      "feal-linear-cryptanalysis",
-      "model-extraction-relu-logits",
-      "gpt2-codegolf"
+      "feal-linear-cryptanalysis"
     ],
     "confirmation": [
-      "build-cython-ext",
-      "constraints-scheduling",
-      "custom-memory-heap-crash",
-      "path-tracing"
+      "build-pov-ray",
+      "caffe-cifar-10",
+      "configure-git-webserver",
+      "count-dataset-tokens",
+      "crack-7z-hash",
+      "dna-insert",
+      "log-summary-date-ranges",
+      "overfull-hbox"
+    ],
+    "self_improvement_evidence": [
+      "cancel-async-tasks",
+      "git-multibranch",
+      "fix-git",
+      "sqlite-db-truncate",
+      "sanitize-git-repo",
+      "large-scale-text-editing",
+      "gpt2-codegolf",
+      "fix-ocaml-gc",
+      "path-tracing-reverse",
+      "regex-chess",
+      "model-extraction-relu-logits",
+      "dna-assembly",
+      "password-recovery",
+      "polyglot-rust-c",
+      "regex-log",
+      "write-compressor",
+      "feal-linear-cryptanalysis",
+      "build-pov-ray",
+      "caffe-cifar-10",
+      "configure-git-webserver",
+      "count-dataset-tokens",
+      "crack-7z-hash",
+      "dna-insert",
+      "log-summary-date-ranges",
+      "overfull-hbox"
     ],
     "provider_policy_incompatible": [
       "vulnerable-secret"
     ],
     "calibration": [
-      "adaptive-rejection-sampler",
-      "break-filter-js-from-html",
-      "compile-compcert",
-      "db-wal-recovery",
-      "distribution-search",
-      "financial-document-processor",
-      "git-leak-recovery",
-      "make-mips-interpreter",
-      "query-optimize",
-      "reshard-c4-data",
-      "schemelike-metacircular-eval",
-      "train-fasttext"
+      "chess-best-move",
+      "code-from-image",
+      "extract-moves-from-video",
+      "feal-differential-cryptanalysis",
+      "fix-code-vulnerability",
+      "gcode-to-text",
+      "install-windows-3.11",
+      "largest-eigenval",
+      "llm-inference-batching-scheduler",
+      "mailman",
+      "make-doom-for-mips",
+      "merge-diff-arc-agi-task",
+      "modernize-scientific-stack",
+      "mteb-leaderboard",
+      "multi-source-data-merger",
+      "nginx-request-logging",
+      "openssl-selfsigned-cert",
+      "polyglot-c-py",
+      "portfolio-optimization",
+      "pypi-server"
     ],
     "calibration_holdout": [
-      "circuit-fibsqrt",
-      "cobol-modernization",
-      "extract-elf",
-      "hf-model-inference",
-      "mcmc-sampling-stan",
-      "sparql-university"
+      "protein-assembly",
+      "pytorch-model-recovery",
+      "raman-fitting",
+      "rstan-to-pystan",
+      "sam-cell-seg",
+      "torch-pipeline-parallelism",
+      "tune-mjcf",
+      "winning-avg-corewars"
     ],
     "smoke": [
       "fix-git"
@@ -139,6 +226,12 @@
       "expected_output_tokens": 50000,
       "seconds": 1800
     },
+    "bn-fit-modify": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
     "break-filter-js-from-html": {
       "model_calls": 60,
       "expected_input_tokens": 400000,
@@ -146,6 +239,12 @@
       "seconds": 1800
     },
     "build-cython-ext": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "build-pmars": {
       "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
@@ -226,6 +325,12 @@
       "seconds": 1800,
       "memory_mb": 4096
     },
+    "filter-js-from-html": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
     "fix-ocaml-gc": {
       "model_calls": 60,
       "expected_input_tokens": 600000,
@@ -257,6 +362,18 @@
       "expected_output_tokens": 50000,
       "seconds": 1800
     },
+    "headless-terminal": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "kv-store-grpc": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
     "fix-git": {
       "model_calls": 60,
       "expected_input_tokens": 120000,
@@ -269,6 +386,12 @@
       "expected_output_tokens": 40000,
       "seconds": 1800
     },
+    "sqlite-with-gcov": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
     "sanitize-git-repo": {
       "model_calls": 60,
       "expected_input_tokens": 300000,
@@ -279,6 +402,18 @@
       "model_calls": 60,
       "expected_input_tokens": 300000,
       "expected_output_tokens": 40000,
+      "seconds": 1800
+    },
+    "largest-eigenval": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "llm-inference-batching-scheduler": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
       "seconds": 1800
     },
     "make-mips-interpreter": {
@@ -302,6 +437,18 @@
       "seconds": 1800,
       "authorized_benchmark_context": true
     },
+    "multi-source-data-merger": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "nginx-request-logging": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
     "password-recovery": {
       "model_calls": 60,
       "expected_input_tokens": 600000,
@@ -324,6 +471,24 @@
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
+      "seconds": 1800
+    },
+    "pytorch-model-cli": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "qemu-alpine-ssh": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 1800
+    },
+    "qemu-startup": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
       "seconds": 1800
     },
     "query-optimize": {
@@ -369,11 +534,209 @@
       "seconds": 3600,
       "memory_mb": 4096
     },
+    "torch-tensor-parallelism": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 1800
+    },
     "vulnerable-secret": {
       "model_calls": 60,
       "expected_input_tokens": 400000,
       "expected_output_tokens": 50000,
       "seconds": 1800
+    },
+    "build-pov-ray": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 12000
+    },
+    "caffe-cifar-10": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "chess-best-move": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "code-from-image": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "configure-git-webserver": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "count-dataset-tokens": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "crack-7z-hash": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "dna-insert": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "extract-moves-from-video": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "feal-differential-cryptanalysis": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "fix-code-vulnerability": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "gcode-to-text": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "install-windows-3.11": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "log-summary-date-ranges": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "mailman": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "make-doom-for-mips": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "merge-diff-arc-agi-task": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "modernize-scientific-stack": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "mteb-leaderboard": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "openssl-selfsigned-cert": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "overfull-hbox": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "polyglot-c-py": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "portfolio-optimization": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "protein-assembly": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "pypi-server": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "pytorch-model-recovery": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "raman-fitting": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "rstan-to-pystan": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "sam-cell-seg": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 7200
+    },
+    "torch-pipeline-parallelism": {
+      "model_calls": 60,
+      "expected_input_tokens": 600000,
+      "expected_output_tokens": 80000,
+      "seconds": 3600
+    },
+    "tune-mjcf": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
+    },
+    "winning-avg-corewars": {
+      "model_calls": 60,
+      "expected_input_tokens": 400000,
+      "expected_output_tokens": 50000,
+      "seconds": 3600
     },
     "write-compressor": {
       "model_calls": 60,
