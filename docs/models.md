@@ -27,9 +27,9 @@ credential path.
 The built-in coding workflow uses low reasoning effort for its implementation
 episode with `gpt-5.6-sol` through `openai` or `openai-codex`. Its independent
 assessment and conditional repair episodes use xhigh effort. An explicit
-`reasoning_effort` in the default model file applies to implementation. The
-two later Sol stages retain xhigh effort. Programs given through `--config`
-use their model blocks without this coding default.
+`reasoning_effort` in the default model file applies to all three episodes.
+Programs given through `--config` use their model blocks without this coding
+default.
 
 ## Providers
 

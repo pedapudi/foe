@@ -756,12 +756,17 @@ validation observations, and unresolved risks. The assessment receives that
 value and the original task in a fresh context. A repair receives both prior
 values and the original task. The shared directory carries the artifacts.
 
-When a requirement divides a final value into task-defined and input-matching
-regions, the assessment derives every decomposition consistent with the task
-and complete values. It evaluates dependent bounds and relations within each
-complete decomposition. Acceptance requires every consistent decomposition to
-pass unless current evidence establishes one interpretation uniquely. A repair
-repeats these checks after changing the value.
+The task text and repository-defined checks govern all three stages. Their
+allowed mutation scope is current filesystem state unless the task authorizes
+changes to history, prior versions, archives, encoded representations, or
+hidden implementation details. A task that requires live state must leave that
+state operational after validation.
+
+Assessment and repair validate observable behavior through the strongest
+task-authorized interface available. For black-box or broadly parameterized
+behavior, assessment tests materially different valid inputs through the same
+public interface. The stages preserve task-required final state after their
+checks finish.
 
 All three completion schemas require one to eight `learned` observations. Each
 observation is a one-sentence claim and the sequence of a successful tool
@@ -770,15 +775,19 @@ the completed value as the typed handoff. The assessment receives the
 implementation observations and independently reproduces or challenges the
 claims that bear on completion. Its value also contains findings and an
 `accept` or `repair` branch. A repair must return no unresolved risk.
+Each stage covers every completion-critical requirement with a `learned`
+claim that cites a successful tool result. The runtime verifies the citation's
+episode membership, success, and reconstructability. A configured verifier
+judges semantic correctness.
 [config.md](config.md#done_when) specifies the contract for any program.
 
 The model is the one named by `--model`, or the default model when `--model`
 is absent. The default model is the `model` block in
 `~/.config/foe/default-model.json`, which `foe login` writes. When that block
-omits reasoning effort, GPT-5.6 Sol uses low effort for implementation. Its
-assessment and repair episodes use xhigh effort. An explicit reasoning effort
-applies to implementation. The two later Sol stages retain xhigh effort.
-Other models carry the root model options into every stage.
+omits reasoning effort, GPT-5.6 Sol uses low effort for implementation and
+xhigh effort for assessment and repair. An explicit reasoning effort applies
+to all three episodes. Other models carry the root model options into every
+stage.
 
 `--service-tier TIER` sets the model request's `service_tier` field to
 `default` or `priority` for all three episodes. When the option is absent, the

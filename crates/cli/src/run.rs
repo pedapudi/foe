@@ -348,6 +348,7 @@ fn builtin_program_document(
     sandbox: Option<&str>,
 ) -> Result<ProgramDocument, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
+    let explicit_reasoning = model.option("reasoning_effort").is_some();
     apply_builtin_model_defaults(&mut model);
     if let Some(key_file) = key_file {
         let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
@@ -355,7 +356,8 @@ fn builtin_program_document(
         model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
     }
     let mut assessment_model = model.clone();
-    if matches!(assessment_model.provider.as_str(), "openai" | "openai-codex")
+    if !explicit_reasoning
+        && matches!(assessment_model.provider.as_str(), "openai" | "openai-codex")
         && assessment_model.model == "gpt-5.6-sol"
     {
         assessment_model.options.insert("reasoning_effort".into(), "xhigh".into());

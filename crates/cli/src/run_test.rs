@@ -16,7 +16,7 @@ fn builtin_coding_uses_low_implementation_and_xhigh_assessment_for_gpt_5_6_sol()
 }
 
 #[test]
-fn builtin_coding_reserves_xhigh_sol_reasoning_for_assessment_and_repair() {
+fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
     let mut explicit = ModelConfig::new("openai-codex", "gpt-5.6-sol");
     explicit.options.insert("reasoning_effort".into(), "high".into());
     let config = builtin_program_document("task".into(), explicit, None, None, None).unwrap();
@@ -24,7 +24,7 @@ fn builtin_coding_reserves_xhigh_sol_reasoning_for_assessment_and_repair() {
     let workflow = config.workflow.as_ref().unwrap();
     for node in ["assess-task", "repair-task"] {
         let program = workflow.nodes[node].model.as_ref().unwrap();
-        assert_eq!(program.model.as_ref().unwrap().option("reasoning_effort"), Some("xhigh"));
+        assert_eq!(program.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
     }
 
     let config =
@@ -95,6 +95,11 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
         serde_json::json!(["summary", "changed_paths", "validation", "unresolved_risks", "learned"])
     );
     assert!(implementation_program.instructions["environment"].contains("Fixed-path executable probe"));
+    let contract = &implementation_program.instructions["contract"];
+    assert!(contract.contains("limit mutations to current filesystem state"));
+    assert!(contract.contains("leave it operational"));
+    assert!(contract.contains("strongest task-authorized interface"));
+    assert!(contract.contains("every completion-critical requirement"));
     let assessment = &workflow.nodes["assess-task"];
     assert_eq!(assessment.follows, ["task", "implement-task"]);
     assert!(!assessment.terminal);
@@ -110,9 +115,9 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
         assessment_completion["required"],
         serde_json::json!(["summary", "findings", "validation", "unresolved_risks", "learned"])
     );
-    assert!(assessment_program.instructions["role"].contains("two materially different valid inputs"));
-    assert!(assessment_program.instructions["role"].contains("structural constraints"));
-    assert!(assessment_program.instructions["role"].contains("every task-consistent decomposition passes"));
+    assert_eq!(&assessment_program.instructions["contract"], contract);
+    assert!(assessment_program.instructions["role"].contains("without editing task artifacts"));
+    assert!(assessment_program.instructions["role"].contains("materially different valid inputs"));
 
     let repair = &workflow.nodes["repair-task"];
     assert_eq!(repair.follows, ["task", "implement-task", "assess-task"]);
@@ -131,9 +136,9 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(learned["items"]["required"], serde_json::json!(["claim", "seq"]));
     assert_eq!(learned["items"]["additionalProperties"], serde_json::json!(false));
     assert!(completion["required"].as_array().unwrap().contains(&serde_json::json!("learned")));
-    assert!(repair_program.instructions["role"].contains("every path changed by either coding episode"));
+    assert_eq!(&repair_program.instructions["contract"], contract);
+    assert!(repair_program.instructions["role"].contains("every changed path"));
     assert!(repair_program.instructions["role"].contains("Treat every finding and unresolved risk as an obligation"));
-    assert!(repair_program.instructions["role"].contains("each complete decomposition"));
 }
 
 /// docs/design.md "The command line": `--verify` makes `check` available
