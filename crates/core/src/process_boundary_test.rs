@@ -62,6 +62,18 @@ fn off_mode_reports_the_process_group_fallback() {
     assert!(ownership.boundary().is_none());
 }
 
+/// docs/sandbox.md "Modes": cgroup ownership is reported independently of
+/// the required Landlock guarantee, so a missing delegation selects the
+/// observational process-group fallback.
+#[test]
+fn a_missing_delegation_selects_observational_process_groups() {
+    let unavailable = Err(RuntimeError::Sandbox("test host has no delegated cgroup".into()));
+    let ownership = ProcessOwnership::from_root(unavailable);
+    assert_eq!(ownership.info().kind, ProcessBoundaryKind::ProcessGroup);
+    assert_eq!(ownership.info().subtree_cleanup, SubtreeCleanup::Observational);
+    assert!(ownership.info().reason.is_some());
+}
+
 /// docs/protocol.md "Children": a child accepts only the boundary that its
 /// parent placed it in before launch.
 #[test]

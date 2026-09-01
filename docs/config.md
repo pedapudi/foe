@@ -526,10 +526,10 @@ Object. Optional.
 |---|---|---|---|
 | `mode` | string | `best-effort` | `best-effort`, `required`, or `off` |
 
-`best-effort` applies the available Landlock features and attempts a
-delegated cgroup v2 process boundary. It records the enforcement obtained.
-`required` refuses to start unless Landlock and a delegated cgroup boundary
-are both available. `off` applies no Landlock restriction, uses process-group
+`best-effort` applies the available Landlock features. `required` refuses to
+start unless Landlock is available. Both modes attempt a delegated cgroup v2
+process boundary and record whether subtree cleanup is enforced or
+observational. `off` applies no Landlock restriction, uses process-group
 cleanup, and records observational subtree cleanup.
 
 The rules themselves are compiled from `grants` and `tool_defs`; there is
