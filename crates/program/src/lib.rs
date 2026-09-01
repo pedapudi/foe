@@ -1,9 +1,9 @@
-//! What a program is: the configuration document, its resolution into a
+//! What a program is: the program document, its resolution into a
 //! program, the tool specifications a program declares, and the identity
 //! that hashes all of them.
 //!
 //! This crate answers what was to run. It parses and validates the document
-//! docs/config.md specifies, resolves it into the [`config::Program`] that
+//! docs/config.md specifies, resolves it into the [`document::ResolvedProgram`] that
 //! `episode/start.program` records, resolves each name in `tools` to the
 //! specification the model will see, and computes the identity of the
 //! result. Nothing here runs: no process starts, no grant is exercised, no
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-pub mod config;
+pub mod document;
 pub mod harness_text;
 pub mod identity;
 pub mod inspect;
@@ -31,7 +31,7 @@ mod test_util;
 pub mod tools;
 pub mod workflow;
 
-/// The JSON Schema of the configuration document, maintained by hand to
+/// The JSON Schema of the program document, maintained by hand to
 /// mirror docs/config.md. It describes what this crate parses, so it ships
 /// with the types it describes; `foe plan --schema` prints it.
 pub const SCHEMA: &str = include_str!("schema.json");
@@ -81,12 +81,12 @@ impl ToolSpec {
     }
 }
 
-// ---- configuration -----------------------------------------------------------
+// ---- program document --------------------------------------------------------
 
-/// The configuration document. Field for field, docs/config.md.
+/// The program document. Field for field, docs/config.md.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Config {
+pub struct ProgramDocument {
     pub version: u32,
     pub name: String,
     pub instructions: BTreeMap<String, String>,
@@ -112,7 +112,7 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub program_lineage: Option<ProgramLineage>,
     #[serde(default)]
-    pub programs: BTreeMap<String, ChildProgram>,
+    pub programs: BTreeMap<String, ChildProgramDocument>,
     /// A declared graph that replaces the free loop. See docs/workflow.md.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow: Option<workflow::WorkflowConfig>,
@@ -171,6 +171,10 @@ pub struct Grants {
     /// a grant; it follows the model transport and per-tool declarations.
     #[serde(default)]
     pub bind: Vec<u16>,
+    /// Whether a process group may survive the episode so that the
+    /// enclosing task environment can inspect and clean it up.
+    #[serde(default)]
+    pub task_session: bool,
 }
 
 /// True when `path` equals one of `roots` or lies below it, compared by
@@ -274,12 +278,13 @@ pub struct SandboxConfig {
 pub struct LineageParent {
     /// The parent state's program identity.
     pub program_identity: String,
-    /// The parent state's own ancestry claim, selecting one among the
-    /// claims that can accompany a single program identity.
-    pub lineage_identity: String,
+    /// The parent state's identity: derived from its program identity
+    /// and its own ancestry claim, selecting one among the claims that
+    /// can accompany a single program identity.
+    pub state_identity: String,
 }
 
-/// The `program_lineage` object of a root configuration: an ancestry claim
+/// The `program_lineage` object of a root program document: an ancestry claim
 /// relating this program state to a parent state. The identity computation
 /// omits it; the resolved program records it, so the claim reaches
 /// `episode/start.program`. This crate carries only the key's shape;
@@ -298,11 +303,11 @@ pub struct ProgramLineage {
     pub verification_seq: u64,
 }
 
-/// A child program: a configuration without `version`, `task`, or `sandbox`.
+/// A child program document has no `version`, `task`, or `sandbox`.
 /// An omitted `model` inherits the nearest ancestor's model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ChildProgram {
+pub struct ChildProgramDocument {
     pub name: String,
     pub instructions: BTreeMap<String, String>,
     pub tools: Vec<String>,
@@ -319,7 +324,7 @@ pub struct ChildProgram {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelConfig>,
     #[serde(default)]
-    pub programs: BTreeMap<String, ChildProgram>,
+    pub programs: BTreeMap<String, ChildProgramDocument>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow: Option<workflow::WorkflowConfig>,
 }
@@ -329,7 +334,7 @@ pub struct ChildProgram {
 /// Every construction error names the key and the rule. Construction fails
 /// before any process starts and before any log is written.
 #[derive(Debug, thiserror::Error)]
-pub enum ConfigError {
+pub enum ProgramError {
     #[error("{key}: {rule}")]
     Invalid { key: String, rule: String },
     #[error("{0}")]

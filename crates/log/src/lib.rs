@@ -76,6 +76,11 @@ pub enum EventData {
     /// `tool/result` line over the protocol.
     #[serde(rename = "host/tool-call")]
     HostToolCall { step: u32, call_id: String, name: String, args: serde_json::Value },
+    /// One inner dispatch a composing tool performed through the registry.
+    /// Opens the ordinary tool-call obligation; the inner `tool/result`
+    /// closes it and is excluded from derived messages.
+    #[serde(rename = "tool/inner-call")]
+    ToolInnerCall(ToolInnerCall),
 
     // ---- verification ----------------------------------------------------
     #[serde(rename = "verification/result")]
@@ -137,8 +142,6 @@ pub enum EventData {
     WorkflowRecovery(WorkflowRecovery),
     #[serde(rename = "workflow/branch")]
     WorkflowBranch(WorkflowBranch),
-    #[serde(rename = "workflow/node-skipped")]
-    WorkflowNodeSkipped(WorkflowNodeSkipped),
 }
 
 impl EventData {
@@ -212,6 +215,7 @@ pub fn obligations(data: &EventData) -> Vec<(Obligation, String, bool)> {
             m.tool_calls.iter().map(|c| (Obligation::ToolCall, c.id.clone(), true)).collect()
         }
         EventData::ToolResult(r) => one(Obligation::ToolCall, r.call_id.clone(), false),
+        EventData::ToolInnerCall(c) => one(Obligation::ToolCall, c.call_id.clone(), true),
         // A retry announces the attempt after the one that failed.
         EventData::RequestRetry { step, attempt, .. } => one(Obligation::Retry, attempt_key(*step, attempt + 1), true),
         EventData::ModelRequest(r) if r.attempt > 1 => one(Obligation::Retry, attempt_key(r.step, r.attempt), false),
@@ -522,6 +526,20 @@ pub struct ToolResult {
     pub synthetic: bool,
 }
 
+/// Payload of `tool/inner-call`: one tool call a composing tool, such as
+/// the built-in `python` tool, dispatched through the registry while its
+/// own model-issued call ran. `outer_call_id` names that model-issued call;
+/// `call_id` is the inner call's own id, which its `tool/result` names;
+/// `index` counts the outer call's inner dispatches from 0.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolInnerCall {
+    pub outer_call_id: String,
+    pub call_id: String,
+    pub index: u32,
+    pub name: String,
+    pub args: serde_json::Value,
+}
+
 // ---- verification payloads ---------------------------------------------------
 
 /// One authoritative verifier invocation, per `done_when.verify` or a
@@ -589,6 +607,9 @@ pub enum InboxSource {
     Peer,
     Verify,
     System,
+    /// A process session of this episode ended; one item per session
+    /// lifetime, written when the runtime observes the exit.
+    Session,
     /// Reserved for correlated exchanges.
     Request,
     /// Reserved for correlated exchanges.
@@ -722,7 +743,9 @@ pub struct WorkflowNodeStart {
 }
 
 /// A firing ended. `value` is the node's canonical output and `rendered`
-/// the text its successors receive; both are empty when `error` is set.
+/// the text its successors receive. A failed firing carries null and an
+/// empty rendering. An optional model node carries its declared `empty`
+/// output together with the blocked or exhausted child error.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorkflowNodeEnd {
     pub node: String,
@@ -757,20 +780,6 @@ pub struct WorkflowRecovery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     pub intervention: u32,
-}
-
-/// A node's `skip_when_verified` guard was satisfied, so the node did not
-/// fire: it contributes the named node's value to its successors, and a
-/// terminal node completes the workflow with that value.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WorkflowNodeSkipped {
-    pub node: String,
-    /// The node `skip_when_verified` names, whose result a verifier accepted.
-    pub verified_by: String,
-    /// `seq` of the accepted `verification/result`: in this log when the
-    /// named node declares a node-level `verify`, and in the named node's
-    /// child episode log when its program declares `done_when.verify`.
-    pub verification_seq: u64,
 }
 
 // ---- errors ---------------------------------------------------------------------

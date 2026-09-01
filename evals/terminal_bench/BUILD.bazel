@@ -237,6 +237,8 @@ sh_test(
     name = "unit_tests",
     srcs = ["run_unit_tests.sh"],
     data = [
+        "//crates/lineage:build-bundle",
+        "//crates/lineage:check-ancestry",
         "cases.json",
         "capability_probe_agent.py",
         "capability_probe_support.py",

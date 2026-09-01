@@ -26,9 +26,9 @@ impl ChildObserver for Seen {
     }
 }
 
-pub(crate) fn parent_config() -> Config {
+pub(crate) fn parent_config() -> ProgramDocument {
     serde_json::from_value(serde_json::json!({
-        "version": 2, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
+        "version": 3, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
         "grants": {"read": ["/src"], "spawn": ["worker"]},
         "budget": {"model_calls": 20, "max_depth": 2},
         "sandbox": {"mode": "off"},
@@ -140,20 +140,20 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     assert_eq!(ask("nested"), Some(5), "a child that may spawn asks for the allowance it declares");
 
     let granted = BudgetAmount { model_calls: Some(5), episodes: Some(2), ..Default::default() };
-    let child = child_config(&config, &config.programs["nested"], "t".into(), granted);
+    let child = child_document(&config, &config.programs["nested"], "t".into(), granted);
     assert_eq!(child.budget.max_episodes, 2, "the granted share caps the child's own allowance");
 }
 
 /// docs/config.md `model`: a spawned child's declared model replaces the
 /// parent's selection in the child configuration written to disk.
 #[test]
-fn child_configuration_preserves_a_model_override() {
+fn child_document_preserves_a_model_override() {
     let mut config = parent_config();
-    config.model = Some(foe_config::ModelConfig::new("openai-codex", "gpt-5.6-sol"));
+    config.model = Some(foe_program::ModelConfig::new("openai-codex", "gpt-5.6-sol"));
     let worker = config.programs.get_mut("worker").unwrap();
-    worker.model = Some(foe_config::ModelConfig::new("openai-codex", "gpt-5.6-luna"));
+    worker.model = Some(foe_program::ModelConfig::new("openai-codex", "gpt-5.6-luna"));
     let worker = worker.clone();
-    let child = child_config(&config, &worker, "t".into(), BudgetAmount::default());
+    let child = child_document(&config, &worker, "t".into(), BudgetAmount::default());
     assert_eq!(child.model.unwrap().model, "gpt-5.6-luna");
 }
 
@@ -222,7 +222,8 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     };
     let handle = spawner.spawn(req).unwrap();
     let child_dir = dir.join("children").join(&handle.child_id);
-    let written: Config = serde_json::from_slice(&std::fs::read(child_dir.join("config.json")).unwrap()).unwrap();
+    let written: ProgramDocument =
+        serde_json::from_slice(&std::fs::read(child_dir.join("config.json")).unwrap()).unwrap();
     assert_eq!(written.name, "worker");
     assert_eq!(written.task, "do it");
     assert_eq!(written.budget.model_calls, 5, "the reservation caps the program's budget");

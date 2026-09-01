@@ -4,7 +4,7 @@
 //! executor doubles are unused when the `exec` feature is off.
 #![allow(dead_code)]
 
-use foe_core::{CallCtx, CapError, ExecRequest, ExecResult, Executor, Reader, Writer};
+use foe_core::{CallCtx, CapError, ExecRequest, ExecResult, Executor, ReadEntry, Reader, Writer};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 pub struct Fixture {
     dir: tempfile::TempDir,
     root: PathBuf,
-    whole_reads: Arc<AtomicUsize>,
     writes: Arc<AtomicUsize>,
 }
 
@@ -23,7 +22,7 @@ impl Fixture {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap().join("root");
         std::fs::create_dir(&root).unwrap();
-        Self { dir, root, whole_reads: Arc::new(AtomicUsize::new(0)), writes: Arc::new(AtomicUsize::new(0)) }
+        Self { dir, root, writes: Arc::new(AtomicUsize::new(0)) }
     }
     pub fn root(&self) -> PathBuf {
         self.root.clone()
@@ -39,9 +38,6 @@ impl Fixture {
     pub fn read(&self, rel: &str) -> String {
         std::fs::read_to_string(self.root.join(rel)).unwrap()
     }
-    pub fn whole_reads(&self) -> usize {
-        self.whole_reads.load(Ordering::SeqCst)
-    }
     /// Number of writes made through the `Writer` handle.
     pub fn writes(&self) -> usize {
         self.writes.load(Ordering::SeqCst)
@@ -50,7 +46,6 @@ impl Fixture {
 
 struct Bounded {
     roots: Vec<PathBuf>,
-    whole_reads: Arc<AtomicUsize>,
     writes: Arc<AtomicUsize>,
 }
 
@@ -76,12 +71,18 @@ impl Reader for Bounded {
         Ok(Box::new(std::fs::File::open(self.check(path)?)?))
     }
 
-    fn read(&self, path: &Path) -> Result<Vec<u8>, CapError> {
-        self.whole_reads.fetch_add(1, Ordering::SeqCst);
-        Ok(std::fs::read(self.check(path)?)?)
-    }
     fn metadata(&self, path: &Path) -> Result<std::fs::Metadata, CapError> {
         Ok(std::fs::metadata(self.check(path)?)?)
+    }
+    fn read_dir(&self, path: &Path) -> Result<Vec<ReadEntry>, CapError> {
+        std::fs::read_dir(self.check(path)?)?
+            .map(|entry| {
+                let entry = entry?;
+                let kind = entry.file_type()?;
+                Ok(ReadEntry { path: path.join(entry.file_name()), is_file: kind.is_file(), is_dir: kind.is_dir() })
+            })
+            .collect::<Result<_, std::io::Error>>()
+            .map_err(Into::into)
     }
     fn roots(&self) -> &[PathBuf] {
         &self.roots
@@ -104,8 +105,7 @@ impl Writer for Bounded {
 
 /// A context with a reader and writer bounded to the fixture root.
 pub fn ctx(fx: &Fixture) -> CallCtx {
-    let handle =
-        Arc::new(Bounded { roots: vec![fx.root()], whole_reads: fx.whole_reads.clone(), writes: fx.writes.clone() });
+    let handle = Arc::new(Bounded { roots: vec![fx.root()], writes: fx.writes.clone() });
     CallCtx {
         call_id: "call-1".into(),
         step: 1,
@@ -114,6 +114,7 @@ pub fn ctx(fx: &Fixture) -> CallCtx {
         executor: None,
         spawner: None,
         sessions: None,
+        composer: None,
         spill_dir: fx.dir.path().join("spill"),
         deadline: None,
     }

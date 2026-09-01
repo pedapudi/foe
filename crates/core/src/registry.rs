@@ -1,7 +1,7 @@
 //! Constructing a program's tools from their specifications, and dispatch
 //! with capability handles.
 //!
-//! Implements docs/design.md (Tools). `foe_config::tools` resolves a
+//! Implements docs/design.md (Tools). `foe_program::tools` resolves a
 //! program's `tools` into the specifications the model sees; this module
 //! builds the tool behind each specification — a built-in, a `tool_defs`
 //! executable, or a host implementation — and runs a call with the handles
@@ -9,11 +9,11 @@
 //! the synthesized `return` tool are implemented here.
 
 use crate::{CallCtx, ExecRequest, ExecResult, Executor, Tool, ToolValue};
-use foe_config::config::Program;
-use foe_config::harness_text as text;
-use foe_config::tools::{block_spec, resolve_specs, Source};
-use foe_config::{schema, ConfigError, Effect, ToolDef, ToolSpec};
 use foe_log::ToolCall;
+use foe_program::document::ResolvedProgram;
+use foe_program::harness_text as text;
+use foe_program::tools::{block_spec, resolve_specs, Source};
+use foe_program::{schema, Effect, ProgramError, ToolDef, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -44,8 +44,8 @@ pub struct Registry {
     entries: Vec<Entry>,
 }
 
-fn invalid(rule: String) -> ConfigError {
-    ConfigError::Invalid { key: "tools".into(), rule }
+fn invalid(rule: String) -> ProgramError {
+    ProgramError::Invalid { key: "tools".into(), rule }
 }
 
 impl Registry {
@@ -54,10 +54,10 @@ impl Registry {
     /// document. `extra_builtins` are built-in tools implemented elsewhere:
     /// the coding tools and the spawn and team tools.
     pub fn new(
-        program: &Program,
+        program: &ResolvedProgram,
         host_tools: Vec<Box<dyn Tool>>,
         extra_builtins: Vec<Box<dyn Tool>>,
-    ) -> Result<Self, ConfigError> {
+    ) -> Result<Self, ProgramError> {
         let extra_specs: Vec<ToolSpec> = extra_builtins.iter().map(|t| t.spec().clone()).collect();
         let specs = resolve_specs(program, &extra_specs)?;
         let mut builtins: BTreeMap<String, Arc<dyn Tool>> =
@@ -153,14 +153,15 @@ impl Registry {
             Effect::Execs => (h.reader.clone(), None, h.executor.clone(), None, h.sessions.clone()),
             Effect::Spawns => (h.reader.clone(), None, None, h.spawner.clone(), None),
         };
-        CallCtx { call_id, step, reader, writer, executor, spawner, sessions, spill_dir, deadline }
+        CallCtx { call_id, step, reader, writer, executor, spawner, sessions, composer: None, spill_dir, deadline }
     }
 
     /// Runs one call with the handles its effect entitles it to. An unknown
     /// name, or arguments outside the tool's declared parameter schema, yield
     /// an error result before the tool receives any capability handle. This is
     /// the one place a tool call's arguments are checked, for built-in,
-    /// configured, and host tools alike.
+    /// configured, and host tools alike. `composer` is `Some` only when the
+    /// agent loop dispatches the [`crate::COMPOSING_TOOL`].
     pub async fn dispatch(
         &self,
         handles: &Handles,
@@ -168,6 +169,7 @@ impl Registry {
         step: u32,
         spill_dir: PathBuf,
         deadline: Option<Instant>,
+        composer: Option<Arc<dyn crate::Composer>>,
     ) -> ToolValue {
         let Some(entry) = self.entry(&call.name) else {
             return ToolValue::error(text::fill(text::UNKNOWN_TOOL, &[("name", &call.name)]));
@@ -179,7 +181,8 @@ impl Registry {
         if let Some(reason) = reason {
             return ToolValue::error(text::fill(text::INVALID_ARGS, &[("name", &call.name), ("reason", &reason)]));
         }
-        let ctx = self.ctx(entry.spec.effect, handles, call.id.clone(), step, spill_dir, deadline);
+        let mut ctx = self.ctx(entry.spec.effect, handles, call.id.clone(), step, spill_dir, deadline);
+        ctx.composer = composer;
         entry.tool.call(call.args.clone(), &ctx).await
     }
 
@@ -236,7 +239,7 @@ impl Registry {
     pub fn verifier_identity(&self, name: &str, runtime_build: &str) -> String {
         match self.entry(name).and_then(|e| e.exec.as_ref()) {
             Some(exec) => std::fs::read(&exec.def.exec)
-                .map(|bytes| format!("sha256:{}", foe_config::identity::sha256_hex(&bytes)))
+                .map(|bytes| format!("sha256:{}", foe_program::identity::sha256_hex(&bytes)))
                 .unwrap_or_else(|_| "unknown".into()),
             None => runtime_build.to_string(),
         }
@@ -261,6 +264,8 @@ impl ExecTool {
             timeout: Duration::from_secs(self.def.timeout_seconds),
             network: self.def.network,
             stdin: None,
+            policy: None,
+            pass_fds: Vec::new(),
         }
     }
 

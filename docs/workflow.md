@@ -8,7 +8,7 @@ document specifies the graph, the three places, and the guarantee that
 holds across all of them.
 
 Status: implemented. The configuration types and construction rules are in
-`crates/config/src/workflow.rs`; the executor is `crates/workflow`;
+`crates/program/src/workflow.rs`; the executor is `crates/workflow`;
 `examples/workflow` runs one graph.
 
 ## Why a graph, and why agency inside it
@@ -98,7 +98,7 @@ lists the source when any node follows it.
 
 ### Nodes
 
-A node carries fourteen keys at most, and any key outside the two tables
+A node carries twelve keys at most, and any key outside the two tables
 below is refused at construction. One of the first three names the node's
 kind, and exactly one of them is present.
 
@@ -111,27 +111,25 @@ kind, and exactly one of them is present.
 A `tool` node also takes `args`, specified under "Tool nodes" below. No
 other key accompanies a kind.
 
-The ten remaining fields apply to a node of any kind.
+The eight remaining fields apply to a node of any kind.
 
 | field | type | meaning |
 |---|---|---|
 | `follows` | list of node names | the nodes whose outputs this node receives, and `task` for the invocation task; default empty |
-| `followed_by` | list of node names | the same edges written from the other end; the union of both forms is the edge set |
 | `verify` | tool name | a verifier run on the node's output; non-empty findings re-fire the node with the findings attached |
 | `retries` | integer | how many times `verify` findings re-fire the node; default 2 |
-| `skip_when_verified` | node name | a node in this node's `follows`; when an authoritative verifier accepted that node's result, this node does not fire and contributes that node's value. See "The conditional audit guard" |
 | `branches` | object | a choice point; see below |
 | `max_fires` | integer | how many times this node may fire in one episode; default 1 for an acyclic position, required for a node on a cycle |
 | `terminal` | boolean | completing this node completes the workflow; at least one node is terminal |
-| `empty` | any JSON | the value this node contributes when recovery skips it; without it, skip is not offered |
+| `empty` | any JSON | the value this node contributes when recovery skips it, or when this model node's child ends blocked or exhausted; without it, both paths remain strict |
 | `recovery` | object | widens what this node's recovery decision reads; its one key is `follows`, a list of further node names. See "Recovery" below |
 
 `branches` is the one key whose own keys an author invents: each is a label
 the model may choose, specified under "Choice points" below. Every other
 key in this document is a fixed name.
 
-A `follows` entry and a `followed_by` entry that name the same edge are one
-edge. The graph is the union. Duplicate edges are not an error.
+Each `follows` entry defines one data edge from the named source to the node.
+Each successor in `branches` defines a control edge from the choice node.
 
 `foe plan --schema` prints the JSON Schema of the whole configuration, including
 `workflow`, `workflow_node`, and the recovery blocks, with
@@ -144,9 +142,9 @@ completes against it.
 `args` is the argument object for the call. A value of the form
 `{ "$node": NAME }` is replaced by that node's canonical output; with
 `"pointer"`, by the value at that JSON Pointer within it. NAME must be one
-of the node's inputs: a name in its `follows`, or a node whose
-`followed_by` names it. No other substitution exists. A tool node has no
-judgment of its own; when its call fails, recovery decides. For a tool
+of the node's inputs: a name in its `follows`. No other substitution exists.
+A tool node has no judgment of its own; when its call fails, recovery
+decides. For a tool
 declared in `tool_defs`, an exit code other than zero or a timeout is a
 failure of the node, because no model reads the code the way the loop's
 model does; the exit code and both output streams are the error recovery
@@ -196,6 +194,13 @@ happens within.
 A model node that feeds a tool node declares `done_when.returns` so that
 the tool node's bindings have a shape to bind to. A model node that feeds
 only other model nodes may leave the shape open; its text is its output.
+
+A model node that declares `empty` is optional. When its child ends blocked
+or exhausted, the node contributes `empty` and its successors continue. The
+`workflow/node-end` records the child's outcome as its error and records the
+declared value as its output. A failed child still enters recovery because a
+runtime failure supplies no usable partial result. A model node without
+`empty` retains the child's blocked or exhausted outcome as a failure.
 
 ### Choice points
 
@@ -307,40 +312,6 @@ node's inputs gate its firing; the inner graph's source nodes start from
 nothing. The inner graph's completing value is the node's value; an inner
 episode-level `done_when` does not apply.
 
-### The conditional audit guard
-
-`"skip_when_verified": "<node-name>"` declares that this node exists to
-re-check the named node's work, and is redundant when an authoritative
-verifier already accepted that work. Construction holds the guard to two
-rules, each refused with an error naming the key: the named node appears
-in the declaring node's `follows`, and the named node can produce a
-verification — it declares a node-level `verify`, or it is a model node
-whose program declares `done_when.verify`. A guard outside those rules
-could never fire, or could never observe the acceptance it reads. A third
-rule refuses the guard beside `branches`: a choice point is the node's own
-judgment over its result, and a skipped node exercises none, so no rule
-could say which branch a value the node never produced selects. The key
-is part of the node's serialization, so it participates in identity as
-every configured field does.
-
-The guard reads the log's evidence alone: an accepted
-`verification/result` for the named node's latest value — in the workflow
-episode's own log for a node-level `verify`, in the named node's child
-episode log for a program-level `done_when.verify`, where completion
-itself requires the acceptance. The model makes no choice here and never
-sees the guard.
-
-When the executor would fire the guarded node and the evidence is
-present, the node does not fire. The executor appends
-`workflow/node-skipped` and the node contributes the named node's value
-to its successors, which name that event among their `inputs`. A skipped
-terminal node completes the workflow with the named node's value, through
-the ordinary completion path, so the episode's own `done_when`, when
-declared, still applies to it. When the verifier did not run, did not
-accept, or the named node fired again after the acceptance, the node
-fires exactly as it would without the guard: every path except the skip
-is unchanged.
-
 ## The flow guarantee, stated exactly
 
 A model node's child episode receives, and only receives: its own
@@ -371,7 +342,7 @@ proceed, and it is the second place agency lives.
 |---|---|
 | the node's tool call errored, timed out, or produced output that violated the tool's own schema | yes, except for settled failures |
 | the node's `verify` findings remain after `retries` | yes |
-| a model node ended `blocked` | yes, with the code |
+| a model node ended `blocked` or `exhausted` | no when it declares `empty`; otherwise yes, with the code or limit |
 | a model node ended `failed` | yes |
 | the workflow's `done_when` findings remain | yes, at the terminal node |
 | a tool node's bound argument is absent from its predecessor's value | yes |
@@ -445,6 +416,11 @@ applied action is the `workflow/recovery` event. A `skip` records the
 their input, and when the empty value carries a `branch` field the label it
 names is the one chosen.
 
+The blocked-or-exhausted substitution of a model node's `empty` value is
+mechanical. It consumes no recovery intervention and records no
+`workflow/recovery` event. Successors name that node's `workflow/node-end`
+as their input.
+
 The recovery request draws from the workflow episode's input and output
 allowances. Its output cap does not exceed the allowance that remains when
 the request starts.
@@ -480,7 +456,6 @@ gives each event's fields.
 | `workflow/node-end` | `{ node, fire, value, rendered, error?, duration_ms }` |
 | `workflow/branch` | `{ node, fire, label, successors }` |
 | `workflow/recovery` | `{ node, fire, cause, action, target?, note?, intervention }` |
-| `workflow/node-skipped` | `{ node, verified_by, verification_seq }` |
 | `verification/result` | `{ step, tool, verifier_identity, status, findings, error?, duration_ms }` |
 
 A node's `verify` and the episode's `done_when.verify` each record every
@@ -498,9 +473,8 @@ a child episode and nothing else.
 The following participate in identity: every node's name and kind, the
 edge set, every `branches` declaration, every tool node's `args` with
 bindings, every model node's program identity, `verify`, `retries`,
-`skip_when_verified`, `max_fires`, `terminal`, `empty`, every
-`recovery.follows` widening, `recovery.max_interventions`, and the
-runtime's recovery instruction.
+`max_fires`, `terminal`, `empty`, every `recovery.follows` widening,
+`recovery.max_interventions`, and the runtime's recovery instruction.
 
 ## Relationship to the rest of foe
 

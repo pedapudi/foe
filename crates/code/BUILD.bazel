@@ -13,6 +13,7 @@ filegroup(
 rust_library(
     name = "foe_code",
     srcs = glob(["src/**/*.rs"]),
+    compile_data = ["src/python_shim.py"],
     crate_features = ["exec"],
     crate_name = "foe_code",
     crate_root = "src/lib.rs",
@@ -20,7 +21,7 @@ rust_library(
     version = "0.1.0",
     visibility = ["//visibility:public"],
     deps = [
-        "//crates/config:foe_config",
+        "//crates/program:foe_program",
         "//crates/core:foe_core",
     ] + all_crate_deps(normal = True),
     proc_macro_deps = all_crate_deps(proc_macro = True),

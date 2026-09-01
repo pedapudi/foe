@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "review-and-test",
   "instructions": {
     "10-role": "You lead a team working in a Python repository. You make the code change yourself.",

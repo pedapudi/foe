@@ -119,6 +119,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 
 [[package]]
+name = "command-fds"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b60b5124979fccd9addd89d8b97a1d6eebb4950694520c75ddd722535ea443f"
+dependencies = [
+ "nix",
+ "thiserror",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -237,11 +247,11 @@ name = "foe"
 version = "0.1.0"
 dependencies = [
  "foe-code",
- "foe-config",
  "foe-context",
  "foe-core",
  "foe-lineage",
  "foe-log",
+ "foe-program",
  "foe-telemetry",
  "foe-transport",
  "foe-view",
@@ -259,28 +269,18 @@ name = "foe-code"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "foe-config",
  "foe-core",
+ "foe-program",
  "grep-matcher",
  "grep-regex",
  "grep-searcher",
+ "hex",
  "ignore",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "tokio",
-]
-
-[[package]]
-name = "foe-config"
-version = "0.1.0"
-dependencies = [
- "foe-log",
- "hex",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
 ]
 
 [[package]]
@@ -288,9 +288,9 @@ name = "foe-context"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "foe-config",
  "foe-core",
  "foe-log",
+ "foe-program",
  "serde_json",
  "tokio",
 ]
@@ -301,8 +301,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cap-std",
- "foe-config",
+ "command-fds",
  "foe-log",
+ "foe-program",
  "hex",
  "ignore",
  "landlock",
@@ -318,8 +319,8 @@ dependencies = [
 name = "foe-lineage"
 version = "0.1.0"
 dependencies = [
- "foe-config",
  "foe-log",
+ "foe-program",
  "serde",
  "serde_json",
  "thiserror",
@@ -331,6 +332,18 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "foe-program"
+version = "0.1.0"
+dependencies = [
+ "foe-log",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
  "thiserror",
 ]
 
@@ -352,9 +365,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64",
- "foe-config",
  "foe-core",
  "foe-log",
+ "foe-program",
  "nix",
  "ring",
  "rustls",
@@ -382,9 +395,9 @@ name = "foe-workflow"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "foe-config",
  "foe-core",
  "foe-log",
+ "foe-program",
  "serde",
  "serde_json",
  "tokio",

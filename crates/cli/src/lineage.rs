@@ -4,8 +4,8 @@
 //! this file supplies the two directory-backed resolvers and the page a
 //! person reads.
 
-use foe_config::ProgramLineage;
 use foe_lineage::{check_ancestry, AncestryReport, StateDocument};
+use foe_program::ProgramLineage;
 use std::path::{Path, PathBuf};
 
 /// Checks the program's ancestry claim against its identity document:

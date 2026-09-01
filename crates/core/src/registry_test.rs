@@ -2,8 +2,8 @@ use super::{resolve_specs, Handles, Registry, Source};
 use crate::grants::{RootReader, RootWriter};
 use crate::test_util::{program_with, spec, tmp, FakeExecutor, Probe, Verifier};
 use crate::{Tool, ToolCall};
-use foe_config::harness_text as text;
-use foe_config::{ConfigError, Effect};
+use foe_program::harness_text as text;
+use foe_program::{Effect, ProgramError};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -15,9 +15,9 @@ fn call(name: &str, args: Value) -> ToolCall {
     ToolCall { id: format!("tc_{name}"), name: name.into(), args }
 }
 
-fn rule_of(result: Result<Registry, ConfigError>) -> String {
+fn rule_of(result: Result<Registry, ProgramError>) -> String {
     match result {
-        Err(ConfigError::Invalid { key, rule }) => {
+        Err(ProgramError::Invalid { key, rule }) => {
             assert_eq!(key, "tools");
             rule
         }
@@ -115,7 +115,7 @@ async fn dispatch_passes_only_the_handles_the_effect_entitles() {
         let (registry, handles, root) = (&registry, &handles, &root);
         let call = call(name, json!({}));
         async move {
-            let v = registry.dispatch(handles, &call, 1, root.clone(), None).await.value;
+            let v = registry.dispatch(handles, &call, 1, root.clone(), None, None).await.value;
             (v["reader"].as_bool().unwrap(), v["writer"].as_bool().unwrap(), v["executor"].as_bool().unwrap())
         }
     };
@@ -123,9 +123,9 @@ async fn dispatch_passes_only_the_handles_the_effect_entitles() {
     assert_eq!(received("reads").await, (true, false, false));
     assert_eq!(received("writes").await, (true, true, false));
     assert_eq!(received("execs").await, (true, false, true));
-    let unknown = registry.dispatch(&handles, &call("ghost", json!({})), 1, root.clone(), None).await;
+    let unknown = registry.dispatch(&handles, &call("ghost", json!({})), 1, root.clone(), None, None).await;
     assert!(unknown.is_error && unknown.rendered.unwrap().contains("`ghost`"));
-    let bad = registry.dispatch(&handles, &call("pure", json!([1])), 1, root.clone(), None).await;
+    let bad = registry.dispatch(&handles, &call("pure", json!([1])), 1, root.clone(), None, None).await;
     assert!(bad.is_error);
 }
 
@@ -148,6 +148,7 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
             1,
             root.clone(),
             None,
+            None,
         )
         .await;
     assert!(!ok.is_error && ok.value["code"] == "ambiguous-task");
@@ -158,14 +159,16 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
             1,
             root.clone(),
             None,
+            None,
         )
         .await;
     assert!(bad.is_error, "codes the runtime detects are not reportable");
     let returned =
-        registry.dispatch(&handles, &call("return", json!({ "value": { "n": 3 } })), 1, root.clone(), None).await;
+        registry.dispatch(&handles, &call("return", json!({ "value": { "n": 3 } })), 1, root.clone(), None, None).await;
     assert!(!returned.is_error && returned.value["value"]["n"] == 3);
-    let rejected =
-        registry.dispatch(&handles, &call("return", json!({ "value": { "n": "three" } })), 1, root.clone(), None).await;
+    let rejected = registry
+        .dispatch(&handles, &call("return", json!({ "value": { "n": "three" } })), 1, root.clone(), None, None)
+        .await;
     assert!(rejected.is_error && rejected.rendered.unwrap().contains("value.n"));
 }
 
@@ -188,15 +191,17 @@ async fn dispatch_checks_host_tool_arguments_against_the_declared_schema() {
     .unwrap();
     let registry = Registry::new(&program, vec![probe("lookup", Effect::Pure)], vec![]).unwrap();
     let handles = Handles::default();
-    let ok =
-        registry.dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 2 })), 1, root.clone(), None).await;
+    let ok = registry
+        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 2 })), 1, root.clone(), None, None)
+        .await;
     assert!(!ok.is_error, "{:?}", ok.rendered);
-    let bad =
-        registry.dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 0 })), 1, root.clone(), None).await;
+    let bad = registry
+        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 0 })), 1, root.clone(), None, None)
+        .await;
     assert!(bad.is_error);
     assert!(bad.rendered.unwrap().contains("limit"));
     let extra = registry
-        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 1, "x": 1 })), 1, root.clone(), None)
+        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 1, "x": 1 })), 1, root.clone(), None, None)
         .await;
     assert!(extra.is_error && extra.rendered.unwrap().contains("`x`"));
 }
@@ -214,7 +219,8 @@ async fn configured_executables_receive_args_as_argv_and_report_exit_as_data() {
     let registry = Registry::new(&program, vec![], vec![]).unwrap();
     let executor = Arc::new(FakeExecutor::default());
     let handles = Handles { executor: Some(executor.clone()), ..Default::default() };
-    let value = registry.dispatch(&handles, &call("t", json!({ "args": ["check", "."] })), 2, root.clone(), None).await;
+    let value =
+        registry.dispatch(&handles, &call("t", json!({ "args": ["check", "."] })), 2, root.clone(), None, None).await;
     assert!(!value.is_error);
     assert_eq!(value.value["exit_code"], 0);
     assert_eq!(value.value["stderr"], "check .");
@@ -223,7 +229,7 @@ async fn configured_executables_receive_args_as_argv_and_report_exit_as_data() {
     assert_eq!(req.args, vec!["check", "."]);
     assert_eq!((req.timeout.as_secs(), req.network, req.stdin), (7, true, None));
     assert_eq!(req.cwd, program.grants.read[0]);
-    let bad = registry.dispatch(&handles, &call("t", json!({ "args": "check" })), 2, root, None).await;
+    let bad = registry.dispatch(&handles, &call("t", json!({ "args": "check" })), 2, root, None, None).await;
     assert!(bad.is_error);
 }
 

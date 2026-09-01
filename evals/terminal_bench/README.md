@@ -377,11 +377,21 @@ bazel run //evals/terminal_bench:self-improve -- \
   --confirm-spend
 ```
 
-Luna produces the bounded diagnosis from the supplied digest. Its only
-ordinary tool is `block`, so it cannot inspect the candidate source or
-retained run directories. Its typed result contains one causal contrast, one
-intervention, and the controls and falsification condition needed to evaluate
-that intervention.
+Luna produces the bounded diagnosis from the supplied digest. Its ordinary
+tools are `block` and the generated candidate validator, so it cannot inspect
+the candidate source or retained run directories. Its typed result contains
+one causal contrast, one intervention, and the controls and falsification
+condition needed to evaluate that intervention.
+
+The diagnosis node's completion verifier is a generated executable declared
+through `done_when.verify`. The runner writes it before the episode; it
+applies the same identity-bound candidate validation the runner applies
+after the episode, judging the returned typed diagnosis. A workflow,
+instruction, or tool candidate is therefore accepted inside the episode as
+an authoritative `verification/result` event in the diagnosis child's log,
+and findings return to the same child. A source diagnosis and a typed
+abstention pass this verifier: a source candidate is judged by the
+implementation node's candidate check, and an abstention proposes nothing.
 
 The diagnosis chooses `implement-source` when failed and successful
 trajectories isolate an activated source mechanism. It chooses
@@ -474,6 +484,25 @@ files. A source candidate binds the base Git tree and every changed file
 digest. A workflow candidate binds the independent-audit setting and preserved
 controls. `direct_implementation_required` is true when deterministic
 validation finds an error or the workflow produces no candidate.
+
+The runner records every accepted candidate as a lineage transition under
+the retained run directory's `lineage/` tree. It writes the evidence
+bundle — the episode tree, the adoption's state document as the child
+identity document, and an artifact manifest over the retained candidate
+files — and completes the bundle through the lineage crate's
+`build-bundle` binary, invoked with the pinned toolchain, which writes the
+adoption record and canonical manifest and prints the bundle's content
+address. The record cites the accepted diagnosis-validator result for a
+workflow, instruction, or tool candidate, and the accepted candidate-check
+result for a source candidate. The parent state is the evaluated
+program's identity document, retained from the resolved plan. The parent
+and child state documents land in `lineage/states/` and the bundle in
+`lineage/evidence/`, the layout the checker's resolvers read. The result's
+`adoption` member records the addresses, identities, and verification
+coordinates.
+[`docs/lineage-identity.md`](../../docs/lineage-identity.md) "Harness
+adoptions" states the one state-document rule: every adoption materializes
+the program document that will run under it.
 
 Apply a retained workflow candidate to any permitted task set with:
 

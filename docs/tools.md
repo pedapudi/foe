@@ -5,7 +5,7 @@ specification, which is what the model sees and what identity hashes, and an
 implementation, which runs when the model calls it. [design.md](design.md)
 defines the specification (`ToolSpec`), the declared effect, and how the
 registry checks effects against grants. This document specifies where tools
-come from, the contract for tools that are executables, the five built-in
+come from, the contract for tools that are executables, the six built-in
 coding tools, archived result retrieval, and the budget that bounds what one
 model turn's results show.
 
@@ -14,13 +14,16 @@ model turn's results show.
 The `tools` list in the configuration names every tool the model may call.
 Each name resolves against three sources, checked in this order.
 
-1. **Built-in tools.** Implemented in the runtime. There are twelve: the
-   five coding tools `read`, `grep`, `edit`, `bash`, and `session`
-   specified below;
+1. **Built-in tools.** Implemented in the runtime. There are fourteen: the
+   six coding tools `read`, `grep`, `edit`, `bash`, `session`, and
+   `python` specified below;
    `retrieve`, which reads a bounded segment of a prior tool rendering;
    `block`, by which the model reports a blocking condition; `spawn`, which
    starts a child episode, and `wait`, which blocks until every child this
-   episode started has ended; `steer`, which sends a message to a running
+   episode started has ended or, with `until`, until an arrival matches one
+   of its conditions — a child reaching an outcome, a session exiting, or
+   an inbox arrival by source — bounded by
+   `timeout_seconds`; `steer`, which sends a message to a running
    child, and `notify`, which sends one to the episode that started this
    one; and `send` and `team`, which address a teammate through the lead
    and list the team's roster. [design.md](design.md) and
@@ -133,9 +136,10 @@ replaced binary at the same path changes identity.
 
 ## Built-in coding tools
 
-The five coding tools live in the `foe-code` crate, which exposes two
+The six coding tools live in the `foe-code` crate, which exposes two
 functions. `foe_code::all()` returns every coding tool; `foe_code::readonly()`
-returns only `read` and `grep`. The `bash` and `session` tools are compiled
+returns only `read` and `grep`. The `bash`, `session`, and `python` tools
+are compiled
 only when the crate's `exec` feature is enabled, which they are by default.
 A build without that feature contains no code path that starts a process.
 
@@ -149,11 +153,12 @@ the first `read` root, and paths in results are shown relative to it.
 
 | tool | effect | arguments | limits | canonical value |
 |---|---|---|---|---|
-| `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused; the file streams through a 64 KiB buffer, so memory does not grow with file size | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content` |
-| `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
-| `edit` | writes | `path`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff` |
+| `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused; the file streams through a 64 KiB buffer | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content`, `version` |
+| `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `traversal_failures`, `first_failure`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
+| `edit` | writes | `path`; optional `expected_version` from `read`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; an expected version must match the current bytes; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff`, `previous_version`, `version` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
-| `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule | `session`, `name`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`; `bytes`; `signal` |
+| `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `lifetime`, `episode` by default or `task`; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule; task lifetime requires `grants.task_session` | `session`, `name`, `lifetime`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`; `bytes`; `signal` |
+| `python` | execs | `program`, source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
 
 The limits in the table are constants in the crate, and every tool
 description sent to the model is formatted from the same constants.
@@ -172,6 +177,7 @@ model received.
 | `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
 | `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
 | `session` | `session 2: postgres · alive, 41 lines` for a poll, `session 2: exit 0 after 84s` for a stop or for a poll after the end | the error, which names the session id or what refused the start |
+| `python` | `python: 6 call(s), 0 error(s), 123 bytes returned`, the derivation and the returned size | the first line of what ended the program, after the call count |
 
 A tool reports what the call did rather than what it was asked for, because
 the arguments are already in the log: `grep` states how many matches it
@@ -202,6 +208,11 @@ rendering carries its information.
 
 ### `read`
 
+Every successful read begins with a `sha256:` version of the complete raw
+file bytes. The same version appears in the canonical value. It is identical
+for every window of unchanged bytes, including windows that omit most of the
+file.
+
 `offset` and `limit` select a range of lines. The rendered form numbers each
 line as `N<TAB>text`, with `N` counted from the start of the file. That
 shape is also what tells the turn budget it is looking at a window of a
@@ -230,14 +241,21 @@ sequence cut by a buffer boundary is reassembled before validation.
 ### `grep`
 
 Searching runs in process through the `grep-searcher`, `grep-regex`,
-`grep-matcher`, and `ignore` libraries; no process is started. The tree
-below `path` is walked with the rules of `.gitignore` and `.ignore` files
-applied, whether or not the directory is a git checkout, and hidden entries
-are skipped. Each file is streamed through the reader. The line-search buffer
+`grep-matcher`, and `ignore` libraries; no process is started. The reader
+enumerates the tree through its descriptor-held root. The rules in
+`.gitignore` and `.ignore` files apply whether or not the directory is a git
+checkout, and hidden entries are skipped. Each file is streamed through the
+same reader. The line-search buffer
 has an 8 MiB ceiling. A line or context window beyond that ceiling makes the
 result incomplete and increments `failed_files`. A symbolic link that leaves
 the read roots is skipped rather than followed. Files that contain a NUL byte
 are skipped.
+
+A directory-enumeration, ignore-file, file-open, or search failure makes
+`complete` false. `failed_files` counts open and content-search failures.
+`traversal_failures` counts directory and ignore-file failures.
+`first_failure` records the first error. The rendered result names the total
+number of affected paths and the first error.
 
 `pattern` uses Rust regex syntax. With `literal` true, the pattern is
 matched as a fixed string. `glob` restricts the search to files whose path
@@ -257,6 +275,12 @@ collection bound or failed file makes `complete` false and appears in the
 rendering.
 
 ### `edit`
+
+`expected_version` is optional. When present, `edit` hashes the current raw
+bytes before matching or writing and refuses a different version. A
+successful edit records the versions before and after the write. The check
+detects changes that `edit` observes before mutation. An external writer can
+still race the interval between that observation and the atomic replacement.
 
 Every `old_text` is located in the file as it was before the call. The
 edits are therefore independent of each other's results, and their order in
@@ -324,30 +348,39 @@ without the handles it needs.
 ### `session`
 
 One tool drives every process session, selected by `action`. A session is
-a process that outlives the call that started it and lives at most as long
-as the episode: the workspace already persists across calls, and a session
-extends that persistence to a server, a database, or a debugger.
+the process group that begins with the shell process started by the call.
+The default lifetime ends with the episode. An explicitly authorized task
+lifetime transfers the group to the environment that owns the foe invocation.
 
 `start` takes `command` and runs `/bin/bash -c COMMAND` exactly as `bash`
 does: the first read root as the working directory, the same fixed
 environment, the same network policy, and the sandbox narrowed to the shell.
-The process runs in its own process group with every standard stream a
-pipe. The result carries the session id, a small integer counted from 1.
+The process runs in its own process group. The result carries the session
+id, a small integer counted from 1, and the selected lifetime.
 At most 8 sessions may be alive at once, a constant in the crate; a start
-beyond the bound is an error naming it. A session has no timeout: it lives
-until `stop`, its own exit, or episode settlement, and the episode's
-wall-clock budget bounds it only by ending the episode.
+beyond the bound is an error naming it. A session has no timeout. An
+episode-lifetime session lives until `stop`, its process group becomes empty,
+or episode settlement. The episode's wall-clock budget bounds it by ending
+the episode.
+
+`lifetime` on `start` is `episode` or `task`, and defaults to `episode`.
+Task lifetime requires `grants.task_session`. Every session's output streams
+append directly to files under the episode's `spill/` directory. The files
+remain writable when a task-lifetime session survives foe. Standard input
+remains a pipe and closes when the episode's Foe process exits.
 
 `poll` takes `session` and returns what both streams produced since the
-last poll, with the process's state: `alive`, and once the process has
-ended, `exit_code` — null when a signal ended it — and `seconds` from the
-start to the end. The rendering opens with the status line and then shows
-the tail of the new output under the collection-and-spill rule of `bash`:
+last poll, with the group's state. `alive` remains true while any member of
+the original process group exists, including after the leader exits. Once
+the group is empty, `exit_code` is the leader's status, or null when a signal
+ended it, and `seconds` measures the group lifetime. The rendering opens with
+the status line and then shows the tail of the new output under the
+collection-and-spill rule of `bash`:
 the last 2,000 lines or 51,200 characters, the whole text saved to
-`CALL_ID-session.txt` under `spill/` when a cut happens. Between polls
-each stream keeps at most 1 MiB in memory; output beyond that is appended
-to a per-session file under `spill/`, and the poll that first sees it ends
-with a line naming that file.
+`CALL_ID-session.txt` under `spill/` when a cut happens. Each poll reads the
+newest 1 MiB of new bytes from each stream's per-session file. A notice names
+that file when more new output was available. The file retains the complete
+stream.
 
 `write` takes `session` and `input` and writes the bytes to standard
 input. `signal` takes `session` and `signal`, a name such as `SIGINT`,
@@ -356,12 +389,31 @@ group. `stop` takes `session`, sends SIGTERM to the group, waits two
 seconds, sends SIGKILL, and returns the final status; the grace bound is
 the constant the executable teardown uses.
 
-Settlement cleanup is unconditional. At episode settlement every surviving
-session's process group is killed through the same escalation, and each
-termination is recorded as an ordinary `tool/result` with `synthetic:
-true` whose subject states the final status: the result of the implicit
-stop. [log-format.md](log-format.md#open-obligations) specifies that
-result.
+A session's end is also posted to the episode's inbox. When the runtime
+observes that the process group is empty, it appends one `inbox/item` with
+source `session` whose text is the subject line: the id, the exit status,
+and the lifetime. The runtime checks before deriving a request, while a
+turn's tool calls run, and at settlement. One item per session lifetime,
+on exit only; output
+reaches the model through `poll` alone. The item lets a `wait` on a
+session condition return when the process ends, and it enters the next
+request like any inbox item. [log-format.md](log-format.md#inbox)
+specifies the item.
+
+At episode settlement the runtime stops every surviving episode-lifetime
+session through the same escalation. It records each termination as a
+synthetic `tool/result` whose subject states the final status.
+
+The runtime leaves a surviving task-lifetime session running. Its synthetic
+settlement result states `released_to_task_environment` and records the
+leader PID, process-group ID, and observed-alive state of the group. The
+leader may already have exited. The runtime no longer supervises the group
+after that record. The enclosing task environment must clean up the process
+group when the task ends. A container, process
+namespace, or cgroup that is destroyed after grading provides that cleanup.
+The explicit grant accepts this cleanup obligation on a host without such
+an environment. [log-format.md](log-format.md#open-obligations) specifies
+the synthetic result.
 
 Sessions have no terminal: a program that requires a PTY sees a pipe.
 Network access follows the policy a `bash` call runs under: outbound
@@ -369,6 +421,20 @@ closed, binding limited to the TCP ports `grants.bind` lists. A session is
 how a granted port is served across calls — a server it holds keeps its
 listener until the session ends. Widening outbound access is a separate
 design; no grant kind opens it.
+
+### `python`
+
+The tool runs one model-written program in an isolated interpreter whose
+only capability is calling this episode's tools, and returns the value the
+program's zero-argument `main` computed. The runtime records every inner
+call in the log; the model sees the returned value, a derivation summary,
+and the process's own output as diagnostics. [code-mode.md](code-mode.md)
+specifies the contract, the confinement, the bounds, and the log
+representation; [log-format.md](log-format.md) specifies the
+`tool/inner-call` event. The interpreter is `/usr/bin/python3`, named by
+absolute path; a machine without it returns an ordinary error naming the
+path. The tool is inert for every program that does not list it, and the
+built-in coding workflow does not list it.
 
 ## The turn budget
 

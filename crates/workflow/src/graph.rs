@@ -12,7 +12,7 @@
 //! built-in `task` source holds its value before the first firing and is
 //! nobody's ancestor, so a node that follows only `task` fires at the start.
 
-use foe_config::workflow::{ancestors, Node, WorkflowConfig, TASK_SOURCE};
+use foe_program::workflow::{ancestors, Node, WorkflowConfig, TASK_SOURCE};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
@@ -42,13 +42,6 @@ pub struct NodeState {
     /// Attached to the next firing as a `recovery` section.
     pub note: Option<String>,
     pub verify_attempts: u32,
-    /// `seq` of the `verification/result` that accepted this node's latest
-    /// value, which a successor's `skip_when_verified` guard reads: in the
-    /// workflow's own log for a node-level `verify`, in the child episode's
-    /// log for a model node whose program declares `done_when.verify`.
-    /// Cleared when the node fires again, because a re-fire invalidates
-    /// the accepted value.
-    pub accepted: Option<u64>,
     /// The child episode of this node's latest firing, whose log holds a
     /// model node's own verification events.
     pub child_id: Option<String>,
@@ -109,16 +102,7 @@ impl Scheduler {
         s.forced = false;
         s.running = true;
         s.started = Some(Instant::now());
-        s.accepted = None;
         (s.fires, std::mem::take(&mut s.findings), s.note.take())
-    }
-
-    /// Clears readiness without counting a firing, for a node whose
-    /// `skip_when_verified` guard fired in its place.
-    pub fn skip(&mut self, name: &str) {
-        let s = self.state.get_mut(name).expect("a known node");
-        s.fresh.clear();
-        s.forced = false;
     }
 
     pub fn finish(&mut self, name: &str) {

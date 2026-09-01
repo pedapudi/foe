@@ -193,15 +193,28 @@ fn archive_io(seq: u64, archive: &RenderingArchive, operation: &str, error: std:
 pub fn closing_events(events: &[Event]) -> Vec<EventData> {
     let open = crate::fold::open_obligations(events);
     let held = |kind, key: &str| open.contains(&(kind, key.to_string()));
+    // Open inner calls of a composing tool, by the outer call they nest
+    // under. Each closes before its outer call, so the nested account
+    // balances before the outer synthetic result is read.
+    let mut inner: BTreeMap<&str, Vec<ToolCall>> = BTreeMap::new();
+    for event in events {
+        if let EventData::ToolInnerCall(c) = &event.data {
+            if held(Obligation::ToolCall, &c.call_id) {
+                let call = ToolCall { id: c.call_id.clone(), name: c.name.clone(), args: c.args.clone() };
+                inner.entry(&c.outer_call_id).or_default().push(call);
+            }
+        }
+    }
     let mut closing = Vec::new();
     for event in events {
         match &event.data {
-            EventData::AssistantMessage(m) => closing.extend(
-                m.tool_calls
-                    .iter()
-                    .filter(|c| held(Obligation::ToolCall, &c.id))
-                    .map(|c| EventData::ToolResult(orphan_result(m.step, c))),
-            ),
+            EventData::AssistantMessage(m) => {
+                for call in m.tool_calls.iter().filter(|c| held(Obligation::ToolCall, &c.id)) {
+                    let nested = inner.remove(call.id.as_str()).unwrap_or_default();
+                    closing.extend(nested.iter().map(|c| EventData::ToolResult(orphan_result(m.step, c))));
+                    closing.push(EventData::ToolResult(orphan_result(m.step, call)));
+                }
+            }
             EventData::CompactionStart(s) if held(Obligation::Compaction, &s.step.to_string()) => {
                 let (usage, error) = (Usage::default(), Some(ABANDONED.to_string()));
                 closing.push(EventData::CompactionEnd { step: s.step, ok: false, usage, active_estimate: 0, error })
@@ -215,6 +228,13 @@ pub fn closing_events(events: &[Event]) -> Vec<EventData> {
             }
             _ => {}
         }
+    }
+    // An open inner call whose outer call is not open can arise only when
+    // appending the inner result itself failed; a closing result is still
+    // owed. No `assistant/message` carries such a call, so no step is
+    // known for it.
+    for calls in inner.into_values() {
+        closing.extend(calls.iter().map(|c| EventData::ToolResult(orphan_result(0, c))));
     }
     closing
 }

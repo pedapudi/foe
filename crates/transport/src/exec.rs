@@ -31,8 +31,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use foe_config::ModelConfig;
 use foe_core::{Chunk, ExecRequest, Executor, ModelRequestBody, Transport};
+use foe_program::ModelConfig;
 use serde::Deserialize;
 
 use crate::TransportError;
@@ -110,6 +110,8 @@ impl Transport for ExecTransport {
             timeout: TIMEOUT,
             network: true,
             stdin: Some(self.request_line(&req).into_bytes()),
+            policy: None,
+            pass_fds: Vec::new(),
         };
         let executor = self.executor.clone();
         let joined = tokio::task::spawn_blocking(move || executor.run(request)).await;

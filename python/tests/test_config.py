@@ -48,7 +48,7 @@ def make_program() -> foe.Program:
 
 
 EXPECTED = {
-    "version": 2,
+    "version": 3,
     "name": "zicato-proposer",
     "instructions": {"10-charter": "You propose experiments.", "20-grounding": "Ground every claim."},
     "tools": ["read", "grep", "mutation_usage", "validate_patches"],

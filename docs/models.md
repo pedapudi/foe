@@ -83,6 +83,7 @@ Every provider-specific option is a flat string. The options by provider:
 | `location` | `vertex` | the region, such as `us-east5`, or `global`; required |
 | `base_url` | every HTTP provider | replaces the default endpoint; required for `openai-compatible` |
 | `reasoning_effort` | `openai`, `openai-codex` | sent as `reasoning.effort`; models without reasoning reject it |
+| `service_tier` | `openai`, `openai-codex` | sent as the Responses API `service_tier` request field |
 | `include_thoughts` | `vertex` with Gemini models | `"false"` leaves `thinkingConfig` out, for models without thinking |
 | `exec` | `exec` | absolute path of the program; required |
 

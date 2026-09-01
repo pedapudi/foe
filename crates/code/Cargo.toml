@@ -4,19 +4,25 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Built-in coding tools: read, grep, edit, bash, session"
+description = "Built-in coding tools: read, grep, edit, bash, session, python"
 
 [features]
 default = ["exec"]
-# The `bash` tool. A build without this feature contains no code that starts a process.
+# The `bash`, `session`, and `python` tools. A build without this feature
+# contains no code that starts a process.
 exec = []
 
 [dependencies]
-foe-config = { path = "../config" }
+foe-program = { path = "../program" }
 foe-core = { path = "../core" }
 serde.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
+sha2.workspace = true
+hex.workspace = true
+# The `python` tool serves its interpreter's dispatch socket without
+# blocking the executor thread that owns the process.
+tokio = { workspace = true, features = ["net"] }
 grep-searcher = "0.1"
 grep-regex = "0.1"
 grep-matcher = "0.1"

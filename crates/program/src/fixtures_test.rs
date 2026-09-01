@@ -2,13 +2,13 @@
 //! minimal document and the program it resolves to, and probe tool
 //! specifications.
 
-use crate::config::{resolve, Program};
-use crate::{Config, Effect, ToolSpec};
+use crate::document::{resolve, ResolvedProgram};
+use crate::{Effect, ProgramDocument, ToolSpec};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 pub fn tmp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("foe-config-{}-{name}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("foe-program-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -18,7 +18,7 @@ pub fn tmp(name: &str) -> PathBuf {
 /// only tool and the host transport.
 pub fn config_value(root: &Path) -> Value {
     json!({
-        "version": 2,
+        "version": 3,
         "name": "fixture",
         "instructions": { "10-role": "You are a test agent.", "05-first": "Be brief." },
         "tools": ["block"],
@@ -28,18 +28,18 @@ pub fn config_value(root: &Path) -> Value {
     })
 }
 
-pub fn config(root: &Path) -> Config {
+pub fn config(root: &Path) -> ProgramDocument {
     serde_json::from_value(config_value(root)).unwrap()
 }
 
-pub fn program(root: &Path) -> Program {
+pub fn program(root: &Path) -> ResolvedProgram {
     resolve(&config(root)).unwrap()
 }
 
-pub fn program_with(root: &Path, edit: impl FnOnce(&mut Value)) -> Result<Program, crate::ConfigError> {
+pub fn program_with(root: &Path, edit: impl FnOnce(&mut Value)) -> Result<ResolvedProgram, crate::ProgramError> {
     let mut value = config_value(root);
     edit(&mut value);
-    let config: Config = serde_json::from_value(value)?;
+    let config: ProgramDocument = serde_json::from_value(value)?;
     resolve(&config)
 }
 

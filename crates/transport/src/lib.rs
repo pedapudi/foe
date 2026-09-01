@@ -39,8 +39,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use foe_config::ModelConfig;
 use foe_core::{Chunk, Executor, ModelRequestBody, Transport};
+use foe_program::ModelConfig;
 
 pub mod auth;
 #[cfg(feature = "exec")]
@@ -274,6 +274,7 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
                 model.model.clone(),
                 max,
                 model.option("reasoning_effort").map(str::to_string),
+                model.option("service_tier").map(str::to_string),
             )),
             base(provider.default_base_url)?.join(provider.path),
         ),

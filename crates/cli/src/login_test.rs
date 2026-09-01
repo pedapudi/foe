@@ -166,7 +166,7 @@ fn an_explicit_model_skips_the_prompt_and_a_second_login_keeps_the_default() {
     let text = String::from_utf8(output).unwrap();
     assert!(text.contains("default model  openai/gpt-5-mini"), "{text}");
     assert!(text.contains("credentials/openai.json") && text.contains("credentials/openrouter.json"), "{text}");
-    assert!(!text.contains("sk-"), "{text}");
+    assert!(!text.contains("sk-one") && !text.contains("sk-two"), "{text}");
 }
 
 #[test]

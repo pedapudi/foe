@@ -11,18 +11,17 @@ use crate::budget::Pool;
 use crate::context::{Answer, ContextPolicy, ContextState, Summarized, SummaryCall};
 use crate::inbox::Inbox;
 use crate::registry::{Handles, Registry};
-use crate::result_budget;
 use crate::spawn::Router;
-use crate::{ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
-use foe_config::config::Program;
-use foe_config::harness_text as text;
+use crate::{result_budget, ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
 use foe_log::{
     fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
     Event, EventData, ExhaustedLimit, HeaderReason, InboxItem, InboxSource, LogError, Message, ModelRequest, Outcome,
     RequestHeader, RetryCause, StopReason, ThinkingBlock, ToolCall, ToolResult, ToolSchema, Usage, VerificationResult,
     VerificationStatus, SUMMARY_REQUEST_PREFIX,
 };
-use serde_json::Value;
+use foe_program::document::{completion_evidence_required, ResolvedProgram};
+use foe_program::harness_text as text;
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -41,8 +40,8 @@ const BACKOFF_CAP_MS: u64 = 8_000;
 /// How long the teardown waits for children it asked to end before it
 /// records their settlement itself.
 const SETTLE_GRACE: Duration = Duration::from_secs(10);
-/// How often a wait on children rereads the pool.
-const SETTLE_POLL: Duration = Duration::from_millis(20);
+/// How often a wait on children or on arrivals rereads its evidence.
+pub(crate) const SETTLE_POLL: Duration = Duration::from_millis(20);
 
 pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -119,7 +118,7 @@ impl Log {
 pub struct Params {
     pub log: Arc<Log>,
     pub start: EpisodeStart,
-    pub program: Program,
+    pub program: ResolvedProgram,
     pub registry: Arc<Registry>,
     pub handles: Handles,
     pub transport: Arc<dyn Transport>,
@@ -130,8 +129,8 @@ pub struct Params {
     /// ends the ones still running, so that no child outlives the episode
     /// that started it and no reservation stands unreturned.
     pub children: Option<Arc<Router>>,
-    /// The episode's process sessions. The teardown stops every surviving
-    /// session, so that no session outlives the episode that started it.
+    /// The episode's process sessions. Teardown stops episode-lifetime
+    /// sessions and releases explicitly authorized task-lifetime sessions.
     pub sessions: Option<Arc<dyn crate::Sessions>>,
     pub context: Option<Arc<dyn ContextPolicy>>,
 }
@@ -144,6 +143,20 @@ pub fn append_inbox_item(log: &Log, item: InboxItem) -> Result<Option<Event>, Lo
         return Ok(None);
     }
     log.append(EventData::InboxItem(item)).map(Some)
+}
+
+/// Appends one `session`-source item per session exit not yet reported:
+/// the session subject line, with `from` naming the session id. The loop
+/// posts before each request, while a turn's calls run so that a `wait`
+/// sees the arrival, and at settlement.
+fn post_session_exits(log: &Log, sessions: Option<&Arc<dyn crate::Sessions>>) -> Result<(), LogError> {
+    for status in sessions.iter().flat_map(|s| s.take_exited()) {
+        let content = vec![ContentBlock::Text { text: crate::session::subject(&status) }];
+        let item =
+            InboxItem { source: InboxSource::Session, content, from: Some(status.id.to_string()), message_id: None };
+        log.append(EventData::InboxItem(item))?;
+    }
+    Ok(())
 }
 
 /// Runs the episode to its end, closes what its log left open through
@@ -169,10 +182,13 @@ pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
 /// Closes every obligation the log opened, so that `episode/end` is valid.
 /// See docs/log-format.md "Open obligations".
 ///
-/// A process session still alive when the episode ends is stopped, and the
-/// termination is recorded as the ordinary result of that implicit stop: a
-/// `tool/result` with `synthetic: true` whose subject states the final
-/// status. A child still running is asked to end, and the `spawn/end` and
+/// Settlement records one synthetic `tool/result` for every process session
+/// still alive. It stops an episode-lifetime session. It records an observed-
+/// alive task-lifetime session as released to the enclosing task environment,
+/// with the process and process-group ids needed for cleanup. Every session
+/// exit not yet reported is then posted as a
+/// `session`-source inbox item, so the one-item-per-lifetime rule holds to
+/// the end of the log. A child still running is asked to end, and the `spawn/end` and
 /// `budget/release` its reservation owes are awaited for [`SETTLE_GRACE`].
 /// Whatever is still open after that, including every tool call left
 /// without a result, is closed by the synthetic events the log crate
@@ -184,7 +200,8 @@ pub async fn settle(
     sessions: Option<Arc<dyn crate::Sessions>>,
 ) -> Result<(), RuntimeError> {
     if let Some(sessions) = sessions {
-        let stopped = tokio::task::spawn_blocking(move || sessions.stop_all())
+        let settler = sessions.clone();
+        let settled = tokio::task::spawn_blocking(move || settler.settle())
             .await
             .map_err(|e| RuntimeError::Protocol(format!("session settlement task failed: {e}")))?;
         let step = log.with_events(|events| {
@@ -197,16 +214,27 @@ pub async fn settle(
                 })
                 .unwrap_or(0)
         });
-        for status in stopped {
-            let subject = crate::session::subject(&status);
+        for settlement in settled {
+            let status = settlement.status;
+            let mut value = serde_json::json!({
+                "session": status.id, "name": status.name, "alive": status.alive,
+                "exit_code": status.exit_code, "seconds": status.seconds,
+            });
+            let subject = match settlement.released_to_task {
+                true => {
+                    value["lifetime"] = serde_json::json!("task");
+                    value["disposition"] = serde_json::json!("released_to_task_environment");
+                    value["pid"] = serde_json::json!(settlement.pid);
+                    value["process_group"] = serde_json::json!(settlement.process_group);
+                    format!("session {}: {} · released to task environment", status.id, status.name)
+                }
+                false => crate::session::subject(&status),
+            };
             log.append(EventData::ToolResult(ToolResult {
                 step,
                 call_id: format!("session-{}-settle", status.id),
                 name: crate::session::SESSION_TOOL.into(),
-                value: serde_json::json!({
-                    "session": status.id, "name": status.name, "alive": false,
-                    "exit_code": status.exit_code, "seconds": status.seconds,
-                }),
+                value,
                 rendered: subject.clone(),
                 is_error: false,
                 spill: None,
@@ -215,6 +243,7 @@ pub async fn settle(
                 synthetic: true,
             }))?;
         }
+        post_session_exits(log, Some(&sessions))?;
     }
     if lock(pool).active_children() > 0 {
         if let Some(children) = children {
@@ -343,6 +372,7 @@ impl Episode {
             if final_request {
                 self.append_inbox(InboxSource::System, text::FINAL_REQUEST)?;
             }
+            post_session_exits(&self.p.log, self.p.sessions.as_ref())?;
             self.write_header(self.p.registry.system_prompt(&self.p.program.instructions), self.p.registry.schemas())?;
             let message = match self.request(Request::Step).await? {
                 Answer::Message { message, .. } => message,
@@ -558,6 +588,7 @@ impl Episode {
         }
         let deadline = self.deadline();
         let run = run_calls(
+            self.p.log.clone(),
             self.p.registry.clone(),
             self.p.handles.clone(),
             message.tool_calls.clone(),
@@ -565,8 +596,19 @@ impl Episode {
             self.spill_dir.clone(),
             deadline,
         );
+        // Session exits are posted while the calls run, so a blocking call
+        // such as `wait` observes the arrival rather than outwaiting it.
+        let posting = async {
+            loop {
+                tokio::time::sleep(SETTLE_POLL).await;
+                if let Err(e) = post_session_exits(&self.p.log, self.p.sessions.as_ref()) {
+                    break e;
+                }
+            }
+        };
         let values = tokio::select! {
             values = run => values,
+            e = posting => return Err(e.into()),
             reason = wait_stop(self.p.stop.clone()) => return Ok(Err(Outcome::Failed { error: reason })),
             _ = until(deadline) => return Ok(Err(Outcome::Exhausted { limit: ExhaustedLimit::Seconds })),
         };
@@ -586,7 +628,6 @@ impl Episode {
         Ok(Ok(results))
     }
 
-    /// Appends one `tool/result`, spilling a large value first.
     fn append_result(
         &self,
         call: &ToolCall,
@@ -595,27 +636,8 @@ impl Episode {
         duration_ms: u64,
         synthetic: bool,
     ) -> Result<ToolResult, RuntimeError> {
-        let subject = value.subject.clone();
-        if let Some(archive) = archive {
-            let archive = crate::retrieval::retain(&self.spill_dir, self.step, &call.id, &archive)?;
-            self.p.log.append(EventData::ToolRenderingArchive(archive))?;
-        }
-        let (value, rendered, spill) = spill(&self.spill_dir, &call.id, value)?;
-        let is_error = value.get("error").is_some() && value.as_object().is_some_and(|o| o.len() == 1);
-        let result = ToolResult {
-            step: self.step,
-            call_id: call.id.clone(),
-            name: call.name.clone(),
-            value,
-            rendered,
-            is_error,
-            spill,
-            subject,
-            duration_ms,
-            synthetic,
-        };
-        self.p.log.append(EventData::ToolResult(result.clone()))?;
-        Ok(result)
+        let cite = completion_evidence_required(self.p.program.done_when.as_ref());
+        append_result(&self.p.log, &self.spill_dir, self.step, call, value, archive, duration_ms, synthetic, cite)
     }
 
     /// Block, looping, `done_when`, then budget. A turn that completes the
@@ -668,6 +690,14 @@ impl Episode {
             (finished || verifier_called).then(|| Value::String(message.text.clone()))
         };
         let Some(candidate) = candidate else { return Ok(None) };
+        if completion_evidence_required(self.p.program.done_when.as_ref()) {
+            let findings = learned_findings(&self.p.log, &candidate);
+            if !findings.is_empty() {
+                let message = text::fill(text::INVALID_ARGS, &[("name", text::RETURN_NAME), ("reason", &findings)]);
+                self.append_inbox(InboxSource::System, &message)?;
+                return Ok(None);
+            }
+        }
         let Some(done) = self.p.program.done_when.clone().filter(|d| d.verify.is_some()) else {
             return Ok(Some(Outcome::Completed { value: candidate }));
         };
@@ -698,6 +728,35 @@ impl Episode {
         self.append_inbox(InboxSource::Verify, &framed)?;
         Ok(None)
     }
+}
+
+fn learned_findings(log: &Log, candidate: &Value) -> String {
+    let Some(items) = candidate.get("learned").and_then(Value::as_array).filter(|items| !items.is_empty()) else {
+        return "`value.learned` is a non-empty array".into();
+    };
+    log.with_events(|events| {
+        for (index, item) in items.iter().enumerate() {
+            let seq = item.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
+            let result =
+                usize::try_from(seq).ok().and_then(|seq| events.get(seq)).and_then(|event| match &event.data {
+                    EventData::ToolResult(result) if !result.is_error && !result.synthetic => Some(result),
+                    _ => None,
+                });
+            let Some(result) = result else {
+                return format!("`learned[{index}].seq` {seq} does not name a successful tool/result");
+            };
+            if !result.spill.as_ref().is_none_or(|file| {
+                Path::new(file).file_name().is_some_and(|name| name == std::ffi::OsStr::new(file))
+                    && std::fs::read(log.dir().join("spill").join(file)).is_ok_and(|bytes| {
+                        result.value == json!({ "spill": file, "bytes": bytes.len(), "is_error": false })
+                            && serde_json::from_slice::<Value>(&bytes).is_ok()
+                    })
+            }) {
+                return format!("`learned[{index}].seq` {seq} does not reconstruct");
+            }
+        }
+        String::new()
+    })
 }
 
 #[async_trait::async_trait]
@@ -734,9 +793,100 @@ pub async fn until(deadline: Option<Instant>) {
     }
 }
 
+/// Appends one `tool/result`, spilling a large canonical value first. The
+/// loop writes every model-issued result through this, and [`InnerCalls`]
+/// writes every inner result through it.
+#[allow(clippy::too_many_arguments)]
+fn append_result(
+    log: &Log,
+    spill_dir: &Path,
+    step: u32,
+    call: &ToolCall,
+    value: ToolValue,
+    archive: Option<crate::retrieval::ArchivedRendering>,
+    duration_ms: u64,
+    synthetic: bool,
+    cite_seq: bool,
+) -> Result<ToolResult, RuntimeError> {
+    let (subject, is_error) = (value.subject.clone(), value.is_error);
+    if let Some(archive) = archive {
+        let archive = crate::retrieval::retain(spill_dir, step, &call.id, &archive)?;
+        log.append(EventData::ToolRenderingArchive(archive))?;
+    }
+    let (value, mut rendered, spill) = spill(spill_dir, &call.id, value)?;
+    let mut inner = lock(&log.inner);
+    if cite_seq {
+        rendered.insert_str(0, &format!("[seq {}]\n", inner.0.next_seq()))
+    }
+    let result = ToolResult {
+        step,
+        call_id: call.id.clone(),
+        name: call.name.clone(),
+        value,
+        rendered,
+        is_error,
+        spill,
+        subject,
+        duration_ms,
+        synthetic,
+    };
+    let event = inner.0.append(EventData::ToolResult(result.clone()))?;
+    inner.1.push(event);
+    Ok(result)
+}
+
+/// The composer the loop hands the composing tool for one outer call: each
+/// inner call appends a `tool/inner-call` event, dispatches through the
+/// ordinary registry with the episode's handles, and appends the inner
+/// `tool/result`, which derived messages exclude. The composing tool
+/// itself, `block`, and the synthesized `return` are refused before any
+/// event is written: the first would recurse, and the other two have
+/// meaning only in a model-issued top-level call.
+struct InnerCalls {
+    log: Arc<Log>,
+    registry: Arc<Registry>,
+    handles: Handles,
+    outer_call_id: String,
+    step: u32,
+    spill_dir: PathBuf,
+    deadline: Option<Instant>,
+    index: std::sync::atomic::AtomicU32,
+}
+
+#[async_trait::async_trait]
+impl crate::Composer for InnerCalls {
+    async fn call(&self, name: &str, args: Value) -> Result<(Value, bool), RuntimeError> {
+        if [crate::COMPOSING_TOOL, text::BLOCK_NAME, text::RETURN_NAME].contains(&name) {
+            let message = format!("`{name}` is not callable from a `{}` program", crate::COMPOSING_TOOL);
+            return Ok((serde_json::json!({ "error": message }), true));
+        }
+        let index = self.index.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let call = ToolCall { id: format!("{}_{index}", self.outer_call_id), name: name.into(), args };
+        self.log.append(EventData::ToolInnerCall(foe_log::ToolInnerCall {
+            outer_call_id: self.outer_call_id.clone(),
+            call_id: call.id.clone(),
+            index,
+            name: call.name.clone(),
+            args: call.args.clone(),
+        }))?;
+        let started = Instant::now();
+        let value =
+            self.registry.dispatch(&self.handles, &call, self.step, self.spill_dir.clone(), self.deadline, None).await;
+        // The program receives the canonical value even when the log holds
+        // a spill locator in its place.
+        let canonical = value.value.clone();
+        let ms = started.elapsed().as_millis() as u64;
+        Ok((
+            canonical,
+            append_result(&self.log, &self.spill_dir, self.step, &call, value, None, ms, false, false)?.is_error,
+        ))
+    }
+}
+
 /// Pure and read-only calls run concurrently; every other call waits for
 /// the calls before it and runs alone. Results come back in issue order.
 async fn run_calls(
+    log: Arc<Log>,
     registry: Arc<Registry>,
     handles: Handles,
     calls: Vec<ToolCall>,
@@ -756,9 +906,21 @@ async fn run_calls(
     for (i, call) in calls.into_iter().enumerate() {
         let concurrent = registry.effect(&call.name).is_none_or(|e| e.concurrent());
         let (registry, handles, spill_dir) = (registry.clone(), handles.clone(), spill_dir.clone());
+        let composer: Option<Arc<dyn crate::Composer>> = (call.name == crate::COMPOSING_TOOL).then(|| {
+            Arc::new(InnerCalls {
+                log: log.clone(),
+                registry: registry.clone(),
+                handles: handles.clone(),
+                outer_call_id: call.id.clone(),
+                step,
+                spill_dir: spill_dir.clone(),
+                deadline,
+                index: 0.into(),
+            }) as Arc<dyn crate::Composer>
+        });
         let task = async move {
             let started = Instant::now();
-            let value = registry.dispatch(&handles, &call, step, spill_dir, deadline).await;
+            let value = registry.dispatch(&handles, &call, step, spill_dir, deadline, composer).await;
             (i, value, started.elapsed().as_millis() as u64)
         };
         if concurrent {
@@ -951,7 +1113,7 @@ fn close_open(text: &str) -> String {
 }
 
 fn signature(name: &str, args: &Value, result: &Value) -> String {
-    format!("{name} {} -> {}", foe_config::identity::canonical(args), foe_config::identity::canonical(result))
+    format!("{name} {} -> {}", foe_program::identity::canonical(args), foe_program::identity::canonical(result))
 }
 
 /// The two forms of lack of progress in docs/design.md "Blocking conditions

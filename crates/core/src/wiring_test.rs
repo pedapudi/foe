@@ -86,8 +86,8 @@ async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
     let dir = scratch("wiring", "declared");
     let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
     log.append(EventData::EpisodeStart(start())).unwrap();
-    let config: foe_config::Config = serde_json::from_value(serde_json::json!({
-        "version": 2, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
+    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
         "grants": {"read": ["/src"], "spawn": ["worker"]},
         "budget": {"model_calls": 20, "input_tokens": 1000, "output_tokens": 500},
         "sandbox": {"mode": "off"},

@@ -235,6 +235,12 @@ the notice. The cut is applied before the event is appended, so the
 rendering in the log is the rendering every request carries, and no earlier
 event is ever rewritten. A reader that wants the whole result reads
 `value`.
+
+When `done_when.returns` requires `learned`, `rendered` starts with
+`[seq N]`, where N is this event's `seq`. A `learned` observation cites that
+number. The prefix is runtime metadata and lies outside any complete
+tool-owned rendering stored by `tool/rendering-archive`.
+
 `subject` is one line the tool writes after it has run, naming what the
 call acted on and what came of it. It differs from `rendered` in who reads
 it: `rendered` is what the model received, and `subject` is what a person
@@ -257,8 +263,12 @@ the episode was interrupted receives a result with `synthetic: true` and
 output length limit is `is_error: true` with `synthetic: false`, because the
 runtime produced that result in the ordinary course of the step. At episode
 settlement the runtime also writes one result with `synthetic: true` for
-each process session it stopped: the ordinary result of the implicit stop,
-whose `call_id` names no call and which therefore closes nothing; see
+each surviving process session. An episode-lifetime result records the
+implicit stop. A task-lifetime result records that the process group had a
+live member when ownership passed to the enclosing task
+environment. The group leader may already have exited. The result carries
+`lifetime: "task"`, `disposition: "released_to_task_environment"`, `pid`,
+and `process_group`. Its `call_id` names no call, so it closes nothing; see
 [Open obligations](#open-obligations).
 
 `tool/rendering-archive` — implemented. The turn budget shortened one tool
@@ -292,6 +302,33 @@ emitted so that the host can execute it. The result arrives as an ordinary
 ```json
 { "step": 3, "call_id": "tc_02", "name": "mutation_usage", "args": {} }
 ```
+
+`tool/inner-call` — implemented. One inner dispatch a composing tool
+performed through the registry while its own model-issued call ran. The
+built-in `python` tool is the one composing tool;
+[code-mode.md](code-mode.md) specifies it, and the generic event name is
+shared by design with any future composing tool.
+
+```json
+{
+  "outer_call_id": "tc_01",
+  "call_id": "tc_01_4",
+  "index": 4,
+  "name": "read",
+  "args": { "path": "src/parser.rs" }
+}
+```
+
+`outer_call_id` names the model-issued call being composed. `call_id` is
+the inner call's own id; `index` counts the outer call's inner dispatches
+from 0. The event opens the same tool-call obligation a call in an
+`assistant/message` opens, and the inner call's ordinary `tool/result`,
+which follows with the inner `call_id` and the outer call's step, closes
+it. That result never enters derived messages: the outer result alone
+reaches the model. A host tool dispatched this way also produces its
+`host/tool-call` event as usual. The event is additive; no frozen
+version 2 payload changed for it, and a reader compiled before the
+variant existed rejects a log that carries it.
 
 ### Verification
 
@@ -347,12 +384,22 @@ itself is the first inbox item.
 | `peer` | a team member, via the lead's queue; `from` and `message_id` are set |
 | `verify` | the runtime, carrying findings from a `done_when` verifier |
 | `system` | the runtime, for text it must show the model, such as a budget warning |
+| `session` | the runtime, when it observes that a process session's process has ended |
 
 When the current pool has one model call left for an ordinary request, the
 runtime appends one `system` item before deriving that request. The content
 directs the model toward the highest-priority unfinished work and the
 configured completion signal. The request records the item's sequence in
 `consumed`. The item changes no budget and completes no episode.
+
+A `session` item is written once per session lifetime, on exit only: its
+text is the session subject line — the id, the exit status, and the
+lifetime — and `from` is the session id. The runtime observes exits before
+deriving a request, while a turn's tool calls run, and at settlement; a
+session's output never enters the inbox. The value is additive to the
+frozen format: the `inbox/item` payload is unchanged, and a reader compiled
+before the value existed rejects a log that carries it, as for an added
+event type.
 
 The values `request` and `response` are reserved for correlated exchanges.
 
@@ -460,7 +507,10 @@ names the child episode of a model node and is absent otherwise.
 
 `workflow/node-end` — implemented. The firing ended. `value` is the node's
 canonical output and `rendered` the text its successors receive. When the
-firing failed, `error` states why and `value` is null.
+firing failed, `error` states why and `value` is null. An optional model
+node whose child ended blocked or exhausted is the one exception: `error`
+states the child outcome, and `value` and `rendered` carry the node's
+declared `empty` output.
 
 ```json
 { "node": "survey", "fire": 1, "value": {}, "rendered": "…", "duration_ms": 1200 }
@@ -480,21 +530,6 @@ episode from 1.
 
 ```json
 { "node": "derive", "fire": 1, "cause": "tool-error", "action": "retry", "target": "survey", "intervention": 1 }
-```
-
-`workflow/node-skipped` — implemented. A node's `skip_when_verified`
-guard was satisfied, so the node did not fire: it contributes the named
-node's value to its successors, and a terminal node completes the
-workflow with that value. `verified_by` names the node whose result an
-authoritative verifier accepted, and `verification_seq` is the `seq` of
-the accepted `verification/result`: in this log when the named node
-declares a node-level `verify`, and in the named node's child episode log
-when its program declares `done_when.verify`. Successors name this event
-among their `inputs`. [workflow.md](workflow.md#the-conditional-audit-guard)
-specifies the guard.
-
-```json
-{ "node": "audit-and-repair-task", "verified_by": "implement-task", "verification_seq": 41 }
 ```
 
 ### Compaction
@@ -565,7 +600,7 @@ obligation and a later event closes it, the two matched by a key.
 
 | opened by | closed by | key |
 |---|---|---|
-| a tool call in `assistant/message` | `tool/result` | the call id |
+| a tool call in `assistant/message`, or `tool/inner-call` | `tool/result` | the call id |
 | `request/retry` | the `model/request` of the attempt it announces | the step and that attempt's number |
 | `compaction/start` | `compaction/end` | the step |
 | `spawn/start` | `spawn/end` | the child id |
@@ -590,9 +625,9 @@ message given up on. An undelivered message may therefore stand at
 
 One closing-shaped event is exempt from the first rule: a `tool/result`
 with `synthetic: true` whose call id names no call closes nothing and
-opens nothing. It is the runtime's account of work it settled itself — the
-implicit stop of a process session surviving at settlement — and only the
-runtime writes synthetic results. The second rule still binds it: a call
+opens nothing. It is the runtime's account of work it settled itself: the
+implicit stop or task-environment release of a process session surviving at
+settlement. Only the runtime writes synthetic results. The second rule still binds it: a call
 already closed cannot be closed again.
 
 A log that stops without `episode/end` is a different record from a log
@@ -625,7 +660,10 @@ by the runtime, the viewer, and the Python package identically.
    message carrying its text and tool calls.
 5. An `assistant/message` with `interrupted: true` becomes an `assistant`
    message carrying its text, with `tool_calls` as recorded.
-6. Each `tool/result` becomes a `tool` message carrying `rendered`.
+6. Each `tool/result` becomes a `tool` message carrying `rendered`, except
+   one whose opening record is a `tool/inner-call`: an inner result
+   contributes nothing, because the outer composing call's result is the
+   only account of the program that reaches the model.
 7. Events of any other type contribute nothing.
 
 A `model/request` whose `request_id` starts with `cmp_`, and the
@@ -669,7 +707,10 @@ Given a source log and a boundary `seq` N:
 3. Drop a copied `request/retry` that the boundary separated from the
    attempt it announces, since no copied event can close it.
 4. Close every obligation the copied events left open, in the order the
-   opening events appear. A tool call receives a `tool/result` with
+   opening events appear, with one refinement: an open inner call closes
+   immediately before the outer composing call it nests under, so the
+   nested account balances before the outer synthetic result is read. A
+   tool call receives a `tool/result` with
    `is_error: true`, `synthetic: true`, and a rendered text stating that
    the result was not recorded. A `compaction/start` receives a
    `compaction/end` with `ok: false`. A `spawn/start` receives a
@@ -695,6 +736,22 @@ event and violated rule named.
 Copied `team/*` events belong to the source episode and are excluded from the
 new episode's team fold. A fold reads team events only when the log's own
 `episode/start.team_id` matches or the log is itself the lead.
+
+The command line reaches seeding in two ways. The running form's
+`--fork SOURCE_DIR --at SEQ` seeds a fresh directory from the source's
+prefix at N equal to SEQ and runs it: the new `episode/start` draws a
+fresh id, its `fork_origin` names the source, and the task the launch
+carries is appended as a live `system` inbox item after `seed/end`,
+because rule 1 copies the `task` item and the format admits one per log.
+Launching with `--log-dir DIR` where DIR holds a log without `episode/end`
+resumes that episode under the program that ran it — refused, with both
+identities named, when the given configuration's identity differs from
+`episode/start.identity`, except for a log ending at `seed/end`, whose
+`episode/start` records its source's program. A log that ends at an event
+boundary with every binding obligation closed, including one ending at
+`seed/end`, is appended to as it stands; one cut short mid-line or with a
+binding obligation open is seeded at N equal to its count of complete
+events into a fresh directory beside it, which the run then continues.
 
 A replay is a seed at N equal to the source log's length, with the model
 responses replayed from `assistant/chunk` events rather than requested.
