@@ -120,6 +120,32 @@ fn host_run(
     (events, code)
 }
 
+/// docs/log-format.md "Lifecycle": episode/start records the complete
+/// policy after runtime-only paths have joined the declared grants.
+#[test]
+fn episode_start_records_effective_sandbox_access() {
+    let dir = scratch("effective-sandbox-access");
+    let value = config(&dir, |config| {
+        config["sandbox"] = json!({"mode": "required"});
+    });
+    let (events, code) = host_run(&dir, &value, vec![vec![done("end")]], |_, _| unreachable!());
+    assert_eq!(code, 0);
+    let start = events.iter().find(|event| event["type"] == "episode/start").unwrap();
+    let access = &start["data"]["sandbox"]["effective_access"];
+    assert!(access["read"].as_array().unwrap().iter().any(|entry| {
+        entry["path"] == dir.to_string_lossy().as_ref() && entry["reason"] == "declared by program.grants.read"
+    }));
+    assert!(access["write"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|entry| { entry["reason"] == "episode log and spill directory" }));
+    assert!(access["read"].as_array().unwrap().iter().any(|entry| entry["reason"] == "shared-library lookup"));
+    assert!(access["execute"]
+        .as_array()
+        .is_none_or(|entries| entries.iter().all(|entry| entry["path"] != "/bin" && entry["path"] != "/usr/bin")));
+}
+
 fn types(events: &[Value]) -> Vec<&str> {
     events.iter().map(|e| e["type"].as_str().unwrap()).collect()
 }
@@ -332,6 +358,7 @@ fn executable(dir: &Path, name: &str, body: &str) -> PathBuf {
 fn a_host_tool_call_no_host_can_answer_ends_every_episode_in_the_tree() {
     let dir = scratch("no-host-uplink");
     let transport = executable(&dir, "transport.sh", TREE_TRANSPORT);
+    let transport_helpers = json!(["/usr/bin/sed", "/usr/bin/grep", "/usr/bin/wc", "/usr/bin/tr"]);
     let leaf = json!({
         "name": "leaf",
         "instructions": { "role": "ROLE_LEAF: call ask_host once." },
@@ -341,20 +368,20 @@ fn a_host_tool_call_no_host_can_answer_ends_every_episode_in_the_tree() {
             "params": { "type": "object", "properties": {}, "additionalProperties": false },
             "effect": "pure"
         }},
-        "grants": { "read": [dir] },
+        "grants": { "read": [dir], "execute": transport_helpers },
         "budget": { "model_calls": 4 }
     });
     let middle = json!({
         "name": "middle",
         "instructions": { "role": "ROLE_MIDDLE: spawn the leaf and wait." },
         "tools": ["spawn", "wait", "notify"],
-        "grants": { "read": [dir], "spawn": ["leaf"] },
+        "grants": { "read": [dir], "execute": transport_helpers, "spawn": ["leaf"] },
         "budget": { "model_calls": 6, "max_depth": 1, "max_episodes": 2 },
         "programs": { "leaf": leaf }
     });
     let config = config(&dir, |c| {
         c["tools"] = json!(["spawn", "wait"]);
-        c["grants"] = json!({ "read": [dir], "spawn": ["middle"] });
+        c["grants"] = json!({ "read": [dir], "execute": transport_helpers, "spawn": ["middle"] });
         c["budget"] = json!({ "model_calls": 12, "max_depth": 2, "max_episodes": 4 });
         c["model"] = json!({ "provider": "exec", "model": "tree", "exec": transport });
         c["programs"] = json!({ "middle": middle });
@@ -614,6 +641,7 @@ fn a_failed_tool_node_is_retried_through_recovery() {
         c["tools"] = json!(["flaky"]);
         c["tool_defs"] = json!({ "flaky": { "exec": script, "description": "Fails once." } });
         c["grants"]["write"] = json!([dir]);
+        c["grants"]["execute"] = json!(["/usr/bin/touch"]);
         c["budget"]["input_tokens"] = json!(1000);
         c["budget"]["output_tokens"] = json!(12);
         c["workflow"] = json!({ "nodes": {
@@ -782,7 +810,7 @@ fn a_workflow_child_can_release_a_task_lifetime_session() {
     let dir = scratch("workflow-task-session");
     let mut config = config(&dir, |c| {
         c["tools"] = json!(["session", "block"]);
-        c["grants"] = json!({ "read": [dir], "write": [dir], "task_session": true });
+        c["grants"] = json!({ "read": [dir], "write": [dir], "execute": ["/bin/sleep"], "task_session": true });
         c["budget"] = json!({ "model_calls": 4 });
     });
     config["workflow"] = json!({ "nodes": {
@@ -790,7 +818,9 @@ fn a_workflow_child_can_release_a_task_lifetime_session() {
             "model": {
                 "name": "serve", "instructions": { "role": "Start the service." },
                 "tools": ["session", "block"],
-                "grants": { "read": [dir], "write": [dir], "task_session": true },
+                "grants": {
+                    "read": [dir], "write": [dir], "execute": ["/bin/sleep"], "task_session": true
+                },
                 "budget": { "model_calls": 2 }
             },
             "follows": ["task"], "terminal": true
@@ -1142,17 +1172,20 @@ fn plan(config: &Path) -> Value {
 /// tool definition throughout the reachable tree, even when names repeat,
 /// and omits a program no `grants.spawn` entry reaches.
 #[test]
-fn plan_reports_effective_authority_across_nested_descendants() {
+fn plan_reports_effective_access_across_nested_descendants() {
     let dir = scratch("plan-authority");
     let root_exec = dir.join("root-tool");
     let child_exec = dir.join("child-tool");
-    std::fs::write(&root_exec, "").unwrap();
-    std::fs::write(&child_exec, "").unwrap();
+    let credential = dir.join("model.key");
+    std::fs::write(&root_exec, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::write(&child_exec, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&root_exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     std::fs::set_permissions(&child_exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    std::fs::write(&credential, "secret\n").unwrap();
     let grand = json!({
         "name": "grand", "instructions": { "role": "inspect" }, "tools": ["inspect"],
         "host_tools": { "inspect": { "description": "Inspect through the host", "params": {}, "effect": "reads" } },
+        "model": {"provider": "openai", "model": "test", "api_key_file": credential},
         "grants": { "read": [dir] }, "budget": { "model_calls": 1 }
     });
     let unused = json!({
@@ -1162,7 +1195,9 @@ fn plan_reports_effective_authority_across_nested_descendants() {
     });
     let child = json!({
         "name": "child", "instructions": { "role": "delegate" }, "tools": ["inspect", "spawn"],
-        "tool_defs": { "inspect": { "exec": child_exec, "description": "Inspect as the child" } },
+        "tool_defs": { "inspect": {
+            "exec": child_exec, "description": "Inspect as the child", "network": true
+        } },
         "grants": { "read": [dir], "spawn": ["grand"] }, "budget": { "model_calls": 2 },
         "programs": { "grand": grand }
     });
@@ -1182,6 +1217,23 @@ fn plan_reports_effective_authority_across_nested_descendants() {
     assert!(inspect.iter().any(|row| row["programs"] == json!(["program.programs.child"])));
     assert!(inspect.iter().any(|row| row["programs"] == json!(["program.programs.child.programs.grand"])));
     assert!(report["authority"].as_array().unwrap().iter().all(|row| row["name"] != "hidden"));
+    let envelopes = report["sandbox_access"].as_array().unwrap();
+    assert_eq!(envelopes.len(), 3, "one envelope is reported for each reachable program");
+    let root = envelopes.iter().find(|row| row["program"] == "program").unwrap();
+    assert!(root["access"]["execute"].as_array().unwrap().iter().any(|entry| {
+        entry["path"] == child_exec.to_string_lossy().as_ref()
+            && entry["reason"].as_str().unwrap().contains("program.programs.child.tool_defs.inspect")
+            && entry["sha256"].as_str().is_some_and(|digest| digest.len() == 64)
+    }));
+    assert!(root["access"]["connect_tcp"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|reason| reason.as_str().unwrap().contains("program.programs.child.tool_defs.inspect.network")));
+    assert!(root["access"]["read"].as_array().unwrap().iter().any(|entry| {
+        entry["path"] == credential.to_string_lossy().as_ref()
+            && entry["reason"].as_str().unwrap().contains("program.programs.child.programs.grand")
+    }));
 }
 
 /// docs/workflow.md "The flow guarantee, stated exactly": plan reports
@@ -1262,13 +1314,13 @@ const RECORDED_IDENTITIES: [(&str, &str); 12] = [
     ("budget-exhausted", "sha256:c6ca3b541a4637f7e25e52b25ccb94462dda318dbda2155047802bb666815240"),
     ("exec-transport", "sha256:ff47e459b5026cf5d2e91dbaa349b4437c5aa261ebd24edf18cf0fa9cdd59a90"),
     ("host-transport", "sha256:dc33b63a0dd2bb9653f1062e0e9910b79bfb9ae492bb2a90bf1789a1dd42164c"),
-    ("minimal", "sha256:4f8de356836d7456e983ef8b868a00ba22993c98f2006605e10c898fd55d8357"),
+    ("minimal", "sha256:75ca3028a8cd220f73c4dd822e41120211b633afaa997a253ef36dd2b7ec6603"),
     ("recovery-exhausted", "sha256:2315d0df2ad7d2781a376d15dc0d95914c1cb15e2a59377840acccab9ccb7560"),
     ("sandbox", "sha256:87cf50348282418aadf96945b7cd364debb82507b7e17a71c02df0c5451dfc65"),
-    ("self-extension", "sha256:45a14593f75aecf755b671229bad02f8d2133efdf24fdf8fcc24ceda94a79945"),
+    ("self-extension", "sha256:1448f6601e438775afadd15be0c534499b7392569df9b838054be5cad54ca514"),
     ("subagents", "sha256:a09cc36a55e6376119d040fbf7845cecbccd79f18d7597332955903a0f2d3856"),
-    ("team", "sha256:572e37bf546fc3d82a90ba0f9894280f40d51add8d95514108b07b5e5858030a"),
-    ("verification-unsatisfiable", "sha256:98473873ca4f098fe9010f2a245039bedea59ededa4ef5285a4f77f88ad15815"),
+    ("team", "sha256:022382dbab7cd33d78736b2fd90992d53b59eab40abce0142573d24cae7659fb"),
+    ("verification-unsatisfiable", "sha256:d747f15e5181168ca0abfde024b33d73f60ef223b2a2e68c1ff39ed323d4b7b4"),
     ("workflow", "sha256:fcb1c8527ccc32a9bd83b9300fde5967aec14b81200ef29bd0396ee1f890f5da"),
     ("wrap-a-binary", "sha256:54b73926c18e649ee6e57c591e5f8bdbe2940b037e52b699a4ff88b5959ac1a5"),
 ];

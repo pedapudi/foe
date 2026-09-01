@@ -17,7 +17,7 @@ use foe_core::executable::{ExecutableTree, InheritedExecutables};
 use foe_core::grants::{RootReader, RootWriter};
 use foe_core::identity::runtime_info;
 use foe_core::loop_::{self, Log, Params};
-use foe_core::process_boundary::{BoundaryPaths, ProcessOwnership};
+use foe_core::process_boundary::ProcessOwnership;
 use foe_core::protocol::{stdout_mirror, Host};
 use foe_core::registry::{Handles, Registry};
 use foe_core::sandbox::{Policy, Sandbox};
@@ -70,9 +70,8 @@ const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
     ("go", "/usr/bin/go"),
 ];
 
-/// The shell-based coding tools need a general command environment. These
-/// roots preserve the previous built-in workflow surface as declared
-/// authority after sandbox startup support narrows to exact files.
+/// The built-in coding workflow declares these standard command roots for
+/// its shell-based tools. Configured programs choose their own execute roots.
 const BUILTIN_EXECUTE_ROOTS: &[&str] = &["/bin", "/usr/bin", "/usr/local/bin"];
 
 fn builtin_environment(cwd: &Path, present: impl Fn(&Path) -> bool) -> String {
@@ -120,6 +119,41 @@ pub fn extra_builtin_specs() -> Vec<ToolSpec> {
         .chain(std::iter::once(foe_core::retrieval::spec()))
         .chain(team::builtin_specs())
         .collect()
+}
+
+/// Adds exact interpreter access for every selected built-in executable
+/// in the reachable program tree.
+pub fn add_builtin_runtime_access(policy: &mut Policy, program: &ResolvedProgram) -> Result<(), String> {
+    for (program_key, descendant) in
+        program.program_tree(foe_program::document::ProgramTreeSelection::ExecutableReachable)
+    {
+        for (path, purpose) in foe_code::required_executables(&descendant.tools) {
+            policy.add_executable(Path::new(path), format!("{purpose} selected by {program_key}.tools"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Adds credential-file access for every reachable built-in model
+/// transport. A descendant inherits the enclosing Landlock domain before
+/// it opens its own credential.
+#[cfg(feature = "transport")]
+pub fn add_transport_runtime_access(policy: &mut Policy, program: &ResolvedProgram) -> Result<(), String> {
+    for (program_key, descendant) in
+        program.program_tree(foe_program::document::ProgramTreeSelection::ExecutableReachable)
+    {
+        let Some(model) = &descendant.model else { continue };
+        let plan = foe_transport::plan(model).map_err(|e| format!("{program_key}.model: {e}"))?;
+        if let Some(path) = plan.credential_path {
+            policy.add_read_file(path, format!("credential for model transport in {program_key}"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "transport"))]
+pub fn add_transport_runtime_access(_policy: &mut Policy, _program: &ResolvedProgram) -> Result<(), String> {
+    Ok(())
 }
 
 pub fn identity(program: &ResolvedProgram) -> Result<Identity, String> {
@@ -481,8 +515,6 @@ fn built_in_transport(
     log_dir: &Path,
 ) -> Result<Arc<dyn Transport>, String> {
     let plan = foe_transport::plan(model).map_err(|e| e.to_string())?;
-    let policy = unconfined.policy_mut();
-    policy.read_files.extend(plan.credential_path.iter().cloned());
     let executor: Option<Arc<dyn foe_core::Executor>> = plan.exec.as_ref().map(|_| {
         let (sandbox, policy) = unconfined.parts();
         let cancel = Arc::new(AtomicBool::new(false));
@@ -557,8 +589,11 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let sandbox = Arc::new(Sandbox::new(program.sandbox.mode).map_err(|e| e.to_string())?);
     let process = ProcessOwnership::enter(program.sandbox.mode, &lineage.episode_id, lineage.process_boundary.clone())
         .map_err(|e| e.to_string())?;
-    let mut policy = Policy::for_episode(&program, &executables, &log_dir);
-    process.authorize(&mut policy);
+    let mut policy =
+        Policy::for_episode(&program, &executables, &log_dir).map_err(|e| format!("sandbox access: {e}"))?;
+    add_builtin_runtime_access(&mut policy, &program).map_err(|e| format!("sandbox access: {e}"))?;
+    add_transport_runtime_access(&mut policy, &program).map_err(|e| format!("sandbox access: {e}"))?;
+    process.authorize(&mut policy).map_err(|e| e.to_string())?;
     let mut unconfined = Unconfined::new(sandbox, policy);
     // Telemetry is resolved before confinement: the capture directory must
     // be writable after the sandbox closes, so it is created now and
@@ -571,14 +606,14 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     if let Some(settings) = &telemetry {
         let dir = settings.capture.parent().unwrap_or(Path::new(".")).to_path_buf();
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        unconfined.policy_mut().write.push(dir);
+        unconfined.policy_mut().add_write_root(dir, "telemetry capture directory");
     }
     let viewer = match options.host || options.headless {
         true => None,
         false => Some(foe_view::Bound::bind(0).map_err(|e| e.to_string())?),
     };
     if let Some(bound) = &viewer {
-        unconfined.policy_mut().bind_tcp.push(bound.addr.port());
+        unconfined.policy_mut().add_bind_port(bound.addr.port());
         if !options.no_open {
             crate::open_browser(&bound.url());
         }
@@ -600,7 +635,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         identity: identity.hash,
         task,
         runtime: runtime_info,
-        sandbox: confined.parts().0.info_with_process(process.info()),
+        sandbox: confined.parts().0.info_with_process(process.info(), confined.parts().1),
         effective_budget: Some(limits.clone()),
     };
     let telemetry_log_dir = log_dir.clone();

@@ -407,7 +407,7 @@ each configured executable once to retain its content digest. Identity,
 planning, budget reservation, sandbox construction, and spawning all read
 this tree. Recursive consumers select either every declared program or only
 programs reachable through spawn grants and workflow nodes. Identity and child
-launches use every declaration. Planning and sandbox authority use the
+launches use every declaration. Planning and sandbox construction use the
 executable-reachable selection.
 
 `identity(program)` is a SHA-256 over a canonical serialization of:
@@ -552,7 +552,7 @@ Before launch, the parent passes the executable images from the selected
 child's full declared program tree. A sealed manifest maps every configuration
 key to a deduplicated descriptor, digest, and configured basename. The child
 constructs its program from those retained bytes and checks the expected
-identity before writing an event. Sandbox authority separately includes only
+identity before writing an event. Sandbox permissions separately include only
 executables reachable through the child's spawn grants and workflow nodes.
 Source-path replacement, in-place modification, and deletion therefore cannot
 change child identity or execution.
@@ -664,7 +664,7 @@ execute roots become read-and-execute rules. Each configured executable
 becomes an execute rule on the retained bytes used for identity. Dynamic ELF
 loaders and direct shebang interpreters receive rules on their exact files.
 Shared-library directories remain read-only. An ancestor reserves the
-explicit execute paths and configured-tool network authority of each reachable
+explicit execute paths and configured-tool network access of each reachable
 descendant because an inherited Landlock domain cannot widen. The episode's
 log directory becomes a write rule. When the kernel supports it, TCP access is
 removed from executables. Denied accesses are captured from the audit log and written to
@@ -1009,7 +1009,7 @@ supplies only the two directory-backed resolvers `foe plan` builds for its
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 5,875 lines,
+sandbox, and spawning — and its Rust source stays under 6,600 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/program`, which is budgeted
@@ -1036,16 +1036,14 @@ that grows must not force the runtime to shrink. The browser viewer's HTML,
 TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
 
-The ceilings reserve 500 kernel lines, 75 program lines, and 75 command-line
-lines for construction-committed executable images and their headroom. The
-program contract reads one snapshot for each reachable configured executable.
-The kernel materializes, confines, invokes, checks, and transfers those
-snapshots across child process boundaries. The command line constructs the
-root image tree before confinement. This mechanism adds no program-document
-key or log event.
+The kernel budget includes construction-committed executable images and
+resolved sandbox enforcement. The program contract reads the configured
+images. The kernel materializes, confines, invokes, and transfers them across
+child process boundaries. It also records the effective access compiled for
+each episode. These mechanisms add no program-document key.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,400 lines. It is separate because it serves a person at a terminal
+under 1,500 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and

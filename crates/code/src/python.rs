@@ -100,8 +100,8 @@ impl Python {
 /// nothing, no network. The sandbox's baseline loader, system, and device
 /// paths apply as they do to every process; docs/sandbox.md states them
 /// and the best-effort caveat.
-fn interpreter_policy(bin: &std::path::Path) -> Policy {
-    Policy { read: vec![PathBuf::from("/usr")], exec: vec![bin.to_path_buf()], ..Policy::default() }
+fn interpreter_policy(bin: &std::path::Path) -> Result<Policy, String> {
+    Policy::for_runtime_executable(bin, vec![PathBuf::from("/usr")], "built-in Python interpreter")
 }
 
 /// The last [`PYTHON_DIAGNOSTIC_MAX_CHARS`] characters of one output stream.
@@ -271,7 +271,10 @@ impl Tool for Python {
             timeout,
             network: false,
             stdin: Some(script.into_bytes()),
-            policy: Some(interpreter_policy(&self.bin)),
+            policy: match interpreter_policy(&self.bin) {
+                Ok(policy) => Some(policy),
+                Err(error) => return ToolValue::error(format!("python: sandbox access: {error}")),
+            },
             pass_fds: vec![(3, Arc::new(OwnedFd::from(child)))],
         };
         let run = tokio::task::spawn_blocking(move || executor.run(req));

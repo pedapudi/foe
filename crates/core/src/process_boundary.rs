@@ -92,8 +92,11 @@ impl ProcessOwnership {
 
     /// Adds the cgroup paths that the runtime must manage after Landlock
     /// narrows the episode. Executable policies drop these paths.
-    pub fn authorize(&self, policy: &mut Policy) {
+    pub fn authorize(&self, policy: &mut Policy) -> Result<(), RuntimeError> {
         if let Some(boundary) = &self.boundary {
+            policy
+                .add_executable(Path::new(PROCESS_BOUNDARY_LAUNCHER), "cgroup process-boundary launcher".into())
+                .map_err(RuntimeError::Sandbox)?;
             policy.add_runtime_control(boundary.paths.episode.clone());
             policy.add_runtime_control(boundary.paths.task.clone());
         }
@@ -101,6 +104,7 @@ impl ProcessOwnership {
             policy.add_runtime_control(root.invocation.parent().unwrap().to_path_buf());
             policy.add_runtime_control_file(root.origin.join("cgroup.procs"));
         }
+        Ok(())
     }
 }
 

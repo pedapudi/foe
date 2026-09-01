@@ -11,7 +11,7 @@ use std::path::Path;
 fn sessions(name: &str, limit: usize) -> (LocalSessions, PathBuf) {
     let dir = scratch("session", name);
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
-    let policy = Policy { exec: vec!["/bin/bash".into()], ..Policy::default() };
+    let policy = Policy { delegated_exec: vec!["/bin/sleep".into()], ..Policy::default() };
     (LocalSessions::new(sandbox, policy, dir.join("spill"), limit, false), dir)
 }
 
@@ -94,8 +94,12 @@ fn a_session_serves_a_granted_bind_port_across_calls() {
     );
     std::fs::write(dir.join("server.py"), server).unwrap();
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
-    let policy =
-        Policy { read: vec![dir.clone()], exec: vec!["/bin/bash".into()], bind_tcp: vec![port], ..Policy::default() };
+    let policy = Policy {
+        read: vec![dir.clone()],
+        delegated_exec: vec!["/usr/bin/python3".into()],
+        bind_tcp: vec![port],
+        ..Policy::default()
+    };
     let s = LocalSessions::new(sandbox, policy, dir.join("spill"), 4, false);
     s.start(shell(&dir, "/usr/bin/python3 server.py")).unwrap();
     wait_for(|| {
@@ -230,7 +234,7 @@ fn a_task_session_requires_authority_and_survives_settlement() {
 
     let dir = scratch("session", "task-release");
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
-    let policy = Policy { exec: vec!["/bin/bash".into()], ..Policy::default() };
+    let policy = Policy { delegated_exec: vec!["/bin/sleep".into()], ..Policy::default() };
     let sessions = LocalSessions::new(sandbox, policy, dir.join("spill"), 4, true);
     let mut req = shell(&dir, "echo ready; sleep 30");
     req.lifetime = SessionLifetime::Task;
@@ -260,7 +264,7 @@ fn a_task_session_starts_in_the_task_boundary() {
     let boundary = Arc::new(boundary);
     let dir = scratch("session", "task-cgroup");
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
-    let mut policy = Policy { exec: vec!["/bin/bash".into()], ..Policy::default() };
+    let mut policy = Policy { delegated_exec: vec!["/bin/sleep".into()], ..Policy::default() };
     policy.add_runtime_control(boundary.task_procs().parent().unwrap().to_path_buf());
     let sessions =
         LocalSessions::new(sandbox, policy, dir.join("spill"), 4, true).with_boundary(Some(boundary.clone()));
@@ -384,7 +388,7 @@ async fn settlement_records_the_implicit_stop_and_the_log_stays_valid() {
 async fn settlement_records_task_ownership_without_stopping_the_process() {
     let dir = scratch("session", "task-release-log");
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
-    let policy = Policy { exec: vec!["/bin/bash".into()], ..Policy::default() };
+    let policy = Policy { delegated_exec: vec!["/bin/sleep".into()], ..Policy::default() };
     let sessions = Arc::new(LocalSessions::new(sandbox, policy, dir.join("spill"), 4, true));
     let mut request = shell(&dir, "sleep 30 & echo $!; exit 7");
     request.lifetime = SessionLifetime::Task;

@@ -15,9 +15,10 @@ Three rules shape the format.
   derived rather than declared.
 
 `foe plan --schema` emits a JSON Schema for this format, so an editor can
-validate a document and offer completions. `foe plan --config FILE` prints
-the resolved program, its identity, and every tool definition the program's
-reachable tree can invoke, without running anything.
+validate a document and offer completions. `foe plan --config FILE` prints the
+resolved program and its identity. It also prints every reachable tool
+definition and effective sandbox envelope. The command runs no program or
+configured executable.
 
 `crates/program` implements this document: every rule stated here is a check
 there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a

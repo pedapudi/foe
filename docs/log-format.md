@@ -92,8 +92,8 @@ nothing emits it.
       ],
       "execute": [
         {
-          "path": "/usr/bin/python3.13",
-          "reason": "script interpreter for configured tool check",
+          "path": "/opt/tools/check",
+          "reason": "selected configured tool program.tool_defs.check",
           "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         }
       ],
@@ -128,6 +128,10 @@ the bytes retained during program construction. The `connect_tcp` array names
 each reason outbound TCP was reserved; an empty array means it was denied on
 a kernel that enforces network rules. Logs written before this field was
 implemented omit it and remain readable.
+
+The path of a retained configured executable names its construction-time
+source. The digest identifies the retained image that the sandbox authorizes.
+The runtime does not reopen the source after construction.
 
 `effective_budget` is the allowance the episode enforces. Its fields have the meanings and defaults in
 [config.md](config.md#budget). A spawned episode can have an effective

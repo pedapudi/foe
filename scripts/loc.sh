@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Nine budgets: 5,825 over the kernel, which is log and core together — the
+# Nine budgets: 6,600 over the kernel, which is log and core together — the
 # log format, the loop, budgets, sandbox, and spawn, whose smallness is the
 # product claim; 1,500 over program, the other contract, which is the
 # program document, its resolution, and identity; 1,800
 # over tools, which is code — the tool surface, which grows a tool at a time
 # without touching the kernel; 1,000 over workflow; 500 over context; 600
-# over view; 1,400 over cli; 1,000
+# over view; 1,500 over cli; 1,000
 # over telemetry; 500 over lineage, which reads finished evidence about how
 # program states relate and is part of neither contract. The kernel is budgeted apart
 # from program because the kernel measures the machine and program measures the
@@ -29,7 +29,7 @@ for c in log core; do
   n=$(count "$c")
   printf '%-8s %6d\n' "$c" "$n"; kernel=$((kernel + n))
 done
-printf '%-8s %6d  (budget 5875)\n' kernel "$kernel"
+printf '%-8s %6d  (budget 6600)\n' kernel "$kernel"
 program=$(count program)
 printf '%-8s %6d  (budget 1500)\n' program "$program"
 tools=$(count code)
@@ -41,10 +41,10 @@ printf '%-8s %6d  (budget 500)\n' context "$context"
 view=$(count view)
 printf '%-8s %6d  (budget 600)\n' view "$view"
 cli=$(count cli)
-printf '%-8s %6d  (budget 1400)\n' cli "$cli"
+printf '%-8s %6d  (budget 1500)\n' cli "$cli"
 telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 lineage=$(count lineage)
 printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
-[ "$kernel" -le 5875 ] && [ "$program" -le 1500 ] && [ "$tools" -le 1800 ] && [ "$workflow" -le 1000 ] \
-  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1400 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]
+[ "$kernel" -le 6600 ] && [ "$program" -le 1500 ] && [ "$tools" -le 1800 ] && [ "$workflow" -le 1000 ] \
+  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1500 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]

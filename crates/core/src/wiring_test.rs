@@ -1,9 +1,7 @@
 use super::*;
 use crate::exec::tests::scratch;
 use crate::process_boundary::tests::{remove_test_boundary, test_boundary};
-use crate::spawn::tests::{
-    fake_child, parent_config, process_spawner, script, wait_for, waiting_child, Lines, Seen,
-};
+use crate::spawn::tests::{fake_child, parent_config, process_spawner, script, wait_for, waiting_child, Lines, Seen};
 use crate::spawn::ChildObserver;
 use foe_log::{EpisodeStart, Event, Outcome, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
 use std::path::Path;
@@ -111,10 +109,12 @@ async fn a_subtree_boundary_is_empty_before_the_reservation_returns() {
     let pid_file = dir.join("detached.pid");
     let body = format!(
         r#"#!/bin/sh
-setsid /bin/sh -c 'sleep 30' &
-echo $! > '{}'
+/usr/bin/setsid -f /bin/sh -c 'echo $$ > "$1"; exec /bin/sleep 30' foe-detached '{}'
+while [ ! -s '{}' ]; do :; done
 echo '{{"seq":0,"time":1,"type":"episode/start","data":{{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{{}},"identity":"sha256:0","task":"t","runtime":{{"version":"0","build":"unknown"}},"sandbox":{{"mode":"off","landlock_abi":0}}}}}}'
+read _
 "#,
+        pid_file.display(),
         pid_file.display()
     );
     let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
@@ -122,15 +122,15 @@ echo '{{"seq":0,"time":1,"type":"episode/start","data":{{"id":"ep_child","parent
     let config = parent_config();
     let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
     let (started_tx, started_rx) = mpsc::channel();
-    let inner = ProcessSpawner::new(
-        "ep_root".into(),
+    let router = Arc::new(Router::new());
+    let inner = process_spawner(
+        "ep_root",
         dir.clone(),
         config,
         Arc::new(Lines::default()),
-        Arc::new(Router::new()),
+        router.clone(),
         Arc::new(Started(started_tx)),
     )
-    .unwrap()
     .with_launcher(script(&dir, "detaching-foe.sh", &body))
     .with_boundary(Some(boundary.clone()));
     let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
@@ -138,7 +138,8 @@ echo '{{"seq":0,"time":1,"type":"episode/start","data":{{"id":"ep_child","parent
     let handle = spawner.spawn(request("worker", reserve)).unwrap();
     started_rx.recv().unwrap();
     let detached = std::fs::read_to_string(&pid_file).unwrap().trim().to_string();
-    assert!(Path::new(&format!("/proc/{detached}")).exists(), "the descendant outlives its direct child");
+    assert!(Path::new(&format!("/proc/{detached}")).exists(), "the detached descendant started");
+    router.route(&handle.child_id, "continue").unwrap();
     handle.run.settle().await;
     let stat = std::fs::read_to_string(format!("/proc/{detached}/stat")).unwrap_or_default();
     assert!(

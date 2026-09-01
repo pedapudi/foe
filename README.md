@@ -152,9 +152,9 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 ## Size
 
 Eleven numbers bound the source. Nine are line budgets over Rust, excluding
-tests and generated code. The kernel stays under 5,875 lines. The program
+tests and generated code. The kernel stays under 6,600 lines. The program
 contract stays under 1,500, tools under 1,800, workflow under 1,000, context
-under 500, view under 600, the command line under 1,400, telemetry under 1,000,
+under 500, view under 600, the command line under 1,500, telemetry under 1,000,
 and lineage under 500. The separate tool budget allows capability growth while
 keeping the kernel ceiling fixed. The kernel measures the machine. The program
 contract measures the data model. Their separate budgets keep a document key

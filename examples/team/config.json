@@ -9,6 +9,7 @@
   "grants": {
     "read": ["/home/user/project"],
     "write": ["/home/user/project/src"],
+    "execute": ["/usr/bin/python3"],
     "spawn": ["reviewer", "tester"]
   },
   "budget": {
@@ -39,7 +40,8 @@
       },
       "tools": ["read", "grep", "bash", "send", "notify"],
       "grants": {
-        "read": ["/home/user/project"]
+        "read": ["/home/user/project"],
+        "execute": ["/usr/bin/python3"]
       },
       "budget": { "model_calls": 12, "input_tokens": 96000, "output_tokens": 24000 }
     }

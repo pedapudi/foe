@@ -13,7 +13,8 @@
   },
   "grants": {
     "read": ["/home/user/project"],
-    "write": ["/home/user/project/src"]
+    "write": ["/home/user/project/src"],
+    "execute": ["/usr/bin/grep"]
   },
   "budget": { "model_calls": 8, "seconds": 120 },
   "done_when": { "verify": "todo-check", "retries": 2 },

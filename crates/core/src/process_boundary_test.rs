@@ -74,6 +74,24 @@ fn a_missing_delegation_selects_observational_process_groups() {
     assert!(ownership.info().reason.is_some());
 }
 
+/// docs/sandbox.md "Process ownership": the exact shell used by the cgroup
+/// entry wrapper and the runtime-owned control paths join the reported
+/// episode policy before confinement.
+#[test]
+fn cgroup_ownership_reports_its_launcher_and_control_paths() {
+    let paths = BoundaryPaths { episode: PathBuf::from("/cgroup/episode"), task: PathBuf::from("/cgroup/task") };
+    let ownership = ProcessOwnership::enforced(ProcessBoundary { paths: paths.clone() }, None);
+    let mut policy = Policy::default();
+    ownership.authorize(&mut policy).unwrap();
+    let access = policy.effective_access();
+    assert!(access.execute.iter().any(|entry| {
+        entry.path == std::fs::canonicalize(PROCESS_BOUNDARY_LAUNCHER).unwrap().to_string_lossy()
+            && entry.reason == "cgroup process-boundary launcher"
+    }));
+    assert!(access.read.iter().any(|entry| entry.path == paths.episode.to_string_lossy()));
+    assert!(access.write.iter().any(|entry| entry.path == paths.task.to_string_lossy()));
+}
+
 /// docs/protocol.md "Children": a child accepts only the boundary that its
 /// parent placed it in before launch.
 #[test]

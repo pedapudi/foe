@@ -30,22 +30,29 @@ paths. The cgroup paths are launch metadata and are not program grants.
 | the running `foe` binary, when a child program is reachable | execute and read that file, so the episode can start children |
 | the shell or Python interpreter required by a selected built-in tool | execute and read that exact file |
 | an executable image's absolute shebang interpreter or ELF dynamic loader | execute and read that exact file |
-| the credential file the `model` block resolves to, when present | read that file, so a child episode can read the credential after inheriting this domain |
+| each credential file resolved by a reachable `model` block | read that file before confinement and reserve it for a descendant that inherits this domain |
 | the episode's own log directory | read and write |
 | the library directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib` | read |
 | the runtime-owned cgroup hierarchy | runtime-only read and write for process ownership and cleanup; configured executables receive no access |
 | the parent cgroup's `cgroup.procs`, for a root episode | runtime-only write so the runtime can leave its episode boundary before cleanup |
+| `/bin/sh`, when cgroup v2 is delegated | execute and read the exact shell used to place a child or task-lifetime session in its boundary |
 | the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |
 | the resolved target of `/etc/resolv.conf`, when the process may connect | read that file |
 | the device files `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty` | read and write |
 | each `grants.bind` port | bind TCP on that port, in the episode and in every process it starts |
 | TCP | bind: listed ports only; connect: all ports or none |
 
-The runtime reads each selected executable image before confinement. An ELF
-image names its dynamic loader in a `PT_INTERP` program header. A script names
-its interpreter in the first line. The policy grants execute access to that
-exact loader or interpreter. Library directories remain readable because the
-loader searches them for shared objects. They carry no execute access.
+The runtime reads each selected configured image and each exact executable
+file before confinement. An ELF image names its dynamic loader in a
+`PT_INTERP` program header. A script names its interpreter in the first line.
+The policy grants execute access to that exact loader or interpreter. Library
+directories remain readable because the loader searches them for shared
+objects. They carry no execute access.
+
+An execute grant on a directory permits executable files below that directory.
+The runtime does not enumerate a mutable directory to infer support files. A
+script below such a directory must also receive its interpreter through an
+exact execute grant, a selected configured image, or a selected built-in tool.
 
 A shebang must name an absolute interpreter directly. A shebang that names
 `/usr/bin/env` is rejected because `env` selects another executable through a
@@ -157,7 +164,7 @@ The episode keeps:
 - execute on every selected configured executable image and required exact
   interpreter in that tree;
 - execute on its own binary when a child program is reachable;
-- read on the key file named by its `model` block, which its children need;
+- read on the credential files resolved by its reachable model transports;
 - read and write on its own log directory, which holds its children's
   directories and its spill files;
 - read on the library, system, and device paths;
@@ -301,13 +308,19 @@ ruleset nests inside that one, and the child's reach is the intersection.
 
 `foe plan` reports one effective sandbox envelope for the root and each
 reachable descendant program. Each read, write, or execute path includes the
-reason it is present. An exact executable includes its content digest. The
-report also names bind ports and every reason outbound TCP is reserved.
+reason it is present. A retained configured image includes its content digest.
+The report also names bind ports and every reason outbound TCP is reserved.
+For a configured executable, the path is its construction-time source. The
+digest identifies the retained image that the sandbox authorizes without
+reopening that source.
+For a sandbox mode other than `off`, the plan includes the exact cgroup entry
+shell with a conditional reason. The host decides whether cgroup delegation
+is available when an episode starts.
 
 `episode/start.sandbox.effective_access` records the policy compiled for that
 episode. This record includes runtime paths that a configuration-only plan
-cannot name, such as the episode log directory and resolved credential file.
-The sandbox mode and ABI state which parts the host kernel enforced. Logs that
+cannot name, such as the episode log directory and delegated cgroup paths. The
+sandbox mode and ABI state which parts the host kernel enforced. Logs that
 predate the field omit it.
 
 ## Modes
@@ -329,7 +342,7 @@ enforced and that signals and audit logging were not.
 recorded guarantee because the program contract has no key that requires
 cgroup delegation. Treating `required` as a cgroup requirement would reject
 existing programs on hosts that enforce their declared filesystem and
-network authority but do not delegate cgroups.
+network permissions but do not delegate cgroups.
 
 `episode/start.sandbox.process_boundary` records `cgroup-v2` with enforced
 subtree cleanup or `process-group` with observational cleanup. The optional

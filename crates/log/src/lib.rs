@@ -280,7 +280,7 @@ pub struct SandboxInfo {
     pub process_boundary: Option<ProcessBoundaryInfo>,
 }
 
-/// The effective sandbox surface and the reason for each non-declared path.
+/// The effective sandbox surface and the reason for every entry.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SandboxAccess {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -301,7 +301,7 @@ pub struct SandboxAccess {
 pub struct SandboxPath {
     pub path: String,
     pub reason: String,
-    /// Present when the rule names one exact executable image.
+    /// Present when the rule names one retained configured image.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
 }

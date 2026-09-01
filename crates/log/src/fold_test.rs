@@ -52,7 +52,12 @@ fn sandbox_access_is_optional_and_round_trips() {
         connect_tcp: vec!["configured tool fetch in program.programs.worker".into()],
         ..Default::default()
     };
-    let info = SandboxInfo { mode: SandboxMode::Required, landlock_abi: 7, effective_access: Some(access.clone()) };
+    let info = SandboxInfo {
+        mode: SandboxMode::Required,
+        landlock_abi: 7,
+        effective_access: Some(access.clone()),
+        process_boundary: None,
+    };
     let json = serde_json::to_value(&info).unwrap();
     assert_eq!(json["effective_access"]["execute"][0]["sha256"], "sha256:01");
     assert_eq!(serde_json::from_value::<SandboxInfo>(json).unwrap(), info);
@@ -799,6 +804,7 @@ fn sandbox_process_boundary_is_optional_and_round_trips() {
     let info = SandboxInfo {
         mode: SandboxMode::BestEffort,
         landlock_abi: 7,
+        effective_access: None,
         process_boundary: Some(ProcessBoundaryInfo {
             kind: ProcessBoundaryKind::CgroupV2,
             subtree_cleanup: SubtreeCleanup::Enforced,

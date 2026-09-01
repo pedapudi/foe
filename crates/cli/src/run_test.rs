@@ -352,6 +352,7 @@ fn child_resume_uses_recorded_allowance_and_identity() {
                     mode: foe_log::SandboxMode::Off,
                     landlock_abi: 0,
                     effective_access: None,
+                    process_boundary: None,
                 },
                 effective_budget: Some(serde_json::from_value(serde_json::json!({ "model_calls": 2 })).unwrap()),
             }))
@@ -390,7 +391,12 @@ fn ordinary_prepared_fork_retains_source_identity_exemption() {
             identity: "sha256:source".into(),
             task: "task".into(),
             runtime: runtime_info(),
-            sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0, effective_access: None },
+            sandbox: foe_log::SandboxInfo {
+                mode: foe_log::SandboxMode::Off,
+                landlock_abi: 0,
+                effective_access: None,
+                process_boundary: None,
+            },
             effective_budget: Some(serde_json::from_value(serde_json::json!({ "model_calls": 2 })).unwrap()),
         }))
         .unwrap();

@@ -10,7 +10,7 @@
 //! holds that authority. See docs/tools.md "session".
 
 use crate::exec::{end_group, CAPTURE_LIMIT};
-use crate::process_boundary::{command_in, ProcessBoundary};
+use crate::process_boundary::{command_in, ProcessBoundary, PROCESS_BOUNDARY_LAUNCHER};
 use crate::sandbox::{Policy, Sandbox};
 use crate::{CapError, SessionLifetime, SessionOutput, SessionRequest, SessionSettlement, SessionStatus, Sessions};
 use nix::errno::Errno;
@@ -19,7 +19,7 @@ use nix::unistd::Pid;
 use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -236,8 +236,11 @@ impl Sessions for LocalSessions {
             .stdin(Stdio::piped())
             .stdout(stdout_stdio)
             .stderr(stderr_stdio);
-        let mut narrowed = self.policy.for_executable(&req.program, false);
+        let mut narrowed = self.policy.for_executable(&req.program, false).map_err(CapError::Invalid)?;
         if let Some(procs) = task_procs {
+            narrowed
+                .add_executable(Path::new(PROCESS_BOUNDARY_LAUNCHER), "cgroup process-boundary launcher".into())
+                .map_err(CapError::Invalid)?;
             narrowed.add_runtime_control_file(procs);
         }
         let mut child = self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::Invalid(e.to_string()))?;

@@ -7,7 +7,7 @@
 //! workflow model node is reachable because firing it starts that node's
 //! resolved episode program.
 
-use crate::document::ResolvedProgram;
+use crate::document::{ProgramTreeSelection, ResolvedProgram};
 use crate::tools::{resolve_sources, resolve_specs, Source};
 use crate::workflow::WorkflowConfig;
 use crate::{Effect, ToolSpec};
@@ -36,32 +36,10 @@ type AuthorityKey = (String, &'static str, String, String);
 /// because firing it starts that node's episode.
 pub fn authority(root: &ResolvedProgram, extra: &[ToolSpec]) -> Result<Vec<Authority>, String> {
     let mut found: BTreeMap<AuthorityKey, Authority> = BTreeMap::new();
-    for (path, program) in reachable_programs(root) {
+    for (path, program) in root.program_tree(ProgramTreeSelection::ExecutableReachable) {
         collect_authority(program, &path, extra, &mut found)?;
     }
     Ok(found.into_values().collect())
-}
-
-/// The root and every program reachable through a declared spawn edge or a
-/// workflow model node. Each row carries the path printed by `foe plan`.
-pub fn reachable_programs(root: &ResolvedProgram) -> Vec<(String, &ResolvedProgram)> {
-    fn collect<'a>(program: &'a ResolvedProgram, path: String, found: &mut Vec<(String, &'a ResolvedProgram)>) {
-        found.push((path.clone(), program));
-        for name in &program.grants.spawn {
-            if let Some(child) = program.programs.get(name) {
-                collect(child, format!("{path}.programs.{name}"), found);
-            }
-        }
-        if let Some(workflow) = &program.workflow {
-            for (node, _) in crate::workflow::model_nodes(workflow, "") {
-                let child_path = format!("{path}.workflow.nodes.{}.model", node.replace('/', ".workflow.nodes."));
-                collect(&program.workflow_programs[&node], child_path, found);
-            }
-        }
-    }
-    let mut found = Vec::new();
-    collect(root, "program".into(), &mut found);
-    found
 }
 
 /// Where each name in `program.tools` resolved, in `tools` order. The
