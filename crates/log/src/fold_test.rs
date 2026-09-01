@@ -1,35 +1,55 @@
 use crate::fold::{derive_messages, fold, read_all, read_from, render_continuation, validate_next};
 use crate::*;
 use std::ops::Deref;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-pub struct ScratchDir(tempfile::TempDir);
+static NEXT_SCRATCH: AtomicU64 = AtomicU64::new(0);
+
+pub struct ScratchDir(PathBuf);
 
 impl Deref for ScratchDir {
-    type Target = std::path::Path;
+    type Target = Path;
 
     fn deref(&self) -> &Self::Target {
-        self.0.path()
+        &self.0
     }
 }
 
-impl AsRef<std::path::Path> for ScratchDir {
-    fn as_ref(&self) -> &std::path::Path {
-        self.0.path()
+impl AsRef<Path> for ScratchDir {
+    fn as_ref(&self) -> &Path {
+        &self.0
     }
 }
 
 impl Drop for ScratchDir {
     fn drop(&mut self) {
         if std::thread::panicking() {
-            eprintln!("retained failed test directory: {}", self.0.path().display());
-            self.0.disable_cleanup(true);
+            eprintln!("retained failed test directory: {}", self.0.display());
+            return;
+        }
+        match std::fs::symlink_metadata(&self.0) {
+            Ok(metadata) if metadata.file_type().is_dir() => std::fs::remove_dir_all(&self.0).unwrap(),
+            Ok(_) => std::fs::remove_file(&self.0).unwrap(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!("failed to inspect {} for cleanup: {error}", self.0.display()),
         }
     }
 }
 
 pub fn tmp(name: &str) -> ScratchDir {
-    assert_eq!(std::path::Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
-    ScratchDir(tempfile::Builder::new().prefix(&format!("foe-log-{name}-")).tempdir().unwrap())
+    assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+    let parent = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/test-scratch");
+    std::fs::create_dir_all(&parent).unwrap();
+    loop {
+        let ordinal = NEXT_SCRATCH.fetch_add(1, Ordering::Relaxed);
+        let path = parent.join(format!("foe-log-{}-{ordinal}-{name}", std::process::id()));
+        match std::fs::create_dir(&path) {
+            Ok(()) => return ScratchDir(path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => panic!("failed to create {}: {error}", path.display()),
+        }
+    }
 }
 
 pub fn start(id: &str) -> EpisodeStart {

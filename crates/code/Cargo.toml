@@ -30,4 +30,4 @@ ignore = "0.4"
 
 [dev-dependencies]
 tokio.workspace = true
-tempfile = "3"
+tempfile.workspace = true

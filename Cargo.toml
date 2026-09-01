@@ -31,6 +31,7 @@ async-trait = "0.1"
 ignore = "0.4"
 regex = "1"
 cap-std = "4.0"
+tempfile = "3"
 
 # Release profile tuned for size. The binary budget is a test; see docs/design.md.
 [profile.release]
