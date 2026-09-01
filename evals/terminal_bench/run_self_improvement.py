@@ -19,6 +19,7 @@ from typing import Any
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256_file
 
+from collect_diagnostics import collect_from_corpus, encoded_evidence
 from foe_agent_support import build_program, estimate_usage_cost
 from instruction_candidate import create as create_instruction_candidate
 from run import Pricing, read_cases
@@ -61,6 +62,36 @@ def write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def write_bound_python_launcher(
+    path: Path, entrypoint: Path, dependencies: list[Path]
+) -> None:
+    """Write an executable whose identity binds each evidence module."""
+    files = [
+        entrypoint.resolve(strict=True),
+        *(item.resolve(strict=True) for item in dependencies),
+    ]
+    expected = {
+        str(item): hashlib.sha256(item.read_bytes()).hexdigest() for item in files
+    }
+    script = f'''#!/usr/bin/python3
+import hashlib
+import runpy
+import sys
+
+expected = {expected!r}
+for name, digest in expected.items():
+    with open(name, "rb") as source:
+        observed = hashlib.sha256(source.read()).hexdigest()
+    if observed != digest:
+        print(f"trajectory collector dependency changed: {{name}}", file=sys.stderr)
+        raise SystemExit(2)
+sys.path.insert(0, {str(files[0].parent)!r})
+runpy.run_path({str(files[0])!r}, run_name="__main__")
+'''
+    path.write_text(script, encoding="utf-8")
+    path.chmod(0o755)
+
+
 def model_config(route: str, reasoning_effort: str, service_tier: str = "priority") -> dict[str, str]:
     provider, slash, model = route.partition("/")
     if not slash or not provider or not model:
@@ -73,10 +104,24 @@ def model_config(route: str, reasoning_effort: str, service_tier: str = "priorit
     }
 
 
-def verify_evidence_identity(candidate: Path, binary: Path, evidence: Path) -> dict[str, str]:
-    report = json.loads(evidence.read_text(encoding="utf-8"))
+def evidence_document(evidence: Path | dict[str, Any]) -> dict[str, Any]:
+    """Read an evidence path or return an already verified document."""
+    value = (
+        json.loads(evidence.read_text(encoding="utf-8"))
+        if isinstance(evidence, Path)
+        else evidence
+    )
+    if not isinstance(value, dict):
+        raise ValueError("self-improvement evidence is not an object")
+    return value
+
+
+def verify_evidence_identity(
+    candidate: Path, binary: Path, evidence: Path | dict[str, Any]
+) -> dict[str, str]:
+    report = evidence_document(evidence)
     identity = require_evaluated_foe(
-        report.get("evaluated_foe"), f"self-improvement evidence {evidence}"
+        report.get("evaluated_foe"), "self-improvement evidence"
     )
     candidate_tree = clean_source_tree(candidate)
     runtime_binary = sha256_file(binary)
@@ -87,9 +132,9 @@ def verify_evidence_identity(candidate: Path, binary: Path, evidence: Path) -> d
     return identity
 
 
-def failed_base_configuration(evidence: Path) -> dict[str, str]:
+def failed_base_configuration(evidence: Path | dict[str, Any]) -> dict[str, str]:
     """Return the one failed configuration a candidate must preserve."""
-    report = json.loads(evidence.read_text(encoding="utf-8"))
+    report = evidence_document(evidence)
     summaries = report.get("evaluation_summary")
     if not isinstance(summaries, list):
         raise ValueError("self-improvement evidence has no evaluation_summary list")
@@ -129,10 +174,10 @@ def failed_base_configuration(evidence: Path) -> dict[str, str]:
 
 
 def supported_independent_audits(
-    evidence: Path, base_configuration: dict[str, str]
+    evidence: Path | dict[str, Any], base_configuration: dict[str, str]
 ) -> list[dict[str, Any]]:
     """Return repeated successful audit settings that preserve the base run."""
-    report = json.loads(evidence.read_text(encoding="utf-8"))
+    report = evidence_document(evidence)
     summaries = report.get("evaluation_summary")
     if not isinstance(summaries, list):
         raise ValueError("self-improvement evidence has no evaluation_summary list")
@@ -823,8 +868,13 @@ def build_config(
     source_metadata_roots: list[Path],
     development_read_roots: list[Path],
     objective: str,
+    evidence_tool: dict[str, Any] | None = None,
+    evidence_args: list[str] | None = None,
+    evidence_read_roots: list[Path] | None = None,
 ) -> dict[str, Any]:
-    diagnosis_read_roots = [str(evidence.parent)]
+    diagnosis_read_roots = [
+        str(path) for path in (evidence_read_roots or [evidence.parent])
+    ]
     development_reads = [str(path) for path in [*source_metadata_roots, *development_read_roots]]
     implementation_read_roots = [str(candidate), *development_reads]
     root_read_roots = [str(candidate), *diagnosis_read_roots, *development_reads]
@@ -969,7 +1019,8 @@ def build_config(
         "instructions": {"role": "Run the declared diagnosis and implementation workflow."},
         "tools": [*CODING_TOOLS, "block", "evidence", "check"],
         "tool_defs": {
-            "evidence": {
+            "evidence": evidence_tool
+            or {
                 "exec": "/usr/bin/cat",
                 "description": "Return identity-bound trajectory diagnoses without modifying them.",
             },
@@ -988,7 +1039,7 @@ def build_config(
             "nodes": {
                 "collect-trajectory-diagnostics": {
                     "tool": "evidence",
-                    "args": {"args": [str(evidence)]},
+                    "args": {"args": evidence_args or [str(evidence)]},
                 },
                 "diagnose-runtime": {
                     "model": diagnosis,
@@ -1093,11 +1144,57 @@ def measure_episode(root: Path, pricing: dict[str, Pricing]) -> dict[str, Any]:
     }
 
 
+def workflow_node_value(root: Path, node: str) -> dict[str, Any] | None:
+    """Return the last object value produced by one workflow node."""
+    path = root / "episode.jsonl"
+    if not path.is_file():
+        return None
+    value = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        event = json.loads(line)
+        data = event.get("data", {})
+        if (
+            event.get("type") == "workflow/node-end"
+            and data.get("node") == node
+            and isinstance(data.get("value"), dict)
+        ):
+            value = data["value"]
+    return value
+
+
+def trajectory_collection_findings(
+    value: dict[str, Any] | None, expected: str
+) -> list[str]:
+    """Verify that Foe recorded the report derived during preflight."""
+    if not isinstance(value, dict):
+        return ["trajectory corpus diagnostics produced no recorded tool value"]
+    findings = []
+    if value.get("exit_code") != 0:
+        findings.append(
+            "trajectory corpus diagnostics executable did not exit successfully"
+        )
+    if value.get("stdout") != expected:
+        findings.append(
+            "trajectory corpus diagnostics differ from the preflight report"
+        )
+    return findings
+
+
 def parser() -> argparse.ArgumentParser:
     answer = argparse.ArgumentParser(description=__doc__)
     answer.add_argument("--foe", type=Path, required=True)
     answer.add_argument("--candidate", type=Path, required=True)
-    answer.add_argument("--evidence", type=Path, required=True)
+    evidence = answer.add_mutually_exclusive_group(required=True)
+    evidence.add_argument(
+        "--corpus",
+        type=Path,
+        help="immutable trajectory corpus manifest collected by Foe's diagnostics tool",
+    )
+    evidence.add_argument(
+        "--evidence",
+        type=Path,
+        help="precomputed compact diagnosis retained for compatibility",
+    )
     answer.add_argument("--cases", type=Path, required=True)
     answer.add_argument("--model", default="openai-codex/gpt-5.6-terra")
     answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
@@ -1135,7 +1232,8 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        _, _, _, pricing = read_cases(args.cases.resolve(strict=True))
+        cases = args.cases.resolve(strict=True)
+        _, _, _, pricing = read_cases(cases)
         model = model_config(args.model, args.reasoning_effort, args.service_tier)
         diagnosis_model = model_config(
             args.diagnosis_model, args.diagnosis_reasoning_effort, args.service_tier
@@ -1160,11 +1258,24 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--cargo-home must contain the Cargo command-shim directory `bin`")
         validator_identity = rust_toolchain_identity(cargo) if cargo is not None else None
         candidate = args.candidate.resolve(strict=True)
-        evidence = args.evidence.resolve(strict=True)
         binary = args.foe.resolve(strict=True)
-        identity = verify_evidence_identity(candidate, binary, evidence)
-        base_configuration = failed_base_configuration(evidence)
-        supported_audits = supported_independent_audits(evidence, base_configuration)
+        corpus = args.corpus.resolve(strict=True) if args.corpus is not None else None
+        if corpus is not None:
+            expected_identity = {
+                "source_tree": clean_source_tree(candidate),
+                "runtime_binary": sha256_file(binary),
+            }
+            evidence_source: Path | dict[str, Any] = collect_from_corpus(
+                corpus, cases, expected_identity
+            )
+        else:
+            assert args.evidence is not None
+            evidence_source = args.evidence.resolve(strict=True)
+        identity = verify_evidence_identity(candidate, binary, evidence_source)
+        base_configuration = failed_base_configuration(evidence_source)
+        supported_audits = supported_independent_audits(
+            evidence_source, base_configuration
+        )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"self-improvement: {error}", file=sys.stderr)
         return 2
@@ -1184,6 +1295,11 @@ def main(argv: list[str] | None = None) -> int:
     }
     if validator_identity is not None:
         preview["candidate_validator"] = {"rust_toolchain": validator_identity}
+    if corpus is not None:
+        preview["trajectory_corpus"] = {
+            "manifest": str(corpus),
+            "sha256": sha256_file(corpus),
+        }
     temporary: tempfile.TemporaryDirectory[str] | None = None
     if args.keep:
         workspace = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
@@ -1200,13 +1316,18 @@ def main(argv: list[str] | None = None) -> int:
     source_metadata = git_metadata_root(candidate)
     write_candidate_check(check, candidate, cargo, cargo_home, cargo_target)
     episode_evidence = root / "trajectory-evidence.json"
-    episode_evidence.write_bytes(evidence.read_bytes())
+    if isinstance(evidence_source, Path):
+        episode_evidence.write_bytes(evidence_source.read_bytes())
+    else:
+        episode_evidence.write_text(
+            encoded_evidence(evidence_source), encoding="utf-8"
+        )
     validator = root / "diagnosis-validator"
     write_diagnosis_validator(
         validator,
         root / "program.json",
         identity,
-        evidence_digest(evidence),
+        evidence_digest(episode_evidence),
         base_configuration,
         supported_audits,
     )
@@ -1218,6 +1339,50 @@ def main(argv: list[str] | None = None) -> int:
         *(path for path in [rustup_home] if path is not None),
         *(path.resolve() for path in SYSTEM_DEVELOPMENT_READ_DIRS if path.is_dir()),
     ]
+    evidence_tool = None
+    evidence_args = None
+    evidence_read_roots = None
+    if corpus is not None:
+        collector_source = Path(__file__).resolve().parent / "collect_diagnostics.py"
+        corpus_source = Path(__file__).resolve().parent / "trajectory_corpus.py"
+        identity_source = (
+            Path(__file__).resolve().parent.parent
+            / "harness_bench"
+            / "foe_source_identity.py"
+        )
+        collector = root / "collect-trajectory-diagnostics"
+        write_bound_python_launcher(
+            collector,
+            collector_source,
+            [corpus_source, identity_source, corpus, cases],
+        )
+        evidence_tool = {
+            "exec": str(collector),
+            "description": (
+                "Derive a bounded identity-checked diagnostic report from the "
+                "declared immutable trajectory corpus."
+            ),
+            "timeout_seconds": 60,
+        }
+        evidence_args = [
+            "--corpus",
+            str(corpus),
+            "--cases",
+            str(cases),
+            "--expected-source-tree",
+            identity["source_tree"],
+            "--expected-runtime-binary",
+            identity["runtime_binary"],
+            "--expected-report-sha256",
+            evidence_digest(episode_evidence),
+        ]
+        evidence_read_roots = [
+            corpus.parent.parent,
+            cases,
+            collector_source,
+            corpus_source,
+            identity_source,
+        ]
     program_document = build_config(
         candidate,
         episode_evidence,
@@ -1229,6 +1394,9 @@ def main(argv: list[str] | None = None) -> int:
         [source_metadata],
         development_read_roots,
         args.objective,
+        evidence_tool,
+        evidence_args,
+        evidence_read_roots,
     )
     program = root / "program.json"
     write_json(program, program_document)
@@ -1278,6 +1446,14 @@ def main(argv: list[str] | None = None) -> int:
     usage = measure_episode(episode, pricing)
     outcome = usage.get("outcome")
     outcome_value = outcome.get("value") if isinstance(outcome, dict) else None
+    if not isinstance(outcome_value, dict):
+        outcome_value = workflow_node_value(episode, "diagnose-runtime")
+    collection_findings = []
+    if corpus is not None:
+        collection_findings = trajectory_collection_findings(
+            workflow_node_value(episode, "collect-trajectory-diagnostics"),
+            episode_evidence.read_text(encoding="utf-8"),
+        )
     branch = outcome_value.get("branch") if isinstance(outcome_value, dict) else None
     workflow_candidate = None
     workflow_candidate_path = None
@@ -1293,7 +1469,7 @@ def main(argv: list[str] | None = None) -> int:
                 outcome_value,
                 supported_audits,
                 identity,
-                evidence,
+                episode_evidence,
                 base_configuration,
             )
         except ValueError as error:
@@ -1318,7 +1494,7 @@ def main(argv: list[str] | None = None) -> int:
                 outcome_value,
                 {"program.json": program_document},
                 identity,
-                evidence,
+                episode_evidence,
                 base_configuration,
             )
         except ValueError as error:
@@ -1342,7 +1518,7 @@ def main(argv: list[str] | None = None) -> int:
             tool_candidate, tool_executable = tool_candidate_from_outcome(
                 outcome_value,
                 identity,
-                evidence,
+                episode_evidence,
                 base_configuration,
             )
         except ValueError as error:
@@ -1377,6 +1553,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         acceptance = {"accepted": False, "findings": [finding], "exit_code": None}
         candidate_kind = "no-candidate"
+    if collection_findings:
+        acceptance["accepted"] = False
+        acceptance["findings"] = [
+            *collection_findings,
+            *acceptance["findings"],
+        ]
     adoption = None
     if acceptance["accepted"] and candidate_kind != "no-candidate":
         retained: dict[str, bytes] = {}
@@ -1433,7 +1615,7 @@ def main(argv: list[str] | None = None) -> int:
         "stderr": result.stderr.strip(),
         "usage": usage,
         "candidate": str(candidate),
-        "evidence": str(evidence),
+        "evidence": str(episode_evidence),
         "episode": str(episode),
         "changed_files": changed,
         "candidate_kind": candidate_kind,
