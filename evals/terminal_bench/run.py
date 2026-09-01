@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import fcntl
 import hashlib
@@ -11,9 +12,12 @@ import json
 import os
 import pwd
 import re
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,11 +28,32 @@ from workflow_candidate import validate as validate_workflow_candidate
 
 
 HARBOR_VERSION = "0.22.0"
+AUTHORIZED_BENCHMARK_CONTEXT = (
+    "This task is an authorized benchmark exercise inside an isolated container. "
+    "Complete only the task described by the benchmark."
+)
 DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 MIN_AUXILIARY_MODEL_CALLS = 6
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
 AGENT_TIMEOUT_GRACE_SECONDS = 300
+CREDENTIAL_LEASE_STARTUP_SECONDS = 900
+CREDENTIAL_REFRESH_MARGIN_MS = 60_000
+HOST_MEMORY_HEADROOM_MB = 4 * 1024
+MIN_FREE_DISK_BYTES = 100 * 1024**3
+MAX_PARALLEL_MEMORY_MB = 8 * 1024
+MAX_PARALLEL_CPUS = 4
+PARALLEL_TASK_MEMORY_EXCLUSION_MB = 8 * 1024
+MAX_MEMORY_PRESSURE_AVG10 = 1.0
+PROCESS_TERMINATION_SECONDS = 10
+
+
+class CampaignCancellation(KeyboardInterrupt):
+    """A terminal signal that requests a retained campaign shutdown."""
+
+    def __init__(self, signum: int) -> None:
+        self.signum = signum
+        super().__init__(signal.Signals(signum).name)
 
 
 @dataclass(frozen=True)
@@ -39,6 +64,17 @@ class Task:
     expected_output_tokens: int
     seconds: int
     harbor_agent_seconds: int
+    cpus: int
+    memory_mb: int
+    authorized_benchmark_context: bool = False
+
+
+@dataclass(frozen=True)
+class HostResources:
+    available_memory_mb: int
+    free_disk_bytes: int
+    swap_out_pages: int
+    memory_pressure_avg10: float
 
 
 @dataclass(frozen=True)
@@ -74,15 +110,29 @@ def read_cases(
     raw_tasks = value.get("tasks")
     raw_pricing = value.get("pricing")
     raw_agent_timeouts = value.get("harbor_agent_timeouts")
+    raw_default_resources = value.get("default_resources")
     if not isinstance(dataset, str) or "@" not in dataset:
         raise ValueError("cases.dataset must pin a dataset revision")
     if not all(
         isinstance(item, dict)
-        for item in (raw_groups, raw_tasks, raw_pricing, raw_agent_timeouts)
+        for item in (
+            raw_groups,
+            raw_tasks,
+            raw_pricing,
+            raw_agent_timeouts,
+            raw_default_resources,
+        )
     ):
         raise ValueError(
-            "cases.groups, cases.tasks, cases.pricing, and cases.harbor_agent_timeouts must be objects"
+            "cases groups, tasks, pricing, agent timeouts, and default resources must be objects"
         )
+    default_cpus = raw_default_resources.get("cpus")
+    default_memory_mb = raw_default_resources.get("memory_mb")
+    if any(
+        type(value) is not int or value <= 0
+        for value in (default_cpus, default_memory_mb)
+    ):
+        raise ValueError("cases.default_resources values must be positive integers")
     if set(raw_agent_timeouts) != set(raw_tasks):
         raise ValueError("cases.harbor_agent_timeouts keys must match cases.tasks")
     pricing: dict[str, Pricing] = {}
@@ -112,6 +162,11 @@ def read_cases(
             expected_output_tokens=limits.get("expected_output_tokens"),
             seconds=limits.get("seconds"),
             harbor_agent_seconds=raw_agent_timeouts.get(name),
+            cpus=limits.get("cpus", default_cpus),
+            memory_mb=limits.get("memory_mb", default_memory_mb),
+            authorized_benchmark_context=limits.get(
+                "authorized_benchmark_context", False
+            ),
         )
         limits = (
             task.model_calls,
@@ -122,6 +177,12 @@ def read_cases(
         )
         if any(not isinstance(value, int) or value <= 0 for value in limits):
             raise ValueError(f"cases.tasks.{name} limits must be positive integers")
+        if any(type(value) is not int or value <= 0 for value in (task.cpus, task.memory_mb)):
+            raise ValueError(f"cases.tasks.{name} resources must be positive integers")
+        if type(task.authorized_benchmark_context) is not bool:
+            raise ValueError(
+                f"cases.tasks.{name}.authorized_benchmark_context must be a boolean"
+            )
         tasks[name] = task
     groups: dict[str, tuple[str, ...]] = {}
     for group, names in raw_groups.items():
@@ -144,6 +205,318 @@ def read_cases(
                 names = ", ".join(sorted(overlap))
                 raise ValueError(f"{left} and {right} tasks overlap: {names}")
     return dataset, groups, tasks, pricing
+
+
+def model_stage_count(
+    diagnosis_model: str | None,
+    unresolved_diagnosis_reasoning_effort: str | None,
+    escalation_reasoning_effort: str | None,
+) -> int:
+    return 1 + sum(
+        value is not None
+        for value in (
+            diagnosis_model,
+            unresolved_diagnosis_reasoning_effort,
+            escalation_reasoning_effort,
+        )
+    )
+
+
+def task_agent_timeout_seconds(task: Task, stages: int) -> int:
+    return task.seconds * stages + AGENT_TIMEOUT_GRACE_SECONDS
+
+
+def access_only_lease_requirement_ms(
+    tasks: list[Task] | tuple[Task, ...],
+    *,
+    attempts: int,
+    stages: int,
+    now_ms: int,
+) -> int:
+    longest = max(
+        attempts
+        * (task_agent_timeout_seconds(task, stages) + CREDENTIAL_LEASE_STARTUP_SECONDS)
+        for task in tasks
+    )
+    return now_ms + longest * 1000 + CREDENTIAL_REFRESH_MARGIN_MS
+
+
+def read_credential_state(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"credential state must be a JSON object: {path}")
+    if not isinstance(value.get("access"), str) or not value["access"]:
+        raise ValueError(f"credential state has no access token: {path}")
+    if not isinstance(value.get("refresh"), str) or not value["refresh"]:
+        raise ValueError(f"credential state has no refresh token: {path}")
+    if type(value.get("expires")) is not int or value["expires"] <= 0:
+        raise ValueError(f"credential state has no positive integer expiry: {path}")
+    account_id = value.get("account_id")
+    if account_id is not None and (not isinstance(account_id, str) or not account_id):
+        raise ValueError(f"credential state has an invalid account id: {path}")
+    return value
+
+
+def write_private_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
+    ) as target:
+        temporary = Path(target.name)
+        json.dump(value, target, indent=2, sort_keys=True)
+        target.write("\n")
+    try:
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def write_json_atomic(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
+    ) as target:
+        temporary = Path(target.name)
+        json.dump(value, target, indent=2, sort_keys=True)
+        target.write("\n")
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def issue_access_only_lease(
+    state: dict[str, Any],
+    path: Path,
+    *,
+    required_expiry_ms: int = 0,
+) -> None:
+    expires = state.get("expires")
+    if type(expires) is not int or expires <= required_expiry_ms:
+        raise ValueError(
+            "access token expiry does not cover the required execution window"
+        )
+    lease = {key: state[key] for key in ("access", "expires")}
+    if "account_id" in state:
+        lease["account_id"] = state["account_id"]
+    write_private_json(path, lease)
+    os.chmod(path, 0o400)
+
+
+def credential_supports_parallel_tasks(
+    state: dict[str, Any],
+    tasks: list[Task] | tuple[Task, ...],
+    *,
+    attempts: int,
+    stages: int,
+    now_ms: int,
+) -> bool:
+    required = access_only_lease_requirement_ms(
+        tasks,
+        attempts=attempts,
+        stages=stages,
+        now_ms=now_ms,
+    )
+    return type(state.get("expires")) is int and state["expires"] > required
+
+
+def host_resources(path: Path) -> HostResources:
+    memory = {}
+    for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+        name, separator, rest = line.partition(":")
+        if separator:
+            memory[name] = rest.strip().split()[0]
+    available_kb = memory.get("MemAvailable")
+    if available_kb is None or not available_kb.isdigit():
+        raise ValueError("/proc/meminfo has no numeric MemAvailable value")
+    swap_out_pages = None
+    for line in Path("/proc/vmstat").read_text(encoding="utf-8").splitlines():
+        if line.startswith("pswpout "):
+            swap_out_pages = int(line.split()[1])
+            break
+    if swap_out_pages is None:
+        raise ValueError("/proc/vmstat has no pswpout value")
+    pressure = None
+    for line in Path("/proc/pressure/memory").read_text(encoding="utf-8").splitlines():
+        if line.startswith("full "):
+            fields = dict(part.split("=", 1) for part in line.split()[1:])
+            pressure = float(fields["avg10"])
+            break
+    if pressure is None:
+        raise ValueError("/proc/pressure/memory has no full avg10 value")
+    existing = path
+    while not existing.exists():
+        if existing == existing.parent:
+            raise ValueError(f"no existing parent for resource check: {path}")
+        existing = existing.parent
+    return HostResources(
+        available_memory_mb=int(available_kb) // 1024,
+        free_disk_bytes=shutil.disk_usage(existing).free,
+        swap_out_pages=swap_out_pages,
+        memory_pressure_avg10=pressure,
+    )
+
+
+def parallel_resource_fit(tasks: list[Task] | tuple[Task, ...]) -> bool:
+    return (
+        len(tasks) == 2
+        and all(task.memory_mb < PARALLEL_TASK_MEMORY_EXCLUSION_MB for task in tasks)
+        and sum(task.memory_mb for task in tasks) <= MAX_PARALLEL_MEMORY_MB
+        and sum(task.cpus for task in tasks) <= MAX_PARALLEL_CPUS
+    )
+
+
+def execution_groups(tasks: list[Task], workers: int) -> list[tuple[Task, ...]]:
+    if workers == 1:
+        return [(task,) for task in tasks]
+    groups = []
+    index = 0
+    while index < len(tasks):
+        pair = tuple(tasks[index : index + 2])
+        if parallel_resource_fit(pair):
+            groups.append(pair)
+            index += 2
+        else:
+            groups.append((tasks[index],))
+            index += 1
+    return groups
+
+
+def validate_parallel_plan(
+    tasks: list[Task], workers: int, require_parallel: bool
+) -> None:
+    """Refuse a qualification plan that cannot run every task in a pair."""
+    if not require_parallel:
+        return
+    if workers != 2:
+        raise ValueError("--require-parallel requires --workers 2")
+    serial = [
+        group[0].name
+        for group in execution_groups(tasks, workers)
+        if len(group) != 2
+    ]
+    if serial:
+        raise ValueError(
+            "--require-parallel requires every selected task to fit a two-worker "
+            f"cohort; serial tasks: {', '.join(serial)}"
+        )
+
+
+def required_parallel_stop(
+    require_parallel: bool,
+    planned_group: tuple[Task, ...],
+    use_parallel: bool,
+    fallback_reason: str | None,
+) -> str | None:
+    """Return the no-spend stop reason for a required cohort."""
+    if require_parallel and len(planned_group) == 2 and not use_parallel:
+        return f"required two-worker cohort cannot start: {fallback_reason}"
+    return None
+
+
+def parallel_host_admission(
+    resources: HostResources,
+    tasks: tuple[Task, ...],
+    previous: HostResources | None,
+) -> tuple[bool, str | None]:
+    allowed, reason = run_host_admission(resources, tasks)
+    if not allowed:
+        return allowed, reason
+    if resources.memory_pressure_avg10 >= MAX_MEMORY_PRESSURE_AVG10:
+        return False, "full memory pressure reached one percent over ten seconds"
+    if previous is not None and resources.swap_out_pages > previous.swap_out_pages:
+        return False, "the host swapped pages out after the preceding cohort"
+    return True, None
+
+
+def run_host_admission(
+    resources: HostResources,
+    tasks: tuple[Task, ...],
+) -> tuple[bool, str | None]:
+    if resources.free_disk_bytes < MIN_FREE_DISK_BYTES:
+        return False, "free disk is below 100 GiB"
+    reserved_memory_mb = sum(task.memory_mb for task in tasks)
+    required_memory_mb = reserved_memory_mb + HOST_MEMORY_HEADROOM_MB
+    if resources.available_memory_mb < required_memory_mb:
+        return False, (
+            f"available memory is below {required_memory_mb} MiB required for "
+            f"{reserved_memory_mb} MiB of task reservations and "
+            f"{HOST_MEMORY_HEADROOM_MB} MiB of host headroom"
+        )
+    return True, None
+
+
+def terminate_processes(processes: list[subprocess.Popen[Any]]) -> None:
+    running = [process for process in processes if process.poll() is None]
+    for process in running:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + PROCESS_TERMINATION_SECONDS
+    for process in running:
+        remaining = max(0.0, deadline - time.monotonic())
+        try:
+            process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            pass
+    for process in running:
+        if process.poll() is not None:
+            continue
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        if process.poll() is None:
+            process.wait()
+
+
+@contextlib.contextmanager
+def campaign_signal_handlers():
+    """Turn terminal interrupts into exceptions so cleanup can retain evidence."""
+
+    signals = (signal.SIGINT, signal.SIGTERM)
+    previous = {signum: signal.getsignal(signum) for signum in signals}
+
+    def cancel(signum: int, _frame: Any) -> None:
+        raise CampaignCancellation(signum)
+
+    for signum in signals:
+        signal.signal(signum, cancel)
+    try:
+        yield
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+
+def run_commands(
+    commands: list[list[str]],
+    *,
+    cwd: Path,
+    popen_factory: Any = subprocess.Popen,
+    process_started: Any = None,
+) -> list[int]:
+    processes = []
+    try:
+        for command in commands:
+            process = popen_factory(command, cwd=cwd, start_new_session=True)
+            processes.append(process)
+            if process_started is not None:
+                process_started(len(processes))
+        return [process.wait() for process in processes]
+    except BaseException:
+        terminate_processes(processes)
+        raise
 
 
 def default_harbor() -> Path:
@@ -253,6 +626,7 @@ def harbor_command(
     trace_evaluator: Path,
     foe: Path,
     credential_state: Path,
+    credential_mode: str = "mutable",
     model: str,
     reasoning_effort: str,
     service_tier: str = "priority",
@@ -267,22 +641,22 @@ def harbor_command(
     runtime_digest: str,
     pricing: Pricing,
     completion_checker: Path | None = None,
+    completion_checker_setup: Path | None = None,
     hard_token_limits: bool = False,
     install_only: bool = False,
+    authorized_benchmark_context: bool = False,
 ) -> list[str]:
-    model_stages = 1 + sum(
-        stage_enabled
-        for stage_enabled in (
-            diagnosis_model is not None,
-            unresolved_diagnosis_reasoning_effort is not None,
-            escalation_reasoning_effort is not None,
-        )
+    model_stages = model_stage_count(
+        diagnosis_model,
+        unresolved_diagnosis_reasoning_effort,
+        escalation_reasoning_effort,
     )
-    agent_timeout_seconds = task.seconds * model_stages + AGENT_TIMEOUT_GRACE_SECONDS
+    agent_timeout_seconds = task_agent_timeout_seconds(task, model_stages)
     agent_timeout_multiplier = agent_timeout_seconds / task.harbor_agent_seconds
     kwargs = {
         "foe_binary": foe,
         "credential_file": credential_state,
+        "credential_mode": credential_mode,
         "trace_evaluator": trace_evaluator,
         "model_calls": task.model_calls,
         "seconds": task.seconds,
@@ -309,6 +683,10 @@ def harbor_command(
         kwargs["escalation_model_calls"] = escalation_model_calls
     if completion_checker is not None:
         kwargs["completion_checker"] = completion_checker
+    if completion_checker_setup is not None:
+        if completion_checker is None:
+            raise ValueError("completion checker setup requires a completion checker")
+        kwargs["completion_checker_setup"] = completion_checker_setup
     command = [
         "/usr/bin/env",
         f"PYTHONPATH={agent_module.parent}",
@@ -336,6 +714,8 @@ def harbor_command(
     ]
     for key, value in kwargs.items():
         command.extend(("--agent-kwarg", f"{key}={value}"))
+    if authorized_benchmark_context or task.authorized_benchmark_context:
+        command.extend(("--extra-instruction", AUTHORIZED_BENCHMARK_CONTEXT))
     if install_only:
         command.append("--install-only")
     return command
@@ -399,6 +779,13 @@ def read_job_integrity(job_dir: Path) -> dict[str, list[str]]:
             infrastructure_failures.append(
                 f"{trial}: the completion checker changed during the trial"
             )
+        if (
+            metadata.get("foe_credential_mode") == "access_only"
+            and metadata.get("foe_credential_unchanged") is not True
+        ):
+            infrastructure_failures.append(
+                f"{trial}: the access-only credential changed during the trial"
+            )
         if metadata.get("foe_usage_reported") is not True:
             missing = metadata.get("foe_unreported_model_calls")
             count = missing if isinstance(missing, int) else "unknown"
@@ -433,6 +820,63 @@ def write_job_diagnostics(job_dir: Path) -> list[str]:
     return written
 
 
+def utc_timestamp() -> str:
+    return dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
+
+
+def host_resource_record(resources: HostResources) -> dict[str, int | float]:
+    return {
+        "available_memory_mb": resources.available_memory_mb,
+        "free_disk_bytes": resources.free_disk_bytes,
+        "swap_out_pages": resources.swap_out_pages,
+        "memory_pressure_avg10": resources.memory_pressure_avg10,
+    }
+
+
+def job_has_out_of_memory_failure(job_dir: Path) -> bool:
+    markers = ("oomkilled", "out of memory", "exit code 137", "status 137")
+    for path in sorted(job_dir.glob("*/result.json")):
+        text = path.read_text(encoding="utf-8", errors="replace").lower()
+        if any(marker in text for marker in markers):
+            return True
+    return False
+
+
+def task_record(
+    *,
+    task: Task,
+    run_dir: Path,
+    harbor_exit_code: int | None,
+    install_only: bool,
+    worker: int,
+    execution_group: str,
+    credential_mode: str,
+    started_at: str,
+    ended_at: str,
+    elapsed_seconds: float,
+) -> dict[str, Any]:
+    job_result_path = run_dir / task.name / "result.json"
+    record: dict[str, Any] = {
+        "task": task.name,
+        "harbor_exit_code": harbor_exit_code,
+        "result": str(job_result_path.relative_to(run_dir)),
+        "worker": worker,
+        "execution_group": execution_group,
+        "credential_mode": credential_mode,
+        "started_at": started_at,
+        "ended_at": ended_at,
+        "execution_group_elapsed_seconds": elapsed_seconds,
+    }
+    try:
+        record.update(read_job_result(job_result_path))
+        record["diagnostics"] = write_job_diagnostics(run_dir / task.name)
+        if not install_only:
+            record.update(read_job_integrity(run_dir / task.name))
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        record["result_error"] = str(error)
+    return record
+
+
 def parser() -> argparse.ArgumentParser:
     answer = argparse.ArgumentParser(description=__doc__)
     answer.add_argument("--foe", type=Path, required=True)
@@ -443,6 +887,21 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--group", default="smoke")
     answer.add_argument("--task", action="append", default=[])
     answer.add_argument("--attempts", type=int, default=1)
+    answer.add_argument(
+        "--workers",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="maximum assessed tasks to run at once",
+    )
+    answer.add_argument(
+        "--require-parallel",
+        action="store_true",
+        help=(
+            "stop before provider spend unless every selected task starts in a "
+            "two-worker cohort"
+        ),
+    )
     answer.add_argument("--model", default=DEFAULT_MODEL)
     answer.add_argument("--service-tier", choices=("default", "priority"), default="priority")
     answer.add_argument(
@@ -483,9 +942,19 @@ def parser() -> argparse.ArgumentParser:
     )
     answer.add_argument("--install-only", action="store_true")
     answer.add_argument(
+        "--authorized-benchmark-context",
+        action="store_true",
+        help="add the fixed authorization statement to every selected task",
+    )
+    answer.add_argument(
         "--completion-checker",
         type=Path,
         help="read-only checker used by done_when.verify; requires one selected task",
+    )
+    answer.add_argument(
+        "--completion-checker-setup",
+        type=Path,
+        help="credential-free prerequisite installer run before the completion checker",
     )
     answer.add_argument(
         "--hard-token-limits",
@@ -510,6 +979,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("a task may be selected only once")
         if args.completion_checker is not None and len(selected_names) != 1:
             raise ValueError("--completion-checker requires exactly one selected task")
+        if args.completion_checker_setup is not None and args.completion_checker is None:
+            raise ValueError("--completion-checker-setup requires --completion-checker")
         if not 1 <= args.attempts <= 3:
             raise ValueError("--attempts must be between 1 and 3")
         if not SAFE_LABEL.fullmatch(args.label):
@@ -573,6 +1044,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.completion_checker is not None
             else None
         )
+        completion_checker_setup = (
+            args.completion_checker_setup.resolve(strict=True)
+            if args.completion_checker_setup is not None
+            else None
+        )
         harbor = args.harbor.resolve(strict=True)
         credential = args.credential_file.resolve()
         workspace = source_root.parent
@@ -591,6 +1067,7 @@ def main(argv: list[str] | None = None) -> int:
         if credential_state.is_relative_to(jobs_dir):
             raise ValueError("--credential-state must remain outside --jobs-dir")
         selected = [tasks[name] for name in selected_names]
+        validate_parallel_plan(selected, args.workers, args.require_parallel)
         workflow_candidate_path = (
             args.workflow_candidate.resolve(strict=True)
             if args.workflow_candidate is not None
@@ -724,7 +1201,7 @@ def main(argv: list[str] | None = None) -> int:
     if workflow_candidate is not None:
         print(f"workflow      {workflow_candidate['digest']}")
     print(f"foe           sha256:{runtime_digest}")
-    print(f"attempts      {args.attempts} per task; concurrency 1")
+    print(f"attempts      {args.attempts} per task; workers {args.workers}")
     print("planning      calls      input     output  est. cost  seconds  task")
     for task, task_calls, expected_input, expected_output, expected_cost, seconds in plans:
         print(
@@ -740,11 +1217,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     token_policy = "hard allowances" if args.hard_token_limits else "measurement only"
     print(f"token limits  {token_policy}")
+    authorized_context_tasks = [
+        task.name
+        for task in selected
+        if args.authorized_benchmark_context or task.authorized_benchmark_context
+    ]
+    if authorized_context_tasks:
+        print(f"task context  authorization added to {', '.join(authorized_context_tasks)}")
     if completion_checker is not None:
         print(
             "completion    done_when.verify "
             f"sha256:{digest(completion_checker)}"
         )
+    if completion_checker_setup is not None:
+        print(f"checker setup sha256:{digest(completion_checker_setup)}")
     if args.service_tier == "priority":
         print(f"Fast credits  {FAST_SERVICE_CREDIT_MULTIPLIER:g}x Standard ChatGPT credits")
     if args.install_only:
@@ -796,15 +1282,133 @@ def main(argv: list[str] | None = None) -> int:
         try:
             initialize_credential_state(credential, credential_state)
         except (OSError, ValueError, json.JSONDecodeError) as error:
+            credential_lock.close()
             print(f"terminal-bench eval: {error}", file=sys.stderr)
             return 2
 
     timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
     run_dir = jobs_dir / f"{args.label}-{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=False)
+    stages = model_stage_count(
+        args.diagnosis_model,
+        args.unresolved_diagnosis_reasoning_effort,
+        args.escalation_reasoning_effort,
+    )
+    planned_groups = execution_groups(selected, args.workers)
     records: list[dict[str, Any]] = []
-    for task in selected:
-        command = harbor_command(
+    execution_records: list[dict[str, Any]] = []
+    previous_resources: HostResources | None = None
+    parallel_disabled_reason: str | None = None
+    stopped_reason: str | None = None
+    cancelled = False
+    execution_number = 0
+    started_tasks: dict[str, dict[str, Any]] = {}
+
+    def report_value() -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "dataset": dataset,
+            "label": args.label,
+            "model": args.model,
+            "reasoning_effort": args.reasoning_effort,
+            "service_tier": args.service_tier,
+            "chatgpt_credit_multiplier": (
+                FAST_SERVICE_CREDIT_MULTIPLIER
+                if args.service_tier == "priority"
+                else 1.0
+            ),
+            "diagnosis_model": args.diagnosis_model,
+            "diagnosis_reasoning_effort": (
+                args.diagnosis_reasoning_effort if args.diagnosis_model else None
+            ),
+            "diagnosis_model_calls": (
+                args.diagnosis_model_calls if args.diagnosis_model else None
+            ),
+            "unresolved_diagnosis_reasoning_effort": (
+                args.unresolved_diagnosis_reasoning_effort
+            ),
+            "unresolved_diagnosis_model_calls": (
+                args.unresolved_diagnosis_model_calls
+                if args.unresolved_diagnosis_reasoning_effort
+                else None
+            ),
+            "escalation_reasoning_effort": args.escalation_reasoning_effort,
+            "escalation_model_calls": (
+                args.escalation_model_calls
+                if args.escalation_reasoning_effort
+                else None
+            ),
+            "attempts": args.attempts,
+            "requested_workers": args.workers,
+            "parallel_required": args.require_parallel,
+            "concurrency": max(
+                (record["processes_started"] for record in execution_records),
+                default=1,
+            ),
+            "resource_policy": {
+                "maximum_workers": 2,
+                "maximum_parallel_cpus": MAX_PARALLEL_CPUS,
+                "maximum_parallel_memory_mb": MAX_PARALLEL_MEMORY_MB,
+                "parallel_task_memory_exclusion_mb": (
+                    PARALLEL_TASK_MEMORY_EXCLUSION_MB
+                ),
+                "host_memory_headroom_mb": HOST_MEMORY_HEADROOM_MB,
+                "minimum_free_disk_bytes": MIN_FREE_DISK_BYTES,
+                "maximum_memory_pressure_avg10": MAX_MEMORY_PRESSURE_AVG10,
+            },
+            "pricing": selected_pricing.__dict__,
+            "diagnosis_pricing": (
+                pricing[args.diagnosis_model].__dict__
+                if args.diagnosis_model
+                else None
+            ),
+            "planning_estimated_cost_usd": total_expected_cost,
+            "token_limits": (
+                "hard" if args.hard_token_limits else "measurement_only"
+            ),
+            "install_only": args.install_only,
+            "authorized_benchmark_context": (
+                AUTHORIZED_BENCHMARK_CONTEXT if authorized_context_tasks else None
+            ),
+            "authorized_benchmark_context_tasks": authorized_context_tasks,
+            "completion_checker": (
+                {
+                    "path": str(completion_checker),
+                    "sha256": digest(completion_checker),
+                    "setup": (
+                        {
+                            "path": str(completion_checker_setup),
+                            "sha256": digest(completion_checker_setup),
+                        }
+                        if completion_checker_setup is not None
+                        else None
+                    ),
+                }
+                if completion_checker is not None
+                else None
+            ),
+            "workflow_candidate": workflow_candidate,
+            "foe_sha256": runtime_digest,
+            "evaluated_foe": (
+                {
+                    "source_tree": evaluated_source,
+                    "runtime_binary": f"sha256:{runtime_digest}",
+                }
+                if evaluated_source is not None
+                else None
+            ),
+            "tasks": [task.__dict__ for task in selected],
+            "executions": execution_records,
+            "cancelled": cancelled,
+            "stopped_reason": stopped_reason,
+            "jobs": records,
+        }
+
+    def checkpoint() -> None:
+        write_json_atomic(run_dir / "campaign.json", report_value())
+
+    def command_for(task: Task, credential_path: Path, credential_mode: str) -> list[str]:
+        return harbor_command(
             harbor=harbor,
             dataset=dataset,
             task=task,
@@ -813,7 +1417,8 @@ def main(argv: list[str] | None = None) -> int:
             agent_module=agent_module,
             trace_evaluator=trace_evaluator,
             foe=foe,
-            credential_state=credential_state,
+            credential_state=credential_path,
+            credential_mode=credential_mode,
             model=args.model,
             reasoning_effort=args.reasoning_effort,
             service_tier=args.service_tier,
@@ -828,82 +1433,354 @@ def main(argv: list[str] | None = None) -> int:
             runtime_digest=runtime_digest,
             pricing=selected_pricing,
             completion_checker=completion_checker,
+            completion_checker_setup=completion_checker_setup,
             hard_token_limits=args.hard_token_limits,
             install_only=args.install_only,
+            authorized_benchmark_context=args.authorized_benchmark_context,
         )
-        result = subprocess.run(command, cwd=agent_module.parent, check=False)
-        job_result_path = run_dir / task.name / "result.json"
-        record: dict[str, Any] = {
-            "task": task.name,
-            "harbor_exit_code": result.returncode,
-            "result": str(job_result_path.relative_to(run_dir)),
-        }
-        try:
-            record.update(read_job_result(job_result_path))
-            record["diagnostics"] = write_job_diagnostics(run_dir / task.name)
-            if not args.install_only:
-                record.update(read_job_integrity(run_dir / task.name))
-        except (OSError, ValueError, json.JSONDecodeError) as error:
-            record["result_error"] = str(error)
-        records.append(record)
-        for failure in record.get("infrastructure_failures", []):
-            print(f"terminal-bench eval: trial diagnostic: {failure}", file=sys.stderr)
-        for failure in record.get("incomplete_resource_measurements", []):
-            print(f"terminal-bench eval: incomplete resource measurement: {failure}", file=sys.stderr)
-        if "result_error" in record:
-            break
-    report = {
-        "schema_version": 1,
-        "dataset": dataset,
-        "label": args.label,
-        "model": args.model,
-        "reasoning_effort": args.reasoning_effort,
-        "service_tier": args.service_tier,
-        "chatgpt_credit_multiplier": (
-            FAST_SERVICE_CREDIT_MULTIPLIER if args.service_tier == "priority" else 1.0
-        ),
-        "diagnosis_model": args.diagnosis_model,
-        "diagnosis_reasoning_effort": args.diagnosis_reasoning_effort if args.diagnosis_model else None,
-        "diagnosis_model_calls": args.diagnosis_model_calls if args.diagnosis_model else None,
-        "unresolved_diagnosis_reasoning_effort": args.unresolved_diagnosis_reasoning_effort,
-        "unresolved_diagnosis_model_calls": (
-            args.unresolved_diagnosis_model_calls
-            if args.unresolved_diagnosis_reasoning_effort
-            else None
-        ),
-        "escalation_reasoning_effort": args.escalation_reasoning_effort,
-        "escalation_model_calls": args.escalation_model_calls if args.escalation_reasoning_effort else None,
-        "attempts": args.attempts,
-        "concurrency": 1,
-        "pricing": selected_pricing.__dict__,
-        "diagnosis_pricing": pricing[args.diagnosis_model].__dict__ if args.diagnosis_model else None,
-        "planning_estimated_cost_usd": total_expected_cost,
-        "token_limits": "hard" if args.hard_token_limits else "measurement_only",
-        "install_only": args.install_only,
-        "completion_checker": (
-            {
-                "path": str(completion_checker),
-                "sha256": digest(completion_checker),
-            }
-            if completion_checker is not None
-            else None
-        ),
-        "workflow_candidate": workflow_candidate,
-        "foe_sha256": runtime_digest,
-        "evaluated_foe": (
-            {"source_tree": evaluated_source, "runtime_binary": f"sha256:{runtime_digest}"}
-            if evaluated_source is not None
-            else None
-        ),
-        "tasks": [task.__dict__ for task in selected],
-        "jobs": records,
-    }
-    (run_dir / "campaign.json").write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+
+    execution_failure: Exception | None = None
+    try:
+        with campaign_signal_handlers():
+            with tempfile.TemporaryDirectory(
+                prefix=f".{credential_state.name}.leases-",
+                dir=credential_state.parent,
+            ) as lease_directory_text:
+                lease_directory = Path(lease_directory_text)
+                os.chmod(lease_directory, 0o700)
+                for planned_group in planned_groups:
+                    resources = host_resources(run_dir)
+                    parallel_allowed, host_reason = parallel_host_admission(
+                        resources,
+                        planned_group,
+                        previous_resources,
+                    )
+                    state = read_credential_state(credential_state)
+                    token_allowed = credential_supports_parallel_tasks(
+                        state,
+                        planned_group,
+                        attempts=args.attempts,
+                        stages=stages,
+                        now_ms=int(time.time() * 1000),
+                    )
+                    use_parallel = (
+                        args.workers == 2
+                        and len(planned_group) == 2
+                        and parallel_disabled_reason is None
+                        and parallel_allowed
+                        and token_allowed
+                    )
+                    fallback_reason = None
+                    if len(planned_group) == 2 and not use_parallel:
+                        if parallel_disabled_reason is not None:
+                            fallback_reason = parallel_disabled_reason
+                        elif not parallel_allowed:
+                            fallback_reason = host_reason
+                        elif not token_allowed:
+                            fallback_reason = (
+                                "the access token does not cover the complete "
+                                "parallel execution window"
+                            )
+                        else:
+                            fallback_reason = "parallel execution was not requested"
+                    required_stop = required_parallel_stop(
+                        args.require_parallel,
+                        planned_group,
+                        use_parallel,
+                        fallback_reason,
+                    )
+                    if required_stop is not None:
+                        stopped_reason = required_stop
+                        break
+                    actual_groups = (
+                        [planned_group]
+                        if use_parallel
+                        else [(task,) for task in planned_group]
+                    )
+
+                    for actual_group in actual_groups:
+                        start_resources = host_resources(run_dir)
+                        execution_allowed, execution_reason = run_host_admission(
+                            start_resources,
+                            actual_group,
+                        )
+                        if not execution_allowed:
+                            stopped_reason = execution_reason
+                            break
+                        execution_number += 1
+                        execution_group = f"task-execution-{execution_number:04d}"
+                        credential_mode = (
+                            "access_only" if len(actual_group) == 2 else "mutable"
+                        )
+                        credential_paths = []
+                        required_expiry_ms = None
+                        if credential_mode == "access_only":
+                            required_expiry_ms = access_only_lease_requirement_ms(
+                                actual_group,
+                                attempts=args.attempts,
+                                stages=stages,
+                                now_ms=int(time.time() * 1000),
+                            )
+                            for worker, task in enumerate(actual_group, start=1):
+                                path = lease_directory / (
+                                    f"{execution_group}-worker-{worker}-{task.name}.json"
+                                )
+                                issue_access_only_lease(
+                                    state,
+                                    path,
+                                    required_expiry_ms=required_expiry_ms,
+                                )
+                                credential_paths.append(path)
+                        else:
+                            credential_paths.append(credential_state)
+
+                        started_at = utc_timestamp()
+                        started = time.monotonic()
+                        commands = [
+                            command_for(task, path, credential_mode)
+                            for task, path in zip(
+                                actual_group,
+                                credential_paths,
+                                strict=True,
+                            )
+                        ]
+                        execution_record = {
+                            "execution_group": execution_group,
+                            "mode": (
+                                "parallel_access_only_credentials"
+                                if credential_mode == "access_only"
+                                else "serial_authoritative_credential"
+                            ),
+                            "tasks": [task.name for task in actual_group],
+                            "workers": len(actual_group),
+                            "processes_started": 0,
+                            "reserved_cpus": sum(task.cpus for task in actual_group),
+                            "reserved_memory_mb": sum(
+                                task.memory_mb for task in actual_group
+                            ),
+                            "fallback_reason": fallback_reason,
+                            "credential_required_expiry_ms": required_expiry_ms,
+                            "credential_actual_expiry_ms": (
+                                state["expires"]
+                                if credential_mode == "access_only"
+                                else None
+                            ),
+                            "status": "starting",
+                            "started_at": started_at,
+                            "ended_at": None,
+                            "makespan_seconds": None,
+                            "host_resources_start": host_resource_record(
+                                start_resources
+                            ),
+                            "host_resources_end": None,
+                        }
+                        execution_records.append(execution_record)
+                        execution_error = None
+                        processes_started = 0
+
+                        def record_process_start(count: int) -> None:
+                            nonlocal processes_started
+                            processes_started = count
+                            execution_record["processes_started"] = count
+                            task = actual_group[count - 1]
+                            started_tasks[task.name] = {
+                                "task": task,
+                                "worker": count,
+                                "execution_group": execution_group,
+                                "credential_mode": credential_mode,
+                                "started_at": started_at,
+                                "started_monotonic": started,
+                            }
+
+                        try:
+                            exit_codes: list[int | None] = run_commands(
+                                commands,
+                                cwd=agent_module.parent,
+                                process_started=record_process_start,
+                            )
+                        except CampaignCancellation as error:
+                            exit_codes = [None] * len(actual_group)
+                            execution_error = (
+                                f"campaign cancelled by {signal.Signals(error.signum).name} "
+                                "while Harbor was running"
+                            )
+                            cancelled = True
+                        except KeyboardInterrupt:
+                            exit_codes = [None] * len(actual_group)
+                            execution_error = (
+                                "campaign cancelled by an interrupt while Harbor was running"
+                            )
+                            cancelled = True
+                        except OSError as error:
+                            exit_codes = [None] * len(actual_group)
+                            execution_error = f"cannot run Harbor: {error}"
+                        ended = time.monotonic()
+                        ended_at = utc_timestamp()
+                        end_resources = host_resources(run_dir)
+                        elapsed = ended - started
+                        execution_record.update(
+                            {
+                                "status": (
+                                    "cancelled"
+                                    if cancelled
+                                    else "failed"
+                                    if execution_error is not None
+                                    else "finished"
+                                ),
+                                "ended_at": ended_at,
+                                "makespan_seconds": elapsed,
+                                "host_resources_end": host_resource_record(
+                                    end_resources
+                                ),
+                            }
+                        )
+
+                        for worker, (task, exit_code) in enumerate(
+                            zip(actual_group, exit_codes, strict=True),
+                            start=1,
+                        ):
+                            if worker > processes_started:
+                                record = {
+                                    "task": task.name,
+                                    "harbor_exit_code": None,
+                                    "result": f"{task.name}/result.json",
+                                    "worker": worker,
+                                    "execution_group": execution_group,
+                                    "credential_mode": credential_mode,
+                                    "execution_status": "not_started",
+                                    "result_error": execution_error
+                                    or "Harbor process did not start",
+                                }
+                            else:
+                                record = task_record(
+                                    task=task,
+                                    run_dir=run_dir,
+                                    harbor_exit_code=exit_code,
+                                    install_only=args.install_only,
+                                    worker=worker,
+                                    execution_group=execution_group,
+                                    credential_mode=credential_mode,
+                                    started_at=started_at,
+                                    ended_at=ended_at,
+                                    elapsed_seconds=elapsed,
+                                )
+                                record["execution_status"] = "started"
+                                if execution_error is not None:
+                                    record.setdefault("result_error", execution_error)
+                            records.append(record)
+                            for failure in record.get(
+                                "infrastructure_failures", []
+                            ):
+                                print(
+                                    "terminal-bench eval: trial diagnostic: "
+                                    f"{failure}",
+                                    file=sys.stderr,
+                                )
+                            for failure in record.get(
+                                "incomplete_resource_measurements", []
+                            ):
+                                print(
+                                    "terminal-bench eval: incomplete resource "
+                                    f"measurement: {failure}",
+                                    file=sys.stderr,
+                                )
+
+                        if (
+                            end_resources.swap_out_pages
+                            > start_resources.swap_out_pages
+                        ):
+                            parallel_disabled_reason = (
+                                "the host swapped pages out during an execution"
+                            )
+                        elif (
+                            end_resources.memory_pressure_avg10
+                            >= MAX_MEMORY_PRESSURE_AVG10
+                        ):
+                            parallel_disabled_reason = (
+                                "full memory pressure reached one percent over ten seconds"
+                            )
+                        elif any(
+                            job_has_out_of_memory_failure(run_dir / task.name)
+                            for task in actual_group
+                        ):
+                            parallel_disabled_reason = (
+                                "a task recorded an out-of-memory failure"
+                            )
+                        previous_resources = end_resources
+                        if execution_error is not None or any(
+                            "result_error" in row
+                            for row in records[-len(actual_group) :]
+                        ):
+                            stopped_reason = execution_error or (
+                                "a Harbor result could not be retained"
+                            )
+                        checkpoint()
+                        if stopped_reason is not None:
+                            break
+                    if stopped_reason is not None or cancelled:
+                        break
+    except CampaignCancellation as error:
+        cancelled = True
+        stopped_reason = (
+            f"campaign cancelled by {signal.Signals(error.signum).name}"
+        )
+    except KeyboardInterrupt:
+        cancelled = True
+        stopped_reason = "campaign cancelled by an interrupt"
+    except Exception as error:
+        execution_failure = error
+        stopped_reason = f"campaign execution failed: {error}"
+    finally:
+        credential_lock.close()
+
+    completed_names = {record["task"] for record in records}
+    if len(completed_names) != len(selected):
+        reason = stopped_reason or "campaign stopped before this task began"
+        for task in selected:
+            if task.name not in completed_names:
+                started = started_tasks.get(task.name)
+                if started is None:
+                    record = {
+                        "task": task.name,
+                        "harbor_exit_code": None,
+                        "result": f"{task.name}/result.json",
+                        "execution_status": "not_started",
+                        "result_error": reason,
+                    }
+                else:
+                    ended_at = utc_timestamp()
+                    elapsed = time.monotonic() - started["started_monotonic"]
+                    record = task_record(
+                        task=task,
+                        run_dir=run_dir,
+                        harbor_exit_code=None,
+                        install_only=args.install_only,
+                        worker=started["worker"],
+                        execution_group=started["execution_group"],
+                        credential_mode=started["credential_mode"],
+                        started_at=started["started_at"],
+                        ended_at=ended_at,
+                        elapsed_seconds=elapsed,
+                    )
+                    record["execution_status"] = "started"
+                    record["campaign_stop_reason"] = reason
+                records.append(record)
+    for execution in execution_records:
+        if execution["status"] == "starting":
+            execution.update(
+                {
+                    "status": "cancelled" if cancelled else "failed",
+                    "ended_at": utc_timestamp(),
+                }
+            )
+    checkpoint()
     print(f"Terminal-Bench evidence: {run_dir}")
     completed = campaign_execution_complete(records, len(selected))
+    if cancelled:
+        return 130
+    if execution_failure is not None:
+        print(f"terminal-bench eval: {execution_failure}", file=sys.stderr)
+        return 2
     return 0 if completed else 1
 
 

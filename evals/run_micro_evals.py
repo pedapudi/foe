@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
-from harness_bench.foe_source_identity import evaluated_foe
+from foe_source_identity import evaluated_foe
 from micro_tasks import TASKS, Task, task_by_name
 from trace_quality import evaluate
 

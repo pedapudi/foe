@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+/bin/cat > /app/primers.fasta <<'FASTA'
+>insertion_forward
+TAGATTAGAAGAAGAATTAAGAAGAAGATTAACAGAAAGCAAGGGCGAGGAGCT
+>insertion_reverse
+CTCATATGTATATCTCCTTCTTAAAGTTAAACAAA
+FASTA

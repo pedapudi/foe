@@ -21,7 +21,9 @@ from run import HARBOR_VERSION, default_harbor, read_cases
 class VerifierCase:
     task: str
     checker: Path
+    setup: Path | None
     oracle: Path
+    state_control: Path | None
     contract: str
 
 
@@ -46,17 +48,42 @@ def read_verifier_cases(path: Path, dataset: str) -> dict[str, VerifierCase]:
         if not isinstance(task, str) or not isinstance(raw, dict):
             raise ValueError("every verifier case must be an object")
         checker = raw.get("checker")
+        setup = raw.get("setup")
         oracle = raw.get("oracle")
+        state_control = raw.get("state_control")
         contract = raw.get("contract")
         if not all(isinstance(item, str) and item for item in (checker, oracle, contract)):
             raise ValueError(f"verifier case {task} has incomplete fields")
+        if setup is not None and (not isinstance(setup, str) or not setup):
+            raise ValueError(f"verifier case {task} has an invalid setup")
+        if state_control is not None and (
+            not isinstance(state_control, str) or not state_control
+        ):
+            raise ValueError(f"verifier case {task} state_control must be a path")
         checker_path = (path.parent / checker).resolve(strict=True)
+        setup_path = (path.parent / setup).resolve(strict=True) if setup is not None else None
         oracle_path = (path.parent / oracle).resolve(strict=True)
-        cases[task] = VerifierCase(task, checker_path, oracle_path, contract)
+        state_control_path = (
+            (path.parent / state_control).resolve(strict=True)
+            if state_control is not None
+            else None
+        )
+        cases[task] = VerifierCase(
+            task,
+            checker_path,
+            setup_path,
+            oracle_path,
+            state_control_path,
+            contract,
+        )
     return cases
 
 
-def evaluate_control_job(job_dir: Path) -> dict[str, Any]:
+def evaluate_control_job(
+    job_dir: Path,
+    *,
+    require_state_control: bool = False,
+) -> dict[str, Any]:
     aggregate_path = job_dir / "result.json"
     aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
     stats = aggregate.get("stats")
@@ -89,6 +116,13 @@ def evaluate_control_job(job_dir: Path) -> dict[str, Any]:
         raise ValueError(f"negative checker control did not reject: {trial_paths[0]}")
     if not isinstance(oracle, dict) or oracle.get("accepted") is not True:
         raise ValueError(f"oracle checker control did not accept: {trial_paths[0]}")
+    state_control = controls.get("state_control")
+    if require_state_control and (
+        not isinstance(state_control, dict) or state_control.get("accepted") is not True
+    ):
+        raise ValueError(
+            f"checker state restoration control did not accept: {trial_paths[0]}"
+        )
     verifier = trial.get("verifier_result")
     rewards = verifier.get("rewards") if isinstance(verifier, dict) else None
     reward = rewards.get("reward") if isinstance(rewards, dict) else None
@@ -98,6 +132,11 @@ def evaluate_control_job(job_dir: Path) -> dict[str, Any]:
         "trial": str(trial_paths[0].relative_to(job_dir)),
         "negative_findings": negative_findings,
         "oracle_reward": reward,
+        "state_control_accepted": (
+            state_control.get("accepted")
+            if isinstance(state_control, dict)
+            else None
+        ),
     }
 
 
@@ -197,18 +236,45 @@ def main(argv: list[str] | None = None) -> int:
             "--agent-kwarg",
             f"oracle_file={case.oracle}",
             "--agent-kwarg",
-            f"version=checker-{file_digest(case.checker)}-oracle-{file_digest(case.oracle)}",
+            (
+                f"version=checker-{file_digest(case.checker)}-"
+                f"setup-{file_digest(case.setup) if case.setup is not None else 'none'}-"
+                f"oracle-{file_digest(case.oracle)}-"
+                "state-control-"
+                + (
+                    file_digest(case.state_control)
+                    if case.state_control is not None
+                    else "none"
+                )
+            ),
         ]
+        if case.setup is not None:
+            command.extend(("--agent-kwarg", f"setup_file={case.setup}"))
+        if case.state_control is not None:
+            command.extend(
+                ("--agent-kwarg", f"state_control_file={case.state_control}")
+            )
         result = subprocess.run(command, cwd=agent_module.parent, check=False)
         record = {
             "task": case.task,
             "contract": case.contract,
             "checker_sha256": file_digest(case.checker),
+            "setup_sha256": file_digest(case.setup) if case.setup is not None else None,
             "oracle_sha256": file_digest(case.oracle),
+            "state_control_sha256": (
+                file_digest(case.state_control)
+                if case.state_control is not None
+                else None
+            ),
             "harbor_exit_code": result.returncode,
         }
         try:
-            record.update(evaluate_control_job(run_dir / case.task))
+            record.update(
+                evaluate_control_job(
+                    run_dir / case.task,
+                    require_state_control=case.state_control is not None,
+                )
+            )
         except (OSError, ValueError, json.JSONDecodeError) as error:
             record["error"] = str(error)
         records.append(record)

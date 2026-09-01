@@ -29,10 +29,36 @@ VERIFIER_CASE_DATA = [
     "verifier_cases.json",
     "verifier_cases/cancel_async_tasks/check.py",
     "verifier_cases/cancel_async_tasks/oracle.sh",
+    "verifier_cases/configure_git_webserver/check.sh",
+    "verifier_cases/configure_git_webserver/oracle.sh",
+    "verifier_cases/dna_assembly/check.pl",
+    "verifier_cases/dna_assembly/oracle.sh",
+    "verifier_cases/dna_insert/check.pl",
+    "verifier_cases/dna_insert/oracle.sh",
     "verifier_cases/fix_git/check.py",
     "verifier_cases/fix_git/oracle.sh",
+    "verifier_cases/git_multibranch/check.py",
+    "verifier_cases/git_multibranch/oracle.sh",
+    "verifier_cases/git_multibranch/state_regression.py",
+    "verifier_cases/gpt2_codegolf/check.sh",
+    "verifier_cases/gpt2_codegolf/oracle.sh",
     "verifier_cases/large_scale_text_editing/check.py",
     "verifier_cases/large_scale_text_editing/oracle.sh",
+    "verifier_cases/overfull_hbox/check.pl",
+    "verifier_cases/overfull_hbox/oracle.sh",
+    "verifier_cases/primer3_setup.sh",
+]
+
+VERIFIER_CASES = [
+    ("cancel-async-tasks", "development", "cancel-async-tasks", "verifier_cases/cancel_async_tasks/check.py", None),
+    ("configure-git-webserver", "confirmation", "configure-git-webserver", "verifier_cases/configure_git_webserver/check.sh", None),
+    ("dna-assembly", "development", "dna-assembly", "verifier_cases/dna_assembly/check.pl", "verifier_cases/primer3_setup.sh"),
+    ("dna-insert", "confirmation", "dna-insert", "verifier_cases/dna_insert/check.pl", "verifier_cases/primer3_setup.sh"),
+    ("fix-git", "development", "fix-git", "verifier_cases/fix_git/check.py", None),
+    ("git-multibranch", "development", "git-multibranch", "verifier_cases/git_multibranch/check.py", None),
+    ("gpt2-codegolf", "development", "gpt2-codegolf", "verifier_cases/gpt2_codegolf/check.sh", None),
+    ("large-scale-text-editing", "development", "large-scale-text-editing", "verifier_cases/large_scale_text_editing/check.py", None),
+    ("overfull-hbox", "confirmation", "overfull-hbox", "verifier_cases/overfull_hbox/check.pl", None),
 ]
 
 sh_binary(
@@ -100,30 +126,21 @@ sh_binary(
         srcs = ["run.py"],
         args = COMMON_ARGS + [
             "--group",
-            "development",
+            group,
             "--task",
             task,
             "--completion-checker",
             "$(rootpath " + checker + ")",
             "--service-tier",
             "default",
-        ],
-        data = COMMON_DATA + [checker],
+        ] + ([
+            "--completion-checker-setup",
+            "$(rootpath " + setup + ")",
+        ] if setup else []),
+        data = COMMON_DATA + [checker] + ([setup] if setup else []),
         visibility = ["//visibility:public"],
     )
-    for name, task, checker in [
-        (
-            "cancel-async-tasks",
-            "cancel-async-tasks",
-            "verifier_cases/cancel_async_tasks/check.py",
-        ),
-        ("fix-git", "fix-git", "verifier_cases/fix_git/check.py"),
-        (
-            "large-scale-text-editing",
-            "large-scale-text-editing",
-            "verifier_cases/large_scale_text_editing/check.py",
-        ),
-    ]
+    for name, group, task, checker, setup in VERIFIER_CASES
 ]
 
 sh_binary(
@@ -202,7 +219,7 @@ sh_binary(
     data = [
         "//:Cargo.toml",
         "//:foe-portable",
-        "//evals/harness_bench:foe_source_identity.py",
+        "//evals:foe_source_identity.py",
         "cases.json",
         "run.py",
         "workflow_candidate.py",
@@ -221,7 +238,7 @@ sh_binary(
     ],
     data = [
         "//:foe-portable",
-        "//evals/harness_bench:foe_source_identity.py",
+        "//evals:foe_source_identity.py",
         "cases.json",
         "foe_agent_support.py",
         "instruction_candidate.py",
@@ -245,7 +262,7 @@ sh_test(
         "capability_probe_support_test.py",
         "collect_diagnostics.py",
         "collect_diagnostics_test.py",
-        "//evals/harness_bench:foe_source_identity.py",
+        "//evals:foe_source_identity.py",
         "foe_agent.py",
         "foe_agent_support.py",
         "foe_agent_support_test.py",

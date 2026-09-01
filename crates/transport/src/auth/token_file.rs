@@ -1,13 +1,14 @@
-//! An OAuth token file: the access token, the refresh token that renews
-//! it, and when it expires.
+//! An OAuth token file: the access token, when it expires, and the refresh
+//! token that renews an ordinary mutable file.
 //!
 //! The file is JSON: `{ "access": ..., "refresh": ..., "expires": N,
 //! "account_id": ... }`, with `expires` in milliseconds since the Unix
 //! epoch and `account_id` present when the provider's token carries one.
-//! Before each request the access token is checked; when it is within
-//! [`REFRESH_MARGIN`] of expiry it is refreshed at the provider's token
-//! endpoint and the file is rewritten atomically with mode 0600, so a
-//! second process reading the file sees a whole token.
+//! An access-only file omits `refresh`. Before each request the access token
+//! is checked. A mutable token within [`REFRESH_MARGIN`] of expiry is
+//! refreshed at the provider's token endpoint. The file is then rewritten
+//! atomically with mode 0600, so a second process sees a whole token. An
+//! access-only file fails locally when it reaches the same margin.
 //!
 //! The [`codex`] module holds the public OAuth parameters of the ChatGPT
 //! Codex client, which `foe login openai-codex` drives through an
@@ -28,6 +29,8 @@ pub const REFRESH_MARGIN: Duration = Duration::from_secs(60);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Token {
     pub access: String,
+    /// Empty when the file is access-only and cannot renew itself.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub refresh: String,
     /// Milliseconds since the Unix epoch.
     pub expires: u64,
@@ -104,8 +107,8 @@ pub fn read_token(path: &Path) -> Result<Token, AuthError> {
     let fail = |reason: String| AuthError::Credential { path: path.to_path_buf(), reason };
     let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
     let token: Token = serde_json::from_str(&text).map_err(|e| fail(format!("not a token file: {e}")))?;
-    if token.access.is_empty() || token.refresh.is_empty() {
-        return Err(fail("access or refresh token is empty".into()));
+    if token.access.is_empty() {
+        return Err(fail("access token is empty".into()));
     }
     Ok(token)
 }
@@ -137,6 +140,12 @@ impl TokenFile {
     pub fn current(&self) -> Result<Token, AuthError> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.needs_refresh(now_ms()) {
+            if state.refresh.is_empty() {
+                return Err(AuthError::Credential {
+                    path: self.path.clone(),
+                    reason: "access token needs refresh, but this access-only token file has no refresh token".into(),
+                });
+            }
             let mut fresh = self.client.refresh(&state.refresh)?;
             if fresh.account_id.is_none() {
                 fresh.account_id = state.account_id.clone();
@@ -304,6 +313,30 @@ mod tests {
     }
 
     #[test]
+    fn an_access_only_token_works_until_refresh_is_required() {
+        let path = scratch("token-access-only.json");
+        let fresh = Token {
+            access: "leased-access".into(),
+            refresh: String::new(),
+            expires: now_ms() + 3_600_000,
+            account_id: Some("acct".into()),
+        };
+        write_token(&path, &fresh).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("refresh"), "{text}");
+
+        let client = OAuthClient { token_url: "http://127.0.0.1:9/oauth/token".into(), client_id: "cid".into() };
+        let file = TokenFile::open(&path, client.clone(), None).unwrap();
+        assert_eq!(file.headers().unwrap(), vec![("authorization".to_string(), "Bearer leased-access".to_string())]);
+
+        write_token(&path, &Token { expires: 0, ..fresh }).unwrap();
+        let error = TokenFile::open(&path, client, None).unwrap().headers().unwrap_err();
+        assert!(matches!(&error, AuthError::Credential { .. }), "{error}");
+        assert!(error.to_string().contains("access-only token file has no refresh token"), "{error}");
+        assert!(!error.retryable());
+    }
+
+    #[test]
     fn code_exchange_and_authorization_url_follow_pkce() {
         let server =
             Server::start(vec![Reply::full(200, r#"{"access_token":"opaque","refresh_token":"r","expires_in":60}"#)]);
@@ -333,7 +366,7 @@ mod tests {
         assert!(err.contains("token-bad.json: not a token file"), "{err}");
         std::fs::write(&path, "{\"access\": \"\", \"refresh\": \"\", \"expires\": 1}").unwrap();
         let err = read_token(&path).unwrap_err().to_string();
-        assert!(err.ends_with("access or refresh token is empty"), "{err}");
+        assert!(err.ends_with("access token is empty"), "{err}");
     }
 
     use sha2::Digest;

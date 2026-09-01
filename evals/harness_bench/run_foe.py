@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from foe_source_identity import evaluated_foe
 
 

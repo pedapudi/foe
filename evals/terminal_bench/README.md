@@ -4,8 +4,10 @@ This package runs Foe through Harbor against a small, pinned subset of
 Terminal-Bench 2.1. The subset supports development and confirmation before a
 full benchmark run. It does not constitute an official Terminal-Bench score.
 The [development evaluation record](evaluation-record.md) reports retained
-aggregate results and promotion decisions. The [capability campaign
-record](campaign.md) defines the staged evaluation and its success criteria.
+aggregate results and promotion decisions. The [campaign record](campaign.md)
+preserves the staged evaluation and its decisions. The [technical
+report](campaign-report.md) explains Foe, its advantages, and the measured
+campaign results.
 The [cross-trajectory capability analysis](cross-trajectory-analysis.md)
 maps retained failures to product changes and promotion gates.
 
@@ -49,11 +51,22 @@ bazel run //:foe -- login --status
 ```
 
 The runner copies `openai-codex.json` to
-`~/.cache/foe/terminal-bench/openai-codex.json`. Every trial receives that
-private working copy. A refreshed credential returns to the working copy
-before the next trial. The original login file remains unchanged. The runner
-holds a file lock so two local campaigns cannot race a token refresh. The
+`~/.cache/foe/terminal-bench/openai-codex.json`. A serial trial receives this
+private working copy and can return a refreshed credential before the next
+trial. The original login file remains unchanged. The runner holds a file lock
+for the complete campaign so local campaigns cannot race a token refresh. The
 private copy stays outside Harbor job directories and Foe episode directories.
+
+A parallel pair receives two private access-only credentials. Each file
+contains the access token and expiry. The account identifier is included when
+present. Each file omits the rotating refresh token. Its file mode prevents an
+accidental write. The task identity may own the file and can change its mode,
+so the mode does not provide an integrity boundary. Foe fails locally if the
+credential reaches its sixty-second refresh margin. The adapter uses a
+distinct remote path for each credential. It compares the bytes after the
+trial and removes the remote file. A changed credential invalidates the trial
+as infrastructure evidence. A task from untrusted provenance can read or
+transmit the access token during its validity window.
 
 The task container must receive the provider credential because Foe calls the
 model from that container. Use the pinned Terminal-Bench dataset for these
@@ -101,9 +114,13 @@ utility therefore changes tool selection without invalidating the benchmark.
 An installation failure or a missing task-required capability is an
 infrastructure failure and must not contribute a quality score.
 
+Every installed-agent preflight runs `foe plan --schema`. This command checks
+the installed binary without reading a default model or provider credential.
+The later task program names its model and credential file explicitly.
+
 ## Validate verifier-governed completion without model spend
 
-Three modified scenarios expose a public, read-only checker as a configured
+Nine modified scenarios expose a public, read-only checker as a configured
 tool. One Sol-low coding episode combines a typed return with
 `done_when.verify`. Foe rejects a completion claim when the checker reports
 findings. The model receives those findings and can continue within the
@@ -115,13 +132,25 @@ task-owned verifier determines task quality. Results from this modified lane
 are Foe-specific convergence evidence and do not contribute to a standard
 Terminal-Bench score.
 
-The selected scenarios cover three forms of completion:
+The selected scenarios cover file edits, repository state, live services,
+compiled artifacts, concurrency, and scientific calculations:
 
 - `cancel-async-tasks` executes concurrency and cancellation-cleanup probes.
+- `configure-git-webserver` checks authenticated Git publication and live HTTP
+  content.
+- `dna-assembly` checks primer binding, temperatures, and compatible assembly
+  overhangs.
+- `dna-insert` checks each input-output insertion boundary and primer
+  interpretation.
 - `fix-git` checks that the lost commit reaches `master` in a clean worktree.
+- `git-multibranch` checks distinct content through authenticated pushes and
+  two live HTTPS endpoints.
+- `gpt2-codegolf` checks compilation, source size, and four held-aside
+  continuations.
 - `large-scale-text-editing` checks the allowed Vim grammar and a temporary
   10,000-row sample. The task-owned verifier applies the script to all one
   million rows.
+- `overfull-hbox` checks synonym canonicalization and clean TeX compilation.
 
 Validate every checker before a provider-backed run:
 
@@ -149,11 +178,10 @@ bazel run //evals/terminal_bench:foe-verifier-cancel-async-tasks -- \
   --confirm-spend
 ```
 
-Equivalent targets end in `foe-verifier-fix-git` and
-`foe-verifier-large-scale-text-editing`. These targets use the default service
-tier, low reasoning for implementation, and high reasoning for an independent
-audit. The implementation retains 60 model calls. The audit receives 25
-additional calls. These values are loop backstops.
+The other target suffixes match the case names above. The DNA targets run a
+credential-free prerequisite installer before any model request. Every target
+uses the default service tier and low reasoning. The task registry supplies a
+60-call loop backstop.
 
 The configured executable's bytes participate in Foe's program identity. The
 adapter also downloads the checker after the episode and compares its digest
@@ -161,6 +189,15 @@ with the source digest. A changed checker invalidates the trial as
 infrastructure evidence.
 
 ## Preview and run one assessed task
+
+Some authorized security-research tasks can trigger a provider policy
+classification before Foe receives a response. The task registry marks those
+tasks and supplies one fixed authorization statement through Harbor. Other
+tasks receive no additional statement.
+
+The `--authorized-benchmark-context` option applies the same statement to an
+ad hoc replacement task. The campaign manifest records the statement and the
+tasks that received it.
 
 Every model-backed target prints planning token estimates and an estimated
 cost. The preview makes no model request:
@@ -174,6 +211,61 @@ Run the `fix-git` smoke case after reviewing that maximum:
 ```sh
 bazel run //evals/terminal_bench:foe-smoke -- --confirm-spend
 ```
+
+## Run resource-bounded task pairs
+
+The default `--workers 1` mode executes one assessed task at a time. Use two
+workers to run eligible tasks from one evaluation group as pairs:
+
+```sh
+bazel run //evals/terminal_bench:foe-development -- \
+  --workers 2 \
+  --confirm-spend
+```
+
+An ordinary two-worker run falls back to serial execution when a pair cannot
+start safely. A concurrency qualification must stop before provider spend
+instead:
+
+```sh
+bazel run //evals/terminal_bench:foe-development -- \
+  --workers 2 \
+  --require-parallel \
+  --confirm-spend
+```
+
+`--require-parallel` also refuses a task selection that contains an unpaired
+task or a task whose declared memory reservation requires serial execution.
+
+The runner starts a pair when all of these conditions hold:
+
+- The case metadata reserves less than 8 GiB for each task.
+- The pair reserves at most 8 GiB and four CPUs in total.
+- Available host memory covers the pair's declared reservations plus 4 GiB
+  for Harbor, Docker, and other host work. The host also has at least 100 GiB
+  of free disk.
+- Linux full-memory pressure stays below one percent over ten seconds.
+- The host has not swapped pages out since the preceding execution.
+- The access token covers every attempt and configured model stage. Its
+  remaining lifetime also covers fifteen minutes of startup and five minutes
+  of process settlement per attempt, plus Foe's sixty-second refresh margin.
+
+A task that reserves 8 GiB runs alone. A failed pair admission runs its tasks
+serially with the mutable credential. An out-of-memory result, an increased
+swap-out counter, or excessive memory pressure makes every later task serial.
+The campaign stops before starting an execution group when available memory
+cannot cover its declared reservations plus 4 GiB of host headroom. It also
+stops when free disk falls below 100 GiB.
+
+Parallelism applies between independent assessed tasks. Diagnosis,
+implementation, conditional escalation, and audit stages inside one task keep
+their declared order. Harbor also runs attempts for each task with its
+per-process concurrency set to one.
+
+Finish adaptive development and capability-search runs before confirmation or
+calibration-holdout evidence begins. Freeze the candidate and its execution
+configuration before starting a holdout group. This ordering preserves the
+holdout's role as evidence that did not influence the candidate.
 
 The runner records token usage and estimated cost without enforcing token
 ceilings. Model calls and wall time remain loop backstops. Use
@@ -528,7 +620,21 @@ Each confirmed command writes under `target/terminal-bench-jobs/`. One
 timestamped run contains a `campaign.json` manifest and one Harbor job per
 task. Harbor retains the task configuration, verifier result, exception data,
 aggregate token fields, and estimated cost. The manifest records the pricing
-source and whether token estimates were measurements or hard limits.
+source and whether token estimates were measurements or hard limits. It also
+records the requested worker limit, maximum scheduled concurrency, every
+execution group, process start counts, task resource reservations, credential
+mode, credential expiry bounds, admission fallbacks, host resource snapshots,
+and each group's timestamps and makespan. Concurrent tasks retain distinct
+Harbor job names and result paths.
+
+The runner writes the manifest atomically after every execution group. A
+terminal interrupt terminates every active Harbor process group and removes
+the temporary access-only credentials. A process-start failure also terminates
+workers that already started. The runner updates the manifest during error and
+interrupt cleanup. Completed and partially retained task records remain in the
+manifest. A task whose Harbor process started retains that status even when its
+result is incomplete. Tasks whose processes did not start receive an explicit
+`not_started` record. The runner exits unsuccessfully.
 
 The adapter runs `foe plan` against the task-specific program inside the task
 container before its first provider request. An invalid program is a setup

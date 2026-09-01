@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-sys.path.append(str(Path(__file__).resolve().parent.parent / "harness_bench"))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from foe_source_identity import evaluated_foe, require_evaluated_foe
 from run import read_cases
 
@@ -60,9 +60,25 @@ def evaluation_metadata(manifest: dict[str, Any], manifest_path: Path) -> dict[s
         if not isinstance(value, str) or not value:
             raise ValueError(f"Terminal-Bench manifest {manifest_path} has no string `{field}`")
         answer[field] = value
+    concurrency = manifest.get("concurrency")
+    if type(concurrency) is not int or concurrency not in (1, 2):
+        raise ValueError(
+            f"Terminal-Bench manifest {manifest_path} has invalid `concurrency`"
+        )
+    requested_workers = manifest.get("requested_workers", concurrency)
+    if type(requested_workers) is not int or requested_workers not in (1, 2):
+        raise ValueError(
+            f"Terminal-Bench manifest {manifest_path} has invalid `requested_workers`"
+        )
+    answer["concurrency"] = concurrency
+    answer["requested_workers"] = requested_workers
     configuration: dict[str, Any] = {
         "service_tier": answer["service_tier"],
         "token_policy": answer["token_limits"],
+        "task_execution": {
+            "requested_workers": requested_workers,
+            "scheduled_concurrency": concurrency,
+        },
         "implementation": {
             "model": answer["model"],
             "reasoning_effort": answer["reasoning_effort"],
