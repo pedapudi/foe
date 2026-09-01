@@ -16,7 +16,7 @@ read root.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "support"))
+sys.path.insert(0, str(Path.cwd().parent / "support"))
 
 from chunks import call, done, read_request, step, text  # noqa: E402
 

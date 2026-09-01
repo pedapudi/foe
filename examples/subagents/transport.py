@@ -16,7 +16,7 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "support"))
+sys.path.insert(0, str(Path.cwd().parent / "support"))
 from chunks import call, done, error, read_request, step, text, tool_names
 
 MODULES = ["src/config.py", "src/client.py"]

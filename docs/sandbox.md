@@ -25,7 +25,7 @@ declared.
 | each `grants.read` directory | read files, list directories |
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
 | each `grants.execute` file or directory | read and execute the file or every file below the directory, including from a tool subprocess |
-| each `tool_defs` entry's `exec` file, in this program and in every program below it | execute and read that file |
+| each reachable `tool_defs` executable image committed during construction | execute and read that inode |
 | the running `foe` binary, when `grants.spawn` is not empty | execute and read that file, so the episode can start children |
 | the credential file the `model` block resolves to, when present | read that file, so a child episode can read the credential after inheriting this domain |
 | the episode's own log directory | read and write |
@@ -96,9 +96,9 @@ Because a ruleset only narrows, an episode reserves what the programs below
 it need before it restricts itself. A child's read, write, and execute roots
 lie inside its parent's corresponding roots, and its bind ports among its
 parent's bind ports. Configuration resolution checks
-that containment. An episode also reserves the `tool_defs` executables of
-every program below it. Each descendant still narrows itself to its own
-configured executables and explicit execute grants.
+that containment. An episode also reserves the committed `tool_defs` images
+of every reachable program below it. Each descendant still narrows itself to
+its own configured executable images and explicit execute grants.
 
 ## The episode process
 
@@ -131,8 +131,8 @@ and no type expresses.
 The episode keeps:
 
 - read on its read roots, write on its write roots;
-- execute on every explicit execute grant and every `tool_defs` executable
-  of its own program and of every program below it;
+- execute on every explicit execute grant and every committed `tool_defs`
+  image of its own program and of every reachable program below it;
 - execute on its own binary when it may spawn children;
 - read on the key file named by its `model` block, which its children need;
 - read and write on its own log directory, which holds its children's
@@ -150,11 +150,39 @@ The episode keeps:
 A configured executable runs under the episode's ruleset narrowed once
 more. The narrowed policy keeps the read roots, write roots, explicit execute
 grants, loader paths, system paths, and device paths. It also keeps execute on
-the file named by the tool definition. It drops the log directory, key file,
-and execute access to other configured tools. It keeps the episode's bind
-ports, so a server started by a shell or held by a session listens on a
-granted port, and outbound TCP only when the tool definition sets
+the private inode committed for that tool. It drops the log directory, key
+file, and execute access to other configured tools. It keeps the episode's
+bind ports. A server started by a shell or held by a session can listen on a
+granted port. Outbound TCP remains available when the tool definition sets
 `network: true`.
+
+Construction reads the source file once and retains those exact bytes. It
+writes a content-addressed image under a private runtime directory outside
+every declared write root. It tries the parent of the episode log directory,
+`/tmp`, and `/var/tmp`, in that order. Construction fails when no location can
+be separated from the declared write roots. The image has no write bits, and
+the runtime retains a read-only descriptor for its inode. Invocation checks
+that descriptor against the retained bytes and digest, maps it to a
+collision-free child descriptor, and executes it through `/proc/self/fd`.
+The source pathname is never reopened.
+
+The episode process receives internal read and write access to the storage
+parent so it can remove the private directory after confinement. Tool and
+session policies omit this access. A configured write root that contains the
+episode log therefore does not expose an image stored at a separate location.
+
+A script receives its descriptor path as `$0`. A script that needs adjacent
+resources uses its declared working directory or an absolute configured path.
+
+Private executable images exist for the lifetime of their runtime owners.
+The last owner removes the private directory. Task-lifetime sessions use the
+session launcher and do not retain a configured tool or transport image.
+
+A parent passes only the executable descriptors reachable from the selected
+child program. A sealed manifest associates each descriptor with its
+configuration key and digest. Descriptor remapping preserves standard input,
+standard output, standard error, and every source descriptor when source and
+target numbers overlap.
 
 This crate forbids unsafe code, so the narrowing is applied by a short-lived
 thread rather than by a hook between fork and exec. The thread applies the
@@ -230,6 +258,11 @@ denials to the restricting process without privilege and without a daemon.
 
 - The host process. The process that launched `foe` holds the model
   credentials and the host tools, and the runtime never restricts it.
+- Another process running as the same operating-system user. Such a process
+  can alter files owned by that user, including private executable images.
+  The runtime detects a changed image immediately before launch and refuses
+  to execute it. A hostile concurrent mutation after that check remains
+  inside the host trust boundary.
 - The network of the episode process when it holds the transport. An
   episode with a `model` block connects to the provider itself, and
   Landlock has no rule that names a remote host, so outbound TCP is open

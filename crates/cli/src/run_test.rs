@@ -256,15 +256,16 @@ fn builtin_coding_can_retrieve_shortened_tool_results() {
     assert!(extra_builtin_specs().iter().any(|spec| spec.name == foe_core::retrieval::NAME));
 }
 
-/// docs/design.md "Program construction": a child validates the identity
-/// committed by its parent before it writes an event or executes a tool.
+/// docs/design.md "Program construction": a child resumed without its
+/// inherited executable descriptors validates the recorded identity.
 #[test]
-fn child_rejects_an_executable_changed_between_parent_check_and_child_construction() {
+fn independently_resumed_child_rejects_a_changed_executable() {
     let dir = std::env::temp_dir().join(format!("foe-cli-launch-gap-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let tool = dir.join("tool");
     std::fs::write(&tool, "first").unwrap();
+    std::fs::set_permissions(&tool, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let config: ProgramDocument = serde_json::from_value(serde_json::json!({
         "version": 3,
         "name": "child",

@@ -13,6 +13,7 @@ use foe_core::budget::Pool;
 use foe_core::confine::{Confined, Unconfined};
 use foe_core::context::ContextPolicy;
 use foe_core::exec::LocalExecutor;
+use foe_core::executable::{ExecutableTree, InheritedExecutables};
 use foe_core::grants::{RootReader, RootWriter};
 use foe_core::identity::runtime_info;
 use foe_core::loop_::{self, Log, Params};
@@ -26,7 +27,7 @@ use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
 use foe_log::seed::{SeedHeader, SeedProgram};
 use foe_log::{ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
-use foe_program::document::{resolve, ResolvedProgram};
+use foe_program::document::{resolve, resolve_with_executables, ResolvedProgram};
 use foe_program::identity::{compute, Identity};
 use foe_program::{Budget, ModelConfig, ProgramDocument, ToolSpec};
 use foe_workflow::WorkflowParams;
@@ -430,12 +431,18 @@ mod tests;
 
 /// One line naming the transport a `model` block resolves to, for `foe plan`.
 #[cfg(feature = "transport")]
-pub fn describe_transport(model: &ModelConfig) -> String {
-    foe_transport::plan(model).map(|plan| plan.describe()).unwrap_or_else(|e| e.to_string())
+pub fn describe_transport(program: &ResolvedProgram) -> String {
+    let Some(model) = &program.model else { return "no model".into() };
+    foe_transport::plan(model)
+        .map(|plan| {
+            plan.describe_with_exec_sha256(program.transport_executable.as_ref().map(|image| image.sha256.as_str()))
+        })
+        .unwrap_or_else(|e| e.to_string())
 }
 
 #[cfg(not(feature = "transport"))]
-pub fn describe_transport(model: &ModelConfig) -> String {
+pub fn describe_transport(program: &ResolvedProgram) -> String {
+    let model = program.model.as_ref().expect("called only for a model");
     format!("{}/{}: this binary was built without the transport feature", model.provider, model.model)
 }
 
@@ -461,25 +468,26 @@ fn prepare_model(_config: &mut ProgramDocument) -> Result<(), String> {
 #[cfg(feature = "transport")]
 fn built_in_transport(
     model: &ModelConfig,
+    executable: Option<Arc<foe_core::executable::Executable>>,
     unconfined: &mut Unconfined,
     log_dir: &Path,
 ) -> Result<Arc<dyn Transport>, String> {
     let plan = foe_transport::plan(model).map_err(|e| e.to_string())?;
     let policy = unconfined.policy_mut();
     policy.read_files.extend(plan.credential_path.iter().cloned());
-    policy.exec.extend(plan.exec.iter().cloned());
     let executor: Option<Arc<dyn foe_core::Executor>> = plan.exec.as_ref().map(|_| {
         let (sandbox, policy) = unconfined.parts();
         let cancel = Arc::new(AtomicBool::new(false));
         Arc::new(LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel))
             as Arc<dyn foe_core::Executor>
     });
-    foe_transport::build_planned(&plan, executor).map_err(|e| e.to_string())
+    foe_transport::build_planned_with_executable(&plan, executor, executable).map_err(|e| e.to_string())
 }
 
 #[cfg(not(feature = "transport"))]
 fn built_in_transport(
     _model: &ModelConfig,
+    _executable: Option<Arc<foe_core::executable::Executable>>,
     _unconfined: &mut Unconfined,
     _log_dir: &Path,
 ) -> Result<Arc<dyn Transport>, String> {
@@ -490,7 +498,21 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let mut config = load_program_document(&options)?;
     prepare_model(&mut config)?;
     let task = config.task.clone();
-    let program = resolve(&config).map_err(|e| format!("config: {e}"))?;
+    let inherited = options
+        .log_dir
+        .as_deref()
+        .filter(|dir| dir.join("lineage.json").is_file())
+        .map(|dir| read_lineage(Some(dir)))
+        .transpose()?
+        .filter(|lineage| lineage.parent_id.is_some())
+        .map(|lineage| InheritedExecutables::read(&lineage.episode_id))
+        .transpose()?
+        .flatten();
+    let program = match &inherited {
+        Some(executables) => resolve_with_executables(&config, &executables.bytes()),
+        None => resolve(&config),
+    }
+    .map_err(|e| format!("config: {e}"))?;
     let identity = identity(&program)?;
     let (log_dir, lineage) = episode_directory(&options, &identity.hash, &task)?;
     if let Some(expected) = &lineage.expected_program_identity {
@@ -503,6 +525,11 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let limits = lineage.effective_budget.clone().unwrap_or_else(|| program.budget.clone());
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
+    let executables = match &inherited {
+        Some(inherited) => ExecutableTree::from_inherited(&program, inherited),
+        None => ExecutableTree::materialize(&program, &log_dir),
+    }
+    .map_err(|e| format!("configured executable: {e}"))?;
     if let Some(source) = lineage.fork_source.as_ref().filter(|_| !log_dir.join(foe_log::fold::LOG_FILE).is_file()) {
         let at = lineage.fork_at.ok_or("lineage.json: fork_source requires fork_at")?;
         let header = SeedHeader {
@@ -520,7 +547,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let sandbox = Arc::new(Sandbox::new(program.sandbox.mode).map_err(|e| e.to_string())?);
-    let mut unconfined = Unconfined::new(sandbox, Policy::for_episode(&program, &log_dir));
+    let mut unconfined = Unconfined::new(sandbox, Policy::for_episode(&program, &executables, &log_dir));
     // Telemetry is resolved before confinement: the capture directory must
     // be writable after the sandbox closes, so it is created now and
     // granted like any other write root. A broken enablement file warns
@@ -547,7 +574,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let context = context_policy(&program)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
     let runtime_info = runtime_info();
     let transport = match &program.model {
-        Some(model) => Some(built_in_transport(model, &mut unconfined, &log_dir)?),
+        Some(model) => Some(built_in_transport(model, executables.transport.clone(), &mut unconfined, &log_dir)?),
         None if options.host => None,
         None => return Err("no model: give --model and --key-file, add a `model` block, or run under --host".into()),
     };
@@ -565,7 +592,18 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         effective_budget: Some(limits.clone()),
     };
     let telemetry_log_dir = log_dir.clone();
-    let setup = Setup { program, limits, log_dir, confined, viewer, transport, context, start, host: options.host };
+    let setup = Setup {
+        program,
+        executables,
+        limits,
+        log_dir,
+        confined,
+        viewer,
+        transport,
+        context,
+        start,
+        host: options.host,
+    };
     let outcome = runtime()?.block_on(episode(setup))?;
     if let Some(settings) = &telemetry {
         crate::telemetry::after_run(settings, &telemetry_log_dir);
@@ -586,6 +624,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
 /// assembled here can widen what the kernel already holds.
 struct Setup {
     program: ResolvedProgram,
+    executables: ExecutableTree,
     limits: Budget,
     log_dir: PathBuf,
     confined: Confined,
@@ -597,7 +636,7 @@ struct Setup {
 }
 
 async fn episode(setup: Setup) -> Result<Outcome, String> {
-    let Setup { program, limits, log_dir, confined, viewer, transport, host, context, start } = setup;
+    let Setup { program, executables, limits, log_dir, confined, viewer, transport, host, context, start } = setup;
     let id = start.id.clone();
     let log = Arc::new(
         Log::create_or_open(&log_dir, host.then(stdout_mirror)).map_err(|e| format!("{}: {e}", log_dir.display()))?,
@@ -626,8 +665,16 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let team = Arc::new(Team::new(id.clone(), log.clone(), Arc::new(protocol.clone()), router.clone(), pool.clone()));
     let uplink: Arc<dyn Uplink> = if host { Arc::new(StdoutUplink) } else { Arc::new(NoHostUplink) };
     let connections = ProcessConnections { uplink, router: router.clone(), observer: team.clone() };
-    let spawner = ProcessSpawner::new(id, log_dir.clone(), program.clone(), limits, extra_builtin_specs(), connections)
-        .map_err(|e| format!("spawner: {e}"))?;
+    let spawner = ProcessSpawner::new_with_executables(
+        id,
+        log_dir.clone(),
+        program.clone(),
+        executables.clone(),
+        limits,
+        extra_builtin_specs(),
+        connections,
+    )
+    .map_err(|e| format!("spawner: {e}"))?;
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
     let (sandbox, policy) = confined.parts();
     let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel);
@@ -643,7 +690,8 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let mut builtins: Vec<Box<dyn Tool>> = foe_code::all();
     builtins.push(foe_core::retrieval::tool(log.clone()));
     builtins.extend(team::tools(team.clone(), parent));
-    let registry = Registry::new(&program, host_tools, builtins).map_err(|e| format!("config: {e}"))?;
+    let registry = Registry::new_with_executables(&program, &executables, host_tools, builtins)
+        .map_err(|e| format!("config: {e}"))?;
     let write = program.grants.write.clone();
     let reader = RootReader::new(program.grants.read.clone()).map_err(|e| format!("grants.read: {e}"))?;
     let writer = match write.is_empty() {

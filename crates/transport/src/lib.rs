@@ -96,6 +96,10 @@ pub struct Plan {
 impl Plan {
     /// One line for `foe plan`.
     pub fn describe(&self) -> String {
+        self.describe_with_exec_sha256(None)
+    }
+
+    pub fn describe_with_exec_sha256(&self, sha256: Option<&str>) -> String {
         let mut text = format!("{}/{}: {} format", self.provider.name, self.model.model, self.format_name());
         match &self.credential_path {
             Some(path) => text.push_str(&format!(", {} from {}", self.provider.auth.name(), path.display())),
@@ -103,6 +107,9 @@ impl Plan {
         }
         if let Some(exec) = &self.exec {
             text.push_str(&format!(", program {}", exec.display()));
+            if let Some(sha256) = sha256 {
+                text.push_str(&format!(", sha256 {sha256}"));
+            }
         }
         text
     }
@@ -229,10 +236,22 @@ pub fn from_config(config: &ModelConfig) -> Result<Arc<dyn Transport>, Transport
 
 /// Builds the transport of a resolved plan.
 pub fn build_planned(plan: &Plan, executor: Option<Arc<dyn Executor>>) -> Result<Arc<dyn Transport>, TransportError> {
+    build_planned_with_executable(plan, executor, None)
+}
+
+pub fn build_planned_with_executable(
+    plan: &Plan,
+    executor: Option<Arc<dyn Executor>>,
+    executable: Option<Arc<foe_core::executable::Executable>>,
+) -> Result<Arc<dyn Transport>, TransportError> {
     #[cfg(feature = "exec")]
     if plan.provider.format == WireFormat::Exec {
         let executor = executor.ok_or(TransportError::NoExecutor)?;
-        return Ok(Arc::new(exec::ExecTransport::new(&plan.model, executor)?));
+        let transport = match executable {
+            Some(executable) => exec::ExecTransport::new_with_executable(&plan.model, executor, executable)?,
+            None => exec::ExecTransport::new(&plan.model, executor)?,
+        };
+        return Ok(Arc::new(transport));
     }
     let _ = &executor;
     build_http(plan)
@@ -683,6 +702,17 @@ mod tests {
             }
             assert!(plan.describe().starts_with(&format!("{name}/m: ")), "{}", plan.describe());
         }
+    }
+
+    #[test]
+    fn exec_plan_reports_the_construction_digest() {
+        let mut config = model("exec");
+        config.options.insert("exec".into(), "/usr/bin/true".into());
+        let planned = plan_with_home(&config, &fake_home("exec-digest")).unwrap();
+        let digest = "0123456789abcdef";
+        let description = planned.describe_with_exec_sha256(Some(digest));
+        assert!(description.contains("program /usr/bin/true"), "{description}");
+        assert!(description.contains(&format!("sha256 {digest}")), "{description}");
     }
 
     #[test]

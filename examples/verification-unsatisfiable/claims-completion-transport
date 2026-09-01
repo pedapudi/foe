@@ -12,9 +12,9 @@ demonstrates.
 import sys
 from pathlib import Path
 
-# `chunks.py` sits in `support` beside the directory holding this file, both
-# in the repository and in the project a runner copies them into.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "support"))
+# The configured working directory is `tools`; `support` is its sibling in
+# both the repository and the project created by the runner.
+sys.path.insert(0, str(Path.cwd().parent / "support"))
 
 from chunks import done, read_request, step, text  # noqa: E402
 

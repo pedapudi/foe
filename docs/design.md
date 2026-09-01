@@ -411,7 +411,8 @@ this tree.
 - every model-visible string the runtime itself contributes, such as the
   description of the synthesized `return` tool and the text that frames
   verification findings;
-- the runtime's version and build hash.
+- the runtime's version and build hash, plus the executable transport's
+  content digest when the model provider is `exec`.
 
 Resolved paths are excluded so that running the same program against a
 different directory yields the same identity. Runtime-contributed strings are
@@ -419,10 +420,15 @@ included so that upgrading foe changes identity when and only when the model
 would see different text.
 
 Construction reads files named in the configuration so identity can hash the
-retained executable digests. Identity itself opens no file, executes nothing,
-and opens no socket. A system that records which program produced which
-result can therefore compute identity from the constructed tree without
-reopening its executable paths.
+retained executable bytes. Identity itself opens no file, executes nothing,
+and opens no socket. Construction materializes each reachable configured
+executable as a private, content-addressed regular file outside the program's
+declared write roots. The episode process alone receives internal read and
+write access to the storage parent for cleanup. Every tool and session policy
+omits that access.
+Invocation checks the held image against the construction bytes, then executes
+the inode through its descriptor. The digest in identity and the bytes that run
+therefore come from one observation of the source file.
 
 ## Tools
 
@@ -525,13 +531,12 @@ For forked context, the launch metadata also names the source log and boundary.
 The child validates its identity before it seeds that prefix under its own
 program evidence.
 
-Before launch, the parent also compares every descendant executable with the
-digest retained during construction. This check and the child's identity
-comparison reject changes through child construction, including a change
-between the parent check and child startup. Configured executable paths remain
-ordinary paths after a child starts. Descriptor-pinned execution is required
-to close a replacement race between successful child construction and a later
-tool invocation.
+Before launch, the parent passes the selected child's reachable executable
+descriptors and a sealed manifest that names their configuration keys and
+digests. The child constructs its program from those retained bytes and
+checks the expected identity before writing an event. It invokes those same
+descriptors later. Source-path replacement, in-place modification, and
+deletion therefore cannot change child identity or execution.
 
 Child creation separates identifier allocation from launch. Allocating an
 identifier reserves no budget and starts no process. A parent appends the
@@ -971,11 +976,11 @@ supplies only the two directory-backed resolvers `foe plan` builds for its
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 5,325 lines,
+sandbox, and spawning — and its Rust source stays under 5,825 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/program`, which is budgeted
-apart under 1,425 lines. The two are separate because a program
+apart under 1,500 lines. The two are separate because a program
 document that gains a key must not buy room in the loop, and because the
 claim the kernel's number supports is about the machine that runs a program
 rather than about the data model it runs.
@@ -998,8 +1003,16 @@ that grows must not force the runtime to shrink. The browser viewer's HTML,
 TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
 
+The ceilings reserve 500 kernel lines, 75 program lines, and 75 command-line
+lines for construction-committed executable images and their headroom. The
+program contract reads one snapshot for each reachable configured executable.
+The kernel materializes, confines, invokes, verifies, and transfers those
+snapshots across child process boundaries. The command line constructs the
+root image tree before confinement. This mechanism adds no program-document
+key or log event.
+
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,325 lines. It is separate because it serves a person at a terminal
+under 1,400 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and

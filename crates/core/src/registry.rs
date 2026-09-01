@@ -8,6 +8,7 @@
 //! the tool's declared effect entitles it to. The built-in `block` tool and
 //! the synthesized `return` tool are implemented here.
 
+use crate::executable::{Executable, ExecutableTree};
 use crate::{CallCtx, ExecRequest, ExecResult, Executor, Tool, ToolValue};
 use foe_log::ToolCall;
 use foe_program::document::ResolvedProgram;
@@ -58,6 +59,17 @@ impl Registry {
         host_tools: Vec<Box<dyn Tool>>,
         extra_builtins: Vec<Box<dyn Tool>>,
     ) -> Result<Self, ProgramError> {
+        let executables = ExecutableTree::materialize(program, std::path::Path::new("/tmp/foe-standalone-episode"))
+            .map_err(invalid)?;
+        Self::new_with_executables(program, &executables, host_tools, extra_builtins)
+    }
+
+    pub fn new_with_executables(
+        program: &ResolvedProgram,
+        executables: &ExecutableTree,
+        host_tools: Vec<Box<dyn Tool>>,
+        extra_builtins: Vec<Box<dyn Tool>>,
+    ) -> Result<Self, ProgramError> {
         let extra_specs: Vec<ToolSpec> = extra_builtins.iter().map(|t| t.spec().clone()).collect();
         let specs = resolve_specs(program, &extra_specs)?;
         let mut builtins: BTreeMap<String, Arc<dyn Tool>> =
@@ -70,7 +82,11 @@ impl Registry {
             let name = spec.name.as_str();
             let mut exec = None;
             let (tool, source): (Arc<dyn Tool>, Source) = if let Some(def) = program.tool_defs.get(name) {
-                let tool = Arc::new(ExecTool { spec: spec.clone(), def: def.clone() });
+                let executable = executables
+                    .tools
+                    .get(name)
+                    .ok_or_else(|| invalid(format!("configured tool `{name}` has no committed executable")))?;
+                let tool = Arc::new(ExecTool { spec: spec.clone(), def: def.clone(), executable: executable.clone() });
                 exec = Some(tool.clone());
                 (tool, Source::Configured)
             } else if program.host_tools.contains_key(name) {
@@ -230,17 +246,12 @@ impl Registry {
             .ok_or_else(|| format!("verifier `{name}` returned a value that is not a list of strings"))
     }
 
-    /// The verifier identity a `verification/result` records: for a
-    /// `tool_defs` executable, the SHA-256 of its file content read at
-    /// invocation, so a binary replaced mid-episode is visible per
-    /// invocation; for a built-in or host tool, `runtime_build`, the hash
-    /// of the binary that implements it. `unknown` when the file cannot be
-    /// read, in which case the invocation itself fails as well.
+    /// The verifier identity a `verification/result` records. Configured
+    /// tools use the executable digest committed during construction.
+    /// Built-in and host tools use the runtime build identity.
     pub fn verifier_identity(&self, name: &str, runtime_build: &str) -> String {
         match self.entry(name).and_then(|e| e.exec.as_ref()) {
-            Some(exec) => std::fs::read(&exec.def.exec)
-                .map(|bytes| format!("sha256:{}", foe_program::identity::sha256_hex(&bytes)))
-                .unwrap_or_else(|_| "unknown".into()),
+            Some(exec) => format!("sha256:{}", exec.executable.sha256),
             None => runtime_build.to_string(),
         }
     }
@@ -252,12 +263,14 @@ impl Registry {
 pub struct ExecTool {
     spec: ToolSpec,
     def: ToolDef,
+    executable: Arc<Executable>,
 }
 
 impl ExecTool {
     fn request(&self, args: Vec<String>) -> ExecRequest {
         ExecRequest {
             program: self.def.exec.clone(),
+            executable: Some(self.executable.clone()),
             args,
             cwd: self.def.cwd.clone().unwrap_or_default(),
             env: BTreeMap::new(),

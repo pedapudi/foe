@@ -239,13 +239,14 @@ fn child_identity_is_stable_across_different_runtime_allowances() {
     }
 }
 
-/// docs/design.md "Program construction": a configured executable that
-/// changes after construction is rejected before the child can start.
+/// docs/design.md "Program construction": a child receives the executable
+/// bytes committed before its source changes.
 #[test]
-fn launch_refuses_a_descendant_executable_changed_after_construction() {
+fn launch_does_not_reopen_a_descendant_executable_after_construction() {
     let dir = scratch("spawn", "changed-executable");
     let tool = dir.join("tool");
     std::fs::write(&tool, "first").unwrap();
+    std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
     let mut config = parent_config();
     config.grants.read = vec![dir.clone()];
     let worker = config.programs.get_mut("worker").unwrap();
@@ -278,9 +279,8 @@ fn launch_refuses_a_descendant_executable_changed_after_construction() {
         reserve: BudgetAmount::default(),
         call_id: "tc".into(),
     };
-    let error = spawner.spawn(request).err().unwrap().to_string();
-    assert!(error.contains("changed after construction"), "{error}");
-    assert!(!dir.join("children").exists(), "the child directory is not created before the check");
+    let handle = spawner.spawn(request).unwrap();
+    assert!(handle.dir.is_dir());
 }
 
 /// docs/design.md "Subagents and teams": a spawned fork leaves seeding to

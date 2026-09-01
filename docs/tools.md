@@ -131,8 +131,10 @@ under this contract.
   episode's `spill/` directory, and the captured text ends with a line
   naming that file.
 
-The executable's content is hashed into the program's identity, so a
-replaced binary at the same path changes identity.
+Construction reads a configured executable once. Its retained bytes supply
+both the digest in program identity and the private executable image used by
+every call. The configured pathname remains the name reported to the model
+and in errors. It is never reopened for execution.
 
 ## Built-in coding tools
 

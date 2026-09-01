@@ -21,6 +21,7 @@ fn a_valid_document_resolves_with_canonical_paths_and_defaults() {
     std::os::unix::fs::symlink(root.join("sub"), root.join("link")).unwrap();
     let exec = root.join("tool.sh");
     std::fs::write(&exec, "#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let program = program_with(&root, |v| {
         v["grants"]["read"] = json!([root.join("link")]);
         v["grants"]["execute"] = json!([root.join("link")]);
@@ -376,6 +377,8 @@ fn a_workflow_model_node_stays_within_its_ceiling() {
     let tool_home = root.join("tool-home");
     std::fs::write(&exec, "").unwrap();
     std::fs::write(&other, "").unwrap();
+    std::fs::set_permissions(&exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    std::fs::set_permissions(&other, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     std::fs::create_dir(&tool_home).unwrap();
     let base = || {
         let mut value = config_value(&root);

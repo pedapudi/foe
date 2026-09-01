@@ -500,6 +500,52 @@ fn a_spawned_child_can_run_its_workflow_model_node() {
     assert_eq!(released["data"]["spent"]["episodes"], 2, "the reconstructed subtree count includes the model node");
 }
 
+/// docs/protocol.md "Children": a child replaces inherited executable
+/// descriptors with close-on-exec copies before it starts any tool.
+#[test]
+fn a_child_tool_inherits_no_program_tree_descriptor() {
+    let dir = scratch("child-executable-descriptors");
+    let probe = dir.join("probe");
+    std::fs::write(
+        &probe,
+        "#!/bin/sh\nfor fd in 63 64 65 66; do [ ! -e /proc/self/fd/$fd ] || exit 9; done\nprintf 'clean\\n'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&probe, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["spawn", "wait"]);
+        c["grants"]["spawn"] = json!(["worker"]);
+        c["budget"] = json!({ "model_calls": 4, "max_depth": 1, "max_episodes": 2 });
+        c["programs"] = json!({ "worker": {
+            "name": "worker", "instructions": { "role": "Run the probe." }, "tools": ["probe"],
+            "tool_defs": { "probe": { "exec": probe, "description": "Checks inherited descriptors." } },
+            "grants": { "read": [dir] }, "budget": { "model_calls": 2, "max_depth": 0 }
+        } });
+    });
+    let mut delegate = call("tc_spawn", "spawn", r#"{"program":"worker","task":"run the probe"}"#);
+    delegate.extend(call("tc_wait", "wait", "{}"));
+    delegate.push(done("tool"));
+    let mut run_probe = call("tc_probe", "probe", r#"{"args":[]}"#);
+    run_probe.push(done("tool"));
+    let responses =
+        vec![delegate, run_probe, vec![text("probe finished"), done("end")], vec![text("done"), done("end")]];
+    let (events, code) = host_run(&dir, &config, responses, |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+    let child_id =
+        events.iter().find(|event| event["type"] == "spawn/start").unwrap()["data"]["child_id"].as_str().unwrap();
+    let child = child_events(&dir, child_id);
+    let result = child.iter().find(|event| event["type"] == "tool/result" && event["data"]["name"] == "probe").unwrap();
+    assert_eq!(result["data"]["value"]["exit_code"], 0, "{result}");
+    assert!(
+        std::fs::read_dir(&dir).unwrap().all(|entry| !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("foe-executables-")),
+        "the confined root removes its private executable directory"
+    );
+}
+
 /// docs/workflow.md "Recovery" and "Tool nodes": a configured executable
 /// that exits non-zero fails its node; the host's `retry` re-fires it and
 /// the workflow completes when it succeeds.
@@ -509,7 +555,7 @@ fn a_failed_tool_node_is_retried_through_recovery() {
     let script = dir.join("flaky");
     std::fs::write(
         &script,
-        "#!/bin/sh\nstate=\"$(dirname \"$0\")/state\"\nif [ ! -f \"$state\" ]; then touch \"$state\"; echo failing; exit 1; fi\necho fine\n",
+        "#!/bin/sh\nstate=state\nif [ ! -f \"$state\" ]; then touch \"$state\"; echo failing; exit 1; fi\necho fine\n",
     )
     .unwrap();
     std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
@@ -1051,6 +1097,8 @@ fn plan_reports_effective_authority_across_nested_descendants() {
     let child_exec = dir.join("child-tool");
     std::fs::write(&root_exec, "").unwrap();
     std::fs::write(&child_exec, "").unwrap();
+    std::fs::set_permissions(&root_exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    std::fs::set_permissions(&child_exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let grand = json!({
         "name": "grand", "instructions": { "role": "inspect" }, "tools": ["inspect"],
         "host_tools": { "inspect": { "description": "Inspect through the host", "params": {}, "effect": "reads" } },
@@ -1160,18 +1208,18 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
 /// model sees, never a side effect of moving code between crates.
 #[rustfmt::skip]
 const RECORDED_IDENTITIES: [(&str, &str); 12] = [
-    ("budget-exhausted", "sha256:32ab7955c4efec14ce6b010a7d6e3059cc380c4f8fd4821a2d11880552c8d7ef"),
-    ("exec-transport", "sha256:06387f755130b0b2548bb973c15eb7979d111c31e63ace8dd6c49c5303d7bf63"),
+    ("budget-exhausted", "sha256:ec636129a5f71e9b27a0400ec5d1868641ea9033b3a04c44d6cb051176ad2b79"),
+    ("exec-transport", "sha256:0a4009297454124eb206dcad3624cf1092369373ff5d4ce20d7a190bbfd49602"),
     ("host-transport", "sha256:dc33b63a0dd2bb9653f1062e0e9910b79bfb9ae492bb2a90bf1789a1dd42164c"),
-    ("minimal", "sha256:71ba78ad35f19426380b56e15d0cb56bb9b04ea13a93008829a4e108f1a7cecd"),
-    ("recovery-exhausted", "sha256:9f30fc8bff29890c9dcd34ab78af56b82fd4730dc063729d5532df8426a4fcfd"),
-    ("sandbox", "sha256:af9e111ff74c666f5c6cfd607567bd03202db18bb752c179b562a32665bf79dd"),
-    ("self-extension", "sha256:dd84695d082863b724d7f545cd3b540d12466cd8a4f09320a94839d3475dcdfe"),
-    ("subagents", "sha256:a06b99f1756c0e7875aee3929805a1fdf84dbd52e2848509da1c9bc00e012266"),
-    ("team", "sha256:707e936f2b81df2e3d9bb30c73b99110fda402095bfcfa42404047162691dfe7"),
-    ("verification-unsatisfiable", "sha256:4d33b5b864bea74f565876ae9d9343f27f82d27306d9e75566e732657450fad2"),
-    ("workflow", "sha256:38ee62d9be7fd49f0125cf5f972aa9dc34d841a443731bb7137a7ba96d2139a7"),
-    ("wrap-a-binary", "sha256:d84587490eb4f1238309b6bf77ace3f57e201f5f82372c24be6a04308ba21638"),
+    ("minimal", "sha256:71240480cc7699e7e6885341ebb36fab17dc04097d262461e5484dc7244e7598"),
+    ("recovery-exhausted", "sha256:459a641e2ddeaf169c6a00109d6f1bffef3e624b2fb182208684ee94730cba0d"),
+    ("sandbox", "sha256:6c84759c541be9f4f44bc1601de3a3a19b2526fb0cbaee03271c374577e96a5c"),
+    ("self-extension", "sha256:a4d234bad48a2655fd4bb5db58db701cd6ffc28823d0350e2afa4f12972c081b"),
+    ("subagents", "sha256:650cfded50c795348bacb6bb5d86d105f6cb214f5db2434ec06a6a8401ac8873"),
+    ("team", "sha256:e2d4d52b51c95a489f9ae74f9b4406cc268804c9d6cf1dd9e99f6527fb903e03"),
+    ("verification-unsatisfiable", "sha256:85a34e9e7f9ffc679f8f33773b7d1767b60203a6a8428dacec09367f9bfb96da"),
+    ("workflow", "sha256:7caf05e9a00b6c202352ec3ff52d0686bb25d1b0e3f108993186069a38e319b5"),
+    ("wrap-a-binary", "sha256:778f09bcd089d59824d5fa347bfec737995d31ba42cc5ac3381c9553276295b6"),
 ];
 
 /// The runtime the recorded identities were computed under. The real one

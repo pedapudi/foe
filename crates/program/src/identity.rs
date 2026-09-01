@@ -2,11 +2,11 @@
 //!
 //! Implements docs/design.md (Programs and identity). The identity
 //! document lists everything that shapes what the model sees and nothing
-//! else: resolved paths, the `model` block, `sandbox`, and the task are
-//! absent. Construction reads the executables named in `tool_defs`. Identity
-//! uses the retained digests, executes nothing, and opens no socket. The
-//! caller supplies the runtime named by the document. Reading the running
-//! binary belongs to `foe_core::identity::runtime_info`.
+//! else: resolved paths, model selection, `sandbox`, and the task are absent.
+//! Construction reads reachable configured tools and an executable transport.
+//! Identity uses their retained digests, executes nothing, and opens no
+//! socket. The caller supplies the runtime named by the document. Reading the
+//! running binary belongs to `foe_core::identity::runtime_info`.
 
 use crate::document::ResolvedProgram;
 use crate::workflow::WorkflowConfig;
@@ -46,8 +46,8 @@ pub fn compute(
     for spec in tools::resolve_specs(program, extra_builtins)? {
         let mut entry = serde_json::to_value(&spec)?;
         if program.tool_defs.contains_key(&spec.name) {
-            let digest = program.executable_sha256.get(&spec.name).expect("a resolved executable has a digest");
-            entry["exec_sha256"] = Value::String(digest.clone());
+            let image = program.executable_images.get(&spec.name).expect("a resolved executable has an image");
+            entry["exec_sha256"] = Value::String(image.sha256.clone());
         }
         tools.push(entry);
     }
@@ -64,6 +64,10 @@ pub fn compute(
     });
     if program.grants.task_session {
         grants["task_session"] = Value::Bool(true);
+    }
+    let mut runtime = serde_json::to_value(runtime)?;
+    if let Some(image) = &program.transport_executable {
+        runtime["exec_transport_sha256"] = Value::String(image.sha256.clone());
     }
     let document = json!({
         "name": program.name,
@@ -125,26 +129,6 @@ fn workflow_document(
     }
     let texts = texts(harness_text::workflow_texts());
     Ok(json!({ "nodes": nodes, "max_interventions": wf.recovery.max_interventions, "texts": texts }))
-}
-
-/// Confirms that configured executable files still have the content read
-/// during construction. A mismatch prevents a child launch until execution
-/// can use committed file descriptors directly.
-pub fn verify_executables(program: &ResolvedProgram) -> Result<(), ProgramError> {
-    for (name, expected) in &program.executable_sha256 {
-        let def = &program.tool_defs[name];
-        let bytes = std::fs::read(&def.exec).map_err(|e| ProgramError::Invalid {
-            key: format!("tool_defs.{name}.exec"),
-            rule: format!("still names the executable read during construction: {e}"),
-        })?;
-        if sha256_hex(&bytes) != *expected {
-            return Err(ProgramError::Invalid {
-                key: format!("tool_defs.{name}.exec"),
-                rule: "still has the content read during construction".into(),
-            });
-        }
-    }
-    program.spawned_programs().try_for_each(verify_executables)
 }
 
 fn texts(list: Vec<(&str, &str)>) -> serde_json::Map<String, Value> {

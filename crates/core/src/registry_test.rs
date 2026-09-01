@@ -5,7 +5,12 @@ use crate::{Tool, ToolCall};
 use foe_program::harness_text as text;
 use foe_program::{Effect, ProgramError};
 use serde_json::{json, Value};
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
+
+fn executable(path: &std::path::Path) {
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
 
 fn probe(name: &str, effect: Effect) -> Box<dyn Tool> {
     Box::new(Probe::new(name, effect))
@@ -31,6 +36,7 @@ fn names_resolve_in_source_order_and_schemas_follow_tools_order() {
     let root = tmp("registry-order");
     let exec = root.join("t.sh");
     std::fs::write(&exec, "").unwrap();
+    executable(&exec);
     let program = program_with(&root, |v| {
         v["tools"] = json!(["h", "t", "block", "p"]);
         v["tool_defs"] = json!({ "t": { "exec": exec, "description": "configured", "instruction": "use t" } });
@@ -211,6 +217,7 @@ async fn configured_executables_receive_args_as_argv_and_report_exit_as_data() {
     let root = tmp("registry-exec");
     let exec = root.join("t.sh");
     std::fs::write(&exec, "").unwrap();
+    executable(&exec);
     let program = program_with(&root, |v| {
         v["tools"] = json!(["t"]);
         v["tool_defs"] = json!({ "t": { "exec": exec, "description": "d", "timeout_seconds": 7, "network": true } });
@@ -241,6 +248,7 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     let root = tmp("registry-verify");
     let exec = root.join("v.sh");
     std::fs::write(&exec, "").unwrap();
+    executable(&exec);
     let program = program_with(&root, |v| {
         v["tools"] = json!(["block", "v"]);
         v["tool_defs"] = json!({ "v": { "exec": exec, "description": "d" } });

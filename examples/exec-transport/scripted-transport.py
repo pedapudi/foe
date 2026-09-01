@@ -18,7 +18,7 @@ episode's read roots and this file. `run.sh` copies this file and
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path.cwd()))
 
 from chunks import call, done, read_request, step, text
 

@@ -10,6 +10,7 @@
 //! bytes. Beyond that the remainder is written to a file under the spill
 //! directory and the captured bytes end with one line naming that file.
 
+use crate::executable::{next_child_fd, process_fd_path};
 use crate::sandbox::{Policy, Sandbox};
 use crate::{CapError, ExecRequest, ExecResult, Executor};
 use command_fds::{CommandFdExt, FdMapping};
@@ -53,7 +54,15 @@ impl Executor for LocalExecutor {
     fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError> {
         let start = Instant::now();
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
-        let mut cmd = Command::new(&req.program);
+        if let Some(executable) = &req.executable {
+            executable.verify().map_err(CapError::Invalid)?;
+        }
+        let executable_fd = req.executable.as_ref().map(|_| next_child_fd(req.pass_fds.iter().map(|(fd, _)| *fd)));
+        let invoked = executable_fd.map(process_fd_path).unwrap_or_else(|| req.program.clone());
+        let mut cmd = Command::new(&invoked);
+        if req.executable.is_some() {
+            cmd.arg0(&req.program);
+        }
         cmd.args(&req.args)
             .current_dir(&req.cwd)
             .env_clear()
@@ -64,12 +73,28 @@ impl Executor for LocalExecutor {
             .stderr(Stdio::piped());
         // Each mapped descriptor is duplicated here; the caller's copy in
         // the request closes when the request drops, at the end of the run.
-        let mapped = |(child_fd, fd): &(i32, Arc<std::os::fd::OwnedFd>)| {
-            Some(FdMapping { parent_fd: fd.as_fd().try_clone_to_owned().ok()?, child_fd: *child_fd })
-        };
-        cmd.fd_mappings(req.pass_fds.iter().filter_map(mapped).collect())
-            .map_err(|e| CapError::Invalid(format!("fd mapping: {e:?}")))?;
-        let narrowed = req.policy.clone().unwrap_or_else(|| self.policy.for_executable(&req.program, req.network));
+        let mut mappings = req
+            .pass_fds
+            .iter()
+            .map(|(child_fd, fd)| {
+                fd.as_fd()
+                    .try_clone_to_owned()
+                    .map(|parent_fd| FdMapping { parent_fd, child_fd: *child_fd })
+                    .map_err(|e| CapError::Invalid(format!("fd {child_fd}: cannot duplicate descriptor: {e}")))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if let (Some(executable), Some(child_fd)) = (&req.executable, executable_fd) {
+            let parent_fd =
+                executable.fd().as_fd().try_clone_to_owned().map_err(|e| {
+                    CapError::Invalid(format!("committed executable: cannot duplicate descriptor: {e}"))
+                })?;
+            mappings.push(FdMapping { parent_fd, child_fd });
+        }
+        cmd.fd_mappings(mappings).map_err(|e| CapError::Invalid(format!("fd mapping: {e:?}")))?;
+        let narrowed = req.policy.clone().unwrap_or_else(|| match &req.executable {
+            Some(executable) => self.policy.for_immutable_executable(executable.clone(), req.network),
+            None => self.policy.for_executable(&req.program, req.network),
+        });
         let mut child = self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::Invalid(e.to_string()))?;
         let group = Pid::from_raw(child.id() as i32);
         if let (Some(bytes), Some(mut stdin)) = (req.stdin, child.stdin.take()) {

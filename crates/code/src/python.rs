@@ -264,6 +264,7 @@ impl Tool for Python {
         );
         let req = ExecRequest {
             program: self.bin.clone(),
+            executable: None,
             args: vec!["-I".into(), "-".into()],
             cwd: PathBuf::from("/"),
             env: BTreeMap::new(),

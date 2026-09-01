@@ -383,7 +383,7 @@ fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>)
     let program = load(config)?;
     let identity = run::identity(&program)?;
     let value = program.to_value();
-    let transport = program.model.as_ref().map(run::describe_transport);
+    let transport = program.model.as_ref().map(|_| run::describe_transport(&program));
     let context = run::context_policy(&program)?.map(|policy| policy.describe());
     let authority = plan::authority(&program)?;
     let checked = ancestry
