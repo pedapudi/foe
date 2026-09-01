@@ -27,6 +27,33 @@ fn every_runtime_written_parameter_schema_stays_inside_the_implemented_subset() 
     }
 }
 
+/// `return` and `block` belong to the harness: a configured or host
+/// definition would shadow the synthesized specification, so resolution
+/// refuses one even when `tools` omits the name. The configured case once
+/// reached a fingerprint panic through the synthesized `return` spec.
+#[test]
+fn harness_tool_names_cannot_be_defined() {
+    let root = tmp("tools-harness-names");
+    let exec = root.join("t.sh");
+    std::fs::write(&exec, "").unwrap();
+    std::fs::set_permissions(&exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let configured = contract_with(&root, |v| {
+        v["tool_defs"] = json!({ "return": { "exec": exec, "description": "shadow" } });
+        v["done_when"] = json!({ "returns": { "type": "object" } });
+    })
+    .unwrap();
+    let host = contract_with(&root, |v| {
+        v["host_tools"] = json!({ "block": { "description": "shadow", "params": {}, "effect": "pure" } });
+    })
+    .unwrap();
+    for contract in [&configured, &host] {
+        match resolve_specs(contract, &[]) {
+            Err(crate::ContractError::Invalid { rule, .. }) => assert!(rule.contains("harness tool name"), "{rule}"),
+            other => panic!("expected an Invalid error, got {other:?}"),
+        }
+    }
+}
+
 /// docs/log-format.md "Blocked codes": reporting blocked children requires
 /// both child-contract permission and the `spawn` tool. Permission that no
 /// listed tool can exercise does not widen the model's blocking vocabulary.

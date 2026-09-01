@@ -114,6 +114,15 @@ pub fn host_spec(name: &str, def: &HostToolDef) -> ToolSpec {
 /// `extra_builtins` are the specifications of built-in tools implemented
 /// outside this crate.
 pub fn resolve_specs(contract: &ResolvedContract, extra_builtins: &[ToolSpec]) -> Result<Vec<ToolSpec>, ContractError> {
+    // `return` and `block` belong to the harness even when unlisted: a
+    // configured definition would shadow the synthesized specification.
+    for name in contract.tool_defs.keys().chain(contract.host_tools.keys()) {
+        if name == text::RETURN_NAME || name == text::BLOCK_NAME {
+            return Err(invalid(format!(
+                "`{name}` is a harness tool name: tool_defs and host_tools may not define it"
+            )));
+        }
+    }
     let block = block_spec(!contract.grants.spawn.is_empty() && contract.tools.iter().any(|name| name == "spawn"));
     let builtins: Vec<&ToolSpec> = std::iter::once(&block).chain(extra_builtins).collect();
     let builtin_names: Vec<&str> = builtins.iter().map(|s| s.name.as_str()).collect();
