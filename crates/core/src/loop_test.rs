@@ -149,6 +149,14 @@ async fn a_turn_without_tool_calls_completes_with_its_text() {
     let fx = Fixture::new("loop-complete", |_| {}, vec![turn("all done", vec![])]);
     let (outcome, events) = fx.run().await;
     assert_eq!(outcome, Outcome::Completed { value: json!("all done") });
+    assert_eq!(events.iter().filter(|event| matches!(event.data, EventData::EpisodeStart(_))).count(), 1);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(&event.data, EventData::InboxItem(item) if item.source == InboxSource::Task))
+            .count(),
+        1
+    );
     assert_eq!(
         types(&events),
         vec![

@@ -72,6 +72,14 @@ async fn protocol_input_starts_after_the_episode_prefix() {
 
     assert!(stop.borrow().is_none());
     let events = log.events();
+    assert_eq!(events.iter().filter(|event| matches!(event.data, EventData::EpisodeStart(_))).count(), 1);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(&event.data, EventData::InboxItem(item) if item.source == InboxSource::Task))
+            .count(),
+        1
+    );
     assert!(matches!(events[0].data, EventData::EpisodeStart(_)));
     assert!(matches!(&events[1].data, EventData::InboxItem(item) if item.source == InboxSource::Task));
     assert!(matches!(&events[2].data, EventData::InboxItem(item) if item.source == InboxSource::Peer));

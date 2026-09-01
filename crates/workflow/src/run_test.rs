@@ -413,6 +413,16 @@ async fn a_node_that_follows_task_receives_it_first() {
     .tool("echo", vec![], 0);
     let (outcome, events) = fx.run().await;
     assert!(matches!(outcome, Outcome::Failed { .. }), "the spawner starts nothing: {outcome:?}");
+    assert_eq!(events.iter().filter(|event| matches!(event.data, EventData::EpisodeStart(_))).count(), 1);
+    assert_eq!(
+        events
+            .iter()
+            .filter(
+                |event| matches!(&event.data, EventData::InboxItem(item) if item.source == foe_log::InboxSource::Task)
+            )
+            .count(),
+        1
+    );
     assert_eq!(fx.calls("echo")[0].0, json!({ "text": "run the graph" }), "the binding yields the task text");
     let spawned = fx.spawner.0.lock().unwrap().1.clone();
     assert!(spawned[0].starts_with("## task\n\nrun the graph\n\n## manifest\n\n"), "{}", spawned[0]);
