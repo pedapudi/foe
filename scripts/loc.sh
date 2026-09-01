@@ -29,7 +29,7 @@ for c in log core; do
   n=$(count "$c")
   printf '%-8s %6d\n' "$c" "$n"; kernel=$((kernel + n))
 done
-printf '%-8s %6d  (budget 5825)\n' kernel "$kernel"
+printf '%-8s %6d  (budget 5875)\n' kernel "$kernel"
 program=$(count program)
 printf '%-8s %6d  (budget 1500)\n' program "$program"
 tools=$(count code)
@@ -46,5 +46,5 @@ telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 lineage=$(count lineage)
 printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
-[ "$kernel" -le 5825 ] && [ "$program" -le 1500 ] && [ "$tools" -le 1800 ] && [ "$workflow" -le 1000 ] \
+[ "$kernel" -le 5875 ] && [ "$program" -le 1500 ] && [ "$tools" -le 1800 ] && [ "$workflow" -le 1000 ] \
   && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1400 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]

@@ -215,17 +215,22 @@ session listens on a granted port. It keeps outbound TCP when the tool
 definition sets `network: true`.
 
 Construction reads the source file once and retains those exact bytes. It
-writes a content-addressed image under a private runtime directory outside
-every declared write root. It tries the parent of the episode log directory,
-`/tmp`, and `/var/tmp`, in that order. Construction fails when no location can
-be separated from the declared write roots. The image has no write bits, and
-the runtime retains a read-only descriptor for its inode. Construction checks
-the stored bytes against the retained bytes. Child-episode initialization
-repeats that check before accepting an inherited descriptor. Invocation maps
-the descriptor to a collision-free child descriptor and executes it through
-`/proc/self/fd`. The stored image and argument zero use the basename from the
-configured absolute path. This preserves dispatch by BusyBox, coreutils, and
-other multicall executables. The source pathname is never reopened.
+writes a private image under a runtime directory outside every declared write
+root. Images with the same digest and configured basename share one held
+inode. Construction tries the parent of the episode log directory, `/tmp`, and
+`/var/tmp`, in that order. Each attempt combines directory creation with the
+filesystem checks for that directory. A filesystem mounted with `noexec` is
+skipped. Construction fails when no writable, executable location can be
+separated from the declared write roots.
+
+The image has no write bits, and the runtime retains a read-only descriptor
+for its inode. Construction checks its mode, mount flags, and stored bytes.
+Child-episode initialization repeats the mode and byte checks before accepting
+an inherited descriptor. Invocation maps the descriptor to a collision-free
+child descriptor and executes it through `/proc/self/fd`. The stored image and
+argument zero use the basename from the configured absolute path. This
+preserves dispatch by BusyBox, coreutils, and other multicall executables. The
+source pathname is never reopened.
 
 The episode process receives internal read and write access to the storage
 parent so it can remove the private directory after confinement. Tool and
@@ -239,11 +244,14 @@ Private executable images exist for the lifetime of their runtime owners.
 The last owner removes the private directory. Task-lifetime sessions use the
 session launcher and do not retain a configured tool or transport image.
 
-A parent passes only the executable descriptors reachable from the selected
-child program. A sealed manifest associates each descriptor with its
-configuration key and digest. Descriptor remapping preserves standard input,
-standard output, standard error, and every source descriptor when source and
-target numbers overlap.
+A parent passes executable images for the selected child's full declared
+program tree. The sealed manifest associates every configuration key with an
+image digest and configured basename. Repeated references to one image share
+one descriptor. The child reads each descriptor once and constructs identity
+from those retained bytes. Its sandbox grants execute access only to images
+reachable through spawn grants and workflow nodes. Descriptor remapping
+preserves standard input, standard output, standard error, and every source
+descriptor when source and target numbers overlap.
 
 This crate forbids unsafe code, so the narrowing is applied by a short-lived
 thread rather than by a hook between fork and exec. The thread applies the

@@ -546,6 +546,57 @@ fn a_child_tool_inherits_no_program_tree_descriptor() {
     );
 }
 
+/// docs/design.md "Program construction": a child receives the executable
+/// snapshots needed to reconstruct its full declared identity, including an
+/// ungranted descendant that the child cannot start.
+#[test]
+fn a_child_starts_after_an_ungranted_descendant_executable_source_is_deleted() {
+    let dir = scratch("child-declared-executable-identity");
+    let latent = dir.join("latent-tool");
+    std::fs::write(&latent, "#!/bin/sh\nprintf 'latent\\n'\n").unwrap();
+    std::fs::set_permissions(&latent, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let config = config(&dir, |config| {
+        config["tools"] = json!(["delete", "spawn", "wait"]);
+        config["host_tools"] = json!({
+            "delete": {"description": "Deletes the latent executable.", "params": {"type": "object"}, "effect": "writes"}
+        });
+        config["grants"] = json!({"read": [dir], "write": [dir], "spawn": ["worker"]});
+        config["budget"] = json!({"model_calls": 6, "max_depth": 2, "max_episodes": 2});
+        config["programs"] = json!({"worker": {
+            "name": "worker", "instructions": {"role": "Complete without spawning."}, "tools": ["block"],
+            "grants": {"read": [dir]}, "budget": {"model_calls": 2, "max_depth": 1},
+            "programs": {"ungranted": {
+                "name": "ungranted", "instructions": {"role": "Remain unreachable."}, "tools": ["latent"],
+                "tool_defs": {"latent": {"exec": latent, "description": "A declared executable."}},
+                "grants": {"read": [dir]}, "budget": {"model_calls": 1, "max_depth": 0}
+            }}
+        }});
+    });
+    let mut delete = call("tc_delete", "delete", "{}");
+    delete.push(done("tool"));
+    let mut delegate = call("tc_spawn", "spawn", r#"{"program":"worker","task":"start"}"#);
+    delegate.extend(call("tc_wait", "wait", "{}"));
+    delegate.push(done("tool"));
+    let responses =
+        vec![delete, delegate, vec![text("child ready"), done("end")], vec![text("root ready"), done("end")]];
+    let source = latent.clone();
+    let (events, code) = host_run(&dir, &config, responses, move |name, _| {
+        assert_eq!(name, "delete");
+        std::fs::remove_file(&source).unwrap();
+        json!({"removed": true})
+    });
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert!(!latent.exists());
+    let child_id =
+        events.iter().find(|event| event["type"] == "spawn/start").unwrap()["data"]["child_id"].as_str().unwrap();
+    let child = child_events(&dir, child_id);
+    assert_eq!(child.last().unwrap()["data"]["outcome"], json!({"kind": "completed", "value": "child ready"}));
+    let lineage: Value =
+        serde_json::from_slice(&std::fs::read(dir.join("log/children").join(child_id).join("lineage.json")).unwrap())
+            .unwrap();
+    assert_eq!(child[0]["data"]["identity"], lineage["expected_program_identity"]);
+}
+
 /// docs/workflow.md "Recovery" and "Tool nodes": a configured executable
 /// that exits non-zero fails its node; the host's `retry` re-fires it and
 /// the workflow completes when it succeeds.

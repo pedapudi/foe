@@ -96,15 +96,9 @@ fn executable_policy_keeps_only_its_own_file() {
     let dir = temp_dir("exec");
     let other = dir.join("true");
     std::fs::copy("/bin/true", &other).unwrap();
-    let episode = Policy {
-        read: vec![dir.clone()],
-        exec: vec!["/bin/sh".into(), other.clone()],
-        runtime_storage: vec![dir.join("runtime-only")],
-        ..Policy::default()
-    };
+    let episode = Policy { read: vec![dir.clone()], exec: vec!["/bin/sh".into(), other.clone()], ..Policy::default() };
     let tool = episode.for_executable(Path::new("/bin/sh"), false);
     assert_eq!(tool.exec, vec![PathBuf::from("/bin/sh")]);
-    assert!(tool.runtime_storage.is_empty());
     assert!(tool.log_dir.is_none());
     let run = |policy: &Policy| {
         let mut cmd = Command::new("/bin/sh");
@@ -242,6 +236,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert_eq!(p.delegated_exec, vec![shell.clone()]);
     assert_eq!(p.exec, vec![shell], "configured executables are authorized by their committed inode");
     assert_eq!(p.exec_files.len(), 1);
+    assert_eq!(p.runtime_storage.len(), 1, "the episode owns private executable cleanup");
     assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
     assert_eq!(p.bind_tcp, vec![8080], "the episode may bind the granted port");
     assert!(!p.connect_tcp, "an episode without a model block holds no transport");
@@ -266,6 +261,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert!(p.connect_tcp);
     p.read_files.push(PathBuf::from("/keys/anthropic"));
     let offline = p.for_executable(Path::new("/bin/sh"), false);
+    assert!(offline.runtime_storage.is_empty(), "a configured executable cannot reach runtime storage");
     assert!(offline.read_files.is_empty(), "an executable without network reads no resolver file");
     let online = p.for_executable(Path::new("/bin/sh"), true);
     assert_eq!(online.read_files, resolver, "an executable with network keeps the resolver file");
@@ -322,11 +318,11 @@ fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
     assert_eq!(
         keys,
         [
-            "tool_defs.nodes.exec",
-            "tool_defs.own.exec",
-            "workflow.nodes.draft.model.tool_defs.nodes.exec",
-            "programs.kid.tool_defs.childs.exec",
-            "programs.kid.programs.grandkid.tool_defs.grandchilds.exec",
+            "program.tool_defs.nodes.exec",
+            "program.tool_defs.own.exec",
+            "program.programs.kid.tool_defs.childs.exec",
+            "program.programs.kid.programs.grandkid.tool_defs.grandchilds.exec",
+            "program.workflow.nodes.draft.model.tool_defs.nodes.exec",
         ]
     );
     assert_eq!(executables.child("kid").unwrap().reachable().len(), 2);

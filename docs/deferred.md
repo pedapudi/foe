@@ -216,9 +216,11 @@ through `/proc/self/fd`, unlike a memfd, which Landlock rejects as a rule
 target. Tests with a shell script and a copied dynamically linked shell
 succeeded under Landlock ABI 7. A copied coreutils executable rejected the
 anonymous form because it compares its requested utility name with
-`/proc/self/exe`, whose target has no configured basename. BusyBox and other
-self-path-dependent executables have the same class of requirement. Foe
-therefore uses a named private image that preserves the configured basename.
+`/proc/self/exe`, whose target has no configured basename. Opening a named
+image and unlinking it before execution also adds a deleted-path suffix to
+that target. BusyBox and other self-path-dependent executables have the same
+class of requirement. Foe uses a named private image that preserves the
+configured basename.
 Anonymous images remain deferred until they can preserve self-path semantics
 for common executables. No event type or configuration key is reserved.
 

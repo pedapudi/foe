@@ -3,7 +3,7 @@
 //! Implements docs/design.md (Programs and identity). The identity
 //! document lists everything that shapes what the model sees and nothing
 //! else: resolved paths, model selection, `sandbox`, and the task are absent.
-//! Construction reads reachable configured tools and an executable transport.
+//! Construction reads declared configured tools and executable transports.
 //! Identity uses their retained digests, executes nothing, and opens no
 //! socket. The caller supplies the runtime named by the document. Reading the
 //! running binary belongs to `foe_core::identity::runtime_info`.

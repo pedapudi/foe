@@ -74,6 +74,9 @@ fn a_committed_script_survives_mutation_replacement_deletion_and_repeated_calls_
     std::fs::write(&source, "#!/bin/sh\nread value < resource\nprintf '%s\\n' \"$value\"\n").unwrap();
     std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
     let (executor, req, executables) = configured_executor("script", &source, SandboxMode::Required, Vec::new());
+    let image_link =
+        std::fs::read_link(crate::executable::parent_fd_path(executables.tools["configured"].fd())).unwrap();
+    assert_eq!(image_link.file_name().unwrap(), "tool");
     assert_eq!(executor.run(req.clone()).unwrap().stdout, b"original\n");
     std::fs::write(&source, "#!/bin/sh\nprintf 'mutated\\n'\n").unwrap();
     assert_eq!(executor.run(req.clone()).unwrap().stdout, b"original\n");
@@ -87,7 +90,6 @@ fn a_committed_script_survives_mutation_replacement_deletion_and_repeated_calls_
     let executable = &executables.tools["configured"];
     let write = std::fs::OpenOptions::new().write(true).open(crate::executable::parent_fd_path(executable.fd()));
     assert!(write.is_err(), "the committed executable descriptor rejects writes");
-    std::fs::remove_file(executable.stored_path()).unwrap();
     assert_eq!(executor.run(req).unwrap().stdout, b"original\n");
 }
 
@@ -123,7 +125,7 @@ fn a_configured_multicall_executable_keeps_its_configured_name() {
     let program = foe_program::document::resolve(&config).unwrap();
     let executables = crate::executable::ExecutableTree::materialize(&program, &dir.join("episode")).unwrap();
     let executable = executables.tools["configured"].clone();
-    assert_eq!(executable.stored_path().file_name().unwrap(), "echo");
+    assert_eq!(executable.basename(), "echo");
     let policy = Policy::for_episode(&program, &executables, &dir);
     let executor = LocalExecutor::new(
         Arc::new(Sandbox::new(SandboxMode::Required).unwrap()),
@@ -149,41 +151,7 @@ fn construction_rejects_a_source_without_an_execute_bit() {
 }
 
 #[test]
-fn the_last_runtime_owner_removes_private_executable_storage() {
-    let dir = scratch("exec", "private-storage-lifetime");
-    let source = dir.join("tool");
-    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
-    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let stored = {
-        let executable = crate::executable::Executable::load(&source).unwrap();
-        assert!(executable.stored_path().exists());
-        executable.stored_path().to_path_buf()
-    };
-    assert!(!stored.exists(), "private executable storage ends with its last runtime owner");
-}
-
-#[test]
-fn a_confined_episode_can_remove_storage_outside_declared_roots() {
-    let dir = scratch("exec", "confined-storage-lifetime");
-    let source = dir.join("tool");
-    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
-    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let (_, _, executables) = configured_executor("confined-lifetime", &source, SandboxMode::BestEffort, vec![dir]);
-    let stored = executables.tools["configured"].stored_path().to_path_buf();
-    let policy = Policy { runtime_storage: executables.cleanup_roots(), ..Policy::default() };
-    let sandbox = Sandbox::new(SandboxMode::BestEffort).unwrap();
-    if sandbox.abi() == 0 {
-        return;
-    }
-    let removed = sandbox.run_narrowed(&policy, move || {
-        drop(executables);
-        !stored.exists()
-    });
-    assert!(removed.unwrap(), "the episode cleanup authority removes the private store");
-}
-
-#[test]
-fn executable_storage_is_outside_a_write_root_that_contains_the_log() {
+fn a_declared_write_root_does_not_expose_private_executable_storage() {
     let dir = scratch("exec", "write-root-around-log");
     let source = dir.join("tool");
     std::fs::write(&source, "#!/bin/sh\nprintf 'safe\\n'\n").unwrap();
@@ -193,6 +161,97 @@ fn executable_storage_is_outside_a_write_root_that_contains_the_log() {
     assert!(!executables.tools["configured"].stored_path().starts_with(&dir));
     std::fs::write(&source, "#!/bin/sh\nprintf 'changed\\n'\n").unwrap();
     assert_eq!(executor.run(req).unwrap().stdout, b"safe\n");
+}
+
+#[test]
+fn the_last_runtime_owner_removes_private_executable_storage() {
+    let dir = scratch("exec", "runtime-storage-cleanup");
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let executable = crate::executable::Executable::load(&source).unwrap();
+    let stored_path = executable.stored_path().to_path_buf();
+    assert!(stored_path.exists());
+    drop(executable);
+    assert!(!stored_path.exists());
+}
+
+#[test]
+fn a_confined_episode_removes_private_executable_storage() {
+    let dir = scratch("exec", "confined-storage-cleanup");
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (_, _, executables) =
+        configured_executor("confined-cleanup", &source, SandboxMode::BestEffort, vec![dir]);
+    let stored_path = executables.tools["configured"].stored_path().to_path_buf();
+    let policy = Policy { runtime_storage: executables.cleanup_roots(), ..Policy::default() };
+    let sandbox = Sandbox::new(SandboxMode::BestEffort).unwrap();
+    if sandbox.abi() == 0 {
+        return;
+    }
+    let removed = sandbox.run_narrowed(&policy, move || {
+        drop(executables);
+        !stored_path.exists()
+    });
+    assert!(removed.unwrap(), "the episode cleanup authority removes the private store");
+}
+
+#[test]
+fn executable_storage_skips_a_noexec_preferred_filesystem() {
+    let noexec = Path::new("/dev/shm");
+    let Ok(info) = nix::sys::statvfs::statvfs(noexec) else { return };
+    if !info.flags().contains(nix::sys::statvfs::FsFlags::ST_NOEXEC) {
+        return;
+    }
+    let preferred = noexec.join(format!("foe-executable-test-{}", std::process::id()));
+    if std::fs::create_dir(&preferred).is_err() {
+        return;
+    }
+    let dir = scratch("exec", "noexec-fallback");
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3, "name": "noexec fallback", "instructions": {"role": "test"},
+        "tools": ["configured"],
+        "tool_defs": {"configured": {"exec": source, "description": "test executable"}},
+        "grants": {"read": [dir]}, "budget": {"model_calls": 1}, "task": "test"
+    }))
+    .unwrap();
+    let program = foe_program::document::resolve(&config).unwrap();
+    let executables = crate::executable::ExecutableTree::materialize(&program, &preferred.join("episode")).unwrap();
+    let link = std::fs::read_link(crate::executable::parent_fd_path(executables.tools["configured"].fd())).unwrap();
+    assert!(!link.starts_with(noexec), "the selected image came from noexec storage: {link:?}");
+    std::fs::remove_dir(preferred).unwrap();
+}
+
+#[test]
+fn declared_tree_snapshots_share_one_stable_image() {
+    let dir = scratch("exec", "declared-tree-dedup");
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let declared = |name: &str| {
+        serde_json::json!({
+            "name": name, "instructions": {"role": "test"}, "tools": ["configured"],
+            "tool_defs": {"configured": {"exec": source.clone(), "description": "same executable"}},
+            "grants": {"read": [dir.clone()]}, "budget": {"model_calls": 1}
+        })
+    };
+    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3, "name": "declared tree", "instructions": {"role": "test"},
+        "tools": ["configured"],
+        "tool_defs": {"configured": {"exec": source, "description": "same executable"}},
+        "grants": {"read": [dir.clone()]}, "budget": {"model_calls": 1},
+        "programs": {"first": declared("first"), "second": declared("second")}, "task": "test"
+    }))
+    .unwrap();
+    let program = foe_program::document::resolve(&config).unwrap();
+    let executables = crate::executable::ExecutableTree::materialize(&program, &dir).unwrap();
+    assert_eq!(executables.reachable_entries().len(), 1, "ungranted programs carry no execute authority");
+    assert_eq!(executables.identity_entries().len(), 3, "every declaration can be reconstructed");
+    assert_eq!(executables.child_descriptors("ep_child").unwrap().len(), 2, "one image plus one manifest");
 }
 
 #[test]
