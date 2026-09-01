@@ -1345,11 +1345,7 @@ def main(argv: list[str] | None = None) -> int:
     if corpus is not None:
         collector_source = Path(__file__).resolve().parent / "collect_diagnostics.py"
         corpus_source = Path(__file__).resolve().parent / "trajectory_corpus.py"
-        identity_source = (
-            Path(__file__).resolve().parent.parent
-            / "harness_bench"
-            / "foe_source_identity.py"
-        )
+        identity_source = Path(__file__).resolve().parent.parent / "foe_source_identity.py"
         collector = root / "collect-trajectory-diagnostics"
         write_bound_python_launcher(
             collector,

@@ -70,7 +70,7 @@ sh_binary(
 sh_binary(
     name = "foe-trajectory-corpus",
     srcs = ["trajectory_corpus.py"],
-    data = ["//evals/harness_bench:foe_source_identity.py"],
+    data = ["//evals:foe_source_identity.py"],
     visibility = ["//visibility:public"],
 )
 

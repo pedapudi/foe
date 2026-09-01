@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
-sys.path.append(str(Path(__file__).resolve().parent.parent / "harness_bench"))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from foe_source_identity import evaluated_foe, require_evaluated_foe
 
 
