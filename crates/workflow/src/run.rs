@@ -15,7 +15,7 @@ use crate::graph::{Produced, Scheduler};
 use foe_core::budget::Pool;
 use foe_core::loop_::{lock, settle, until, verify_recorded, wait_stop, Log, Params, Recorder};
 use foe_core::registry::{Handles, Registry};
-use foe_core::{ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolValue, Transport};
+use foe_core::{CapError, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolValue, Transport};
 use foe_log::{
     BlockedCode, BudgetAmount, Chunk, ContentBlock, Event, EventData, ExhaustedLimit, HeaderReason, InboxItem,
     InboxSource, Message, ModelRequest, Outcome, RequestHeader, SpawnContext, ToolCall, ToolResult, WorkflowBranch,
@@ -454,8 +454,15 @@ impl Executor {
         let mut sections: Vec<String> = inputs.iter().map(|(n, p)| section(n, &p.rendered)).collect();
         sections.extend((!findings.is_empty()).then(|| section("findings", &findings.join("\n"))));
         sections.extend(note.as_deref().map(|n| section("recovery", n)));
-        let mut child_id = None;
         let lookup = |n: &str| inputs.iter().find(|(i, _)| i == n).map(|(_, p)| p.value.clone());
+        let child_id = node.model.as_ref().map(|_| sh.spawner.allocate_id());
+        self.sched.state.get_mut(name).expect("a known node").child_id = child_id.clone();
+        self.log(EventData::WorkflowNodeStart(WorkflowNodeStart {
+            node: full.clone(),
+            fire,
+            inputs: input_seqs,
+            child_id: child_id.clone(),
+        }))?;
         let task: Firing = if let Some(tool) = &node.tool {
             match bind::resolve(node.args.as_ref().unwrap_or(&serde_json::Map::new()), &lookup) {
                 Err(reason) => {
@@ -483,11 +490,9 @@ impl Executor {
             };
             let task = sections.join("\n\n");
             let req = SpawnRequest { program: full.clone(), task, context: SpawnContext::Fresh, reserve, call_id };
-            match sh.spawner.spawn(req) {
-                Ok(handle) => {
-                    child_id = Some(handle.child_id.clone());
-                    Box::pin(async move { output_of(handle.run.wait().await.0, false) })
-                }
+            match sh.spawner.launch(child_id.expect("a model node has an allocated child id"), req) {
+                Ok(handle) => Box::pin(async move { output_of(handle.run.wait().await.0, false) }),
+                Err(CapError::Log(e)) => return Err(e.into()),
                 Err(e) => {
                     let outcome = settled_in(&e.to_string()).unwrap_or(Outcome::Failed { error: e.to_string() });
                     Box::pin(async move { Err(Trouble::settled(outcome)) })
@@ -503,8 +508,6 @@ impl Executor {
                 }
             })
         };
-        self.sched.state.get_mut(name).expect("a known node").child_id = child_id.clone();
-        self.log(EventData::WorkflowNodeStart(WorkflowNodeStart { node: full, fire, inputs: input_seqs, child_id }))?;
         let name = name.to_string();
         self.tasks.spawn(async move { Fired { node: name, fire, started, result: task.await } });
         Ok(())

@@ -14,6 +14,7 @@ use foe_program::workflow::Node;
 use foe_program::{Effect, ProgramDocument, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
+use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -44,13 +45,19 @@ impl Tool for Scripted {
     }
 }
 
-/// Records the task of every spawn request and starts no child.
+/// Records allocated identifiers and launch requests, and starts no child.
 #[derive(Default)]
-struct NoSpawner(Mutex<Vec<String>>);
+struct NoSpawner(Mutex<(u64, Vec<String>)>);
 
 impl Spawner for NoSpawner {
-    fn spawn(&self, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
-        self.0.lock().unwrap().push(req.task);
+    fn allocate_id(&self) -> String {
+        let mut state = self.0.lock().unwrap();
+        state.0 += 1;
+        format!("ep_test_{}", state.0)
+    }
+
+    fn launch(&self, _child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
+        self.0.lock().unwrap().1.push(req.task);
         Err(CapError::Invalid("this test spawns nothing".into()))
     }
 }
@@ -75,6 +82,28 @@ impl Transport for Responses {
         for chunk in chunks {
             sink.push(chunk);
         }
+    }
+}
+
+/// A log mirror that fails on one selected event write. The log file has
+/// already received the event when the mirror fails, which exercises an
+/// append whose durable outcome the caller cannot infer.
+struct FailingMirror {
+    writes: usize,
+    fail_at: usize,
+}
+
+impl Write for FailingMirror {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if self.writes == self.fail_at {
+            return Err(io::Error::other("injected mirror failure"));
+        }
+        self.writes += 1;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -129,6 +158,7 @@ struct Fixture {
     calls: std::collections::BTreeMap<String, Calls>,
     responses: Vec<Vec<Chunk>>,
     spawner: Arc<NoSpawner>,
+    mirror: Option<Box<dyn Write + Send>>,
     /// When set, the stop signal is raised this long after the run starts.
     stop_after: Option<Duration>,
 }
@@ -152,6 +182,7 @@ impl Fixture {
             calls: Default::default(),
             responses: Vec::new(),
             spawner: Default::default(),
+            mirror: None,
             stop_after: None,
         }
     }
@@ -198,11 +229,15 @@ impl Fixture {
     }
 
     async fn run(&mut self) -> (Outcome, Vec<Event>) {
+        self.run_result().await.unwrap()
+    }
+
+    async fn run_result(&mut self) -> Result<(Outcome, Vec<Event>), foe_core::RuntimeError> {
         let config: ProgramDocument = serde_json::from_value(self.config.clone()).unwrap();
         let program = resolve(&config).unwrap();
         let log_dir = self.dir.join("episode");
         std::fs::create_dir_all(&log_dir).unwrap();
-        let log = Arc::new(Log::create_or_open(&log_dir, None).unwrap());
+        let log = Arc::new(Log::create_or_open(&log_dir, self.mirror.take()).unwrap());
         let registry = Registry::new(&program, vec![], std::mem::take(&mut self.tools)).unwrap();
         let (stop, stop_rx) = tokio::sync::watch::channel(None);
         let stop_after = self.stop_after;
@@ -242,11 +277,12 @@ impl Fixture {
             context: None,
         };
         let params = WorkflowParams { episode, workflow: program.workflow.unwrap(), spawner: self.spawner.clone() };
-        let outcome = run(params).await.unwrap();
+        let outcome = run(params).await;
         stopper.abort();
+        let outcome = outcome?;
         let events = foe_log::fold::read_all(&log_dir).unwrap();
         foe_log::fold::fold(&events).expect("the log is well-formed");
-        (outcome, events)
+        Ok((outcome, events))
     }
 }
 
@@ -272,6 +308,32 @@ fn recoveries(events: &[Event]) -> Vec<&foe_log::WorkflowRecovery> {
 
 fn count(events: &[Event], kind: &str) -> usize {
     events.iter().filter(|e| e.data.type_name() == kind).count()
+}
+
+/// docs/workflow.md "Firing": a model child receives no budget and starts
+/// no process until its `workflow/node-start` append succeeds. The mirror
+/// failure leaves the append outcome uncertain and therefore interrupts the
+/// log, while the allocated identifier remains the only spawner state.
+#[tokio::test]
+async fn a_failed_model_node_start_append_launches_no_child() {
+    let root = fx_root("node-start-append");
+    let mut fx = Fixture::new(
+        "node-start-append",
+        &[],
+        json!({ "nodes": {
+            "work": { "model": {
+                "name": "work", "instructions": { "r": "work" }, "tools": ["block"],
+                "grants": { "read": [root] }, "budget": { "model_calls": 1 }
+            }, "terminal": true }
+        } }),
+    );
+    fx.mirror = Some(Box::new(FailingMirror { writes: 0, fail_at: 2 }));
+
+    let error = fx.run_result().await.unwrap_err().to_string();
+    assert!(error.contains("injected mirror failure"), "{error}");
+    let spawner = fx.spawner.0.lock().unwrap();
+    assert_eq!(spawner.0, 1, "the node allocated the identifier recorded by node-start");
+    assert!(spawner.1.is_empty(), "the child launch never received control");
 }
 
 /// docs/workflow.md "Firing" and "Choice points": a cycle re-fires through
@@ -351,7 +413,7 @@ async fn a_node_that_follows_task_receives_it_first() {
     let (outcome, events) = fx.run().await;
     assert!(matches!(outcome, Outcome::Failed { .. }), "the spawner starts nothing: {outcome:?}");
     assert_eq!(fx.calls("echo")[0].0, json!({ "text": "run the graph" }), "the binding yields the task text");
-    let spawned = fx.spawner.0.lock().unwrap().clone();
+    let spawned = fx.spawner.0.lock().unwrap().1.clone();
     assert!(spawned[0].starts_with("## task\n\nrun the graph\n\n## manifest\n\n"), "{}", spawned[0]);
     let EventData::WorkflowNodeStart(start) = &events
         .iter()
@@ -407,7 +469,7 @@ async fn a_chosen_branch_value_reaches_a_model_successor_that_follows_it() {
     .tool("diagnose", vec![ToolValue::ok(json!({ "branch": "implement-source" }), "typed diagnosis")], 0);
     let (outcome, _) = fx.run().await;
     assert!(matches!(outcome, Outcome::Failed { .. }), "the spawner starts nothing: {outcome:?}");
-    let spawned = fx.spawner.0.lock().unwrap().clone();
+    let spawned = fx.spawner.0.lock().unwrap().1.clone();
     assert_eq!(spawned.len(), 1);
     assert_eq!(spawned[0], "## task\n\nrun the graph\n\n## diagnose\n\ntyped diagnosis");
 }

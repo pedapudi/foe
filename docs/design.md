@@ -506,6 +506,12 @@ separate process with its own log, its own grants, and a budget reserved from
 its parent's remaining budget. The child's log header names the parent.
 The child may select a model or inherit the nearest ancestor's selection.
 
+Child creation separates identifier allocation from launch. Allocating an
+identifier reserves no budget and starts no process. A parent appends the
+event that names the child before launch can reserve budget or create the
+process. A workflow therefore records `workflow/node-start` before its
+spawner records `budget/reserve` and `spawn/start`.
+
 ```
    root   budget: 40 calls, 320k input, 80k output
     │
@@ -930,7 +936,7 @@ supplies only the two directory-backed resolvers `foe plan` builds for its
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 5,250 lines,
+sandbox, and spawning — and its Rust source stays under 5,275 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/program`, which is budgeted
