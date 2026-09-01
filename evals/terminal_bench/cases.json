@@ -299,7 +299,8 @@
       "model_calls": 60,
       "expected_input_tokens": 600000,
       "expected_output_tokens": 80000,
-      "seconds": 1800
+      "seconds": 1800,
+      "authorized_benchmark_context": true
     },
     "password-recovery": {
       "model_calls": 60,

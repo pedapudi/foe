@@ -28,6 +28,10 @@ from workflow_candidate import validate as validate_workflow_candidate
 
 
 HARBOR_VERSION = "0.22.0"
+AUTHORIZED_BENCHMARK_CONTEXT = (
+    "This task is an authorized benchmark exercise inside an isolated container. "
+    "Complete only the task described by the benchmark."
+)
 DEFAULT_MODEL = "openai-codex/gpt-5.6-sol"
 SAFE_LABEL = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 MIN_AUXILIARY_MODEL_CALLS = 6
@@ -62,6 +66,7 @@ class Task:
     harbor_agent_seconds: int
     cpus: int
     memory_mb: int
+    authorized_benchmark_context: bool = False
 
 
 @dataclass(frozen=True)
@@ -159,6 +164,9 @@ def read_cases(
             harbor_agent_seconds=raw_agent_timeouts.get(name),
             cpus=limits.get("cpus", default_cpus),
             memory_mb=limits.get("memory_mb", default_memory_mb),
+            authorized_benchmark_context=limits.get(
+                "authorized_benchmark_context", False
+            ),
         )
         limits = (
             task.model_calls,
@@ -171,6 +179,10 @@ def read_cases(
             raise ValueError(f"cases.tasks.{name} limits must be positive integers")
         if any(type(value) is not int or value <= 0 for value in (task.cpus, task.memory_mb)):
             raise ValueError(f"cases.tasks.{name} resources must be positive integers")
+        if type(task.authorized_benchmark_context) is not bool:
+            raise ValueError(
+                f"cases.tasks.{name}.authorized_benchmark_context must be a boolean"
+            )
         tasks[name] = task
     groups: dict[str, tuple[str, ...]] = {}
     for group, names in raw_groups.items():
@@ -599,6 +611,7 @@ def harbor_command(
     completion_checker: Path | None = None,
     hard_token_limits: bool = False,
     install_only: bool = False,
+    authorized_benchmark_context: bool = False,
 ) -> list[str]:
     model_stages = model_stage_count(
         diagnosis_model,
@@ -664,6 +677,8 @@ def harbor_command(
     ]
     for key, value in kwargs.items():
         command.extend(("--agent-kwarg", f"{key}={value}"))
+    if authorized_benchmark_context or task.authorized_benchmark_context:
+        command.extend(("--extra-instruction", AUTHORIZED_BENCHMARK_CONTEXT))
     if install_only:
         command.append("--install-only")
     return command
@@ -881,6 +896,11 @@ def parser() -> argparse.ArgumentParser:
         default=default_credential_state(),
     )
     answer.add_argument("--install-only", action="store_true")
+    answer.add_argument(
+        "--authorized-benchmark-context",
+        action="store_true",
+        help="add the fixed authorization statement to every selected task",
+    )
     answer.add_argument(
         "--completion-checker",
         type=Path,
@@ -1139,6 +1159,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     token_policy = "hard allowances" if args.hard_token_limits else "measurement only"
     print(f"token limits  {token_policy}")
+    authorized_context_tasks = [
+        task.name
+        for task in selected
+        if args.authorized_benchmark_context or task.authorized_benchmark_context
+    ]
+    if authorized_context_tasks:
+        print(f"task context  authorization added to {', '.join(authorized_context_tasks)}")
     if completion_checker is not None:
         print(
             "completion    done_when.verify "
@@ -1279,6 +1306,10 @@ def main(argv: list[str] | None = None) -> int:
                 "hard" if args.hard_token_limits else "measurement_only"
             ),
             "install_only": args.install_only,
+            "authorized_benchmark_context": (
+                AUTHORIZED_BENCHMARK_CONTEXT if authorized_context_tasks else None
+            ),
+            "authorized_benchmark_context_tasks": authorized_context_tasks,
             "completion_checker": (
                 {
                     "path": str(completion_checker),
@@ -1335,6 +1366,7 @@ def main(argv: list[str] | None = None) -> int:
             completion_checker=completion_checker,
             hard_token_limits=args.hard_token_limits,
             install_only=args.install_only,
+            authorized_benchmark_context=args.authorized_benchmark_context,
         )
 
     execution_failure: Exception | None = None

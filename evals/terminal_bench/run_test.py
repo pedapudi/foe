@@ -64,6 +64,10 @@ class CasesTest(unittest.TestCase):
         self.assertEqual(tasks["compile-compcert"].cpus, 2)
         self.assertEqual(tasks["gpt2-codegolf"].memory_mb, 8192)
         self.assertEqual(tasks["mcmc-sampling-stan"].cpus, 4)
+        self.assertTrue(
+            tasks["model-extraction-relu-logits"].authorized_benchmark_context
+        )
+        self.assertFalse(tasks["fix-git"].authorized_benchmark_context)
         self.assertEqual(pricing["openai-codex/gpt-5.6-sol"].output_per_million, 20.0)
 
     def test_case_resources_require_positive_integer_values(self):
@@ -74,6 +78,18 @@ class CasesTest(unittest.TestCase):
             cases = Path(directory) / "cases.json"
             cases.write_text(json.dumps(value), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "fix-git resources"):
+                read_cases(cases)
+
+    def test_case_authorization_flag_must_be_boolean(self):
+        source = Path(__file__).with_name("cases.json")
+        value = json.loads(source.read_text(encoding="utf-8"))
+        value["tasks"]["fix-git"]["authorized_benchmark_context"] = "yes"
+        with tempfile.TemporaryDirectory() as directory:
+            cases = Path(directory) / "cases.json"
+            cases.write_text(json.dumps(value), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, "fix-git.authorized_benchmark_context"
+            ):
                 read_cases(cases)
 
     def test_harbor_command_runs_one_task_at_a_time(self):
@@ -544,6 +560,36 @@ class CasesTest(unittest.TestCase):
             completion_checker=Path("/tmp/completion-check"),
         )
         self.assertIn("completion_checker=/tmp/completion-check", command)
+
+    def test_case_metadata_appends_recorded_benchmark_authorization(self):
+        _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))
+        command = harbor_command(
+            harbor=Path("/tools/harbor"),
+            dataset="terminal-bench/terminal-bench-2-1@6",
+            task=tasks["model-extraction-relu-logits"],
+            attempts=1,
+            jobs_dir=Path("/tmp/jobs"),
+            agent_module=Path("/tmp/foe_agent.py"),
+            trace_evaluator=Path("/tmp/score-trace"),
+            foe=Path("/tmp/foe"),
+            credential_state=Path("/tmp/private.json"),
+            model="openai-codex/gpt-5.6-sol",
+            reasoning_effort="low",
+            diagnosis_model=None,
+            diagnosis_reasoning_effort="high",
+            diagnosis_model_calls=6,
+            diagnosis_pricing=None,
+            unresolved_diagnosis_reasoning_effort=None,
+            unresolved_diagnosis_model_calls=6,
+            escalation_reasoning_effort=None,
+            escalation_model_calls=0,
+            runtime_digest="abc123",
+            pricing=pricing["openai-codex/gpt-5.6-sol"],
+        )
+        index = command.index("--extra-instruction")
+        self.assertEqual(
+            command[index + 1], terminal_bench_run.AUTHORIZED_BENCHMARK_CONTEXT
+        )
 
     def test_harbor_command_records_conditional_unresolved_diagnosis(self):
         _, _, tasks, pricing = read_cases(Path(__file__).with_name("cases.json"))

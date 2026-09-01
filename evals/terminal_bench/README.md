@@ -180,6 +180,15 @@ infrastructure evidence.
 
 ## Preview and run one assessed task
 
+Some authorized security-research tasks can trigger a provider policy
+classification before Foe receives a response. The task registry marks those
+tasks and supplies one fixed authorization statement through Harbor. Other
+tasks receive no additional statement.
+
+The `--authorized-benchmark-context` option applies the same statement to an
+ad hoc replacement task. The campaign manifest records the statement and the
+tasks that received it.
+
 Every model-backed target prints planning token estimates and an estimated
 cost. The preview makes no model request:
 
