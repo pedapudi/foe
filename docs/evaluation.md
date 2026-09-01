@@ -26,9 +26,9 @@ trace evaluator then checks the episode log and every child log.
 The default authority case uses foe's capability handles with the kernel
 sandbox disabled. The case therefore runs on systems without Landlock. A
 stronger optional case runs `/usr/bin/cat` under `sandbox.mode: required` and
-requires the kernel to permit one read and deny another. That case also
-requires a delegated cgroup v2 hierarchy and checks that the start record
-claims enforced subtree cleanup.
+requires the kernel to permit one read and deny another. The case also checks
+that the start record truthfully reports enforced cgroup cleanup or the
+observational process-group fallback.
 
 The runner also corrupts one trace for each guarantee. Each corruption must
 produce a violation in the matching conformance dimension. These checks guard

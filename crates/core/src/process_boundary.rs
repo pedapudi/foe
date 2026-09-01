@@ -36,8 +36,8 @@ pub struct ProcessOwnership {
 
 impl ProcessOwnership {
     /// Enters the boundary a parent prepared, or creates an invocation
-    /// boundary for a root episode. Required mode refuses the process-group
-    /// fallback. Off mode selects that fallback without probing the host.
+    /// boundary for a root episode. Off mode selects the process-group
+    /// fallback without probing the host.
     pub fn enter(mode: SandboxMode, episode_id: &str, inherited: Option<BoundaryPaths>) -> Result<Self, RuntimeError> {
         if mode == SandboxMode::Off {
             return Ok(Self::fallback("sandbox.mode is off"));
@@ -46,12 +46,13 @@ impl ProcessOwnership {
             let boundary = ProcessBoundary::enter(paths)?;
             return Ok(Self::enforced(boundary, None));
         }
-        match ProcessBoundary::root(episode_id) {
-            Ok((boundary, cleanup)) => Ok(Self::enforced(boundary, Some(cleanup))),
-            Err(_) if mode == SandboxMode::BestEffort => {
-                Ok(Self::fallback("the host did not delegate a writable cgroup v2 hierarchy"))
-            }
-            Err(error) => Err(error),
+        Ok(Self::from_root(ProcessBoundary::root(episode_id)))
+    }
+
+    fn from_root(result: Result<(ProcessBoundary, RootCleanup), RuntimeError>) -> Self {
+        match result {
+            Ok((boundary, cleanup)) => Self::enforced(boundary, Some(cleanup)),
+            Err(_) => Self::fallback("the host did not delegate a writable cgroup v2 hierarchy"),
         }
     }
 

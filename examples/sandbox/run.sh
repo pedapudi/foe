@@ -53,7 +53,7 @@ echo "Running the sandbox demo in $run_dir"
 grep -q "visible through the read grant" "$log_dir/episode.jsonl"
 grep -q "Permission denied" "$log_dir/episode.jsonl"
 grep -q '"landlock_abi":[1-9]' "$log_dir/episode.jsonl"
-grep -q '"process_boundary":{"kind":"cgroup-v2","subtree_cleanup":"enforced"}' "$log_dir/episode.jsonl"
+grep -Eq '"process_boundary":\{"kind":"cgroup-v2","subtree_cleanup":"enforced"\}|"process_boundary":\{"kind":"process-group","subtree_cleanup":"observational","reason":"[^"]+"\}' "$log_dir/episode.jsonl"
 
 echo "Sandbox demo passed. Inspect it with:"
 if [ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]; then

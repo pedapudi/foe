@@ -102,9 +102,9 @@ member. `program` is the resolved configuration with `task` removed.
 `process_boundary.kind` is `cgroup-v2` or `process-group`.
 `subtree_cleanup` is `enforced` only when the runtime owns the recursive
 process subtree through cgroup v2. It is `observational` for process-group
-cleanup. The optional `reason` explains a `best-effort` fallback. An absent
-`process_boundary` means the log predates this field and makes no claim about
-subtree cleanup.
+cleanup. The optional `reason` explains why cgroup ownership was unavailable.
+An absent `process_boundary` means the log predates this field and makes no
+claim about subtree cleanup.
 
 `episode/end` — implemented. Always the last event.
 

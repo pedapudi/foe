@@ -629,10 +629,10 @@ process boundary for the episode tree and one for task-lifetime sessions.
 Child boundaries nest inside the episode tree. The runtime kills and empties
 a child boundary before it releases the child's budget reservation.
 
-`sandbox.mode` controls both mechanisms. `best-effort`, the default, applies
-the available Landlock features and attempts a cgroup boundary. `required`
-requires Landlock and a delegated cgroup. `off` applies no Landlock rules and
-uses observational process-group cleanup.
+`sandbox.mode` controls Landlock enforcement. `best-effort`, the default,
+applies the available Landlock features. `required` requires Landlock. Both
+modes attempt a cgroup boundary and record the cleanup guarantee obtained.
+`off` applies no Landlock rules and uses observational process-group cleanup.
 
 The process that launched foe is never restricted, because it holds the
 transport and the credentials, and restricting it would break the host.

@@ -10,9 +10,10 @@ file open with a permission error, which foe records as the tool result.
 
 ## Requirements
 
-The demo requires Linux with Landlock support, a delegated cgroup v2
-hierarchy, and `/usr/bin/python3`. `sandbox.mode` is `required`, so foe exits
-before the episode starts when either kernel guarantee is unavailable.
+The demo requires Linux with Landlock support and `/usr/bin/python3`.
+`sandbox.mode` is `required`, so foe exits before the episode starts when
+Landlock is unavailable. The process-boundary record states whether the host
+also delegates cgroup v2.
 
 The deterministic local model transport requires no model credential and
 makes no provider request.
@@ -71,7 +72,7 @@ reports it in the next step.
 - The log contains the permission error from `denied.txt`.
 - `episode/start.sandbox.landlock_abi` is greater than zero.
 - `episode/start.sandbox.process_boundary` records enforced cgroup v2
-  subtree cleanup.
+  cleanup or the observational process-group fallback.
 
 The viewer states the Landlock ABI and process cleanup mechanism in the
 details region. It shows both `cat` calls in the conversation tab. The denied

@@ -245,7 +245,7 @@ ruleset nests inside that one, and the child's reach is the intersection.
 | mode | behavior |
 |---|---|
 | `best-effort` | applies every Landlock feature the kernel offers up to version 7 and attempts to create a delegated cgroup v2 boundary; records the available enforcement and the reason for a process-group fallback |
-| `required` | requires both Landlock and a delegated cgroup v2 boundary; refuses to start when either guarantee is unavailable |
+| `required` | requires Landlock and attempts to create a delegated cgroup v2 boundary; records an observational process-group fallback when delegation is unavailable |
 | `off` | applies no Landlock restriction, uses process-group cleanup, and records observational subtree cleanup |
 
 `best-effort` records a number rather than a list of features, because the
@@ -253,10 +253,16 @@ list is a function of the number, given in the table above. A reader of the
 log who sees `landlock_abi: 4` knows that the filesystem and TCP were
 enforced and that signals and audit logging were not.
 
+`required` retains its Landlock guarantee. Process ownership has a separate
+recorded guarantee because the program contract has no key that requires
+cgroup delegation. Treating `required` as a cgroup requirement would reject
+existing programs on hosts that enforce their declared filesystem and
+network authority but do not delegate cgroups.
+
 `episode/start.sandbox.process_boundary` records `cgroup-v2` with enforced
 subtree cleanup or `process-group` with observational cleanup. The optional
-reason explains why `best-effort` selected the fallback. An absent field
-means the log predates process-boundary reporting and makes no cleanup claim.
+reason explains why cgroup ownership was unavailable. An absent field means
+the log predates process-boundary reporting and makes no cleanup claim.
 
 ## Denied accesses
 
