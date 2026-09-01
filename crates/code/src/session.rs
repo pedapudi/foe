@@ -98,26 +98,26 @@ impl Tool for Session {
             Err(e) => return e,
         };
         let Some(sessions) = ctx.sessions.as_ref() else {
-            return ToolValue::error("session: dispatched without a sessions handle");
+            return ToolValue::unavailable("session: dispatched without a sessions handle");
         };
         if a.action != Action::Start && a.lifetime.is_some() {
-            return ToolValue::error("session: `lifetime` applies only to `start`");
+            return ToolValue::invalid("session: `lifetime` applies only to `start`");
         }
         let sid = match (a.action, a.session) {
             (Action::Start, _) => 0,
             (_, Some(id)) => id,
-            (_, None) => return ToolValue::error("session: `session` names the session id"),
+            (_, None) => return ToolValue::invalid("session: `session` names the session id"),
         };
         match a.action {
             Action::Start => {
                 let Some(command) = a.command else {
-                    return ToolValue::error("session: `start` requires `command`");
+                    return ToolValue::invalid("session: `start` requires `command`");
                 };
                 if command.contains('\0') {
-                    return ToolValue::error(format!("session: {SHELL_COMMAND_NUL_ERROR}"));
+                    return ToolValue::invalid(format!("session: {SHELL_COMMAND_NUL_ERROR}"));
                 }
                 let Some(cwd) = ctx.reader.as_ref().and_then(|r| r.roots().first().cloned()) else {
-                    return ToolValue::error("session: no read root to use as the working directory");
+                    return ToolValue::unavailable("session: no read root to use as the working directory");
                 };
                 let lifetime = a.lifetime.unwrap_or(SessionLifetime::Episode);
                 let req = SessionRequest {
@@ -145,16 +145,16 @@ impl Tool for Session {
                         )
                         .subject(line)
                     }
-                    Err(e) => ToolValue::error(format!("session: {e}")),
+                    Err(e) => ToolValue::from_cap_error("session", e),
                 }
             }
             Action::Poll => match sessions.take_output(sid) {
                 Ok((status, output)) => render_poll(ctx, &status, &output),
-                Err(e) => ToolValue::error(format!("session: {e}")),
+                Err(e) => ToolValue::from_cap_error("session", e),
             },
             Action::Write => {
                 let Some(input) = a.input else {
-                    return ToolValue::error("session: `write` requires `input`");
+                    return ToolValue::invalid("session: `write` requires `input`");
                 };
                 match sessions.write_stdin(sid, input.as_bytes()) {
                     Ok(status) => {
@@ -163,12 +163,12 @@ impl Tool for Session {
                         ToolValue::ok(json!({ "session": sid, "bytes": input.len() }), format!("[{line}]\n"))
                             .subject(line)
                     }
-                    Err(e) => ToolValue::error(format!("session: {e}")),
+                    Err(e) => ToolValue::from_cap_error("session", e),
                 }
             }
             Action::Signal => {
                 let Some(signal) = a.signal else {
-                    return ToolValue::error("session: `signal` requires `signal`");
+                    return ToolValue::invalid("session: `signal` requires `signal`");
                 };
                 let name = normalize(&signal);
                 match sessions.signal(sid, &name) {
@@ -176,7 +176,7 @@ impl Tool for Session {
                         let line = format!("session {}: {} \u{b7} {name} sent", status.id, status.name);
                         ToolValue::ok(json!({ "session": sid, "signal": name }), format!("[{line}]\n")).subject(line)
                     }
-                    Err(e) => ToolValue::error(format!("session: {e}")),
+                    Err(e) => ToolValue::from_cap_error("session", e),
                 }
             }
             Action::Stop => match sessions.stop(sid) {
@@ -191,7 +191,7 @@ impl Tool for Session {
                     )
                     .subject(line)
                 }
-                Err(e) => ToolValue::error(format!("session: {e}")),
+                Err(e) => ToolValue::from_cap_error("session", e),
             },
         }
     }

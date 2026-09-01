@@ -15,7 +15,9 @@ use crate::graph::{Produced, Scheduler};
 use foe_core::budget::Pool;
 use foe_core::loop_::{lock, settle, until, verify_recorded, wait_stop, Log, Params, Recorder};
 use foe_core::registry::{Handles, Registry};
-use foe_core::{CapError, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolValue, Transport};
+use foe_core::{
+    CapError, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolFailure, ToolFailureCode, ToolValue, Transport,
+};
 use foe_log::{
     BlockedCode, BudgetAmount, Chunk, ContentBlock, Event, EventData, ExhaustedLimit, HeaderReason, InboxItem,
     InboxSource, Message, ModelRequest, Outcome, RequestHeader, SpawnContext, ToolCall, ToolResult, WorkflowBranch,
@@ -183,15 +185,24 @@ fn limit_or_code(value: impl serde::Serialize) -> String {
     serde_json::to_value(value).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
 }
 
-/// A failure message's settled outcome, when it names one: a denied path,
-/// an executable that could not start, or a budget limit the pool refused.
-fn settled_in(message: &str) -> Option<Outcome> {
-    if message.contains("outside every granted root") || message.contains("could not start") {
-        return Some(Outcome::Failed { error: message.to_string() });
+/// A typed tool failure as a workflow failure. The producer decides whether
+/// another firing can help. Budget exhaustion carries the exact episode
+/// outcome in structured details.
+fn trouble_from_failure(failure: ToolFailure) -> Trouble {
+    let cause = limit_or_code(failure.code);
+    let outcome = match failure.code {
+        ToolFailureCode::BudgetExhausted => {
+            failure.details.get("limit").cloned().and_then(|value| serde_json::from_value(value).ok()).map_or_else(
+                || Outcome::Failed { error: failure.message.clone() },
+                |limit| Outcome::Exhausted { limit },
+            )
+        }
+        _ => Outcome::Failed { error: failure.message.clone() },
+    };
+    match failure.retryable {
+        true => Trouble::recoverable(&cause, failure.message, outcome),
+        false => Trouble::settled(outcome),
     }
-    let named = message.strip_prefix("budget: the ")?.split(' ').next()?;
-    let limit: ExhaustedLimit = serde_json::from_value(Value::String(named.into())).ok()?;
-    Some(Outcome::Exhausted { limit })
 }
 
 /// A tool result as a node value, or the trouble it represents. For a
@@ -200,14 +211,22 @@ fn settled_in(message: &str) -> Option<Outcome> {
 /// read the code the way the loop's model does.
 fn classify_tool(value: ToolValue, configured: bool) -> Output {
     let rendered = value.rendered.unwrap_or_else(|| render(&value.value));
-    let exited_badly = value.value["exit_code"] != json!(0) || value.value["timed_out"] == json!(true);
-    if !(value.is_error || configured && exited_badly) {
+    let timed_out = configured && value.value["timed_out"] == json!(true);
+    let bad_exit = configured && !timed_out && value.value["exit_code"] != json!(0);
+    if !(value.is_error || timed_out || bad_exit) {
         return Ok((value.value, rendered));
     }
-    match settled_in(&rendered) {
-        Some(outcome) => Err(Trouble::settled(outcome)),
-        None => Err(Trouble::recoverable("tool-error", rendered.clone(), Outcome::Failed { error: rendered })),
-    }
+    let failure = value.failure.map(|failure| *failure).unwrap_or_else(|| {
+        let (code, details) = if timed_out {
+            (ToolFailureCode::TimedOut, json!({ "duration_ms": value.value["duration_ms"] }))
+        } else if bad_exit {
+            (ToolFailureCode::ProcessExit, json!({ "exit_code": value.value["exit_code"] }))
+        } else {
+            (ToolFailureCode::OperationFailed, json!({ "source": "compatibility" }))
+        };
+        ToolFailure { code, message: rendered, retryable: true, details }
+    });
+    Err(trouble_from_failure(failure))
 }
 
 /// The text successors of a node receive: a string as itself, anything
@@ -494,8 +513,8 @@ impl Executor {
                 Ok(handle) => Box::pin(async move { output_of(handle.run.wait().await.0, false) }),
                 Err(CapError::Log(e)) => return Err(e.into()),
                 Err(e) => {
-                    let outcome = settled_in(&e.to_string()).unwrap_or(Outcome::Failed { error: e.to_string() });
-                    Box::pin(async move { Err(Trouble::settled(outcome)) })
+                    let failure = *ToolValue::from_cap_error("spawn", e).failure.expect("a capability error fails");
+                    Box::pin(async move { Err(trouble_from_failure(failure)) })
                 }
             }
         } else {
@@ -874,6 +893,7 @@ impl Executor {
                 value: result.value,
                 rendered: result.rendered.unwrap_or_default(),
                 is_error: result.is_error,
+                failure: result.failure.map(|failure| *failure),
                 spill: None,
                 subject: result.subject,
                 duration_ms: 0,

@@ -354,6 +354,8 @@ async fn a_host_call_no_host_can_answer_is_refused_at_once() {
     assert_eq!(answers[1]["call_id"], "tc_1", "the child's own call is answered");
     for answer in &answers {
         assert_eq!(answer["is_error"], true);
+        assert_eq!(answer["failure"]["code"], "unavailable");
+        assert_eq!(answer["failure"]["retryable"], false);
         let rendered = answer["rendered"].as_str().unwrap();
         assert!(rendered.contains("ask_host") && rendered.contains("no host"), "{rendered}");
     }

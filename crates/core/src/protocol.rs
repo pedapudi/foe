@@ -8,7 +8,7 @@
 
 use crate::loop_::{append_inbox_item, lock, until, wait_stop, Log};
 use crate::{CallCtx, ChunkSink, ModelRequestBody, Tool, ToolValue, Transport};
-use foe_log::{Chunk, EventData, InboxItem, InboxSource, ModelRoute};
+use foe_log::{Chunk, EventData, ExhaustedLimit, InboxItem, InboxSource, ModelRoute, ToolFailure, ToolFailureCode};
 use foe_program::document::ResolvedProgram;
 use foe_program::tools::host_spec;
 use foe_program::ToolSpec;
@@ -157,13 +157,38 @@ impl Host {
             }
             "tool/result" => {
                 let call_id = field("call_id")?;
+                let rendered = value.get("rendered").and_then(Value::as_str).map(str::to_string);
+                let is_error = value.get("is_error").and_then(Value::as_bool).unwrap_or(false);
+                let mut failure = value
+                    .get("failure")
+                    .filter(|v| !v.is_null())
+                    .cloned()
+                    .map(serde_json::from_value::<ToolFailure>)
+                    .transpose()
+                    .map_err(|e| format!("tool/result for `{call_id}` has an invalid `failure`: {e}"))?;
+                if failure.is_some() && !is_error {
+                    return Err(format!("tool/result for `{call_id}` has `failure` but `is_error` is false"));
+                }
+                if is_error && failure.is_none() {
+                    let message = rendered
+                        .clone()
+                        .or_else(|| value.get("value")?.get("error")?.as_str().map(str::to_string))
+                        .unwrap_or_else(|| "the host tool reported an error".into());
+                    failure = Some(ToolFailure {
+                        code: ToolFailureCode::OperationFailed,
+                        message,
+                        retryable: true,
+                        details: serde_json::json!({ "source": "host-compatibility" }),
+                    });
+                }
                 let result = ToolValue {
                     value: value
                         .get("value")
                         .cloned()
                         .ok_or_else(|| format!("tool/result for `{call_id}` lacks `value`"))?,
-                    rendered: value.get("rendered").and_then(Value::as_str).map(str::to_string),
-                    is_error: value.get("is_error").and_then(Value::as_bool).unwrap_or(false),
+                    rendered,
+                    is_error,
+                    failure: failure.map(Box::new),
                     subject: None,
                 };
                 let sender = lock(&self.inner.calls).remove(call_id);
@@ -314,7 +339,10 @@ impl Tool for HostTool {
         lock(&inner.calls).insert(ctx.call_id.clone(), tx);
         if inner.closed.load(Ordering::SeqCst) {
             lock(&inner.calls).remove(&ctx.call_id);
-            return ToolValue::error(format!("the host closed standard input before `{}` was called", self.spec.name));
+            return ToolValue::unavailable(format!(
+                "the host closed standard input before `{}` was called",
+                self.spec.name
+            ));
         }
         let event = EventData::HostToolCall {
             step: ctx.step,
@@ -324,7 +352,7 @@ impl Tool for HostTool {
         };
         if let Err(e) = inner.log.append(event) {
             lock(&inner.calls).remove(&ctx.call_id);
-            return ToolValue::error(format!("`{}` could not be recorded: {e}", self.spec.name));
+            return ToolValue::unavailable(format!("`{}` could not be recorded: {e}", self.spec.name));
         }
         // The wait ends three ways besides the answer: standard input
         // closed, the stop signal, and the `seconds` budget. A wait that
@@ -333,7 +361,7 @@ impl Tool for HostTool {
         let name = &self.spec.name;
         let unanswered = |why: String| {
             lock(&inner.calls).remove(&ctx.call_id);
-            ToolValue::error(format!("`{name}` went unanswered: {why}"))
+            ToolValue::unavailable(format!("`{name}` went unanswered: {why}"))
         };
         let stopped = |reason| format!("the episode stopped: {reason}");
         tokio::select! {
@@ -346,8 +374,24 @@ impl Tool for HostTool {
                     None => unanswered("the host closed standard input".into()),
                 },
             },
-            reason = wait_stop(inner.stop.subscribe()) => unanswered(stopped(reason)),
-            _ = until(ctx.deadline) => unanswered("the budget's seconds elapsed".into()),
+            reason = wait_stop(inner.stop.subscribe()) => {
+                lock(&inner.calls).remove(&ctx.call_id);
+                ToolValue::failed(
+                    ToolFailureCode::Interrupted,
+                    format!("`{name}` went unanswered: {}", stopped(reason)),
+                    false,
+                    serde_json::json!({}),
+                )
+            },
+            _ = until(ctx.deadline) => {
+                lock(&inner.calls).remove(&ctx.call_id);
+                ToolValue::failed(
+                    ToolFailureCode::BudgetExhausted,
+                    format!("`{name}` went unanswered: the budget's seconds elapsed"),
+                    false,
+                    serde_json::json!({ "limit": ExhaustedLimit::Seconds }),
+                )
+            },
         }
     }
 }

@@ -111,7 +111,7 @@ fn exec_tools() -> Vec<Box<dyn Tool>> {
 
 /// Parses the model's arguments, naming the tool in the error.
 fn parse_args<T: serde::de::DeserializeOwned>(tool: &str, args: serde_json::Value) -> Result<T, foe_core::ToolValue> {
-    serde_json::from_value(args).map_err(|e| foe_core::ToolValue::error(format!("{tool}: invalid arguments: {e}")))
+    serde_json::from_value(args).map_err(|e| foe_core::ToolValue::invalid(format!("{tool}: invalid arguments: {e}")))
 }
 
 /// A path from the model. Absolute paths pass through; relative paths are

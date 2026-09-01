@@ -1,11 +1,19 @@
 use super::{resolve_specs, Handles, Registry, Source};
 use crate::grants::{RootReader, RootWriter};
 use crate::test_util::{program_with, spec, tmp, FakeExecutor, Probe, Verifier};
-use crate::{Tool, ToolCall};
+use crate::{CapError, ExecRequest, ExecResult, Executor, Tool, ToolCall, ToolFailureCode};
 use foe_program::harness_text as text;
 use foe_program::{Effect, ProgramError};
 use serde_json::{json, Value};
 use std::sync::Arc;
+
+struct StartFailure;
+
+impl Executor for StartFailure {
+    fn run(&self, _req: ExecRequest) -> Result<ExecResult, CapError> {
+        Err(CapError::ProcessStart("interpreter missing".into()))
+    }
+}
 
 fn probe(name: &str, effect: Effect) -> Box<dyn Tool> {
     Box::new(Probe::new(name, effect))
@@ -231,6 +239,27 @@ async fn configured_executables_receive_args_as_argv_and_report_exit_as_data() {
     assert_eq!(req.cwd, program.grants.read[0]);
     let bad = registry.dispatch(&handles, &call("t", json!({ "args": "check" })), 2, root, None, None).await;
     assert!(bad.is_error);
+    assert_eq!(bad.failure.unwrap().code, ToolFailureCode::InvalidCall);
+}
+
+/// docs/tools.md "Failures": a configured executable reports process
+/// creation failure where its executor refuses the start.
+#[tokio::test]
+async fn configured_executable_start_failure_is_typed() {
+    let root = tmp("registry-exec-start");
+    let exec = root.join("t.sh");
+    std::fs::write(&exec, "").unwrap();
+    let program = program_with(&root, |value| {
+        value["tools"] = json!(["t"]);
+        value["tool_defs"] = json!({ "t": { "exec": exec, "description": "d" } });
+    })
+    .unwrap();
+    let registry = Registry::new(&program, vec![], vec![]).unwrap();
+    let handles = Handles { executor: Some(Arc::new(StartFailure)), ..Default::default() };
+    let result = registry.dispatch(&handles, &call("t", json!({ "args": [] })), 1, root, None, None).await;
+    let failure = result.failure.expect("the failed start has a typed failure");
+    assert_eq!(failure.code, ToolFailureCode::ProcessStartFailed);
+    assert!(!failure.retryable);
 }
 
 /// docs/config.md `done_when`: an executable verifier accepts by exiting 0

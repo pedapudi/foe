@@ -501,7 +501,7 @@ fn a_failed_tool_node_is_retried_through_recovery() {
     assert_eq!(recovery["data"]["action"], "retry");
     assert_eq!(recovery["data"]["target"], "only");
     assert_eq!(recovery["data"]["intervention"], 1);
-    assert_eq!(recovery["data"]["cause"], "tool-error");
+    assert_eq!(recovery["data"]["cause"], "process-exit");
     assert_eq!(node_starts(&events), [("only".into(), 1), ("only".into(), 2)]);
     let first_end = events.iter().find(|e| e["type"] == "workflow/node-end").unwrap();
     assert!(first_end["data"]["error"].as_str().unwrap().contains("exit code 1"));

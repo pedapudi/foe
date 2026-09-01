@@ -196,30 +196,30 @@ impl Tool for Grep {
             Err(e) => return e,
         };
         let Some(reader) = ctx.reader.as_ref() else {
-            return ToolValue::error("grep: dispatched without a reader handle");
+            return ToolValue::unavailable("grep: dispatched without a reader handle");
         };
         let roots = reader.roots();
         let root = match (&a.path, roots.first()) {
             (Some(p), _) => resolve(roots, p),
             (None, Some(r)) => r.clone(),
-            (None, None) => return ToolValue::error("grep: no read root to search"),
+            (None, None) => return ToolValue::unavailable("grep: no read root to search"),
         };
         let root_shown = display(roots, &root);
         if let Err(e) = reader.metadata(&root) {
-            return ToolValue::error(format!("grep: {root_shown}: {e}"));
+            return ToolValue::from_cap_error(&format!("grep: {root_shown}"), e);
         }
         let matcher =
             match RegexMatcherBuilder::new().case_insensitive(a.ignore_case).fixed_strings(a.literal).build(&a.pattern)
             {
                 Ok(m) => m,
-                Err(e) => return ToolValue::error(format!("grep: invalid pattern: {e}")),
+                Err(e) => return ToolValue::invalid(format!("grep: invalid pattern: {e}")),
             };
         let override_matcher = if let Some(glob) = &a.glob {
             let mut ov = OverrideBuilder::new(&root);
             let built = ov.add(glob).and_then(|b| b.build());
             match built {
                 Ok(ov) => Some(ov),
-                Err(e) => return ToolValue::error(format!("grep: invalid glob {glob:?}: {e}")),
+                Err(e) => return ToolValue::invalid(format!("grep: invalid glob {glob:?}: {e}")),
             }
         } else {
             None

@@ -148,11 +148,12 @@ completes against it.
 `"pointer"`, by the value at that JSON Pointer within it. NAME must be one
 of the node's inputs: a name in its `follows`. No other substitution exists.
 A tool node has no judgment of its own; when its call fails, recovery
-decides. For a tool
-declared in `tool_defs`, an exit code other than zero or a timeout is a
-failure of the node, because no model reads the code the way the loop's
-model does; the exit code and both output streams are the error recovery
-sees.
+uses the result's typed failure. For a tool declared in `tool_defs`, the
+node boundary classifies an exit code other than zero as `process-exit` and
+a timeout as `timed-out`. A model loop receives those process outcomes as
+data because its model can judge them. A workflow tool node has no model to
+make that judgment. The exit code and both output streams are the error
+recovery sees.
 
 ### Model nodes
 
@@ -358,17 +359,20 @@ proceed, and it is the second place agency lives.
 
 | condition | recovery fires |
 |---|---|
-| the node's tool call errored, timed out, or produced output that violated the tool's own schema | yes, except for settled failures |
+| the node's tool call returned a typed failure with `retryable: true` | yes, with `failure.code` as the cause |
 | the node's `verify` findings remain after `retries` | yes |
 | a model node ended `blocked` or `exhausted` | no when it declares `empty`; otherwise yes, with the code or limit |
 | a model node ended `failed` | yes |
 | the workflow's `done_when` findings remain | yes, at the terminal node |
 | a tool node's bound argument is absent from its predecessor's value | yes |
-| the executable does not exist, the path is denied, the budget is spent, or a child exceeded a structural cap | no; the episode ends with the matching outcome |
+| the node's tool call returned a typed failure with `retryable: false` | no; the episode ends with the outcome named by its code and details |
 
-The last row names settled failures: a second attempt cannot change them,
-so a model call to decide what to do about them would spend budget to learn
-nothing.
+The producer sets `retryable` from facts available where the failure occurs.
+A denied capability, an unavailable implementation, a process-start
+failure, an exhausted budget, and an interruption are non-retryable. A bad
+call, a process exit, a timeout, and an operation failure are retryable.
+`limit-exceeded` follows the value its producer records. Recovery never
+parses `failure.message`.
 
 ### What it sees
 

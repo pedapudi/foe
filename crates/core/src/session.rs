@@ -181,7 +181,9 @@ impl Sessions for LocalSessions {
     fn start(&self, req: SessionRequest) -> Result<SessionStatus, CapError> {
         let mut inner = self.inner.lock().unwrap();
         if req.lifetime == SessionLifetime::Task && !self.task_session {
-            return Err(CapError::Invalid("grants.task_session does not authorize a task-lifetime session".into()));
+            return Err(CapError::CapabilityDenied(
+                "grants.task_session does not authorize a task-lifetime session".into(),
+            ));
         }
         let alive = inner.iter().filter(|(id, s)| s.status(**id).alive).count();
         if alive >= self.limit {
@@ -216,7 +218,8 @@ impl Sessions for LocalSessions {
             .stdout(stdout_stdio)
             .stderr(stderr_stdio);
         let narrowed = self.policy.for_executable(&req.program, false);
-        let mut child = self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::Invalid(e.to_string()))?;
+        let mut child =
+            self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::ProcessStart(e.to_string()))?;
         self.next.store(id, Ordering::SeqCst);
         let pid = child.id();
         let group = Pid::from_raw(child.id() as i32);

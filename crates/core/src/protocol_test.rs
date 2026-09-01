@@ -2,7 +2,7 @@ use super::{Downlink, Host, InboxSink, HOST_ROUTE};
 use crate::loop_::Log;
 use crate::test_util::{program_with, tmp};
 use crate::{CallCtx, ModelRequestBody};
-use foe_log::{Chunk, EventData, InboxSource, StopReason, Usage};
+use foe_log::{Chunk, EventData, InboxSource, StopReason, ToolFailureCode, Usage};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use tokio::io::AsyncWriteExt;
@@ -134,7 +134,7 @@ async fn host_tool_calls_emit_an_event_and_wait_for_the_answer() {
     let (host, _stop) = Host::new("ep_self".into(), log.clone(), None);
     let tools = host.tools(&program);
     assert_eq!(tools.len(), 1);
-    let tool = tools.into_iter().next().unwrap();
+    let tool: Arc<dyn crate::Tool> = Arc::from(tools.into_iter().next().unwrap());
     let (mut writer, reader) = tokio::io::duplex(1024);
     let reader_task = {
         let host = host.clone();
@@ -142,6 +142,7 @@ async fn host_tool_calls_emit_an_event_and_wait_for_the_answer() {
     };
     let call = tokio::spawn({
         let dir = root.clone();
+        let tool = tool.clone();
         async move { tool.call(json!({ "q": 1 }), &ctx("tc_1", &dir)).await }
     });
     let emitted = yield_until(|| log.events().pop().filter(|e| matches!(e.data, EventData::HostToolCall { .. }))).await;
@@ -160,6 +161,50 @@ async fn host_tool_calls_emit_an_event_and_wait_for_the_answer() {
         (value.value, value.rendered.as_deref(), value.is_error),
         (json!({ "count": 3 }), Some("3 refs"), false)
     );
+
+    let typed_call = tokio::spawn({
+        let dir = root.clone();
+        let tool = tool.clone();
+        async move { tool.call(json!({ "q": 2 }), &ctx("tc_2", &dir)).await }
+    });
+    yield_until(|| {
+        log.events()
+            .into_iter()
+            .find(|event| matches!(&event.data, EventData::HostToolCall { call_id, .. } if call_id == "tc_2"))
+    })
+    .await;
+    writer
+        .write_all(
+            br#"{"type":"tool/result","call_id":"tc_2","value":{"error":"denied"},"rendered":"denied","is_error":true,"failure":{"code":"capability-denied","message":"denied","retryable":false,"details":{"path":"/secret"}}}"#,
+        )
+        .await
+        .unwrap();
+    writer.write_all(b"\n").await.unwrap();
+    let typed = typed_call.await.unwrap();
+    let failure = typed.failure.expect("the host failure is preserved");
+    assert_eq!(failure.code, ToolFailureCode::CapabilityDenied);
+    assert!(!failure.retryable);
+    assert_eq!(failure.details["path"], "/secret");
+
+    let compatibility_call = tokio::spawn({
+        let dir = root.clone();
+        let tool = tool.clone();
+        async move { tool.call(json!({ "q": 3 }), &ctx("tc_3", &dir)).await }
+    });
+    yield_until(|| {
+        log.events()
+            .into_iter()
+            .find(|event| matches!(&event.data, EventData::HostToolCall { call_id, .. } if call_id == "tc_3"))
+    })
+    .await;
+    writer
+        .write_all(br#"{"type":"tool/result","call_id":"tc_3","value":{"error":"old host"},"rendered":"old host","is_error":true}"#)
+        .await
+        .unwrap();
+    writer.write_all(b"\n").await.unwrap();
+    let compatibility = compatibility_call.await.unwrap().failure.expect("old host errors receive a fallback");
+    assert_eq!(compatibility.code, ToolFailureCode::OperationFailed);
+    assert!(compatibility.retryable);
     drop(writer);
     reader_task.await.unwrap();
 }

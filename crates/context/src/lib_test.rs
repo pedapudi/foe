@@ -55,6 +55,7 @@ fn result(step: u32, call_id: &str, rendered: &str, is_error: bool) -> EventData
         value: json!({}),
         rendered: rendered.into(),
         is_error,
+        failure: None,
         spill: None,
         subject: None,
         duration_ms: 1,

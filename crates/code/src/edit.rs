@@ -120,10 +120,10 @@ impl Tool for Edit {
             Err(e) => return e,
         };
         let (Some(reader), Some(writer)) = (ctx.reader.as_ref(), ctx.writer.as_ref()) else {
-            return ToolValue::error("edit: dispatched without both a reader and a writer handle");
+            return ToolValue::unavailable("edit: dispatched without both a reader and a writer handle");
         };
         if a.edits.is_empty() {
-            return ToolValue::error("edit: edits must contain at least one entry");
+            return ToolValue::invalid("edit: edits must contain at least one entry");
         }
         let path = resolve(reader.roots(), &a.path);
         let shown = display(reader.roots(), &path);
@@ -133,7 +133,7 @@ impl Tool for Edit {
         match read {
             Ok(_) => {}
             Err(CapError::Io(e)) if creates_file && e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return ToolValue::error(format!("edit: {shown}: {e}")),
+            Err(e) => return ToolValue::from_cap_error(&format!("edit: {shown}"), e),
         }
         let previous_version = file_version(&raw_bytes);
         if a.expected_version.as_ref().is_some_and(|expected| expected != &previous_version) {
@@ -226,7 +226,7 @@ impl Tool for Edit {
             out.push_str(&result);
         }
         if let Err(e) = writer.write(&path, out.as_bytes()) {
-            return ToolValue::error(format!("edit: {shown}: {e}"));
+            return ToolValue::from_cap_error(&format!("edit: {shown}"), e);
         }
         let n = a.edits.len();
         // The head of the rendering is also the one line a reader wants,

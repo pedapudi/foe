@@ -53,8 +53,15 @@ async fn a_spawn_reserves_records_and_releases_budget() {
     .with_launcher(fake_child(&dir));
     let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
 
-    let refused = spawner.spawn(request("worker", BudgetAmount { model_calls: Some(99), ..Default::default() }));
-    let message = refused.err().map(|e| e.to_string()).unwrap_or_default();
+    let refused = spawner
+        .spawn(request("worker", BudgetAmount { model_calls: Some(99), ..Default::default() }))
+        .err()
+        .expect("the reservation exceeds the pool");
+    assert!(matches!(refused, CapError::Budget { limit: foe_log::ExhaustedLimit::ModelCalls, .. }));
+    let failure = crate::ToolValue::from_cap_error("spawn", refused).failure.unwrap();
+    assert_eq!(failure.code, foe_log::ToolFailureCode::BudgetExhausted);
+    assert!(!failure.retryable);
+    let message = failure.message;
     assert!(message.contains("model_calls"), "a reservation beyond the remainder names the limit: {message}");
     assert_eq!(types(&log), ["episode/start"], "a refused reservation writes nothing");
 
@@ -101,6 +108,7 @@ async fn a_process_start_failure_closes_the_spawn_and_reservation() {
 
     let reserve = BudgetAmount { model_calls: Some(5), ..Default::default() };
     let error = spawner.spawn(request("worker", reserve)).err().expect("the process cannot start");
+    assert!(matches!(error, CapError::ProcessStart(_)));
     let error = error.to_string();
     assert!(error.contains("No such file") || error.contains("not found"), "{error}");
     assert_eq!(types(&log), ["episode/start", "budget/reserve", "spawn/start", "spawn/end", "budget/release"]);

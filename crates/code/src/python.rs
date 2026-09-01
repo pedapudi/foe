@@ -203,7 +203,9 @@ fn outcome(served: Served, res: ExecResult) -> ToolValue {
         return ToolValue::ok(value, out)
             .subject(format!("python: {calls} call(s), {errors} error(s), {bytes} bytes returned"));
     }
-    let message = served.failed.unwrap_or_else(|| match (res.timed_out, res.exit_code) {
+    let timed_out = res.timed_out;
+    let exit_code = res.exit_code;
+    let message = served.failed.unwrap_or_else(|| match (timed_out, exit_code) {
         (true, _) => {
             format!("python: timed out after {:.1}s; the process group was killed", res.duration.as_secs_f64())
         }
@@ -212,10 +214,22 @@ fn outcome(served: Served, res: ExecResult) -> ToolValue {
     });
     let mut out = format!("[python: failed after {calls} inner call(s)]\n{message}");
     diagnostics(&mut out);
-    let value =
-        json!({ "error": { "message": message, "derivation": derivation(false), "stdout": stdout, "stderr": stderr } });
+    let value = json!({
+        "error": { "message": message, "derivation": derivation(false), "stdout": stdout, "stderr": stderr }
+    });
     let subject = message.lines().next().unwrap_or_default().to_string();
-    ToolValue { value, rendered: Some(out), is_error: true, subject: None }
+    let code = match (timed_out, exit_code) {
+        (true, _) => foe_core::ToolFailureCode::TimedOut,
+        (false, Some(0)) => foe_core::ToolFailureCode::OperationFailed,
+        (false, _) => foe_core::ToolFailureCode::ProcessExit,
+    };
+    let failure = foe_core::ToolFailure {
+        code,
+        message,
+        retryable: true,
+        details: json!({ "exit_code": exit_code, "timed_out": timed_out }),
+    };
+    ToolValue { value, rendered: Some(out), is_error: true, failure: Some(Box::new(failure)), subject: None }
         .subject(format!("python: {calls} call(s) · {subject}"))
 }
 
@@ -231,19 +245,23 @@ impl Tool for Python {
             Err(e) => return e,
         };
         let Some(executor) = ctx.executor.clone() else {
-            return ToolValue::error("python: dispatched without an executor handle");
+            return ToolValue::unavailable("python: dispatched without an executor handle");
         };
         let Some(composer) = ctx.composer.clone() else {
-            return ToolValue::error("python: dispatched without a composer; the tool runs only in the agent loop");
+            return ToolValue::unavailable(
+                "python: dispatched without a composer; the tool runs only in the agent loop",
+            );
         };
         if a.program.len() > PYTHON_SOURCE_MAX_BYTES {
-            return ToolValue::error(format!(
-                "python: the program is {} bytes; the bound is {PYTHON_SOURCE_MAX_BYTES}",
-                a.program.len()
-            ));
+            return ToolValue::failed(
+                foe_core::ToolFailureCode::LimitExceeded,
+                format!("python: the program is {} bytes; the bound is {PYTHON_SOURCE_MAX_BYTES}", a.program.len()),
+                true,
+                json!({ "limit": "source_bytes", "actual": a.program.len(), "maximum": PYTHON_SOURCE_MAX_BYTES }),
+            );
         }
         if !self.bin.is_file() {
-            return ToolValue::error(format!("python: no interpreter at {}", self.bin.display()));
+            return ToolValue::unavailable(format!("python: no interpreter at {}", self.bin.display()));
         }
         let mut timeout = Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS));
         if let Some(deadline) = ctx.deadline {

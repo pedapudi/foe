@@ -19,7 +19,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub use foe_log as log;
-pub use foe_log::{BlockedCode, Chunk, ContentBlock, Message, Outcome, StopReason, ToolCall, ToolSchema, Usage};
+pub use foe_log::{
+    BlockedCode, Chunk, ContentBlock, Message, Outcome, StopReason, ToolCall, ToolFailure, ToolFailureCode, ToolSchema,
+    Usage,
+};
 
 pub mod budget;
 pub mod confine;
@@ -66,12 +69,14 @@ pub fn fitting<'a>(lines: impl Iterator<Item = &'a &'a str>, max_lines: usize, m
 pub const SUBJECT_MAX: usize = 120;
 
 /// What a tool returns. The log stores `value`; the model sees `rendered`
-/// when present and a compact rendering of `value` otherwise.
+/// when present and a compact rendering of `value` otherwise. A failed
+/// call carries one machine-readable classification in `failure`.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ToolValue {
     pub value: serde_json::Value,
     pub rendered: Option<String>,
     pub is_error: bool,
+    pub failure: Option<Box<ToolFailure>>,
     /// One line naming what this call acted on and what came of it, which
     /// the tool writes from what it did. `rendered` is what the model
     /// received; this is what a person reads in a list, and it never
@@ -81,14 +86,68 @@ pub struct ToolValue {
 
 impl ToolValue {
     pub fn ok(value: serde_json::Value, rendered: impl Into<String>) -> Self {
-        Self { value, rendered: Some(rendered.into()), is_error: false, subject: None }
+        Self { value, rendered: Some(rendered.into()), is_error: false, failure: None, subject: None }
     }
     /// The message is the subject too: it already names what failed, which
     /// is the one line a reader scanning for the failure wants.
     pub fn error(message: impl Into<String>) -> Self {
+        Self::failed(ToolFailureCode::OperationFailed, message, true, serde_json::json!({}))
+    }
+    pub fn failed(
+        code: ToolFailureCode,
+        message: impl Into<String>,
+        retryable: bool,
+        details: serde_json::Value,
+    ) -> Self {
         let message = message.into();
+        let failure = ToolFailure { code, message: message.clone(), retryable, details };
         let value = serde_json::json!({ "error": &message });
-        Self { value, rendered: Some(message.clone()), is_error: true, subject: None }.subject(message)
+        Self { value, rendered: Some(message.clone()), is_error: true, failure: Some(Box::new(failure)), subject: None }
+            .subject(message)
+    }
+    pub fn invalid(message: impl Into<String>) -> Self {
+        Self::failed(ToolFailureCode::InvalidCall, message, true, serde_json::json!({}))
+    }
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self::failed(ToolFailureCode::Unavailable, message, false, serde_json::json!({}))
+    }
+    pub fn from_cap_error(context: &str, error: CapError) -> Self {
+        let message = format!("{context}: {error}");
+        match error {
+            CapError::Denied { path } => {
+                Self::failed(ToolFailureCode::CapabilityDenied, message, false, serde_json::json!({ "path": path }))
+            }
+            CapError::CapabilityDenied(capability) => Self::failed(
+                ToolFailureCode::CapabilityDenied,
+                message,
+                false,
+                serde_json::json!({ "capability": capability }),
+            ),
+            CapError::Budget { limit, .. } => {
+                Self::failed(ToolFailureCode::BudgetExhausted, message, false, serde_json::json!({ "limit": limit }))
+            }
+            CapError::ProcessStart(reason) => Self::failed(
+                ToolFailureCode::ProcessStartFailed,
+                message,
+                false,
+                serde_json::json!({ "reason": reason }),
+            ),
+            CapError::Log(error) => Self::failed(
+                ToolFailureCode::Unavailable,
+                message,
+                false,
+                serde_json::json!({ "log": error.to_string() }),
+            ),
+            CapError::Io(error) => Self::failed(
+                ToolFailureCode::OperationFailed,
+                message,
+                true,
+                serde_json::json!({ "io_kind": format!("{:?}", error.kind()) }),
+            ),
+            CapError::Invalid(reason) => {
+                Self::failed(ToolFailureCode::OperationFailed, message, true, serde_json::json!({ "reason": reason }))
+            }
+        }
     }
     /// Records what the call acted on, held to one line of [`SUBJECT_MAX`].
     /// A line past the limit ends in an ellipsis, so a cut is never silent.
@@ -319,10 +378,16 @@ pub struct SpawnHandle {
 pub enum CapError {
     #[error("{path}: outside every granted root")]
     Denied { path: PathBuf },
+    #[error("capability denied: {0}")]
+    CapabilityDenied(String),
     #[error("{0}")]
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Log(#[from] foe_log::LogError),
+    #[error("the {name} budget limit leaves no room for a child")]
+    Budget { limit: foe_log::ExhaustedLimit, name: String },
+    #[error("{0}")]
+    ProcessStart(String),
     #[error("{0}")]
     Invalid(String),
 }

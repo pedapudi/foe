@@ -157,6 +157,7 @@ fn steps_and_calls_carry_their_own_times_and_usage() {
                 value: serde_json::json!({}),
                 rendered: String::new(),
                 is_error: true,
+                failure: None,
                 spill: None,
                 subject: Some("pytest · exit 1".into()),
                 duration_ms: 40,

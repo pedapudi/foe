@@ -137,6 +137,19 @@ The result of a host tool call. The `call_id` must match an outstanding
 when absent, foe renders `value` compactly. `is_error` defaults to false.
 foe records the answer as a `tool/result` event.
 
+An error sets `is_error` to true and supplies the typed `failure` specified
+by [tools.md](tools.md#failures):
+
+```json
+{"type":"tool/result","call_id":"tc_04","value":{"error":"denied"},"rendered":"denied","is_error":true,"failure":{"code":"capability-denied","message":"denied","retryable":false,"details":{"path":"/private"}}}
+```
+
+A `failure` with `is_error: false` is a protocol error. For compatibility,
+an error from an older host may omit `failure`. The runtime then records an
+`operation-failed` failure with `retryable: true`. A host should send the
+typed form so a workflow can distinguish a retryable operation from a
+settled refusal without inspecting prose.
+
 ### `inbox/item`
 
 A message for the episode. The host uses this to steer a running episode or

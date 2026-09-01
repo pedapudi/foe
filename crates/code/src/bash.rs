@@ -74,13 +74,13 @@ impl Tool for Bash {
             Err(e) => return e,
         };
         if a.command.contains('\0') {
-            return ToolValue::error(format!("bash: {SHELL_COMMAND_NUL_ERROR}"));
+            return ToolValue::invalid(format!("bash: {SHELL_COMMAND_NUL_ERROR}"));
         }
         let Some(executor) = ctx.executor.as_ref() else {
-            return ToolValue::error("bash: dispatched without an executor handle");
+            return ToolValue::unavailable("bash: dispatched without an executor handle");
         };
         let Some(cwd) = ctx.reader.as_ref().and_then(|r| r.roots().first().cloned()) else {
-            return ToolValue::error("bash: no read root to use as the working directory");
+            return ToolValue::unavailable("bash: no read root to use as the working directory");
         };
         let mut timeout = Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS));
         if let Some(deadline) = ctx.deadline {
@@ -99,7 +99,7 @@ impl Tool for Bash {
         };
         let res = match executor.run(req) {
             Ok(r) => r,
-            Err(e) => return ToolValue::error(format!("bash: {e}")),
+            Err(e) => return ToolValue::from_cap_error("bash", e),
         };
         let secs = res.duration.as_secs_f64();
         let status = match (res.timed_out, res.exit_code) {

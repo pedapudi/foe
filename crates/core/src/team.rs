@@ -20,7 +20,7 @@ use crate::budget::Pool;
 use crate::loop_::{settled_children, SETTLE_POLL};
 use crate::protocol::{Host, InboxSink};
 use crate::spawn::{ChildObserver, Router};
-use crate::{CallCtx, CapError, SpawnHandle, SpawnRequest, Spawner, Tool, ToolValue};
+use crate::{CallCtx, CapError, SpawnHandle, SpawnRequest, Spawner, Tool, ToolFailureCode, ToolValue};
 use foe_log::{
     BudgetAmount, ContentBlock, Event, EventData, InboxItem, InboxSource, MemberPhase, Outcome, SpawnContext,
 };
@@ -304,7 +304,7 @@ fn kebab(value: &impl serde::Serialize) -> String {
 }
 
 fn arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, ToolValue> {
-    args.get(key).and_then(|v| v.as_str()).ok_or_else(|| ToolValue::error(format!("{key}: a string is required")))
+    args.get(key).and_then(|v| v.as_str()).ok_or_else(|| ToolValue::invalid(format!("{key}: a string is required")))
 }
 
 // ---- tools --------------------------------------------------------------------
@@ -509,7 +509,12 @@ impl Tool for TeamTool {
         match self.kind {
             Kind::Spawn => {
                 let Some(spawner) = &ctx.spawner else {
-                    return ToolValue::error("spawn: this episode holds no spawn capability");
+                    return ToolValue::failed(
+                        ToolFailureCode::CapabilityDenied,
+                        "spawn: this episode holds no spawn capability",
+                        false,
+                        serde_json::json!({ "capability": "spawn" }),
+                    );
                 };
                 let (program, task) = match (arg(&args, "program"), arg(&args, "task")) {
                     (Ok(p), Ok(t)) => (p.to_string(), t.to_string()),
@@ -518,7 +523,7 @@ impl Tool for TeamTool {
                 let context = match args.get("context").and_then(|v| v.as_str()) {
                     None | Some("fresh") => SpawnContext::Fresh,
                     Some("fork") => SpawnContext::Fork,
-                    Some(other) => return ToolValue::error(format!("context: {other} is neither fresh nor fork")),
+                    Some(other) => return ToolValue::invalid(format!("context: {other} is neither fresh nor fork")),
                 };
                 let name = args.get("name").and_then(|v| v.as_str()).unwrap_or(&program).to_string();
                 // The spawner reserves the child's whole share and records what it granted.
@@ -537,7 +542,7 @@ impl Tool for TeamTool {
                             handle.child_id
                         ),
                     ),
-                    Err(e) => ToolValue::error(format!("spawn: {e}")),
+                    Err(e) => ToolValue::from_cap_error("spawn", e),
                 }
             }
             Kind::Steer | Kind::Send => {

@@ -64,7 +64,7 @@ impl Read {
 fn list(reader: &dyn Reader, path: &std::path::Path, shown: &str, offset: usize, limit: usize) -> ToolValue {
     let mut entries = match reader.read_dir(path) {
         Ok(entries) => entries,
-        Err(e) => return ToolValue::error(format!("read: {shown}: {e}")),
+        Err(e) => return ToolValue::from_cap_error(&format!("read: {shown}"), e),
     };
     entries.sort_by(|left, right| left.path.cmp(&right.path));
     let total = entries.len();
@@ -324,29 +324,31 @@ impl Tool for Read {
             Err(e) => return e,
         };
         let Some(reader) = ctx.reader.as_ref() else {
-            return ToolValue::error("read: dispatched without a reader handle");
+            return ToolValue::unavailable("read: dispatched without a reader handle");
         };
         let path = resolve(reader.roots(), &a.path);
         let shown = display(reader.roots(), &path);
         let offset = a.offset.unwrap_or(1);
         if offset == 0 {
-            return ToolValue::error("read: offset must be at least 1");
+            return ToolValue::invalid("read: offset must be at least 1");
         }
         let max_lines = a.limit.unwrap_or(OUTPUT_MAX_LINES).clamp(1, OUTPUT_MAX_LINES);
         let metadata = match reader.metadata(&path) {
             Ok(metadata) => metadata,
-            Err(e) => return ToolValue::error(format!("read: {shown}: {e}")),
+            Err(e) => return ToolValue::from_cap_error(&format!("read: {shown}"), e),
         };
         if metadata.is_dir() {
             return list(reader.as_ref(), &path, &shown, offset, max_lines);
         }
         let mut stream = match reader.open(&path) {
             Ok(s) => s,
-            Err(e) => return ToolValue::error(format!("read: {shown}: {e}")),
+            Err(e) => return ToolValue::from_cap_error(&format!("read: {shown}"), e),
         };
         let s = match scan(stream.as_mut(), offset - 1, max_lines, OUTPUT_MAX_CHARS) {
             Ok(s) => s,
-            Err(e) => return ToolValue::error(format!("read: {shown}: {e}")),
+            Err(e) => {
+                return ToolValue::from_cap_error(&format!("read: {shown}"), foe_core::CapError::Io(e));
+            }
         };
         if s.nul {
             return ToolValue::error(format!(

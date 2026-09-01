@@ -68,9 +68,10 @@ impl Executor for LocalExecutor {
             Some(FdMapping { parent_fd: fd.as_fd().try_clone_to_owned().ok()?, child_fd: *child_fd })
         };
         cmd.fd_mappings(req.pass_fds.iter().filter_map(mapped).collect())
-            .map_err(|e| CapError::Invalid(format!("fd mapping: {e:?}")))?;
+            .map_err(|e| CapError::ProcessStart(format!("fd mapping: {e:?}")))?;
         let narrowed = req.policy.clone().unwrap_or_else(|| self.policy.for_executable(&req.program, req.network));
-        let mut child = self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::Invalid(e.to_string()))?;
+        let mut child =
+            self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::ProcessStart(e.to_string()))?;
         let group = Pid::from_raw(child.id() as i32);
         if let (Some(bytes), Some(mut stdin)) = (req.stdin, child.stdin.take()) {
             std::thread::spawn(move || {

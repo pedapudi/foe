@@ -157,7 +157,13 @@ fn output_whose_later_lines_look_numbered_is_not_a_window() {
 #[test]
 fn a_result_without_a_rendering_is_rendered_and_counted() {
     let mut values = vec![
-        ToolValue { value: json!({ "text": "y".repeat(200_000) }), rendered: None, is_error: false, subject: None },
+        ToolValue {
+            value: json!({ "text": "y".repeat(200_000) }),
+            rendered: None,
+            is_error: false,
+            failure: None,
+            subject: None,
+        },
         value(90_000),
     ];
     apply_bound(&mut values);
