@@ -8,7 +8,8 @@ outside it.
 
 Stability: the event envelope, the event types marked implemented, and the
 seeding rules are frozen at version 2. Adding an event type is compatible.
-Changing an existing type's data requires a new log version.
+Adding an optional field with a defined absence meaning is compatible.
+Changing or removing a required field requires a new log version.
 
 ## Directory layout
 
@@ -82,7 +83,14 @@ nothing emits it.
   "identity": "sha256:…",
   "task": "Fix the failing parser test.",
   "runtime": { "version": "0.1.0", "build": "sha256:…" },
-  "sandbox": { "mode": "best-effort", "landlock_abi": 7 }
+  "sandbox": {
+    "mode": "best-effort",
+    "landlock_abi": 7,
+    "process_boundary": {
+      "kind": "cgroup-v2",
+      "subtree_cleanup": "enforced"
+    }
+  }
 }
 ```
 
@@ -91,6 +99,12 @@ nothing emits it.
 another log. `team_id` names the lead episode when this episode is a team
 member. `program` is the resolved configuration with `task` removed.
 `landlock_abi` is 0 when Landlock was unavailable.
+`process_boundary.kind` is `cgroup-v2` or `process-group`.
+`subtree_cleanup` is `enforced` only when the runtime owns the recursive
+process subtree through cgroup v2. It is `observational` for process-group
+cleanup. The optional `reason` explains a `best-effort` fallback. An absent
+`process_boundary` means the log predates this field and makes no claim about
+subtree cleanup.
 
 `episode/end` — implemented. Always the last event.
 
@@ -449,6 +463,13 @@ matching `budget/release`.
 ```json
 { "child_id": "ep_9c21", "outcome": { "kind": "completed", "value": {} } }
 ```
+
+For a process that started, the parent publishes `spawn/end` only after the
+direct child has exited and its stdout reader has finished. When the child
+uses an enforced cgroup v2 process boundary, the parent first kills the
+boundary and waits until its recursive `populated` state is zero. The
+matching `budget/release`, pool capacity return, and waiter notification
+follow.
 
 ### Teams
 

@@ -19,7 +19,7 @@ pub fn start(id: &str) -> EpisodeStart {
         identity: "sha256:0".into(),
         task: "do it".into(),
         runtime: RuntimeInfo { version: "0.1.0".into(), build: "unknown".into() },
-        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0, process_boundary: None },
     }
 }
 
@@ -749,4 +749,28 @@ fn every_event_variant_round_trips() {
         .collect();
     assert!(declared.len() > 20, "the declaration of EventData was not found");
     assert_eq!(seen, declared, "one of each event type, reserved ones included");
+}
+
+/// docs/log-format.md `episode/start`: the process boundary is an optional
+/// compatible field whose absence carries no cleanup claim.
+#[test]
+fn sandbox_process_boundary_is_optional_and_round_trips() {
+    let old: SandboxInfo = serde_json::from_value(serde_json::json!({
+        "mode": "best-effort", "landlock_abi": 7
+    }))
+    .unwrap();
+    assert_eq!(old.process_boundary, None);
+
+    let info = SandboxInfo {
+        mode: SandboxMode::BestEffort,
+        landlock_abi: 7,
+        process_boundary: Some(ProcessBoundaryInfo {
+            kind: ProcessBoundaryKind::CgroupV2,
+            subtree_cleanup: SubtreeCleanup::Enforced,
+            reason: None,
+        }),
+    };
+    let json = serde_json::to_value(&info).unwrap();
+    assert_eq!(json["process_boundary"]["kind"], "cgroup-v2");
+    assert_eq!(serde_json::from_value::<SandboxInfo>(json).unwrap(), info);
 }

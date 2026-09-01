@@ -20,6 +20,7 @@
 //! `budget/release` are the loop's to write around a call to
 //! [`Spawner::spawn`] and a wait on [`ChildRun`].
 
+use crate::process_boundary::{command_in, ProcessBoundary};
 use crate::{CapError, SpawnHandle, SpawnRequest, Spawner, ToolValue};
 use foe_log::seed::SeedHeader;
 use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
@@ -198,6 +199,7 @@ pub struct ProcessSpawner {
     uplink: Arc<dyn Uplink>,
     router: Arc<Router>,
     observer: Arc<dyn ChildObserver>,
+    boundary: Option<Arc<ProcessBoundary>>,
     next: AtomicU64,
 }
 
@@ -212,12 +214,28 @@ impl ProcessSpawner {
     ) -> Result<Self, CapError> {
         let exe = std::env::current_exe()?;
         let launcher = vec![exe.into_os_string()];
-        Ok(ProcessSpawner { episode_id, log_dir, config, launcher, uplink, router, observer, next: AtomicU64::new(0) })
+        Ok(ProcessSpawner {
+            episode_id,
+            log_dir,
+            config,
+            launcher,
+            uplink,
+            router,
+            observer,
+            boundary: None,
+            next: AtomicU64::new(0),
+        })
     }
 
     /// Replaces the binary that runs children. Tests use a script.
     pub fn with_launcher(mut self, argv: Vec<OsString>) -> Self {
         self.launcher = argv;
+        self
+    }
+
+    /// Places each child and every descendant in one cgroup boundary.
+    pub fn with_boundary(mut self, boundary: Option<Arc<ProcessBoundary>>) -> Self {
+        self.boundary = boundary;
         self
     }
 
@@ -320,12 +338,19 @@ impl Spawner for ProcessSpawner {
             .ok_or_else(|| CapError::Invalid(format!("programs has no entry named {}", req.program)))?;
         let dir = self.log_dir.join("children").join(&child_id);
         std::fs::create_dir_all(&dir)?;
+        let boundary = self
+            .boundary
+            .as_ref()
+            .map(|parent| parent.child(&child_id))
+            .transpose()
+            .map_err(|e| CapError::Invalid(e.to_string()))?;
         let invalid = |e: serde_json::Error| CapError::Invalid(e.to_string());
         let config = child_document(&self.config, program, req.task, req.reserve);
         let config_path = dir.join("config.json");
         std::fs::write(&config_path, serde_json::to_vec_pretty(&config).map_err(invalid)?)?;
         let lineage = serde_json::json!({
             "episode_id": child_id, "parent_id": self.episode_id, "team_id": self.episode_id,
+            "process_boundary": boundary.as_ref().map(|b| b.paths()),
         });
         std::fs::write(dir.join("lineage.json"), serde_json::to_vec_pretty(&lineage).map_err(invalid)?)?;
         if req.context == SpawnContext::Fork {
@@ -336,18 +361,23 @@ impl Spawner for ProcessSpawner {
             let header = SeedHeader { new_id: child_id.clone(), parent_id: lead.clone(), team_id: lead };
             foe_log::seed::seed(&self.log_dir, until, &dir, header).map_err(log_error)?;
         }
-        let mut cmd = Command::new(&self.launcher[0]);
-        cmd.args(&self.launcher[1..])
-            .arg("--config")
-            .arg(&config_path)
-            .arg("--host")
-            .arg("--log-dir")
-            .arg(&dir)
-            .env_clear()
-            .current_dir(&dir)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        let mut argv = self.launcher.clone();
+        argv.extend([
+            OsString::from("--config"),
+            config_path.as_os_str().to_owned(),
+            OsString::from("--host"),
+            OsString::from("--log-dir"),
+            dir.as_os_str().to_owned(),
+        ]);
+        let mut cmd = match &boundary {
+            Some(boundary) => command_in(&boundary.process_procs(), &argv),
+            None => {
+                let mut command = Command::new(&argv[0]);
+                command.args(&argv[1..]);
+                command
+            }
+        };
+        cmd.env_clear().current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         let mut child = cmd.spawn()?;
         let stdin = child.stdin.take().ok_or_else(|| CapError::Invalid("child has no stdin".into()))?;
         let stdout = child.stdout.take().ok_or_else(|| CapError::Invalid("child has no stdout".into()))?;
@@ -362,9 +392,21 @@ impl Spawner for ProcessSpawner {
             observer: self.observer.clone(),
         };
         std::thread::spawn(move || {
-            let settled = reader.run(stdout);
-            reader.router.remove(&reader.child_id);
+            let read = std::thread::spawn(move || {
+                let settled = reader.run(stdout);
+                reader.router.remove(&reader.child_id);
+                settled
+            });
             let _ = child.wait();
+            let cleanup_error = boundary.and_then(|boundary| boundary.terminate().err());
+            let mut settled = read.join().unwrap_or_else(|_| Settled {
+                outcome: Outcome::Failed { error: "the reader of the child's output panicked".into() },
+                usage: Usage::default(),
+                spent: BudgetAmount::default(),
+            });
+            if let Some(error) = cleanup_error {
+                settled.outcome = Outcome::Failed { error: format!("child process boundary cleanup: {error}") };
+            }
             let _ = tx.send(Some(settled));
         });
         Ok(SpawnHandle { child_id, dir, run })

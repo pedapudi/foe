@@ -34,7 +34,7 @@ fn log(name: &str) -> (Arc<Log>, std::path::PathBuf) {
         identity: "sha256:x".into(),
         task: "t".into(),
         runtime: foe_log::RuntimeInfo { version: "0".into(), build: "unknown".into() },
-        sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+        sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0, process_boundary: None },
     }))
     .unwrap();
     (log, root)

@@ -267,6 +267,32 @@ pub struct SandboxInfo {
     pub mode: SandboxMode,
     /// 0 when Landlock was unavailable.
     pub landlock_abi: u32,
+    /// How the runtime owns descendant processes. Absent in logs written
+    /// before process-subtree reporting was added.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_boundary: Option<ProcessBoundaryInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessBoundaryInfo {
+    pub kind: ProcessBoundaryKind,
+    pub subtree_cleanup: SubtreeCleanup,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProcessBoundaryKind {
+    CgroupV2,
+    ProcessGroup,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubtreeCleanup {
+    Enforced,
+    Observational,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

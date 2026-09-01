@@ -18,7 +18,7 @@ fn start(program: serde_json::Value) -> EventData {
         identity: "sha256:aa".into(),
         task: "do it".into(),
         runtime: RuntimeInfo { version: "0.1.0".into(), build: "sha256:bb".into() },
-        sandbox: SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+        sandbox: SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0, process_boundary: None },
     })
 }
 

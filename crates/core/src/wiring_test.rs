@@ -1,7 +1,21 @@
 use super::*;
 use crate::exec::tests::scratch;
-use crate::spawn::tests::{fake_child, parent_config, wait_for, waiting_child, Lines, Seen};
-use foe_log::{EpisodeStart, Outcome, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
+use crate::process_boundary::tests::{remove_test_boundary, test_boundary};
+use crate::spawn::tests::{fake_child, parent_config, script, wait_for, waiting_child, Lines, Seen};
+use crate::spawn::ChildObserver;
+use foe_log::{EpisodeStart, Event, Outcome, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
+use std::path::Path;
+use std::sync::mpsc;
+
+struct Started(mpsc::Sender<()>);
+
+impl ChildObserver for Started {
+    fn observe(&self, _child_id: &str, event: &Event) {
+        if matches!(event.data, EventData::EpisodeStart(_)) {
+            let _ = self.0.send(());
+        }
+    }
+}
 
 fn start() -> EpisodeStart {
     EpisodeStart {
@@ -13,7 +27,7 @@ fn start() -> EpisodeStart {
         identity: "sha256:0".into(),
         task: "t".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
-        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0, process_boundary: None },
     }
 }
 
@@ -75,6 +89,58 @@ async fn a_spawn_reserves_records_and_releases_budget() {
     assert_eq!(spent.model_calls, Some(1));
     assert_eq!(lock(&pool).remaining().model_calls, Some(19), "the reservation is returned and the spend debited");
     assert_eq!(lock(&pool).active_children(), 0, "the handle settles after its reservation is returned");
+}
+
+/// docs/sandbox.md "Process ownership": a child reservation remains held
+/// until cgroup cleanup has killed a detached descendant. The parent then
+/// records the end and release before returning capacity and the handle.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_subtree_boundary_is_empty_before_the_reservation_returns() {
+    let Ok((boundary, invocation)) = test_boundary("lease-order") else {
+        return;
+    };
+    let boundary = Arc::new(boundary);
+    let dir = scratch("wiring", "subtree-cleanup");
+    let pid_file = dir.join("detached.pid");
+    let body = format!(
+        r#"#!/bin/sh
+setsid /bin/sh -c 'sleep 30' &
+echo $! > '{}'
+echo '{{"seq":0,"time":1,"type":"episode/start","data":{{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{{}},"identity":"sha256:0","task":"t","runtime":{{"version":"0","build":"unknown"}},"sandbox":{{"mode":"off","landlock_abi":0}}}}}}'
+"#,
+        pid_file.display()
+    );
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
+    log.append(EventData::EpisodeStart(start())).unwrap();
+    let config = parent_config();
+    let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
+    let (started_tx, started_rx) = mpsc::channel();
+    let inner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir.clone(),
+        config,
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        Arc::new(Started(started_tx)),
+    )
+    .unwrap()
+    .with_launcher(script(&dir, "detaching-foe.sh", &body))
+    .with_boundary(Some(boundary.clone()));
+    let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
+    let reserve = BudgetAmount { model_calls: Some(5), ..Default::default() };
+    let handle = spawner.spawn(request("worker", reserve)).unwrap();
+    started_rx.recv().unwrap();
+    let detached = std::fs::read_to_string(&pid_file).unwrap().trim().to_string();
+    assert!(Path::new(&format!("/proc/{detached}")).exists(), "the descendant outlives its direct child");
+    handle.run.settle().await;
+    let stat = std::fs::read_to_string(format!("/proc/{detached}/stat")).unwrap_or_default();
+    assert!(
+        stat.is_empty() || stat.rsplit_once(") ").is_some_and(|(_, fields)| fields.starts_with('Z')),
+        "the detached process exited before settlement"
+    );
+    assert_eq!(types(&log)[3..], ["spawn/end", "budget/release"]);
+    assert_eq!(lock(&pool).active_children(), 0);
+    remove_test_boundary(&boundary, &invocation);
 }
 
 /// docs/log-format.md "Budget and spawn": the parent records a reservation

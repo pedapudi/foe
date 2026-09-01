@@ -77,6 +77,14 @@ pub struct Policy {
     /// Whether the process may open outbound TCP connections. Enforced from
     /// ABI 4.
     pub connect_tcp: bool,
+    /// Runtime-owned cgroup directories. The episode process manages them;
+    /// configured executables do not receive this access.
+    #[doc(hidden)]
+    pub runtime_control: Vec<PathBuf>,
+    /// Runtime control files. Executable policies drop this access unless
+    /// the runtime adds back the one file a trusted wrapper must write.
+    #[doc(hidden)]
+    pub runtime_control_files: Vec<PathBuf>,
 }
 
 impl Policy {
@@ -104,6 +112,8 @@ impl Policy {
             log_dir: Some(log_dir.to_path_buf()),
             bind_tcp: config.grants.bind.clone(),
             connect_tcp: network,
+            runtime_control: Vec::new(),
+            runtime_control_files: Vec::new(),
         }
     }
 
@@ -123,7 +133,21 @@ impl Policy {
             log_dir: None,
             bind_tcp: self.bind_tcp.clone(),
             connect_tcp: network,
+            runtime_control: Vec::new(),
+            runtime_control_files: Vec::new(),
         }
+    }
+
+    /// Gives the runtime, and no executable it starts, control of a cgroup
+    /// directory after the episode enters Landlock.
+    pub fn add_runtime_control(&mut self, path: PathBuf) {
+        self.runtime_control.push(path);
+    }
+
+    /// Gives the runtime or one wrapped executable access to a cgroup file.
+    /// An executable caller begins with [`Policy::for_executable`].
+    pub fn add_runtime_control_file(&mut self, path: PathBuf) {
+        self.runtime_control_files.push(path);
     }
 }
 
@@ -190,7 +214,13 @@ impl Sandbox {
 
     /// What `episode/start` records.
     pub fn info(&self) -> SandboxInfo {
-        SandboxInfo { mode: self.mode, landlock_abi: self.abi }
+        SandboxInfo { mode: self.mode, landlock_abi: self.abi, process_boundary: None }
+    }
+
+    /// What `episode/start` records after process-subtree ownership has
+    /// been selected for this run.
+    pub fn info_with_process(&self, process_boundary: foe_log::ProcessBoundaryInfo) -> SandboxInfo {
+        SandboxInfo { mode: self.mode, landlock_abi: self.abi, process_boundary: Some(process_boundary) }
     }
 
     /// The ABI in use; 0 when nothing is enforced.
@@ -263,6 +293,7 @@ impl Sandbox {
             (policy.exec.clone(), AccessFs::Execute | AccessFs::ReadFile),
             (policy.read_files.clone(), BitFlags::from(AccessFs::ReadFile)),
             (policy.log_dir.iter().cloned().collect(), read | write),
+            (policy.runtime_control.clone(), read | write),
             (paths(LOADER_DIRS), read | AccessFs::Execute),
             (paths(SYSTEM_READ_DIRS), read),
             (paths(DEVICE_FILES), AccessFs::ReadFile | AccessFs::WriteFile),
@@ -274,6 +305,12 @@ impl Sandbox {
                 if let Ok(fd) = PathFd::new(&path) {
                     created = created.add_rule(PathBeneath::new(fd, access)).map_err(err)?;
                 }
+            }
+        }
+        for path in &policy.runtime_control_files {
+            if let Ok(fd) = PathFd::new(path) {
+                created =
+                    created.add_rule(PathBeneath::new(fd, AccessFs::WriteFile | AccessFs::Truncate)).map_err(err)?;
             }
         }
         if self.abi >= 4 {

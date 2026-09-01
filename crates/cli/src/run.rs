@@ -16,6 +16,7 @@ use foe_core::exec::LocalExecutor;
 use foe_core::grants::{RootReader, RootWriter};
 use foe_core::identity::runtime_info;
 use foe_core::loop_::{self, Log, Params};
+use foe_core::process_boundary::{BoundaryPaths, ProcessOwnership};
 use foe_core::protocol::{stdout_mirror, Host};
 use foe_core::registry::{Handles, Registry};
 use foe_core::sandbox::{Policy, Sandbox};
@@ -152,19 +153,21 @@ fn known_window(_model: &ModelConfig) -> Option<u64> {
 
 /// Who this episode is. A child reads its ids from the `lineage.json` its
 /// parent wrote beside the log; a root draws a fresh id.
-#[derive(serde::Deserialize)]
+#[derive(Default, serde::Deserialize)]
 struct Lineage {
     episode_id: String,
     #[serde(default)]
     parent_id: Option<String>,
     #[serde(default)]
     team_id: Option<String>,
+    #[serde(default)]
+    process_boundary: Option<BoundaryPaths>,
 }
 
 impl Lineage {
     fn read(log_dir: Option<&Path>) -> Result<Lineage, String> {
         let file = log_dir.map(|d| d.join("lineage.json")).filter(|f| f.is_file());
-        let Some(file) = file else { return Ok(Lineage { episode_id: fresh_id(), parent_id: None, team_id: None }) };
+        let Some(file) = file else { return Ok(Lineage { episode_id: fresh_id(), ..Default::default() }) };
         let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
         serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", file.display()))
     }
@@ -197,7 +200,7 @@ fn episode_directory(options: &Options, identity: &str, task: &str) -> Result<(P
 /// per log is the copied one at seq 1, and `system` is the runtime's
 /// channel for text the model must see.
 fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(PathBuf, Lineage), String> {
-    let lineage = Lineage { episode_id: fresh_id(), parent_id: None, team_id: None };
+    let lineage = Lineage { episode_id: fresh_id(), ..Default::default() };
     let dest = dest.unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
     let in_dest = |e: LogError| format!("{}: {e}", dest.display());
     if dest.join(foe_log::fold::LOG_FILE).is_file() {
@@ -231,7 +234,10 @@ fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
         let (dir, id) = (dir.display(), &start.id);
         return Err(format!("{dir}: episode {id} already ended; a finished log is forked, not resumed: foe \"task\" --fork {dir} --at SEQ"));
     }
-    let lineage = Lineage { episode_id: start.id, parent_id: start.parent_id, team_id: start.team_id };
+    let mut lineage = Lineage::read(Some(&dir))?;
+    lineage.episode_id = start.id;
+    lineage.parent_id = start.parent_id;
+    lineage.team_id = start.team_id;
     let torn = std::fs::metadata(dir.join(foe_log::fold::LOG_FILE)).is_ok_and(|m| m.len() > consumed);
     if !torn && events.last().is_some_and(|e| matches!(e.data, EventData::SeedEnd {})) {
         return Ok((dir, lineage));
@@ -478,10 +484,14 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let sandbox = Arc::new(Sandbox::new(program.sandbox.mode).map_err(|e| e.to_string())?);
+    let process = ProcessOwnership::enter(program.sandbox.mode, &lineage.episode_id, lineage.process_boundary.clone())
+        .map_err(|e| e.to_string())?;
     // Every model node of a workflow is a child program of the spawner, so
     // the policy and the spawner see the same program document.
     let config = foe_workflow::spawner_document(&config);
-    let mut unconfined = Unconfined::new(sandbox, Policy::for_episode(&config, &log_dir));
+    let mut policy = Policy::for_episode(&config, &log_dir);
+    process.authorize(&mut policy);
+    let mut unconfined = Unconfined::new(sandbox, policy);
     // Telemetry is resolved before confinement: the capture directory must
     // be writable after the sandbox closes, so it is created now and
     // granted like any other write root. A broken enablement file warns
@@ -522,10 +532,11 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         identity: identity.hash,
         task: config.task.clone(),
         runtime: runtime_info,
-        sandbox: confined.parts().0.info(),
+        sandbox: confined.parts().0.info_with_process(process.info()),
     };
     let telemetry_log_dir = log_dir.clone();
-    let setup = Setup { config, program, log_dir, confined, viewer, transport, context, start, host: options.host };
+    let setup =
+        Setup { config, program, log_dir, confined, viewer, transport, context, start, host: options.host, process };
     let outcome = runtime()?.block_on(episode(setup))?;
     if let Some(settings) = &telemetry {
         crate::telemetry::after_run(settings, &telemetry_log_dir);
@@ -554,10 +565,11 @@ struct Setup {
     context: Option<Arc<dyn ContextPolicy>>,
     start: EpisodeStart,
     host: bool,
+    process: ProcessOwnership,
 }
 
 async fn episode(setup: Setup) -> Result<Outcome, String> {
-    let Setup { config, program, log_dir, confined, viewer, transport, host, context, start } = setup;
+    let Setup { config, program, log_dir, confined, viewer, transport, host, context, start, process } = setup;
     let id = start.id.clone();
     let mirror = host.then(stdout_mirror);
     let log = Arc::new(Log::create_or_open(&log_dir, mirror).map_err(|e| format!("{}: {e}", log_dir.display()))?);
@@ -584,17 +596,21 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let uplink: Arc<dyn Uplink> = if host { Arc::new(StdoutUplink) } else { Arc::new(NoHostUplink) };
     let spawner =
         ProcessSpawner::new(id.clone(), log_dir.clone(), config.clone(), uplink, router.clone(), team.clone())
-            .map_err(|e| format!("spawner: {e}"))?;
+            .map_err(|e| format!("spawner: {e}"))?
+            .with_boundary(process.boundary());
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
     let (sandbox, policy) = confined.parts();
     let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel);
-    let sessions = Arc::new(LocalSessions::new(
-        sandbox.clone(),
-        policy.clone(),
-        log_dir.join("spill"),
-        foe_code::SESSION_MAX_ALIVE,
-        program.grants.task_session,
-    ));
+    let sessions = Arc::new(
+        LocalSessions::new(
+            sandbox.clone(),
+            policy.clone(),
+            log_dir.join("spill"),
+            foe_code::SESSION_MAX_ALIVE,
+            program.grants.task_session,
+        )
+        .with_boundary(process.boundary()),
+    );
     let host_tools = if host { protocol.tools(&program) } else { Vec::new() };
     let parent = start.parent_id.is_some().then_some(&protocol);
     let mut builtins: Vec<Box<dyn Tool>> = foe_code::all();
