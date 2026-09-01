@@ -8,7 +8,7 @@ imported when the transport is constructed; install it with
 
 Credentials are passed explicitly. The adapter reads no environment
 variable; whether the provider library falls back to one is the embedding
-program's decision.
+contract's decision.
 """
 
 from __future__ import annotations

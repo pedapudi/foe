@@ -91,7 +91,7 @@ After each request comes one `assistant/chunk` holding the transport's error
 chunk. When a further attempt is permitted, the runtime waits the delay and
 then writes one `request/retry` naming the attempt that failed, the `cause`,
 and the `delay_ms` it waited, immediately before the attempt that follows.
-The cause here is `provider`, because the program reported an error;
+The cause here is `provider`, because the contract reported an error;
 `transport` names a stream that ended with no final chunk, `rate-limit`
 names a message mentioning a rate limit or a 429, and `interrupted` names a
 failure after text had already arrived.

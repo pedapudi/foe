@@ -17,7 +17,7 @@ from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
 from foe_agent_support import (
-    build_program,
+    build_contract,
     describe_container_environment,
     fixed_executable_probe_command,
     read_episode_summary,
@@ -27,7 +27,7 @@ from foe_agent_support import (
 
 
 REMOTE_BINARY = "/usr/local/bin/foe"
-REMOTE_PROGRAM = "/tmp/foe-terminal-bench-program.json"
+REMOTE_PROGRAM = "/tmp/foe-terminal-bench-contract.json"
 REMOTE_COMPLETION_CHECKER = "/tmp/foe-completion-check"
 REMOTE_COMPLETION_CHECKER_SETUP = "/tmp/foe-completion-check-setup"
 
@@ -277,7 +277,7 @@ class FoeAgent(BaseInstalledAgent):
             working_directory,
             executable_probe.stdout or "",
         )
-        program = build_program(
+        contract = build_contract(
             instruction,
             self.model_name,
             self._remote_credential,
@@ -303,12 +303,12 @@ class FoeAgent(BaseInstalledAgent):
             escalation_model_calls=self._escalation_model_calls,
         )
         self.logs_dir.mkdir(parents=True, exist_ok=True)
-        local_program = self.logs_dir / "foe-program.json"
-        local_program.write_text(
-            json.dumps(program, indent=2, sort_keys=True) + "\n",
+        local_contract = self.logs_dir / "foe-contract.json"
+        local_contract.write_text(
+            json.dumps(contract, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        await environment.upload_file(local_program, REMOTE_PROGRAM)
+        await environment.upload_file(local_contract, REMOTE_PROGRAM)
 
         logs = PurePosixPath(self.environment_logs_dir)
         episode = (logs / "foe-episode").as_posix()

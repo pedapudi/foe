@@ -30,7 +30,7 @@ export interface HeaderRow extends RowBase {
   tools: ToolSchema[];
   model: string;
   /**
-   * The instruction sections `episode/start.program` declares, by key. They
+   * The instruction sections `episode/start.contract` declares, by key. They
    * name the parts of the system prompt, which the log stores rendered.
    */
   instructions: Record<string, string>;
@@ -131,13 +131,13 @@ export interface Summary {
   forkOrigin: { episodeId: string; seq: number } | null;
   teamId: string | null;
   /**
-   * `episode/start.identity`: the hash over everything that shapes what the
-   * model sees, which docs/design.md "Programs and identity" defines. Two
-   * episodes of one program under one runtime build carry the same value,
-   * so it is what tells runs of one program apart from unrelated episodes.
+   * `episode/start.contract_fingerprint`: the hash over everything that shapes what the
+   * model sees, which docs/design.md "Execution contracts and fingerprints" defines. Two
+   * episodes of one contract under one runtime build carry the same value,
+   * so it is what tells runs of one contract apart from unrelated episodes.
    * Empty until `episode/start` has been read.
    */
-  identity: string;
+  contractFingerprint: string;
   task: string;
   startTime: number;
   endTime: number | null;
@@ -147,15 +147,15 @@ export interface Summary {
   usage: { input: number; output: number; cacheRead: number };
   budget: { modelCalls: number | null; inputTokens: number | null; outputTokens: number | null };
   sandbox: { mode: string; landlockAbi: number | null };
-  children: Map<string, { program: string; context: string }>;
+  children: Map<string, { contract: string; context: string }>;
   roster: Map<string, { name: string; phase: string }>;
   seedEnd: number | null;
   /**
-   * `episode/start.program`: the resolved configuration with the task
+   * `episode/start.contract`: the resolved configuration with the task
    * removed. The workflow view reads its `workflow` key and the statistics
    * view its `budget`.
    */
-  program: Record<string, unknown>;
+  contract: Record<string, unknown>;
   lastSeq: number;
   /** Marks the trajectory pane draws, in seq order (src/trajectory.ts). */
   marks: Mark[];
@@ -188,7 +188,7 @@ export function emptySummary(id: string): Summary {
     parentId: null,
     forkOrigin: null,
     teamId: null,
-    identity: "",
+    contractFingerprint: "",
     task: "",
     startTime: 0,
     endTime: null,
@@ -201,7 +201,7 @@ export function emptySummary(id: string): Summary {
     children: new Map(),
     roster: new Map(),
     seedEnd: null,
-    program: {},
+    contract: {},
     lastSeq: -1,
     marks: [],
     firings: [],
@@ -396,12 +396,12 @@ export class EpisodeFold {
       }
       case "spawn/start": {
         const child = str(data.child_id);
-        s.children.set(child, { program: str(data.program), context: str(data.context) });
-        this.mark(ev, "spawn", child, `${str(data.program, "?")} · ${str(data.context, "?")}`, 0);
+        s.children.set(child, { contract: str(data.contract), context: str(data.context) });
+        this.mark(ev, "spawn", child, `${str(data.contract, "?")} · ${str(data.context, "?")}`, 0);
         return this.note(
           ev,
           "spawn",
-          `${child} · ${str(data.program, "?")} · ${str(data.context, "?")} · ${str(data.call_id)}`,
+          `${child} · ${str(data.contract, "?")} · ${str(data.context, "?")} · ${str(data.call_id)}`,
           "info",
           data,
           child,
@@ -508,18 +508,18 @@ export class EpisodeFold {
 
   private start(ev: LogEvent, data: Record<string, unknown>): Patch[] {
     const s = this.summary;
-    const program = obj(data.program);
-    const budget = obj(program.budget);
+    const contract = obj(data.contract);
+    const budget = obj(contract.budget);
     const sandbox = obj(data.sandbox);
     const origin = obj(data.fork_origin) as ForkOrigin;
     if (typeof data.id === "string") s.id = data.id;
-    s.program = program;
-    s.name = str(program.name, s.id);
+    s.contract = contract;
+    s.name = str(contract.name, s.id);
     s.parentId = typeof data.parent_id === "string" ? data.parent_id : null;
     s.forkOrigin =
       typeof origin.episode_id === "string" ? { episodeId: origin.episode_id, seq: num(origin.seq) } : null;
     s.teamId = typeof data.team_id === "string" ? data.team_id : null;
-    s.identity = str(data.identity);
+    s.contractFingerprint = str(data.contract_fingerprint);
     s.task = str(data.task);
     s.startTime = ev.time;
     s.budget = {
@@ -667,13 +667,13 @@ export class EpisodeFold {
   }
 
   /**
-   * The instruction sections the program declares, by key. `episode/start`
+   * The instruction sections the contract declares, by key. `episode/start`
    * precedes every `request/header`, so the map is complete by the time a
-   * header needs it; a log that carries no program yields an empty map and
+   * header needs it; a log that carries no contract yields an empty map and
    * the prompt is then shown unsplit.
    */
   private instructions(): Record<string, string> {
-    const declared = obj(this.summary.program.instructions);
+    const declared = obj(this.summary.contract.instructions);
     const out: Record<string, string> = {};
     for (const [key, value] of Object.entries(declared)) {
       if (typeof value === "string") out[key] = value;
@@ -813,7 +813,7 @@ export interface Provenance {
  */
 export function completionProvenance(s: Summary): Provenance | null {
   if (s.outcome?.kind !== "completed") return null;
-  const nodes = obj(obj(s.program.workflow).nodes);
+  const nodes = obj(obj(s.contract.workflow).nodes);
   const declared = (name: string) => obj(nodes[name]);
   const accepted = s.verifications.filter((v) => v.status === "accepted");
   if (Object.keys(nodes).length === 0) {
@@ -824,7 +824,7 @@ export function completionProvenance(s: Summary): Provenance | null {
   const terminal = (name: string) => declared(name).terminal === true;
   const isModel = (name: string) => declared(name).model !== undefined && declared(name).model !== null;
   // The verifier a node's acceptance came from is configured: the node's
-  // own `verify`, or its program's `done_when.verify`.
+  // own `verify`, or its contract's `done_when.verify`.
   const verifierOf = (name: string) => str(declared(name).verify) || str(obj(obj(declared(name).model).done_when).verify);
   // The completing firing: the last errorless end of a terminal node, or
   // of any node when the graph completed through a branch with no

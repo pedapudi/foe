@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Create and validate identity-bound workflow configuration candidates."""
+"""Create and validate workflow configurations against retained evidence."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def require_sha256(label: str, value: Any) -> str:
 def validate_evaluated_foe(
     value: Any, evaluated_foe: dict[str, str] | None = None, label: str = "candidate"
 ) -> dict[str, str]:
-    """Return one validated Foe source and binary identity."""
+    """Return one validated Foe source tree and runtime-binary fingerprint."""
     if not isinstance(value, dict) or set(value) != {"source_tree", "runtime_binary"}:
         raise ValueError(f"{label} evaluated_foe is invalid")
     source_tree = value.get("source_tree")
@@ -99,7 +99,7 @@ def create(
     base_configuration: dict[str, str],
     independent_audit: dict[str, Any],
 ) -> dict[str, Any]:
-    """Bind a workflow setting to the evaluated source, binary, and evidence."""
+    """Associate a workflow setting with its evaluated source, binary, and evidence."""
     body = {
         "schema_version": SCHEMA_VERSION,
         "candidate_kind": KIND,
@@ -112,7 +112,7 @@ def create(
 
 
 def validate(value: Any, evaluated_foe: dict[str, str] | None = None) -> dict[str, Any]:
-    """Validate a complete candidate and optionally require one Foe identity."""
+    """Validate a complete candidate and optionally require one evaluated Foe build."""
     required = {
         "schema_version",
         "candidate_kind",

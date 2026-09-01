@@ -58,10 +58,10 @@ pub fn start(id: &str) -> EpisodeStart {
         parent_id: None,
         fork_origin: None,
         team_id: None,
-        program: serde_json::json!({ "name": "p" }),
-        identity: "sha256:0".into(),
+        contract: serde_json::json!({ "name": "p" }),
+        contract_fingerprint: "sha256:0".into(),
         task: "do it".into(),
-        runtime: RuntimeInfo { version: "0.1.0".into(), build: "unknown".into() },
+        runtime: RuntimeInfo { version: "0.2.0".into(), build: "unknown".into() },
         sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
         effective_budget: None,
     }
@@ -442,7 +442,7 @@ fn pairings() -> Vec<(EventData, EventData)> {
         (
             EventData::SpawnStart {
                 child_id: "ep_c".into(),
-                program: "survey".into(),
+                contract: "survey".into(),
                 context: SpawnContext::Fresh,
                 call_id: "tc_s".into(),
             },
@@ -708,7 +708,7 @@ fn every_event_variant_round_trips() {
         EventData::BudgetRelease { child_id: "k".into(), spent: BudgetAmount::default() },
         EventData::SpawnStart {
             child_id: "k".into(),
-            program: "p".into(),
+            contract: "p".into(),
             context: SpawnContext::Fork,
             call_id: "c".into(),
         },
@@ -775,7 +775,7 @@ fn every_event_variant_round_trips() {
         EventData::VerificationResult(VerificationResult {
             step: 3,
             tool: "check".into(),
-            verifier_identity: "sha256:aa".into(),
+            verifier_fingerprint: "sha256:aa".into(),
             status: VerificationStatus::Findings,
             findings: vec!["missing test".into()],
             error: None,

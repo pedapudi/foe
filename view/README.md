@@ -79,7 +79,7 @@ The fixtures are twelve episode logs.
 
 Seven of the twelve are literal in `generate.mjs`. The four workflow logs
 are written by the runtime. `workflowRun` assembles a configuration, a
-scripted model program, and a scripted verification program in a temporary
+scripted model contract, and a scripted verification contract in a temporary
 directory, runs `target/release/foe` over them, and copies the logs here
 with that directory's path replaced by `/home/user/project` and
 `/home/user/tools`. Everything else in those four files is the bytes the
@@ -224,11 +224,11 @@ stores only the sizes a grip has set.
 The **episodes** region draws the tree as a line-art figure. A spawned
 child hangs under its `parent_id` with a solid edge; a fork hangs under its
 `fork_origin` with a dashed edge. Each row shows a dot coloured by outcome,
-the program name, the episode id, and a second line reading the outcome
+the contract name, the episode id, and a second line reading the outcome
 word with a `blocked` code or an `exhausted` limit.
 
 The **details** region shows the selected episode's model calls and tokens
-consumed against the budget declared in `episode/start.program.budget`, the
+consumed against the budget declared in `episode/start.contract.budget`, the
 Landlock ABI, the fork origin, parent, team, timing, and task. Its text
 wraps and the region scrolls as a whole.
 
@@ -271,7 +271,7 @@ carried by the label's indent instead. The layout claims no room past its
 own marks and holds no opinion about what stands beside them: it reports
 the width its strokes take and gives each row an indent, and the caller
 places the text column. Lane colour is cycled over five
-tones mixed from the theme's own tokens and carries branch identity alone.
+tones mixed from the theme's own tokens and distinguishes branches alone.
 Hue carries the outcome, and carries it only on the marks: a ring in
 `--v2-good`, `--v2-caution` or `--v2-flat` at the foot of a lane that
 completed, exhausted its budget or was blocked, a cross in `--v2-bad` for
@@ -345,7 +345,7 @@ The main region has five tabs.
 - **workflow**: the graph the episode declares, drawn with the run over it.
   Every declared node, edge, and branch label is drawn whether or not the
   run reached it; what fired is solid, accented, and coloured by outcome
-  direction. Present only for an episode whose program declares a graph.
+  direction. Present only for an episode whose contract declares a graph.
   `src/workflow.ts` reads the graph and places it and
   `src/render/workflow.ts` draws it.
 - **statistics**: nine figures over the selected episode, or over that

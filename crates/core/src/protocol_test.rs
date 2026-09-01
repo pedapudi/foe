@@ -1,6 +1,6 @@
 use super::{Downlink, Host, InboxSink, HOST_ROUTE};
 use crate::loop_::{initialize, Log};
-use crate::test_util::{program_with, tmp, ScratchDir};
+use crate::test_util::{contract_with, tmp, ScratchDir};
 use crate::{CallCtx, ModelRequestBody};
 use foe_log::{Chunk, EventData, InboxSource, StopReason, ToolFailureCode, Usage};
 use serde_json::json;
@@ -30,8 +30,8 @@ fn log(name: &str) -> (Arc<Log>, ScratchDir) {
         parent_id: None,
         fork_origin: None,
         team_id: None,
-        program: json!({}),
-        identity: "sha256:x".into(),
+        contract: json!({}),
+        contract_fingerprint: "sha256:x".into(),
         task: "t".into(),
         runtime: foe_log::RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
@@ -54,8 +54,8 @@ async fn protocol_input_starts_after_the_episode_prefix() {
         parent_id: Some("ep_parent".into()),
         fork_origin: None,
         team_id: Some("ep_parent".into()),
-        program: json!({}),
-        identity: "sha256:x".into(),
+        contract: json!({}),
+        contract_fingerprint: "sha256:x".into(),
         task: "do the work".into(),
         runtime: foe_log::RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
@@ -172,13 +172,13 @@ async fn a_chunk_for_an_unknown_or_settled_request_is_a_protocol_error() {
 #[tokio::test]
 async fn host_tool_calls_emit_an_event_and_wait_for_the_answer() {
     let (log, root) = log("protocol-tool");
-    let program = program_with(&root, |v| {
+    let contract = contract_with(&root, |v| {
         v["tools"] = json!(["h"]);
         v["host_tools"] = json!({ "h": { "description": "hosted", "params": { "type": "object" }, "effect": "pure" } });
     })
     .unwrap();
     let (host, _stop) = Host::new("ep_self".into(), log.clone(), None);
-    let tools = host.tools(&program);
+    let tools = host.tools(&contract);
     assert_eq!(tools.len(), 1);
     let tool: Arc<dyn crate::Tool> = Arc::from(tools.into_iter().next().unwrap());
     let (mut writer, reader) = tokio::io::duplex(1024);
@@ -264,7 +264,7 @@ async fn end_of_input_fails_outstanding_waits_instead_of_hanging() {
     let mut chunks: Vec<Chunk> = Vec::new();
     host.transport().stream(req, &mut chunks).await;
     assert!(matches!(chunks.as_slice(), [Chunk::Error { retryable: false, .. }]));
-    let tool = host.tool(crate::test_util::spec("h", foe_program::Effect::Pure));
+    let tool = host.tool(crate::test_util::spec("h", foe_contract::Effect::Pure));
     assert!(tool.call(json!({}), &ctx("tc_9", &root)).await.is_error);
 }
 

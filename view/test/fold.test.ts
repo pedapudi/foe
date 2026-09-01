@@ -321,7 +321,7 @@ test("an episode that runs the free loop records no firing and no decision", () 
 
 test("a verification becomes one compact row and joins the summary", () => {
   const f = new EpisodeFold("ep_v", { stream: false });
-  f.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_v", program: {} } });
+  f.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_v", contract: {} } });
   f.push({
     seq: 1,
     time: 2,
@@ -347,7 +347,7 @@ test("a verification becomes one compact row and joins the summary", () => {
 test("completion provenance derives verifier, reviewed, and model report", () => {
   const completed = { type: "episode/end", data: { outcome: { kind: "completed", value: "v" } } };
   const loop = new EpisodeFold("ep_a", { stream: false });
-  loop.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_a", program: { done_when: { verify: "check" } } } });
+  loop.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_a", contract: { done_when: { verify: "check" } } } });
   loop.push({
     seq: 1,
     time: 2,
@@ -358,7 +358,7 @@ test("completion provenance derives verifier, reviewed, and model report", () =>
   assert.deepEqual(completionProvenance(loop.summary), { kind: "verifier", verifier: "check" });
   assert.equal(provenanceText({ kind: "verifier", verifier: "check" }), "verified by check");
 
-  const program = {
+  const contract = {
     workflow: {
       nodes: {
         "implement-task": { model: { name: "implement-task" }, follows: ["task"] },
@@ -371,7 +371,7 @@ test("completion provenance derives verifier, reviewed, and model report", () =>
     },
   };
   const wf = new EpisodeFold("ep_b", { stream: false });
-  wf.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_b", program } });
+  wf.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_b", contract } });
   wf.push({ seq: 1, time: 2, type: "workflow/node-start", data: { node: "implement-task", fire: 1, inputs: [] } });
   wf.push({
     seq: 2,
@@ -391,7 +391,7 @@ test("completion provenance derives verifier, reviewed, and model report", () =>
   assert.equal(provenanceText({ kind: "reviewed", verifier: "" }), "independently reviewed");
 
   const plain = new EpisodeFold("ep_c", { stream: false });
-  plain.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_c", program: {} } });
+  plain.push({ seq: 0, time: 1, type: "episode/start", data: { id: "ep_c", contract: {} } });
   plain.push({ ...completed, seq: 1, time: 2 });
   assert.deepEqual(completionProvenance(plain.summary), { kind: "model-report", verifier: "" });
   assert.equal(provenanceText({ kind: "model-report", verifier: "" }), "model report");

@@ -6,7 +6,7 @@
 //! in [`auth`]: an API key file, an OAuth token file, and Google
 //! credentials. The provider table in [`providers`] names each pairing and
 //! its defaults; [`build`] resolves a `model` block against the table. A
-//! `model` block whose provider is `exec` names a program instead, which
+//! `model` block whose provider is `exec` names a contract instead, which
 //! [`exec`] drives over standard input and output.
 //!
 //! What every client guarantees:
@@ -39,8 +39,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use foe_contract::ModelConfig;
 use foe_core::{Chunk, Executor, ModelRequestBody, Transport};
-use foe_program::ModelConfig;
 
 pub mod auth;
 #[cfg(feature = "exec")]
@@ -85,11 +85,11 @@ pub enum TransportError {
 pub struct Plan {
     pub provider: &'static Provider,
     /// The block with every defaulted option filled in, including the
-    /// credential path. What `episode/start.program.model` records.
+    /// credential path. What `episode/start.contract.model` records.
     pub model: ModelConfig,
     /// The file the transport reads for its credential, when it reads one.
     pub credential_path: Option<PathBuf>,
-    /// The program an `exec` provider runs.
+    /// The contract an `exec` provider runs.
     pub exec: Option<PathBuf>,
 }
 
@@ -106,7 +106,7 @@ impl Plan {
             None => text.push_str(", no credential read by foe"),
         }
         if let Some(exec) = &self.exec {
-            text.push_str(&format!(", program {}", exec.display()));
+            text.push_str(&format!(", contract {}", exec.display()));
             if let Some(sha256) = sha256 {
                 text.push_str(&format!(", sha256 {sha256}"));
             }
@@ -242,7 +242,7 @@ pub fn build_planned(plan: &Plan, executor: Option<Arc<dyn Executor>>) -> Result
 pub fn build_planned_with_executable(
     plan: &Plan,
     executor: Option<Arc<dyn Executor>>,
-    executable: Option<Arc<foe_core::executable::Executable>>,
+    executable: Option<Arc<foe_core::captured_executable::CapturedExecutable>>,
 ) -> Result<Arc<dyn Transport>, TransportError> {
     #[cfg(feature = "exec")]
     if plan.provider.format == WireFormat::Exec {
@@ -763,7 +763,7 @@ mod tests {
         let planned = plan_with_home(&config, &fake_home("exec-digest")).unwrap();
         let digest = "0123456789abcdef";
         let description = planned.describe_with_exec_sha256(Some(digest));
-        assert!(description.contains("program /usr/bin/true"), "{description}");
+        assert!(description.contains("contract /usr/bin/true"), "{description}");
         assert!(description.contains(&format!("sha256 {digest}")), "{description}");
     }
 

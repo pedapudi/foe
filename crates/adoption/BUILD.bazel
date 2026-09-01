@@ -1,0 +1,45 @@
+load("@crates//:defs.bzl", "all_crate_deps", "crate_edition")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
+
+rust_binary(
+    name = "build-adoption-bundle",
+    srcs = [
+        "src/bin/build_bundle.rs",
+        "src/bin/build_bundle_test.rs",
+    ],
+    crate_root = "src/bin/build_bundle.rs",
+    edition = crate_edition(),
+    version = "0.2.0",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":foe_adoption",
+        "//crates/contract:foe_contract",
+    ] + all_crate_deps(normal = True),
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)
+
+rust_binary(
+    name = "verify-adoption-bundle",
+    srcs = ["src/bin/verify_bundle.rs"],
+    crate_root = "src/bin/verify_bundle.rs",
+    edition = crate_edition(),
+    version = "0.2.0",
+    visibility = ["//visibility:public"],
+    deps = [":foe_adoption"] + all_crate_deps(normal = True),
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)
+
+rust_library(
+    name = "foe_adoption",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "foe_adoption",
+    crate_root = "src/lib.rs",
+    edition = crate_edition(),
+    version = "0.2.0",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//crates/contract:foe_contract",
+        "//crates/log:foe_log",
+    ] + all_crate_deps(normal = True),
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)

@@ -9,7 +9,7 @@
 // a stacking context and trap its label under the strokes. Nothing in the
 // stack is transparent.
 //
-// Lane colour carries branch identity and never a verdict; hue carries the
+// Lane colour distinguishes branches and never carries a verdict; hue carries the
 // outcome and carries it only on the marks, so a lane is never read as a
 // judgement of the work on it.
 

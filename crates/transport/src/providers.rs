@@ -26,7 +26,7 @@ pub enum WireFormat {
     /// otherwise.
     #[cfg(feature = "google")]
     VertexByModel,
-    /// A program driven over standard input and output.
+    /// A contract driven over standard input and output.
     #[cfg(feature = "exec")]
     Exec,
 }
@@ -207,12 +207,12 @@ pub static PROVIDERS: &[Provider] = &[
     Provider {
         name: "exec",
         title: "exec",
-        description: "a program of your own that answers model requests on its standard output",
+        description: "a contract of your own that answers model requests on its standard output",
         format: WireFormat::Exec,
         auth: AuthKind::None,
         default_base_url: None,
         path: "",
-        required: &[("exec", "the absolute path of the program")],
+        required: &[("exec", "the absolute path of the contract")],
         presets: &[],
         windows: &[],
         headers: &[],

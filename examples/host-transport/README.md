@@ -1,6 +1,6 @@
 # Host transport
 
-A configuration with no `model` block, run by a Python program that supplies
+A configuration with no `model` block, run by a Python application that supplies
 the model transport. When `model` is absent, foe has no credentials and no
 network; each model call is a `model/request` event written to standard
 output, and the process that launched foe answers it with `model/chunk`
@@ -18,7 +18,7 @@ package and its reference adapter.
 
 This example demonstrates one seam, the model call. For an application that
 also supplies its own tools and acts on the outcome, see
-[`../embed-in-a-program/`](../embed-in-a-program/).
+[`../embed-an-execution-contract/`](../embed-an-execution-contract/).
 
 ## Run
 

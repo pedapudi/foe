@@ -6,8 +6,8 @@
 //! the parent's remainder until the child settles and returns what it did
 //! not spend.
 
+use foe_contract::Budget;
 use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
-use foe_program::Budget;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -139,7 +139,7 @@ impl Pool {
             (None, l) => Ok(l),
         };
         // The episode allowance is clamped rather than refused, because a
-        // child program declares its own `max_episodes` without knowing
+        // child contract declares its own `max_episodes` without knowing
         // what its parent has left; the child receives what remains.
         let episodes_left = remaining.episodes.unwrap_or(0);
         if episodes_left == 0 {

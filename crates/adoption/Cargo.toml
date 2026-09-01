@@ -1,0 +1,29 @@
+[package]
+name = "foe-adoption"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Portable evidence that associates proposed execution contracts with accepted verification results"
+
+# Declared explicitly: the sibling `*_test.rs` module file must not be
+# discovered as a second binary.
+autobins = false
+
+[[bin]]
+name = "build-adoption-bundle"
+path = "src/bin/build_bundle.rs"
+
+[[bin]]
+name = "verify-adoption-bundle"
+path = "src/bin/verify_bundle.rs"
+
+[dependencies]
+foe-contract = { path = "../contract" }
+foe-log = { path = "../log" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

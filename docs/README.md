@@ -9,11 +9,11 @@ to find the relevant specification, report, or guide.
 | [design.md](design.md) | the guarantees foe makes and the structure that delivers each |
 | [evaluation.md](evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [self-improvement.md](self-improvement.md) | how foe evaluates and improves a disposable copy of its own source, including measured results and operating guidance |
-| [config.md](config.md) | what a program document may contain and what each key means |
-| [models.md](models.md) | which model providers exist, where their credentials live, how `foe login` sets them up, and how a program of your own answers model requests |
+| [config.md](config.md) | what an execution-contract document may contain and what each key means |
+| [models.md](models.md) | which model providers exist, where their credentials live, how `foe login` sets them up, and how a transport executable answers model requests |
 | [log-format.md](log-format.md) | what an episode log contains and how a model request is derived from it |
 | [protocol.md](protocol.md) | how a process that launched foe exchanges lines with it |
-| [sdk.md](sdk.md) | how a Python program builds a configuration, runs an episode, and supplies a model transport |
+| [sdk.md](sdk.md) | how a Python application builds a configuration, runs an episode, and supplies a model transport |
 | [tools.md](tools.md) | what each built-in tool does and how executables and host tools become tools |
 | [sandbox.md](sandbox.md) | how grants become kernel restrictions and what happens when the kernel lacks them |
 | [viewer.md](viewer.md) | what the viewer shows and how it is served and exported |
@@ -26,5 +26,5 @@ to find the relevant specification, report, or guide.
 
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the
 rules for changing the repository. `examples/` holds thirteen runnable
-programs, one per mechanism, each of which answers the model from a script
+programs, one per mechanism. Each answers the model from a script
 and checks its own result; `examples/README.md` indexes them.

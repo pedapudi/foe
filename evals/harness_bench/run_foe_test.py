@@ -67,7 +67,7 @@ class HarnessBenchAdapterTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             tool = root / "tools" / "test"
-            config = run_foe.program(
+            config = run_foe.contract(
                 run_foe.TASKS["085-flaky-test-root-cause"],
                 root,
                 "task",

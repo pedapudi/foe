@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "budget-exhausted",
   "instructions": {
     "role": "You are a coding agent surveying a Python package. Read one file under src per turn and finish with one sentence naming every module you read."

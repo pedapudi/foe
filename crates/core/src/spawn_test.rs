@@ -33,13 +33,13 @@ impl ProcessSpawner {
     }
 }
 
-pub(crate) fn parent_config() -> ProgramDocument {
+pub(crate) fn parent_config() -> ContractDocument {
     serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
+        "version": 4, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
         "grants": {"read": ["/tmp"], "spawn": ["worker"]},
         "budget": {"model_calls": 20, "max_depth": 2},
         "sandbox": {"mode": "off"},
-        "programs": {"worker": {
+        "child_contracts": {"worker": {
             "name": "worker", "instructions": {"r": "work"}, "tools": ["notify"],
             "grants": {"read": ["/tmp"]}, "budget": {"model_calls": 50, "max_depth": 3}
         }},
@@ -51,17 +51,17 @@ pub(crate) fn parent_config() -> ProgramDocument {
 pub(crate) fn process_spawner(
     episode_id: &str,
     log_dir: PathBuf,
-    config: ProgramDocument,
+    config: ContractDocument,
     uplink: Arc<dyn Uplink>,
     router: Arc<Router>,
     observer: Arc<dyn ChildObserver>,
 ) -> ProcessSpawner {
-    let program = foe_program::document::resolve(&config).unwrap();
-    let limits = program.budget.clone();
+    let contract = foe_contract::document::resolve(&config).unwrap();
+    let limits = contract.budget.clone();
     ProcessSpawner::new(
         episode_id.into(),
         log_dir,
-        program,
+        contract,
         limits,
         crate::team::builtin_specs(),
         ProcessConnections { uplink, router, observer },
@@ -70,10 +70,10 @@ pub(crate) fn process_spawner(
 }
 
 #[test]
-fn inherited_executable_name_preserves_child_program_identity() {
+fn inherited_executable_name_preserves_child_contract_fingerprint() {
     let dir = scratch("spawn", "inherited-executable-name");
-    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3,
+    let config: ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4,
         "name": "child",
         "instructions": {"role": "test"},
         "tools": ["configured"],
@@ -84,17 +84,17 @@ fn inherited_executable_name_preserves_child_program_identity() {
         "task": "test"
     }))
     .unwrap();
-    let parent = foe_program::document::resolve(&config).unwrap();
+    let parent = foe_contract::document::resolve(&config).unwrap();
     let document = child_document(&parent, "child task".into());
-    let image = parent.executable_images["configured"].clone();
+    let captured = parent.captured_executables["configured"].clone();
     let inherited = std::collections::BTreeMap::from([(
         "tool_defs.configured.exec".into(),
-        (image.bytes.clone(), image.basename.clone()),
+        (captured.bytes.clone(), captured.invocation_name.clone()),
     )]);
-    let child = foe_program::document::resolve_with_executables(&document, &inherited).unwrap();
-    let runtime = crate::identity::runtime_info();
-    let expected = foe_program::identity::compute(&parent, &[], &runtime).unwrap();
-    let actual = foe_program::identity::compute(&child, &[], &runtime).unwrap();
+    let child = foe_contract::document::resolve_with_executables(&document, &inherited).unwrap();
+    let runtime = crate::fingerprint::runtime_info();
+    let expected = foe_contract::fingerprint::compute(&parent, &[], &runtime).unwrap();
+    let actual = foe_contract::fingerprint::compute(&child, &[], &runtime).unwrap();
     assert_eq!(actual.hash, expected.hash);
 }
 
@@ -103,7 +103,7 @@ fn inherited_executable_name_preserves_child_program_identity() {
 /// then ends with both answers as its value. A first pre-tagged request
 /// stands for one forwarded from a grandchild.
 pub(crate) const FAKE_CHILD: &str = r#"#!/bin/sh
-echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{},"identity":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
+echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
 echo '{"seq":9,"time":1,"type":"model/request","episode_id":"ep_grand","data":{"step":1,"attempt":1,"request_id":"rq_g","header_seq":0,"consumed":[],"messages":[]}}'
 echo '{"seq":1,"time":1,"type":"model/request","data":{"step":1,"attempt":1,"request_id":"rq_1","header_seq":0,"consumed":[1],"messages":[]}}'
 read -r answer
@@ -116,7 +116,7 @@ echo "{\"seq\":4,\"time\":1,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"ki
 /// A stand-in child that runs until the parent writes it a line. The
 /// parent's teardown writes `cancel`, which is what ends it.
 pub(crate) const WAITING_CHILD: &str = r#"#!/bin/sh
-echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{},"identity":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
+echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
 read -r line
 echo '{"seq":1,"time":1,"type":"episode/end","data":{"outcome":{"kind":"failed","error":"cancelled"}}}'
 "#;
@@ -132,7 +132,7 @@ pub(crate) fn fake_child(dir: &Path) -> Vec<OsString> {
 /// A stand-in child that settles one child of its own and then ends, so
 /// that what it reports covers a subtree rather than itself alone.
 pub(crate) const NESTING_CHILD: &str = r#"#!/bin/sh
-echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{},"identity":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
+echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
 echo '{"seq":1,"time":1,"type":"budget/release","data":{"child_id":"ep_grand","spent":{"model_calls":3,"input_tokens":40,"output_tokens":10,"episodes":2}}}'
 echo '{"seq":2,"time":1,"type":"episode/end","data":{"outcome":{"kind":"completed","value":"done"}}}'
 "#;
@@ -166,15 +166,15 @@ pub(crate) fn wait_for<T>(mut probe: impl FnMut() -> Option<T>) -> T {
 fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     let dir = scratch("spawn", "episode-share");
     let mut config = parent_config();
-    let worker = config.programs["worker"].clone();
+    let worker = config.child_contracts["worker"].clone();
     let mut nested = worker.clone();
     nested.name = "nested".into();
     nested.grants.spawn = vec!["worker".into()];
-    nested.programs.insert("worker".into(), worker);
+    nested.child_contracts.insert("worker".into(), worker);
     nested.budget.max_episodes = 5;
-    config.programs.insert("nested".into(), nested);
+    config.child_contracts.insert("nested".into(), nested);
     config.grants.spawn.push("nested".into());
-    let program = foe_program::document::resolve(&config).unwrap();
+    let contract = foe_contract::document::resolve(&config).unwrap();
     let spawner = process_spawner(
         "ep_root",
         dir.to_path_buf(),
@@ -183,9 +183,9 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
         Arc::new(Router::new()),
         Arc::new(Seen::default()),
     );
-    let ask = |program: &str| {
+    let ask = |contract: &str| {
         let req = SpawnRequest {
-            program: program.into(),
+            contract: contract.into(),
             task: "t".into(),
             context: SpawnContext::Fresh,
             reserve: BudgetAmount::default(),
@@ -197,8 +197,8 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     assert_eq!(ask("nested"), Some(5), "a child that may spawn asks for the allowance it declares");
 
     let granted = BudgetAmount { model_calls: Some(5), episodes: Some(2), ..Default::default() };
-    let child = program.spawned_program("nested").unwrap();
-    assert_eq!(effective_budget(&program.budget, &child.budget, granted).max_episodes, 2);
+    let child = contract.spawned_contract("nested").unwrap();
+    assert_eq!(effective_budget(&contract.budget, &child.budget, granted).max_episodes, 2);
 }
 
 /// docs/config.md `model`: a spawned child's declared model replaces the
@@ -206,29 +206,29 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
 #[test]
 fn child_document_preserves_a_model_override() {
     let mut config = parent_config();
-    config.model = Some(foe_program::ModelConfig::new("openai-codex", "gpt-5.6-sol"));
-    let worker = config.programs.get_mut("worker").unwrap();
-    worker.model = Some(foe_program::ModelConfig::new("openai-codex", "gpt-5.6-luna"));
-    let program = foe_program::document::resolve(&config).unwrap();
-    let child = child_document(program.spawned_program("worker").unwrap(), "t".into());
+    config.model = Some(foe_contract::ModelConfig::new("openai-codex", "gpt-5.6-sol"));
+    let worker = config.child_contracts.get_mut("worker").unwrap();
+    worker.model = Some(foe_contract::ModelConfig::new("openai-codex", "gpt-5.6-luna"));
+    let contract = foe_contract::document::resolve(&config).unwrap();
+    let child = child_document(contract.spawned_contract("worker").unwrap(), "t".into());
     assert_eq!(child.model.unwrap().model, "gpt-5.6-luna");
 }
 
 /// docs/config.md `budget`: runtime reservations limit execution without
-/// changing the declared child program or its identity.
+/// changing the declared child contract or its fingerprint.
 #[test]
-fn child_identity_is_stable_across_different_runtime_allowances() {
+fn child_fingerprint_is_stable_across_different_runtime_allowances() {
     let mut config = parent_config();
     config.budget.max_depth = 4;
-    let worker = config.programs.get_mut("worker").unwrap();
+    let worker = config.child_contracts.get_mut("worker").unwrap();
     worker.budget.input_tokens = Some(1_000);
     worker.budget.output_tokens = Some(500);
     worker.budget.seconds = Some(90);
     worker.budget.max_episodes = 6;
-    let resolved = foe_program::document::resolve(&config).unwrap();
-    let worker = resolved.spawned_program("worker").unwrap();
+    let resolved = foe_contract::document::resolve(&config).unwrap();
+    let worker = resolved.spawned_contract("worker").unwrap();
     let specs = crate::team::builtin_specs();
-    let declared = foe_program::identity::compute(worker, &specs, &crate::identity::runtime_info()).unwrap();
+    let declared = foe_contract::fingerprint::compute(worker, &specs, &crate::fingerprint::runtime_info()).unwrap();
     let first = effective_budget(
         &resolved.budget,
         &worker.budget,
@@ -260,15 +260,15 @@ fn child_identity_is_stable_across_different_runtime_allowances() {
     assert_ne!(first.max_depth, second.max_depth);
     assert_ne!(first.max_episodes, second.max_episodes);
     for task in ["first", "second"] {
-        let child = foe_program::document::resolve(&child_document(worker, task.into())).unwrap();
+        let child = foe_contract::document::resolve(&child_document(worker, task.into())).unwrap();
         assert_eq!(
-            foe_program::identity::compute(&child, &specs, &crate::identity::runtime_info()).unwrap().hash,
+            foe_contract::fingerprint::compute(&child, &specs, &crate::fingerprint::runtime_info()).unwrap().hash,
             declared.hash
         );
     }
 }
 
-/// docs/design.md "Program construction": a child receives the executable
+/// docs/design.md "Contract construction": a child receives the executable
 /// bytes committed before its source changes.
 #[test]
 fn launch_does_not_reopen_a_descendant_executable_after_construction() {
@@ -278,20 +278,20 @@ fn launch_does_not_reopen_a_descendant_executable_after_construction() {
     std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
     let mut config = parent_config();
     config.grants.read = vec![dir.to_path_buf()];
-    let worker = config.programs.get_mut("worker").unwrap();
+    let worker = config.child_contracts.get_mut("worker").unwrap();
     worker.grants.read = vec![dir.to_path_buf()];
     worker.tools = vec!["t".into()];
     worker.tool_defs.insert(
         "t".into(),
         serde_json::from_value(serde_json::json!({ "exec": tool, "description": "test" })).unwrap(),
     );
-    let program = foe_program::document::resolve(&config).unwrap();
+    let contract = foe_contract::document::resolve(&config).unwrap();
     std::fs::write(&tool, "second").unwrap();
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
         dir.to_path_buf(),
-        program.clone(),
-        program.budget.clone(),
+        contract.clone(),
+        contract.budget.clone(),
         crate::team::builtin_specs(),
         ProcessConnections {
             uplink: Arc::new(Lines::default()),
@@ -302,7 +302,7 @@ fn launch_does_not_reopen_a_descendant_executable_after_construction() {
     .unwrap()
     .with_launcher(fake_child(&dir));
     let request = SpawnRequest {
-        program: "worker".into(),
+        contract: "worker".into(),
         task: "t".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount::default(),
@@ -313,12 +313,12 @@ fn launch_does_not_reopen_a_descendant_executable_after_construction() {
 }
 
 /// docs/design.md "Subagents and teams": a spawned fork leaves seeding to
-/// the child so that the child can validate its identity first.
+/// the child so that the child can validate its fingerprint first.
 #[tokio::test]
 async fn forked_child_launch_records_the_source_and_boundary() {
-    let dir = scratch("spawn", "fork-program-evidence");
+    let dir = scratch("spawn", "fork-contract-evidence");
     let config = parent_config();
-    let program = foe_program::document::resolve(&config).unwrap();
+    let contract = foe_contract::document::resolve(&config).unwrap();
     let mut writer = foe_log::append::Writer::create(&dir, None).unwrap();
     writer
         .append(foe_log::EventData::EpisodeStart(foe_log::EpisodeStart {
@@ -326,12 +326,12 @@ async fn forked_child_launch_records_the_source_and_boundary() {
             parent_id: None,
             fork_origin: None,
             team_id: None,
-            program: program.to_value(),
-            identity: "sha256:parent".into(),
+            contract: contract.to_value(),
+            contract_fingerprint: "sha256:parent".into(),
             task: "lead task".into(),
-            runtime: crate::identity::runtime_info(),
+            runtime: crate::fingerprint::runtime_info(),
             sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
-            effective_budget: Some(program.budget.clone()),
+            effective_budget: Some(contract.budget.clone()),
         }))
         .unwrap();
     writer.sync().unwrap();
@@ -339,8 +339,8 @@ async fn forked_child_launch_records_the_source_and_boundary() {
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
         dir.to_path_buf(),
-        program.clone(),
-        program.budget.clone(),
+        contract.clone(),
+        contract.budget.clone(),
         crate::team::builtin_specs(),
         ProcessConnections {
             uplink: Arc::new(Lines::default()),
@@ -351,7 +351,7 @@ async fn forked_child_launch_records_the_source_and_boundary() {
     .unwrap()
     .with_launcher(waiting_child(&dir));
     let request = SpawnRequest {
-        program: "worker".into(),
+        contract: "worker".into(),
         task: "work".into(),
         context: SpawnContext::Fork,
         reserve: BudgetAmount { model_calls: Some(5), ..Default::default() },
@@ -369,13 +369,13 @@ async fn forked_child_launch_records_the_source_and_boundary() {
 }
 
 /// docs/config.md `budget` and docs/workflow.md "Model nodes": a model node
-/// inside a child program's nested workflow is descendant work, so the child
+/// inside a child contract's nested workflow is descendant work, so the child
 /// asks for its subtree allowance even with no explicit spawn grant.
 #[test]
 fn a_workflow_bearing_child_asks_for_its_subtree_episodes() {
     let dir = scratch("spawn", "workflow-share");
     let mut config = parent_config();
-    let child = config.programs.get_mut("worker").unwrap();
+    let child = config.child_contracts.get_mut("worker").unwrap();
     child.budget.max_episodes = 5;
     child.workflow = Some(
         serde_json::from_value(serde_json::json!({ "nodes": {
@@ -398,7 +398,7 @@ fn a_workflow_bearing_child_asks_for_its_subtree_episodes() {
         Arc::new(Seen::default()),
     );
     let req = SpawnRequest {
-        program: "worker".into(),
+        contract: "worker".into(),
         task: "t".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount::default(),
@@ -417,7 +417,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
         process_spawner("ep_root", dir.to_path_buf(), parent_config(), uplink.clone(), router.clone(), seen.clone())
             .with_launcher(fake_child(&dir));
     let req = SpawnRequest {
-        program: "worker".into(),
+        contract: "worker".into(),
         task: "do it".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount { model_calls: Some(5), ..Default::default() },
@@ -425,7 +425,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     };
     let handle = spawner.spawn(req).unwrap();
     let child_dir = dir.join("children").join(&handle.child_id);
-    let written: ProgramDocument =
+    let written: ContractDocument =
         serde_json::from_slice(&std::fs::read(child_dir.join("config.json")).unwrap()).unwrap();
     assert_eq!(written.name, "worker");
     assert_eq!(written.task, "do it");
@@ -438,11 +438,12 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     assert_eq!(lineage["episode_id"], handle.child_id.as_str());
     assert_eq!(lineage["effective_budget"]["model_calls"], 5);
     assert_eq!(lineage["effective_budget"]["max_depth"], 1);
-    let parent = foe_program::document::resolve(&parent_config()).unwrap();
-    let child = parent.spawned_program("worker").unwrap();
+    let parent = foe_contract::document::resolve(&parent_config()).unwrap();
+    let child = parent.spawned_contract("worker").unwrap();
     let expected =
-        foe_program::identity::compute(child, &crate::team::builtin_specs(), &crate::identity::runtime_info()).unwrap();
-    assert_eq!(lineage["expected_program_identity"], expected.hash);
+        foe_contract::fingerprint::compute(child, &crate::team::builtin_specs(), &crate::fingerprint::runtime_info())
+            .unwrap();
+    assert_eq!(lineage["expected_contract_fingerprint"], expected.hash);
 
     let forwarded = wait_for(|| {
         let lines = uplink.0.lock().unwrap();
@@ -481,7 +482,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
 }
 
 #[test]
-fn spawn_refuses_programs_outside_the_grant() {
+fn spawn_refuses_contracts_outside_the_grant() {
     let dir = scratch("spawn", "refuse");
     let spawner = process_spawner(
         "ep_root",
@@ -493,7 +494,7 @@ fn spawn_refuses_programs_outside_the_grant() {
     )
     .with_launcher(fake_child(&dir));
     let req = SpawnRequest {
-        program: "other".into(),
+        contract: "other".into(),
         task: "x".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount::default(),
@@ -507,7 +508,7 @@ fn spawn_refuses_programs_outside_the_grant() {
 /// descendant and one of its own, waits for both answers, and ends with
 /// them as its value.
 const ASKING_CHILD: &str = r#"#!/bin/sh
-echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","program":{},"identity":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
+echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0}}}'
 echo '{"seq":7,"time":1,"type":"host/tool-call","episode_id":"ep_grand","data":{"step":1,"call_id":"tc_g","name":"ask_host","args":{}}}'
 read -r grand
 echo '{"seq":1,"time":1,"type":"host/tool-call","data":{"step":1,"call_id":"tc_1","name":"ask_host","args":{}}}'
@@ -547,7 +548,7 @@ async fn a_host_call_no_host_can_answer_is_refused_at_once() {
     )
     .with_launcher(script(&dir, "asking-foe.sh", ASKING_CHILD));
     let req = SpawnRequest {
-        program: "worker".into(),
+        contract: "worker".into(),
         task: "ask".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount::default(),

@@ -29,7 +29,7 @@ def test_the_built_binary_completes_an_episode_with_a_host_tool(tmp_path: Path) 
     def _(value: dict[str, Any]) -> str:
         return f"{value['count']} references"
 
-    program = foe.Program(
+    contract = foe.ExecutionContract(
         name="binary-test",
         instructions={"role": "You are under test."},
         tools=["read", mutation_usage],
@@ -38,7 +38,7 @@ def test_the_built_binary_completes_an_episode_with_a_host_tool(tmp_path: Path) 
     )
     events: list[foe.Event] = []
     outcome = asyncio.run(
-        program.run(
+        contract.run(
             task="Count references.",
             transport=scripted(
                 [
@@ -56,4 +56,4 @@ def test_the_built_binary_completes_an_episode_with_a_host_tool(tmp_path: Path) 
     result = next(e for e in events if e.type == "tool/result")
     assert result.data["rendered"] == "3 references"
     assert [e.type for e in events][-1] == "episode/end"
-    assert program.identity(BINARY).startswith("sha256:")
+    assert contract.fingerprint(BINARY).startswith("sha256:")

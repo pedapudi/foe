@@ -114,7 +114,7 @@ export function renderContinuation(data: Record<string, unknown>): string {
     const c = obj(child);
     const o = obj(c.outcome);
     const detail = str(o.code) || str(o.limit);
-    return `${str(c.id)} (${str(c.program)}): ${str(o.kind)}${detail ? ` ${detail}` : ""}`;
+    return `${str(c.id)} (${str(c.contract)}): ${str(o.kind)}${detail ? ` ${detail}` : ""}`;
   });
   const lines = [
     `covered: seq ${num(covered.first_seq)} to ${num(covered.last_seq)}`,

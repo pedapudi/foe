@@ -19,7 +19,7 @@ in the wire shape [docs/models.md](../../docs/models.md) defines, so the
 example needs no credential and opens no connection while the runtime still
 runs every tool call, log event, and completion rule.
 
-To run the same program against a provider, replace the `model` block with:
+To run the same contract against a provider, replace the `model` block with:
 
 ```json
 "model": { "provider": "anthropic", "model": "claude-opus-5" }
@@ -28,7 +28,7 @@ To run the same program against a provider, replace the `model` block with:
 and run `foe login anthropic` once. That block names no key file, so the key
 is read from `~/.config/foe/credentials/anthropic.json`, which the login
 writes, and the log records the resolved path in
-`episode/start.program.model`. A block that names `api_key_file` reads that
+`episode/start.contract.model`. A block that names `api_key_file` reads that
 file instead, which is worth doing when the key belongs to one project rather
 than to the account running foe. [docs/models.md](../../docs/models.md)
 describes both.
@@ -57,7 +57,7 @@ Each run creates `target/foe-minimal-demo.XXXXXX/`, holding the materialized
 configuration, the disposable project, and the episode log. The runner prints
 a command that serves the viewer for that log.
 
-`foe plan --config FILE` prints the resolved program and its identity without
+`foe plan --config FILE` prints the resolved contract and its fingerprint without
 running anything. It resolves every path in the document, so it is run
 against the configuration inside a run directory rather than the checked-in
 one, whose `/home/user/project` exists on no machine:

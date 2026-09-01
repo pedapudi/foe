@@ -105,9 +105,9 @@ class TrajectoryCorpusTest(unittest.TestCase):
         (trial / "agent" / "foe-diagnostics.json").write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
+                    "schema_version": 4,
                     "task": f"terminal-bench/{task}",
-                    "evidence_identity": {"runtime_build": identity["runtime_binary"]},
+                    "evidence_fingerprints": {"runtime_build": identity["runtime_binary"]},
                 }
             )
             + "\n",

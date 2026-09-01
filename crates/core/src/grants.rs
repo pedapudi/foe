@@ -55,7 +55,7 @@ pub struct RootReader {
 }
 
 impl RootReader {
-    /// `roots` must already be canonical, as the resolved program holds them.
+    /// `roots` must already be canonical, as the resolved contract holds them.
     /// Opening every root here is what binds later reads to these directories.
     pub fn new(roots: Vec<PathBuf>) -> Result<Self, CapError> {
         let dirs = open_roots(&roots)?;
@@ -102,7 +102,7 @@ pub struct RootWriter {
 }
 
 impl RootWriter {
-    /// `roots` must already be canonical, as the resolved program holds them.
+    /// `roots` must already be canonical, as the resolved contract holds them.
     pub fn new(roots: Vec<PathBuf>) -> Result<Self, CapError> {
         let dirs = open_roots(&roots)?;
         Ok(Self { roots, dirs, stages: AtomicU64::new(0) })

@@ -213,7 +213,7 @@ def model_route(value: str, reasoning_effort: str | None = None) -> dict[str, st
     return route
 
 
-def program(task: Task, workspace: Path, prompt: str, route: dict[str, str], tools: dict[str, Path]) -> dict[str, Any]:
+def contract(task: Task, workspace: Path, prompt: str, route: dict[str, str], tools: dict[str, Path]) -> dict[str, Any]:
     names = ["read", "grep", "edit", "bash"]
     tool_defs: dict[str, Any] = {}
     read_paths = [str(workspace)]
@@ -240,7 +240,7 @@ def program(task: Task, workspace: Path, prompt: str, route: dict[str, str], too
         }
     writes = [str(workspace / relative) for relative in task.write_paths]
     return {
-        "version": 3,
+        "version": 4,
         "name": "harness-bench-" + task.identifier,
         "instructions": {
             "10-role": "Complete the benchmark task autonomously in the granted workspace.",
@@ -352,8 +352,8 @@ def run_attempt(
     except Exception as error:
         negative_control = {}
         negative_control_error = repr(error)
-    config = program(task, workspace.resolve(), prompt, route, tools)
-    config_path = case / "program.json"
+    config = contract(task, workspace.resolve(), prompt, route, tools)
+    config_path = case / "contract.json"
     write_json(config_path, config)
     started = time.monotonic()
     infrastructure_error = None
@@ -436,7 +436,7 @@ def run_attempt(
         "paths": {
             "workspace": str(workspace),
             "episode": str(log_dir),
-            "program": str(config_path),
+            "contract": str(config_path),
         },
     }
     write_json(case / "attempt.json", record)

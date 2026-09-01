@@ -48,7 +48,7 @@ export interface CausalityCall {
   failed: boolean;
   /** The episode this call opened, absent for a call that opened none. */
   childId: string | null;
-  /** The opened episode's configured program name, which names a delegation. */
+  /** The opened episode's configured contract name, which names a delegation. */
   childName: string;
   /** The result as the conversation renders it, empty when none was read. */
   result: string;
@@ -233,7 +233,7 @@ export interface LaneSpec {
   episodeId: string;
   /** The lane this one branched from, absent for a root episode's lane. */
   parentId: string | null;
-  /** Which of the cycled lane colours carries this branch's identity. */
+  /** Which cycled lane colour represents this branch. */
   tone: number;
   /** The typed outcome drawn at the foot; only an episode lane has one. */
   outcome: Outcome | null;
@@ -397,7 +397,7 @@ export function readCausality(summary: Summary, rows: Row[], depth: number): Cau
           subject: result?.text ?? "",
           failed: result?.failed === true,
           childId: spawn ? spawn.childId : null,
-          childName: spawn ? spawn.program : "",
+          childName: spawn ? spawn.contract : "",
           result: result?.body ?? "",
           resultSeq: result?.seq ?? range.to,
         };
@@ -427,14 +427,14 @@ export function readCausality(summary: Summary, rows: Row[], depth: number): Cau
  * call that spawned the child, which is the obligation pair the lane is
  * built from; nothing here infers a parent.
  */
-function spawnsByCall(rows: Row[]): Map<string, { childId: string; program: string }> {
-  const out = new Map<string, { childId: string; program: string }>();
+function spawnsByCall(rows: Row[]): Map<string, { childId: string; contract: string }> {
+  const out = new Map<string, { childId: string; contract: string }>();
   for (const row of rows) {
     if (row.kind !== "note" || row.type !== "spawn/start") continue;
     const data = obj(row.data);
     const call = str(data.call_id);
     const child = str(data.child_id);
-    if (call !== "" && child !== "") out.set(call, { childId: child, program: str(data.program, child) });
+    if (call !== "" && child !== "") out.set(call, { childId: child, contract: str(data.contract, child) });
   }
   return out;
 }

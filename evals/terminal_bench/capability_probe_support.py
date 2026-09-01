@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import Any
 
 
-def build_probe_program(transport_path: str, working_directory: str) -> dict[str, Any]:
+def build_probe_contract(transport_path: str, working_directory: str) -> dict[str, Any]:
     if not working_directory.startswith("/"):
         raise ValueError("working directory must be an absolute path")
     return {
-        "version": 3,
+        "version": 4,
         "name": "terminal-bench-capability-probes",
         "instructions": {"role": "Execute the deterministic capability probe calls."},
         "tools": ["read", "grep", "bash"],
@@ -60,8 +60,8 @@ def evaluate_probe_episode(log_dir: Path) -> dict[str, Any]:
     starts = [event for event in events if event.get("type") == "episode/start"]
     if len(starts) != 1:
         raise ValueError("capability probe must contain one episode/start event")
-    program = starts[0].get("data", {}).get("program", {})
-    read_roots = program.get("grants", {}).get("read", [])
+    contract = starts[0].get("data", {}).get("contract", {})
+    read_roots = contract.get("grants", {}).get("read", [])
     expected_cwd = read_roots[0] if read_roots else None
 
     def evidence(item: dict[str, Any]) -> dict[str, Any]:

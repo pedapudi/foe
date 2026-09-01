@@ -57,7 +57,7 @@ pub struct WorkflowFacts {
 #[derive(Default)]
 pub struct Facts {
     pub id: String,
-    pub identity: String,
+    pub contract_fingerprint: String,
     pub runtime_version: String,
     pub runtime_build: String,
     pub provider: String,
@@ -97,18 +97,18 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
     let mut facts = Facts { start_ms: time(events.first()), end_ms: time(events.last()), ..Facts::default() };
     push_known(&mut facts.known, 'p', log_dir);
     let mut open: BTreeMap<String, usize> = BTreeMap::new();
-    let mut program = serde_json::Value::Null;
+    let mut contract = serde_json::Value::Null;
     let mut child_by_firing = BTreeMap::new();
     let mut partial_children = BTreeSet::new();
     for event in events {
         match &event.data {
             EventData::EpisodeStart(start) => {
                 facts.id = start.id.clone();
-                facts.identity = start.identity.clone();
+                facts.contract_fingerprint = start.contract_fingerprint.clone();
                 facts.runtime_version = start.runtime.version.clone();
                 facts.runtime_build = start.runtime.build.clone();
-                program_known(&start.program, &mut facts.known);
-                program = start.program.clone();
+                contract_known(&start.contract, &mut facts.known);
+                contract = start.contract.clone();
             }
             EventData::EpisodeEnd { outcome } => facts.outcome = Some(outcome.clone()),
             EventData::RequestHeader(header) => {
@@ -177,7 +177,7 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
             _ => {}
         }
     }
-    facts.provenance = completion_provenance(events, &program);
+    facts.provenance = completion_provenance(events, &contract);
     facts.known.sort_by(|a, b| b.value.len().cmp(&a.value.len()).then(a.value.cmp(&b.value)));
     facts.known.dedup_by(|a, b| a.value == b.value);
     facts
@@ -197,7 +197,7 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
 /// the built-in coding workflow. `model-report`: neither. A workflow that
 /// completes through a branch label with no successors flags no terminal
 /// node, so the last errorless `workflow/node-end` stands in.
-pub fn completion_provenance(events: &[Event], program: &serde_json::Value) -> Option<&'static str> {
+pub fn completion_provenance(events: &[Event], contract: &serde_json::Value) -> Option<&'static str> {
     let completed = events.iter().rev().find_map(|e| match &e.data {
         EventData::EpisodeEnd { outcome } => Some(matches!(outcome, Outcome::Completed { .. })),
         _ => None,
@@ -205,7 +205,7 @@ pub fn completion_provenance(events: &[Event], program: &serde_json::Value) -> O
     if completed != Some(true) {
         return None;
     }
-    let nodes = &program["workflow"]["nodes"];
+    let nodes = &contract["workflow"]["nodes"];
     let accepted_at = |i: usize| matches!(&events[i].data, EventData::VerificationResult(v) if v.status == VerificationStatus::Accepted);
     if !nodes.is_object() {
         let last = events.iter().rev().find_map(|e| match &e.data {
@@ -277,8 +277,8 @@ pub fn term<T: serde::Serialize>(value: &T) -> String {
 
 /// Absolute paths anywhere in the resolved configuration, plus the user
 /// name component of any home directory among them.
-fn program_known(program: &serde_json::Value, out: &mut Vec<KnownValue>) {
-    let mut stack = vec![program];
+fn contract_known(contract: &serde_json::Value, out: &mut Vec<KnownValue>) {
+    let mut stack = vec![contract];
     while let Some(value) = stack.pop() {
         match value {
             serde_json::Value::String(text) if text.starts_with('/') => {

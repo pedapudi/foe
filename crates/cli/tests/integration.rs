@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const FOE: &str = env!("CARGO_BIN_EXE_foe");
-use foe_program::SCHEMA;
+use foe_contract::SCHEMA;
 const EXAMPLES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples");
 
 struct ScratchDir {
@@ -81,7 +81,7 @@ fn call(id: &str, name: &str, args: &str) -> Vec<Value> {
 
 fn config(dir: &Path, edit: impl FnOnce(&mut Value)) -> Value {
     let mut value = json!({
-        "version": 3,
+        "version": 4,
         "name": "test",
         "instructions": { "role": "You are under test." },
         "tools": ["read"],
@@ -262,7 +262,7 @@ fn a_spent_model_call_budget_exhausts_the_episode() {
 }
 
 /// docs/log-format.md `episode/start`: a spawned episode records and
-/// enforces the effective allowance supplied beside its declared program.
+/// enforces the effective allowance supplied beside its declared contract.
 #[test]
 fn a_child_records_and_enforces_its_effective_budget() {
     let dir = scratch("effective-child-budget");
@@ -291,7 +291,7 @@ fn a_child_records_and_enforces_its_effective_budget() {
 }
 
 /// A model transport for a headless run: one shell script for the whole
-/// tree, which tells the episodes apart by the marker each program's
+/// tree, which tells the episodes apart by the marker each contract's
 /// instructions carry. The root spawns the middle episode and waits, the
 /// middle spawns the leaf and waits, and the leaf calls the host tool
 /// `ask_host` once.
@@ -318,13 +318,13 @@ if marked ROLE_LEAF; then
   esac
 elif marked ROLE_MIDDLE; then
   case $step in
-    0) tool_call tc_middle_spawn spawn '{\"program\":\"leaf\",\"task\":\"ask the host\"}' ;;
+    0) tool_call tc_middle_spawn spawn '{\"contract\":\"leaf\",\"task\":\"ask the host\"}' ;;
     1) tool_call tc_middle_wait wait '{}' ;;
     *) finish "the middle episode is done" ;;
   esac
 else
   case $step in
-    0) tool_call tc_root_spawn spawn '{\"program\":\"middle\",\"task\":\"start the leaf\"}' ;;
+    0) tool_call tc_root_spawn spawn '{\"contract\":\"middle\",\"task\":\"start the leaf\"}' ;;
     1) tool_call tc_root_wait wait '{}' ;;
     *) finish "the root is done" ;;
   esac
@@ -395,14 +395,14 @@ fn a_host_tool_call_no_host_can_answer_ends_every_episode_in_the_tree() {
         "tools": ["spawn", "wait", "notify"],
         "grants": { "read": [dir], "spawn": ["leaf"] },
         "budget": { "model_calls": 6, "max_depth": 1, "max_episodes": 2 },
-        "programs": { "leaf": leaf }
+        "child_contracts": { "leaf": leaf }
     });
     let config = config(&dir, |c| {
         c["tools"] = json!(["spawn", "wait"]);
         c["grants"] = json!({ "read": [dir], "spawn": ["middle"] });
         c["budget"] = json!({ "model_calls": 12, "max_depth": 2, "max_episodes": 4 });
         c["model"] = json!({ "provider": "exec", "model": "tree", "exec": transport });
-        c["programs"] = json!({ "middle": middle });
+        c["child_contracts"] = json!({ "middle": middle });
     });
     let (logs, code) = headless_run(&dir, &config);
     assert_eq!(code, 0);
@@ -422,8 +422,8 @@ fn a_host_tool_call_no_host_can_answer_ends_every_episode_in_the_tree() {
     assert!(rendered.contains("ask_host") && rendered.contains("no host"), "{rendered}");
 }
 
-/// A child program for a workflow model node, reading `dir`.
-fn node_program(name: &str, dir: &Path) -> Value {
+/// A child contract for a workflow model node, reading `dir`.
+fn node_contract(name: &str, dir: &Path) -> Value {
     json!({
         "name": name, "instructions": { "role": "Decide." }, "tools": ["block"],
         "grants": { "read": [dir] }, "budget": { "model_calls": 2 }
@@ -455,7 +455,7 @@ fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
         c["budget"] = json!({ "model_calls": 6 });
         c["workflow"] = json!({ "nodes": {
             "manifest": { "tool": "list" },
-            "propose": { "model": node_program("propose", &dir), "follows": ["manifest", "task"],
+            "propose": { "model": node_contract("propose", &dir), "follows": ["manifest", "task"],
                          "branches": { "accept": ["derive"], "stop": [] } },
             "derive": { "tool": "derive", "args": { "experiment": { "$node": "propose", "pointer": "/experiment" } },
                         "follows": ["propose"], "terminal": true }
@@ -480,7 +480,7 @@ fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
     assert_eq!(branch["data"]["label"], "accept");
     assert_eq!(branch["data"]["successors"], json!(["derive"]));
     let spawn = events.iter().find(|e| e["type"] == "spawn/start").unwrap();
-    assert_eq!(spawn["data"]["program"], "propose");
+    assert_eq!(spawn["data"]["contract"], "propose");
     let start = events.iter().find(|e| e["type"] == "workflow/node-start" && e["data"]["node"] == "propose").unwrap();
     let child_id = start["data"]["child_id"].as_str().unwrap();
     let child_log = dir.join("log/children").join(child_id).join("episode.jsonl");
@@ -488,7 +488,7 @@ fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
         std::fs::read_to_string(&child_log).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
     let lineage: Value =
         serde_json::from_slice(&std::fs::read(child_log.parent().unwrap().join("lineage.json")).unwrap()).unwrap();
-    assert_eq!(child[0]["data"]["identity"], lineage["expected_program_identity"]);
+    assert_eq!(child[0]["data"]["contract_fingerprint"], lineage["expected_contract_fingerprint"]);
     assert_eq!(child[0]["data"]["effective_budget"], lineage["effective_budget"]);
     assert_eq!(child[1]["type"], "inbox/item");
     let task = child[1]["data"]["content"][0]["text"].as_str().unwrap();
@@ -509,12 +509,12 @@ fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
 fn a_spawned_child_can_run_its_workflow_model_node() {
     let dir = scratch("spawned-workflow");
     let config = config(&dir, |c| {
-        let mut answer = node_program("answer", &dir);
+        let mut answer = node_contract("answer", &dir);
         answer["budget"] = json!({ "model_calls": 2, "max_depth": 0, "max_episodes": 1 });
         c["tools"] = json!(["spawn", "wait"]);
         c["grants"]["spawn"] = json!(["worker"]);
         c["budget"] = json!({ "model_calls": 6, "max_depth": 2, "max_episodes": 3 });
-        c["programs"] = json!({ "worker": {
+        c["child_contracts"] = json!({ "worker": {
             "name": "worker", "instructions": { "role": "Run the workflow." }, "tools": ["block"],
             "grants": { "read": [dir] },
             "budget": { "model_calls": 2, "max_depth": 1, "max_episodes": 2 },
@@ -524,7 +524,7 @@ fn a_spawned_child_can_run_its_workflow_model_node() {
         } });
     });
     let mut delegate = vec![text("delegating")];
-    delegate.extend(call("tc_spawn", "spawn", r#"{"program":"worker","task":"answer"}"#));
+    delegate.extend(call("tc_spawn", "spawn", r#"{"contract":"worker","task":"answer"}"#));
     delegate.extend(call("tc_wait", "wait", "{}"));
     delegate.push(done("tool"));
     let child = vec![text("workflow result"), done("end")];
@@ -548,7 +548,7 @@ fn a_spawned_child_can_run_its_workflow_model_node() {
 /// docs/protocol.md "Children": a child replaces inherited executable
 /// descriptors with close-on-exec copies before it starts any tool.
 #[test]
-fn a_child_tool_inherits_no_program_tree_descriptor() {
+fn a_child_tool_inherits_no_contract_tree_descriptor() {
     let dir = scratch("child-executable-descriptors");
     let probe = dir.join("probe");
     std::fs::write(
@@ -561,13 +561,13 @@ fn a_child_tool_inherits_no_program_tree_descriptor() {
         c["tools"] = json!(["spawn", "wait"]);
         c["grants"]["spawn"] = json!(["worker"]);
         c["budget"] = json!({ "model_calls": 4, "max_depth": 1, "max_episodes": 2 });
-        c["programs"] = json!({ "worker": {
+        c["child_contracts"] = json!({ "worker": {
             "name": "worker", "instructions": { "role": "Run the probe." }, "tools": ["probe"],
             "tool_defs": { "probe": { "exec": probe, "description": "Checks inherited descriptors." } },
             "grants": { "read": [dir] }, "budget": { "model_calls": 2, "max_depth": 0 }
         } });
     });
-    let mut delegate = call("tc_spawn", "spawn", r#"{"program":"worker","task":"run the probe"}"#);
+    let mut delegate = call("tc_spawn", "spawn", r#"{"contract":"worker","task":"run the probe"}"#);
     delegate.extend(call("tc_wait", "wait", "{}"));
     delegate.push(done("tool"));
     let mut run_probe = call("tc_probe", "probe", r#"{"args":[]}"#);
@@ -591,12 +591,12 @@ fn a_child_tool_inherits_no_program_tree_descriptor() {
     );
 }
 
-/// docs/design.md "Program construction": a child receives the executable
-/// snapshots needed to reconstruct its full declared identity, including an
+/// docs/design.md "Contract construction": a child receives the executable
+/// snapshots needed to reconstruct its full declared fingerprint, including an
 /// ungranted descendant that the child cannot start.
 #[test]
 fn a_child_starts_after_an_ungranted_descendant_executable_source_is_deleted() {
-    let dir = scratch("child-declared-executable-identity");
+    let dir = scratch("child-declared-executable-fingerprint");
     let latent = dir.join("latent-tool");
     std::fs::write(&latent, "#!/bin/sh\nprintf 'latent\\n'\n").unwrap();
     std::fs::set_permissions(&latent, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
@@ -607,10 +607,10 @@ fn a_child_starts_after_an_ungranted_descendant_executable_source_is_deleted() {
         });
         config["grants"] = json!({"read": [dir], "write": [dir], "spawn": ["worker"]});
         config["budget"] = json!({"model_calls": 6, "max_depth": 2, "max_episodes": 2});
-        config["programs"] = json!({"worker": {
+        config["child_contracts"] = json!({"worker": {
             "name": "worker", "instructions": {"role": "Complete without spawning."}, "tools": ["block"],
             "grants": {"read": [dir]}, "budget": {"model_calls": 2, "max_depth": 1},
-            "programs": {"ungranted": {
+            "child_contracts": {"ungranted": {
                 "name": "ungranted", "instructions": {"role": "Remain unreachable."}, "tools": ["latent"],
                 "tool_defs": {"latent": {"exec": latent, "description": "A declared executable."}},
                 "grants": {"read": [dir]}, "budget": {"model_calls": 1, "max_depth": 0}
@@ -619,7 +619,7 @@ fn a_child_starts_after_an_ungranted_descendant_executable_source_is_deleted() {
     });
     let mut delete = call("tc_delete", "delete", "{}");
     delete.push(done("tool"));
-    let mut delegate = call("tc_spawn", "spawn", r#"{"program":"worker","task":"start"}"#);
+    let mut delegate = call("tc_spawn", "spawn", r#"{"contract":"worker","task":"start"}"#);
     delegate.extend(call("tc_wait", "wait", "{}"));
     delegate.push(done("tool"));
     let responses =
@@ -639,7 +639,7 @@ fn a_child_starts_after_an_ungranted_descendant_executable_source_is_deleted() {
     let lineage: Value =
         serde_json::from_slice(&std::fs::read(dir.join("log/children").join(child_id).join("lineage.json")).unwrap())
             .unwrap();
-    assert_eq!(child[0]["data"]["identity"], lineage["expected_program_identity"]);
+    assert_eq!(child[0]["data"]["contract_fingerprint"], lineage["expected_contract_fingerprint"]);
 }
 
 /// docs/workflow.md "Recovery" and "Tool nodes": a configured executable
@@ -705,7 +705,7 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
         c["workflow"] = json!({ "nodes": {
             "manifest": { "tool": "list" },
             "survey": { "tool": "scan", "args": { "about": { "$node": "manifest" } }, "follows": ["manifest"], "max_fires": 2 },
-            "propose": { "model": node_program("propose", &dir), "follows": ["manifest", "survey"],
+            "propose": { "model": node_contract("propose", &dir), "follows": ["manifest", "survey"],
                          "branches": { "accept": ["derive"], "widen": ["survey"] }, "max_fires": 2 },
             "derive": { "tool": "derive", "follows": ["propose"], "terminal": true }
         } });
@@ -737,7 +737,7 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
 /// otherwise: implementation feeds an assessment choice, and its repair
 /// branch feeds a fresh coding node. A verifier governs both branches at the
 /// root. Every episode may call it while working.
-/// The wiring itself is pinned by the unit tests over `builtin_program_document`;
+/// The wiring itself is pinned by the unit tests over `builtin_contract_document`;
 /// the bare form cannot run under a scripted transport, because the exec
 /// provider needs a `model` option no flag sets, so these runs drive the
 /// same document under `--host`.
@@ -914,7 +914,7 @@ fn accepted_assessment_is_verified_at_the_workflow_root() {
         use sha2::Digest;
         format!("sha256:{}", hex::encode(sha2::Sha256::digest(std::fs::read(&script).unwrap())))
     };
-    assert_eq!(evidence["data"]["verifier_identity"], json!(hashed));
+    assert_eq!(evidence["data"]["verifier_fingerprint"], json!(hashed));
     assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2);
 }
 
@@ -1061,7 +1061,7 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert!(end["data"].get("error").is_none());
     let header_of = |request: &Value| events.iter().find(|e| e["seq"] == request["data"]["header_seq"]).unwrap();
     let summary_header = header_of(requests[2]);
-    assert_eq!(summary_header["data"]["system"], foe_program::harness_text::COMPACTION_INSTRUCTION);
+    assert_eq!(summary_header["data"]["system"], foe_contract::harness_text::COMPACTION_INSTRUCTION);
     assert_eq!(summary_header["data"]["tools"], json!([]));
     assert_eq!(header_of(requests[3])["data"]["tools"][0]["name"], "read", "the ordinary header returns");
     let messages = requests[3]["data"]["messages"].as_array().unwrap();
@@ -1073,7 +1073,7 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert_eq!(messages[2]["tool_calls"][0]["id"], "tc_2", "the kept suffix starts with the second step");
     assert_eq!(messages.len(), 5, "the final-request warning follows the compacted context");
     assert!(
-        messages.iter().any(|message| message.to_string().contains(foe_program::harness_text::FINAL_REQUEST)),
+        messages.iter().any(|message| message.to_string().contains(foe_contract::harness_text::FINAL_REQUEST)),
         "the last ordinary request carries the recorded warning"
     );
     let prompt = requests[2]["data"]["messages"][0]["content"][0]["text"].as_str().unwrap();
@@ -1123,7 +1123,7 @@ fn a_failed_summarization_leaves_the_context_as_it_was() {
     let messages = last["data"]["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 6, "the prior context and final-request warning are present");
     assert!(
-        messages.iter().any(|message| message.to_string().contains(foe_program::harness_text::FINAL_REQUEST)),
+        messages.iter().any(|message| message.to_string().contains(foe_contract::harness_text::FINAL_REQUEST)),
         "failed compaction preserves the warning"
     );
 }
@@ -1155,11 +1155,11 @@ fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
     // `plan` resolves every executable an example names, so a file has to
     // exist at each path under `project/tools`. Every file an example ships
     // other than its configuration, its README, and its runner is such a
-    // program, and each example's README says to install it there.
-    const NOT_PROGRAMS: [&str; 5] = ["config.json", "README.md", "run.sh", "run.py", "BUILD.bazel"];
+    // contract, and each example's README says to install it there.
+    const NON_EXECUTABLE_FILES: [&str; 5] = ["config.json", "README.md", "run.sh", "run.py", "BUILD.bazel"];
     for entry in std::fs::read_dir(Path::new(EXAMPLES).join(name)).unwrap().flatten() {
         let file = entry.file_name();
-        if !NOT_PROGRAMS.contains(&file.to_string_lossy().as_ref()) {
+        if !NON_EXECUTABLE_FILES.contains(&file.to_string_lossy().as_ref()) {
             std::fs::copy(entry.path(), project.join("tools").join(&file)).unwrap();
         }
     }
@@ -1185,7 +1185,7 @@ fn plan(config: &Path) -> Value {
 
 /// docs/design.md "Subagents and teams": `foe plan` reports each distinct
 /// tool definition throughout the reachable tree, even when names repeat,
-/// and omits a program no `grants.spawn` entry reaches.
+/// and omits a contract no `grants.spawn` entry reaches.
 #[test]
 fn plan_reports_effective_authority_across_nested_descendants() {
     let dir = scratch("plan-authority");
@@ -1209,13 +1209,13 @@ fn plan_reports_effective_authority_across_nested_descendants() {
         "name": "child", "instructions": { "role": "delegate" }, "tools": ["inspect", "spawn"],
         "tool_defs": { "inspect": { "exec": child_exec, "description": "Inspect as the child" } },
         "grants": { "read": [dir], "spawn": ["grand"] }, "budget": { "model_calls": 2 },
-        "programs": { "grand": grand }
+        "child_contracts": { "grand": grand }
     });
     let value = config(&dir, |c| {
         c["tools"] = json!(["inspect", "spawn"]);
         c["tool_defs"] = json!({ "inspect": { "exec": root_exec, "description": "Inspect at the root" } });
         c["grants"]["spawn"] = json!(["child"]);
-        c["programs"] = json!({ "child": child, "unused": unused });
+        c["child_contracts"] = json!({ "child": child, "unused": unused });
     });
     let path = dir.join("config.json");
     std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
@@ -1223,9 +1223,11 @@ fn plan_reports_effective_authority_across_nested_descendants() {
     let inspect: Vec<&Value> =
         report["authority"].as_array().unwrap().iter().filter(|row| row["name"] == "inspect").collect();
     assert_eq!(inspect.len(), 3, "same-name definitions remain distinct: {inspect:?}");
-    assert!(inspect.iter().any(|row| row["programs"] == json!(["program"])));
-    assert!(inspect.iter().any(|row| row["programs"] == json!(["program.programs.child"])));
-    assert!(inspect.iter().any(|row| row["programs"] == json!(["program.programs.child.programs.grand"])));
+    assert!(inspect.iter().any(|row| row["child_contracts"] == json!(["contract"])));
+    assert!(inspect.iter().any(|row| row["child_contracts"] == json!(["contract.child_contracts.child"])));
+    assert!(inspect
+        .iter()
+        .any(|row| row["child_contracts"] == json!(["contract.child_contracts.child.child_contracts.grand"])));
     assert!(report["authority"].as_array().unwrap().iter().all(|row| row["name"] != "hidden"));
 }
 
@@ -1260,24 +1262,30 @@ fn plan_reports_write_overlap_for_every_kind_of_writer() {
         .any(|pair| pair.as_array().is_some_and(|values| values.iter().any(|value| value == "nested/inner"))));
 }
 
-/// docs/design.md "Programs and identity": identity excludes the task and
-/// the resolved paths, so the same program in another directory hashes the
+/// docs/design.md "Execution contracts and fingerprints": fingerprint excludes the task and
+/// the resolved paths, so the same contract in another directory hashes the
 /// same.
 #[test]
-fn plan_reports_an_identity_that_ignores_task_and_paths() {
+fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
     let a = scratch("plan-a");
     let b = scratch("plan-b");
     for (name, text) in examples() {
         let first = plan(&materialize(&a, &name, &text, "first task"));
         let second = plan(&materialize(&b, &name, &text, "second task"));
-        let identity = first["identity"].as_str().unwrap();
-        assert!(identity.starts_with("sha256:") && identity.len() == 71, "{name}: {identity}");
-        assert_eq!(first["identity"], second["identity"], "{name}: identity ignores task and paths");
-        let canonical = foe_program::identity::canonical(&first["identity_document"]);
-        let rehashed = format!("sha256:{}", foe_program::identity::sha256_hex(canonical.as_bytes()));
-        assert_eq!(rehashed, identity, "{name}: the emitted identity document rehashes to the reported identity");
-        assert_eq!(first["program"]["name"], json!(serde_json::from_str::<Value>(&text).unwrap()["name"]));
-        assert!(first["program"].get("task").is_none(), "{name}: the program omits the task");
+        let fingerprint = first["contract_fingerprint"].as_str().unwrap();
+        assert!(fingerprint.starts_with("sha256:") && fingerprint.len() == 71, "{name}: {fingerprint}");
+        assert_eq!(
+            first["contract_fingerprint"], second["contract_fingerprint"],
+            "{name}: fingerprint ignores task and paths"
+        );
+        let canonical = foe_contract::fingerprint::canonical(&first["fingerprint_document"]);
+        let rehashed = format!("sha256:{}", foe_contract::fingerprint::sha256_hex(canonical.as_bytes()));
+        assert_eq!(
+            rehashed, fingerprint,
+            "{name}: the emitted fingerprint document rehashes to the reported fingerprint"
+        );
+        assert_eq!(first["contract"]["name"], json!(serde_json::from_str::<Value>(&text).unwrap()["name"]));
+        assert!(first["contract"].get("task").is_none(), "{name}: the contract omits the task");
         if name == "workflow" {
             assert_eq!(first["workflow"]["terminal"], json!(["apply"]), "plan reports the workflow's terminal node");
             assert_eq!(first["workflow"]["cycles"], json!([]));
@@ -1285,11 +1293,11 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
             assert_eq!(first["workflow"]["max_edge_references"], json!(4096));
             assert_eq!(first["workflow"]["possible_firings"], json!(4), "survey once, propose once, apply twice");
             assert_eq!(first["workflow"]["max_possible_firings"], json!(4096));
-            assert!(first["program"]["workflow"]["nodes"]["propose"]["model"].is_object());
+            assert!(first["contract"]["workflow"]["nodes"]["propose"]["model"].is_object());
             assert!(first["authority"].as_array().unwrap().iter().any(|row| {
-                row["programs"]
+                row["child_contracts"]
                     .as_array()
-                    .is_some_and(|paths| paths.iter().any(|path| path == "program.workflow.nodes.propose.model"))
+                    .is_some_and(|paths| paths.iter().any(|path| path == "contract.workflow.nodes.propose.model"))
             }));
         } else {
             assert_eq!(first["workflow"], Value::Null);
@@ -1297,45 +1305,42 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
     }
 }
 
-/// The recorded identity of every example program, under the fixed runtime
-/// [`RECORDED_RUNTIME`] rather than the running binary. A recorded identity
-/// is what tells a reader of a retained trajectory which program produced
-/// it, so the hash a document resolves to is a compatibility surface: a
-/// hash that moves silently makes every stored identity name a program
-/// nobody can reproduce. A change here is a deliberate change to what the
-/// model sees, never a side effect of moving code between crates.
+/// The recorded fingerprint of every example contract, under the fixed runtime
+/// [`recorded_runtime`] rather than the running binary. A retained trajectory
+/// uses its fingerprint to identify the execution contract that produced it.
+/// These values change only when the fingerprint inputs change.
 #[rustfmt::skip]
-const RECORDED_IDENTITIES: [(&str, &str); 12] = [
-    ("budget-exhausted", "sha256:c6ca3b541a4637f7e25e52b25ccb94462dda318dbda2155047802bb666815240"),
-    ("exec-transport", "sha256:ff47e459b5026cf5d2e91dbaa349b4437c5aa261ebd24edf18cf0fa9cdd59a90"),
-    ("host-transport", "sha256:dc33b63a0dd2bb9653f1062e0e9910b79bfb9ae492bb2a90bf1789a1dd42164c"),
-    ("minimal", "sha256:4f8de356836d7456e983ef8b868a00ba22993c98f2006605e10c898fd55d8357"),
-    ("recovery-exhausted", "sha256:2315d0df2ad7d2781a376d15dc0d95914c1cb15e2a59377840acccab9ccb7560"),
-    ("sandbox", "sha256:87cf50348282418aadf96945b7cd364debb82507b7e17a71c02df0c5451dfc65"),
-    ("self-extension", "sha256:45a14593f75aecf755b671229bad02f8d2133efdf24fdf8fcc24ceda94a79945"),
-    ("subagents", "sha256:a09cc36a55e6376119d040fbf7845cecbccd79f18d7597332955903a0f2d3856"),
-    ("team", "sha256:572e37bf546fc3d82a90ba0f9894280f40d51add8d95514108b07b5e5858030a"),
-    ("verification-unsatisfiable", "sha256:98473873ca4f098fe9010f2a245039bedea59ededa4ef5285a4f77f88ad15815"),
-    ("workflow", "sha256:fcb1c8527ccc32a9bd83b9300fde5967aec14b81200ef29bd0396ee1f890f5da"),
-    ("wrap-a-binary", "sha256:54b73926c18e649ee6e57c591e5f8bdbe2940b037e52b699a4ff88b5959ac1a5"),
+const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
+    ("budget-exhausted", "sha256:1c4b46b5c841d9068e987cc974dd354d92f2d6fcc6c4b3a3b279c66c9e2ee97f"),
+    ("exec-transport", "sha256:8e56ca03d77d892c2d74db5367d44f6494190b3b44db77d501398e6bf1979226"),
+    ("host-transport", "sha256:467390ee2a4a5f2b7e923062c3374a98c08f1cd2d681f7a5cd6fdd4fb339f581"),
+    ("minimal", "sha256:f2411d45475da306035e8331ea31a68c8064400e4195354969b1885551e4d57e"),
+    ("recovery-exhausted", "sha256:8b50d86ed869c95de6383155f4de1c9195c75aa85fb66925cc634c7f2cdd6ed4"),
+    ("sandbox", "sha256:233d1c4e4a4f2fd0ecca4bdd8acaba3de4363b8ce26e12921566513721eaa21b"),
+    ("self-extension", "sha256:48166f4c2ae1169aa686e5e91ca4033f55121a99bdf08086f876263a0c68ff23"),
+    ("subagents", "sha256:dddad55c284fdf7973a79f487e63315e61c941645bb72058a7ecf7adf2b28b6f"),
+    ("team", "sha256:724f311b17e6f5d28c85683fdb92901695584d9aa8156b609f0e67eb913d25b2"),
+    ("verification-unsatisfiable", "sha256:d89612a08a00e412b286564616374d54dd1ab83753f8c79a9987fae649896177"),
+    ("workflow", "sha256:8fcf5306caabf2c35fddcca76eea2a6c627569f91dec38d91098897b70da8cf6"),
+    ("wrap-a-binary", "sha256:82a22994798618353b7dbf7f2b63ae7ad016c4d4ddf021b972ef289e208f80bc"),
 ];
 
-/// The runtime the recorded identities were computed under. The real one
+/// The runtime the recorded fingerprints were computed under. The real one
 /// hashes the running binary, so it differs on every build; pinning it here
 /// leaves the configuration and the harness text as the only things the
 /// recorded hashes measure. Passing `runtime_info()` instead would make this
 /// test fail on every rebuild, and would measure the build where the point is
 /// to hold the contract still.
 fn recorded_runtime() -> foe_log::RuntimeInfo {
-    foe_log::RuntimeInfo { version: "0.1.0".into(), build: "sha256:recorded".into() }
+    foe_log::RuntimeInfo { version: "0.2.0".into(), build: "sha256:recorded".into() }
 }
 
-/// The built-in tool specifications the binary composes, which identity
-/// hashes with the rest of the program. Which packs a binary links is the
+/// The built-in tool specifications the binary composes, which fingerprint
+/// hashes with the rest of the contract. Which packs a binary links is the
 /// binary's own decision, taken in `foe::run::extra_builtin_specs`, and a
 /// test binary cannot reach the command line's modules — so this names the
 /// two packs itself, and the test below fails if the two lists ever part.
-fn builtin_specs() -> Vec<foe_program::ToolSpec> {
+fn builtin_specs() -> Vec<foe_contract::ToolSpec> {
     foe_code::all()
         .iter()
         .map(|tool| tool.spec().clone())
@@ -1345,15 +1350,15 @@ fn builtin_specs() -> Vec<foe_program::ToolSpec> {
 }
 
 /// `foe plan` with no configuration prints every built-in the binary
-/// carries. The recorded identities are computed over [`builtin_specs`], so a
+/// carries. The recorded fingerprints are computed over [`builtin_specs`], so a
 /// pack the binary gains or loses has to appear there too; without this check
-/// the recorded hashes would go on describing programs the binary no longer
+/// the recorded hashes would go on describing contracts the binary no longer
 /// builds.
 #[test]
 fn the_recorded_builtins_are_the_ones_the_binary_links() {
     let effect =
-        |spec: &foe_program::ToolSpec| serde_json::to_value(spec.effect).unwrap().as_str().unwrap().to_string();
-    let mine: Vec<(String, String)> = std::iter::once(foe_program::tools::block_spec(false))
+        |spec: &foe_contract::ToolSpec| serde_json::to_value(spec.effect).unwrap().as_str().unwrap().to_string();
+    let mine: Vec<(String, String)> = std::iter::once(foe_contract::tools::block_spec(false))
         .chain(builtin_specs())
         .map(|spec| (spec.name.clone(), effect(&spec)))
         .collect();
@@ -1370,26 +1375,26 @@ fn the_recorded_builtins_are_the_ones_the_binary_links() {
     assert_eq!(rows, mine, "the built-in list this test records has parted from the one the binary links");
 }
 
-/// docs/design.md "Programs and identity": every example program hashes to
-/// the identity recorded for it.
+/// docs/design.md "Execution contracts and fingerprints": every example contract hashes to
+/// the fingerprint recorded for it.
 #[test]
-fn every_example_program_hashes_to_its_recorded_identity() {
-    let dir = scratch("identity-recorded");
+fn every_example_contract_hashes_to_its_recorded_fingerprint() {
+    let dir = scratch("fingerprint-recorded");
     let specs = builtin_specs();
-    let recorded: std::collections::BTreeMap<&str, &str> = RECORDED_IDENTITIES.into_iter().collect();
+    let recorded: std::collections::BTreeMap<&str, &str> = RECORDED_FINGERPRINTS.into_iter().collect();
     let found = examples();
-    assert_eq!(found.len(), recorded.len(), "every example has a recorded identity");
+    assert_eq!(found.len(), recorded.len(), "every example has a recorded fingerprint");
     let mut changed = Vec::new();
     for (name, text) in found {
         let path = materialize(&dir, &name, &text, "the task the recording ignores");
-        let program = foe_program::document::load(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
-        let identity = foe_program::identity::compute(&program, &specs, &recorded_runtime())
+        let contract = foe_contract::document::load(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let fingerprint = foe_contract::fingerprint::compute(&contract, &specs, &recorded_runtime())
             .unwrap_or_else(|e| panic!("{name}: {e}"));
-        if identity.hash != recorded[name.as_str()] {
-            changed.push(format!("({name:?}, {:?})", identity.hash));
+        if fingerprint.hash != recorded[name.as_str()] {
+            changed.push(format!("({name:?}, {:?})", fingerprint.hash));
         }
     }
-    assert!(changed.is_empty(), "example identities changed:\n    {}", changed.join(",\n    "));
+    assert!(changed.is_empty(), "example fingerprints changed:\n    {}", changed.join(",\n    "));
 }
 
 /// Replaces every `$ref` into `$defs` by the definition it names, to the
@@ -1422,12 +1427,12 @@ fn every_example_conforms_to_the_schema_and_parses() {
     let inlined = inline(&schema, &schema["$defs"], 4);
     for (name, text) in examples() {
         let document: Value = serde_json::from_str(&text).unwrap();
-        foe_program::schema::conforms(&inlined, &document).unwrap_or_else(|e| panic!("{name}: {e}"));
-        foe_program::document::parse(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
+        foe_contract::schema::conforms(&inlined, &document).unwrap_or_else(|e| panic!("{name}: {e}"));
+        foe_contract::document::parse(&text).unwrap_or_else(|e| panic!("{name}: {e}"));
     }
     let mut broken: Value = serde_json::from_str(&examples()[0].1).unwrap();
     broken["budget"]["model_calls"] = json!("many");
-    assert!(foe_program::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
+    assert!(foe_contract::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
 }
 
 /// The issue's acceptance, checked against the process a person runs:
@@ -1579,10 +1584,10 @@ fn an_interrupted_episode_resumes_and_completes() {
 }
 
 /// docs/design.md "The command line": an interrupted log resumes only
-/// under the program that ran it; a differing configuration is refused
-/// with both identities named.
+/// under the contract that ran it; a differing configuration is refused
+/// with both fingerprints named.
 #[test]
-fn resuming_under_a_different_program_is_refused_with_both_identities() {
+fn resuming_under_a_different_contract_is_refused_with_both_fingerprints() {
     let dir = scratch("resume-mismatch");
     let (_, log_dir, _, _) = interrupted_log(&dir);
     let differing = config(&dir, |c| {
@@ -1597,8 +1602,8 @@ fn resuming_under_a_different_program_is_refused_with_both_identities() {
     let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
     let (events, code, err) = drive(&differing_path, &extra, vec![], None, false);
     assert_eq!((events.len(), code), (0, Some(1)));
-    assert!(err.contains("resuming requires the program that ran"), "{err}");
-    assert_eq!(err.matches("sha256:").count(), 2, "both identities are named: {err}");
+    assert!(err.contains("resuming requires the contract that ran"), "{err}");
+    assert_eq!(err.matches("sha256:").count(), 2, "both fingerprints are named: {err}");
 }
 
 /// docs/log-format.md "Seeding": a log that stopped at an event boundary
@@ -1615,7 +1620,7 @@ fn a_cleanly_stopped_log_continues_in_place() {
     std::fs::create_dir_all(&log_dir).unwrap();
     let start = json!({ "seq": 0, "time": 1, "type": "episode/start", "data": {
         "id": "ep_prior", "parent_id": null, "fork_origin": null, "team_id": null,
-        "program": planned["program"], "identity": planned["identity"], "task": "do the thing",
+        "contract": planned["contract"], "contract_fingerprint": planned["contract_fingerprint"], "task": "do the thing",
         "runtime": { "version": "0", "build": "unknown" },
         "sandbox": { "mode": "best-effort", "landlock_abi": 0 } } });
     let item = json!({ "seq": 1, "time": 1, "type": "inbox/item", "data": {
@@ -1682,10 +1687,10 @@ fn a_fork_runs_a_new_task_over_the_prior_context() {
 }
 
 /// docs/design.md "Subagents and teams": a spawned fork validates the
-/// declared child identity before it writes the seeded child start.
+/// declared child fingerprint before it writes the seeded child start.
 #[test]
-fn a_spawned_fork_records_child_program_evidence() {
-    let dir = scratch("spawned-fork-program");
+fn a_spawned_fork_records_child_contract_evidence() {
+    let dir = scratch("spawned-fork-contract");
     let config = config(&dir, |_| {});
     let config_path = dir.join("config.json");
     std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
@@ -1694,7 +1699,7 @@ fn a_spawned_fork_records_child_program_evidence() {
     std::fs::create_dir(&source).unwrap();
     let source_start = json!({ "seq": 0, "time": 1, "type": "episode/start", "data": {
         "id": "ep_source", "parent_id": null, "fork_origin": null, "team_id": null,
-        "program": {}, "identity": "sha256:source", "task": "source task",
+        "contract": {}, "contract_fingerprint": "sha256:source", "task": "source task",
         "runtime": { "version": "0", "build": "unknown" },
         "sandbox": { "mode": "off", "landlock_abi": 0 } } });
     let source_task = json!({ "seq": 1, "time": 1, "type": "inbox/item", "data": {
@@ -1707,7 +1712,7 @@ fn a_spawned_fork_records_child_program_evidence() {
         log_dir.join("lineage.json"),
         serde_json::to_vec_pretty(&json!({
             "episode_id": "ep_child", "parent_id": "ep_parent", "team_id": "ep_parent",
-            "expected_program_identity": planned["identity"], "effective_budget": {"model_calls": 2},
+            "expected_contract_fingerprint": planned["contract_fingerprint"], "effective_budget": {"model_calls": 2},
             "fork_source": source, "fork_at": 2
         }))
         .unwrap(),
@@ -1717,8 +1722,8 @@ fn a_spawned_fork_records_child_program_evidence() {
     let responses = vec![vec![text("finished"), done("end")]];
     let (events, code, error) = drive(&config_path, &extra, responses, None, false);
     assert_eq!(code, Some(0), "{error}");
-    assert_eq!(events[0]["data"]["identity"], planned["identity"]);
-    assert_eq!(events[0]["data"]["program"], planned["program"]);
+    assert_eq!(events[0]["data"]["contract_fingerprint"], planned["contract_fingerprint"]);
+    assert_eq!(events[0]["data"]["contract"], planned["contract"]);
     assert_eq!(events[0]["data"]["effective_budget"]["model_calls"], 2);
     assert_eq!(events[0]["data"]["fork_origin"], json!({"episode_id": "ep_source", "seq": 2}));
 }

@@ -1,7 +1,7 @@
 # Sandbox
 
 An episode's grants name what it may reach: directories to read, directories
-to write, executables to run, child programs to start, and TCP ports to
+to write, executables to run, child contracts to start, and TCP ports to
 bind. On Linux, the
 runtime compiles those grants into a Landlock ruleset and applies it to the
 episode process and to every process the episode starts. Landlock is a kernel
@@ -20,12 +20,17 @@ A policy is the list of what one process may reach. The policy of an episode
 is derived from its configuration and its log directory; nothing else is
 declared.
 
+During execution-contract construction, Foe captures each configured
+executable's bytes, digest, source path, and invocation name. Every later
+invocation uses the captured executable. Replacing, modifying, or deleting the
+source cannot change the run.
+
 | source | access granted |
 |---|---|
 | each `grants.read` directory | read files, list directories |
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
 | each `grants.execute` file or directory | read and execute the file or every file below the directory, including from a tool subprocess |
-| each reachable `tool_defs` executable image committed during construction | execute and read that inode |
+| each reachable `tool_defs` captured executable created during construction | execute and read that inode |
 | the running `foe` binary, when `grants.spawn` is not empty | execute and read that file, so the episode can start children |
 | the credential file the `model` block resolves to, when present | read that file, so a child episode can read the credential after inheriting this domain |
 | the episode's own log directory | read and write |
@@ -92,13 +97,13 @@ ruleset and receives a further one, so an executable or child can reach
 less than the episode and never more. The kernel allows sixteen nested
 rulesets; an episode tree of depth sixteen is the practical limit.
 
-Because a ruleset only narrows, an episode reserves what the programs below
+Because a ruleset only narrows, an episode reserves what the child contracts below
 it need before it restricts itself. A child's read, write, and execute roots
 lie inside its parent's corresponding roots, and its bind ports among its
 parent's bind ports. Configuration resolution checks
-that containment. An episode also reserves the committed `tool_defs` images
-of every reachable program below it. Each descendant still narrows itself to
-its own configured executable images and explicit execute grants.
+that containment. An episode also reserves the captured `tool_defs`
+executables of every reachable contract below it. Each descendant still
+narrows itself to its own captured executables and explicit execute grants.
 
 ## The episode process
 
@@ -131,8 +136,8 @@ and no type expresses.
 The episode keeps:
 
 - read on its read roots, write on its write roots;
-- execute on every explicit execute grant and every committed `tool_defs`
-  image of its own program and of every reachable program below it;
+- execute on every explicit execute grant and every captured `tool_defs`
+  executable of its own contract and of every reachable contract below it;
 - execute on its own binary when it may spawn children;
 - read on the key file named by its `model` block, which its children need;
 - read and write on its own log directory, which holds its children's
@@ -156,20 +161,20 @@ bind ports. A server started by a shell or held by a session can listen on a
 granted port. Outbound TCP remains available when the tool definition sets
 `network: true`.
 
-Construction reads the source file once and retains those exact bytes. It
-writes a private image under a runtime directory outside every declared write
-root. Images with the same digest and configured basename share one held
-inode. Construction tries the parent of the episode log directory, `/tmp`, and
+Foe stores the captured bytes in a private file under a runtime directory
+outside every declared write root. Captured executables with the same digest
+and invocation name share one
+held inode. Construction tries the parent of the episode log directory, `/tmp`, and
 `/var/tmp`, in that order. Each attempt combines directory creation with the
 filesystem checks for that directory. A filesystem mounted with `noexec` is
 skipped. Construction fails when no writable, executable location can be
 separated from the declared write roots.
 
-The image has no write bits, and the runtime retains a read-only descriptor
+The captured executable has no write bits, and the runtime retains a read-only descriptor
 for its inode. Construction checks its mode, mount flags, and stored bytes.
 Child-episode initialization repeats the mode and byte checks before accepting
 an inherited descriptor. Invocation maps the descriptor to a collision-free
-child descriptor and executes it through `/proc/self/fd`. The stored image and
+child descriptor and executes it through `/proc/self/fd`. The stored file and
 argument zero use the basename from the configured absolute path. This
 preserves dispatch by BusyBox, coreutils, and other multicall executables. The
 source pathname is never reopened.
@@ -177,20 +182,21 @@ source pathname is never reopened.
 The episode process receives internal read and write access to the storage
 parent so it can remove the private directory after confinement. Tool and
 session policies omit this access. A configured write root that contains the
-episode log therefore does not expose an image stored at a separate location.
+episode log therefore does not expose a captured executable stored elsewhere.
 
 A script receives its descriptor path as `$0`. A script that needs adjacent
 resources uses its declared working directory or an absolute configured path.
 
-Private executable images exist for the lifetime of their runtime owners.
+Captured executables exist for the lifetime of their runtime owners.
 The last owner removes the private directory. Task-lifetime sessions use the
-session launcher and do not retain a configured tool or transport image.
+session launcher and do not retain a configured tool or transport executable.
 
-A parent passes executable images for the selected child's full declared
-program tree. The sealed manifest associates every configuration key with an
-image digest and configured basename. Repeated references to one image share
-one descriptor. The child reads each descriptor once and constructs identity
-from those retained bytes. Its sandbox grants execute access only to images
+A parent passes captured executables for the selected child's full declared
+contract tree. The sealed manifest associates every configuration key with an
+executable digest and invocation name. Repeated references to one captured
+executable share one descriptor. The child reads each descriptor once and
+constructs its contract fingerprint from those retained bytes. Its sandbox
+grants execute access only to captured executables
 reachable through spawn grants and workflow nodes. Descriptor remapping
 preserves standard input, standard output, standard error, and every source
 descriptor when source and target numbers overlap.
@@ -226,10 +232,10 @@ narrowing, because the child applies its own policy to itself at startup.
 Two independent rules keep that policy inside the parent's policy.
 
 Resolving the configuration checks containment before any process starts:
-each child program's read, write, and execute roots must lie within its
-parent program's corresponding roots, and its bind ports among its parent's.
+each child contract's read, write, and execute roots must lie within its
+parent contract's corresponding roots, and its bind ports among its parent's.
 The rule applies at every level of
-`programs`. A document that fails the check is refused with the dotted key of
+`child_contracts`. A document that fails the check is refused with the dotted key of
 the offending root, and no episode begins.
 
 The kernel enforces the same containment whatever the document says. The
@@ -270,7 +276,7 @@ denials to the restricting process without privilege and without a daemon.
 - The host process. The process that launched `foe` holds the model
   credentials and the host tools, and the runtime never restricts it.
 - Another process running as the same operating-system user. Such a process
-  can alter files owned by that user, including private executable images.
+  can alter files owned by that user, including captured executable files.
   Processes that run with the same user identity are inside the host trust
   boundary.
 - The network of the episode process when it holds the transport. An

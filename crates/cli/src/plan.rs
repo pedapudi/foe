@@ -1,28 +1,28 @@
-//! The reports `foe plan` prints below a resolved program: the workflow's
+//! The reports `foe plan` prints below a resolved contract: the workflow's
 //! nodes, its edges, every cycle with the bound that closes it, every pair
 //! of nodes whose write roots overlap, whether a terminal node exists, and
-//! every tool definition the program's reachable tree can invoke. See
+//! every tool definition the contract's reachable tree can invoke. See
 //! docs/workflow.md "Firing" and "The flow guarantee, stated exactly", and
 //! docs/design.md "Subagents and teams".
 
 use crate::run;
-use foe_program::document::ResolvedProgram;
-use foe_program::workflow::{MAX_EDGE_REFERENCES, MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
+use foe_contract::document::ResolvedContract;
+use foe_contract::workflow::{MAX_EDGE_REFERENCES, MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
 use std::fmt::Write;
 
-pub use foe_program::inspect::{cycles, tool_sources, Authority};
+pub use foe_contract::inspect::{cycles, tool_sources, Authority};
 
 /// Every distinct tool definition reachable from `root`, with the binary's
-/// extra built-in packs supplied. See `foe_program::inspect`.
-pub fn authority(root: &ResolvedProgram) -> Result<Vec<Authority>, String> {
-    foe_program::inspect::authority(root, &run::extra_builtin_specs())
+/// extra built-in packs supplied. See `foe_contract::inspect`.
+pub fn authority(root: &ResolvedContract) -> Result<Vec<Authority>, String> {
+    foe_contract::inspect::authority(root, &run::extra_builtin_specs())
 }
 
-pub fn write_overlaps(program: &ResolvedProgram) -> Result<Vec<(String, String, String, String)>, String> {
-    foe_program::inspect::write_overlaps(program, &run::extra_builtin_specs())
+pub fn write_overlaps(contract: &ResolvedContract) -> Result<Vec<(String, String, String, String)>, String> {
+    foe_contract::inspect::write_overlaps(contract, &run::extra_builtin_specs())
 }
 
-/// The authority report `foe plan` prints below the program. One line per
+/// The authority report `foe plan` prints below the contract. One line per
 /// definition, naming what distinguishes it: the executable a configured
 /// tool runs, the description a host tool declares, and nothing for a
 /// built-in, whose definition the runtime fixes. `--json` carries the whole
@@ -38,16 +38,16 @@ pub fn authority_report(rows: &[Authority]) -> String {
         };
         let line = format!("  {:<12} {:<10} {:<7} {body}", row.name, row.source, effect.unwrap_or_default());
         writeln!(out, "{}", line.trim_end()).ok();
-        let programs: Vec<&str> = row.programs.iter().map(String::as_str).collect();
-        writeln!(out, "               programs {}", programs.join(", ")).ok();
+        let child_contracts: Vec<&str> = row.child_contracts.iter().map(String::as_str).collect();
+        writeln!(out, "               child_contracts {}", child_contracts.join(", ")).ok();
     }
     out
 }
 
-/// The workflow report `foe plan` prints below the program. The built-in
+/// The workflow report `foe plan` prints below the contract. The built-in
 /// `task` source is listed among the nodes when any node follows it.
-pub fn workflow_report(program: &ResolvedProgram) -> Result<String, String> {
-    let wf = program.workflow.as_ref().expect("called for a program that declares a workflow");
+pub fn workflow_report(contract: &ResolvedContract) -> Result<String, String> {
+    let wf = contract.workflow.as_ref().expect("called for a contract that declares a workflow");
     let mut out = String::from("workflow nodes\n");
     let inputs = wf.inputs();
     if inputs.values().flatten().any(|i| i == TASK_SOURCE) {
@@ -56,7 +56,7 @@ pub fn workflow_report(program: &ResolvedProgram) -> Result<String, String> {
     for (name, node) in &wf.nodes {
         let kind = match (&node.tool, &node.model) {
             (Some(tool), _) => format!("tool {tool}"),
-            (_, Some(program)) => format!("model {}", program.name),
+            (_, Some(contract)) => format!("model {}", contract.name),
             _ => "workflow".to_string(),
         };
         let branches: Vec<String> = node.branches.iter().map(|(l, s)| format!("{l} -> [{}]", s.join(", "))).collect();
@@ -98,7 +98,7 @@ pub fn workflow_report(program: &ResolvedProgram) -> Result<String, String> {
         out.push_str("  (none)\n");
     }
     out.push_str("workflow write roots shared by nodes\n");
-    let overlaps = write_overlaps(program)?;
+    let overlaps = write_overlaps(contract)?;
     for (a, b, x, y) in &overlaps {
         writeln!(out, "  {a} and {b}: {x} and {y}").ok();
     }

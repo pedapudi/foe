@@ -127,7 +127,7 @@ Every reported configuration identifies:
 
 - the Git tree object of the clean Foe source checkout;
 - the SHA-256 digest of the Foe binary that ran the episode;
-- the foe program identity and runtime build hash recorded by the episode;
+- the Foe contract fingerprint and runtime build hash recorded by the episode;
 - the provider, model identifier, and model options;
 - the benchmark name, dataset version, and task identifier;
 - the root input-token, output-token, model-call, episode, concurrency, and
@@ -232,7 +232,7 @@ Each mechanism check names the trajectory evidence its task requires, so a
 component failure states which evidence was absent. The typed configuration
 case resolves the path cited in the returned finding and requires it to name a
 file the episode read without error, which separates a grounded citation from
-a plausible one. The delegated case requires both declared child programs to
+a plausible one. The delegated case requires both declared child contracts to
 run with fresh context, read-only grants, completed outcomes, bounded typed
 reports, and one explicit wait call. The workflow case requires all four
 declared nodes to start and settle. It also requires selection of the apply
@@ -411,7 +411,7 @@ Start with its software-engineering, long-running autonomy,
 permission-sensitive, and evidence-grounded categories. These categories
 exercise foe's grants, bounded execution, complete logs, and recovery behavior.
 Audit only the tasks used for a local diagnostic. Record the upstream commit,
-every local patch digest, and the resulting evaluator identity.
+every local patch digest, and the resulting evaluator digest.
 
 Some process-quality fields use a model judge. Report those fields as
 diagnostics. Executable completion remains the primary result.
@@ -500,7 +500,7 @@ An external benchmark adapter performs four operations:
    by dataset version, task identifier, and attempt identifier.
 
 The benchmark evaluator runs outside the episode's write grant. An episode
-therefore cannot alter its grader. Child programs reserve from the same root
+therefore cannot alter its grader. Child contracts reserve from the same root
 budget, which keeps single-episode and multi-episode configurations comparable.
 
 ## Current limits

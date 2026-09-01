@@ -1,5 +1,5 @@
 use super::*;
-use foe_program::ProgramDocument;
+use foe_contract::ContractDocument;
 use std::io::Write;
 
 fn sandbox() -> Option<Sandbox> {
@@ -15,11 +15,14 @@ fn temp_dir(name: &str) -> crate::test_util::ScratchDir {
     crate::exec::tests::scratch("sandbox", name)
 }
 
-fn policy(config: &ProgramDocument, log_dir: &Path) -> Policy {
-    let program = foe_program::document::resolve(config).unwrap();
-    let executables =
-        crate::executable::ExecutableTree::materialize(&program, Path::new("/tmp/foe-sandbox-episode")).unwrap();
-    Policy::for_episode(&program, &executables, log_dir)
+fn policy(config: &ContractDocument, log_dir: &Path) -> Policy {
+    let contract = foe_contract::document::resolve(config).unwrap();
+    let executables = crate::captured_executable::CapturedExecutableTree::materialize(
+        &contract,
+        Path::new("/tmp/foe-sandbox-episode"),
+    )
+    .unwrap();
+    Policy::for_episode(&contract, &executables, log_dir)
 }
 
 #[test]
@@ -141,8 +144,8 @@ fn tcp_connect_is_denied_from_abi_4() {
 #[test]
 fn network_policy_can_read_resolver_configuration() {
     let Some(s) = sandbox() else { return };
-    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "network", "instructions": {"role": "x"}, "tools": ["block"],
+    let config: ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4, "name": "network", "instructions": {"role": "x"}, "tools": ["block"],
         "grants": {"read": ["/tmp"], "write": []}, "budget": {"model_calls": 1},
         "model": {"provider": "openai", "model": "m"}, "task": "t"
     }))
@@ -184,8 +187,8 @@ fn a_bind_grant_reaches_a_narrowed_executable() {
     let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = probe.local_addr().unwrap().port();
     drop(probe);
-    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "server", "instructions": {"role": "x"}, "tools": ["block"],
+    let config: ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4, "name": "server", "instructions": {"role": "x"}, "tools": ["block"],
         "grants": {"read": ["/tmp"], "bind": [port]}, "budget": {"model_calls": 1}, "task": "t"
     }))
     .unwrap();
@@ -212,8 +215,8 @@ fn episode_policy_follows_grants_and_tool_defs() {
     std::fs::copy("/bin/true", &tool).unwrap();
     let out = dir.join("out");
     std::fs::create_dir(&out).unwrap();
-    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "p", "instructions": {"r": "x"}, "tools": ["ruff"],
+    let config: ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4, "name": "p", "instructions": {"r": "x"}, "tools": ["ruff"],
         "tool_defs": {"ruff": {"exec": tool, "description": "d"}},
         "grants": {"read": [dir], "write": [out], "execute": ["/bin/sh"], "bind": [8080]},
         "budget": {"model_calls": 1}, "task": "t"
@@ -234,7 +237,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert!(p.read_files.is_empty(), "an episode that opens no connection reads no resolver file");
     let mut with_children = config.clone();
     with_children.grants.spawn = vec!["survey".into()];
-    with_children.programs.insert(
+    with_children.child_contracts.insert(
         "survey".into(),
         serde_json::from_value(serde_json::json!({
             "name": "survey", "instructions": {"r": "x"}, "tools": ["block"],
@@ -242,7 +245,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
         }))
         .unwrap(),
     );
-    with_children.model = Some(foe_program::ModelConfig::new("anthropic", "m"));
+    with_children.model = Some(foe_contract::ModelConfig::new("anthropic", "m"));
     let mut p = policy(&with_children, Path::new("/logs/ep"));
     assert_eq!(p.read_files, resolver, "the credential file is appended by the binary after resolution");
     if let Ok(binary) = std::env::current_exe() {
@@ -260,11 +263,11 @@ fn episode_policy_follows_grants_and_tool_defs() {
 }
 
 /// docs/sandbox.md "What is compiled": a ruleset only narrows, so an episode
-/// reserves execute on the configured executable of every program below it.
+/// reserves execute on the configured executable of every contract below it.
 /// Without the reservation a child, a grandchild, or a workflow model node
 /// cannot run the tool its own configuration names.
 #[test]
-fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
+fn an_episode_reserves_the_configured_executables_of_every_contract_below_it() {
     let dir = temp_dir("descendant-policies");
     let paths: Vec<PathBuf> = ["own", "childs", "grandchilds", "nodes"]
         .into_iter()
@@ -274,19 +277,19 @@ fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
             path
         })
         .collect();
-    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "p", "instructions": {"r": "x"}, "tools": ["own", "nodes"],
+    let config: ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4, "name": "p", "instructions": {"r": "x"}, "tools": ["own", "nodes"],
         "tool_defs": {
             "own": {"exec": paths[0], "description": "d"},
             "nodes": {"exec": paths[3], "description": "d"}
         },
         "grants": {"read": [dir], "spawn": ["kid"]},
         "budget": {"model_calls": 1},
-        "programs": {"kid": {
+        "child_contracts": {"kid": {
             "name": "kid", "instructions": {"r": "x"}, "tools": ["childs"],
             "tool_defs": {"childs": {"exec": paths[1], "description": "d"}},
             "grants": {"read": [dir], "spawn": ["grandkid"]}, "budget": {"model_calls": 1},
-            "programs": {"grandkid": {
+            "child_contracts": {"grandkid": {
                 "name": "grandkid", "instructions": {"r": "x"}, "tools": ["grandchilds"],
                 "tool_defs": {"grandchilds": {"exec": paths[2], "description": "d"}},
                 "grants": {"read": [dir]}, "budget": {"model_calls": 1}
@@ -300,19 +303,19 @@ fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
         "task": "t"
     }))
     .unwrap();
-    let resolved = foe_program::document::resolve(&config).unwrap();
-    let executables = crate::executable::ExecutableTree::materialize(&resolved, &dir).unwrap();
+    let resolved = foe_contract::document::resolve(&config).unwrap();
+    let executables = crate::captured_executable::CapturedExecutableTree::materialize(&resolved, &dir).unwrap();
     let p = Policy::for_episode(&resolved, &executables, Path::new("/logs/ep"));
     assert_eq!(p.exec_files.len(), paths.len(), "the ancestor reserves every reachable committed executable");
     let keys: Vec<_> = executables.reachable_entries().into_iter().map(|(key, _)| key).collect();
     assert_eq!(
         keys,
         [
-            "program.tool_defs.nodes.exec",
-            "program.tool_defs.own.exec",
-            "program.programs.kid.tool_defs.childs.exec",
-            "program.programs.kid.programs.grandkid.tool_defs.grandchilds.exec",
-            "program.workflow.nodes.draft.model.tool_defs.nodes.exec",
+            "contract.tool_defs.nodes.exec",
+            "contract.tool_defs.own.exec",
+            "contract.child_contracts.kid.tool_defs.childs.exec",
+            "contract.child_contracts.kid.child_contracts.grandkid.tool_defs.grandchilds.exec",
+            "contract.workflow.nodes.draft.model.tool_defs.nodes.exec",
         ]
     );
     assert_eq!(executables.child("kid").unwrap().reachable().len(), 2);
@@ -327,10 +330,10 @@ fn a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved() {
     let tool = dir.join("tool");
     std::fs::write(&tool, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&tool, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "p", "instructions": {"r": "x"}, "tools": ["block"],
+    let config: ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4, "name": "p", "instructions": {"r": "x"}, "tools": ["block"],
         "grants": {"read": [dir], "spawn": ["kid"]}, "budget": {"model_calls": 1},
-        "programs": {"kid": {
+        "child_contracts": {"kid": {
             "name": "kid", "instructions": {"r": "x"}, "tools": ["t"],
             "tool_defs": {"t": {"exec": tool, "description": "d"}},
             "grants": {"read": [dir]}, "budget": {"model_calls": 1}
@@ -338,9 +341,9 @@ fn a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved() {
         "task": "t"
     }))
     .unwrap();
-    let program = foe_program::document::resolve(&config).unwrap();
-    let executables = crate::executable::ExecutableTree::materialize(&program, &dir).unwrap();
-    let ancestor = Policy::for_episode(&program, &executables, &dir);
+    let contract = foe_contract::document::resolve(&config).unwrap();
+    let executables = crate::captured_executable::CapturedExecutableTree::materialize(&contract, &dir).unwrap();
+    let ancestor = Policy::for_episode(&contract, &executables, &dir);
     let executable = executables.child("kid").unwrap().tools["t"].clone();
     let outer = ancestor.clone();
     let result = s
@@ -354,8 +357,8 @@ fn a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved() {
             crate::Executor::run(
                 &executor,
                 crate::ExecRequest {
-                    program: tool,
-                    executable: Some(executable),
+                    command: tool,
+                    captured_executable: Some(executable),
                     args: Vec::new(),
                     cwd: dir.to_path_buf(),
                     env: std::collections::BTreeMap::new(),

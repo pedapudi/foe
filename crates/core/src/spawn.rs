@@ -9,9 +9,9 @@
 //!
 //! Two files are written beside the child's log before it starts.
 //! `config.json` is the configuration the child is launched with, derived
-//! from the parent's `programs` entry with `version`, `model`, and
+//! from the parent's `child_contracts` entry with `version`, `model`, and
 //! `sandbox` inherited. `lineage.json` names the child's own id, its parent,
-//! its team lead, its expected program identity, and its effective allowance.
+//! its team lead, its expected contract fingerprint, and its effective allowance.
 //! A child that reads it
 //! sends its `notify`, `send`, and `team` calls to this process, which
 //! answers them through the [`ChildObserver`].
@@ -21,12 +21,12 @@
 //! `budget/release` are the loop's to write around a call to
 //! [`Spawner::spawn`] and a wait on [`ChildRun`].
 
-use crate::executable::ExecutableTree;
+use crate::captured_executable::CapturedExecutableTree;
 use crate::{CapError, SpawnHandle, SpawnRequest, Spawner, ToolValue};
 use command_fds::{CommandFdExt, FdMapping};
+use foe_contract::document::{ResolvedContract, CONTRACT_FORMAT_VERSION};
+use foe_contract::{Budget, ContractDocument, ToolSpec};
 use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
-use foe_program::document::{ResolvedProgram, PROGRAM_FORMAT_VERSION};
-use foe_program::{Budget, ProgramDocument, ToolSpec};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -196,8 +196,8 @@ impl ChildRun {
 pub struct ProcessSpawner {
     episode_id: String,
     log_dir: PathBuf,
-    program: ResolvedProgram,
-    executables: ExecutableTree,
+    contract: ResolvedContract,
+    executables: CapturedExecutableTree,
     limits: Budget,
     builtin_specs: Vec<ToolSpec>,
     /// The child's argument vector prefix; the running `foe` binary.
@@ -219,7 +219,7 @@ pub struct ChildLaunch {
     pub episode_id: String,
     pub parent_id: Option<String>,
     pub team_id: Option<String>,
-    pub expected_program_identity: Option<String>,
+    pub expected_contract_fingerprint: Option<String>,
     pub effective_budget: Option<Budget>,
     pub fork_source: Option<PathBuf>,
     pub fork_at: Option<u64>,
@@ -229,20 +229,20 @@ impl ProcessSpawner {
     pub fn new(
         episode_id: String,
         log_dir: PathBuf,
-        program: ResolvedProgram,
+        contract: ResolvedContract,
         limits: Budget,
         builtin_specs: Vec<ToolSpec>,
         connections: ProcessConnections,
     ) -> Result<Self, CapError> {
-        let executables = ExecutableTree::materialize(&program, &log_dir).map_err(CapError::Invalid)?;
-        Self::new_with_executables(episode_id, log_dir, program, executables, limits, builtin_specs, connections)
+        let executables = CapturedExecutableTree::materialize(&contract, &log_dir).map_err(CapError::Invalid)?;
+        Self::new_with_executables(episode_id, log_dir, contract, executables, limits, builtin_specs, connections)
     }
 
     pub fn new_with_executables(
         episode_id: String,
         log_dir: PathBuf,
-        program: ResolvedProgram,
-        executables: ExecutableTree,
+        contract: ResolvedContract,
+        executables: CapturedExecutableTree,
         limits: Budget,
         builtin_specs: Vec<ToolSpec>,
         connections: ProcessConnections,
@@ -251,7 +251,7 @@ impl ProcessSpawner {
         Ok(ProcessSpawner {
             episode_id,
             log_dir,
-            program,
+            contract,
             executables,
             limits,
             builtin_specs,
@@ -262,8 +262,8 @@ impl ProcessSpawner {
     }
 
     /// What to reserve for a request: the amount the caller named, and the
-    /// budget the child program declares when the caller named none. A
-    /// dimension the program leaves unlimited stays unset, and the pool
+    /// budget the child contract declares when the caller named none. A
+    /// dimension the contract leaves unlimited stays unset, and the pool
     /// grants the parent's whole remainder for it. Reserving the remainder
     /// for every dimension would exhaust the parent while one child runs.
     pub fn reserve_for(&self, req: &SpawnRequest) -> BudgetAmount {
@@ -274,17 +274,17 @@ impl ProcessSpawner {
             seconds: b.seconds,
             episodes: None,
         };
-        let program = self.program.spawned_program(&req.program);
-        let declared = program.filter(|_| req.reserve.model_calls.is_none());
+        let contract = self.contract.spawned_contract(&req.contract);
+        let declared = contract.filter(|_| req.reserve.model_calls.is_none());
         let mut amount = declared.map_or(req.reserve, |p| all(&p.budget));
         // A child that can start no children of its own holds exactly one
-        // episode, whatever allowance its program declares. Asking for the
+        // episode, whatever allowance its contract declares. Asking for the
         // declared allowance would hold the parent's whole remainder
         // against a leaf and starve the leaf's siblings.
-        amount.episodes = program.map(|p| {
+        amount.episodes = contract.map(|p| {
             let descends = self.limits.max_depth > 1
                 && p.budget.max_depth > 0
-                && (!p.grants.spawn.is_empty() || !p.workflow_programs.is_empty());
+                && (!p.grants.spawn.is_empty() || !p.workflow_contracts.is_empty());
             if descends {
                 u64::from(p.budget.max_episodes)
             } else {
@@ -295,27 +295,28 @@ impl ProcessSpawner {
     }
 }
 
-/// A child launch document preserves the declared program. The effective
+/// A child launch document preserves the declared contract. The effective
 /// reservation travels beside it in `lineage.json`.
-pub fn child_document(program: &ResolvedProgram, task: String) -> ProgramDocument {
-    let mut value = program.to_value();
+pub fn child_document(contract: &ResolvedContract, task: String) -> ContractDocument {
+    let mut value = contract.to_value();
     fn child_sections(section: &mut serde_json::Value) {
-        let Some(children) = section.get_mut("programs").and_then(serde_json::Value::as_object_mut) else { return };
+        let Some(children) = section.get_mut("child_contracts").and_then(serde_json::Value::as_object_mut) else {
+            return;
+        };
         for child in children.values_mut() {
             let object = child.as_object_mut().expect("a resolved child is an object");
             object.remove("sandbox");
-            object.remove("program_lineage");
             child_sections(child);
         }
     }
     child_sections(&mut value);
-    value["version"] = PROGRAM_FORMAT_VERSION.into();
+    value["version"] = CONTRACT_FORMAT_VERSION.into();
     value["task"] = task.into();
-    serde_json::from_value(value).expect("a resolved child is a program document")
+    serde_json::from_value(value).expect("a resolved child is a contract document")
 }
 
-fn effective_budget(parent: &Budget, program: &Budget, reserve: BudgetAmount) -> Budget {
-    let mut budget = program.clone();
+fn effective_budget(parent: &Budget, contract: &Budget, reserve: BudgetAmount) -> Budget {
+    let mut budget = contract.clone();
     let tighter = |own: Option<u64>, reserved: Option<u64>| reserved.map_or(own, |n| Some(own.map_or(n, |t| t.min(n))));
     budget.model_calls = tighter(Some(budget.model_calls), reserve.model_calls).unwrap_or(budget.model_calls);
     budget.input_tokens = tighter(budget.input_tokens, reserve.input_tokens);
@@ -337,27 +338,28 @@ impl Spawner for ProcessSpawner {
     }
 
     fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
-        if !self.program.permits_spawn(&req.program) {
-            return Err(CapError::CapabilityDenied(format!("grants.spawn does not list program {}", req.program)));
+        if !self.contract.permits_spawn(&req.contract) {
+            return Err(CapError::CapabilityDenied(format!("grants.spawn does not list contract {}", req.contract)));
         }
-        let program = self
-            .program
-            .spawned_program(&req.program)
-            .ok_or_else(|| CapError::Invalid(format!("programs has no entry named {}", req.program)))?;
-        let expected = foe_program::identity::compute(program, &self.builtin_specs, &crate::identity::runtime_info())
-            .map_err(|e| CapError::Invalid(e.to_string()))?;
-        let limits = effective_budget(&self.limits, &program.budget, req.reserve);
+        let contract = self
+            .contract
+            .spawned_contract(&req.contract)
+            .ok_or_else(|| CapError::Invalid(format!("child_contracts has no entry named {}", req.contract)))?;
+        let expected =
+            foe_contract::fingerprint::compute(contract, &self.builtin_specs, &crate::fingerprint::runtime_info())
+                .map_err(|e| CapError::Invalid(e.to_string()))?;
+        let limits = effective_budget(&self.limits, &contract.budget, req.reserve);
         let dir = self.log_dir.join("children").join(&child_id);
         std::fs::create_dir_all(&dir)?;
         let invalid = |e: serde_json::Error| CapError::Invalid(e.to_string());
-        let config = child_document(program, req.task);
+        let config = child_document(contract, req.task);
         let config_path = dir.join("config.json");
         std::fs::write(&config_path, serde_json::to_vec_pretty(&config).map_err(invalid)?)?;
         let mut lineage = ChildLaunch {
             episode_id: child_id.clone(),
             parent_id: Some(self.episode_id.clone()),
             team_id: Some(self.episode_id.clone()),
-            expected_program_identity: Some(expected.hash),
+            expected_contract_fingerprint: Some(expected.hash),
             effective_budget: Some(limits),
             ..ChildLaunch::default()
         };
@@ -383,19 +385,16 @@ impl Spawner for ProcessSpawner {
             .stderr(Stdio::piped());
         let executable_tree = self
             .executables
-            .child(&req.program)
-            .ok_or_else(|| CapError::Invalid(format!("program {} has no committed executable tree", req.program)))?;
+            .child(&req.contract)
+            .ok_or_else(|| CapError::Invalid(format!("contract {} has no committed executable tree", req.contract)))?;
         let mappings = executable_tree
             .child_descriptors(&child_id)
             .map_err(CapError::Invalid)?
             .into_iter()
             .map(|(child_fd, fd)| {
-                fd.as_fd()
-                    .try_clone_to_owned()
-                    .map(|parent_fd| FdMapping { parent_fd, child_fd })
-                    .map_err(|e| {
-                        CapError::ProcessStart(format!("child {child_id}: cannot duplicate executable fd: {e}"))
-                    })
+                fd.as_fd().try_clone_to_owned().map(|parent_fd| FdMapping { parent_fd, child_fd }).map_err(|e| {
+                    CapError::ProcessStart(format!("child {child_id}: cannot duplicate executable fd: {e}"))
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
         cmd.fd_mappings(mappings)

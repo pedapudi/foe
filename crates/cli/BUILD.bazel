@@ -9,11 +9,10 @@ rust_binary(
     crate_name = "foe",
     crate_root = "src/main.rs",
     edition = crate_edition(),
-    version = "0.1.0",
+    version = "0.2.0",
     visibility = ["//visibility:public"],
     deps = [
-        "//crates/program:foe_program",
-        "//crates/lineage:foe_lineage",
+        "//crates/contract:foe_contract",
         "//crates/code:foe_code",
         "//crates/context:foe_context",
         "//crates/core:foe_core",

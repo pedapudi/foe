@@ -9,7 +9,7 @@ from pathlib import Path
 from run import Pricing
 from run_self_improvement import (
     DIAGNOSIS_VALIDATOR_TOOL,
-    adoption_state_document,
+    adoption_contract_document,
     build_config,
     candidate_artifact_identity,
     canonical_json,
@@ -23,12 +23,12 @@ from run_self_improvement import (
     measure_episode,
     model_config,
     record_adoption,
-    revised_program_document,
+    revised_contract_document,
     rust_toolchain_identity,
     supported_independent_audits,
     tool_candidate_from_outcome,
     trajectory_collection_findings,
-    validate_program,
+    validate_contract,
     workflow_candidate_from_outcome,
     write_bound_python_launcher,
     write_candidate_check,
@@ -340,7 +340,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 )
         self.assertEqual(candidate["independent_audit"], supported[0])
 
-    def test_instruction_candidate_binds_a_unique_revision_of_the_program_document(self):
+    def test_instruction_candidate_binds_a_unique_revision_of_the_contract_document(self):
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "evidence.json"
             evidence.write_text("{}\n", encoding="utf-8")
@@ -355,7 +355,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 "token_policy": "measurement_only",
             }
             documents = {
-                "program.json": {
+                "contract.json": {
                     "instructions": {"role": "Run the workflow."},
                     "workflow": {
                         "nodes": {
@@ -367,7 +367,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 }
             }
             revision = {
-                "document": "program.json",
+                "document": "contract.json",
                 "section": "sufficiency",
                 "old_text": "bounded evidence",
                 "new_text": "bounded, labeled evidence",
@@ -439,12 +439,12 @@ class SelfImprovementConfigTest(unittest.TestCase):
         self.assertNotIn("executable", candidate["tool"])
         self.assertEqual(candidate["tool"]["executable_sha256"], executable_digest(executable.encode()))
 
-    def test_program_validation_reports_construction_failure(self):
+    def test_contract_validation_reports_construction_failure(self):
         with tempfile.TemporaryDirectory() as directory:
-            program = Path(directory) / "program.json"
-            program.write_text("{}\n", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "generated self-improvement program is invalid"):
-                validate_program(Path("/bin/false"), program)
+            contract = Path(directory) / "contract.json"
+            contract.write_text("{}\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "generated self-improvement contract is invalid"):
+                validate_contract(Path("/bin/false"), contract)
 
     def test_candidate_check_validates_the_baseline_and_preserves_an_existing_line_overage(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -520,7 +520,7 @@ class SelfImprovementConfigTest(unittest.TestCase):
                 {
                     "type": "episode/start",
                     "data": {
-                        "program": {
+                        "contract": {
                             "model": {
                                 "provider": "openai-codex",
                                 "model": "gpt-5.6-luna",
@@ -566,7 +566,7 @@ BASE_CONFIGURATION = {
 }
 EVIDENCE_SHA256 = "sha256:" + "3" * 64
 SUPPORTED_AUDIT = {"reasoning_effort": "high", "model_calls": 60}
-PROGRAM_DOCUMENT = {
+CONTRACT_DOCUMENT = {
     "instructions": {"role": "Run the declared workflow."},
     "workflow": {
         "nodes": {
@@ -577,7 +577,7 @@ PROGRAM_DOCUMENT = {
     },
 }
 REVISION = {
-    "document": "program.json",
+    "document": "contract.json",
     "section": "sufficiency",
     "old_text": "bounded evidence",
     "new_text": "bounded, labeled evidence",
@@ -588,12 +588,12 @@ class DiagnosisValidatorTest(unittest.TestCase):
     def judgments(self, values):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            program = root / "program.json"
-            program.write_text(json.dumps(PROGRAM_DOCUMENT), encoding="utf-8")
+            contract = root / "contract.json"
+            contract.write_text(json.dumps(CONTRACT_DOCUMENT), encoding="utf-8")
             validator = root / "diagnosis-validator"
             write_diagnosis_validator(
                 validator,
-                program,
+                contract,
                 EVALUATED_FOE,
                 EVIDENCE_SHA256,
                 BASE_CONFIGURATION,
@@ -659,14 +659,8 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertIn("no supported candidate branch", judged[8])
 
 
-class LineageAdoptionTest(unittest.TestCase):
-    """Synthetic adoptions per candidate kind, checked end to end.
-
-    Each test constructs a proposal episode log whose recorded program
-    identity is the parent state's, records the adoption through the
-    lineage crate's `build-bundle` binary, and verifies the resulting
-    ancestry claim with the crate's `check_ancestry` example.
-    """
+class AdoptionBundleTest(unittest.TestCase):
+    """Synthetic adoption bundles per candidate kind, checked end to end."""
 
     # Keep the runfiles path under Bazel so declared binary dependencies are
     # addressable. Direct test execution uses the checkout path unchanged.
@@ -676,30 +670,30 @@ class LineageAdoptionTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.build_bundle = cls.repository / "crates" / "lineage" / "build-bundle"
-        cls.check_ancestry_binary = cls.repository / "crates" / "lineage" / "check-ancestry"
-        if cls.build_bundle.is_file() and cls.check_ancestry_binary.is_file():
+        cls.build_bundle = cls.repository / "crates" / "adoption" / "build-adoption-bundle"
+        cls.verify_bundle = cls.repository / "crates" / "adoption" / "verify-adoption-bundle"
+        if cls.build_bundle.is_file() and cls.verify_bundle.is_file():
             return
         subprocess.run(
-            ["cargo", "build", "--quiet", "-p", "foe-lineage", "--bins", "--examples"],
+            ["cargo", "build", "--quiet", "-p", "foe-adoption", "--bins"],
             cwd=cls.repository,
             check=True,
         )
-        cls.build_bundle = cls.repository / "target" / "debug" / "build-bundle"
-        cls.check_ancestry_binary = cls.repository / "target" / "debug" / "examples" / "check_ancestry"
+        cls.build_bundle = cls.repository / "target" / "debug" / "build-adoption-bundle"
+        cls.verify_bundle = cls.repository / "target" / "debug" / "verify-adoption-bundle"
 
     def parent_document(self):
-        """An identity document declaring the two admission verifiers."""
+        """A fingerprint document declaring the two admission verifiers."""
         return {
-            "name": "identity-bound-trajectory-self-improvement",
+            "name": "evidence-bound-trajectory-self-improvement",
             "tools": [
                 {"name": "check", "exec_sha256": self.check_sha256},
                 {"name": DIAGNOSIS_VALIDATOR_TOOL, "exec_sha256": self.validator_sha256},
             ],
         }
 
-    def write_episode(self, episode: Path, identity: str, tool: str, exec_sha256: str):
-        program = {
+    def write_episode(self, episode: Path, fingerprint: str, tool: str, exec_sha256: str):
+        contract = {
             "tools": ["block", tool],
             "tool_defs": {tool: {"exec": "/verifier", "description": "judges the candidate"}},
             "done_when": {"verify": tool},
@@ -714,10 +708,10 @@ class LineageAdoptionTest(unittest.TestCase):
                     "parent_id": None,
                     "fork_origin": None,
                     "team_id": None,
-                    "program": program,
-                    "identity": identity,
+                    "contract": contract,
+                    "contract_fingerprint": fingerprint,
                     "task": "propose a candidate",
-                    "runtime": {"version": "0.1.0", "build": "sha256:test"},
+                    "runtime": {"version": "0.2.0", "build": "sha256:test"},
                     "sandbox": {"mode": "off", "landlock_abi": 0},
                 },
             },
@@ -728,7 +722,7 @@ class LineageAdoptionTest(unittest.TestCase):
                 "data": {
                     "step": 1,
                     "tool": tool,
-                    "verifier_identity": "sha256:" + exec_sha256,
+                    "verifier_fingerprint": "sha256:" + exec_sha256,
                     "status": "accepted",
                     "findings": [],
                     "duration_ms": 1,
@@ -748,37 +742,25 @@ class LineageAdoptionTest(unittest.TestCase):
 
     def record(self, root: Path, kind, candidate, retained, tool, exec_sha256, artifacts=None):
         parent = self.parent_document()
+        predecessor = digest_bytes(canonical_json(parent))
         episode = root / "episode"
-        self.write_episode(episode, digest_bytes(canonical_json(parent)), tool, exec_sha256)
+        self.write_episode(episode, predecessor, tool, exec_sha256)
         return record_adoption(
             root,
             episode,
-            adoption_state_document(kind, candidate, PROGRAM_DOCUMENT, BASE_CONFIGURATION),
-            parent,
+            adoption_contract_document(kind, candidate, CONTRACT_DOCUMENT, BASE_CONFIGURATION),
+            predecessor,
             retained,
             tool,
             [str(self.build_bundle)],
+            [str(self.verify_bundle)],
+            {"sha256:" + exec_sha256},
             artifacts=artifacts,
         )
 
-    def check_ancestry(self, root: Path, record):
-        result = subprocess.run(
-            [
-                str(self.check_ancestry_binary),
-                record["state"],
-                str(root / "lineage" / "states"),
-                str(root / "lineage" / "evidence"),
-            ],
-            text=True,
-            capture_output=True,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        report = json.loads(result.stdout)
-        self.assertEqual(
-            report["chain"],
-            [record["program_identity"], record["parent_program_identity"]],
-        )
-        self.assertEqual(report["unverifiable"], [])
+    def fingerprint_document(self, record):
+        path = Path(record["bundle_directory"]) / "fingerprint-document.json"
+        return json.loads(path.read_text(encoding="utf-8"))
 
     def test_instruction_revision_adoption_verifies_end_to_end(self):
         candidate = create_instruction_candidate(
@@ -786,7 +768,7 @@ class LineageAdoptionTest(unittest.TestCase):
             EVIDENCE_SHA256,
             BASE_CONFIGURATION,
             REVISION,
-            {"program.json": PROGRAM_DOCUMENT},
+            {"contract.json": CONTRACT_DOCUMENT},
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -798,9 +780,9 @@ class LineageAdoptionTest(unittest.TestCase):
                 DIAGNOSIS_VALIDATOR_TOOL,
                 self.validator_sha256,
             )
-            revised = revised_program_document(PROGRAM_DOCUMENT, REVISION)
-            self.assertEqual(record["program_identity"], digest_bytes(canonical_json(revised)))
-            self.check_ancestry(root, record)
+            revised = revised_contract_document(CONTRACT_DOCUMENT, REVISION)
+            self.assertEqual(record["contract_fingerprint"], digest_bytes(canonical_json(revised)))
+            self.assertEqual(record["verifier_fingerprint"], "sha256:" + self.validator_sha256)
 
     def test_workflow_adoption_verifies_end_to_end(self):
         candidate = create_workflow_candidate(
@@ -816,12 +798,12 @@ class LineageAdoptionTest(unittest.TestCase):
                 DIAGNOSIS_VALIDATOR_TOOL,
                 self.validator_sha256,
             )
-            state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
-            audit = state["identity_document"]["workflow"]["nodes"]["audit-and-repair-task"]
+            document = self.fingerprint_document(record)
+            audit = document["workflow"]["nodes"]["audit-and-repair-task"]
             self.assertEqual(
                 audit["model"]["model"]["reasoning_effort"], SUPPORTED_AUDIT["reasoning_effort"]
             )
-            self.check_ancestry(root, record)
+            self.assertTrue(Path(record["bundle_directory"]).is_dir())
 
     def test_tool_definition_adoption_verifies_end_to_end(self):
         executable = "#!/bin/sh\nexit 0\n"
@@ -848,13 +830,10 @@ class LineageAdoptionTest(unittest.TestCase):
                 DIAGNOSIS_VALIDATOR_TOOL,
                 self.validator_sha256,
             )
-            state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
-            declared = state["identity_document"]["tool_defs"]["check-layout"]
-            self.assertEqual(
-                "sha256:" + declared["exec_sha256"], executable_digest(executable.encode())
-            )
-            self.assertIn("check-layout", state["identity_document"]["tools"])
-            self.check_ancestry(root, record)
+            document = self.fingerprint_document(record)
+            declared = document["tool_defs"]["check-layout"]
+            self.assertEqual(declared["exec"], "/tools/check-layout")
+            self.assertIn("check-layout", document["tools"])
 
     def test_source_change_adoption_cites_the_candidate_check(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -878,14 +857,12 @@ class LineageAdoptionTest(unittest.TestCase):
                     for name, value in sorted(candidate["files"].items())
                 ],
             )
-            state = json.loads(Path(record["state"]).read_text(encoding="utf-8"))
-            self.assertEqual(
-                state["identity_document"]["runtime"],
-                {"source_tree": EVALUATED_FOE["source_tree"], "files": candidate["files"]},
-            )
             self.assertEqual(record["verification_log"], "episode/episode.jsonl")
             self.assertEqual(record["verification_seq"], 1)
-            self.check_ancestry(root, record)
+            self.assertEqual(
+                record["predecessor_contract_fingerprint"],
+                digest_bytes(canonical_json(self.parent_document())),
+            )
 
     def test_missing_verification_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:

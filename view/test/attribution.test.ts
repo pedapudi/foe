@@ -22,7 +22,7 @@ function episode(name: string, depth = 0): StatisticsEpisode {
     events,
     startTime: s.startTime,
     endTime: s.endTime,
-    program: s.program,
+    contract: s.contract,
     depth,
     outcome: s.outcome,
   };
@@ -42,9 +42,9 @@ test("the parts of a request divide the input its answer reported", () => {
   const first = out.requests[0]!;
   assert.equal(first.requestId, "rq_01");
   assert.deepEqual(first.shares.map((s) => s.part.kind), ["system", "schemas", "inbox"]);
-  assert.equal(first.chars, 523, "the characters of the header and the task, measured");
+  assert.equal(first.chars, 525, "the characters of the header and the task, measured");
   assert.equal(first.input, 410);
-  assert.ok(Math.abs(first.charsPerToken! - 523 / 410) < 1e-9);
+  assert.ok(Math.abs(first.charsPerToken! - 525 / 410) < 1e-9);
 });
 
 test("the system prompt and the tool schemas come from the header the request names", () => {

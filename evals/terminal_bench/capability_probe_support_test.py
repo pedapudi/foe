@@ -5,15 +5,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from capability_probe_support import build_probe_program, evaluate_probe_episode
+from capability_probe_support import build_probe_contract, evaluate_probe_episode
 
 
 class CapabilityProbeTest(unittest.TestCase):
-    def test_probe_program_has_no_provider_credential_or_token_limit(self):
-        program = build_probe_program("/tmp/capability_transport.sh", "/workspace")
-        self.assertEqual(program["model"]["provider"], "exec")
-        self.assertNotIn("token_file", program["model"])
-        self.assertEqual(program["budget"], {"model_calls": 6, "seconds": 300})
+    def test_probe_contract_has_no_provider_credential_or_token_limit(self):
+        contract = build_probe_contract("/tmp/capability_transport.sh", "/workspace")
+        self.assertEqual(contract["model"]["provider"], "exec")
+        self.assertNotIn("token_file", contract["model"])
+        self.assertEqual(contract["budget"], {"model_calls": 6, "seconds": 300})
 
     def test_episode_assessment_reports_supported_and_absent_capabilities(self):
         def tool(seq, call_id, rendered, value=None):
@@ -33,7 +33,7 @@ class CapabilityProbeTest(unittest.TestCase):
             {
                 "seq": 0,
                 "type": "episode/start",
-                "data": {"program": {"grants": {"read": ["/workspace", "/"]}}},
+                "data": {"contract": {"grants": {"read": ["/workspace", "/"]}}},
             },
             tool(1, "probe_start", "CWD=/workspace\nUID=0\nSTANDARD_PATH=available\n"),
             tool(2, "probe_check", "BACKGROUND=gone\nLOOPBACK=failed\nPACKAGE_MANAGER=apt-get\n"),

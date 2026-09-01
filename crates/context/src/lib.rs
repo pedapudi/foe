@@ -9,6 +9,8 @@
 
 #![forbid(unsafe_code)]
 
+use foe_contract::harness_text as text;
+use foe_contract::{ContextConfig, DoneWhen};
 use foe_core::context::{Answer, ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use foe_core::RuntimeError;
 use foe_log::fold::{derive_span, render_continuation};
@@ -16,8 +18,6 @@ use foe_log::{
     ChildSummary, CompactedFiles, CompactionSummary, ContentBlock, ContinuationState, Covered, Event, EventData,
     InboxSource, Message, Usage, SUMMARY_REQUEST_PREFIX,
 };
-use foe_program::harness_text as text;
-use foe_program::{ContextConfig, DoneWhen};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One `context` block resolved against the model: the window in tokens
@@ -244,20 +244,20 @@ pub fn files(events: &[Event], covered: Covered, carried: &CompactedFiles) -> Co
 }
 
 /// Children that ended within `covered`, after those `carried` from
-/// earlier compactions, each with the program its `spawn/start` named.
+/// earlier compactions, each with the contract its `spawn/start` named.
 pub fn children(events: &[Event], covered: Covered, carried: &[ChildSummary]) -> Vec<ChildSummary> {
-    let programs: BTreeMap<&str, &str> = events
+    let child_contracts: BTreeMap<&str, &str> = events
         .iter()
         .filter_map(|e| match &e.data {
-            EventData::SpawnStart { child_id, program, .. } => Some((child_id.as_str(), program.as_str())),
+            EventData::SpawnStart { child_id, contract, .. } => Some((child_id.as_str(), contract.as_str())),
             _ => None,
         })
         .collect();
     let mut out = carried.to_vec();
     for event in events.iter().filter(|e| covered_by(e, covered)) {
         if let EventData::SpawnEnd { child_id, outcome } = &event.data {
-            let program = programs.get(child_id.as_str()).copied().unwrap_or_default().to_string();
-            out.push(ChildSummary { id: child_id.clone(), program, outcome: outcome.clone() });
+            let contract = child_contracts.get(child_id.as_str()).copied().unwrap_or_default().to_string();
+            out.push(ChildSummary { id: child_id.clone(), contract, outcome: outcome.clone() });
         }
     }
     out

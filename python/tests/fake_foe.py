@@ -3,7 +3,7 @@
 The script accepts the three command lines the package issues:
 
     fake_foe --config FILE --host --log-dir DIR    run one episode
-    fake_foe plan --json --config FILE             print the identity
+    fake_foe plan --json --config FILE             print the contract fingerprint
     fake_foe view DIR --serve                      print a URL and wait
 
 The episode loop is the smallest one that exercises every host-side path:
@@ -130,7 +130,7 @@ class Episode:
 
     def run(self) -> int:
         config = self.config
-        program = {k: v for k, v in config.items() if k != "task"}
+        contract = {k: v for k, v in config.items() if k != "task"}
         self.log.emit(
             "episode/start",
             {
@@ -138,10 +138,10 @@ class Episode:
                 "parent_id": None,
                 "fork_origin": None,
                 "team_id": None,
-                "program": program,
-                "identity": identity_of(program),
+                "contract": contract,
+                "contract_fingerprint": contract_fingerprint_of(contract),
                 "task": config["task"],
-                "runtime": {"version": "0.1.0", "build": "unknown"},
+                "runtime": {"version": "0.2.0", "build": "unknown"},
                 "sandbox": {"mode": (config.get("sandbox") or {}).get("mode", "best-effort"), "landlock_abi": 0},
             },
         )
@@ -345,8 +345,8 @@ class Episode:
         return [str(f) for f in value] if isinstance(value, list) else []
 
 
-def identity_of(program: dict[str, Any]) -> str:
-    hashed = {k: v for k, v in program.items() if k not in ("model", "sandbox")}
+def contract_fingerprint_of(contract: dict[str, Any]) -> str:
+    hashed = {k: v for k, v in contract.items() if k not in ("model", "sandbox")}
     if "grants" in hashed:
         hashed["grants"] = {k: len(v) for k, v in hashed["grants"].items()}
     canonical = json.dumps(hashed, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -356,8 +356,8 @@ def identity_of(program: dict[str, Any]) -> str:
 def main(argv: list[str]) -> int:
     if argv[:1] == ["plan"]:
         config = json.loads(Path(argv[argv.index("--config") + 1]).read_text(encoding="utf-8"))
-        program = {k: v for k, v in config.items() if k != "task"}
-        print(json.dumps({"identity": identity_of(program), "program": program}))
+        contract = {k: v for k, v in config.items() if k != "task"}
+        print(json.dumps({"contract_fingerprint": contract_fingerprint_of(contract), "contract": contract}))
         return 0
     if argv[:1] == ["view"] and "--serve" in argv:
         print("http://127.0.0.1:34567/", flush=True)

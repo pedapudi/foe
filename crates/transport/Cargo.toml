@@ -17,13 +17,13 @@ gemini = []
 api-key = []
 token-file = ["dep:base64"]
 google = ["dep:ring", "dep:base64"]
-# The out-of-tree seam: a program spoken to over standard input and output.
+# The out-of-tree seam: a contract spoken to over standard input and output.
 exec = []
 
 [dependencies]
 foe-core = { path = "../core" }
 foe-log = { path = "../log" }
-foe-program = { path = "../program" }
+foe-contract = { path = "../contract" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

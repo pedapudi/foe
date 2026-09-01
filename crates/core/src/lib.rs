@@ -2,18 +2,18 @@
 //!
 //! This crate owns grants, budget, the tool registry, the agent loop, the
 //! inbox, spawning, teams, the executable runner, the Landlock sandbox, and
-//! the host protocol. What a program is — the program document, its
-//! resolution, and identity — is `foe-program`, which this crate reads.
+//! the host protocol. What a contract is — the contract document, its
+//! resolution, and fingerprint — is `foe-contract`, which this crate reads.
 //! `docs/design.md` states what each part guarantees.
 //!
 //! This file holds the runtime contract types shared across crates: what a
 //! tool receives when it is called, what it returns, and how a model
 //! transport is driven. Behavior lives in the modules. Tool packs such as
-//! `foe-code` depend on this file and on `foe-program`.
+//! `foe-code` depend on this file and on `foe-contract`.
 
 #![forbid(unsafe_code)]
 
-use foe_program::{ProgramError, ToolSpec};
+use foe_contract::{ContractError, ToolSpec};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -25,12 +25,12 @@ pub use foe_log::{
 };
 
 pub mod budget;
+pub mod captured_executable;
 pub mod confine;
 pub mod context;
 pub mod exec;
-pub mod executable;
+pub mod fingerprint;
 pub mod grants;
-pub mod identity;
 pub mod inbox;
 pub mod loop_;
 pub mod protocol;
@@ -232,10 +232,10 @@ pub trait Executor: Send + Sync {
 
 #[derive(Debug, Clone)]
 pub struct ExecRequest {
-    pub program: PathBuf,
+    pub command: PathBuf,
     /// Construction-committed bytes for configured tools and executable
     /// transports. Ordinary subprocess calls leave this unset.
-    pub executable: Option<Arc<executable::Executable>>,
+    pub captured_executable: Option<Arc<captured_executable::CapturedExecutable>>,
     pub args: Vec<String>,
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
@@ -243,7 +243,7 @@ pub struct ExecRequest {
     pub network: bool,
     /// Bytes for standard input; `None` means `/dev/null`.
     pub stdin: Option<Vec<u8>>,
-    /// Replaces the narrowing the executor would derive from `program`.
+    /// Replaces the narrowing the executor would derive from `command`.
     /// The `python` tool confines its interpreter with a policy of its
     /// own; every other request leaves this unset.
     pub policy: Option<sandbox::Policy>,
@@ -292,14 +292,14 @@ pub trait Sessions: Send + Sync {
     }
 }
 
-/// What starts a session: the program, arguments, environment, and working
+/// What starts a session: the command, arguments, environment, and working
 /// directory it runs with, and the short name results call it by. The
 /// network is closed, as for every executable.
 #[derive(Debug, Clone)]
 pub struct SessionRequest {
     /// One word naming the process in subjects, such as `postgres`.
     pub name: String,
-    pub program: PathBuf,
+    pub command: PathBuf,
     pub args: Vec<String>,
     pub env: BTreeMap<String, String>,
     pub cwd: PathBuf,
@@ -307,7 +307,7 @@ pub struct SessionRequest {
 }
 
 /// How long the runtime owns a process session. Episode is the default.
-/// Task requires explicit program authority and transfers ownership at
+/// Task requires explicit contract authority and transfers ownership at
 /// settlement to the environment that owns the foe invocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -345,7 +345,7 @@ pub struct SessionOutput {
     pub stderr: Vec<u8>,
 }
 
-/// Starts child episodes bounded to the declared child programs.
+/// Starts child episodes limited to the declared child contracts.
 pub trait Spawner: Send + Sync {
     /// Allocates an identifier without reserving budget or starting work.
     fn allocate_id(&self) -> String;
@@ -357,13 +357,13 @@ pub trait Spawner: Send + Sync {
 
 #[derive(Debug, Clone)]
 pub struct SpawnRequest {
-    /// A key of `programs` in the configuration.
-    pub program: String,
+    /// A key of `child_contracts` in the configuration.
+    pub contract: String,
     pub task: String,
     pub context: foe_log::SpawnContext,
     /// What to reserve from the parent's remainder. An unset dimension
-    /// takes the amount the child program declares, and the whole
-    /// remainder when the program declares none. The spawner records what
+    /// takes the amount the child contract declares, and the whole
+    /// remainder when the contract declares none. The spawner records what
     /// it granted.
     pub reserve: foe_log::BudgetAmount,
     /// The tool call that starts the child, recorded in `spawn/start`.
@@ -443,7 +443,7 @@ impl ChunkSink for Vec<Chunk> {
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
     #[error(transparent)]
-    Program(#[from] ProgramError),
+    Contract(#[from] ContractError),
     #[error(transparent)]
     Log(#[from] foe_log::LogError),
     #[error(transparent)]

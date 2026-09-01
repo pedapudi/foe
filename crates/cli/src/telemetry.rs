@@ -2,10 +2,10 @@
 //! run, inspected with `foe telemetry`.
 //!
 //! The switch is `~/.config/foe/telemetry.json` holding `{"capture": PATH}`.
-//! It lives beside the credential files rather than in the program
+//! It lives beside the credential files rather than in the contract
 //! configuration because telemetry observes an episode without changing its
-//! behavior: the same program with and without telemetry must keep one
-//! program identity. Emission runs after the episode from the log the run
+//! behavior: the same contract with and without telemetry must keep one
+//! contract fingerprint. Emission runs after the episode from the log the run
 //! just wrote — the writer and the reader are one binary, so no line can be
 //! unreadable through version skew — and a telemetry failure warns without
 //! touching the run's outcome or exit code.

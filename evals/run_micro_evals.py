@@ -214,10 +214,10 @@ def assess_mechanism(
         ends = [event_data(event) for event in root if event.get("type") == "spawn/end"]
         reservations = [event_data(event) for event in root if event.get("type") == "budget/reserve"]
         releases = [event_data(event) for event in root if event.get("type") == "budget/release"]
-        programs = sorted(
-            program
+        child_contracts = sorted(
+            contract
             for item in starts
-            if isinstance(program := item.get("program"), str)
+            if isinstance(contract := item.get("contract"), str)
         )
         fresh = all(item.get("context") == "fresh" for item in starts)
         child_logs = [(path, events) for path, events in logs if path != log_dir / "episode.jsonl"]
@@ -226,8 +226,8 @@ def assess_mechanism(
         typed_reports = 0
         for _, events in child_logs:
             starts_in_child = [event_data(event) for event in events if event.get("type") == "episode/start"]
-            program = starts_in_child[0].get("program", {}) if starts_in_child else {}
-            grants = program.get("grants", {}) if isinstance(program, dict) else {}
+            contract = starts_in_child[0].get("contract", {}) if starts_in_child else {}
+            grants = contract.get("grants", {}) if isinstance(contract, dict) else {}
             read_only = read_only and isinstance(grants, dict) and grants.get("write", []) == []
             outcomes = [event_data(event).get("outcome") for event in events if event.get("type") == "episode/end"]
             outcome = outcomes[-1] if outcomes and isinstance(outcomes[-1], dict) else {}
@@ -245,7 +245,7 @@ def assess_mechanism(
             if isinstance(item.get("outcome"), dict)
         )
         details = {
-            "spawned_programs": programs,
+            "spawned_contracts": child_contracts,
             "fresh_child_contexts": fresh,
             "completed_children": completed,
             "completed_spawn_events": ended,
@@ -257,7 +257,7 @@ def assess_mechanism(
         }
         expected = ["inventory-survey", "pricing-survey"]
         passed = (
-            programs == expected
+            child_contracts == expected
             and fresh
             and completed == 2
             and ended == 2
@@ -356,7 +356,7 @@ def unstarted_result(task: Task, attempt: int, case: Path, fault: str) -> dict[s
         "infrastructure_error": fault,
         "process": {"exit_code": None, "stdout": "", "stderr": ""},
         "grader_stderr": "",
-        "program_identity": None,
+        "contract_fingerprint": None,
         "runtime": None,
         "sandbox": None,
         "artifact_directory": str(case),
@@ -464,7 +464,7 @@ def run_task(
     strict = all(components.values()) and infrastructure_error is None
     root_events = read_events(log_dir / "episode.jsonl")
     starts = [event_data(event) for event in root_events if event.get("type") == "episode/start"]
-    identity = starts[0].get("identity") if starts else None
+    fingerprint = starts[0].get("contract_fingerprint") if starts else None
     runtime = starts[0].get("runtime") if starts else None
     sandbox = starts[0].get("sandbox") if starts else None
     return {
@@ -491,7 +491,7 @@ def run_task(
         "infrastructure_error": infrastructure_error,
         "process": process,
         "grader_stderr": grader_stderr.strip(),
-        "program_identity": identity,
+        "contract_fingerprint": fingerprint,
         "runtime": runtime,
         "sandbox": sandbox,
         "artifact_directory": str(case),

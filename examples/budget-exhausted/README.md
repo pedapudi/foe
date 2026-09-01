@@ -8,7 +8,7 @@ for. The episode ends with the outcome `{"kind": "exhausted", "limit":
 
 `exhausted` is one of the four outcome kinds a foe episode can end with,
 beside `completed`, `blocked`, and `failed`. It carries one fact: a resource
-limit was reached. The program did not break. Every model request was
+limit was reached. The contract did not break. Every model request was
 answered, every tool call returned a result, and the work stopped at the
 declared or derived resource boundary. An operator who reads this outcome
 raises the limit, narrows the task, or decides the work is not worth more
@@ -19,9 +19,9 @@ calls. The limits that end an episode this way are `model_calls`,
 
 The example needs no provider credential and no network. Its model is the
 `exec` provider pointed at `never-finishing-transport` in this directory, a
-program that answers every request with one more `read` call.
+transport executable that answers every request with one more `read` call.
 [docs/models.md](../../docs/models.md) specifies that provider and the chunk
-lines the program writes. Each answer reads a different module. A call that
+lines the transport process writes. Each answer reads a different module. A call that
 returns an identical result in `budget.loop_threshold` consecutive steps ends
 the episode as `blocked` with the code `looping-tool-call`, and this example
 is about the declared limit rather than the loop detector.
@@ -66,8 +66,8 @@ The runner asserts what this example claims.
 
 ## What to look for
 
-`episode/start` records the resolved program, and its
-`program.budget.model_calls` is the 4 that ends the run. The log then holds
+`episode/start` records the resolved contract, and its
+`contract.budget.model_calls` is the 4 that ends the run. The log then holds
 four steps. Each step is a `model/request` with `step` counting from 1 and
 `attempt` 1, four `assistant/chunk` events, three of them the tool call and
 the fourth the stop the transport reported, one `assistant/message` whose

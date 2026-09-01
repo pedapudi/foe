@@ -29,7 +29,7 @@ def valid_events() -> list[dict[str, Any]]:
                 "parent_id": None,
                 "fork_origin": None,
                 "team_id": None,
-                "program": {
+                "contract": {
                     "name": "typed-test",
                     "instructions": {"role": "Return a typed result."},
                     "tools": ["block"],
@@ -44,9 +44,9 @@ def valid_events() -> list[dict[str, Any]]:
                         }
                     },
                 },
-                "identity": "sha256:test",
+                "contract_fingerprint": "sha256:test",
                 "task": task,
-                "runtime": {"version": "0.1.0", "build": "sha256:test"},
+                "runtime": {"version": "0.2.0", "build": "sha256:test"},
                 "sandbox": {"mode": "off", "landlock_abi": 0},
             },
         ),
@@ -117,7 +117,7 @@ class TraceQualityTest(unittest.TestCase):
 
     def test_authority_mutation_is_detected(self) -> None:
         events = copy.deepcopy(valid_events())
-        events[0]["data"]["program"]["grants"]["read"] = ["relative"]
+        events[0]["data"]["contract"]["grants"]["read"] = ["relative"]
         self.assert_dimension_fails(events, "declared_authority")
 
     def test_message_mutation_is_detected(self) -> None:
@@ -160,7 +160,7 @@ class TraceQualityTest(unittest.TestCase):
                     {
                         "id": "parent",
                         "parent_id": None,
-                        "program": {
+                        "contract": {
                             "name": "parent",
                             "budget": {
                                 "model_calls": 2,
@@ -194,7 +194,7 @@ class TraceQualityTest(unittest.TestCase):
         child = EpisodeLog(
             Path("child"),
             [
-                event(0, "episode/start", {"id": "child", "parent_id": "parent", "program": {"name": "child"}}),
+                event(0, "episode/start", {"id": "child", "parent_id": "parent", "contract": {"name": "child"}}),
                 event(1, "request/header", {"model": {"provider": provider, "model": "test"}}),
                 event(2, "model/request", {}),
                 event(3, "assistant/message", {"usage": {"input": 20, "output": 20}}),

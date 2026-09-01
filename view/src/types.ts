@@ -26,8 +26,8 @@ export interface EpisodeStart {
   parent_id?: string | null;
   fork_origin?: ForkOrigin | null;
   team_id?: string | null;
-  program?: { name?: string; budget?: Budget } & Record<string, unknown>;
-  identity?: string;
+  contract?: { name?: string; budget?: Budget } & Record<string, unknown>;
+  contract_fingerprint?: string;
   task?: string;
   runtime?: { version?: string; build?: string };
   sandbox?: { mode?: string; landlock_abi?: number };
@@ -122,7 +122,7 @@ export interface InboxItem {
 
 export interface SpawnStart {
   child_id?: string;
-  program?: string;
+  contract?: string;
   context?: string;
   call_id?: string;
 }

@@ -63,7 +63,7 @@ export interface Recovery {
 export interface WorkflowNode {
   name: string;
   kind: NodeKind;
-  /** The tool a tool node calls or the program a model node runs. */
+  /** The tool a tool node calls or the contract a model node runs. */
   detail: string;
   /** The node-level verifier the declaration names, empty for none. */
   verify: string;
@@ -73,7 +73,7 @@ export interface WorkflowNode {
   firings: Firing[];
   /**
    * Colour direction, earned by the last firing's end and never by
-   * identity: `bad` for an error, `good` for a clean end, and neutral for a
+   * state: `bad` for an error, `good` for a clean end, and neutral for a
    * node that is still running or never fired.
    */
   direction: "good" | "bad" | "";
@@ -102,12 +102,12 @@ export interface Workflow {
 }
 
 /**
- * The workflow an episode declares, taken from `episode/start`'s `program`,
+ * The workflow an episode declares, taken from `episode/start`'s `contract`,
  * which is the resolved configuration. Absent for an episode that runs the
  * free loop.
  */
-export function declaredWorkflow(program: Record<string, unknown>): Record<string, unknown> | null {
-  const workflow = obj(program.workflow);
+export function declaredWorkflow(contract: Record<string, unknown>): Record<string, unknown> | null {
+  const workflow = obj(contract.workflow);
   return Object.keys(obj(workflow.nodes)).length > 0 ? workflow : null;
 }
 
@@ -126,13 +126,13 @@ function detailOf(node: Record<string, unknown>, kind: NodeKind): string {
 
 /**
  * Folds a workflow episode's log into its declared graph and the run that
- * went through it. `program` is `episode/start`'s `program` and `events` is
+ * went through it. `contract` is `episode/start`'s `contract` and `events` is
  * the episode's own log; a log with no `workflow/*` event yields the
  * declaration with no firing, which is what a run that has not started yet
  * looks like.
  */
-export function readWorkflow(program: Record<string, unknown>, events: LogEvent[]): Workflow | null {
-  const declared = declaredWorkflow(program);
+export function readWorkflow(contract: Record<string, unknown>, events: LogEvent[]): Workflow | null {
+  const declared = declaredWorkflow(contract);
   if (declared === null) return null;
   const declaredNodes = obj(declared.nodes);
   const names = Object.keys(declaredNodes).sort();

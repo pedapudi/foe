@@ -25,7 +25,7 @@ Below the top bar the page has four regions.
   the selected episode: **conversation**, **raw events**, **diff**,
   **workflow**, and **statistics**. The digits `1` to `5` select them in
   that order. The workflow tab is present only for an episode whose
-  program declares a graph; the other four are always present.
+  contract declares a graph; the other four are always present.
 
 The main region holds one episode, the selected one, however many the
 viewer shows. Reading several episodes against each other is what the
@@ -56,30 +56,30 @@ size wins and the rows no longer change it; a double click on a grip drops
 the stored size and returns the region to what derives it. Every region
 declares a minimum, so none of them collapses.
 
-### Runs of one program
+### Runs of one contract
 
-`episode/start.identity` is a hash over everything that shapes what the
-model sees, which [design.md](design.md) specifies under "Programs and
-identity". Two episodes of one program carry one identity and unrelated
-episodes carry different ones, so it is what separates runs that may be
-compared from episodes that merely sit in one directory.
+`episode/start.contract_fingerprint` hashes the stable behavior that shapes
+what the model sees. [design.md](design.md) specifies its inputs under
+"Execution contracts and fingerprints." Two runs of one execution contract
+share a fingerprint. Unrelated contracts have different fingerprints, which
+separates comparable runs from episodes that merely share a directory.
 
-Roots that carry one identity stand together in the episode list and in
+Roots that carry one fingerprint stand together in the episode list and in
 the trajectory, and a hairline bracket spans their rows: down the left
 edge of the episode list, and in the gutter between the label column and
 the plot in the trajectory. A root's descendants are inside its bracket,
-because they are part of that run. A program with a single root in view
+because they are part of that run. A contract with a single root in view
 gets no bracket, since a bracket around one row groups nothing, and an
-episode whose `episode/start` has not been read yet has no identity and
-stands alone until it has. Hovering a bracket names the program, the
-number of runs, and the identity they share.
+episode whose `episode/start` has not been read yet has no fingerprint and
+stands alone until it has. Hovering a bracket names the contract, the
+number of runs, and the fingerprint they share.
 
-A rebuild of the runtime changes identity, because the runtime's version
-and build hash are part of it. Two runs of one configuration separated by
-a rebuild are therefore two programs here, and they are drawn as two.
+A rebuild of the runtime changes the fingerprint because the runtime's
+version and build hash are fingerprint inputs. Two runs of one configuration separated by
+a rebuild are therefore two contract groups here, and they are drawn as two.
 
 The episodes tree gives each episode a row about 40 pixels tall: a dot
-coloured by outcome, the program name at the page's base size, the episode
+coloured by outcome, the contract name at the page's base size, the episode
 id in mono beside it, a second line reading the outcome word with the code
 of a `blocked` outcome or the limit of an `exhausted` one, and under those a
 measure of what the episode spent. A spawned child hangs under its parent on
@@ -104,9 +104,9 @@ not happen.
 
 The details region states the outcome, the model calls, input tokens, and
 output tokens consumed against the limits in
-`episode/start.program.budget`. It also states the sandbox mode and Landlock
-ABI, the program identity, the lineage, the event count, the start time, the
-duration, and the task. The identity is set as the
+`episode/start.contract.budget`. It also states the sandbox mode and Landlock
+ABI, the contract fingerprint, the episode ancestry, the event count, the
+start time, the duration, and the task. The fingerprint is set as the
 first eight characters of its digest, with the whole hash in its tooltip. Its text wraps and its numbers are tabular; the
 region scrolls as a whole when its content exceeds it, and nothing inside
 it has a scrollbar of its own.
@@ -122,14 +122,14 @@ behind an expander whose summary names the reason the header was written,
 the route, the number of tools, and the length of the prompt.
 
 The prompt is shown under the names its author gave its parts.
-`episode/start.program.instructions` maps a key to the text of one section,
+`episode/start.contract.instructions` maps a key to the text of one section,
 and the runtime renders those sections in lexicographic order of their keys,
 joined by a blank line, before it appends the instruction of every tool that
 has one; [config.md](config.md#instructions) states that rule. The viewer
 reads the rendered prompt back through the same rule and heads each section
 with its key. The walk stops at the first section whose text is not where
 the rule puts it, and the rest is rendered as one piece, so a prompt the
-program did not compose is shown whole rather than split wrongly.
+contract did not compose is shown whole rather than split wrongly.
 
 Each tool's schema is a table of its parameters, one row per parameter with
 its type, whether it is required, and its description, under the tool's name
@@ -178,7 +178,7 @@ the bundle which episodes exist and in what order.
 ## The trajectory
 
 The trajectory draws one row per episode, in the order the tree lists them,
-indented by lineage. The row label is the program name; the episode id
+indented by lineage. The row label is the contract name; the episode id
 stands beside it in the sidebar and in the breadcrumbs, so the row does not
 repeat it. The selected row carries the figure's one accent as a spine down
 its leading edge.
@@ -268,7 +268,7 @@ A row is named by its semantic role first and its durable identifier
 second, never by a substring of free text: a workflow node by its own
 name, a step of one call by the tool and its target (`read
 src/parser.rs`), a step of several by the first call and a count (`read
-src/parser.rs +2`), a delegation by `spawn` and the child's program name
+src/parser.rs +2`), a delegation by `spawn` and the child's contract name
 (`spawn surveyor`), a step that called nothing by `answered`, and a step
 whose request no message answered by `no answer`. `step N` rides alongside
 in faint.
@@ -277,7 +277,7 @@ The tool name stands beside the target even though the tick beside it
 already draws a mark. The redundancy is deliberate: a word is faster to
 scan than a glyph, and the target is the thing a reader is looking for.
 The target is the whole of the one short argument the call carries — a
-path, a program name — because which directory a file sits in is part of
+path, a contract name — because which directory a file sits in is part of
 what identifies it; an argument with whitespace in it is free text and is
 never shown, and a path too long to set has its middle elided and its
 basename kept (`src/…/parser.rs`), never a trailing cut.
@@ -469,7 +469,7 @@ usually drawn at its minimum width and fills `--v2-ink` at 0.9. On a run
 bound by the model the request bars therefore stay quiet while the tool
 ticks stay visible, which is the reverse of what an even ink would give.
 Structure that measures nothing takes `--v2-rule`: the lineage connectors,
-the depth rail, and the bracket over the runs of one program.
+the depth rail, and the bracket over the runs of one contract.
 
 The marks that do carry a direction keep it: a retry and its backoff in
 `--v2-bad`, a compaction and a recovery in `--v2-caution`, a node firing
@@ -483,7 +483,7 @@ The outcome glyph is coloured by direction: a filled dot in `--v2-good` for
 
 ### The node band
 
-An episode whose program declares a graph spends its whole run inside that
+An episode whose contract declares a graph spends its whole run inside that
 graph, so the trajectory is where the timing of the graph belongs; the
 workflow tab draws the topology. The band holds one lane per node that
 fired, ordered by the first firing of each, which is the order the run
@@ -559,7 +559,7 @@ Hovering any mark, firing, decision, or outcome glyph opens the hovercard
 The card names the mark, gives its `seq`, its time, its duration when it has
 one, the wait before its first token when it is a request that received one,
 and one line of detail: a tool call's arguments, a retry's step and attempt,
-a spawned child's program, a firing's reported duration and the child it
+a spawned child's contract, a firing's reported duration and the child it
 ran, or a decision's cause and target. The card stands below the pointer,
 or above it when it would otherwise leave the pane at the bottom, and never
 crosses the pane's right edge.
@@ -577,7 +577,7 @@ declared workflow is that the graph bounds what the model may do while the
 model chooses freely inside it: a figure of the firings alone would show
 the choices and lose the bound.
 
-The declaration comes from `episode/start`, whose `program` is the resolved
+The declaration comes from `episode/start`, whose `contract` is the resolved
 configuration with the task removed and whose `workflow` key holds the node
 declaration that [workflow.md](workflow.md) specifies. The run comes from
 `workflow/node-start`, `workflow/node-end`, `workflow/branch`, and
@@ -694,7 +694,7 @@ marked as such.
 Budget consumption is counted the way the runtime's own pool counts it, so
 that the figure and the runtime never disagree.
 
-| limit in `program.budget` | what is counted against it |
+| limit in `contract.budget` | what is counted against it |
 |---|---|
 | `model_calls` | one per `model/request`, retried attempts included |
 | `input_tokens` | `usage.input` over every `assistant/message` |
@@ -703,7 +703,7 @@ that the figure and the runtime never disagree.
 | `max_episodes` | the episodes in the scope, the root itself included |
 | `max_depth` | the deepest lineage below the scope's root |
 
-A limit the program does not declare has no row. `max_concurrent` and
+A limit the contract does not declare has no row. `max_concurrent` and
 `loop_threshold` have no row either: neither bounds a quantity the log
 accumulates, so neither has a consumption to draw.
 
@@ -791,7 +791,7 @@ parts that request carried and as long as that request is large in
 characters. Characters set the length because every request has them, and a
 request whose answer reported no usage would otherwise draw nothing. The
 six kinds are one neutral ink at six weights, running from the text the
-program fixes to the text the run produced, and the kind that accounts for
+contract fixes to the text the run produced, and the kind that accounts for
 the most of the scope takes the accent. Hovering a division names the part,
 gives the arithmetic that attributed tokens to it, and says whether the
 request was the first to send that text. Clicking a row brings the
@@ -832,7 +832,7 @@ duration its results report, its error count, and a bar of that duration
 against the longest.
 
 **Every run** replaces the nine figures with one row per root episode: the
-program name and episode id, the outcome, the model requests, the tokens,
+contract name and episode id, the outcome, the model requests, the tokens,
 the wall clock, the retries, and a bar of that run's tokens against the
 largest run. Each row is counted over that root and its descendants alone.
 
@@ -985,7 +985,7 @@ that identify the episode and its lineage, the outcome when the log has an
 } ] }
 ```
 
-`name` is `program.name` from `episode/start` and is null when the program
+`name` is `contract.name` from `episode/start` and is null when the contract
 has no name. Children are the episodes whose directories lie under the
 parent's `children/`, sorted by directory name.
 
@@ -1137,5 +1137,5 @@ stylesheet's font stack.
 | `foe_view::export(dir)` | the static page as a `String` |
 
 `serve` spawns its tasks on the tokio runtime that calls it. The crate
-depends on `foe-log` and tokio and on nothing in `foe-core`; a program that
+depends on `foe-log` and tokio and on nothing in `foe-core`; a contract that
 only needs to read and serve logs takes on nothing of the runtime.

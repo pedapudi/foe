@@ -27,8 +27,8 @@ so the one file answers both uses. A general-purpose linter that exits
 non-zero on findings is wrapped by a short script that runs it and maps that
 status to zero.
 
-The runtime hashes the file's contents into the program's identity, so
-editing the checker changes the identity.
+The runtime hashes the file's contents into the contract fingerprint, so
+editing the checker changes the fingerprint.
 
 ## The model block
 
@@ -38,7 +38,7 @@ in the wire shape [docs/models.md](../../docs/models.md) defines, so the
 example needs no credential and opens no connection while the runtime still
 runs every tool call, the verifier, and the completion rule.
 
-To run the same program against a provider, replace the `model` block with:
+To run the same contract against a provider, replace the `model` block with:
 
 ```json
 "model": { "provider": "anthropic", "model": "claude-opus-5" }

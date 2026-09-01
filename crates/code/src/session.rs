@@ -13,10 +13,10 @@
 
 use crate::{parse_args, process_output, shell_environment, SESSION_MAX_ALIVE, SHELL, SHELL_COMMAND_NUL_ERROR};
 
+use foe_contract::{Effect, ToolSpec};
 use foe_core::exec::TERM_GRACE;
 use foe_core::session::{subject, SESSION_TOOL};
 use foe_core::{CallCtx, SessionLifetime, SessionOutput, SessionRequest, SessionStatus, Tool, ToolValue};
-use foe_program::{Effect, ToolSpec};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::Path;
@@ -122,7 +122,7 @@ impl Tool for Session {
                 let lifetime = a.lifetime.unwrap_or(SessionLifetime::Episode);
                 let req = SessionRequest {
                     name: display_name(&command),
-                    program: SHELL.into(),
+                    command: SHELL.into(),
                     args: vec!["-c".into(), command.clone()],
                     env: shell_environment(&cwd),
                     cwd,

@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "survey-then-fix",
   "instructions": {
     "10-role": "You are a coding agent working in a Python repository.",
@@ -20,7 +20,7 @@
     "max_episodes": 4,
     "max_concurrent": 2
   },
-  "programs": {
+  "child_contracts": {
     "survey": {
       "name": "survey",
       "instructions": {

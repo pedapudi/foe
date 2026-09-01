@@ -783,9 +783,9 @@ details[open] > summary::before {
 }
 
 /* A bracket down the left edge spanning the rows of the roots that ran one
- * program. Lineage is drawn in ink; this is a grouping of independent runs
+ * contract. Lineage is drawn in ink; this is a grouping of independent runs
  * rather than a relation between them, so it stays a hairline rule. */
-.tree .program-run {
+.tree .contract-run {
   fill: none;
   stroke: var(--v2-rule);
   stroke-width: 0.9;
@@ -850,7 +850,7 @@ details[open] > summary::before {
 }
 
 /* The first line sits at the page's base size; the second is one step
- * down in mono, so an outcome word never crowds the program name. */
+ * down in mono, so an outcome word never crowds the contract name. */
 .tree text.name {
   fill: var(--v2-ink);
   font-family: var(--v2-sans);
@@ -1907,7 +1907,7 @@ table.events td.type.error {
 }
 
 /* A bracket in the gutter between the labels and the plot, spanning the
- * rows of the roots that ran one program. It is structure rather than
+ * rows of the roots that ran one contract. It is structure rather than
  * activity, so it is a hairline in the separator ink. */
 .traj-group {
   fill: none;
@@ -2589,7 +2589,7 @@ table.events td.type.error {
 /* Where a request's input came from. The six sources are one neutral ink
  * at six weights, because the register holds no second hue and the accent
  * is reserved for the source that dominates. The ramp runs from the text
- * the program fixes to the text the run produced. */
+ * the contract fixes to the text the run produced. */
 .kind-system {
   --input-weight: 0.2;
 }
@@ -3432,7 +3432,7 @@ kbd {
   color: var(--v2-ink);
 }
 
-/* Lane colour carries branch identity, cycled over five tones mixed from
+/* Lane colour distinguishes branches, cycled over five tones mixed from
  * the theme's own tokens so that it follows all sixteen themes. None of
  * the five is an outcome hue: a lane must never read as a verdict. The
  * tones are scoped to the drawing itself rather than to either view of

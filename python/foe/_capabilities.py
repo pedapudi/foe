@@ -1,6 +1,6 @@
 """Capability handles passed to host tools.
 
-Each handle is bounded to the roots the program granted. Every path is
+Each handle is bounded to the roots the contract granted. Every path is
 resolved through symbolic links and checked against the roots before use,
 which is the same prefix rule the runtime applies to its own tools. The
 handle is a convenience for writing a host tool that behaves like a
@@ -124,15 +124,15 @@ class Exec:
     def __init__(self, executables: Sequence[PathLike]) -> None:
         self.executables: tuple[Path, ...] = tuple(_canonical(e) for e in executables)
 
-    def resolve(self, program: PathLike) -> Path:
-        canonical = _canonical(program)
+    def resolve(self, command: PathLike) -> Path:
+        canonical = _canonical(command)
         if canonical not in self.executables:
             raise CapabilityError(f"{canonical}: not a declared executable")
         return canonical
 
     def run(
         self,
-        program: PathLike,
+        command: PathLike,
         args: Sequence[str] = (),
         *,
         cwd: PathLike | None = None,
@@ -140,7 +140,7 @@ class Exec:
         timeout: float = 120.0,
         stdin: bytes | None = None,
     ) -> ExecResult:
-        path = self.resolve(program)
+        path = self.resolve(command)
         started = time.monotonic()
         try:
             completed = subprocess.run(

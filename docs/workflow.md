@@ -8,7 +8,7 @@ document specifies the graph, the three places, and the guarantee that
 holds across all of them.
 
 Status: implemented. The configuration types and construction rules are in
-`crates/program/src/workflow.rs`; the executor is `crates/workflow`;
+`crates/contract/src/workflow.rs`; the executor is `crates/workflow`;
 `examples/workflow` runs one graph.
 
 ## Why a graph, and why agency inside it
@@ -157,12 +157,12 @@ recovery sees.
 
 ### Model nodes
 
-A model node is a full episode. Its `model` block is a child program in the
-sense of [config.md](config.md#programs). Construction applies these
-ceiling rules to it, and to every program below it, against the program
+A model node is a full episode. Its `model` block is a child contract in the
+sense of [config.md](config.md#child_contracts). Construction applies these
+ceiling rules to it, and to every contract below it, against the contract
 that contains the workflow.
 
-- Every name in `tools` appears in the containing program's `tools`.
+- Every name in `tools` appears in the containing contract's `tools`.
 - A `tool_defs` entry names the same executable as the containing entry of
   that name. Its working directory lies within that entry's working
   directory, its `network` is no wider, and its `timeout_seconds` is no
@@ -170,11 +170,11 @@ that contains the workflow.
   change what the model reads rather than what the process may do.
 - A `host_tools` entry equals the containing entry of that name.
 - Read and write roots lie within the containing roots.
-- Every `grants.spawn` name appears in the containing program's
-  `grants.spawn`, and the same-named `programs` entry is itself within the
+- Every `grants.spawn` name appears in the containing contract's
+  `grants.spawn`, and the same-named `child_contracts` entry is itself within the
   containing entry of that name.
 - `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`,
-  and `loop_threshold` are each at most the containing program's value. An
+  and `loop_threshold` are each at most the containing contract's value. An
   omitted optional spend limit draws from the containing budget.
 - The `sandbox` block is inherited and cannot be declared. A `model` block
   selects the node's model. An omitted block inherits the nearest ancestor's
@@ -183,7 +183,7 @@ that contains the workflow.
 `max_episodes` and `max_concurrent` carry no ceiling here. The budget pool
 clamps the episode share a child receives when it reserves, and
 `max_concurrent` counts one episode's own direct children rather than the
-whole tree's, so a node's value is not a claim on the containing program's.
+whole tree's, so a node's value is not a claim on the containing contract's.
 
 The node's inputs become the child's task, one section per input, labeled
 with the input's name and carrying its rendered output; the `task` section
@@ -252,7 +252,7 @@ ends the workflow along that path.
 
 The runtime fires the successors under the chosen label and no others. A
 successor not under any label is an ordinary edge and fires regardless.
-The labels are hashed into identity. The choice is logged as
+The labels are hashed into the contract fingerprint. The choice is logged as
 `workflow/branch`.
 
 This is where control-flow agency lives. The agent decides whether to
@@ -349,7 +349,7 @@ episode itself carries: the stop signal and the `seconds` budget. Reaching
 either one stops the firings still running and records a
 `workflow/node-end` for each, whose `error` names the bound that stopped
 it. The outcome the workflow reached stands, because the workflow completed
-before the bound was reached. A program that declares no `seconds` and is
+before the bound was reached. A contract that declares no `seconds` and is
 never stopped waits as long as its firings run.
 
 A nested `workflow` node runs its graph inside the episode, over the same
@@ -425,8 +425,8 @@ renderings remain in the producing events.
 
 The instruction that frames the failure and the permitted actions belongs
 to the runtime. An author does not write it and cannot change it. It is
-hashed into identity, so a runtime upgrade that rewords it changes every
-workflow's identity, which is what a reworded instruction should do.
+hashed into the contract fingerprint, so a runtime upgrade that rewords it
+changes every workflow's fingerprint, which is what a reworded instruction should do.
 
 ### What it may do
 
@@ -511,11 +511,11 @@ gives each event's fields.
 | `workflow/node-end` | `{ node, fire, value, rendered, error?, failure?, duration_ms }` |
 | `workflow/branch` | `{ node, fire, label, successors }` |
 | `workflow/recovery` | `{ node, fire, cause, action, target?, note?, failure?, intervention }` |
-| `verification/result` | `{ step, tool, verifier_identity, status, findings, error?, duration_ms }` |
+| `verification/result` | `{ step, tool, verifier_fingerprint, status, findings, error?, duration_ms }` |
 
 A node's `verify` and the episode's `done_when.verify` each record every
 invocation as one `verification/result` in the workflow episode's own log,
-with the verification's step as its context. A model node's program that
+with the verification's step as its context. A model node's contract that
 declares its own `done_when.verify` records its invocations in that child
 episode's log instead, because the child's loop runs them.
 
@@ -524,23 +524,23 @@ A model node's firing also produces the ordinary `budget/reserve`,
 a child episode and nothing else. Its `workflow/node-start` precedes the
 reservation and spawn events that launch the child.
 
-## Identity
+## Contract fingerprint
 
-Every node's name, kind, and edge references participate in identity. The
-identity document also records the edge-reference ceiling and the fields
+Every node's name, kind, and edge references participate in the contract
+fingerprint. The fingerprint document also records the edge-reference ceiling and the fields
 that the count covers. The other inputs are every `branches` declaration,
-every tool node's `args` with bindings, and every model node's program
-identity. They also include `verify`, `retries`, `max_fires`, `terminal`,
+every tool node's `args` with bindings, and every model node's contract
+fingerprint. They also include `verify`, `retries`, `max_fires`, `terminal`,
 `empty`, every `recovery.follows` widening,
 `recovery.max_interventions`, and the runtime's recovery instruction.
 
 ## Relationship to the rest of foe
 
 A workflow episode is an episode. It has one log, one budget pool, one
-outcome, and one identity. Its model nodes are child episodes and obey
+outcome, and one fingerprint. Its model nodes are child episodes and obey
 every rule of [subagents](design.md#subagents-and-teams). Its tool nodes
 dispatch through the ordinary registry with the ordinary effect checks.
-A parent that spawns a child whose program carries a workflow with a model
+A parent that spawns a child whose contract carries a workflow with a model
 node reserves descendant episode capacity for that child, as it does for a
 child holding a `grants.spawn` entry. The rule applies at every level of
 nested workflows.

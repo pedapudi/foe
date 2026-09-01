@@ -234,7 +234,7 @@ def config(candidate: Path, evidence: Path, check: Path, model: dict[str, str]) 
         "done_when": {"verify": "check", "retries": 2},
     }
     return {
-        "version": 3,
+        "version": 4,
         "name": "assessed-evidence-self-improvement",
         "instructions": {"role": "Run the declared evidence collection and self-improvement workflow."},
         "tools": [*CODING_TOOLS, "evidence", "check"],
@@ -308,12 +308,12 @@ def main() -> int:
         root = Path(temporary.name)
     check = root / "candidate-check"
     checker(check, candidate)
-    program_path = root / "program.json"
-    write_json(program_path, config(candidate, evidence, check, model))
+    contract_path = root / "contract.json"
+    write_json(contract_path, config(candidate, evidence, check, model))
     log_dir = root / "episode"
     started = time.monotonic()
     result = subprocess.run(
-        [str(args.foe.resolve()), "--config", str(program_path), "--log-dir", str(log_dir), "--headless"],
+        [str(args.foe.resolve()), "--config", str(contract_path), "--log-dir", str(log_dir), "--headless"],
         text=True,
         capture_output=True,
         timeout=LIMITS["seconds"] + 30,

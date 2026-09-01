@@ -929,7 +929,7 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument(
         "--workflow-candidate",
         type=Path,
-        help="identity-bound workflow configuration produced by self-improvement",
+        help="workflow configuration whose source and runtime fingerprints match the retained evidence",
     )
     answer.add_argument("--label", default="baseline")
     answer.add_argument("--jobs-dir", type=Path, default=Path("target/terminal-bench-jobs"))

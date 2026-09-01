@@ -83,7 +83,7 @@ def check(condition: bool, message: str) -> None:
         raise SystemExit(f"verification-unsatisfiable example: {message}")
 
 
-retries = of("episode/start")[0]["program"]["done_when"]["retries"]
+retries = of("episode/start")[0]["contract"]["done_when"]["retries"]
 end = of("episode/end")[0]["outcome"]
 check(events[-1]["type"] == "episode/end", "the log ends with episode/end")
 check(end["kind"] == "blocked", f"the outcome is blocked, not {end['kind']}")

@@ -1,9 +1,9 @@
 # The python tool
 
-The built-in `python` tool runs one model-written program in an isolated
+The built-in `python` tool runs model-written Python source in an isolated
 interpreter process whose only capability is calling this episode's tools.
 The runtime records every inner call in the log and shows the model only
-the value the program returned. `crates/code/src/python.rs` implements the
+the value the source returned. `crates/code/src/python.rs` implements the
 tool; `crates/core` implements inner dispatch and recording;
 [log-format.md](log-format.md) specifies the `tool/inner-call` event.
 
@@ -17,25 +17,25 @@ The `bash` tool can avoid some of that cost. A shell pipeline performs
 several operations and emits a narrow result. Its inner operations remain
 shell text, and it can use only the process authority granted to `bash`.
 
-The `python` tool lets the model submit one bounded program that calls the
+The `python` tool lets the model submit one bounded source that calls the
 episode's tools as functions. The runtime records every inner call and
-exposes only the program's returned value as the outer tool result.
+exposes only the source's returned value as the outer tool result.
 
-The model's source program remains in the conversation as the `python`
+The model's source remains in the conversation as the `python`
 call's arguments. The tool removes inner results from the conversation. It
 does not remove the source that produced them.
 
-Programs opt in by listing `python` in `tools`. An episode that omits it
+Execution contracts opt in by listing `python` in `tools`. An episode that omits it
 pays no request-schema or instruction cost. The built-in coding workflow
 does not list it; [the adoption evidence below](#adoption-evidence) states
 what would change that.
 
-## Outer call contract
+## Outer call schema
 
 The `python` tool has two arguments:
 
 ```json
-{ "program": "def main():\n    ...", "timeout_seconds": 60 }
+{ "source": "def main():\n    ...", "timeout_seconds": 60 }
 ```
 
 The source defines a zero-argument `main` function returning a
@@ -46,10 +46,10 @@ that is smaller.
 The runtime starts `/usr/bin/python3 -I -`. Isolated mode ignores every
 `PYTHON*` environment variable and the user site directory, and the
 environment is empty besides. The process receives on standard input a
-foe-owned shim followed by the program, so a syntax error anywhere produces
+foe-owned shim followed by the source, so a syntax error anywhere produces
 an outer error result before any statement runs. The shim exposes exactly
 two functions and holds inner dispatch closed until it invokes `main`, so
-top-level statements in the program cannot call tools while the source
+top-level statements in the source cannot call tools while the source
 loads.
 
 - `call_tool(name, args)` performs one inner dispatch and returns
@@ -65,15 +65,15 @@ error result before any event is written:
 - `python`, which prevents interpreter recursion;
 - `block`, whose meaning depends on a model-issued top-level call;
 - the synthesized `return` tool, whose meaning depends on the episode's
-  completion contract.
+  completion rule.
 
-Calling the configured completion verifier inside a program performs an
+Calling the configured completion verifier inside the source performs an
 ordinary inner tool call. It does not signal episode completion. The model
 must call that verifier at the top level when it wants the call to act as
 a completion candidate.
 
-The tool contract has no result schema, so a program treats every `value`
-as a dynamic JSON value. This program counts matches without returning
+The tool has no result schema, so the source treats every `value` as a
+dynamic JSON value. This source counts matches without returning
 every match line:
 
 ```python
@@ -121,7 +121,7 @@ home directory, or credential file is granted. The sandbox's baseline
 loader, system, and device paths apply as they do to every process.
 Landlock enforces the policy where the kernel offers it; as everywhere in
 [sandbox.md](sandbox.md), `best-effort` mode applies what the kernel
-offers and applies nothing when Landlock is absent. The program's one door
+offers and applies nothing when Landlock is absent. The source's one door
 to the world is the dispatch socket the shim holds on file descriptor 3.
 
 Five bounds hold, each a constant in `crates/code` beside the other tool
@@ -133,13 +133,13 @@ bounds, and the tool description states their values:
   cannot raise. The shim rather than the spawner sets it because the
   runtime forbids unsafe code and therefore installs no between-fork-and-
   exec hook.
-- **Inner calls**: 100 per program. The call past the bound is not
+- **Inner calls**: 100 per source. The call past the bound is not
   dispatched; the outer call ends as an error naming the bound.
 - **Timeout**: `timeout_seconds`, bounded by the episode's remaining
   `seconds` budget. Every inner tool retains its own timeout and output
   limit.
 - **Cancellation**: the executor owns the process group and kills the
-  whole group on timeout or cancellation, so nothing the program started
+  whole group on timeout or cancellation, so nothing the source started
   survives the call. Episode settlement closes an inner call left open
   before the outer call, as [log-format.md](log-format.md#seeding)
   specifies.
@@ -148,7 +148,7 @@ bounds, and the tool description states their values:
 
 The model sees `python` as a built-in tool. The runtime handles it as a
 composite call because an ordinary tool receives capability handles for
-one declared effect, while a program can invoke tools with several
+one declared effect, while one source can invoke tools with several
 effects.
 
 The tool holds no direct filesystem API and dispatches nothing itself. The
@@ -161,10 +161,10 @@ from source code to an effect. A dispatch outside the agent loop, such as
 a workflow node's direct tool call, carries no composer, and the tool then
 returns an error.
 
-Every inner call is synchronous and runs in program order. The outer
+Every inner call is synchronous and runs in source order. The outer
 `python` call declares the `execs` effect and therefore runs exclusively
 with respect to other top-level calls in the same model turn. These rules
-preserve the existing effect order even when the program selects tool
+preserve the existing effect order even when the source selects tool
 names or arguments dynamically.
 
 The tool is not transactional. Effects completed before a later error
@@ -185,27 +185,26 @@ the inner call's ordinary `tool/result` follows; the generic event name is
 shared by design with any future composing tool.
 [log-format.md](log-format.md) specifies the event, the obligation it
 opens, its exclusion from derived messages, and the nested closing order
-at settlement and seeding. The event is additive: no frozen version 2
-payload changed.
+at settlement and seeding. The event is implemented in log format version 3.
 
-Replay reads the outer result from the log and never runs the program.
+Replay reads the outer result from the log and never runs the source.
 Statistics that add durations must treat the outer duration as inclusive
 of the inner ones.
 
-## Program identity and promotion
+## Contract fingerprint and promotion
 
 The `python` tool specification, its bounds, and the runtime build
-participate in the existing program identity, as every built-in tool's
-specification does. One source program is a tool argument and therefore
-belongs to an episode log rather than the program identity.
+participate in the execution contract fingerprint, as every built-in tool's
+specification does. The Python source is a tool argument and therefore
+belongs to an episode log rather than the contract fingerprint.
 
 Registering a new named tool during an episode would change the request
 header and model-visible vocabulary, violating the rule that an episode
-uses one immutable program state. Episode-local tool definition is outside
-this design. A useful source program can become a configured tool in a
-later program state, packaged behind a `tool_defs` executable with a
+uses one immutable execution contract. Episode-local tool definition is
+outside this design. Useful Python source can become a configured tool in a
+later execution contract, packaged behind a `tool_defs` executable with a
 declared schema and verifier;
-[lineage-identity.md](lineage-identity.md) can record the transition and
+[adoption.md](adoption.md) can record the transition and
 its admission evidence.
 
 ## Adoption evidence
@@ -221,7 +220,7 @@ evidence exist.
    runtime test suite carries these; network and clock isolation follow
    from the policy and are exercised by the sandbox tests.
 3. **Quality on tasks that exercise composition.** A development set
-   contains tasks where programs issue several inner calls and return a
+   contains tasks where Python sources issue several inner calls and return a
    smaller derived value. A holdout set measures whether the mechanism
    preserves or improves task score.
 4. **Mixed-workload cost.** Tasks that benefit and tasks that do not run
@@ -233,13 +232,13 @@ evidence exist.
    earns default adoption only when it adds quality or efficiency beyond
    that instruction.
 
-Any task-quality regression blocks adoption for the affected program.
+Any task-quality regression blocks adoption for the affected contract.
 Token, latency, and cost measurements rank quality-equivalent
 configurations; they do not compensate for a lower task score.
 
 ## The Starlark alternative
 
-An earlier form of this design evaluated programs in an embedded Starlark
+An earlier form of this design evaluated model-written sources in an embedded Starlark
 interpreter rather than a subprocess; `spikes/starlark-confinement`
 demonstrates its fuel accounting, memory accounting, cancellation, and
 closed module loader. The subprocess form ships because it adds no

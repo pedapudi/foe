@@ -18,10 +18,10 @@ fn executor(name: &str, read: Vec<PathBuf>, exec: Vec<PathBuf>) -> (LocalExecuto
     (LocalExecutor::new(sandbox, policy, dir.join("spill"), cancel.clone()), dir, cancel)
 }
 
-fn request(program: &str, args: &[&str], cwd: &Path) -> ExecRequest {
+fn request(contract: &str, args: &[&str], cwd: &Path) -> ExecRequest {
     ExecRequest {
-        program: program.into(),
-        executable: None,
+        command: contract.into(),
+        captured_executable: None,
         args: args.iter().map(|s| s.to_string()).collect(),
         cwd: cwd.to_path_buf(),
         env: BTreeMap::new(),
@@ -38,10 +38,10 @@ fn configured_executor(
     source: &Path,
     mode: SandboxMode,
     write: Vec<PathBuf>,
-) -> (LocalExecutor, ExecRequest, crate::executable::ExecutableTree) {
+) -> (LocalExecutor, ExecRequest, crate::captured_executable::CapturedExecutableTree) {
     let dir = source.parent().unwrap();
-    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3,
+    let config: foe_contract::ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4,
         "name": "immutable executable test",
         "instructions": {"role": "test"},
         "tools": ["configured"],
@@ -52,28 +52,28 @@ fn configured_executor(
         "task": "test"
     }))
     .unwrap();
-    let program = foe_program::document::resolve(&config).unwrap();
-    let executables = crate::executable::ExecutableTree::materialize(&program, dir).unwrap();
-    let policy = Policy::for_episode(&program, &executables, dir);
+    let contract = foe_contract::document::resolve(&config).unwrap();
+    let executables = crate::captured_executable::CapturedExecutableTree::materialize(&contract, dir).unwrap();
+    let policy = Policy::for_episode(&contract, &executables, dir);
     let sandbox = Arc::new(Sandbox::new(mode).unwrap());
     let executor =
         LocalExecutor::new(sandbox, policy, dir.join(format!("spill-{name}")), Arc::new(AtomicBool::new(false)));
     let mut req = request(source.to_str().unwrap(), &[], dir);
-    req.executable = Some(executables.tools["configured"].clone());
+    req.captured_executable = Some(executables.tools["configured"].clone());
     (executor, req, executables)
 }
 
 #[test]
-fn a_committed_script_survives_mutation_replacement_deletion_and_repeated_calls_under_landlock() {
+fn a_captured_script_survives_mutation_replacement_deletion_and_repeated_calls_under_landlock() {
     let dir = scratch("exec", "immutable-script");
     let source = dir.join("tool");
     std::fs::write(dir.join("resource"), "original\n").unwrap();
     std::fs::write(&source, "#!/bin/sh\nread value < resource\nprintf '%s\\n' \"$value\"\n").unwrap();
     std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
     let (executor, req, executables) = configured_executor("script", &source, SandboxMode::Required, Vec::new());
-    let image_link =
-        std::fs::read_link(crate::executable::parent_fd_path(executables.tools["configured"].fd())).unwrap();
-    assert_eq!(image_link.file_name().unwrap(), "tool");
+    let captured_link =
+        std::fs::read_link(crate::captured_executable::parent_fd_path(executables.tools["configured"].fd())).unwrap();
+    assert_eq!(captured_link.file_name().unwrap(), "tool");
     assert_eq!(executor.run(req.clone()).unwrap().stdout, b"original\n");
     std::fs::write(&source, "#!/bin/sh\nprintf 'mutated\\n'\n").unwrap();
     assert_eq!(executor.run(req.clone()).unwrap().stdout, b"original\n");
@@ -85,13 +85,14 @@ fn a_committed_script_survives_mutation_replacement_deletion_and_repeated_calls_
     std::fs::remove_file(&source).unwrap();
     assert_eq!(executor.run(req.clone()).unwrap().stdout, b"original\n");
     let executable = &executables.tools["configured"];
-    let write = std::fs::OpenOptions::new().write(true).open(crate::executable::parent_fd_path(executable.fd()));
-    assert!(write.is_err(), "the committed executable descriptor rejects writes");
+    let write =
+        std::fs::OpenOptions::new().write(true).open(crate::captured_executable::parent_fd_path(executable.fd()));
+    assert!(write.is_err(), "the captured executable descriptor rejects writes");
     assert_eq!(executor.run(req).unwrap().stdout, b"original\n");
 }
 
 #[test]
-fn a_committed_elf_runs_after_its_source_is_replaced_under_landlock() {
+fn a_captured_elf_runs_after_its_source_is_replaced_under_landlock() {
     let dir = scratch("exec", "immutable-elf");
     let source = dir.join("echo");
     std::fs::copy("/bin/echo", &source).unwrap();
@@ -107,8 +108,8 @@ fn a_committed_elf_runs_after_its_source_is_replaced_under_landlock() {
 #[test]
 fn a_configured_multicall_executable_keeps_its_configured_name() {
     let dir = scratch("exec", "multicall-name");
-    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3,
+    let config: foe_contract::ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4,
         "name": "multicall executable test",
         "instructions": {"role": "test"},
         "tools": ["configured"],
@@ -119,19 +120,20 @@ fn a_configured_multicall_executable_keeps_its_configured_name() {
         "task": "test"
     }))
     .unwrap();
-    let program = foe_program::document::resolve(&config).unwrap();
-    let executables = crate::executable::ExecutableTree::materialize(&program, &dir.join("episode")).unwrap();
+    let contract = foe_contract::document::resolve(&config).unwrap();
+    let executables =
+        crate::captured_executable::CapturedExecutableTree::materialize(&contract, &dir.join("episode")).unwrap();
     let executable = executables.tools["configured"].clone();
-    assert_eq!(executable.basename(), "echo");
-    let policy = Policy::for_episode(&program, &executables, &dir);
+    assert_eq!(executable.invocation_name(), "echo");
+    let policy = Policy::for_episode(&contract, &executables, &dir);
     let executor = LocalExecutor::new(
         Arc::new(Sandbox::new(SandboxMode::Required).unwrap()),
         policy,
         dir.join("spill"),
         Arc::new(AtomicBool::new(false)),
     );
-    let mut req = request(program.tool_defs["configured"].exec.to_str().unwrap(), &["committed"], &dir);
-    req.executable = Some(executable);
+    let mut req = request(contract.tool_defs["configured"].exec.to_str().unwrap(), &["committed"], &dir);
+    req.captured_executable = Some(executable);
     let result = executor.run(req).unwrap();
     assert_eq!(result.exit_code, Some(0), "{}", String::from_utf8_lossy(&result.stderr));
     assert_eq!(result.stdout, b"committed\n");
@@ -143,7 +145,7 @@ fn construction_rejects_a_source_without_an_execute_bit() {
     let source = dir.join("tool");
     std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o644)).unwrap();
-    let error = crate::executable::Executable::load(&source).unwrap_err();
+    let error = crate::captured_executable::CapturedExecutable::load(&source).unwrap_err();
     assert!(error.contains("executable file"), "{error}");
 }
 
@@ -166,7 +168,7 @@ fn the_last_runtime_owner_removes_private_executable_storage() {
     let source = dir.join("tool");
     std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let executable = crate::executable::Executable::load(&source).unwrap();
+    let executable = crate::captured_executable::CapturedExecutable::load(&source).unwrap();
     let stored_path = executable.stored_path().to_path_buf();
     assert!(stored_path.exists());
     drop(executable);
@@ -209,22 +211,24 @@ fn executable_storage_skips_a_noexec_preferred_filesystem() {
     let source = dir.join("tool");
     std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "noexec fallback", "instructions": {"role": "test"},
+    let config: foe_contract::ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4, "name": "noexec fallback", "instructions": {"role": "test"},
         "tools": ["configured"],
         "tool_defs": {"configured": {"exec": source, "description": "test executable"}},
         "grants": {"read": [dir]}, "budget": {"model_calls": 1}, "task": "test"
     }))
     .unwrap();
-    let program = foe_program::document::resolve(&config).unwrap();
-    let executables = crate::executable::ExecutableTree::materialize(&program, &preferred.join("episode")).unwrap();
-    let link = std::fs::read_link(crate::executable::parent_fd_path(executables.tools["configured"].fd())).unwrap();
-    assert!(!link.starts_with(noexec), "the selected image came from noexec storage: {link:?}");
+    let contract = foe_contract::document::resolve(&config).unwrap();
+    let executables =
+        crate::captured_executable::CapturedExecutableTree::materialize(&contract, &preferred.join("episode")).unwrap();
+    let link =
+        std::fs::read_link(crate::captured_executable::parent_fd_path(executables.tools["configured"].fd())).unwrap();
+    assert!(!link.starts_with(noexec), "the selected captured came from noexec storage: {link:?}");
     std::fs::remove_dir(preferred).unwrap();
 }
 
 #[test]
-fn declared_tree_snapshots_share_one_stable_image() {
+fn declared_tree_references_share_one_captured_executable() {
     let dir = scratch("exec", "declared-tree-dedup");
     let source = dir.join("tool");
     std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
@@ -236,19 +240,19 @@ fn declared_tree_snapshots_share_one_stable_image() {
             "grants": {"read": [dir.to_path_buf()]}, "budget": {"model_calls": 1}
         })
     };
-    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "declared tree", "instructions": {"role": "test"},
+    let config: foe_contract::ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4, "name": "declared tree", "instructions": {"role": "test"},
         "tools": ["configured"],
         "tool_defs": {"configured": {"exec": source, "description": "same executable"}},
         "grants": {"read": [dir.to_path_buf()]}, "budget": {"model_calls": 1},
-        "programs": {"first": declared("first"), "second": declared("second")}, "task": "test"
+        "child_contracts": {"first": declared("first"), "second": declared("second")}, "task": "test"
     }))
     .unwrap();
-    let program = foe_program::document::resolve(&config).unwrap();
-    let executables = crate::executable::ExecutableTree::materialize(&program, &dir).unwrap();
-    assert_eq!(executables.reachable_entries().len(), 1, "ungranted programs carry no execute authority");
-    assert_eq!(executables.identity_entries().len(), 3, "every declaration can be reconstructed");
-    assert_eq!(executables.child_descriptors("ep_child").unwrap().len(), 2, "one image plus one manifest");
+    let contract = foe_contract::document::resolve(&config).unwrap();
+    let executables = crate::captured_executable::CapturedExecutableTree::materialize(&contract, &dir).unwrap();
+    assert_eq!(executables.reachable_entries().len(), 1, "ungranted child contracts carry no execute authority");
+    assert_eq!(executables.fingerprint_entries().len(), 3, "every declaration can be reconstructed");
+    assert_eq!(executables.child_descriptors("ep_child").unwrap().len(), 2, "one captured plus one manifest");
 }
 
 #[test]

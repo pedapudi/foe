@@ -39,7 +39,7 @@ produced every admitted trajectory.
 
 The Terminal-Bench self-improvement workflow invokes a declared deterministic
 collector as its first tool node. The collector reads the corpus and produces
-a bounded diagnostic digest. Its executable identity includes the collector
+a bounded diagnostic digest. Its executable fingerprint includes the collector
 modules, corpus manifest, and task-selection file. A preflight derivation must
 produce the same bytes as the recorded workflow result. The diagnosis child
 receives only that result and has no read grant for the raw corpus.
@@ -51,8 +51,8 @@ candidate checkout and executable. A mismatch stops the workflow before a
 model call changes source. The corpus must also identify one failed execution
 configuration without an independent audit. The workflow preserves that
 configuration's model, reasoning effort, service tier, and token policy.
-[Program lineage and transition
-evidence](lineage-identity.md#definitions) defines source-revision and runtime
+[Contract lineage and transition
+evidence](adoption.md#definitions) defines source-revision and runtime
 matching. Task execution, corpus snapshotting, and promotion remain separate
 operations. Autonomous cross-run promotion remains unsupported.
 
@@ -74,7 +74,7 @@ have settled. The workflow then completes with the terminal node's value.
 
 This structure keeps the interactive surface small. The author supplies a
 task, a checker, and a two-node workflow. The runtime reuses the ordinary
-program, tool, budget, episode, and workflow concepts.
+contract, tool, budget, episode, and workflow concepts.
 
 ## Acceptance conditions
 
@@ -102,15 +102,15 @@ archives and compiled after the model-backed attempts.
 ## Measured result
 
 The measurements below were collected on 2026-08-22 from three fresh runs of
-`openai-codex/gpt-5.6-sol`. Every run used the same program identity and
-runtime binary. The program identity hashes stable behavior, tool effects,
+`openai-codex/gpt-5.6-sol`. Every run used the same contract fingerprint and
+runtime binary. The contract fingerprint hashes stable behavior, tool effects,
 grant kinds and counts, budgets, child and workflow definitions, and runtime
 contributions.
 The runtime build hash identifies the binary that enforced the contract.
 
 | property | recorded value |
 |---|---|
-| program identity | `sha256:de9298226d3c8e633b18070e5bfa22bdb7278ecbf5b191e4588431ab774875bf` |
+| contract fingerprint | `sha256:de9298226d3c8e633b18070e5bfa22bdb7278ecbf5b191e4588431ab774875bf` |
 | runtime build | `sha256:96a0e63f07e540a575b1c183fd00cc939a9dc0c85fe16d004ee7a3ff2d707824` |
 | root budget | 72,000 input tokens, 6,000 output tokens, 12 model calls, 240 seconds, 2 episodes |
 | model-child budget | 72,000 input tokens, 5,000 output tokens, 10 model calls, 180 seconds |
@@ -162,7 +162,7 @@ result. Its `follows` list names only the task and evaluator output. The child
 therefore receives the information it needs without inheriting an unrelated
 root conversation.
 
-The completion verifier belongs inside the child program. Findings return to
+The completion verifier belongs inside the child contract. Findings return to
 the child that can act on them. One child can revise its work several times
 without consuming another episode slot.
 
@@ -268,7 +268,7 @@ tests, and any repository-wide policy checks that the source tree declares.
 
 ### Requiring prose after a clean verifier result
 
-A clean verifier result already supplies the program's declared acceptance
+A clean verifier result already supplies the contract's declared acceptance
 evidence. Requiring another model turn increases input tokens and latency. It
 also creates a false exhaustion point after the useful work is complete.
 
@@ -289,7 +289,7 @@ episode whose provider-measured usage remains within the allowance.
 
 A verifier finding usually concerns the state held by the child that made
 the change. Feed that finding into the same child through `done_when`.
-Workflow-level retries are appropriate only when the program intends a fresh
+Workflow-level retries are appropriate only when the contract intends a fresh
 episode with fresh context and has budgeted another episode.
 
 ### Allowing the model to modify its evaluator
@@ -345,7 +345,7 @@ Every self-improvement evaluation should retain the following evidence:
 - budget reservations, releases, and final spend;
 - the complete trace-conformance report;
 - external compilation, test, and policy-check results;
-- the model route, program identity, runtime build, sandbox observation, and
+- the model route, contract fingerprint, runtime build, sandbox observation, and
   attempt count.
 
 Per-response accounting reveals context amplification that aggregate totals
@@ -364,7 +364,7 @@ Use the following sequence for a bounded self-improvement task:
 3. Run the evaluator as a tool node.
 4. Pass the task and findings to one terminal model node with narrow read and
    write grants.
-5. Put the evaluator in the child program's `done_when.verify` field.
+5. Put the evaluator in the child contract's `done_when.verify` field.
 6. Keep model-call and token ceilings above observed successful variance.
 7. Re-run an external grader after the episode.
 8. Compile and test the candidate in a complete disposable source tree.

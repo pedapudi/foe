@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Create and validate identity-bound instruction-revision candidates."""
+"""Create and validate instruction revisions against retained evidence."""
 
 from __future__ import annotations
 
@@ -19,10 +19,10 @@ REVISION_FIELDS = ("document", "new_text", "old_text", "section")
 
 
 def resolve_section(document: Any, section: str) -> str:
-    """Return the one instruction text the section key names in a program document.
+    """Return the one instruction text the section key names in a contract document.
 
     The key is searched in the document's own `instructions`, in every
-    nested `programs` entry, and in every workflow model node, at any
+    nested `child_contracts` entry, and in every workflow model node, at any
     depth. A key found in two places is ambiguous and refused, so a
     revision cannot silently apply to the wrong episode's instructions.
     """
@@ -34,7 +34,7 @@ def resolve_section(document: Any, section: str) -> str:
         instructions = value.get("instructions")
         if isinstance(instructions, dict) and isinstance(instructions.get(section), str):
             texts.append(instructions[section])
-        children = value.get("programs")
+        children = value.get("child_contracts")
         if isinstance(children, dict):
             for child in children.values():
                 walk(child)
@@ -79,7 +79,7 @@ def create(
     revision: dict[str, str],
     documents: dict[str, Any],
 ) -> dict[str, Any]:
-    """Bind one instruction revision to the evaluated source, binary, and evidence."""
+    """Associate one instruction revision with its evaluated source, binary, and evidence."""
     body = {
         "schema_version": SCHEMA_VERSION,
         "candidate_kind": KIND,
@@ -94,7 +94,7 @@ def create(
 def validate(
     value: Any, documents: dict[str, Any], evaluated_foe: dict[str, str] | None = None
 ) -> dict[str, Any]:
-    """Validate a complete candidate and optionally require one Foe identity."""
+    """Validate a complete candidate and optionally require one evaluated Foe build."""
     required = {
         "schema_version",
         "candidate_kind",

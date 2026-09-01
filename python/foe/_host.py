@@ -2,7 +2,7 @@
 
 `start_config` launches the binary on a configuration document, reads its
 standard output line by line, and answers `model/request` with the
-embedding program's transport and `host/tool-call` with its host tools.
+embedding contract's transport and `host/tool-call` with its host tools.
 Every line read is a log event; every line written is one of the four
 host-to-foe line types.
 """
@@ -43,7 +43,7 @@ def _load_config(config: Mapping[str, Any] | PathLike) -> dict[str, Any]:
 
 def _collect_host_tool_names(doc: Mapping[str, Any]) -> set[str]:
     names = set(doc.get("host_tools") or {})
-    for child in (doc.get("programs") or {}).values():
+    for child in (doc.get("child_contracts") or {}).values():
         names |= _collect_host_tool_names(child)
     return names
 
@@ -302,7 +302,7 @@ async def start_config(
 
     log_path = Path(os.fspath(log_dir))
     log_path.mkdir(parents=True, exist_ok=True)
-    config_dir = tempfile.mkdtemp(prefix="foe-program-")
+    config_dir = tempfile.mkdtemp(prefix="foe-contract-")
     config_path = Path(config_dir) / "config.json"
     config_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
     try:

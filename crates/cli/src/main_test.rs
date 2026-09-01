@@ -68,7 +68,7 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert_eq!(options.service_tier.as_deref(), Some("priority"));
     assert!(parse("plan --json").is_err(), "--json takes --config");
     assert!(parse("plan --schema --json").is_err(), "--schema stands alone");
-    assert!(parse("plan --config c.json --evidence ev").is_err(), "verification takes --states and --evidence");
+    assert!(parse("plan --config c.json --evidence ev").is_err(), "plan rejects removed adoption options");
     assert!(parse("view --json").is_err(), "an option of another form is refused");
     assert!(parse("fix --host").is_err(), "--host takes its task from the configuration");
     assert!(parse("view").is_err(), "view needs a directory");
@@ -78,10 +78,11 @@ fn every_form_parses_and_foreign_options_are_refused() {
 #[test]
 fn the_schema_is_json_and_names_every_key_of_the_document() {
     let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
-    assert_eq!(schema["properties"]["version"]["const"], 3);
+    assert_eq!(schema["properties"]["version"]["const"], 4);
     let keys: Vec<&str> = schema["properties"].as_object().unwrap().keys().map(String::as_str).collect();
     let expected = [
         "budget",
+        "child_contracts",
         "context",
         "done_when",
         "grants",
@@ -89,8 +90,6 @@ fn the_schema_is_json_and_names_every_key_of_the_document() {
         "instructions",
         "model",
         "name",
-        "program_lineage",
-        "programs",
         "sandbox",
         "task",
         "tool_defs",
@@ -115,9 +114,7 @@ fn golden(line: &str) -> String {
             format!("login provider={provider:?} model={model:?} status={status}")
         }
         Ok(Command::View { dir, serve, port }) => format!("view dir={dir:?} serve={serve} port={port}"),
-        Ok(Command::Plan { config, json, states, evidence }) => {
-            format!("plan config={config:?} json={json} states={states:?} evidence={evidence:?}")
-        }
+        Ok(Command::Plan { config, json }) => format!("plan config={config:?} json={json}"),
         Ok(Command::Schema) => "schema".to_string(),
         Ok(Command::Telemetry { logs, json }) => format!("telemetry logs={logs:?} json={json}"),
         Ok(Command::Help(form)) => format!("help {}", form.name),
@@ -147,13 +144,10 @@ fn representative_invocations_parse_to_known_values() {
         ("login --status", "login provider=None model=None status=true"),
         ("view logs", "view dir=\"logs\" serve=false port=0"),
         ("view logs --serve --port 8080", "view dir=\"logs\" serve=true port=8080"),
-        ("plan", "plan config=None json=false states=None evidence=None"),
-        ("plan --config c.json", "plan config=Some(\"c.json\") json=false states=None evidence=None"),
-        ("plan --config c.json --json", "plan config=Some(\"c.json\") json=true states=None evidence=None"),
-        (
-            "plan --config c.json --states st --evidence ev",
-            "plan config=Some(\"c.json\") json=false states=Some(\"st\") evidence=Some(\"ev\")",
-        ),
+        ("plan", "plan config=None json=false"),
+        ("plan --config c.json", "plan config=Some(\"c.json\") json=false"),
+        ("plan --config c.json --json", "plan config=Some(\"c.json\") json=true"),
+        ("plan --config c.json --states st --evidence ev", "error"),
         ("plan --config c.json --states st", "error"),
         ("plan --schema", "schema"),
         ("plan --schema --json", "error"),

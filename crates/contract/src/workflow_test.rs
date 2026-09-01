@@ -1,0 +1,311 @@
+use super::{model_nodes, node_contract};
+use crate::document::resolve;
+use crate::fingerprint::compute;
+use crate::test_util::{config_value, contract_with, tmp};
+use crate::workflow::{MAX_EDGE_REFERENCES, MAX_POSSIBLE_FIRINGS};
+use crate::{ContractDocument, ContractError};
+use foe_log::RuntimeInfo;
+use serde_json::{json, Value};
+use std::collections::BTreeSet;
+
+/// The graph of docs/workflow.md "The graph", over the fixture's tools.
+fn graph() -> Value {
+    json!({
+        "nodes": {
+            "manifest": { "tool": "list" },
+            "survey": { "tool": "grep", "args": { "pattern": { "$node": "manifest", "pointer": "/top" } },
+                        "follows": ["manifest"], "max_fires": 3 },
+            "propose": {
+                "model": { "name": "propose", "instructions": { "r": "Propose." }, "tools": ["block"],
+                           "grants": { "read": ["ROOT"] }, "budget": { "model_calls": 2 } },
+                "follows": ["task", "manifest", "survey"],
+                "branches": { "accept": ["derive"], "widen": ["survey"] },
+                "max_fires": 3
+            },
+            "derive": { "tool": "derive", "args": { "experiment": { "$node": "propose" } }, "follows": ["propose"], "terminal": true }
+        }
+    })
+}
+
+fn with_graph(root: &std::path::Path, edit: impl FnOnce(&mut Value)) -> Value {
+    let mut value = config_value(root);
+    value["tools"] = json!(["block", "list", "grep", "derive"]);
+    value["host_tools"] = json!({
+        "list": { "description": "d", "params": {}, "effect": "pure" },
+        "grep": { "description": "d", "params": {}, "effect": "pure" },
+        "derive": { "description": "d", "params": {}, "effect": "pure" }
+    });
+    let mut graph = graph();
+    graph["nodes"]["propose"]["model"]["grants"]["read"] = json!([root]);
+    value["workflow"] = graph;
+    edit(&mut value);
+    value
+}
+
+fn rejected(value: Value) -> String {
+    rejection(value).0
+}
+
+fn rejection(value: Value) -> (String, String) {
+    let config: ContractDocument = serde_json::from_value(value).expect("the document parses");
+    match resolve(&config) {
+        Err(ContractError::Invalid { key, rule }) => {
+            assert!(!rule.is_empty());
+            (key, rule)
+        }
+        other => panic!("expected an Invalid error, got {other:?}"),
+    }
+}
+
+/// docs/workflow.md "Nodes" and "Firing": inputs define data edges, a
+/// branch defines a control edge, and both participate in a cycle.
+#[test]
+fn follows_and_branches_define_inputs_and_cycles() {
+    let root = tmp("workflow-edges");
+    let config: ContractDocument = serde_json::from_value(with_graph(&root, |v| {
+        v["workflow"]["nodes"]["derive"]["follows"] = json!(["propose", "manifest"]);
+        v["workflow"]["nodes"]["derive"]["recovery"] = json!({ "follows": ["survey"] });
+    }))
+    .unwrap();
+    let wf = config.workflow.as_ref().unwrap();
+    assert_eq!(wf.edge_references(), 9, "every declared reference is counted before edges are collapsed");
+    let inputs = wf.inputs();
+    assert_eq!(inputs["survey"], vec!["manifest"]);
+    assert_eq!(inputs["derive"], vec!["propose", "manifest"]);
+    assert_eq!(inputs["propose"], vec!["task", "manifest", "survey"], "the task source is an input, listed first");
+    let preds = wf.predecessors();
+    assert_eq!(preds["derive"].len(), 2, "the follows and branch references from propose form one predecessor");
+    assert!(preds["survey"].contains("propose"), "a branch target is a successor");
+    assert!(!preds["propose"].contains("task"), "the task source orders nothing");
+    let cyclic: BTreeSet<String> = ["propose", "survey"].into_iter().map(String::from).collect();
+    assert_eq!(wf.on_cycles(), cyclic);
+    assert!(resolve(&config).is_ok());
+    let contract = resolve(&config).unwrap();
+    assert!(contract.to_value()["workflow"]["nodes"]["propose"]["branches"]["widen"].is_array());
+}
+
+/// docs/workflow.md "The graph" and docs/config.md "Errors": every rule
+/// names the node and the rule it breaks.
+#[test]
+fn every_workflow_rule_names_its_node() {
+    let root = tmp("workflow-rules");
+    std::fs::create_dir_all(root.join("child")).unwrap();
+    type Case<'a> = (&'a str, Box<dyn FnOnce(&mut Value)>);
+    let cases: Vec<Case> = vec![
+        ("workflow.nodes.survey.follows", Box::new(|v| v["workflow"]["nodes"]["survey"]["follows"] = json!(["ghost"]))),
+        (
+            "workflow.nodes.propose.branches.widen",
+            Box::new(|v| v["workflow"]["nodes"]["propose"]["branches"]["widen"] = json!(["ghost"])),
+        ),
+        (
+            "workflow.nodes.propose.recovery.follows",
+            Box::new(|v| v["workflow"]["nodes"]["propose"]["recovery"] = json!({ "follows": ["ghost"] })),
+        ),
+        ("workflow.nodes.manifest.tool", Box::new(|v| v["workflow"]["nodes"]["manifest"]["tool"] = json!("ghost"))),
+        ("workflow.nodes.manifest.verify", Box::new(|v| v["workflow"]["nodes"]["manifest"]["verify"] = json!("ghost"))),
+        (
+            "workflow.nodes.derive.args",
+            Box::new(|v| v["workflow"]["nodes"]["derive"]["args"] = json!({ "e": { "$node": "survey" } })),
+        ),
+        (
+            "workflow.nodes.manifest.",
+            Box::new(|v| v["workflow"]["nodes"]["manifest"]["workflow"] = json!({ "nodes": {} })),
+        ),
+        ("workflow.nodes.manifest.", Box::new(|v| v["workflow"]["nodes"]["manifest"] = json!({ "follows": [] }))),
+        ("workflow.nodes.task.", Box::new(|v| v["workflow"]["nodes"]["task"] = json!({ "tool": "list" }))),
+        ("workflow.nodes.propose.", Box::new(|v| v["workflow"]["nodes"]["propose"]["args"] = json!({}))),
+        ("workflow.nodes.propose.max_fires", Box::new(|v| v["workflow"]["nodes"]["propose"]["max_fires"] = json!(0))),
+        ("workflow.nodes.survey.max_fires", Box::new(|v| v["workflow"]["nodes"]["survey"]["max_fires"] = json!(null))),
+        (
+            "workflow.nodes.propose.model.instructions",
+            Box::new(|v| v["workflow"]["nodes"]["propose"]["model"]["instructions"] = json!({})),
+        ),
+        (
+            "workflow.nodes.propose.model.grants.read[0]",
+            Box::new({
+                let root = root.to_path_buf();
+                move |v| v["grants"]["read"] = json!([root.join("child")])
+            }),
+        ),
+        (
+            "workflow.nodes.inner.workflow.nodes.a.tool",
+            Box::new(|v| {
+                v["workflow"]["nodes"]["inner"] = json!({ "workflow": { "nodes": { "a": { "tool": "ghost" } } } })
+            }),
+        ),
+    ];
+    for (key, edit) in cases {
+        assert_eq!(rejected(with_graph(&root, edit)), key);
+    }
+    let unknown = with_graph(&root, |v| v["workflow"]["recovery"] = json!({ "surprise": 1 }));
+    assert!(serde_json::from_value::<ContractDocument>(unknown).is_err(), "unknown keys are refused");
+}
+
+/// docs/workflow.md "Fingerprint": the labels, the edges, the bindings, the
+/// model child contracts, and the runtime's recovery instruction participate.
+#[test]
+fn fingerprint_hashes_the_graph_and_the_recovery_texts() {
+    let root = tmp("workflow-fingerprint");
+    let runtime = RuntimeInfo { version: "0".into(), build: "unknown".into() };
+    let hash = |edit: &dyn Fn(&mut Value)| {
+        let mut value = with_graph(&root, |_| {});
+        edit(&mut value);
+        let config: ContractDocument = serde_json::from_value(value).unwrap();
+        compute(&resolve(&config).unwrap(), &[], &runtime).unwrap()
+    };
+    let base = hash(&|_| {});
+    let plain = compute(&contract_with(&root, |_| {}).unwrap(), &[], &runtime).unwrap();
+    assert_ne!(base.hash, plain.hash, "a workflow participates");
+    let edge_limit = &base.document["workflow"]["edge_reference_limit"];
+    assert_eq!(edge_limit["maximum"], json!(MAX_EDGE_REFERENCES));
+    assert_eq!(edge_limit["fields"], json!(["follows", "branches", "recovery.follows"]));
+    assert_eq!(edge_limit["nested"], json!(true));
+    let texts = &base.document["workflow"]["texts"];
+    for (key, text) in crate::harness_text::workflow_texts() {
+        assert_eq!(texts[key], json!(text));
+    }
+    assert!(base.document["workflow"]["nodes"]["propose"]["model"].as_str().unwrap().starts_with("sha256:"));
+    assert_eq!(base.document["workflow"]["nodes"]["derive"]["max_fires"], json!(1));
+    let relabeled =
+        hash(&|v| v["workflow"]["nodes"]["propose"]["branches"] = json!({ "ok": ["derive"], "widen": ["survey"] }));
+    assert_ne!(relabeled.hash, base.hash, "labels participate");
+    let rebound = hash(&|v| v["workflow"]["nodes"]["survey"]["args"]["pattern"]["pointer"] = json!("/other"));
+    assert_ne!(rebound.hash, base.hash, "bindings participate");
+    let widened = hash(&|v| v["workflow"]["nodes"]["propose"]["recovery"] = json!({ "follows": ["manifest"] }));
+    assert_ne!(widened.hash, base.hash, "recovery widening participates");
+    let repeated = hash(&|v| v["workflow"]["nodes"]["derive"]["follows"] = json!(["propose", "propose"]));
+    assert_ne!(repeated.hash, base.hash, "each declared edge reference participates");
+    let capped = hash(&|v| v["workflow"]["recovery"] = json!({ "max_interventions": 1 }));
+    assert_ne!(capped.hash, base.hash, "max_interventions participates");
+    let revised = hash(&|v| v["workflow"]["nodes"]["propose"]["model"]["instructions"]["r"] = json!("Other."));
+    assert_ne!(revised.hash, base.hash, "a model node's contract participates");
+}
+
+/// docs/workflow.md "Firing": the possible-firing count sums each node's
+/// effective `max_fires`, and a nested workflow node multiplies its own
+/// count by one plus the count of the graph it holds. A graph above the
+/// runtime bound is refused before anything runs.
+#[test]
+fn a_graph_declares_how_many_firings_it_can_perform() {
+    let plain: crate::workflow::WorkflowConfig = serde_json::from_value(json!({ "nodes": {
+        "a": { "tool": "t" },
+        "b": { "tool": "t", "follows": ["a"], "max_fires": 3 }
+    } }))
+    .unwrap();
+    assert_eq!(plain.possible_firings(), 4, "one firing of `a` and three of `b`");
+
+    let nested: crate::workflow::WorkflowConfig = serde_json::from_value(json!({ "nodes": {
+        "outer": { "max_fires": 3, "workflow": { "nodes": {
+            "inner": { "tool": "t", "max_fires": 2, "terminal": true }
+        } } }
+    } }))
+    .unwrap();
+    assert_eq!(
+        nested.possible_firings(),
+        9,
+        "three firings of `outer`, each of which is itself a firing and runs two of `inner`"
+    );
+
+    let root = tmp("workflow-firing-bound");
+    let over = with_graph(&root, |value| {
+        value["workflow"] = json!({ "nodes": {
+            "loop": { "tool": "list", "follows": ["back"], "max_fires": 4096 },
+            "back": { "tool": "grep", "follows": ["loop"], "max_fires": 4096, "terminal": true }
+        } });
+    });
+    let (key, rule) = rejection(over);
+    assert_eq!(key, "workflow");
+    assert!(rule.contains("8192 possible firings"), "{rule}");
+    assert!(rule.contains(&MAX_POSSIBLE_FIRINGS.to_string()), "{rule}");
+}
+
+/// docs/workflow.md "The graph": construction counts every declared edge
+/// reference before it builds predecessor sets or cycle indexes. The dense
+/// graph deliberately lacks the `max_fires` required by its cycles; reaching
+/// cycle validation before the ceiling check would report that later rule.
+#[test]
+fn dense_edge_references_are_refused_before_graph_indexing() {
+    let root = tmp("workflow-edge-bound-dense");
+    let names: Vec<String> = (0..65).map(|n| format!("node-{n:02}")).collect();
+    let nodes: serde_json::Map<String, Value> =
+        names.iter().map(|name| (name.clone(), json!({ "tool": "list", "follows": names }))).collect();
+    let over = with_graph(&root, |value| value["workflow"] = json!({ "nodes": nodes }));
+    let (key, rule) = rejection(over);
+    assert_eq!(key, "workflow");
+    assert!(rule.contains("4225 workflow edge references"), "{rule}");
+    assert!(rule.contains(&MAX_EDGE_REFERENCES.to_string()), "{rule}");
+}
+
+/// docs/workflow.md "The graph": the edge-reference ceiling covers every
+/// nested workflow before any graph at any depth is indexed. Thirty-three
+/// shallow-firing layers prove that nesting does not reset the count. The
+/// deepest reference is also invalid, so reaching nested validation would
+/// report that later rule.
+#[test]
+fn nested_edge_references_share_one_construction_ceiling() {
+    let root = tmp("workflow-edge-bound-nested");
+    let follows = vec!["task"; 129];
+    let mut leaf_follows = vec!["task"; 128];
+    leaf_follows.push("absent");
+    let mut workflow = json!({ "nodes": {
+        "leaf": { "tool": "list", "follows": leaf_follows, "terminal": true }
+    } });
+    for depth in 0..32 {
+        let mut nodes = serde_json::Map::new();
+        nodes
+            .insert(format!("level-{depth:02}"), json!({ "workflow": workflow, "follows": follows, "terminal": true }));
+        workflow = json!({ "nodes": nodes });
+    }
+    let over = with_graph(&root, |value| value["workflow"] = workflow);
+    let (key, rule) = rejection(over);
+    assert_eq!(key, "workflow");
+    assert!(rule.contains("4257 workflow edge references"), "{rule}");
+    assert!(rule.contains(&MAX_EDGE_REFERENCES.to_string()), "{rule}");
+}
+
+/// A graph whose nodes declare branches, at the top level and inside a
+/// nested workflow node.
+fn branching_config() -> ContractDocument {
+    serde_json::from_value(json!({
+        "version": 4, "name": "wf", "instructions": { "r": "x" }, "tools": ["block"],
+        "grants": { "read": ["/p"], "spawn": ["helper"] }, "budget": { "model_calls": 10 }, "task": "t",
+        "child_contracts": { "helper": { "name": "helper", "instructions": { "r": "h" }, "tools": ["block"],
+                                  "grants": { "read": ["/p"] }, "budget": { "model_calls": 1 } } },
+        "workflow": { "nodes": {
+            "plan": { "model": { "name": "plan", "instructions": { "r": "p" }, "tools": ["block"],
+                                 "grants": { "read": ["/p"] }, "budget": { "model_calls": 2 },
+                                 "done_when": { "returns": { "type": "object", "properties": { "n": { "type": "integer" } }, "required": ["n"] } } },
+                      "branches": { "go": [], "stop": [] } },
+            "inner": { "workflow": { "nodes": {
+                "draft": { "model": { "name": "draft", "instructions": { "r": "d" }, "tools": ["block"],
+                                      "grants": { "read": ["/p"] }, "budget": { "model_calls": 2 } },
+                           "branches": { "ok": [] } }
+            } } }
+        } }
+    }))
+    .unwrap()
+}
+
+/// docs/workflow.md "Choice points": the runtime adds `branch` to the
+/// returns schema as a required enum over the labels, creating the schema
+/// when the node declared none.
+#[test]
+fn branch_is_added_to_the_returns_schema() {
+    let config = branching_config();
+    let nodes = model_nodes(config.workflow.as_ref().unwrap(), "");
+    let paths: Vec<&str> = nodes.iter().map(|(p, _)| p.as_str()).collect();
+    assert_eq!(paths, ["inner/draft", "plan"]);
+    let plan = node_contract(nodes[1].1);
+    let returns = plan.done_when.unwrap().returns.unwrap();
+    assert_eq!(returns["properties"]["branch"], json!({ "type": "string", "enum": ["go", "stop"] }));
+    let required = returns["required"].as_array().unwrap();
+    assert!(required.contains(&json!("branch")), "`branch` is required: {required:?}");
+    assert!(required.contains(&json!("n")), "the declared requirement is kept: {required:?}");
+    assert_eq!(returns["properties"]["n"], json!({ "type": "integer" }), "the declared schema is kept");
+    let draft = node_contract(nodes[0].1);
+    let returns = draft.done_when.unwrap().returns.unwrap();
+    assert_eq!(
+        returns,
+        json!({ "type": "object", "properties": { "branch": { "type": "string", "enum": ["ok"] } }, "required": ["branch"] })
+    );
+}

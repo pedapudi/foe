@@ -1,14 +1,14 @@
 # Exec transport
 
-A configuration whose model is a program of your own. When `model.provider`
+A configuration whose model is a transport executable. When `model.provider`
 is `exec`, foe starts the file named by `model.exec` once per model request,
 writes one `model/request` line to its standard input, and reads
-`model/chunk` lines from its standard output. The program holds its own
+`model/chunk` lines from its standard output. The transport process holds its own
 credential and speaks to whatever it likes; foe records the exchange in the
 log exactly as it records a built-in client. `docs/models.md` specifies the
 two line shapes.
 
-The directory holds two such programs.
+The directory holds two such transport executables.
 
 | file | what it answers with |
 |---|---|
@@ -16,7 +16,7 @@ The directory holds two such programs.
 | `litellm-transport` | a real provider, through `litellm.completion` with streaming on |
 
 `config.json` names the first one. The runner creates a disposable project,
-copies the program into it, materializes the configuration with absolute
+copies the transport executable into it, materializes the configuration with absolute
 paths, runs foe, and checks the episode log.
 
 The runner requires `/usr/bin/python3`.
@@ -39,7 +39,7 @@ Each run creates `target/foe-exec-transport-demo.XXXXXX/`, holding the
 materialized configuration, the disposable project, and the episode log.
 The runner prints a command that serves the viewer for that log.
 
-## What the program receives
+## What the transport process receives
 
 The configuration's `model` block is the whole interface.
 
@@ -53,13 +53,13 @@ The configuration's `model` block is the whole interface.
 ```
 
 `provider`, `exec`, `model`, and `max_output_tokens` are read by the
-runtime. Every other key travels to the program as `options` on the request
-line, which is how a program learns where its own credential or its own data
-lives. This example uses `readme` for that: the program answers the first
+runtime. Every other key travels to the transport process as `options` on the
+request line. These options tell the process where its credential or data
+lives. This example uses `readme`: the process answers the first
 request with a `read` call on the path the option names, and the second with
 one sentence of text.
 
-The program runs under the episode's sandbox, narrowed as for a configured
+The transport process runs under the episode's sandbox, narrowed as for a configured
 tool. It may read the episode's read roots, it may write the write roots, it
 may execute its own file, it may open TCP connections, it may read the
 resolver configuration, and it starts with an empty environment. Every other
@@ -82,15 +82,15 @@ sandbox permits:
   installed, and change its first line to that environment's interpreter;
 - set `model.exec` to the copy and `model.model` to a routed model name;
 - replace the `readme` option with `api_key_file`, naming a file whose whole
-  contents are the key. The program reads it as `options.api_key_file`.
+  contents are the key. The transport process reads it as `options.api_key_file`.
 
 ## What to look for
 
 The `request/header` event carries the route `exec` and the model name from
-the configuration. The `assistant/chunk` events are the program's chunks,
-recorded by foe as they arrived; they arrive together when the program
+the configuration. The `assistant/chunk` events are the process's chunks,
+recorded by foe as they arrived; they arrive together when the process
 exits, because the executor captures its output whole. The
-`episode/start.program.model` block names the program and every option
+`episode/start.contract.model` block names the transport executable and every option
 passed to it. In the viewer, the conversation tab's system prompt row names
 the route `exec/exec-transport-demo`.
 
@@ -98,6 +98,6 @@ the route `exec/exec-transport-demo`.
 
 - the `request/header` route is `exec` with the model name `exec-transport-demo`;
 - the `tool/result` for the `read` call carries the project README's text,
-  so the program's tool call reached the runtime and the grant permitted it;
-- the outcome is `completed` with the sentence the program's second answer
+  so the process's tool call reached the runtime and the grant permitted it;
+- the outcome is `completed` with the sentence the process's second answer
   produced.

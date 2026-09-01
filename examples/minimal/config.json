@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "minimal",
   "instructions": {
     "role": "You are a coding agent working in a Python repository. Make the smallest change that completes the task, then run the tests."

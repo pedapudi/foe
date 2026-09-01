@@ -118,7 +118,7 @@ def _trial_task(path: Path) -> str:
     return task.rsplit("/", 1)[-1]
 
 
-def _validate_episode_identity(path: Path, runtime_binary: str) -> None:
+def _validate_episode_runtime(path: Path, runtime_binary: str) -> None:
     starts = []
     with path.open(encoding="utf-8") as lines:
         for line_number, line in enumerate(lines, 1):
@@ -135,7 +135,7 @@ def _validate_episode_identity(path: Path, runtime_binary: str) -> None:
     data = starts[0].get("data")
     runtime = data.get("runtime") if isinstance(data, dict) else None
     if not isinstance(runtime, dict) or runtime.get("build") != runtime_binary:
-        raise ValueError(f"Foe episode log has a different runtime identity: {path}")
+        raise ValueError(f"Foe episode log has a different runtime fingerprint: {path}")
 
 
 def _validate_retained_evidence(
@@ -155,12 +155,12 @@ def _validate_retained_evidence(
         raise ValueError(f"Terminal-Bench run has no Foe trajectory diagnostics: {run_dir}")
     for path in diagnostics:
         value = json.loads(path.read_text(encoding="utf-8"))
-        evidence = value.get("evidence_identity") if isinstance(value, dict) else None
+        evidence = value.get("evidence_fingerprints") if isinstance(value, dict) else None
         if (
             not isinstance(evidence, dict)
             or evidence.get("runtime_build") != identity["runtime_binary"]
         ):
-            raise ValueError(f"Foe trajectory diagnostics have a different runtime identity: {path}")
+            raise ValueError(f"Foe trajectory diagnostics have a different runtime fingerprint: {path}")
         task = value.get("task")
         if not isinstance(task, str) or task.rsplit("/", 1)[-1] not in tasks:
             raise ValueError(f"Foe trajectory diagnostics are outside their campaign: {path}")
@@ -172,7 +172,7 @@ def _validate_retained_evidence(
     if not episodes:
         raise ValueError(f"Terminal-Bench run has no Foe episode logs: {run_dir}")
     for path in episodes:
-        _validate_episode_identity(path, identity["runtime_binary"])
+        _validate_episode_runtime(path, identity["runtime_binary"])
 
 
 def _case_groups(contents: bytes, context: Path) -> tuple[str, dict[str, str]]:
@@ -218,7 +218,7 @@ def _role(path: Path) -> str:
         return "verifier_artifact"
     if path.name == "foe-diagnostics.json":
         return "trajectory_diagnostics"
-    if path.name in ("config.json", "foe-invocation.json", "foe-program.json"):
+    if path.name in ("config.json", "foe-invocation.json", "foe-contract.json"):
         return "adapter_invocation"
     return "adapter_diagnostics"
 

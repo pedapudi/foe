@@ -169,7 +169,7 @@ pub fn derive_span(events: &[Event], from_seq: u64, upto_seq: u64, consumed_inbo
         .collect();
     // A `tool/result` whose opening record is a `tool/inner-call` never
     // enters derived messages: the outer composing call's result is the
-    // only account of the program that reaches the model.
+    // only account of the contract that reaches the model.
     let inner: BTreeSet<&str> = events
         .iter()
         .filter_map(|e| match &e.data {
@@ -213,7 +213,7 @@ fn user_text(text: &str) -> Message {
 }
 
 /// The continuation message a compaction contributes: the state as
-/// labeled lines, then the model's summary. Identity hashes the three
+/// labeled lines, then the model's summary. Fingerprint hashes the three
 /// templates; `STATE_LABELS` is the schema the lines follow.
 pub const CONTINUATION_MESSAGE: &str = "## Continuation state\n\n{state}\n\n## Summary\n\n{summary}";
 pub const STATE_ITEM: &str = "\n- {item}";
@@ -240,7 +240,7 @@ pub fn render_continuation(summary: &CompactionSummary) -> String {
     let amount = |n: Option<u64>| n.map_or("unlimited".to_string(), |n| n.to_string());
     let (b, c) = (s.budget_remaining, s.covered);
     let children: Vec<String> =
-        s.children.iter().map(|k| format!("{} ({}): {}", k.id, k.program, kind(&k.outcome))).collect();
+        s.children.iter().map(|k| format!("{} ({}): {}", k.id, k.contract, kind(&k.outcome))).collect();
     let values = [
         format!(" seq {} to {}", c.first_seq, c.last_seq),
         format!(" {}", s.done_when),

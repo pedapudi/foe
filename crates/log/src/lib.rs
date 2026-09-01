@@ -21,7 +21,7 @@ pub mod fold;
 pub mod seed;
 
 /// The log format version this crate writes and reads.
-pub const LOG_VERSION: u32 = 2;
+pub const LOG_VERSION: u32 = 3;
 
 /// One line of the log.
 ///
@@ -38,8 +38,8 @@ pub struct Event {
 /// Every event type, implemented or reserved.
 ///
 /// The `type` field on the wire is the variant's `serde(rename)`. Reserved
-/// variants exist so that a version 2 reader can parse logs written by a
-/// later version; nothing in version 2 emits them.
+/// variants exist so that a version 3 reader can parse logs written by a
+/// later version; nothing in version 3 emits them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum EventData {
@@ -96,7 +96,7 @@ pub enum EventData {
     #[serde(rename = "budget/release")]
     BudgetRelease { child_id: String, spent: BudgetAmount },
     #[serde(rename = "spawn/start")]
-    SpawnStart { child_id: String, program: String, context: SpawnContext, call_id: String },
+    SpawnStart { child_id: String, contract: String, context: SpawnContext, call_id: String },
     #[serde(rename = "spawn/end")]
     SpawnEnd { child_id: String, outcome: Outcome },
 
@@ -241,9 +241,9 @@ pub struct EpisodeStart {
     pub fork_origin: Option<ForkOrigin>,
     pub team_id: Option<String>,
     /// The resolved configuration with `task` removed.
-    pub program: serde_json::Value,
-    /// `sha256:<hex>` over the program; see docs/design.md "Programs and identity".
-    pub identity: String,
+    pub contract: serde_json::Value,
+    /// `sha256:<hex>` over the execution contract.
+    pub contract_fingerprint: String,
     pub task: String,
     pub runtime: RuntimeInfo,
     pub sandbox: SandboxInfo,
@@ -588,7 +588,7 @@ pub struct VerificationResult {
     pub tool: String,
     /// For a configured executable, `sha256:<hex>` over its file content at
     /// invocation; for a built-in or host tool, the runtime build hash.
-    pub verifier_identity: String,
+    pub verifier_fingerprint: String,
     pub status: VerificationStatus,
     /// The finding strings the `verify` inbox item carries; empty for
     /// `accepted` and for `failed`.
@@ -782,7 +782,7 @@ pub struct CompactedFiles {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChildSummary {
     pub id: String,
-    pub program: String,
+    pub contract: String,
     pub outcome: Outcome,
 }
 

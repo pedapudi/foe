@@ -15,13 +15,13 @@ use serde_json::json;
 use starlark_confinement_spike::confined_dialect;
 use starlark_confinement_spike::confined_globals;
 use starlark_confinement_spike::fixed_dispatcher;
-use starlark_confinement_spike::run_program;
+use starlark_confinement_spike::run_contract;
 use starlark_confinement_spike::EvalFailure;
 use starlark_confinement_spike::Limits;
 use starlark_confinement_spike::Success;
 
 fn run(source: &str) -> Result<Success, EvalFailure> {
-    run_program(source, &Limits::generous(), fixed_dispatcher(json!({"ok": true})), Arc::new(AtomicBool::new(false)))
+    run_contract(source, &Limits::generous(), fixed_dispatcher(json!({"ok": true})), Arc::new(AtomicBool::new(false)))
 }
 
 fn error_message(source: &str) -> String {
@@ -226,7 +226,7 @@ fn import_statement_does_not_parse() {
 #[test]
 fn non_termination_hits_the_step_bound() {
     let limits = Limits { steps: 100_000, ..Limits::generous() };
-    let result = run_program(
+    let result = run_contract(
         "def main():\n    n = 0\n    for i in range(1000000000):\n        n += i\n    return n\n",
         &limits,
         fixed_dispatcher(json!(null)),
@@ -261,7 +261,7 @@ fn recursion_hits_a_bound() {
 #[test]
 fn memory_exhaustion_hits_the_heap_bound() {
     let limits = Limits { heap_bytes: 8 << 20, ..Limits::generous() };
-    let result = run_program(
+    let result = run_contract(
         "def main():\n    xs = []\n    for i in range(100000000):\n        xs.append(str(i) * 100)\n    return len(xs)\n",
         &limits,
         fixed_dispatcher(json!(null)),
@@ -285,7 +285,7 @@ fn memory_exhaustion_hits_the_heap_bound() {
 #[test]
 fn one_large_allocation_overshoots_the_heap_bound_before_failing() {
     let limits = Limits { heap_bytes: 1 << 20, ..Limits::generous() };
-    let result = run_program(
+    let result = run_contract(
         "def main():\n    s = 'x' * 50000000\n    return len(s)\n",
         &limits,
         fixed_dispatcher(json!(null)),
@@ -304,11 +304,11 @@ fn one_large_allocation_overshoots_the_heap_bound_before_failing() {
     }
 }
 
-/// The inner-call bound stops a program that loops over `call_tool`.
+/// The inner-call bound stops a contract that loops over `call_tool`.
 #[test]
 fn inner_call_bound_is_enforced() {
     let limits = Limits { inner_calls: 10, ..Limits::generous() };
-    let result = run_program(
+    let result = run_contract(
         "def main():\n    for i in range(100):\n        call_tool('probe', {'i': i})\n    return 0\n",
         &limits,
         fixed_dispatcher(json!(null)),
@@ -323,17 +323,17 @@ fn inner_call_bound_is_enforced() {
     }
 }
 
-/// The source-byte bound rejects an oversized program before parsing.
+/// The source-byte bound rejects an oversized contract before parsing.
 #[test]
 fn source_byte_bound_is_enforced() {
     let limits = Limits { source_bytes: 100, ..Limits::generous() };
     let source = format!("def main():\n    return {:>200}\n", 1);
-    let result = run_program(&source, &limits, fixed_dispatcher(json!(null)), Arc::new(AtomicBool::new(false)));
+    let result = run_contract(&source, &limits, fixed_dispatcher(json!(null)), Arc::new(AtomicBool::new(false)));
     assert!(matches!(result, Err(EvalFailure::SourceTooLarge { .. })), "expected the source bound, got {result:?}");
 }
 
 /// Fuel accounting: the reported step count grows in proportion to the
-/// work the program performs, so a fixed step budget has a predictable
+/// work the contract performs, so a fixed step budget has a predictable
 /// meaning.
 #[test]
 fn fuel_accounting_scales_with_work() {
@@ -367,7 +367,7 @@ fn cancellation_interrupts_a_running_evaluation() {
     let cancel_for_eval = cancel.clone();
     let worker = std::thread::spawn(move || {
         let started = Instant::now();
-        let result = run_program(
+        let result = run_contract(
             "def main():\n    n = 0\n    for i in range(1000000):\n        for j in range(1000000):\n            n += j\n    return n\n",
             &Limits {
                 steps: u64::MAX,
@@ -391,7 +391,7 @@ fn cancellation_interrupts_a_running_evaluation() {
 fn dispatch_is_disabled_during_module_load() {
     let calls = Arc::new(AtomicBool::new(false));
     let calls_seen = calls.clone();
-    let result = run_program(
+    let result = run_contract(
         "x = call_tool('probe', {})\ndef main():\n    return x\n",
         &Limits::generous(),
         Box::new(move |_, _| {
@@ -410,10 +410,10 @@ fn dispatch_is_disabled_during_module_load() {
 }
 
 /// The worked example from docs/code-mode.md "Outer call contract": a
-/// program narrows a tool result and returns a JSON value.
+/// contract narrows a tool result and returns a JSON value.
 #[test]
-fn a_program_narrows_a_tool_result() {
-    let result = run_program(
+fn a_contract_narrows_a_tool_result() {
+    let result = run_contract(
         r#"
 def main():
     result = call_tool("grep", {"pattern": "TODO", "path": ".", "limit": 100})
@@ -429,15 +429,15 @@ def main():
         }),
         Arc::new(AtomicBool::new(false)),
     )
-    .expect("program succeeds");
+    .expect("contract succeeds");
     assert_eq!(result.value, json!({"matches": 17, "files": 5}));
     assert_eq!(result.usage.inner_calls, 1);
 }
 
-/// An inner error surfaces as `is_error` and the program can continue.
+/// An inner error surfaces as `is_error` and the contract can continue.
 #[test]
-fn a_program_inspects_an_inner_error_and_continues() {
-    let result = run_program(
+fn a_contract_inspects_an_inner_error_and_continues() {
+    let result = run_contract(
         r#"
 def main():
     result = call_tool("grep", {"pattern": "["})
@@ -449,7 +449,7 @@ def main():
         Box::new(|_, _| Err(json!({"error": "invalid pattern"}))),
         Arc::new(AtomicBool::new(false)),
     )
-    .expect("program handles the inner error");
+    .expect("contract handles the inner error");
     assert_eq!(result.value, json!({"failed": true, "error": "invalid pattern"}));
 }
 

@@ -245,7 +245,7 @@ that failed before producing any.
 
 Under nesting, a three-level tree opens in two clicks and stands in 484
 pixels: the root step shows one line for the spawn it issued, naming the
-child's program, its identifier, how it ended and what it spent, and each
+child's contract, its identifier, how it ended and what it spent, and each
 click opens one more level. A fourth level is not drawn inline; the node
 names the child and offers a control that selects it in the page.
 

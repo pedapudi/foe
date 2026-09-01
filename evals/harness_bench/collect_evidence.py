@@ -41,7 +41,7 @@ def log_summary(path: Path) -> dict[str, Any]:
     usages = [message.get("usage", {}) for message in assistant]
     return {
         "log": str(path),
-        "program": starts[0].get("program", {}).get("name") if starts else None,
+        "contract": starts[0].get("contract", {}).get("name") if starts else None,
         "outcome": outcome_identity(ends[-1]) if ends else None,
         "model_calls": sum(event.get("type") == "model/request" for event in values),
         "usage": {

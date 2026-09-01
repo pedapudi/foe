@@ -8,7 +8,7 @@ secondary sources are marked `unverified`.
 
 The document uses three terms:
 
-- A **harness** is the program that runs a model in a loop with tools. Claude
+- A **harness** is the contract that runs a model in a loop with tools. Claude
   Code, Codex CLI, and Cursor are harnesses.
 - An **autonomous agent product** is a hosted harness that accepts a task,
   runs it in a cloud sandbox without a person present, and returns a result.
@@ -60,7 +60,7 @@ autonomous agent product.
 Exo commit
 [`9606566`](https://github.com/exoharness/exo/commit/960656626097b3a4ef56f3e4aff3c25573c1623d),
 dated August 19, 2026, in Pacific time, is the source for this comparison.
-The workspace reports version 0.1.0, publishes no tags or releases, and
+The workspace reports version 0.2.0, publishes no tags or releases, and
 describes its public API as unstable
 ([version](https://github.com/exoharness/exo/blob/960656626097b3a4ef56f3e4aff3c25573c1623d/Cargo.toml#L14-L18),
 [releases](https://github.com/exoharness/exo/releases),
@@ -104,7 +104,7 @@ Codex, Claude Code, or Cursor may still compact context internally
 
 Exo specializes in long-lived agents whose executors, tools, prompts, and
 sandboxes can change while durable state survives. foe specializes in bounded
-runs called episodes. Before each episode begins, a content-addressed program
+runs called episodes. Before each episode begins, a content-addressed contract
 fixes its behavior, authority, budget, termination rule, and runtime text.
 
 ### Protocols
@@ -231,18 +231,18 @@ in the survey. Many interactive harnesses expose the Agent Client Protocol
 
 The comparison below is against documented behavior of the surveyed systems.
 
-- **Program identity as a hash computed from configuration alone.** foe
-  defines `identity(program)` as a SHA-256 digest over instructions, tool
-  specifications, grant policy, budget, termination condition, child program
-  identities, runtime-contributed strings, and runtime version. Computing the
-  identity does not start an executable, access a network, or read a
+- **Contract fingerprint as a hash computed from configuration alone.** foe
+  defines `fingerprint(contract)` as a SHA-256 digest over instructions, tool
+  specifications, grant policy, budget, termination condition, child contract
+  fingerprints, runtime-contributed strings, and runtime version. Computing the
+  fingerprint does not start an executable, access a network, or read a
   credential. No surveyed system documents a
-  content-addressed identity for an agent configuration. Managed Agents
+  content-addressed fingerprint for an agent configuration. Managed Agents
   references an agent by a server-assigned id; Claude Code subagents are
   named files. Exo issue
   [154](https://github.com/exoharness/exo/issues/154) proposes a harness hash,
   but the comparison commit does not implement one. foe is the only implemented
-  system in the survey with this content-addressed program identity.
+  system in the survey with this content-addressed contract fingerprint.
 - **Every model request reconstructable from an append-only log, with
   byte-stable prefixes.** Transcript recording is common: Codex `--json`
   streams events, SWE-agent writes trajectory files, Cursor's API exposes a
@@ -266,7 +266,7 @@ The comparison below is against documented behavior of the surveyed systems.
   restricts filesystem and network. Both express policy as a mode or a path
   list applied to the whole process. foe's grants name individual
   executables and type each tool by effect (`pure`, `reads`, `writes`,
-  `execs`, or `spawns`). Program construction rejects a tool whose required
+  `execs`, or `spawns`). Contract construction rejects a tool whose required
   effect its grants do not cover. The runtime gives each tool only the
   capability handle authorized by its effect. The
   Landlock mechanism is shared with Codex CLI; the effect typing and
@@ -274,7 +274,7 @@ The comparison below is against documented behavior of the surveyed systems.
 - **Budget as a pool reserved down an episode tree.** Claude Code's
   `--max-budget-usd` is a cap that, when reached, stops running subagents
   and refuses new ones. Managed Agents has session budgets. foe additionally
-  reserves the budget the child program declares from the parent's remainder
+  reserves the budget the child contract declares from the parent's remainder
   at spawn and returns the unspent part when the child settles, alongside
   caps on depth,
   lifetime episode count, and concurrency. The reservation-and-return
@@ -353,12 +353,12 @@ credentials by placing the model transport in a separate process.
 
 ## Default coding tool surface
 
-The built-in coding program exposes `read`, `grep`, `edit`, `bash`, and
+The built-in coding contract exposes `read`, `grep`, `edit`, `bash`, and
 `retrieve`.
 These five tools cover inspection, content search, exact text replacement,
 and arbitrary local commands. The `bash` tool also provides file discovery,
 file creation, version control, builds, and tests. This dependence gives
-read-only programs less file-discovery capability and makes common file
+read-only execution contracts less file-discovery capability and makes common file
 operations harder to constrain and inspect.
 
 ### Search uses ripgrep's engine already
@@ -423,7 +423,7 @@ the model-facing vocabulary small.
 
 1. **Path discovery.** Add one read-effect tool named `files`. It lists paths
    under a granted root, filters by glob and entry kind, honors ignore files,
-   and returns a bounded deterministic result. A read-only program can then
+   and returns a bounded deterministic result. A read-only contract can then
    discover an empty file, a binary asset, or a filename whose contents
    contain no searchable term.
 2. **Create, remove, and rename text files.** Extend `edit` with these three
@@ -442,7 +442,7 @@ host tools because their authority is installation-specific.
 ## Features to borrow from Exo
 
 Exo's useful mechanisms fit foe when each mechanism preserves a fresh,
-bounded episode and a fixed program identity.
+bounded episode and a fixed contract fingerprint.
 
 1. **Forks tied to workspace state.** Log-prefix seeding is exposed through
    the running form's `--fork`. Record a caller-supplied workspace snapshot
@@ -453,7 +453,7 @@ bounded episode and a fixed program identity.
    general artifact database.
 3. **Verification-gated self-extension.** Let a child episode modify foe in a
    separate worktree. Build and test the candidate before starting it as a
-   fresh program identity. The active episode continues under its original
+   fresh contract fingerprint. The active episode continues under its original
    binary and policy.
 4. **Enforced process resources.** Derive CPU, memory, and process-count
    limits through Linux control groups (cgroups). Record whether the host
@@ -468,7 +468,7 @@ credential stores should remain host integrations. foe can record their
 attestations while its inner grant policy remains authoritative. Persistent
 agent identities, resumed completed episodes, hot-loaded tools, mutable
 executor policy, and agent replacement of the active kernel would weaken the
-bounded program contract and should stay outside foe.
+bounded execution contract and should stay outside foe.
 
 ## How a conventional harness would delegate to foe
 
@@ -489,8 +489,8 @@ This path works from every harness with a shell tool.
 
 **MCP server.** A proposed `foe mcp` subcommand speaks MCP over standard input
 and output. It exposes `run_episode`, which accepts `config`, `task`, and
-optional `budget` overrides. It also exposes `identity`, which returns the
-program hash. Claude Code registers the server with
+optional `budget` overrides. It also exposes `fingerprint`, which returns the
+contract fingerprint. Claude Code registers the server with
 `claude mcp add foe -- foe mcp`. The tool result is the same final JSON object.
 Two constraints shape this path.
 
@@ -504,7 +504,7 @@ polls the handle with `tasks/get`.
 Claude Code subagents cannot be external processes. A subagent definition can
 present foe as a named target by permitting only `mcp__foe__run_episode`.
 
-**Agent SDK.** A Python program using the Agent SDK defines an in-process
+**Agent SDK.** A Python application using the Agent SDK defines an in-process
 tool that calls foe's standard-library Python package and returns the typed
 outcome. This path suits pipelines already written against the Agent SDK.
 
@@ -543,7 +543,7 @@ JetBrains, Neovim, and Emacs clients can launch any registered agent. A
 `Completed` and `refusal` on `Blocked`. That subcommand makes foe launchable
 from those editors and discoverable through the registry. The payload contains
 the prompt text and the working directory supplied by the client. foe maps the
-directory to read and write roots from a default program.
+directory to read and write roots from a default contract.
 
 ### Ranking by leverage
 
@@ -573,15 +573,15 @@ A good delegation has four parts, each mapping to a field foe already
 defines.
 
 - **An acceptance condition that a tool can check.** The task names a
-  command whose exit status decides success, and the program's `done_when`
+  command whose exit status decides success, and the contract's `done_when`
   names the same command as its `verify` tool with a retry count. A task
   without a checkable condition ends when the model stops calling tools,
   which is the weakest termination.
-- **Named roots.** The program's grants list the directories the episode
+- **Named roots.** The contract's grants list the directories the episode
   may read and write. A person delegating a change to one crate grants
   write access to that crate and read access to the workspace.
 - **A budget.** Spend caps in tokens or requests, plus the structural caps
-  on depth and episode count if the program spawns children.
+  on depth and episode count if the contract spawns children.
 - **A return shape, when the result is data.** `done_when.returns` with a
   JSON Schema makes the episode end by calling `return` with a conforming
   value. This form suits a task such as "find the three slowest tests and
@@ -598,13 +598,13 @@ What the person gets back:
   rendered and canonical forms, budget consumption, sandbox status, and the
   outcome.
 - The working tree as the episode left it. foe does not commit. If the
-  program grants `git`, the instructions can require a commit on a named
+  contract grants `git`, the instructions can require a commit on a named
   branch, which is how the PR report-back of hosted products is
   reproduced.
 
-A person who delegates the same program repeatedly keeps the program file
-under version control. Each run records the identity reported by `foe plan
---config PROGRAM.json --json`. Two runs with the same hash differ only in
+A person who delegates the same contract repeatedly keeps the contract file
+under version control. Each run records the fingerprint reported by `foe plan
+--config CONTRACT.json --json`. Two runs with the same hash differ only in
 their task and model responses.
 
 ## Sandboxing options for the executor
@@ -685,8 +685,8 @@ The five items below are in priority order. Each names the gap it closes.
    and explicit file lifecycle operations. Add a file-version guard to
    `read` and `edit`. Compare exact-text and hash-anchored editing on a paired
    model evaluation before changing the default edit representation.
-2. **Make forks reproduce workspace state.** Bind each `--fork` launch to a
-   workspace snapshot or baseline identifier, and hash every spilled value.
+2. **Make forks reproduce workspace state.** Record a workspace snapshot or
+   baseline identifier for each `--fork` launch, reject a mismatch, and hash every spilled value.
    This closes the largest evidence gap revealed by Exo.
 3. **Enforce structural resource limits.** Use root-held leases for
    whole-tree episode and concurrency caps. Apply cgroup limits for CPU,
@@ -694,7 +694,7 @@ The five items below are in priority order. Each names the gap it closes.
    cannot enforce them.
 4. **Publish assessed quality and cost.** Run foe's deterministic micro
    evaluation on every release. Publish a fixed Harness-Bench or
-   Terminal-Bench slice with repeated attempts, model, program identity,
+   Terminal-Bench slice with repeated attempts, model, contract fingerprint,
    tokens, calls, wall time, and typed outcome distribution.
 5. **Add interoperability as adapters.** A `foe mcp` server would give
    existing harnesses typed access to bounded episodes. ACP would make foe

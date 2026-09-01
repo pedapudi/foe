@@ -17,7 +17,7 @@ person for four jobs; foe fills each one mechanically.
 - The person supplies the objective. foe takes a task fixed at launch, with a
   declared completion condition.
 - The person approves consequential actions. foe takes an allow list of
-  directories, executables, and child programs, enforced by the kernel.
+  directories, executables, and child contracts, enforced by the kernel.
 - The person notices when the agent is stuck. foe detects repeated tool calls
   and repeated reasoning, and gives the model a closed vocabulary of blocking
   conditions to report.
@@ -71,7 +71,7 @@ The first command asks for an API key, checks it, stores it under
 `~/.config/foe/`, and sets the default model. The second runs the built-in
 coding configuration against the current directory. The providers are
 `anthropic`, `openai`, `openai-compatible`, `openrouter`, `openai-codex`,
-`vertex`, and `exec`, a program of your own; [docs/models.md](docs/models.md)
+`vertex`, and `exec`, a transport executable of your own; [docs/models.md](docs/models.md)
 describes each.
 
 `foe --help` prints the command set and the options a bare `foe` takes;
@@ -83,7 +83,7 @@ that runs with the built-in model transport.
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "name": "hello",
   "instructions": { "role": "You are a coding agent." },
   "tools": ["read", "grep", "edit", "bash"],
@@ -109,11 +109,11 @@ host process answers model requests; see [docs/protocol.md](docs/protocol.md).
 disposable project, answers the model from a script rather than a provider,
 checks its own result, and leaves an episode to read, so none of them needs a
 credential or a network. Three of them end in the outcomes that are not
-success, because a program that runs unattended has to recognise those too:
+success, because a contract that runs unattended has to recognise those too:
 
 ```sh
 sh examples/minimal/run.sh          # any example with a run.sh
-python3 examples/embed-in-a-program/run.py
+python3 examples/embed-an-execution-contract/run.py
 bazel test //examples/...           # the three with Bazel targets
 ```
 
@@ -144,7 +144,7 @@ bazel run //evals:micro -- --model openai/gpt-5.6-sol --confirm-spend
 
 ## Embedding
 
-A host program launches the binary, reads the log from standard output, and
+A host application launches the binary, reads the log from standard output, and
 answers model requests and host tool calls on standard input. The Python
 package in `python/` does this and exposes a transport interface so that the
 host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
@@ -152,12 +152,12 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 ## Size
 
 Eleven numbers bound the source. Nine are line budgets over Rust, excluding
-tests and generated code. The kernel stays under 6,200 lines. The program
-contract stays under 1,575, tools under 1,800, workflow under 1,050, context
+tests and generated code. The kernel stays under 6,200 lines. The contract
+crate stays under 1,575, tools under 1,800, workflow under 1,050, context
 under 500, view under 600, the command line under 1,425, telemetry under 1,000,
-and lineage under 500. The separate tool budget allows capability growth while
-keeping the kernel ceiling fixed. The kernel measures the machine. The program
-contract measures the data model. Their separate budgets keep a document key
+and adoption under 500. The separate tool budget allows capability growth while
+keeping the kernel ceiling fixed. The kernel measures the machine. The contract
+crate defines the execution-contract data model. Their separate budgets keep a document key
 from enlarging the loop budget.
 The viewer is budgeted apart from the runtime because it delivers a record of a
 run rather than running one; its HTML, TypeScript, and CSS count toward no line
@@ -179,8 +179,8 @@ over 8 MiB.
 | [docs/design.md](docs/design.md) | what foe guarantees and the structure that delivers it |
 | [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [docs/self-improvement.md](docs/self-improvement.md) | how foe evaluates and improves its own source, including measured results and operating guidance |
-| [docs/lineage-identity.md](docs/lineage-identity.md) | design: content-addressed evidence that relates immutable program states |
-| [docs/code-mode.md](docs/code-mode.md) | the `python` tool: bounded model-written programs that compose granted tools through the registry |
+| [docs/adoption.md](docs/adoption.md) | design: content-addressed evidence that relates immutable contract states |
+| [docs/code-mode.md](docs/code-mode.md) | the `python` tool: bounded model-written scripts that compose granted tools through the registry |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |

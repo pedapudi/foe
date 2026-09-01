@@ -127,8 +127,8 @@ class CollectDiagnosticsTest(unittest.TestCase):
         (agent / "foe-diagnostics.json").write_text(
             json.dumps(
                 {
-                    "schema_version": 1,
-                    "evidence_identity": {
+                    "schema_version": 4,
+                    "evidence_fingerprints": {
                         "runtime_build": identity["runtime_binary"],
                         "episode_id": "ep_root",
                     },
@@ -152,9 +152,9 @@ class CollectDiagnosticsTest(unittest.TestCase):
                         "model_calls": 3,
                         "estimated_cost_usd": 0.01,
                         "per_request": [
-                            {"seq": 1, "input_tokens": 100},
-                            {"seq": 5, "input_tokens": 900},
-                            {"seq": 9, "input_tokens": 500},
+                            {"seq": 1, "episode_id": "ep_root", "input_tokens": 100},
+                            {"seq": 5, "episode_id": "ep_root", "input_tokens": 900},
+                            {"seq": 9, "episode_id": "ep_root", "input_tokens": 500},
                         ],
                     },
                 }
@@ -163,7 +163,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
         )
         return source / "Cargo.toml", binary, run, identity
 
-    def test_collector_binds_diagnostics_to_source_and_binary(self):
+    def test_collector_matches_diagnostics_to_source_and_binary(self):
         with tempfile.TemporaryDirectory() as directory:
             source, binary, run, identity = self.fixture(Path(directory))
             report = collect(source, binary, [run], {"example"})
@@ -217,9 +217,9 @@ class CollectDiagnosticsTest(unittest.TestCase):
             source, binary, run, _ = self.fixture(Path(directory))
             path = next(run.glob("*/*/agent/foe-diagnostics.json"))
             report = json.loads(path.read_text(encoding="utf-8"))
-            report["evidence_identity"]["runtime_build"] = "sha256:" + "0" * 64
+            report["evidence_fingerprints"]["runtime_build"] = "sha256:" + "0" * 64
             path.write_text(json.dumps(report), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "different runtime identity"):
+            with self.assertRaisesRegex(ValueError, "different runtime fingerprint"):
                 collect(source, binary, [run], {"example"})
 
     def test_corpus_collection_matches_direct_collection(self):

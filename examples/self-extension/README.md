@@ -134,7 +134,7 @@ no credential. The direct form follows the ordinary coding loop:
 3. The model reports completion.
 4. The configured verifier checks the three source artifacts.
 
-The verifier checks the source contract in less than a second. It does not
+The verifier checks the source artifacts in less than a second. It does not
 compile the disposable source slice because the slice omits the rest of the
 workspace. The repository's Rust test job remains the compilation gate for
 changes made to the real source tree.

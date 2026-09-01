@@ -26,7 +26,7 @@ fn all_lists_each_tool_once_and_readonly_lists_the_reads_tools() {
 fn every_coding_tool_schema_stays_inside_the_implemented_subset() {
     for tool in super::all() {
         let spec = tool.spec();
-        foe_program::schema::check(format!("tools.{}.params", spec.name), &spec.params).unwrap();
+        foe_contract::schema::check(format!("tools.{}.params", spec.name), &spec.params).unwrap();
     }
 }
 
@@ -59,8 +59,8 @@ fn nothing_about_the_subject_reaches_the_model() {
 #[test]
 fn the_assembled_system_prompt_never_mentions_the_subject() {
     let root = ScratchDir::new("subject-prompt");
-    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3,
+    let config: foe_contract::ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4,
         "name": "subject-prohibition",
         "instructions": { "10-role": "You fix failing tests." },
         "tools": super::all().iter().map(|t| t.spec().name.clone()).collect::<Vec<_>>(),
@@ -69,9 +69,9 @@ fn the_assembled_system_prompt_never_mentions_the_subject() {
         "task": "do the thing"
     }))
     .unwrap();
-    let program = foe_program::document::resolve(&config).unwrap();
-    let registry = foe_core::registry::Registry::new(&program, vec![], super::all()).unwrap();
-    let prompt = registry.system_prompt(&program.instructions);
+    let contract = foe_contract::document::resolve(&config).unwrap();
+    let registry = foe_core::registry::Registry::new(&contract, vec![], super::all()).unwrap();
+    let prompt = registry.system_prompt(&contract.instructions);
     assert!(!prompt.contains("subject"), "the system prompt mentions the subject:\n{prompt}");
     for schema in registry.schemas() {
         let whole = serde_json::to_string(&schema).unwrap();

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Run identity-bound Foe self-improvement from trajectory diagnoses."""
+"""Run evidence-bound Foe self-improvement from trajectory diagnoses."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256_file
 
 from collect_diagnostics import collect_from_corpus, encoded_evidence
-from foe_agent_support import build_program, estimate_usage_cost
+from foe_agent_support import build_contract, estimate_usage_cost
 from instruction_candidate import create as create_instruction_candidate
 from run import Pricing, read_cases
 from tool_candidate import create as create_tool_candidate
@@ -47,10 +47,9 @@ DIAGNOSIS_VALIDATOR_MODULES = (
     "tool_candidate.py",
     "workflow_candidate.py",
 )
-LINEAGE_SCHEMA_VERSION = 1
-# The campaign's per-task floor allowances; docs/lineage-identity.md
+# The campaign's per-task floor allowances; docs/adoption.md
 # "Harness adoptions" declares them as the fixed members of a workflow
-# adoption's development program document.
+# adoption's development contract document.
 DEVELOPMENT_TASK_MODEL_CALLS = 60
 DEVELOPMENT_TASK_SECONDS = 1_800
 DEVELOPMENT_TASK_INSTRUCTION = "The development run supplies the task instruction at launch."
@@ -65,7 +64,7 @@ def write_json(path: Path, value: Any) -> None:
 def write_bound_python_launcher(
     path: Path, entrypoint: Path, dependencies: list[Path]
 ) -> None:
-    """Write an executable whose identity binds each evidence module."""
+    """Write an executable whose bytes record every evidence-module digest."""
     files = [
         entrypoint.resolve(strict=True),
         *(item.resolve(strict=True) for item in dependencies),
@@ -232,22 +231,12 @@ def digest_bytes(data: bytes) -> str:
 
 
 def canonical_json(value: Any) -> bytes:
-    """The lineage crate's canonical form: compact, sorted keys, raw UTF-8."""
+    """Canonical JSON: compact, sorted keys, and raw UTF-8."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
-def state_identity(program_identity: str, program_lineage: dict[str, Any] | None) -> str:
-    """The state identity docs/lineage-identity.md derives for one claim."""
-    document = {
-        "schema_version": LINEAGE_SCHEMA_VERSION,
-        "program_identity": program_identity,
-        "program_lineage": program_lineage,
-    }
-    return digest_bytes(canonical_json(document))
-
-
-def revised_program_document(document: Any, revision: dict[str, str]) -> Any:
-    """The program document with an accepted instruction revision applied."""
+def revised_contract_document(document: Any, revision: dict[str, str]) -> Any:
+    """The contract document with an accepted instruction revision applied."""
     revised = json.loads(json.dumps(document))
     section, old_text, new_text = revision["section"], revision["old_text"], revision["new_text"]
     holders: list[dict[str, Any]] = []
@@ -258,7 +247,7 @@ def revised_program_document(document: Any, revision: dict[str, str]) -> Any:
         instructions = value.get("instructions")
         if isinstance(instructions, dict) and isinstance(instructions.get(section), str):
             holders.append(instructions)
-        children = value.get("programs")
+        children = value.get("child_contracts")
         if isinstance(children, dict):
             for child in children.values():
                 walk(child)
@@ -276,22 +265,20 @@ def revised_program_document(document: Any, revision: dict[str, str]) -> Any:
     return revised
 
 
-def development_program_document(
+def development_contract_document(
     base_configuration: dict[str, str],
     audit: dict[str, Any] | None = None,
     tool: dict[str, str] | None = None,
-    runtime: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The development program document an adoption produces.
+    """The development contract document an adoption produces.
 
     The run-supplied members — task instruction, credential path, working
     directory, and per-task allowances — are fixed to the declared values
     so the document is stable across launches. `audit` adds the
-    independent-audit stage, `tool` adds a tool_defs entry carrying the
-    executable's content hash, and `runtime` names the produced runtime of
-    a source adoption.
+    independent-audit stage. `tool` adds a `tool_defs` entry carrying the
+    captured executable digest.
     """
-    document = build_program(
+    document = build_contract(
         DEVELOPMENT_TASK_INSTRUCTION,
         base_configuration["model"],
         DEVELOPMENT_TASK_CREDENTIAL,
@@ -312,51 +299,42 @@ def development_program_document(
             tool["name"]: {
                 "description": tool["description"],
                 "exec": "/tools/" + tool["name"],
-                "exec_sha256": tool["executable_sha256"].removeprefix("sha256:"),
             },
         }
-    if runtime is not None:
-        document["runtime"] = runtime
     return document
 
 
-def adoption_state_document(
+def adoption_contract_document(
     candidate_kind: str,
     candidate: dict[str, Any],
-    program_document: dict[str, Any],
+    contract_document: dict[str, Any],
     base_configuration: dict[str, str],
 ) -> dict[str, Any]:
-    """The state document an adoption of `candidate` creates.
+    """The execution-contract document an accepted candidate produces.
 
-    docs/lineage-identity.md "Harness adoptions" states the one rule: the
-    state document is the program document that will run under the
-    adoption. An instruction revision yields the revised self-improvement
-    program document; the other kinds yield the development program
-    document the adoption produces — with the audit stage applied, with
-    the defined tool declared, or with the changed source named as the
-    produced runtime until the rebuilt binary's hash attaches.
+    An instruction revision changes the self-improvement contract. Workflow
+    and tool candidates produce a development contract. A source candidate
+    uses the development contract with the rebuilt runtime, whose build
+    fingerprint enters the resolved fingerprint document.
     """
     if candidate_kind == "instruction-revision":
-        return revised_program_document(program_document, candidate["revision"])
+        return revised_contract_document(contract_document, candidate["revision"])
     if candidate_kind == "workflow-configuration":
-        return development_program_document(
+        return development_contract_document(
             candidate["base_configuration"], audit=candidate["independent_audit"]
         )
     if candidate_kind == "tool-definition":
-        return development_program_document(candidate["base_configuration"], tool=candidate["tool"])
+        return development_contract_document(candidate["base_configuration"], tool=candidate["tool"])
     if candidate_kind == "source-change":
-        return development_program_document(
-            base_configuration,
-            runtime={"source_tree": candidate["base_source_tree"], "files": candidate["files"]},
-        )
-    raise ValueError(f"candidate kind {candidate_kind} has no adoption state document")
+        return development_contract_document(base_configuration)
+    raise ValueError(f"candidate kind {candidate_kind} has no adoption contract document")
 
 
 def find_accepted_verification(episode: Path, tool: str) -> tuple[str, int]:
     """Locate the last accepted `verification/result` of `tool` in the episode tree.
 
     Returns the log path in bundle coordinates (under `episode/`) and the
-    event's `seq`, the pairing the candidate binding record cites.
+    event's `seq`, the pairing the candidate adoption record cites.
     """
     found: tuple[str, int] | None = None
     for path in sorted(episode.rglob("episode.jsonl")):
@@ -379,31 +357,31 @@ def find_accepted_verification(episode: Path, tool: str) -> tuple[str, int]:
 def record_adoption(
     root: Path,
     episode: Path,
-    state_document: dict[str, Any],
-    parent_document: dict[str, Any],
+    fingerprint_document: dict[str, Any],
+    predecessor_contract_fingerprint: str,
     retained: dict[str, bytes],
     verification_tool: str,
     bundle_builder: list[str],
+    bundle_verifier: list[str],
+    permitted_verifier_fingerprints: set[str],
     builder_cwd: Path | None = None,
     builder_env: dict[str, str] | None = None,
     artifacts: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """Record one accepted candidate as a lineage transition under `root`.
+    """Build and verify portable evidence for one accepted candidate.
 
-    Writes the evidence bundle — the episode tree, the state document as
-    the child identity document, and the artifact manifest over the
-    retained candidate files — completes it through the lineage crate's
-    `build-bundle` binary, which writes the adoption record and canonical
-    manifest, and writes the parent and child state documents where the
-    checker's resolvers read them: `root/lineage/states/<hex>.json` by
-    state identity and `root/lineage/evidence/<hex>` by content address.
+    The resulting content-addressed directory is self-contained. The
+    external adoption policy permits explicit verifier fingerprints and
+    may require the proposal contract as the candidate's predecessor.
     """
-    build = root / "lineage" / "bundle-build"
+    build = root / "adoption" / "bundle-build"
     shutil.copytree(episode, build / "episode")
-    identity_bytes = canonical_json(state_document)
-    (build / "child-identity.json").write_bytes(identity_bytes)
+    fingerprint_bytes = canonical_json(fingerprint_document)
+    (build / "fingerprint-document.json").write_bytes(fingerprint_bytes)
     for name, content in sorted(retained.items()):
-        (build / name).write_bytes(content)
+        destination = build / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(content)
     if artifacts is None:
         artifacts = [{"path": name, "sha256": digest_bytes(content)} for name, content in sorted(retained.items())]
     (build / "artifact-manifest.json").write_bytes(canonical_json(artifacts))
@@ -413,10 +391,11 @@ def record_adoption(
             *bundle_builder,
             str(build),
             "episode/episode.jsonl",
-            "child-identity.json",
+            "fingerprint-document.json",
             "artifact-manifest.json",
             verification_log,
             str(verification_seq),
+            predecessor_contract_fingerprint,
         ],
         cwd=builder_cwd,
         env=builder_env,
@@ -429,37 +408,42 @@ def record_adoption(
     if result.returncode != 0 or not re.fullmatch(r"sha256:[0-9a-f]{64}", address):
         detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
         raise ValueError(f"bundle builder failed: {detail}")
-    evidence_dir = root / "lineage" / "evidence" / address.removeprefix("sha256:")
-    evidence_dir.parent.mkdir(parents=True, exist_ok=True)
-    build.rename(evidence_dir)
-    states = root / "lineage" / "states"
-    states.mkdir(parents=True, exist_ok=True)
-    parent_identity = digest_bytes(canonical_json(parent_document))
-    parent_state_identity = state_identity(parent_identity, None)
-    parent_state = states / (parent_state_identity.removeprefix("sha256:") + ".json")
-    write_json(parent_state, {"identity_document": parent_document})
-    claim = {
-        "parent": {"program_identity": parent_identity, "state_identity": parent_state_identity},
-        "evidence": address,
+    bundle_dir = root / "adoption" / "bundles" / address.removeprefix("sha256:")
+    bundle_dir.parent.mkdir(parents=True, exist_ok=True)
+    build.rename(bundle_dir)
+    verified_result = subprocess.run(
+        [*bundle_verifier, str(bundle_dir), predecessor_contract_fingerprint],
+        cwd=builder_cwd,
+        env=builder_env,
+        text=True,
+        capture_output=True,
+        timeout=1_800,
+        check=False,
+    )
+    if verified_result.returncode != 0:
+        detail = verified_result.stderr.strip() or verified_result.stdout.strip() or f"exit status {verified_result.returncode}"
+        raise ValueError(f"bundle verifier failed: {detail}")
+    try:
+        verified = json.loads(verified_result.stdout)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"bundle verifier returned invalid JSON: {error}") from error
+    expected = {
+        "bundle_address": address,
+        "contract_fingerprint": digest_bytes(fingerprint_bytes),
+        "predecessor_contract_fingerprint": predecessor_contract_fingerprint,
+        "verification_tool": verification_tool,
         "verification_log": verification_log,
         "verification_seq": verification_seq,
     }
-    child_identity = digest_bytes(identity_bytes)
-    child_state_identity = state_identity(child_identity, claim)
-    child_state = states / (child_state_identity.removeprefix("sha256:") + ".json")
-    write_json(child_state, {"identity_document": state_document, "program_lineage": claim})
-    return {
-        "evidence": address,
-        "program_identity": child_identity,
-        "state_identity": child_state_identity,
-        "parent_program_identity": parent_identity,
-        "parent_state_identity": parent_state_identity,
-        "verification_log": verification_log,
-        "verification_seq": verification_seq,
-        "state": str(child_state),
-        "parent_state": str(parent_state),
-        "evidence_directory": str(evidence_dir),
-    }
+    for key, value in expected.items():
+        if verified.get(key) != value:
+            raise ValueError(f"bundle verifier {key} is {verified.get(key)!r}; expected {value!r}")
+    verifier_fingerprint = verified.get("verifier_fingerprint")
+    if verifier_fingerprint not in permitted_verifier_fingerprints:
+        raise ValueError(
+            f"adoption policy does not permit verifier fingerprint {verifier_fingerprint!r}"
+        )
+    return {**verified, "bundle_directory": str(bundle_dir)}
 
 
 def instruction_candidate_from_outcome(
@@ -469,7 +453,7 @@ def instruction_candidate_from_outcome(
     evidence: Path,
     base_configuration: dict[str, str],
 ) -> dict[str, Any]:
-    """Validate a diagnosis result and bind its instruction revision."""
+    """Validate a diagnosis result and record its instruction revision."""
     if not isinstance(outcome_value, dict) or outcome_value.get("branch") != "revise-instructions":
         raise ValueError("self-improvement outcome did not select revise-instructions")
     return create_instruction_candidate(
@@ -487,7 +471,7 @@ def tool_candidate_from_outcome(
     evidence: Path,
     base_configuration: dict[str, str],
 ) -> tuple[dict[str, Any], str]:
-    """Validate a diagnosis result and bind its tool definition.
+    """Validate a diagnosis result and record its tool definition.
 
     Returns the candidate and the executable content the runner retains
     as a file beside it.
@@ -511,7 +495,7 @@ def workflow_candidate_from_outcome(
     evidence: Path,
     base_configuration: dict[str, str],
 ) -> dict[str, Any]:
-    """Validate a diagnosis result and bind its observed audit setting."""
+    """Validate a diagnosis result and record its observed audit setting."""
     if not isinstance(outcome_value, dict) or outcome_value.get("branch") != "configure-workflow":
         raise ValueError("self-improvement outcome did not select configure-workflow")
     audit = validate_independent_audit(outcome_value.get("independent_audit"))
@@ -585,30 +569,80 @@ def rust_toolchain_identity(cargo: Path) -> dict[str, str]:
     return binaries
 
 
-def validate_program(binary: Path, program: Path) -> dict[str, Any]:
-    """Construct the generated program without making a model request.
+def validate_contract(binary: Path, contract: Path) -> dict[str, Any]:
+    """Construct the generated contract without making a model request.
 
-    Returns the resolved plan object. Its identity document is the parent
-    state an adoption descends from; the returned document is required to
-    rehash to the reported identity.
+    Returns the resolved plan object. Its fingerprint document must rehash
+    to the reported contract fingerprint.
     """
     result = subprocess.run(
-        [str(binary), "plan", "--config", str(program), "--json"],
+        [str(binary), "plan", "--config", str(contract), "--json"],
         text=True,
         capture_output=True,
         check=False,
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
-        raise ValueError(f"generated self-improvement program is invalid: {detail}")
+        raise ValueError(f"generated self-improvement contract is invalid: {detail}")
     try:
         plan = json.loads(result.stdout)
     except json.JSONDecodeError as error:
         raise ValueError(f"the resolved plan is not one JSON object: {error}") from error
-    document = plan.get("identity_document") if isinstance(plan, dict) else None
-    if not isinstance(document, dict) or digest_bytes(canonical_json(document)) != plan.get("identity"):
-        raise ValueError("the resolved plan's identity document does not rehash to its identity")
+    document = plan.get("fingerprint_document") if isinstance(plan, dict) else None
+    if not isinstance(document, dict) or digest_bytes(canonical_json(document)) != plan.get("contract_fingerprint"):
+        raise ValueError("the resolved plan's fingerprint document does not rehash to its contract fingerprint")
     return plan
+
+
+def permitted_verifier_fingerprint(fingerprint_document: dict[str, Any], tool: str) -> str:
+    """Select the configured verifier fingerprint permitted by adoption policy."""
+    tools = fingerprint_document.get("tools")
+    if not isinstance(tools, list):
+        raise ValueError("proposal fingerprint document has no tools list")
+    for entry in tools:
+        if not isinstance(entry, dict) or entry.get("name") != tool:
+            continue
+        digest = entry.get("exec_sha256")
+        if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
+            return "sha256:" + digest
+        raise ValueError(f"proposal verifier {tool} is not a configured executable")
+    raise ValueError(f"proposal fingerprint document has no verifier tool {tool}")
+
+
+def materialize_candidate_contract(
+    document: dict[str, Any],
+    candidate: Path,
+    tool_name: str | None = None,
+    tool_executable: Path | None = None,
+) -> dict[str, Any]:
+    """Give a candidate contract real construction paths without changing its fingerprint shape."""
+    materialized = json.loads(json.dumps(document))
+
+    def walk(value: Any) -> None:
+        if not isinstance(value, dict):
+            return
+        grants = value.get("grants")
+        if isinstance(grants, dict):
+            for key in ("read", "write", "execute"):
+                roots = grants.get(key)
+                if isinstance(roots, list):
+                    grants[key] = [str(candidate) if root == DEVELOPMENT_TASK_DIRECTORY else root for root in roots]
+        tool_defs = value.get("tool_defs")
+        if tool_name and tool_executable and isinstance(tool_defs, dict) and isinstance(tool_defs.get(tool_name), dict):
+            tool_defs[tool_name]["exec"] = str(tool_executable)
+        children = value.get("child_contracts")
+        if isinstance(children, dict):
+            for child in children.values():
+                walk(child)
+        workflow = value.get("workflow")
+        nodes = workflow.get("nodes") if isinstance(workflow, dict) else None
+        if isinstance(nodes, dict):
+            for node in nodes.values():
+                if isinstance(node, dict):
+                    walk(node.get("model"))
+
+    walk(materialized)
+    return materialized
 
 
 def git_metadata_root(candidate: Path) -> Path:
@@ -781,7 +815,7 @@ print("\\n".join(findings))
 
 def write_diagnosis_validator(
     path: Path,
-    program: Path,
+    contract: Path,
     identity: dict[str, str],
     evidence_sha256: str,
     base_configuration: dict[str, str],
@@ -790,7 +824,7 @@ def write_diagnosis_validator(
     """Write the diagnosis node's completion verifier.
 
     The runtime invokes it with the returned typed diagnosis as JSON on
-    standard input. It applies the same identity-bound candidate validation
+    standard input. It applies the same evidence-backed candidate validation
     the runner applies after the episode, importing the candidate modules
     copied beside it, so an accepted workflow, instruction, or tool
     candidate has an authoritative `verification/result` event in the
@@ -817,7 +851,7 @@ identity = {identity!r}
 evidence_sha256 = {evidence_sha256!r}
 base_configuration = {base_configuration!r}
 supported_audits = {supported_audits!r}
-program = {str(program)!r}
+contract = {str(contract)!r}
 
 findings = []
 try:
@@ -831,7 +865,7 @@ try:
             )
         create_workflow_candidate(identity, evidence_sha256, base_configuration, audit)
     elif branch == "revise-instructions":
-        documents = {{"program.json": json.loads(pathlib.Path(program).read_text(encoding="utf-8"))}}
+        documents = {{"contract.json": json.loads(pathlib.Path(contract).read_text(encoding="utf-8"))}}
         create_instruction_candidate(
             identity,
             evidence_sha256,
@@ -891,7 +925,7 @@ def build_config(
     }
     validator_tool = {
         "exec": str(validator),
-        "description": "Validate the returned typed diagnosis: an identity-bound workflow, instruction, or tool candidate is checked against the retained evidence and the preserved run controls. The tool prints findings and prints nothing when the diagnosis is valid.",
+        "description": "Validate the returned typed diagnosis: a workflow, instruction, or tool candidate must match the retained evidence and preserved run controls. The tool prints findings and prints nothing when the diagnosis is valid.",
         "timeout_seconds": 60,
     }
     diagnosis = {
@@ -900,8 +934,8 @@ def build_config(
             "role": "Diagnose one general Foe limitation that explains the verified completion gap in the supplied trajectory measurements.",
             "scope": "Reason only from the bounded labeled trajectory digest supplied to this episode. Do not inspect repository source, benchmark tasks, graders, fixtures, or completed answers. The coding episode maps the causal intervention to source files.",
             "evidence": "Compare the failed and successful settings from the labeled digest. Use the final validation timeline and bounded verifier feedback before attributing a failure to missing validation. Cite episode identifiers and log sequence numbers only inside the causal contrast. Separate observed facts from uncertain attribution.",
-            "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, program name, checksum, fixture, grader, or episode identity.",
-            "sufficiency": "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. Choose `configure-workflow` when a repeated quality gain is caused by an independent audit stage, and return the observed successful audit setting. Choose `revise-instructions` when the repeated causal difference is procedural guidance that one instruction section of the retained program document `program.json` can carry, and return the exact revision. Choose `define-tool` when one missing executable tool explains the gap, and return its complete definition. Choose `insufficient-evidence` when the intervention requires semantic knowledge absent from the log, an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort difference without a workflow contrast establishes model capability rather than a Foe defect.",
+            "controls": "Preserve the primary model route, reasoning effort, task allowances, token policy, service tier, and task set. Candidate selection uses verified task quality. Record resource changes without rejecting a quality improvement. The intervention must apply through general Foe behavior or a general workflow setting. It must not branch on a benchmark, dataset, task, contract name, checksum, fixture, grader, or episode identity.",
+            "sufficiency": "Choose `implement-source` when the trajectories activate a specific Foe source mechanism. Choose `configure-workflow` when a repeated quality gain is caused by an independent audit stage, and return the observed successful audit setting. Choose `revise-instructions` when the repeated causal difference is procedural guidance that one instruction section of the retained contract document `contract.json` can carry, and return the exact revision. Choose `define-tool` when one missing executable tool explains the gap, and return its complete definition. Choose `insufficient-evidence` when the intervention requires semantic knowledge absent from the log, an evaluator change, or an instruction that no runtime signal can enforce. A reasoning-effort difference without a workflow contrast establishes model capability rather than a Foe defect.",
             "result": "Use four model requests as a planning target. Return one concise typed diagnosis as soon as the evidence supports either disposition. Continue only while a named causal uncertainty can be resolved from the supplied digest. The model-call allowance is a loop backstop. Each string should contain no more than two sentences; a tool definition's executable content is code and is exempt. The coding episode receives the diagnosis without the trajectory reports.",
         },
         "tools": ["block", DIAGNOSIS_VALIDATOR_TOOL],
@@ -1000,7 +1034,7 @@ def build_config(
         "instructions": {
             "role": "Act as a fully capable Foe coding agent and implement the supplied typed diagnosis.",
             "scope": "Inspect source before editing. Change runtime source, a regression test, and each affected specification. Preserve reconstructable logs, declared authority, typed outcomes, and explicit completion semantics.",
-            "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Do not encode benchmark identifiers, fixture values, or grader rules. Refuse an intervention that changes only a built-in default overridden by the explicit evaluated program.",
+            "independence": "Do not change evaluation code, tasks, graders, model routes, reasoning settings, task allowances, token policy, or task selection. Do not encode benchmark identifiers, fixture values, or grader rules. Refuse an intervention that changes only a built-in default overridden by the explicit evaluated contract.",
             "validation": "The candidate check runs formatting, the Rust workspace tests, Clippy, and baseline-relative line budgets under the declared toolchain. Run it after implementation and use its findings to correct the candidate. Use the check tool as the authority for line counts because scripts/loc.sh alone cannot distinguish an existing overage from candidate growth. State expected accuracy, cost, latency, and compatibility effects in the final result.",
         },
         "tools": [*CODING_TOOLS, "check"],
@@ -1014,15 +1048,15 @@ def build_config(
         "done_when": {"verify": "check", "retries": 2},
     }
     return {
-        "version": 3,
-        "name": "identity-bound-trajectory-self-improvement",
+        "version": 4,
+        "name": "trajectory-evidence-self-improvement",
         "instructions": {"role": "Run the declared diagnosis and implementation workflow."},
         "tools": [*CODING_TOOLS, "block", "evidence", "check"],
         "tool_defs": {
             "evidence": evidence_tool
             or {
                 "exec": "/usr/bin/cat",
-                "description": "Return identity-bound trajectory diagnoses without modifying them.",
+                "description": "Return trajectory diagnoses derived from the retained evidence without modifying them.",
             },
             "check": check_tool,
         },
@@ -1114,7 +1148,7 @@ def measure_episode(root: Path, pricing: dict[str, Pricing]) -> dict[str, Any]:
         if not starts:
             complete = False
             continue
-        model = starts[0].get("data", {}).get("program", {}).get("model", {})
+        model = starts[0].get("data", {}).get("contract", {}).get("model", {})
         route = f"{model.get('provider')}/{model.get('model')}"
         price = pricing.get(route)
         usages = []
@@ -1212,7 +1246,7 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument(
         "--objective",
         default=(
-            "Use the identity-bound failed and successful trajectory contrast to implement one general Foe "
+            "Use the failed and successful trajectory evidence to implement one general Foe "
             "improvement that raises verified task completion in the lower-cost evaluated configuration. "
             "Preserve its model route, reasoning effort, task allowances, token policy, and task set. Treat "
             "higher-cost successful settings as diagnostic contrasts. Preserve correctness and benchmark independence."
@@ -1245,7 +1279,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.objective.strip():
             raise ValueError("--objective must not be empty")
         if args.cargo is None or args.cargo_home is None:
-            raise ValueError("--cargo and --cargo-home are required for program and candidate validation")
+            raise ValueError("--cargo and --cargo-home are required for contract and candidate validation")
         cargo = args.cargo.resolve(strict=True) if args.cargo else None
         cargo_home = args.cargo_home.resolve(strict=True) if args.cargo_home else None
         if cargo is not None and cargo.name != "cargo":
@@ -1281,7 +1315,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     preview = {
-        "evaluation": "identity-bound-trajectory-self-improvement",
+        "evaluation": "trajectory-evidence-self-improvement",
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
         "service_tier": args.service_tier,
@@ -1325,7 +1359,7 @@ def main(argv: list[str] | None = None) -> int:
     validator = root / "diagnosis-validator"
     write_diagnosis_validator(
         validator,
-        root / "program.json",
+        root / "contract.json",
         identity,
         evidence_digest(episode_evidence),
         base_configuration,
@@ -1355,8 +1389,8 @@ def main(argv: list[str] | None = None) -> int:
         evidence_tool = {
             "exec": str(collector),
             "description": (
-                "Derive a bounded identity-checked diagnostic report from the "
-                "declared immutable trajectory corpus."
+                "Derive a bounded diagnostic report after checking the declared "
+                "trajectory corpus against its source and runtime fingerprints."
             ),
             "timeout_seconds": 60,
         }
@@ -1379,7 +1413,7 @@ def main(argv: list[str] | None = None) -> int:
             corpus_source,
             identity_source,
         ]
-    program_document = build_config(
+    contract_document = build_config(
         candidate,
         episode_evidence,
         check,
@@ -1394,10 +1428,10 @@ def main(argv: list[str] | None = None) -> int:
         evidence_args,
         evidence_read_roots,
     )
-    program = root / "program.json"
-    write_json(program, program_document)
+    contract = root / "contract.json"
+    write_json(contract, contract_document)
     try:
-        plan = validate_program(binary, program)
+        plan = validate_contract(binary, contract)
     except ValueError as error:
         print(f"self-improvement: {error}", file=sys.stderr)
         if temporary:
@@ -1425,7 +1459,7 @@ def main(argv: list[str] | None = None) -> int:
     episode = root / "episode"
     started = time.monotonic()
     result = subprocess.run(
-        [str(binary), "--config", str(program), "--headless", "--log-dir", str(episode)],
+        [str(binary), "--config", str(contract), "--headless", "--log-dir", str(episode)],
         text=True,
         capture_output=True,
         timeout=SECONDS + 30,
@@ -1488,7 +1522,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             instruction_candidate = instruction_candidate_from_outcome(
                 outcome_value,
-                {"program.json": program_document},
+                {"contract.json": contract_document},
                 identity,
                 episode_evidence,
                 base_configuration,
@@ -1586,16 +1620,72 @@ def main(argv: list[str] | None = None) -> int:
             toolchain_environment["RUSTUP_TOOLCHAIN"] = toolchain.name
         (cargo_target / "tmp").mkdir(parents=True, exist_ok=True)
         try:
+            candidate_contract = adoption_contract_document(
+                candidate_kind, artifact_identity, contract_document, base_configuration
+            )
+            staged_tool = None
+            staged_tool_name = None
+            if candidate_kind == "tool-definition":
+                staged_tool_name = artifact_identity["tool"]["name"]
+                staged_tool = root / "candidate-tools" / staged_tool_name
+                staged_tool.parent.mkdir(parents=True, exist_ok=True)
+                staged_tool.write_bytes(tool_executable_path.read_bytes())
+                staged_tool.chmod(0o755)
+            candidate_contract = materialize_candidate_contract(
+                candidate_contract,
+                candidate,
+                staged_tool_name,
+                staged_tool,
+            )
+            candidate_binary = binary
+            if candidate_kind == "source-change":
+                built = subprocess.run(
+                    [str(cargo), "build", "--quiet", "-p", "foe"],
+                    cwd=candidate,
+                    env=toolchain_environment,
+                    text=True,
+                    capture_output=True,
+                    timeout=1_800,
+                    check=False,
+                )
+                if built.returncode != 0:
+                    detail = built.stderr.strip() or built.stdout.strip() or f"exit status {built.returncode}"
+                    raise ValueError(f"candidate runtime build failed: {detail}")
+                candidate_binary = cargo_target / "debug" / "foe"
+            candidate_contract_path = root / "candidate-contract.json"
+            write_json(candidate_contract_path, candidate_contract)
+            candidate_plan = validate_contract(candidate_binary, candidate_contract_path)
+            permitted_verifier = permitted_verifier_fingerprint(
+                plan["fingerprint_document"], verification_tool
+            )
             adoption = record_adoption(
                 root,
                 episode,
-                adoption_state_document(
-                    candidate_kind, artifact_identity, program_document, base_configuration
-                ),
-                plan["identity_document"],
+                candidate_plan["fingerprint_document"],
+                plan["contract_fingerprint"],
                 retained,
                 verification_tool,
-                [str(cargo), "run", "--quiet", "-p", "foe-lineage", "--bin", "build-bundle", "--"],
+                [
+                    str(cargo),
+                    "run",
+                    "--quiet",
+                    "-p",
+                    "foe-adoption",
+                    "--bin",
+                    "build-adoption-bundle",
+                    "--",
+                ],
+                [
+                    str(cargo),
+                    "run",
+                    "--quiet",
+                    "-p",
+                    "foe-adoption",
+                    "--bin",
+                    "verify-adoption-bundle",
+                    "--",
+                ],
+                {permitted_verifier},
                 builder_cwd=candidate,
                 builder_env=toolchain_environment,
                 artifacts=artifacts,

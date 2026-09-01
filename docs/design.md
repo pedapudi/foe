@@ -42,7 +42,7 @@ A runtime for hands-off execution has to fill each job mechanically.
 | job the person did | what fills it without a person |
 |---|---|
 | supplies the objective | a task, fixed at launch, with a declared completion condition |
-| approves consequential actions | an allow list of directories, executables, and child programs, enforced by the kernel |
+| approves consequential actions | an allow list of directories, executables, and child contracts, enforced by the kernel |
 | notices when the agent is stuck | runtime detection of repeated calls and repeated reasoning, plus a vocabulary of blocking conditions the agent can report |
 | decides when the work is done | a budget that ends the episode, a verifier that accepts the result, or a typed return |
 
@@ -50,7 +50,7 @@ Three further problems follow from running without supervision.
 
 **Nobody watched, so the record must be complete.** An interactive transcript
 is read by the person who was there. An autonomous run is read later by
-someone who was not, or by a program. The record therefore has to contain
+someone who was not, or by software. The record therefore has to contain
 every input the model received and every output it produced, in a form that
 reconstructs the run without the process that made it.
 
@@ -86,14 +86,14 @@ prefixes are byte-stable across steps and across sibling episodes so that
 provider caches hit.
 
 **Auditable and replayable.** Every input to every model request is
-reconstructable from the log, and every response is recorded in it. The
-identity of a program, which is a hash over everything that shapes the model's
-behavior, is computable from the configuration alone, with no process, network,
-or credential.
+reconstructable from the log, and every response is recorded in it. A contract
+fingerprint hashes the stable inputs that shape model-visible behavior.
+Computing it starts no process, opens no network connection, and reads no
+credential.
 
 **Governable.** Permission is an allow list. A configuration names the
 directories an episode may read and write, the executables it may run, and the
-child programs it may spawn. Everything unnamed is unreachable. Where the
+child contracts it may spawn. Everything unnamed is unreachable. Where the
 kernel supports it, the same list is enforced by the kernel for every process
 the episode starts.
 
@@ -157,12 +157,12 @@ nothing else.
 
 ## The episode
 
-An episode is one run of one program against one task. It has a log, a
+An episode is one run of one contract against one task. It has a log, a
 budget, a set of grants, and exactly one outcome.
 
 ```
 Outcome =
-  | Completed { value }             the program's termination condition was met
+  | Completed { value }             the contract's termination condition was met
   | Blocked   { code, message }     the agent recognized that it cannot proceed
   | Exhausted { limit }             a budget limit was reached
   | Failed    { error }             the runtime could not continue
@@ -288,9 +288,9 @@ tool call left without a result receives a synthetic error result. The
 record of a completed run is therefore never mistakable for the record of
 one killed mid-flight.
 
-A process session normally ends at episode settlement. A program with the
+A process session normally ends at episode settlement. A contract with the
 `task_session` grant may request task lifetime when it starts a session.
-Settlement then records the process and process-group identities and
+Settlement then records the process and process-group identifiers and
 transfers cleanup responsibility to the environment that owns the foe
 invocation. Every remaining group member retains its sandbox restrictions
 after foe exits.
@@ -300,7 +300,7 @@ that means to wait says so: the `wait` tool returns once every child it
 started has ended, bounded by the episode's `seconds` budget. When it
 returns because that budget ran out, it returns an error naming how many
 children are still running, and the episode ends as exhausted at its next
-step. A program that declares no `seconds` gives `wait` no bound of its
+step. A contract that declares no `seconds` gives `wait` no bound of its
 own; the wait then lasts as long as the children do. A model that means to
 abandon its children ends its turn as usual, and the teardown settles them.
 With `until` conditions or `timeout_seconds`, `wait` returns as "The
@@ -311,7 +311,7 @@ single deadline rather than dividing between children. A child's
 reservation caps its `seconds` at what the parent has left, so one deadline
 ends every episode below it.
 
-A program need not declare `seconds`. An episode that declares none still
+A contract need not declare `seconds`. An episode that declares none still
 reaches an outcome, and two rules stand in place of the deadline.
 
 The first is that every wait the runtime performs is cancellable. The stop
@@ -328,10 +328,10 @@ that nothing above it would read.
 What an episode without `seconds` gives up is the bound on an answer that
 could still arrive: one owed by a live host, or one owed by a child that is
 still working. An operator who wants that bound declares `seconds`. A
-program whose work legitimately outlasts any deadline its author could name
+contract whose work legitimately outlasts any deadline its author could name
 declares none, and ends when its host cancels it.
 
-A program's `done_when` field chooses how an episode completes.
+A contract's `done_when` field chooses how an episode completes.
 
 | `done_when` | the episode completes when |
 |---|---|
@@ -340,7 +340,7 @@ A program's `done_when` field chooses how an episode completes.
 | `{ "returns": SCHEMA }` | the model calls a synthesized tool named `return` with a value conforming to SCHEMA |
 
 The `verify` and `returns` forms combine: a returned value may be verified.
-A program author declares a schema only when the output has a known shape.
+A contract author declares a schema only when the output has a known shape.
 A verifier is a tool, so an author who can check a result without being able
 to describe its shape declares the verifier alone.
 
@@ -349,7 +349,7 @@ requires evidence citations. Each claim cites the sequence of a successful
 tool result in the same episode. The runtime checks that the result exists
 and that its canonical value remains reconstructable. A configured verifier
 then judges semantic correctness. Without a verifier, semantic judgment
-remains with the program's model or a successor such as an independent
+remains with the contract's model or a successor such as an independent
 audit.
 
 For a verifier without a return schema, a non-error ordinary call to the
@@ -385,72 +385,68 @@ The runtime recognizes two forms of lack of progress without model judgment.
 Both thresholds are configurable in `budget`. The model reports the
 conditions it can recognize and the runtime cannot, such as an ambiguous task
 or a missing capability, by calling the built-in `block` tool with a code
-from the closed vocabulary. A program that lists `spawn` and has a non-empty
+from the closed vocabulary. A contract that lists `spawn` and has a non-empty
 `grants.spawn` may also report `child-blocked` when its children prevent
-further progress. The tool schema omits that code from other programs.
+further progress. The tool schema omits that code from other contracts.
 
-## Programs and identity
+## Execution contracts and fingerprints
 
-A program is the configuration of an episode with the task removed:
-instructions, tools, grants, budget, termination condition, and child
-programs. Two episodes of the same program differ only in their task and in
-the model's responses.
+An execution contract is the validated configuration Foe runs for one
+episode: instructions, tools, permissions, budgets, completion rules, model
+selection, child contracts, and workflow. Rust names the resolved object
+`ResolvedContract`, and schemas use `contract_*` fields. The task is a
+separate invocation input.
 
-Construction resolves the root, every entry under `programs`, and every
-workflow model node into one immutable program tree. It canonicalizes paths,
-inherits model and sandbox settings, validates descendant ceilings, and reads
-each configured executable once to retain its content digest. Identity,
-planning, budget reservation, sandbox construction, and spawning all read
-this tree. Recursive consumers select either every declared program or only
-programs reachable through spawn grants and workflow nodes. Identity and child
-launches use every declaration. Planning and sandbox authority use the
-executable-reachable selection.
+Construction resolves the root contract, every `child_contracts` entry, and
+every workflow model node into one immutable contract tree. It canonicalizes
+paths, inherits model and sandbox settings, and validates descendant ceilings.
+Planning, fingerprinting, budget reservation, sandbox construction, and
+spawning all read this tree.
 
-`identity(program)` is a SHA-256 over a canonical serialization of:
+During execution-contract construction, Foe captures each configured
+executable's bytes, digest, source path, and invocation name. Every later
+invocation uses the captured executable. Replacing, modifying, or deleting the
+source cannot change the run.
+
+`fingerprint(contract)` is a SHA-256 over a canonical serialization of:
 
 - the instruction sections, by key and text;
 - each tool's name, description, instruction, and parameter schema, in the
   order listed; a configured tool also contributes its executable digest and
-  configured basename;
-- the grant policy, meaning the kinds and counts of grants, and never the
-  resolved paths;
+  invocation name;
+- the permission shape, meaning the kinds and counts of grants;
 - the budget and termination condition;
-- every child program's identity;
+- every child contract's fingerprint;
 - every model-visible string the runtime itself contributes, such as the
   description of the synthesized `return` tool and the text that frames
   verification findings;
 - the runtime's version and build hash, plus the executable transport's
-  content digest and configured basename when the model provider is `exec`.
+  content digest and invocation name when the model provider is `exec`.
 
-Resolved paths are excluded so that running the same program against a
-different directory yields the same identity. Runtime-contributed strings are
-included so that upgrading foe changes identity when and only when the model
-would see different text.
+The task, model route, sandbox mode, and resolved paths in the effective
+access set are excluded.
+Two executions may use different values for those fields while retaining one
+contract fingerprint. Runtime-contributed strings are included, so an upgrade
+changes the fingerprint when it changes model-visible text.
 
-Construction reads files named in the configuration so identity can hash the
-retained executable bytes. Identity itself opens no file, executes nothing,
-and opens no socket. Construction materializes each configured executable in
-the declared program tree as a private regular file outside the program's
-declared write roots. Images with the same digest and configured basename
-share one held inode. The episode process alone receives internal read and
-write access to the storage parent for cleanup. Every tool and session policy
-omits that access.
-Construction checks the private image against the retained bytes. A child
-episode repeats the check when it accepts an inherited descriptor. Invocation
-executes the held inode through its descriptor. The digest in identity and the
-bytes that run therefore come from one observation of the source file.
-`episode/start` records the composite program identity rather than every
-executable digest. `foe plan --json` exposes the identity document that
-contains the individual digests and configured basenames.
+Construction stores captured executables outside every declared write root.
+References with the same digest and invocation name share one held inode. A
+child checks each inherited descriptor against its sealed manifest. The digest
+in the fingerprint and the bytes that run therefore come from one construction
+observation.
+
+`episode/start` records the composite contract fingerprint rather than every
+executable digest. `foe plan --json` exposes the fingerprint document that
+contains the individual digests and invocation names.
 
 ## Tools
 
 A tool has a specification and an implementation. The specification is what
-identity hashes and what the model sees.
+fingerprint hashes and what the model sees.
 
 ```
 ToolSpec {
-  name            unique within the program
+  name            unique within the contract
   description     shown to the model in the tool schema
   instruction     optional; appended to the system prompt after the instructions
   params          JSON Schema for the arguments, in the subset config.md lists
@@ -459,7 +455,7 @@ ToolSpec {
 ```
 
 The effect is the tool's declared interaction with the world. The registry
-refuses a tool whose effect the grants do not cover, at program construction.
+refuses a tool whose effect the grants do not cover, at contract construction.
 Dispatch checks a call's arguments against the tool's parameter schema before
 the tool receives any handle, so a tool implementation never sees arguments
 its own schema rejects. [config.md](config.md#json-schema-subset) lists the
@@ -469,7 +465,7 @@ At dispatch, the runtime passes the tool only the capability handles its
 effect entitles it to. The handles are a filesystem reader holding the read
 roots open, a writer holding the write roots open, an executor bounded to the
 configured executable and explicit execute grants, and a spawner bounded to
-the declared child programs.
+the declared child contracts.
 A tool that declares `reads` receives no writer. The reader and the writer
 hold their roots open for the episode's lifetime, so containment holds when
 an operation runs rather than when a pathname was last checked.
@@ -497,7 +493,7 @@ A name that resolves in two sources is an error.
 2. Configured executables, declared in `tool_defs` with a path and a
    description. The runtime passes the model's `args` array as argv, captures
    stdout and stderr, and reports the exit code as data. A non-zero exit is a
-   result rather than an error. Any program with a command line is a tool
+   result rather than an error. Any executable that accepts arguments is a tool
    without modification.
 3. Host tools, implemented by the process that launched foe and called over
    the [protocol](protocol.md).
@@ -515,10 +511,10 @@ The renderings of one model turn therefore share one character budget, which
 the calls of that turn divide between them. A rendering over its part ends
 with a notice stating what was removed. The runtime archives the complete
 rendering as immutable episode evidence before it appends the shortened
-result. A program that declares `retrieve` receives an opaque cursor in the
+result. A contract that declares `retrieve` receives an opaque cursor in the
 notice and can read the archive in bounded segments. Its schema enters the
 request header after the first archive is recorded. An episode that never
-shortens a result does not carry that schema. Other programs receive the
+shortens a result does not carry that schema. Other execution contracts receive the
 existing instruction to narrow and repeat the original call. The canonical
 value is untouched. The cut is applied before the result is appended, so no
 earlier turn is rewritten and a provider can reuse its key-value cache of the
@@ -533,25 +529,25 @@ separate process with its own log, its own grants, and a budget reserved from
 its parent's remaining budget. The child's log header names the parent.
 The child may select a model or inherit the nearest ancestor's selection.
 
-The parent writes the declared child program unchanged. It writes the
-effective runtime allowance and the expected declared-program identity in
+The parent writes the declared child contract unchanged. It writes the
+effective runtime allowance and the expected declared-contract fingerprint in
 the child's launch metadata. The child resolves that document and compares
-its identity before writing `episode/start` or executing a tool. A mismatch
-fails the launch. The successful `episode/start` records the expected identity
+its fingerprint before writing `episode/start` or executing a tool. A mismatch
+fails the launch. The successful `episode/start` records the expected fingerprint
 and the effective allowance. Different reservations for one declared child
-therefore change its runtime allowance while preserving its program identity.
+therefore change its runtime allowance while preserving its contract fingerprint.
 For forked context, the launch metadata also names the source log and boundary.
-The child validates its identity before it seeds that prefix under its own
-program evidence.
+The child validates its fingerprint before it seeds that prefix under its own
+contract evidence.
 
-Before launch, the parent passes the executable images from the selected
-child's full declared program tree. A sealed manifest maps every configuration
-key to a deduplicated descriptor, digest, and configured basename. The child
-constructs its program from those retained bytes and checks the expected
-identity before writing an event. Sandbox authority separately includes only
+Before launch, the parent passes the captured executables from the selected
+child's full declared contract tree. A sealed manifest maps every configuration
+key to a deduplicated descriptor, digest, and invocation name. The child
+constructs its contract from those retained bytes and checks the expected
+fingerprint before writing an event. Sandbox authority separately includes only
 executables reachable through the child's spawn grants and workflow nodes.
 Source-path replacement, in-place modification, and deletion therefore cannot
-change child identity or execution.
+change child fingerprint or execution.
 
 Child creation separates identifier allocation from launch. Allocating an
 identifier reserves no budget and starts no process. A parent appends the
@@ -628,9 +624,9 @@ one citation, the episode id and the log sequence number of the event that
 evidences the claim, so a later reader can weigh the note against the
 record that produced it.
 
-A program whose instructions direct it reads the file when the file is
+A contract whose instructions direct it reads the file when the file is
 present. Whether the notes enter an episode's context is the launching
-parent's judgment or the program's declared instructions; the runtime never
+parent's judgment or the contract's declared instructions; the runtime never
 injects them.
 
 ## Isolation
@@ -710,9 +706,8 @@ foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode see
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan [--config FILE] [--json]                        print the resolved program, its identity, its transport, its tools with their sources, and its effective authority; without --config, list the built-in tools
+foe plan [--config FILE] [--json]                        print the resolved contract, its fingerprint, its transport, its tools with their sources, and its effective authority; without --config, list the built-in tools
 foe plan --schema                                        print the JSON Schema for the configuration
-foe plan --config FILE --states DIR --evidence DIR       verify the configuration's ancestry claim against retained evidence
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
 
@@ -729,7 +724,7 @@ reprinting every form.
 
 In every running form except `--host`, standard output receives exactly one
 line when the episode ends: the outcome as JSON. A shell reads it with one
-`read`; another program parses it with one `json.loads`. The exit code is 0
+`read`; another process parses it with one `json.loads`. The exit code is 0
 for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
 Progress goes to standard error. The log goes to the file.
 
@@ -740,21 +735,22 @@ continued under the log's own episode id. One whose log ends at `seed/end`
 closed continues in place. An interrupted log, cut short mid-line or with
 an obligation open, is repaired by seeding a copy at its last clean
 boundary into a fresh directory beside it, named on standard error, which
-the run then continues. Resuming requires the program that ran: a
-configuration whose identity differs from the log's `episode/start.identity`
-is refused with both identities named. A log ending at `seed/end` is
+the run then continues. Resuming requires the contract that ran: a
+    configuration whose fingerprint differs from the log's
+    `episode/start.contract_fingerprint`
+is refused with both fingerprints named. A log ending at `seed/end` is
 exempt from the resume comparison. An ordinary seeded `episode/start`
-records its source's program. A spawned child instead checks the expected
-identity in its launch metadata before reaching resume. A finished log — one with
+records its source's contract. A spawned child instead checks the expected
+fingerprint in its launch metadata before reaching resume. A finished log — one with
 `episode/end` — accepts nothing and is forked instead. A `lineage.json`
 beside the log, which a parent writes for a child, supplies the child's
-id, its parent, its team lead, its expected program identity, and its
+id, its parent, its team lead, its expected contract fingerprint, and its
 effective runtime allowance.
 
-On resume, the `episode/start` identity and effective allowance take
+On resume, the `episode/start.contract_fingerprint` value and effective allowance take
 precedence over launch metadata. A prepared spawned fork records its child
-program in that event, so resume compares the recorded child identity before
-continuing it. An ordinary command-line fork preserves its source program in
+contract in that event, so resume compares the recorded child fingerprint before
+continuing it. An ordinary command-line fork preserves its source contract in
 the start event and remains exempt from that comparison at `seed/end`.
 
 `--fork SOURCE_DIR --at SEQ` runs a fresh episode seeded from the source
@@ -780,7 +776,7 @@ a fresh repair episode with its typed findings.
 The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
 fills its task, model, current-directory grants, executable inventory, sandbox
 mode, credential path, and optional verifier before resolving it as an ordinary
-program document.
+contract document.
 
 The implementation and repair episodes have `read`, `grep`, `edit`, and
 `bash`. The assessment episode has `read`, `grep`, and `bash`. It has no edit
@@ -804,7 +800,7 @@ completion. With `--verify`, both corrective nodes may fire thirteen times.
 The root lifetime cap grows to sixteen episodes so all twelve retries can run.
 
 `--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
-workflow. The default is `best-effort`. A program document declares
+workflow. The default is `best-effort`. A contract document declares
 its own `sandbox.mode`, so `--sandbox` cannot accompany `--config`.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
@@ -847,7 +843,7 @@ Each stage covers every completion-critical requirement with a `learned`
 claim that cites a successful tool result. The runtime verifies the citation's
 episode membership, success, and reconstructability. A configured verifier
 judges semantic correctness.
-[config.md](config.md#done_when) specifies the contract for any program.
+[config.md](config.md#done_when) specifies the contract for any contract.
 
 The model is the one named by `--model`, or the default model when `--model`
 is absent. The default model is the `model` block in
@@ -908,13 +904,13 @@ not finished.
 ## Structure
 
 ```
-   crates/log ◄─── crates/program ◄─── crates/core ◄──┬── crates/code
+   crates/log ◄─── crates/contract ◄─── crates/core ◄──┬── crates/code
     every event      the document,      loop,        │    read grep edit bash
     type,            resolution,        registry,    ├── crates/transport (feature)
     serde,           tool specs,        grants,      │    model clients, credentials
     serde_json       schema subset,     budget,      │
                      harness text,      spawn,       ├── crates/workflow
-                     identity,          teams,       │    graph scheduling and recovery
+                     fingerprint,          teams,       │    graph scheduling and recovery
                      inspection    result budget,    │
                                         exec,        ├── crates/context
                                         landlock,    │    projection, cut, summarization prompt
@@ -922,7 +918,7 @@ not finished.
                                         context seam └── crates/view ◄── view/ (browser bundle)
                                                           projection, HTTP, SSE, export
 
-                     crates/lineage ◄── config and log; the ancestry checker
+                     crates/adoption ◄── contract fingerprints and proposal logs
 
                                           crates/cli ◄── all of the above; plan reports
 
@@ -930,39 +926,40 @@ not finished.
    examples/     one runnable example per job, each checking its own result
 ```
 
-foe has two contracts, and each is a crate the rest of the repository reads.
-`crates/log` is the lower one, and states what happened. It defines every
+Two foundational specifications are implemented as crates that the rest of the
+repository reads. `crates/log` defines what happened. It defines every
 event type, including the reserved ones. It depends on serde, serde_json, and
 thiserror, and on no crate of this repository.
 
-`crates/program` is the second contract, and states what was to run: the
-program document, the validation and resolution that turn it into the
-program `episode/start.program` records, the specification of every tool the
-model will see, and the identity that hashes them. It runs nothing: no
+`crates/contract` defines what was to run: the
+contract document, the validation and resolution that turn it into the
+contract `episode/start.contract` records, the specification of every tool the
+model will see, and the fingerprint that hashes them. It runs nothing: no
 process starts there, no grant is exercised, and no log is written. It sits
 above `crates/log` rather than beside it, and states part of itself in the
-log's vocabulary, because the two contracts meet at two places by design.
+log's vocabulary. The two specifications share two facts.
 
 - The sandbox mode. `sandbox.mode` in the document and the mode in the
   `episode/start` sandbox record are one word over one closed set. A
   configured confinement and an observed confinement are the same fact, read
   before the run and after it.
-- The continuation a compaction writes. Identity hashes its shape: the
+- The continuation a compaction writes. The contract fingerprint hashes its shape: the
   fields of the carried state, the labels its rendered lines take, and the
-  templates that render them. A program is defined in part by how its
-  conversation survives a compaction, because two programs that differ only
+  templates that render them. A contract is defined in part by how its
+  conversation survives a compaction, because two contracts that differ only
   there put different text in front of the model.
 
-`crates/program` therefore depends on `crates/log`, and on no other crate of
+`crates/contract` therefore depends on `crates/log`, and on no other crate of
 this repository.
 
-`crates/core` is the machine between the two contracts, and depends on both.
-The line between it and `crates/program` is resolution against execution: what
-a name means and what a program would be belong to the configuration, and
+`crates/core` is the machine that applies both specifications, and depends on
+both crates.
+The line between it and `crates/contract` is resolution against execution: what
+a name means and what a contract would be belong to the configuration, and
 running it, guarding it, and charging it belong to the kernel. Tools depend
 on `crates/core` for the tool trait and capability handles and on
-`crates/program` for what a tool declares. `crates/workflow` depends on
-`crates/program` for the graph type and the program each model node runs, and
+`crates/contract` for what a tool declares. `crates/workflow` depends on
+`crates/contract` for the graph type and the contract each model node runs, and
 on `crates/core` for the log, the registry, the budget pool, and the spawner,
 and runs an episode whose configuration declares a `workflow` in place of the
 loop. `crates/context` depends on `crates/core` for the context policy trait
@@ -986,14 +983,12 @@ write. The binary supplies only the path that file is found at, which is a
 convention `crates/transport` owns, so the telemetry crate still depends on
 `crates/log` alone.
 
-`crates/lineage` is evidence about how program states relate: the lineage
-identity, the evidence-bundle canonical manifest and its checker, and the
-ancestry checker [lineage-identity.md](lineage-identity.md) specifies. It
-depends on `crates/program` for the claim's shape and the canonical
-serialization, and on `crates/log` for the episode record, and is part of
-neither contract: nothing in the runtime depends on it. The binary
-supplies only the two directory-backed resolvers `foe plan` builds for its
-`--states` and `--evidence` directories.
+`crates/adoption` verifies portable evidence for accepting a proposed
+execution contract. It checks the bundle manifest, the candidate fingerprint
+document, artifact evidence, the proposal episode tree, and the accepted
+verification result. It depends on `crates/contract` for canonical hashing
+and on `crates/log` for the episode record. Nothing in the runtime depends on
+it.
 
 ## Size
 
@@ -1001,10 +996,10 @@ The kernel is `log` and `core` — the log format, the loop, budgets, the
 sandbox, and spawning — and its Rust source stays under 6,200 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
-machine alone: what a program is lives in `crates/program`, which is budgeted
-apart under 1,575 lines. The two are separate because a program
+machine alone: what a contract is lives in `crates/contract`, which is budgeted
+apart under 1,575 lines. The two are separate because a contract
 document that gains a key must not buy room in the loop, and because the
-claim the kernel's number supports is about the machine that runs a program
+claim the kernel's number supports is about the machine that runs a contract
 rather than about the data model it runs.
 
 The tool surface in `crates/code` is budgeted apart, under 1,800 lines on
@@ -1013,7 +1008,7 @@ tool adds capability without touching the kernel, so room for tools must
 not become room for the loop. The workflow executor in `crates/workflow`
 stays under 1,050 lines. It schedules the graph, bounds text entering model
 nodes, and routes failures through recovery. Inspection of a configured
-program tree remains in `foe_program::inspect`, beside the model it analyses.
+contract tree remains in `foe_contract::inspect`, beside the model it analyses.
 Both crates implement one shared rule: firing a model node starts that node's
 episode. The executor realizes the rule as an ordinary spawn. Inspection reads
 the same rule as reachability. The compaction policy in `crates/context` stays
@@ -1026,16 +1021,16 @@ that grows must not force the runtime to shrink. The browser viewer's HTML,
 TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
 
-The ceilings reserve 500 kernel lines, 75 program lines, and 75 command-line
-lines for construction-committed executable images and their headroom. The
-program contract reads one snapshot for each reachable configured executable.
+The ceilings reserve 500 kernel lines, 75 contract lines, and 75 command-line
+lines for captured executables and their headroom. The execution-contract
+crate reads each reachable configured executable during construction.
 The kernel materializes, confines, invokes, checks, and transfers those
 snapshots across child process boundaries. The command line constructs the
-root image tree before confinement. This mechanism adds no program-document
+root captured-executable tree before confinement. This mechanism adds no contract-document
 key or log event.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,400 lines. It is separate because it serves a person at a terminal
+under 1,425 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and
@@ -1049,12 +1044,10 @@ the crate depends on `log` alone, and an installation that never enables
 telemetry carries none of its behavior.
 See [docs/telemetry.md](telemetry.md).
 
-Lineage is budgeted apart on the same terms: `crates/lineage` under 500
-lines. It is separate because it reads finished evidence rather than
-producing any: it consumes the configuration contract and the log contract
-to verify how one program state descends from another, and nothing in the
-runtime depends on it. A claim that gains a check must not buy room inside
-either contract. See [lineage-identity.md](lineage-identity.md).
+Adoption is budgeted apart on the same terms: `crates/adoption` stays under
+500 lines. It reads finished evidence and produces no runtime event. A bundle
+check that gains a rule must not buy room in the runtime or execution-contract
+crates. See [adoption.md](adoption.md).
 
 Rust outside every line budget, in the built-in transport, is bounded by the
 size of the binary it compiles into. Continuous integration enforces every

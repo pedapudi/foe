@@ -1,6 +1,6 @@
 [project]
 name = "foe"
-version = "0.1.0"
+version = "0.2.0"
 description = "Host package for the foe runtime: builds the configuration document, runs the binary, and serves the host protocol."
 readme = "README.md"
 requires-python = ">=3.11"

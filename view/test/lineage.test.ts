@@ -1,11 +1,11 @@
 // The forest built from a set of summaries: what hangs under what, the
-// order roots stand in, and the spans of rows that are runs of one program.
+// order roots stand in, and the spans of rows that are runs of one contract.
 
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
 import { EpisodeFold } from "../src/fold.js";
-import { buildTree, flatten, programRuns, shortIdentity } from "../src/lineage.js";
+import { buildTree, flatten, contractRuns, shortFingerprint } from "../src/lineage.js";
 import type { Summary } from "../src/fold.js";
 import { fixture } from "./helpers.js";
 
@@ -15,11 +15,11 @@ function summary(name: string): Summary {
   return fold.summary;
 }
 
-/** The flattened rows as `programRuns` reads them. */
+/** The flattened rows as `contractRuns` reads them. */
 function rows(...names: string[]) {
   return flatten(buildTree(names.map(summary))).map(({ node, depth }) => ({
     id: node.id,
-    identity: node.summary.identity,
+    contractFingerprint: node.summary.contractFingerprint,
     name: node.summary.name,
     depth,
   }));
@@ -46,9 +46,9 @@ test("a spawned child and a forked child hang under the episode they came from",
   );
 });
 
-test("roots of one program stand together, whatever came between them", () => {
-  // `ep_compact` and `ep_over_parent` carry one identity and started 67
-  // days apart; `ep_root` started between them and ran another program.
+test("roots of one contract stand together, whatever came between them", () => {
+  // `ep_compact` and `ep_over_parent` carry one fingerprint and started 67
+  // days apart; `ep_root` started between them and ran another contract.
   const list = rows("compact.jsonl", "root.jsonl", "overlap-parent.jsonl", "overlap-child.jsonl");
   const roots = list.filter((r) => r.depth === 0).map((r) => r.id);
   assert.deepEqual(roots, ["ep_root", "ep_compact", "ep_over_parent"]);
@@ -59,28 +59,28 @@ test("roots of one program stand together, whatever came between them", () => {
   );
 });
 
-test("a program with more than one root spans its rows and its descendants", () => {
+test("a contract with more than one root spans its rows and its descendants", () => {
   const list = rows("compact.jsonl", "root.jsonl", "overlap-parent.jsonl", "overlap-child.jsonl");
-  const runs = programRuns(list);
-  assert.equal(runs.length, 1, "only the identity two roots share is a group");
+  const runs = contractRuns(list);
+  assert.equal(runs.length, 1, "only the fingerprint two roots share is a group");
   const run = runs[0]!;
-  assert.equal(run.identity, "sha256:cccc");
+  assert.equal(run.contractFingerprint, "sha256:cccc");
   assert.equal(run.runs, 2);
   assert.equal(list[run.first]!.id, "ep_compact");
   assert.equal(list[run.last]!.id, "ep_over_child", "the last row of the group is the last root's descendant");
 });
 
-test("one root of a program is no group, and a root without a start is no group", () => {
-  assert.deepEqual(programRuns(rows("root.jsonl", "compact.jsonl")), []);
+test("one root of a contract is no group, and a root without a start is no group", () => {
+  assert.deepEqual(contractRuns(rows("root.jsonl", "compact.jsonl")), []);
   const unread = [
-    { identity: "", name: "a", depth: 0 },
-    { identity: "", name: "b", depth: 0 },
+    { contractFingerprint: "", name: "a", depth: 0 },
+    { contractFingerprint: "", name: "b", depth: 0 },
   ];
-  assert.deepEqual(programRuns(unread), [], "an episode whose start has not been read groups with nothing");
+  assert.deepEqual(contractRuns(unread), [], "an episode whose start has not been read groups with nothing");
 });
 
-test("an identity reads as the first eight characters of its digest", () => {
-  assert.equal(shortIdentity("sha256:14db506b616181ce"), "14db506b…");
-  assert.equal(shortIdentity("sha256:aaaa"), "aaaa");
-  assert.equal(shortIdentity(""), "");
+test("a fingerprint reads as the first eight characters of its digest", () => {
+  assert.equal(shortFingerprint("sha256:14db506b616181ce"), "14db506b…");
+  assert.equal(shortFingerprint("sha256:aaaa"), "aaaa");
+  assert.equal(shortFingerprint(""), "");
 });

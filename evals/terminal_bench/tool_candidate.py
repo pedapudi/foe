@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Create and validate identity-bound tool-definition candidates."""
+"""Create and validate tool definitions against retained evidence."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def create(
     base_configuration: dict[str, str],
     tool: dict[str, str],
 ) -> dict[str, Any]:
-    """Bind one tool_defs entry to the evaluated source, binary, and evidence.
+    """Associate one tool_defs entry with its evaluated source, binary, and evidence.
 
     `tool` names the entry: its name, description, and executable content
     digest. The executable file itself is retained beside the candidate
@@ -79,7 +79,7 @@ def create(
 def validate(
     value: Any, executable: bytes, evaluated_foe: dict[str, str] | None = None
 ) -> dict[str, Any]:
-    """Validate a complete candidate against the retained executable bytes."""
+    """Validate a complete candidate against the captured executable bytes."""
     required = {
         "schema_version",
         "candidate_kind",

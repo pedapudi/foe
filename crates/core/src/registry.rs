@@ -1,20 +1,20 @@
-//! Constructing a program's tools from their specifications, and dispatch
+//! Constructing a contract's tools from their specifications, and dispatch
 //! with capability handles.
 //!
-//! Implements docs/design.md (Tools). `foe_program::tools` resolves a
-//! program's `tools` into the specifications the model sees; this module
+//! Implements docs/design.md (Tools). `foe_contract::tools` resolves a
+//! contract's `tools` into the specifications the model sees; this module
 //! builds the tool behind each specification — a built-in, a `tool_defs`
 //! executable, or a host implementation — and runs a call with the handles
 //! the tool's declared effect entitles it to. The built-in `block` tool and
 //! the synthesized `return` tool are implemented here.
 
-use crate::executable::{Executable, ExecutableTree};
+use crate::captured_executable::{CapturedExecutable, CapturedExecutableTree};
 use crate::{CallCtx, ExecRequest, ExecResult, Executor, Tool, ToolValue};
+use foe_contract::document::ResolvedContract;
+use foe_contract::harness_text as text;
+use foe_contract::tools::{resolve_specs, Source};
+use foe_contract::{schema, ContractError, Effect, ToolDef, ToolSpec};
 use foe_log::ToolCall;
-use foe_program::document::ResolvedProgram;
-use foe_program::harness_text as text;
-use foe_program::tools::{resolve_specs, Source};
-use foe_program::{schema, Effect, ProgramError, ToolDef, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -45,33 +45,34 @@ pub struct Registry {
     entries: Vec<Entry>,
 }
 
-fn invalid(rule: String) -> ProgramError {
-    ProgramError::Invalid { key: "tools".into(), rule }
+fn invalid(rule: String) -> ContractError {
+    ContractError::Invalid { key: "tools".into(), rule }
 }
 
 impl Registry {
-    /// Resolves `program.tools`. `host_tools` are the implementations of the
+    /// Resolves `contract.tools`. `host_tools` are the implementations of the
     /// document's `host_tools` entries; their specifications come from the
     /// document. `extra_builtins` are built-in tools implemented elsewhere:
     /// the coding tools and the spawn and team tools.
     pub fn new(
-        program: &ResolvedProgram,
+        contract: &ResolvedContract,
         host_tools: Vec<Box<dyn Tool>>,
         extra_builtins: Vec<Box<dyn Tool>>,
-    ) -> Result<Self, ProgramError> {
-        let executables = ExecutableTree::materialize(program, std::path::Path::new("/tmp/foe-standalone-episode"))
-            .map_err(invalid)?;
-        Self::new_with_executables(program, &executables, host_tools, extra_builtins)
+    ) -> Result<Self, ContractError> {
+        let executables =
+            CapturedExecutableTree::materialize(contract, std::path::Path::new("/tmp/foe-standalone-episode"))
+                .map_err(invalid)?;
+        Self::new_with_executables(contract, &executables, host_tools, extra_builtins)
     }
 
     pub fn new_with_executables(
-        program: &ResolvedProgram,
-        executables: &ExecutableTree,
+        contract: &ResolvedContract,
+        executables: &CapturedExecutableTree,
         host_tools: Vec<Box<dyn Tool>>,
         extra_builtins: Vec<Box<dyn Tool>>,
-    ) -> Result<Self, ProgramError> {
+    ) -> Result<Self, ContractError> {
         let extra_specs: Vec<ToolSpec> = extra_builtins.iter().map(|t| t.spec().clone()).collect();
-        let specs = resolve_specs(program, &extra_specs)?;
+        let specs = resolve_specs(contract, &extra_specs)?;
         let mut builtins: BTreeMap<String, Arc<dyn Tool>> =
             extra_builtins.into_iter().map(|t| (t.spec().name.clone(), Arc::from(t))).collect();
         if let Some(spec) = specs.iter().find(|spec| spec.name == text::BLOCK_NAME) {
@@ -83,20 +84,20 @@ impl Registry {
         for spec in specs {
             let name = spec.name.as_str();
             let mut exec = None;
-            let (tool, source): (Arc<dyn Tool>, Source) = if let Some(def) = program.tool_defs.get(name) {
+            let (tool, source): (Arc<dyn Tool>, Source) = if let Some(def) = contract.tool_defs.get(name) {
                 let executable = executables
                     .tools
                     .get(name)
-                    .ok_or_else(|| invalid(format!("configured tool `{name}` has no committed executable")))?;
+                    .ok_or_else(|| invalid(format!("configured tool `{name}` has no captured executable")))?;
                 let tool = Arc::new(ExecTool { spec: spec.clone(), def: def.clone(), executable: executable.clone() });
                 exec = Some(tool.clone());
                 (tool, Source::Configured)
-            } else if program.host_tools.contains_key(name) {
+            } else if contract.host_tools.contains_key(name) {
                 let tool = hosts
                     .remove(name)
                     .ok_or_else(|| invalid(format!("host tool `{name}` has no implementation registered")))?;
                 (tool, Source::Host)
-            } else if name == text::RETURN_NAME && !program.tools.iter().any(|t| t == name) {
+            } else if name == text::RETURN_NAME && !contract.tools.iter().any(|t| t == name) {
                 (Arc::new(ReturnTool { spec: spec.clone() }), Source::Builtin)
             } else {
                 (builtins.remove(name).expect("resolved as built in"), Source::Builtin)
@@ -205,7 +206,7 @@ impl Registry {
     }
 
     /// Runs the tool `name` on a candidate as a verifier, per docs/config.md
-    /// `done_when`. A program's `done_when.verify` and a workflow node's
+    /// `done_when`. A contract's `done_when.verify` and a workflow node's
     /// `verify` both name the tool this way. Returns the findings; an empty
     /// list means accepted. `Err` means the verifier failed rather than
     /// judged: it could not run, a `tool_defs` executable exited with a
@@ -248,10 +249,10 @@ impl Registry {
             .ok_or_else(|| format!("verifier `{name}` returned a value that is not a list of strings"))
     }
 
-    /// The verifier identity a `verification/result` records. Configured
+    /// The verifier fingerprint a `verification/result` records. Configured
     /// tools use the executable digest committed during construction.
-    /// Built-in and host tools use the runtime build identity.
-    pub fn verifier_identity(&self, name: &str, runtime_build: &str) -> String {
+    /// Built-in and host tools use the runtime build fingerprint.
+    pub fn verifier_fingerprint(&self, name: &str, runtime_build: &str) -> String {
         match self.entry(name).and_then(|e| e.exec.as_ref()) {
             Some(exec) => format!("sha256:{}", exec.executable.sha256),
             None => runtime_build.to_string(),
@@ -265,14 +266,14 @@ impl Registry {
 pub struct ExecTool {
     spec: ToolSpec,
     def: ToolDef,
-    executable: Arc<Executable>,
+    executable: Arc<CapturedExecutable>,
 }
 
 impl ExecTool {
     fn request(&self, args: Vec<String>) -> ExecRequest {
         ExecRequest {
-            program: self.def.exec.clone(),
-            executable: Some(self.executable.clone()),
+            command: self.def.exec.clone(),
+            captured_executable: Some(self.executable.clone()),
             args,
             cwd: self.def.cwd.clone().unwrap_or_default(),
             env: BTreeMap::new(),

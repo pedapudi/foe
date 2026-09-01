@@ -1,15 +1,15 @@
-# The shim the `python` tool prepends to the model's program on the
+# The shim the `python` tool prepends to the model's source on the
 # interpreter's standard input. It exposes call_tool and fail, speaks JSON
 # lines over the inherited socket on file descriptor 3, and reports the
-# value main returned or the failure that ended the program. python.rs
+# value main returned or the failure that ended the source. python.rs
 # fills __FOE_MEMORY__ before writing it. All other names carry a _foe
-# prefix so the program cannot collide with them by accident.
+# prefix so the source cannot collide with them by accident.
 import json as _foe_json
 import os as _foe_os
 import resource as _foe_resource
 
 # The address-space cap. Both the soft and the hard limit are set, and a
-# process without privilege cannot raise a hard limit, so the program
+# process without privilege cannot raise a hard limit, so the source
 # cannot undo it.
 _foe_resource.setrlimit(_foe_resource.RLIMIT_AS, (__FOE_MEMORY__, __FOE_MEMORY__))
 _foe_pipe = _foe_os.fdopen(3, "r+b", buffering=0)
@@ -58,5 +58,4 @@ def _foe_run():
         import traceback
 
         _foe_send({"failed": traceback.format_exc(limit=5)})
-
 

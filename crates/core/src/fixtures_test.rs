@@ -1,11 +1,11 @@
 //! Fixtures shared by the tests of this crate: temporary directories, a
-//! minimal resolved program, a scripted transport, probe tools that report
+//! minimal resolved contract, a scripted transport, probe tools that report
 //! which handles they received, and a fake executor.
 
 use crate::{CallCtx, ChunkSink, ExecRequest, ExecResult, Executor, ModelRequestBody, Tool, ToolValue, Transport};
+use foe_contract::document::{resolve, ResolvedContract};
+use foe_contract::{ContractDocument, Effect, ToolSpec};
 use foe_log::{Chunk, ModelRoute, StopReason, Usage};
-use foe_program::document::{resolve, ResolvedProgram};
-use foe_program::{Effect, ProgramDocument, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::ops::Deref;
@@ -119,7 +119,7 @@ fn scratch_cleanup_does_not_follow_a_replacement_symlink() {
 /// only tool and the host transport.
 pub fn config_value(root: &Path) -> Value {
     json!({
-        "version": 3,
+        "version": 4,
         "name": "fixture",
         "instructions": { "10-role": "You are a test agent.", "05-first": "Be brief." },
         "tools": ["block"],
@@ -129,10 +129,13 @@ pub fn config_value(root: &Path) -> Value {
     })
 }
 
-pub fn program_with(root: &Path, edit: impl FnOnce(&mut Value)) -> Result<ResolvedProgram, foe_program::ProgramError> {
+pub fn contract_with(
+    root: &Path,
+    edit: impl FnOnce(&mut Value),
+) -> Result<ResolvedContract, foe_contract::ContractError> {
     let mut value = config_value(root);
     edit(&mut value);
-    let config: ProgramDocument = serde_json::from_value(value)?;
+    let config: ContractDocument = serde_json::from_value(value)?;
     resolve(&config)
 }
 

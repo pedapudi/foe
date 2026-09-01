@@ -2,7 +2,7 @@
 // saying what one `request/header` changed against the one before it.
 //
 // The runtime composes a system prompt from the `instructions` object a
-// program declares: the sections in lexicographic order of their keys,
+// contract declares: the sections in lexicographic order of their keys,
 // joined by a blank line, followed by a heading and the instruction of
 // every tool that has one (docs/config.md, "instructions"). The keys are
 // the names the author gave the sections, so a prompt read back through
@@ -17,7 +17,7 @@ import { arr, obj, str } from "./types.js";
 const SEPARATOR = "\n\n";
 
 export interface PromptSection {
-  /** The key the program's `instructions` object gave this section. */
+  /** The key the contract's `instructions` object gave this section. */
   name: string;
   text: string;
 }
@@ -45,7 +45,7 @@ export interface PromptParts {
  *
  * The walk stops at the first key whose text is not where the composition
  * rule puts it, and everything from there on is `appended`. A prompt the
- * program did not compose therefore yields no section rather than a wrong
+ * contract did not compose therefore yields no section rather than a wrong
  * one, and a prompt composed from a set of instructions that has since
  * changed yields the sections it still agrees on.
  *

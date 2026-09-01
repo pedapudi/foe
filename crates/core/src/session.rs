@@ -6,7 +6,7 @@
 //! evidence files. A stop sends SIGTERM to the group, waits
 //! [`TERM_GRACE`], and sends SIGKILL, so nothing the session started
 //! survives it. Settlement stops episode-lifetime sessions. It releases a
-//! task-lifetime session to the enclosing task environment when the program
+//! task-lifetime session to the enclosing task environment when the contract
 //! holds that authority. See docs/tools.md "session".
 
 use crate::exec::{end_group, CAPTURE_LIMIT};
@@ -208,7 +208,7 @@ impl Sessions for LocalSessions {
         };
         let (stdout, stdout_stdio) = output(stdout_path)?;
         let (stderr, stderr_stdio) = output(stderr_path)?;
-        let mut cmd = Command::new(&req.program);
+        let mut cmd = Command::new(&req.command);
         cmd.args(&req.args)
             .current_dir(&req.cwd)
             .env_clear()
@@ -217,7 +217,7 @@ impl Sessions for LocalSessions {
             .stdin(Stdio::piped())
             .stdout(stdout_stdio)
             .stderr(stderr_stdio);
-        let narrowed = self.policy.for_executable(&req.program, false);
+        let narrowed = self.policy.for_executable(&req.command, false);
         let mut child =
             self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::ProcessStart(e.to_string()))?;
         self.next.store(id, Ordering::SeqCst);

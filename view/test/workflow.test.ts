@@ -25,7 +25,7 @@ function run(): Workflow {
   const fold = new EpisodeFold("workflow", { stream: false });
   const events = fixture("workflow.jsonl");
   for (const ev of events) fold.push(ev);
-  const workflow = readWorkflow(fold.summary.program, events);
+  const workflow = readWorkflow(fold.summary.contract, events);
   assert.ok(workflow, "the fixture episode declares a workflow");
   return workflow;
 }

@@ -67,7 +67,7 @@ const CARD: usize = DETECTORS.len() - 2;
 const ENTROPY_BITS: f64 = 3.5;
 
 /// Path components kept in the clear: the standard filesystem hierarchy,
-/// and the names of system files and programs that are the same on every
+/// and the names of system files and commands that are the same on every
 /// machine. Masking `null` or `useradd` protects nobody, and it destroys
 /// the one thing the subject was worth reading for — that the episode wrote
 /// to the null device, or added a user. A component that could name a
@@ -373,7 +373,7 @@ pub fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
 
 /// Reads the local key from `dir`, creating it from the system random
 /// source on first use. The key never leaves this file's callers: it is not
-/// emitted, not logged, and not part of any identity. Pseudonyms are
+/// emitted, not logged, and not part of any fingerprint. Pseudonyms are
 /// therefore stable across every episode written under one output
 /// directory and meaningless outside it, which makes cross-installation
 /// joins impossible by construction.

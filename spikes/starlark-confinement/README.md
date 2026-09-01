@@ -1,6 +1,6 @@
 # Starlark confinement spike
 
-docs/code-mode.md proposes a `code` tool whose programs run in a confined
+docs/code-mode.md proposes a `code` tool whose child_contracts run in a confined
 Starlark evaluator. The design forbids the runtime from taking an
 evaluator dependency before a spike demonstrates five properties: fuel
 accounting, memory accounting, cancellation, a disabled module loader,
@@ -20,7 +20,7 @@ has a compensating control that the code-mode design already requires.
 
 ## What the prototype does
 
-`src/lib.rs` exposes one function, `run_program`. It parses a source
+`src/lib.rs` exposes one function, `run_contract`. It parses a source
 string in a dialect with `load` disabled, evaluates the module with inner
 dispatch disabled, then invokes the module's zero-argument `main` with
 dispatch enabled. Inner dispatch is the single native function
@@ -37,7 +37,7 @@ Each item names the tests that demonstrate it.
 
 - **Fuel accounting.** The evaluator counts steps, where one step is one
   function call or one loop back-edge. The count grows in proportion to
-  the work a program performs: a loop of 100,000 iterations reports ten
+  the work a contract performs: a loop of 100,000 iterations reports ten
   times the steps of a loop of 10,000
   (`fuel_accounting_scales_with_work`). An unbounded loop under a bound of
   100,000 steps fails with an error naming the bound after 101,000 steps,
@@ -45,7 +45,7 @@ Each item names the tests that demonstrate it.
   (`non_termination_hits_the_step_bound`).
 - **Memory accounting.** The evaluator reports peak heap bytes; the
   report covers a known 10 MB string allocation
-  (`memory_accounting_reports_a_known_allocation`). A program that
+  (`memory_accounting_reports_a_known_allocation`). A contract that
   allocates without bound under an 8 MiB heap limit fails with an error
   naming the limit (`memory_exhaustion_hits_the_heap_bound`).
 - **Cancellation.** A flag set from another thread stops an evaluation
@@ -74,8 +74,8 @@ Each item names the tests that demonstrate it.
 ## Evidence for the remaining design requirements
 
 - **Bounds beyond fuel and memory.** The source-byte bound rejects an
-  oversized program before parsing (`source_byte_bound_is_enforced`). The
-  inner-call bound stops a program that loops over `call_tool`
+  oversized contract before parsing (`source_byte_bound_is_enforced`). The
+  inner-call bound stops a contract that loops over `call_tool`
   (`inner_call_bound_is_enforced`). Unbounded recursion fails with a
   Starlark call-stack overflow at the configured depth, before the native
   stack is at risk (`recursion_hits_a_bound`).
@@ -83,10 +83,10 @@ Each item names the tests that demonstrate it.
   an error and the dispatcher never runs, which implements the contract's
   rule that inner dispatch is unavailable while the evaluator loads the
   source (`dispatch_is_disabled_during_module_load`).
-- **Outer call contract.** The worked program from docs/code-mode.md runs
+- **Outer call contract.** The worked contract from docs/code-mode.md runs
   unchanged: struct field access on the result, `is_error` inspection,
-  and a narrowed JSON return value (`a_program_narrows_a_tool_result`,
-  `a_program_inspects_an_inner_error_and_continues`). `fail(message)`
+  and a narrowed JSON return value (`a_contract_narrows_a_tool_result`,
+  `a_contract_inspects_an_inner_error_and_continues`). `fail(message)`
   ends the evaluation with an error carrying the message
   (`fail_ends_the_evaluation_with_an_error`). A missing `main` and a
   non-JSON return value each produce an error before or instead of a

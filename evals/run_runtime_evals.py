@@ -34,7 +34,7 @@ class HarnessError(Exception):
 
 def base_config(name: str, root: Path, transport: Path) -> dict[str, Any]:
     return {
-        "version": 3,
+        "version": 4,
         "name": name,
         "instructions": {"role": "Follow the deterministic evaluation task."},
         "tools": ["read"],
@@ -343,7 +343,7 @@ def first_event(events: list[dict[str, Any]], event_type: str) -> dict[str, Any]
 
 
 def corrupt_authority(events: list[dict[str, Any]]) -> None:
-    first_event(events, "episode/start")["data"]["program"]["grants"]["read"][0] = "relative"
+    first_event(events, "episode/start")["data"]["contract"]["grants"]["read"][0] = "relative"
 
 
 def corrupt_request_messages(events: list[dict[str, Any]]) -> None:

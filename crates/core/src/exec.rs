@@ -1,7 +1,7 @@
 //! Running configured executables: argv, constructed env, capture, reap, narrowed sandbox.
 //!
 //! [`LocalExecutor`] implements [`Executor`] for this machine. Each call
-//! starts exactly the program and arguments it is given, with the
+//! starts exactly the command and arguments it is given, with the
 //! environment it is given and nothing inherited, in a fresh process group
 //! under a sandbox narrowed from the episode's. When the call ends, by exit,
 //! timeout, or cancellation, no process of that group survives it.
@@ -10,7 +10,7 @@
 //! bytes. Beyond that the remainder is written to a file under the spill
 //! directory and the captured bytes end with one line naming that file.
 
-use crate::executable::{next_child_fd, process_fd_path};
+use crate::captured_executable::{next_child_fd, process_fd_path};
 use crate::sandbox::{Policy, Sandbox};
 use crate::{CapError, ExecRequest, ExecResult, Executor};
 use command_fds::{CommandFdExt, FdMapping};
@@ -54,11 +54,12 @@ impl Executor for LocalExecutor {
     fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError> {
         let start = Instant::now();
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
-        let executable_fd = req.executable.as_ref().map(|_| next_child_fd(req.pass_fds.iter().map(|(fd, _)| *fd)));
-        let invoked = executable_fd.map(process_fd_path).unwrap_or_else(|| req.program.clone());
+        let executable_fd =
+            req.captured_executable.as_ref().map(|_| next_child_fd(req.pass_fds.iter().map(|(fd, _)| *fd)));
+        let invoked = executable_fd.map(process_fd_path).unwrap_or_else(|| req.command.clone());
         let mut cmd = Command::new(&invoked);
-        if let Some(executable) = &req.executable {
-            cmd.arg0(executable.basename());
+        if let Some(executable) = &req.captured_executable {
+            cmd.arg0(executable.invocation_name());
         }
         cmd.args(&req.args)
             .current_dir(&req.cwd)
@@ -80,17 +81,16 @@ impl Executor for LocalExecutor {
                     .map_err(|e| CapError::ProcessStart(format!("fd {child_fd}: cannot duplicate descriptor: {e}")))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        if let (Some(executable), Some(child_fd)) = (&req.executable, executable_fd) {
-            let parent_fd =
-                executable.fd().as_fd().try_clone_to_owned().map_err(|e| {
-                    CapError::ProcessStart(format!("committed executable: cannot duplicate descriptor: {e}"))
-                })?;
+        if let (Some(executable), Some(child_fd)) = (&req.captured_executable, executable_fd) {
+            let parent_fd = executable.fd().as_fd().try_clone_to_owned().map_err(|e| {
+                CapError::ProcessStart(format!("captured executable: cannot duplicate descriptor: {e}"))
+            })?;
             mappings.push(FdMapping { parent_fd, child_fd });
         }
         cmd.fd_mappings(mappings).map_err(|e| CapError::ProcessStart(format!("fd mapping: {e:?}")))?;
-        let narrowed = req.policy.clone().unwrap_or_else(|| match &req.executable {
+        let narrowed = req.policy.clone().unwrap_or_else(|| match &req.captured_executable {
             Some(executable) => self.policy.for_immutable_executable(executable.clone(), req.network),
-            None => self.policy.for_executable(&req.program, req.network),
+            None => self.policy.for_executable(&req.command, req.network),
         });
         let mut child =
             self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::ProcessStart(e.to_string()))?;
@@ -100,7 +100,7 @@ impl Executor for LocalExecutor {
                 let _ = stdin.write_all(&bytes);
             });
         }
-        let name = req.program.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = req.command.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let stdout = Capture::start(child.stdout.take(), self.spill_dir.join(format!("exec-{call}-{name}.stdout")));
         let stderr = Capture::start(child.stderr.take(), self.spill_dir.join(format!("exec-{call}-{name}.stderr")));
         let deadline = start + req.timeout;

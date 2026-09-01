@@ -16,9 +16,9 @@ BASE = {
     "token_policy": "measurement_only",
 }
 DOCUMENTS = {
-    "program.json": {
+    "contract.json": {
         "instructions": {"role": "Run the workflow."},
-        "programs": {"kid": {"instructions": {"scope": "Stay inside the digest."}}},
+        "child_contracts": {"kid": {"instructions": {"scope": "Stay inside the digest."}}},
         "workflow": {
             "nodes": {
                 "diagnose": {"model": {"instructions": {"sufficiency": "Prefer bounded evidence."}}}
@@ -34,7 +34,7 @@ def fixture():
         "sha256:" + "3" * 64,
         BASE,
         {
-            "document": "program.json",
+            "document": "contract.json",
             "section": "scope",
             "old_text": "inside the digest",
             "new_text": "inside the labeled digest",
@@ -57,10 +57,10 @@ class InstructionCandidateTest(unittest.TestCase):
 
     def test_section_resolution_requires_one_match_and_one_occurrence(self):
         with self.assertRaisesRegex(ValueError, "exactly one instruction section"):
-            resolve_section(DOCUMENTS["program.json"], "absent")
+            resolve_section(DOCUMENTS["contract.json"], "absent")
         ambiguous = {
             "instructions": {"scope": "one"},
-            "programs": {"kid": {"instructions": {"scope": "two"}}},
+            "child_contracts": {"kid": {"instructions": {"scope": "two"}}},
         }
         with self.assertRaisesRegex(ValueError, "exactly one instruction section"):
             resolve_section(ambiguous, "scope")
@@ -70,7 +70,7 @@ class InstructionCandidateTest(unittest.TestCase):
                 "sha256:" + "3" * 64,
                 BASE,
                 {
-                    "document": "program.json",
+                    "document": "contract.json",
                     "section": "scope",
                     "old_text": "i",
                     "new_text": "y",
@@ -98,7 +98,7 @@ class InstructionCandidateTest(unittest.TestCase):
                 "sha256:" + "3" * 64,
                 BASE,
                 {
-                    "document": "program.json",
+                    "document": "contract.json",
                     "section": "scope",
                     "old_text": "inside the digest",
                     "new_text": "inside the digest",

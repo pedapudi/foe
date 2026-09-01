@@ -27,7 +27,7 @@ _CAPABILITY_EFFECT: dict[type, Effect] = {ReadFS: "reads", WriteFS: "writes", Ex
 
 @dataclass(frozen=True, slots=True)
 class ToolSpec:
-    """What identity hashes and what the model sees. See docs/design.md "Tools"."""
+    """What the contract fingerprint hashes and what the model sees."""
 
     name: str
     description: str

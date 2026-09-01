@@ -6,7 +6,7 @@ import { fmtDate, fmtDuration, fmtInt, h } from "../dom.js";
 import type { Child } from "../dom.js";
 import { completionProvenance, outcomeLabel, provenanceText } from "../fold.js";
 import type { Summary } from "../fold.js";
-import { flatten, programRuns, shortIdentity, siblingShares, spentTokens } from "../lineage.js";
+import { flatten, contractRuns, shortFingerprint, siblingShares, spentTokens } from "../lineage.js";
 import type { TreeNode } from "../lineage.js";
 import { str } from "../types.js";
 import { barSvg, figureSvg, svg } from "./svg.js";
@@ -92,16 +92,16 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     position.set(node.id, { x: LEFT + depth * INDENT, y: i * ROW + ROW / 2 });
   });
 
-  // A bracket down the left edge spans the rows of one program. Two roots
-  // of one program carry one `episode/start.identity`; without the bracket
+  // A bracket down the left edge spans the rows of one contract. Two roots
+  // of one contract carry one `episode/start.contract_fingerprint`; without the bracket
   // the list shows them only as two rows that happen to read alike.
-  const runs = programRuns(rows.map(({ node, depth }) => ({ ...node.summary, depth })));
+  const runs = contractRuns(rows.map(({ node, depth }) => ({ ...node.summary, depth })));
   for (const run of runs) {
     const y1 = run.first * ROW + 4;
     const y2 = (run.last + 1) * ROW - 4;
-    const bracket = svg("path", { class: "program-run", d: `M 6 ${y1} H 3 V ${y2} H 6` });
+    const bracket = svg("path", { class: "contract-run", d: `M 6 ${y1} H 3 V ${y2} H 6` });
     const runTitle = svg("title");
-    runTitle.textContent = `${run.runs} runs of ${run.name} · one program identity ${shortIdentity(run.identity)}`;
+    runTitle.textContent = `${run.runs} runs of ${run.name} · one contract fingerprint ${shortFingerprint(run.contractFingerprint)}`;
     bracket.appendChild(runTitle);
     figure.appendChild(bracket);
   }
@@ -149,7 +149,7 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
 
     const textX = x + DOT_R + 9;
     const textW = Math.max(24, width - textX - COMPARE_W - 6);
-    // First line: the program name, then the episode id when it fits.
+    // First line: the contract name, then the episode id when it fits.
     const name = svg("text", { class: "name", x: textX, y: y - 4 });
     const nameText = fit(s.name, textW * 0.66, NAME_CHAR);
     const nameSpan = svg("tspan");
@@ -276,11 +276,11 @@ export function renderInfo(s: Summary | null): HTMLElement {
     const landlock = abi === null ? "" : abi === 0 ? "landlock unavailable" : `landlock abi ${abi}`;
     rows.push(["sandbox", parts([landlock, s.sandbox.mode])]);
   }
-  // The identity is what says whether two episodes ran one program, so the
+  // The fingerprint says whether two episodes ran one contract, so the
   // details name it. The whole hash is long; the row sets its first eight
   // characters and carries the rest in its tooltip.
-  if (s.identity) {
-    rows.push(["program identity", h("span", { title: s.identity }, shortIdentity(s.identity))]);
+  if (s.contractFingerprint) {
+    rows.push(["contract fingerprint", h("span", { title: s.contractFingerprint }, shortFingerprint(s.contractFingerprint))]);
   }
   if (s.forkOrigin) rows.push(["fork origin", `${s.forkOrigin.episodeId} at seq ${s.forkOrigin.seq}`]);
   if (s.parentId) rows.push(["parent", s.parentId]);

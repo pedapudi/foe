@@ -17,7 +17,7 @@ fn sessions(name: &str, limit: usize) -> (LocalSessions, ScratchDir) {
 fn shell(cwd: &Path, command: &str) -> SessionRequest {
     SessionRequest {
         name: "bash".into(),
-        program: "/bin/bash".into(),
+        command: "/bin/bash".into(),
         args: vec!["-c".into(), command.into()],
         env: BTreeMap::new(),
         cwd: cwd.to_path_buf(),
@@ -276,8 +276,8 @@ fn start() -> EpisodeStart {
         parent_id: None,
         fork_origin: None,
         team_id: None,
-        program: serde_json::json!({}),
-        identity: "sha256:0".into(),
+        contract: serde_json::json!({}),
+        contract_fingerprint: "sha256:0".into(),
         task: "t".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
@@ -329,7 +329,7 @@ async fn settlement_records_the_implicit_stop_and_the_log_stays_valid() {
 }
 
 /// docs/log-format.md `tool/result`: settlement records a task-lifetime
-/// session as released while alive, with the process identity and the new
+/// session as released while alive, with the process fingerprint and the new
 /// owner. The release produces no exit inbox item.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn settlement_records_task_ownership_without_stopping_the_process() {

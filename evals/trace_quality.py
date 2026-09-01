@@ -135,7 +135,7 @@ class Evaluation:
             sorted(observations["landlock_abis"].items(), key=lambda item: _abi_order(item[0]))
         )
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "valid": not self.violations,
             "metrics": metrics,
             "observations": observations,
@@ -190,8 +190,8 @@ def _discover(paths: Iterable[Path]) -> list[EpisodeLog]:
     return [_read_log(path) for path in sorted(files)]
 
 
-def _program(log: EpisodeLog) -> dict[str, Any]:
-    value = log.start.get("program")
+def _contract(log: EpisodeLog) -> dict[str, Any]:
+    value = log.start.get("contract")
     return value if isinstance(value, dict) else {}
 
 
@@ -300,7 +300,7 @@ def _render_continuation(summary: dict[str, Any]) -> str:
             detail = outcome.get("code", outcome.get("limit", ""))
             suffix = f" {detail}" if detail else ""
             child_lines.append(
-                f"{child.get('id', '')} ({child.get('program', '')}): {outcome.get('kind', '')}{suffix}"
+                f"{child.get('id', '')} ({child.get('contract', '')}): {outcome.get('kind', '')}{suffix}"
             )
 
     def amount(name: str) -> str:
@@ -488,9 +488,9 @@ def _check_evidence(evaluation: Evaluation, log: EpisodeLog) -> None:
 def _check_authority(evaluation: Evaluation, log: EpisodeLog) -> None:
     dimension = "declared_authority"
     start = log.start
-    program = _program(log)
-    grants = program.get("grants")
-    evaluation.check(dimension, isinstance(grants, dict), "program.grants is absent", log, 0)
+    contract = _contract(log)
+    grants = contract.get("grants")
+    evaluation.check(dimension, isinstance(grants, dict), "contract.grants is absent", log, 0)
     grants = grants if isinstance(grants, dict) else {}
     read = grants.get("read")
     evaluation.check(
@@ -507,7 +507,7 @@ def _check_authority(evaluation: Evaluation, log: EpisodeLog) -> None:
             valid = all(os.path.isabs(value) for value in values)
         evaluation.check(dimension, valid, f"grants.{name} has invalid entries", log, 0)
 
-    tool_defs = program.get("tool_defs", {})
+    tool_defs = contract.get("tool_defs", {})
     valid_tools = isinstance(tool_defs, dict)
     if isinstance(tool_defs, dict):
         for definition in tool_defs.values():
@@ -672,7 +672,7 @@ def _check_outcome(evaluation: Evaluation, log: EpisodeLog) -> None:
         valid = isinstance(outcome.get("error"), str)
     evaluation.check(dimension, valid, "the outcome does not match its closed variant", log)
 
-    done_when = _program(log).get("done_when", {})
+    done_when = _contract(log).get("done_when", {})
     returns = done_when.get("returns") if isinstance(done_when, dict) else None
     if returns is not None and kind == "completed":
         findings = _schema_findings(outcome.get("value"), returns)
@@ -727,8 +727,8 @@ def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
             evaluation.observations["child_episodes"] += 1
 
     for log in logs:
-        program = _program(log)
-        budget = program.get("budget")
+        contract = _contract(log)
+        budget = contract.get("budget")
         has_events = any(
             _event_type(event) in {"budget/reserve", "budget/release", "spawn/start", "spawn/end"}
             for event in log.events
@@ -737,7 +737,7 @@ def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
         if not has_events and not has_children:
             continue
         dimension = "hierarchical_budgets"
-        evaluation.check(dimension, isinstance(budget, dict), "program.budget is absent", log, 0)
+        evaluation.check(dimension, isinstance(budget, dict), "contract.budget is absent", log, 0)
         budget = budget if isinstance(budget, dict) else {}
         names = ("model_calls", "input_tokens", "output_tokens")
         totals = {name: budget.get(name) for name in names}
@@ -905,8 +905,8 @@ def _check_budgets(evaluation: Evaluation, logs: list[EpisodeLog]) -> None:
 
 
 def _check_workflow(evaluation: Evaluation, log: EpisodeLog) -> None:
-    program = _program(log)
-    workflow = program.get("workflow")
+    contract = _contract(log)
+    workflow = contract.get("workflow")
     has_events = any(_event_type(event).startswith("workflow/") for event in log.events)
     if not isinstance(workflow, dict) and not has_events:
         return
@@ -1019,8 +1019,8 @@ def _check_workflow(evaluation: Evaluation, log: EpisodeLog) -> None:
         )
 
 
-def _done_when_line(program: dict[str, Any]) -> str:
-    done_when = program.get("done_when")
+def _done_when_line(contract: dict[str, Any]) -> str:
+    done_when = contract.get("done_when")
     done_when = done_when if isinstance(done_when, dict) else {}
     finish = (
         "a call to `return` with a value conforming to its schema"
@@ -1069,7 +1069,7 @@ def _check_compaction(evaluation: Evaluation, log: EpisodeLog) -> None:
     if not compaction_events:
         return
     dimension = "compaction_continuity"
-    context = _program(log).get("context", {})
+    context = _contract(log).get("context", {})
     evaluation.check(
         dimension,
         isinstance(context, dict) and context.get("compact") is True,
@@ -1130,7 +1130,7 @@ def _check_compaction(evaluation: Evaluation, log: EpisodeLog) -> None:
         )
         evaluation.check(
             dimension,
-            state.get("done_when") == _done_when_line(_program(log)),
+            state.get("done_when") == _done_when_line(_contract(log)),
             "typed continuation state does not preserve the completion condition",
             log,
             summary_event.get("seq"),

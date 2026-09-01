@@ -9,8 +9,8 @@ fn start() -> EpisodeStart {
         parent_id: None,
         fork_origin: None,
         team_id: None,
-        program: serde_json::json!({}),
-        identity: "sha256:0".into(),
+        contract: serde_json::json!({}),
+        contract_fingerprint: "sha256:0".into(),
         task: "t".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
@@ -18,9 +18,9 @@ fn start() -> EpisodeStart {
     }
 }
 
-fn request(program: &str, reserve: BudgetAmount) -> SpawnRequest {
+fn request(contract: &str, reserve: BudgetAmount) -> SpawnRequest {
     SpawnRequest {
-        program: program.into(),
+        contract: contract.into(),
         task: "do it".into(),
         context: SpawnContext::Fresh,
         reserve,
@@ -120,19 +120,19 @@ async fn a_process_start_failure_closes_the_spawn_and_reservation() {
 
 /// docs/config.md "budget": a child's budget is reserved from its parent's
 /// remainder. A `spawn` tool call names no amount, so the reservation is
-/// the amount the child program declares, which leaves the parent its own
+/// the amount the child contract declares, which leaves the parent its own
 /// remainder and room for a second child up to `max_concurrent`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
+async fn a_spawn_without_an_amount_reserves_what_the_contract_declares() {
     let dir = scratch("wiring", "declared");
     let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
     log.append(EventData::EpisodeStart(start())).unwrap();
-    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
+    let config: foe_contract::ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
         "grants": {"read": ["/tmp"], "spawn": ["worker"]},
         "budget": {"model_calls": 20, "input_tokens": 1000, "output_tokens": 500},
         "sandbox": {"mode": "off"},
-        "programs": {"worker": {
+        "child_contracts": {"worker": {
             "name": "worker", "instructions": {"r": "work"}, "tools": ["notify"],
             "grants": {"read": ["/tmp"]},
             "budget": {"model_calls": 5, "input_tokens": 100, "output_tokens": 50}
@@ -155,9 +155,9 @@ async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
 
     spawner.spawn(request("worker", BudgetAmount::default())).unwrap();
     let EventData::BudgetReserve { reserved, .. } = &log.events()[1].data else { panic!() };
-    assert_eq!(reserved.model_calls, Some(5), "the child program declares five calls");
-    assert_eq!(reserved.input_tokens, Some(100), "the child program declares a hundred input tokens");
-    assert_eq!(reserved.output_tokens, Some(50), "the child program declares fifty output tokens");
+    assert_eq!(reserved.model_calls, Some(5), "the child contract declares five calls");
+    assert_eq!(reserved.input_tokens, Some(100), "the child contract declares a hundred input tokens");
+    assert_eq!(reserved.output_tokens, Some(50), "the child contract declares fifty output tokens");
     assert_eq!(lock(&pool).remaining().model_calls, Some(15), "the parent keeps the rest of the pool");
 
     spawner.spawn(request("worker", BudgetAmount::default())).unwrap();
@@ -178,12 +178,12 @@ async fn a_grandchild_counts_against_the_root_episode_allowance() {
     config.budget.max_episodes = 4;
     // The child may spawn in turn, so its reservation is the allowance it
     // declares rather than a single episode.
-    config.programs.get_mut("worker").unwrap().grants.spawn = vec!["worker".into()];
-    let mut leaf = config.programs["worker"].clone();
+    config.child_contracts.get_mut("worker").unwrap().grants.spawn = vec!["worker".into()];
+    let mut leaf = config.child_contracts["worker"].clone();
     leaf.grants.spawn.clear();
-    config.programs.get_mut("worker").unwrap().programs.insert("worker".into(), leaf);
-    config.programs.get_mut("worker").unwrap().budget.max_episodes = 3;
-    config.programs.get_mut("worker").unwrap().budget.model_calls = 5;
+    config.child_contracts.get_mut("worker").unwrap().child_contracts.insert("worker".into(), leaf);
+    config.child_contracts.get_mut("worker").unwrap().budget.max_episodes = 3;
+    config.child_contracts.get_mut("worker").unwrap().budget.model_calls = 5;
     let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
     let router = Arc::new(Router::new());
     let inner = process_spawner(

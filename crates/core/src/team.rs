@@ -21,10 +21,10 @@ use crate::loop_::{settled_children, SETTLE_POLL};
 use crate::protocol::{Host, InboxSink};
 use crate::spawn::{ChildObserver, Router};
 use crate::{CallCtx, CapError, SpawnHandle, SpawnRequest, Spawner, Tool, ToolFailureCode, ToolValue};
+use foe_contract::{Effect, ToolSpec};
 use foe_log::{
     BudgetAmount, ContentBlock, Event, EventData, InboxItem, InboxSource, MemberPhase, Outcome, SpawnContext,
 };
-use foe_program::{Effect, ToolSpec};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -327,15 +327,15 @@ impl Kind {
         let object = |props: serde_json::Value, required: &[&str]| serde_json::json!({ "type": "object", "properties": props, "required": required, "additionalProperties": false });
         let (description, params, effect) = match self {
             Kind::Spawn => (
-                "Start a child episode running one of the declared programs. Returns at once; the child's result arrives later as a message from it.",
+                "Start a child episode running one of the declared child contracts. Returns at once; the child's result arrives later as a message from it.",
                 object(
                     serde_json::json!({
-                        "program": string("name of a program listed in grants.spawn"),
+                        "contract": string("name of a contract listed in grants.spawn"),
                         "task": string("what the child is to do"),
                         "context": { "type": "string", "enum": ["fresh", "fork"], "description": "fresh starts the child with only its task; fork seeds it with this episode's conversation so far" },
-                        "name": string("roster name for the child; defaults to the program name and must be unique"),
+                        "name": string("roster name for the child; defaults to the contract name and must be unique"),
                     }),
-                    &["program", "task"],
+                    &["contract", "task"],
                 ),
                 Effect::Spawns,
             ),
@@ -388,7 +388,7 @@ conditions; the result names the condition met, or `timeout`, and the arrival it
 const KINDS: [Kind; 6] = [Kind::Spawn, Kind::Wait, Kind::Steer, Kind::Notify, Kind::Send, Kind::Team];
 
 /// The specifications of the six team tools, in the order [`tools`] lists
-/// them. Identity and `foe plan` use this without a running team.
+/// them. Fingerprint and `foe plan` use this without a running team.
 pub fn builtin_specs() -> Vec<ToolSpec> {
     KINDS.into_iter().map(Kind::spec).collect()
 }
@@ -516,7 +516,7 @@ impl Tool for TeamTool {
                         serde_json::json!({ "capability": "spawn" }),
                     );
                 };
-                let (program, task) = match (arg(&args, "program"), arg(&args, "task")) {
+                let (contract, task) = match (arg(&args, "contract"), arg(&args, "task")) {
                     (Ok(p), Ok(t)) => (p.to_string(), t.to_string()),
                     (Err(e), _) | (_, Err(e)) => return e,
                 };
@@ -525,10 +525,10 @@ impl Tool for TeamTool {
                     Some("fork") => SpawnContext::Fork,
                     Some(other) => return ToolValue::invalid(format!("context: {other} is neither fresh nor fork")),
                 };
-                let name = args.get("name").and_then(|v| v.as_str()).unwrap_or(&program).to_string();
+                let name = args.get("name").and_then(|v| v.as_str()).unwrap_or(&contract).to_string();
                 // The spawner reserves the child's whole share and records what it granted.
                 let req = SpawnRequest {
-                    program: program.clone(),
+                    contract: contract.clone(),
                     task,
                     context,
                     reserve: BudgetAmount::default(),
@@ -536,9 +536,9 @@ impl Tool for TeamTool {
                 };
                 match self.team.spawn(spawner.as_ref(), req, &name) {
                     Ok(handle) => ToolValue::ok(
-                        serde_json::json!({ "child_id": handle.child_id, "name": name, "program": program }),
+                        serde_json::json!({ "child_id": handle.child_id, "name": name, "contract": contract }),
                         format!(
-                            "started {name} ({}) running {program}; its result will arrive as a message from it",
+                            "started {name} ({}) running {contract}; its result will arrive as a message from it",
                             handle.child_id
                         ),
                     ),
