@@ -731,6 +731,12 @@ beside the log, which a parent writes for a child, supplies the child's
 id, its parent, its team lead, its expected program identity, and its
 effective runtime allowance.
 
+On resume, the `episode/start` identity and effective allowance take
+precedence over launch metadata. A prepared spawned fork records its child
+program in that event, so resume compares the recorded child identity before
+continuing it. An ordinary command-line fork preserves its source program in
+the start event and remains exempt from that comparison at `seed/end`.
+
 `--fork SOURCE_DIR --at SEQ` runs a fresh episode seeded from the source
 log's events below SEQ under the seeding rules of
 [log-format.md](log-format.md): the new episode draws a fresh id, its

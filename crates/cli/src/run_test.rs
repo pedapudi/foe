@@ -304,3 +304,84 @@ fn child_rejects_an_executable_changed_between_parent_check_and_child_constructi
     assert!(error.contains("expected program identity"), "{error}");
     assert!(!dir.join(foe_log::fold::LOG_FILE).exists(), "identity is checked before episode/start");
 }
+
+/// docs/design.md "The command line": a spawned episode resumes under the
+/// allowance and identity in its start event when launch metadata is absent
+/// or has been changed.
+#[test]
+fn child_resume_uses_recorded_allowance_and_identity() {
+    for (case, metadata) in [
+        ("missing", None),
+        (
+            "changed",
+            Some(serde_json::json!({
+                "episode_id": "ep_changed",
+                "expected_program_identity": "sha256:changed",
+                "effective_budget": {"model_calls": 99}
+            })),
+        ),
+    ] {
+        let dir = std::env::temp_dir().join(format!("foe-cli-resume-evidence-{case}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut writer = foe_log::append::Writer::create(&dir, None).unwrap();
+        writer
+            .append(EventData::EpisodeStart(EpisodeStart {
+                id: "ep_child".into(),
+                parent_id: Some("ep_parent".into()),
+                fork_origin: Some(foe_log::ForkOrigin { episode_id: "ep_source".into(), seq: 1 }),
+                team_id: Some("ep_parent".into()),
+                program: serde_json::json!({}),
+                identity: "sha256:recorded".into(),
+                task: "task".into(),
+                runtime: runtime_info(),
+                sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+                effective_budget: Some(serde_json::from_value(serde_json::json!({ "model_calls": 2 })).unwrap()),
+            }))
+            .unwrap();
+        writer.append(EventData::SeedEnd {}).unwrap();
+        writer.sync().unwrap();
+        drop(writer);
+        if let Some(metadata) = metadata {
+            std::fs::write(dir.join("lineage.json"), serde_json::to_vec(&metadata).unwrap()).unwrap();
+        }
+
+        let (_, lineage) = resume(&dir, "sha256:recorded").unwrap();
+        assert_eq!(lineage.episode_id, "ep_child");
+        assert_eq!(lineage.expected_program_identity.as_deref(), Some("sha256:recorded"));
+        assert_eq!(lineage.effective_budget.unwrap().model_calls, 2);
+        let error = resume(&dir, "sha256:different").unwrap_err();
+        assert!(error.contains("log records identity sha256:recorded"), "{error}");
+    }
+}
+
+/// docs/design.md "The command line": an ordinary prepared fork keeps its
+/// source program in `episode/start`, so resume accepts the fork's program.
+#[test]
+fn ordinary_prepared_fork_retains_source_identity_exemption() {
+    let dir = std::env::temp_dir().join(format!("foe-cli-resume-ordinary-fork-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut writer = foe_log::append::Writer::create(&dir, None).unwrap();
+    writer
+        .append(EventData::EpisodeStart(EpisodeStart {
+            id: "ep_fork".into(),
+            parent_id: None,
+            fork_origin: Some(foe_log::ForkOrigin { episode_id: "ep_source".into(), seq: 1 }),
+            team_id: None,
+            program: serde_json::json!({}),
+            identity: "sha256:source".into(),
+            task: "task".into(),
+            runtime: runtime_info(),
+            sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+            effective_budget: Some(serde_json::from_value(serde_json::json!({ "model_calls": 2 })).unwrap()),
+        }))
+        .unwrap();
+    writer.append(EventData::SeedEnd {}).unwrap();
+    writer.sync().unwrap();
+    drop(writer);
+
+    let (_, lineage) = resume(&dir, "sha256:fork-program").unwrap();
+    assert!(lineage.expected_program_identity.is_none());
+    assert_eq!(lineage.effective_budget.unwrap().model_calls, 2);
+}

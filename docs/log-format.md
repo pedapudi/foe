@@ -104,7 +104,10 @@ member. `program` is the resolved configuration with `task` removed.
 allowance the episode enforces. Its fields have the meanings and defaults in
 [config.md](config.md#budget). A spawned episode can have an effective
 allowance below `program.budget`; this leaves `identity` unchanged. Logs
-written before this field was implemented omit it and remain readable.
+written before this field was implemented omit it and remain readable. On
+resume, this recorded allowance takes precedence over the mutable launch
+metadata beside the log. A log that omits the field falls back to that
+metadata or to its declared program budget.
 
 `episode/end` — implemented. Always the last event.
 

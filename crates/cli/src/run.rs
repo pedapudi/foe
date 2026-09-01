@@ -221,15 +221,23 @@ fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
         let (dir, id) = (dir.display(), &start.id);
         return Err(format!("{dir}: episode {id} already ended; a finished log is forked, not resumed: foe \"task\" --fork {dir} --at SEQ"));
     }
-    let launch = read_lineage(Some(&dir))?;
-    let lineage = Lineage { episode_id: start.id, parent_id: start.parent_id, team_id: start.team_id, ..launch };
-    let torn = std::fs::metadata(dir.join(foe_log::fold::LOG_FILE)).is_ok_and(|m| m.len() > consumed);
-    if !torn && events.last().is_some_and(|e| matches!(e.data, EventData::SeedEnd {})) {
-        return Ok((dir, lineage));
+    let spawned_start = start.parent_id.is_some() && start.effective_budget.is_some();
+    let mut lineage = read_lineage(Some(&dir))?;
+    lineage.effective_budget = start.effective_budget.clone().or(lineage.effective_budget);
+    if spawned_start {
+        lineage.expected_program_identity = Some(start.identity.clone());
     }
-    if start.identity != identity {
+    lineage.episode_id = start.id.clone();
+    lineage.parent_id = start.parent_id.clone();
+    lineage.team_id = start.team_id.clone();
+    let torn = std::fs::metadata(dir.join(foe_log::fold::LOG_FILE)).is_ok_and(|m| m.len() > consumed);
+    let prepared = !torn && events.last().is_some_and(|e| matches!(e.data, EventData::SeedEnd {}));
+    if start.identity != identity && (!prepared || spawned_start) {
         let (dir, recorded) = (dir.display(), &start.identity);
         return Err(format!("{dir}: resuming requires the program that ran: the log records identity {recorded}; the given program document resolves to {identity}"));
+    }
+    if prepared {
+        return Ok((dir, lineage));
     }
     if !torn && foe_log::fold::open_obligations(&events).is_empty() {
         return Ok((dir, lineage));
