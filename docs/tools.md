@@ -334,6 +334,12 @@ it ([sandbox.md](sandbox.md)).
 `timeout_seconds` defaults to 120 and is reduced to the episode's remaining
 wall-clock budget when that is smaller.
 
+A `bash` command or a `session` start command containing a literal U+0000
+character is rejected before process execution. Process arguments cannot
+contain NUL. A command can write a NUL byte to a stream with shell syntax such
+as `printf '\0'`; that source contains a backslash and zero rather than a
+literal NUL.
+
 The executor owns the process. On timeout it kills the whole process group,
 so a command that backgrounded a child does not leave it running. The result
 then has `timed_out` true and `exit_code` null.

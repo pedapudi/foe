@@ -915,7 +915,7 @@ document that gains a key must not buy room in the loop, and because the
 claim the kernel's number supports is about the machine that runs a program
 rather than about the data model it runs.
 
-The tool surface in `crates/code` is budgeted apart, under 1,760 lines on
+The tool surface in `crates/code` is budgeted apart, under 1,800 lines on
 the same terms. It is separate because it grows a tool at a time: a new
 tool adds capability without touching the kernel, so room for tools must
 not become room for the loop. The workflow executor in `crates/workflow`
