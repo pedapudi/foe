@@ -416,17 +416,21 @@ async fn model_handoff_recovery_receives_only_evidence_references() {
         json!({ "nodes": {
             "producer": { "model": {
                 "name": "producer", "instructions": { "r": "produce" }, "tools": ["block"],
-                "grants": { "read": [fx_root("bounded-model-handoff")] }, "budget": { "model_calls": 1 }
+                "grants": { "read": [] }, "budget": { "model_calls": 1 }
             }, "empty": body, "max_fires": 2 },
             "consumer": { "model": {
                 "name": "consumer", "instructions": { "r": "consume" }, "tools": ["block"],
-                "grants": { "read": [fx_root("bounded-model-handoff")] }, "budget": { "model_calls": 1 }
+                "grants": { "read": [] }, "budget": { "model_calls": 1 }
             }, "follows": ["producer"], "terminal": true }
         } }),
-    )
-    .retryable_spawn_failure()
-    .respond(recover(json!({ "action": "skip" })))
-    .respond(recover(json!({ "action": "abort", "code": "goal-unreachable", "message": "too large" })));
+    );
+    let root = fx.dir.to_path_buf();
+    fx.config["workflow"]["nodes"]["producer"]["model"]["grants"]["read"] = json!([root]);
+    fx.config["workflow"]["nodes"]["consumer"]["model"]["grants"]["read"] = json!([fx.dir.to_path_buf()]);
+    let mut fx = fx
+        .retryable_spawn_failure()
+        .respond(recover(json!({ "action": "skip" })))
+        .respond(recover(json!({ "action": "abort", "code": "goal-unreachable", "message": "too large" })));
     let (outcome, events) = fx.run().await;
     assert!(matches!(outcome, Outcome::Blocked { code: BlockedCode::GoalUnreachable, .. }));
     assert_eq!(fx.spawner.0.lock().unwrap().1.len(), 1, "the consumer child never starts");
@@ -488,11 +492,12 @@ async fn oversized_tool_to_model_handoff_fails_before_a_child_starts() {
             "source": { "tool": "large" },
             "consumer": { "model": {
                 "name": "consumer", "instructions": { "r": "use source" }, "tools": ["block"],
-                "grants": { "read": [fx_root("bounded-handoff")] }, "budget": { "model_calls": 1 }
+                "grants": { "read": [] }, "budget": { "model_calls": 1 }
             }, "follows": ["source"], "terminal": true }
         } }),
-    )
-    .tool("large", vec![ToolValue::ok(json!({ "complete": true }), body.clone())], 0);
+    );
+    fx.config["workflow"]["nodes"]["consumer"]["model"]["grants"]["read"] = json!([fx.dir.to_path_buf()]);
+    let mut fx = fx.tool("large", vec![ToolValue::ok(json!({ "complete": true }), body.clone())], 0);
     let (outcome, events) = fx.run().await;
     assert!(matches!(outcome, Outcome::Failed { ref error } if error.contains("workflow handoff")), "{outcome:?}");
     assert!(fx.spawner.0.lock().unwrap().1.is_empty(), "the rejected child was not launched");
