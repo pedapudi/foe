@@ -26,14 +26,23 @@ fn every_runtime_written_parameter_schema_stays_inside_the_implemented_subset() 
     }
 }
 
-/// docs/log-format.md "Blocked codes": a program with child-program
-/// permission may report that its children prevent further progress. A
-/// program without that permission receives only the three general codes.
+/// docs/log-format.md "Blocked codes": reporting blocked children requires
+/// both child-program permission and the `spawn` tool. Permission that no
+/// listed tool can exercise does not widen the model's blocking vocabulary.
 #[test]
-fn block_codes_follow_child_program_permission() {
+fn block_codes_require_child_program_permission_and_spawn_tool() {
     let root = tmp("tools-block-codes");
     let leaf = program_with(&root, |_| {}).unwrap();
+    let unused = program_with(&root, |v| {
+        v["grants"]["spawn"] = json!(["worker"]);
+        v["programs"] = json!({ "worker": {
+            "name": "worker", "instructions": { "role": "work" }, "tools": ["block"],
+            "grants": { "read": [root] }, "budget": { "model_calls": 1 }
+        }});
+    })
+    .unwrap();
     let parent = program_with(&root, |v| {
+        v["tools"] = json!(["block", "spawn"]);
         v["grants"]["spawn"] = json!(["worker"]);
         v["programs"] = json!({ "worker": {
             "name": "worker", "instructions": { "role": "work" }, "tools": ["block"],
@@ -42,6 +51,10 @@ fn block_codes_follow_child_program_permission() {
     })
     .unwrap();
     let codes = |program| resolve_specs(program, &[]).unwrap()[0].params["properties"]["code"]["enum"].clone();
+    let parent_codes = resolve_specs(&parent, &[spec("spawn", Effect::Spawns)]).unwrap()[0].params["properties"]
+        ["code"]["enum"]
+        .clone();
     assert_eq!(codes(&leaf), json!(["goal-unreachable", "ambiguous-task", "missing-capability"]));
-    assert_eq!(codes(&parent), json!(["goal-unreachable", "ambiguous-task", "missing-capability", "child-blocked"]));
+    assert_eq!(codes(&unused), json!(["goal-unreachable", "ambiguous-task", "missing-capability"]));
+    assert_eq!(parent_codes, json!(["goal-unreachable", "ambiguous-task", "missing-capability", "child-blocked"]));
 }

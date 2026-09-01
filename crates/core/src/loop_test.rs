@@ -496,6 +496,7 @@ async fn a_parent_can_end_with_child_blocked() {
         "loop-child-blocked",
         |v| {
             let root = v["grants"]["read"][0].clone();
+            v["tools"] = json!(["block", "spawn"]);
             v["grants"]["spawn"] = json!(["worker"]);
             v["programs"] = json!({ "worker": {
                 "name": "worker", "instructions": { "role": "work" }, "tools": ["block"],
@@ -507,7 +508,7 @@ async fn a_parent_can_end_with_child_blocked() {
             vec![call("a", "block", r#"{"code":"child-blocked","message":"every child is blocked"}"#)],
         )],
     );
-    let (outcome, _) = fx.run().await;
+    let (outcome, _) = fx.tool(Probe::new("spawn", Effect::Spawns)).run().await;
     assert_eq!(outcome, Outcome::Blocked { code: BlockedCode::ChildBlocked, message: "every child is blocked".into() });
 }
 

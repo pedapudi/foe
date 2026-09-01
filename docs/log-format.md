@@ -801,9 +801,9 @@ in version 2. A supervising episode routes on it.
 
 The model reports `goal-unreachable`, `ambiguous-task`, and
 `missing-capability` by calling the built-in `block` tool with the code and a
-message. A program with a non-empty `grants.spawn` may also report
-`child-blocked`. The runtime detects the looping and verification codes. The
-workflow executor produces the recovery codes.
+message. A program that lists `spawn` and has a non-empty `grants.spawn` may
+also report `child-blocked`. The runtime detects the looping and verification
+codes. The workflow executor produces the recovery codes.
 
 ## Exhausted limits
 

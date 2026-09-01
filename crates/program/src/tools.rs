@@ -114,7 +114,7 @@ pub fn host_spec(name: &str, def: &HostToolDef) -> ToolSpec {
 /// `extra_builtins` are the specifications of built-in tools implemented
 /// outside this crate.
 pub fn resolve_specs(program: &ResolvedProgram, extra_builtins: &[ToolSpec]) -> Result<Vec<ToolSpec>, ProgramError> {
-    let block = block_spec(!program.grants.spawn.is_empty());
+    let block = block_spec(!program.grants.spawn.is_empty() && program.tools.iter().any(|name| name == "spawn"));
     let builtins: Vec<&ToolSpec> = std::iter::once(&block).chain(extra_builtins).collect();
     let builtin_names: Vec<&str> = builtins.iter().map(|s| s.name.as_str()).collect();
     let configured: Vec<&str> = program.tool_defs.keys().map(String::as_str).collect();

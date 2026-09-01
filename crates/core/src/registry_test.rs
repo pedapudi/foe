@@ -173,6 +173,7 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
     assert_eq!(bad.failure.unwrap().code, ToolFailureCode::InvalidCall, "other runtime codes are not reportable");
 
     let parent = program_with(&root, |v| {
+        v["tools"] = json!(["block", "spawn"]);
         v["grants"]["spawn"] = json!(["worker"]);
         v["programs"] = json!({ "worker": {
             "name": "worker", "instructions": { "role": "work" }, "tools": ["block"],
@@ -180,7 +181,7 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
         }});
     })
     .unwrap();
-    let parent_registry = Registry::new(&parent, vec![], vec![]).unwrap();
+    let parent_registry = Registry::new(&parent, vec![], vec![probe("spawn", Effect::Spawns)]).unwrap();
     let child_blocked = parent_registry
         .dispatch(
             &handles,
