@@ -598,11 +598,13 @@ struct Setup {
 
 async fn episode(setup: Setup) -> Result<Outcome, String> {
     let Setup { program, limits, log_dir, confined, viewer, transport, host, context, start } = setup;
-    let id = start.id.clone();
     let mirror = host.then(stdout_mirror);
     let log = Arc::new(Log::create_or_open(&log_dir, mirror).map_err(|e| format!("{}: {e}", log_dir.display()))?);
+    // A parent may have input queued already. The task must retain seq 1
+    // before the protocol reader can append that input.
+    loop_::initialize(&log, &start).map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let router = Arc::new(Router::new());
-    let (protocol, stop) = Host::new(id.clone(), log.clone(), Some(router.clone()));
+    let (protocol, stop) = Host::new(start.id.clone(), log.clone(), Some(router.clone()));
     if host {
         protocol.spawn_reader(tokio::io::stdin());
     }
@@ -620,11 +622,11 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let transport = transport.unwrap_or_else(|| protocol.transport());
     let pool = Arc::new(Mutex::new(Pool::new(limits.clone())));
     let inbox = Arc::new(protocol.clone());
-    let team = Arc::new(Team::new(id.clone(), log.clone(), inbox, router.clone(), pool.clone()));
+    let team = Arc::new(Team::new(start.id.clone(), log.clone(), inbox, router.clone(), pool.clone()));
     let uplink: Arc<dyn Uplink> = if host { Arc::new(StdoutUplink) } else { Arc::new(NoHostUplink) };
     let connections = ProcessConnections { uplink, router: router.clone(), observer: team.clone() };
     let spawner =
-        ProcessSpawner::new(id.clone(), log_dir.clone(), program.clone(), limits, extra_builtin_specs(), connections)
+        ProcessSpawner::new(start.id.clone(), log_dir.clone(), program.clone(), limits, extra_builtin_specs(), connections)
             .map_err(|e| format!("spawner: {e}"))?;
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
     let (sandbox, policy) = confined.parts();

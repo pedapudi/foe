@@ -1,5 +1,5 @@
 use super::{Downlink, Host, InboxSink, HOST_ROUTE};
-use crate::loop_::Log;
+use crate::loop_::{initialize, Log};
 use crate::test_util::{program_with, tmp};
 use crate::{CallCtx, ModelRequestBody};
 use foe_log::{Chunk, EventData, InboxSource, StopReason, Usage};
@@ -39,6 +39,43 @@ fn log(name: &str) -> (Arc<Log>, std::path::PathBuf) {
     }))
     .unwrap();
     (log, root)
+}
+
+/// docs/protocol.md "Children" and docs/log-format.md "Inbox": a queued
+/// peer message follows the episode start and its task item.
+#[tokio::test]
+async fn protocol_input_starts_after_the_episode_prefix() {
+    let root = tmp("protocol-prefix-before-input");
+    let dir = root.join("episode");
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
+    let start = foe_log::EpisodeStart {
+        id: "ep_self".into(),
+        parent_id: Some("ep_parent".into()),
+        fork_origin: None,
+        team_id: Some("ep_parent".into()),
+        program: json!({}),
+        identity: "sha256:x".into(),
+        task: "do the work".into(),
+        runtime: foe_log::RuntimeInfo { version: "0".into(), build: "unknown".into() },
+        sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+        effective_budget: None,
+    };
+    initialize(&log, &start).unwrap();
+    let (host, stop) = Host::new(start.id.clone(), log.clone(), None);
+    let peer = concat!(
+        r#"{"type":"inbox/item","source":"peer","content":[{"type":"text","text":"ready"}],"from":"ep_peer","message_id":"tm_1"}"#,
+        "\n",
+    );
+
+    host.read_lines(std::io::Cursor::new(peer.as_bytes().to_vec())).await;
+
+    assert!(stop.borrow().is_none());
+    let events = log.events();
+    assert!(matches!(events[0].data, EventData::EpisodeStart(_)));
+    assert!(matches!(&events[1].data, EventData::InboxItem(item) if item.source == InboxSource::Task));
+    assert!(matches!(&events[2].data, EventData::InboxItem(item) if item.source == InboxSource::Peer));
+    foe_log::fold::fold(&events).expect("the queued peer message follows a valid episode prefix");
 }
 
 fn request(log: &Log, id: &str) -> ModelRequestBody {

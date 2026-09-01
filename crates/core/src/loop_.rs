@@ -110,6 +110,17 @@ impl Log {
     }
 }
 
+/// Writes the immutable prefix of a fresh episode before any external input
+/// can reach its log. A resumed or seeded episode already has its prefix.
+pub fn initialize(log: &Log, start: &EpisodeStart) -> Result<(), LogError> {
+    if log.next_seq() == 0 {
+        log.append(EventData::EpisodeStart(start.clone()))?;
+        log.append(EventData::InboxItem(item(InboxSource::Task, &start.task)))?;
+        log.sync()?;
+    }
+    Ok(())
+}
+
 /// Everything one episode needs. `start` is written when the log is empty;
 /// a seeded log keeps its own. `pool` is shared with the spawner; `run`
 /// folds the existing events into it before the first step. `context`
@@ -329,11 +340,7 @@ struct Episode {
 
 impl Episode {
     fn new(p: Params) -> Result<Self, RuntimeError> {
-        if p.log.next_seq() == 0 {
-            p.log.append(EventData::EpisodeStart(p.start.clone()))?;
-            p.log.append(EventData::InboxItem(item(InboxSource::Task, &p.start.task)))?;
-            p.log.sync()?;
-        }
+        initialize(&p.log, &p.start)?;
         let events = p.log.events();
         let state = fold::fold(&events)?;
         events.iter().for_each(|e| lock(&p.pool).apply(&e.data));
