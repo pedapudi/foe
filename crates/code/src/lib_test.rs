@@ -1,3 +1,43 @@
+use std::ops::Deref;
+use std::path::Path;
+
+struct ScratchDir(tempfile::TempDir);
+
+impl ScratchDir {
+    fn new(name: &str) -> Self {
+        Self(tempfile::Builder::new().prefix(&format!("foe-code-{name}-")).tempdir().unwrap())
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.path()
+    }
+}
+
+impl AsRef<Path> for ScratchDir {
+    fn as_ref(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+impl serde::Serialize for ScratchDir {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(self.0.path(), serializer)
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", self.0.path().display());
+            self.0.disable_cleanup(true);
+        }
+    }
+}
+
 #[test]
 fn all_lists_each_tool_once_and_readonly_lists_the_reads_tools() {
     let names: Vec<String> = super::all().iter().map(|t| t.spec().name.clone()).collect();
@@ -56,8 +96,7 @@ fn nothing_about_the_subject_reaches_the_model() {
 /// which is the instruction sections followed by every tool's instruction.
 #[test]
 fn the_assembled_system_prompt_never_mentions_the_subject() {
-    let root = std::env::temp_dir().join("foe-subject-prompt");
-    std::fs::create_dir_all(&root).unwrap();
+    let root = ScratchDir::new("subject-prompt");
     let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
         "version": 3,
         "name": "subject-prohibition",

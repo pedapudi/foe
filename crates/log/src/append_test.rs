@@ -1,15 +1,8 @@
 use super::Writer;
+use crate::fold::tests::tmp;
 use crate::fold::{read_all, tests as fx};
 use crate::*;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-
-fn tmp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("foe-log-append-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 #[derive(Clone, Default)]
 struct Capture(Arc<Mutex<Vec<u8>>>);
@@ -103,7 +96,8 @@ fn writer_enforces_the_rendering_archive_pair() {
     assert!(matches!(writer.append(fx::header()), Err(LogError::Invalid { seq: 4, .. })));
     writer.append(fx::result(1, "tc_1", "cut")).unwrap();
 
-    let mut wrong = Writer::create(&tmp("rendering-archive-path"), None).unwrap();
+    let wrong_dir = tmp("rendering-archive-path");
+    let mut wrong = Writer::create(&wrong_dir, None).unwrap();
     wrong.append(EventData::EpisodeStart(fx::start("ep"))).unwrap();
     wrong.append(fx::inbox(InboxSource::Task, "t")).unwrap();
     wrong.append(fx::assistant(1, "", vec![fx::call("tc_2")], false)).unwrap();

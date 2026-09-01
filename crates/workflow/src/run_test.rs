@@ -15,11 +15,45 @@ use foe_program::{Effect, ProgramDocument, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::io::{self, Write};
+use std::ops::Deref;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Every call of one tool: its arguments and when it ran.
 type Calls = Arc<Mutex<Vec<(Value, Instant, Instant)>>>;
+
+struct ScratchDir(tempfile::TempDir);
+
+impl ScratchDir {
+    fn new(name: &str) -> Self {
+        assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+        Self(tempfile::Builder::new().prefix(&format!("foe-workflow-{name}-")).tempdir().unwrap())
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.path()
+    }
+}
+
+impl serde::Serialize for ScratchDir {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(self.0.path(), serializer)
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", self.0.path().display());
+            self.0.disable_cleanup(true);
+        }
+    }
+}
 
 /// A tool that answers each call with the next scripted result, or with
 /// its arguments when the script is spent, and records every call.
@@ -152,7 +186,7 @@ fn only_blocked_or_exhausted_optional_model_children_contribute_empty() {
 }
 
 struct Fixture {
-    dir: std::path::PathBuf,
+    dir: ScratchDir,
     config: Value,
     tools: Vec<Box<dyn Tool>>,
     calls: std::collections::BTreeMap<String, Calls>,
@@ -165,9 +199,7 @@ struct Fixture {
 
 impl Fixture {
     fn new(name: &str, tools: &[&str], workflow: Value) -> Self {
-        let dir = std::env::temp_dir().join(format!("foe-workflow-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = ScratchDir::new(name);
         let mut names: Vec<&str> = vec!["block"];
         names.extend(tools);
         let config = json!({
@@ -316,17 +348,17 @@ fn count(events: &[Event], kind: &str) -> usize {
 /// log, while the allocated identifier remains the only spawner state.
 #[tokio::test]
 async fn a_failed_model_node_start_append_launches_no_child() {
-    let root = fx_root("node-start-append");
     let mut fx = Fixture::new(
         "node-start-append",
         &[],
         json!({ "nodes": {
             "work": { "model": {
                 "name": "work", "instructions": { "r": "work" }, "tools": ["block"],
-                "grants": { "read": [root] }, "budget": { "model_calls": 1 }
+                "grants": { "read": [] }, "budget": { "model_calls": 1 }
             }, "terminal": true }
         } }),
     );
+    fx.config["workflow"]["nodes"]["work"]["model"]["grants"]["read"] = json!([fx.dir.to_path_buf()]);
     fx.mirror = Some(Box::new(FailingMirror { writes: 0, fail_at: 2 }));
 
     let error = fx.run_result().await.unwrap_err().to_string();
@@ -405,11 +437,12 @@ async fn a_node_that_follows_task_receives_it_first() {
         json!({ "nodes": {
             "manifest": manifest,
             "propose": { "model": { "name": "propose", "instructions": { "r": "p" }, "tools": ["block"],
-                                    "grants": { "read": [fx_root("task")] }, "budget": { "model_calls": 1 } },
+                                    "grants": { "read": [] }, "budget": { "model_calls": 1 } },
                          "follows": ["manifest", "task"], "terminal": true }
         } }),
-    )
-    .tool("echo", vec![], 0);
+    );
+    fx.config["workflow"]["nodes"]["propose"]["model"]["grants"]["read"] = json!([fx.dir.to_path_buf()]);
+    fx = fx.tool("echo", vec![], 0);
     let (outcome, events) = fx.run().await;
     assert!(matches!(outcome, Outcome::Failed { .. }), "the spawner starts nothing: {outcome:?}");
     assert_eq!(fx.calls("echo")[0].0, json!({ "text": "run the graph" }), "the binding yields the task text");
@@ -461,21 +494,18 @@ async fn a_chosen_branch_value_reaches_a_model_successor_that_follows_it() {
         json!({ "nodes": {
             "diagnose": { "tool": "diagnose", "branches": { "implement-source": ["implement"] } },
             "implement": { "model": { "name": "implement", "instructions": { "r": "implement" },
-                                      "tools": ["block"], "grants": { "read": [fx_root("branch-model-input")] },
+                                      "tools": ["block"], "grants": { "read": [] },
                                       "budget": { "model_calls": 1 } },
                            "follows": ["task", "diagnose"], "terminal": true }
         } }),
-    )
-    .tool("diagnose", vec![ToolValue::ok(json!({ "branch": "implement-source" }), "typed diagnosis")], 0);
+    );
+    fx.config["workflow"]["nodes"]["implement"]["model"]["grants"]["read"] = json!([fx.dir.to_path_buf()]);
+    fx = fx.tool("diagnose", vec![ToolValue::ok(json!({ "branch": "implement-source" }), "typed diagnosis")], 0);
     let (outcome, _) = fx.run().await;
     assert!(matches!(outcome, Outcome::Failed { .. }), "the spawner starts nothing: {outcome:?}");
     let spawned = fx.spawner.0.lock().unwrap().1.clone();
     assert_eq!(spawned.len(), 1);
     assert_eq!(spawned[0], "## task\n\nrun the graph\n\n## diagnose\n\ntyped diagnosis");
-}
-
-fn fx_root(name: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("foe-workflow-{}-{name}", std::process::id()))
 }
 
 /// docs/workflow.md "Firing": nodes with no pending dependency between

@@ -1,12 +1,35 @@
 use crate::fold::{derive_messages, fold, read_all, read_from, render_continuation, validate_next};
 use crate::*;
-use std::path::PathBuf;
+use std::ops::Deref;
 
-fn tmp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("foe-log-fold-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+pub struct ScratchDir(tempfile::TempDir);
+
+impl Deref for ScratchDir {
+    type Target = std::path::Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.path()
+    }
+}
+
+impl AsRef<std::path::Path> for ScratchDir {
+    fn as_ref(&self) -> &std::path::Path {
+        self.0.path()
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", self.0.path().display());
+            self.0.disable_cleanup(true);
+        }
+    }
+}
+
+pub fn tmp(name: &str) -> ScratchDir {
+    assert_eq!(std::path::Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+    ScratchDir(tempfile::Builder::new().prefix(&format!("foe-log-{name}-")).tempdir().unwrap())
 }
 
 pub fn start(id: &str) -> EpisodeStart {

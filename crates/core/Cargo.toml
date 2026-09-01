@@ -29,3 +29,4 @@ command-fds = "0.3"
 # only under this feature.
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+tempfile = "3"

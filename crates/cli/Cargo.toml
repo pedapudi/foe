@@ -34,3 +34,6 @@ default = ["transport"]
 # The built-in model clients and `foe login`. Without this feature every
 # model request must be answered by a host.
 transport = ["dep:foe-transport"]
+
+[dev-dependencies]
+tempfile = "3"

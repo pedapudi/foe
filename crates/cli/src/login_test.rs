@@ -13,11 +13,8 @@ fn drain(mut stream: impl Read) -> String {
     text
 }
 
-fn home(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/foe-cli-tests").join(format!("login-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+fn home(name: &str) -> crate::tests::ScratchDir {
+    crate::tests::scratch("foe-cli-login", name)
 }
 
 /// A loopback HTTP server answering each connection with one scripted
@@ -195,7 +192,7 @@ fn codex_login_up_to_the_loopback_callback() {
     let token_body = serde_json::json!({ "access_token": jwt, "refresh_token": "rt", "expires_in": 3600 }).to_string();
     let server = MockServer::start(vec![(200, token_body)]);
     let output = Shared::default();
-    let home_for_thread = home.clone();
+    let home_for_thread = home.to_path_buf();
     let token_url = format!("{}/oauth/token", server.base);
     let authorize_url = format!("{}/oauth/authorize", server.base);
     let mut out = output.clone();

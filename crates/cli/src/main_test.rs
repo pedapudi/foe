@@ -1,4 +1,35 @@
 use super::*;
+use std::ops::Deref;
+
+pub(crate) struct ScratchDir(tempfile::TempDir);
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.path()
+    }
+}
+
+impl AsRef<Path> for ScratchDir {
+    fn as_ref(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", self.0.path().display());
+            self.0.disable_cleanup(true);
+        }
+    }
+}
+
+pub(crate) fn scratch(prefix: &str, name: &str) -> ScratchDir {
+    assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+    ScratchDir(tempfile::Builder::new().prefix(&format!("{prefix}-{name}-")).tempdir().unwrap())
+}
 
 fn parse(line: &str) -> Result<Command, String> {
     let args: Vec<String> = line.split_whitespace().map(str::to_string).collect();

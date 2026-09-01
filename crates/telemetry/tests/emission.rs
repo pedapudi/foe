@@ -3,7 +3,33 @@
 //! the known-value layer.
 
 use foe_log::Event;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
+
+struct ScratchDir(tempfile::TempDir);
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.path()
+    }
+}
+
+impl AsRef<Path> for ScratchDir {
+    fn as_ref(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", self.0.path().display());
+            self.0.disable_cleanup(true);
+        }
+    }
+}
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -20,11 +46,8 @@ fn events(path: &Path) -> Vec<Event> {
     text.lines().filter(|line| !line.trim().is_empty()).map(|line| serde_json::from_str(line).unwrap()).collect()
 }
 
-fn temp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("foe-telemetry-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+fn temp(name: &str) -> ScratchDir {
+    ScratchDir(tempfile::Builder::new().prefix(&format!("foe-telemetry-{name}-")).tempdir().unwrap())
 }
 
 /// Byte-for-byte against a committed golden file.
@@ -88,7 +111,8 @@ fn the_self_check_refuses_a_log_it_cannot_fully_scrub() {
 
 #[test]
 fn emission_refuses_the_seeded_log_and_writes_nothing() {
-    let out = temp("seeded").join("otel.jsonl");
+    let dir = temp("seeded");
+    let out = dir.join("otel.jsonl");
     let refusal = foe_telemetry::emit_into(&fixtures().join("seeded"), &out, key());
     assert!(refusal.unwrap_err().contains("scrub self-check failed, nothing emitted"));
     assert!(!out.exists(), "a refused emission still wrote a capture file");
@@ -102,7 +126,8 @@ fn emission_refuses_the_seeded_log_and_writes_nothing() {
 /// user whose name appears in a later tool subject.
 #[test]
 fn emission_refuses_a_log_it_cannot_fully_read_and_writes_nothing() {
-    let out = temp("skewed").join("otel.jsonl");
+    let dir = temp("skewed");
+    let out = dir.join("otel.jsonl");
     let complaint = foe_telemetry::emit_into(&fixtures().join("skewed"), &out, key()).unwrap_err();
     assert!(complaint.contains("1 line(s) this build cannot read"), "{complaint}");
     assert!(complaint.contains("scrubbing coverage cannot be guaranteed"), "{complaint}");
@@ -136,7 +161,8 @@ fn two_emissions_produce_byte_identical_output() {
 
 #[test]
 fn emission_appends_one_object_per_episode() {
-    let out = temp("append").join("otel.jsonl");
+    let dir = temp("append");
+    let out = dir.join("otel.jsonl");
     for _ in 0..3 {
         foe_telemetry::emit_into(&fixtures().join("clean"), &out, key()).unwrap();
     }
@@ -149,7 +175,8 @@ fn emission_appends_one_object_per_episode() {
 /// shown and the payload the capture holds cannot differ.
 #[test]
 fn the_capture_holds_exactly_the_rendered_line() {
-    let out = temp("line").join("otel.jsonl");
+    let dir = temp("line");
+    let out = dir.join("otel.jsonl");
     foe_telemetry::emit_into(&fixtures().join("clean"), &out, key()).unwrap();
     let (events, dir, _) = foe_telemetry::read_log(&fixtures().join("clean")).unwrap();
     let derived = foe_telemetry::emission(&events, &dir.to_string_lossy(), key()).unwrap();
@@ -181,9 +208,10 @@ fn preview_reports_the_bucket_its_evidence_the_totals_and_the_scrub_counts() {
 /// fixture emits and that no fixture fails for any other reason.
 #[test]
 fn emission_runs_against_every_real_viewer_fixture() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../view/fixtures");
-    let out = temp("viewer").join("otel.jsonl");
-    let mut logs: Vec<PathBuf> = std::fs::read_dir(&dir)
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../view/fixtures");
+    let scratch = temp("viewer");
+    let out = scratch.join("otel.jsonl");
+    let mut logs: Vec<PathBuf> = std::fs::read_dir(&fixture_dir)
         .unwrap()
         .filter_map(|entry| entry.ok().map(|e| e.path()))
         .filter(|path| path.extension().is_some_and(|e| e == "jsonl"))

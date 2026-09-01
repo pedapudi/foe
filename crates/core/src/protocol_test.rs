@@ -1,6 +1,6 @@
 use super::{Downlink, Host, InboxSink, HOST_ROUTE};
 use crate::loop_::Log;
-use crate::test_util::{program_with, tmp};
+use crate::test_util::{program_with, tmp, ScratchDir};
 use crate::{CallCtx, ModelRequestBody};
 use foe_log::{Chunk, EventData, InboxSource, StopReason, Usage};
 use serde_json::json;
@@ -20,7 +20,7 @@ async fn yield_until<T>(mut probe: impl FnMut() -> Option<T>) -> T {
     panic!("the condition was never met");
 }
 
-fn log(name: &str) -> (Arc<Log>, std::path::PathBuf) {
+fn log(name: &str) -> (Arc<Log>, ScratchDir) {
     let root = tmp(name);
     let dir = root.join("episode");
     std::fs::create_dir_all(&dir).unwrap();
@@ -91,7 +91,7 @@ fn ctx(call_id: &str, dir: &std::path::Path) -> CallCtx {
 
 #[tokio::test]
 async fn model_chunks_reach_the_transport_even_when_they_arrive_before_it_listens() {
-    let (log, _) = log("protocol-chunks");
+    let (log, _root) = log("protocol-chunks");
     let (host, _stop) = Host::new("ep_self".into(), log.clone(), None);
     let req = request(&log, "rq_0001");
     let lines = concat!(
@@ -116,7 +116,7 @@ async fn model_chunks_reach_the_transport_even_when_they_arrive_before_it_listen
 
 #[tokio::test]
 async fn a_chunk_for_an_unknown_or_settled_request_is_a_protocol_error() {
-    let (log, _) = log("protocol-unknown");
+    let (log, _root) = log("protocol-unknown");
     let (host, stop) = Host::new("ep_self".into(), log.clone(), None);
     let line = r#"{"type":"model/chunk","request_id":"rq_9999","chunk":{"kind":"text","delta":"hi"}}"#;
     host.read_lines(std::io::Cursor::new(format!("{line}\n").into_bytes())).await;
@@ -141,7 +141,7 @@ async fn host_tool_calls_emit_an_event_and_wait_for_the_answer() {
         tokio::spawn(async move { host.read_lines(reader).await })
     };
     let call = tokio::spawn({
-        let dir = root.clone();
+        let dir = root.to_path_buf();
         async move { tool.call(json!({ "q": 1 }), &ctx("tc_1", &dir)).await }
     });
     let emitted = yield_until(|| log.events().pop().filter(|e| matches!(e.data, EventData::HostToolCall { .. }))).await;
@@ -179,7 +179,7 @@ async fn end_of_input_fails_outstanding_waits_instead_of_hanging() {
 
 #[tokio::test]
 async fn inbox_items_are_appended_on_receipt_and_cancel_stops_the_episode() {
-    let (log, _) = log("protocol-inbox");
+    let (log, _root) = log("protocol-inbox");
     let (host, stop) = Host::new("ep_self".into(), log.clone(), None);
     let lines = concat!(
         r#"{"type":"inbox/item","source":"parent","content":[{"type":"text","text":"stop early"}],"from":"ep_root","message_id":null}"#,
@@ -209,7 +209,7 @@ async fn inbox_items_are_appended_on_receipt_and_cancel_stops_the_episode() {
 
 #[tokio::test]
 async fn a_task_source_from_the_host_and_unknown_line_types_are_protocol_errors() {
-    let (log, _) = log("protocol-bad");
+    let (log, _root) = log("protocol-bad");
     let (host, stop) = Host::new("ep_self".into(), log.clone(), None);
     let line = r#"{"type":"inbox/item","source":"task","content":[],"from":null,"message_id":null}"#;
     host.read_lines(std::io::Cursor::new(format!("{line}\n").into_bytes())).await;
@@ -239,7 +239,7 @@ impl Downlink for Recording {
 
 #[tokio::test]
 async fn lines_tagged_for_a_descendant_go_down_unchanged() {
-    let (log, _) = log("protocol-downlink");
+    let (log, _root) = log("protocol-downlink");
     let down = Arc::new(Recording::default());
     let (host, stop) = Host::new("ep_self".into(), log.clone(), Some(down.clone()));
     let tagged =

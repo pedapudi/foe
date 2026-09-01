@@ -158,7 +158,7 @@ fn fail(message: String, retryable: bool) -> Chunk {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::scratch_dir;
+    use crate::test_support::{scratch, ScratchFile};
     use foe_core::{CapError, ContentBlock, ExecResult, Message, StopReason, ToolSchema, Usage};
     use std::os::unix::fs::PermissionsExt;
 
@@ -193,9 +193,8 @@ mod tests {
         }
     }
 
-    fn script(name: &str, body: &str) -> PathBuf {
-        let dir = scratch_dir(&format!("exec-{name}"));
-        let path = dir.join(name);
+    fn script(name: &str, body: &str) -> ScratchFile {
+        let path = scratch(&format!("exec-{name}"));
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
         std::fs::set_permissions(&path, PermissionsExt::from_mode(0o755)).unwrap();
         path

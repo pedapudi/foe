@@ -146,9 +146,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
 #[test]
 fn builtin_coding_with_verify_gates_both_assessment_branches() {
     use std::os::unix::fs::PermissionsExt;
-    let dir = std::env::temp_dir().join(format!("foe-cli-verify-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = crate::tests::scratch("foe-cli-verify", "built-in-checker");
     let script = dir.join("check");
     std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();

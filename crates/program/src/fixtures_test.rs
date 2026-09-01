@@ -5,13 +5,49 @@
 use crate::document::{resolve, ResolvedProgram};
 use crate::{Effect, ProgramDocument, ToolSpec};
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
+use std::ops::Deref;
+use std::path::Path;
 
-pub fn tmp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("foe-program-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+pub struct ScratchDir(tempfile::TempDir);
+
+impl ScratchDir {
+    fn new(name: &str) -> Self {
+        assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+        Self(tempfile::Builder::new().prefix(&format!("foe-program-{name}-")).tempdir().unwrap())
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.path()
+    }
+}
+
+impl AsRef<Path> for ScratchDir {
+    fn as_ref(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+impl serde::Serialize for ScratchDir {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(self.0.path(), serializer)
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", self.0.path().display());
+            self.0.disable_cleanup(true);
+        }
+    }
+}
+
+pub fn tmp(name: &str) -> ScratchDir {
+    ScratchDir::new(name)
 }
 
 /// A valid document granting read and write on `root`, with `block` as its

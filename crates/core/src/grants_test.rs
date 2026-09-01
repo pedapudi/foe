@@ -129,4 +129,8 @@ fn directory_enumeration_cannot_be_redirected_after_the_root_opens() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].path, inside.join("safe.txt"));
     assert_eq!(read(&reader, &entries[0].path).unwrap(), b"safe");
+
+    drop(reader);
+    std::fs::remove_file(&*inside).unwrap();
+    std::fs::rename(held, &*inside).unwrap();
 }

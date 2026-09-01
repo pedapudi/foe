@@ -1,15 +1,8 @@
 use super::{closing_events, seed, SeedHeader, ORPHAN_RENDERED};
 use crate::append::Writer;
+use crate::fold::tests::tmp;
 use crate::fold::{fold, read_all, tests as fx};
 use crate::*;
-use std::path::PathBuf;
-
-fn tmp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("foe-log-seed-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 /// A source log interrupted after a step issued two calls and only the
 /// first received its result.

@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_util::{program_with, tmp};
+use crate::test_util::{program_with, tmp, ScratchDir};
 use foe_log::{
     AssistantMessage, EpisodeStart, InboxItem, InboxSource, RuntimeInfo, SandboxInfo, SandboxMode, StopReason,
     ToolCall, ToolResult, Usage,
@@ -67,7 +67,7 @@ fn context(spill_dir: &Path, step: u32) -> CallCtx {
     }
 }
 
-fn log_with_result(name: &str, complete: &str, archived: bool) -> (Arc<Log>, String) {
+fn log_with_result(name: &str, complete: &str, archived: bool) -> (Arc<Log>, String, ScratchDir) {
     let root = tmp(name);
     let dir = root.join("episode");
     std::fs::create_dir_all(&dir).unwrap();
@@ -89,7 +89,7 @@ fn log_with_result(name: &str, complete: &str, archived: bool) -> (Arc<Log>, Str
     } else {
         log.append(EventData::ToolResult(result(1, "tc_source", complete))).unwrap();
     }
-    (log, cursor(1, "tc_source", complete, 0))
+    (log, cursor(1, "tc_source", complete, 0), root)
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn a_recorded_digest_produces_the_rendering_cursor() {
 #[tokio::test]
 async fn repeated_retrieval_reconstructs_the_complete_rendering() {
     let complete = "αβγδ\n".repeat(8_000);
-    let (log, mut next) = log_with_result("retrieve-archive", &complete, true);
+    let (log, mut next, _scratch) = log_with_result("retrieve-archive", &complete, true);
     let tool = tool(log.clone());
     let mut reconstructed = String::new();
     loop {
@@ -126,7 +126,7 @@ async fn repeated_retrieval_reconstructs_the_complete_rendering() {
 /// from its tool/result event and needs no archive file.
 #[tokio::test]
 async fn an_uncut_rendering_is_retrieved_from_the_log() {
-    let (log, cursor) = log_with_result("retrieve-inline", "complete inline result", false);
+    let (log, cursor, _scratch) = log_with_result("retrieve-inline", "complete inline result", false);
     let value = tool(log.clone()).call(json!({ "cursor": cursor }), &context(&log.dir().join("spill"), 2)).await;
     assert_eq!(value.value["content"], "complete inline result");
     assert!(!log.dir().join("spill").exists());
@@ -136,7 +136,7 @@ async fn an_uncut_rendering_is_retrieved_from_the_log() {
 /// an earlier result in the current episode and rejects changed fields.
 #[tokio::test]
 async fn invalid_changed_and_future_cursors_are_rejected() {
-    let (log, cursor_value) = log_with_result("retrieve-cursors", "source", false);
+    let (log, cursor_value, _scratch) = log_with_result("retrieve-cursors", "source", false);
     let mut changed = cursor_value.clone();
     let last = changed.pop().unwrap();
     changed.push(if last == '0' { '1' } else { '0' });
@@ -158,7 +158,7 @@ async fn invalid_changed_and_future_cursors_are_rejected() {
 /// archive bytes against the recorded digest.
 #[tokio::test]
 async fn a_changed_archive_is_rejected_with_its_event_and_digest() {
-    let (log, cursor) = log_with_result("retrieve-changed", "complete", true);
+    let (log, cursor, _scratch) = log_with_result("retrieve-changed", "complete", true);
     let archive = log.events().into_iter().find_map(|event| match event.data {
         EventData::ToolRenderingArchive(archive) => Some((event.seq, archive)),
         _ => None,
@@ -175,7 +175,7 @@ async fn a_changed_archive_is_rejected_with_its_event_and_digest() {
 #[tokio::test]
 async fn retrieval_from_a_seed_does_not_open_the_source_episode() {
     let complete = "archived evidence\n".repeat(2_000);
-    let (source, cursor) = log_with_result("retrieve-seed", &complete, true);
+    let (source, cursor, _source_scratch) = log_with_result("retrieve-seed", &complete, true);
     let source_dir = source.dir().to_path_buf();
     let dest = source_dir.parent().unwrap().join("seeded");
     std::fs::create_dir_all(&dest).unwrap();
@@ -199,7 +199,7 @@ async fn retrieval_from_a_seed_does_not_open_the_source_episode() {
 /// replays from `tool/result.rendered` without opening its source archive.
 #[tokio::test]
 async fn a_recorded_retrieval_replays_without_the_archive() {
-    let (log, cursor) = log_with_result("retrieve-replay", &"archived\n".repeat(3_000), true);
+    let (log, cursor, _scratch) = log_with_result("retrieve-replay", &"archived\n".repeat(3_000), true);
     let value = tool(log.clone()).call(json!({ "cursor": cursor }), &context(&log.dir().join("spill"), 2)).await;
     let rendered = value.rendered.unwrap();
     log.append(EventData::AssistantMessage(assistant(2, vec![call("tc_retrieve", NAME)]))).unwrap();

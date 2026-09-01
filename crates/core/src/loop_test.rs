@@ -2,7 +2,9 @@ use super::{learned_findings, parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SP
 use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::{Handles, Registry};
-use crate::test_util::{call, done, program_with, text as text_chunk, tmp, turn, Probe, ScriptedTransport, Verifier};
+use crate::test_util::{
+    call, done, program_with, text as text_chunk, tmp, turn, Probe, ScratchDir, ScriptedTransport, Verifier,
+};
 use crate::{Tool, Transport};
 use foe_log::{
     BlockedCode, Chunk, Covered, EpisodeStart, Event, EventData, ExhaustedLimit, InboxSource, Outcome, RuntimeInfo,
@@ -30,6 +32,7 @@ fn start(program: &ResolvedProgram) -> EpisodeStart {
 }
 
 struct Fixture {
+    scratch: Option<ScratchDir>,
     dir: std::path::PathBuf,
     log: Arc<Log>,
     program: ResolvedProgram,
@@ -51,6 +54,7 @@ impl Fixture {
         let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
         let (stop, stop_rx) = watch::channel(None);
         Self {
+            scratch: Some(root),
             dir,
             log,
             program,
@@ -67,6 +71,10 @@ impl Fixture {
     fn child(mut self) -> Self {
         self.parent_id = Some("ep_parent".into());
         self
+    }
+
+    fn take_scratch(&mut self) -> ScratchDir {
+        self.scratch.take().unwrap()
     }
 
     fn tool(mut self, tool: impl Tool + 'static) -> Self {
@@ -737,7 +745,7 @@ async fn learned_completion_rejects_a_foreign_event_then_runs_the_declared_verif
 #[test]
 fn learned_completion_requires_reconstructable_spilled_evidence() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    let fx = Fixture::new(
+    let mut fx = Fixture::new(
         "loop-learned-spill",
         |v| v["tools"] = json!(["p"]),
         vec![
@@ -745,6 +753,7 @@ fn learned_completion_requires_reconstructable_spilled_evidence() {
             turn("done", vec![]),
         ],
     );
+    let _scratch = fx.take_scratch();
     let dir = fx.dir.clone();
     let (_, events) = runtime.block_on(fx.tool(Probe::new("p", Effect::Pure)).run());
     let evidence = events
@@ -763,11 +772,12 @@ fn learned_completion_requires_reconstructable_spilled_evidence() {
 /// tool failed, so a large error cannot become successful cited evidence.
 #[tokio::test]
 async fn learned_completion_rejects_a_spilled_error() {
-    let fx = Fixture::new(
+    let mut fx = Fixture::new(
         "loop-learned-spilled-error",
         |v| v["tools"] = json!(["bad"]),
         vec![turn("observe", vec![call("bad-evidence", "bad", "{}")]), turn("done", vec![])],
     );
+    let _scratch = fx.take_scratch();
     let dir = fx.dir.clone();
     let (_, events) = fx.tool(LargeError(crate::test_util::spec("bad", Effect::Pure))).run().await;
     let evidence = events
@@ -783,11 +793,12 @@ async fn learned_completion_rejects_a_spilled_error() {
 
 #[tokio::test]
 async fn a_large_result_is_spilled_and_replaced_by_a_locator() {
-    let fx = Fixture::new(
+    let mut fx = Fixture::new(
         "loop-spill",
         |v| v["tools"] = json!(["p"]),
         vec![turn("big", vec![call("a", "p", &format!(r#"{{"big": {}}}"#, SPILL_LIMIT + 1))]), turn("", vec![])],
     );
+    let _scratch = fx.take_scratch();
     let dir = fx.dir.clone();
     let (_, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
     let r = results(&events)[0];
@@ -802,7 +813,7 @@ async fn a_large_result_is_spilled_and_replaced_by_a_locator() {
 /// synchronized and recorded before the shortened result enters the log.
 #[tokio::test]
 async fn a_shortened_result_records_its_complete_rendering_first() {
-    let fx = Fixture::new(
+    let mut fx = Fixture::new(
         "loop-rendering-archive",
         |v| v["tools"] = json!(["p", "retrieve"]),
         vec![
@@ -810,6 +821,7 @@ async fn a_shortened_result_records_its_complete_rendering_first() {
             turn("", vec![]),
         ],
     );
+    let _scratch = fx.take_scratch();
     let dir = fx.dir.clone();
     let (_, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
     let archive_index =
@@ -845,11 +857,12 @@ async fn the_stop_signal_ends_the_episode_as_failed_with_its_reason() {
 
 #[tokio::test]
 async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only_on_change() {
-    let first = Fixture::new(
+    let mut first = Fixture::new(
         "loop-seed-src",
         |v| v["tools"] = json!(["p"]),
         vec![turn("one", vec![call("a", "p", "{}")]), turn("two", vec![])],
     );
+    let _source_scratch = first.take_scratch();
     let src = first.dir.clone();
     first.tool(Probe::new("p", Effect::Pure)).run().await;
     let dest = tmp("loop-seed-dst");
