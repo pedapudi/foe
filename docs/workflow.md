@@ -129,6 +129,11 @@ key in this document is a fixed name.
 
 Each `follows` entry defines one data edge from the named source to the node.
 Each successor in `branches` defines a control edge from the choice node.
+An edge reference is one `follows` entry, one branch successor, or one
+`recovery.follows` entry. Repeated entries count separately toward the
+construction limit. The predecessor and cycle indexes collapse repeated
+source-target references into one predecessor after construction accepts the
+declaration.
 
 `foe plan --schema` prints the JSON Schema of the whole configuration, including
 `workflow`, `workflow_node`, and the recovery blocks, with
@@ -261,6 +266,12 @@ check before it starts, and `max_fires` multiplies through nesting. The
 bound also caps the node count and the nesting depth, because every node
 contributes at least one firing. `foe plan` reports the count beside the
 bound.
+
+Construction refuses more than 4,096 edge references across a graph and all
+workflows nested inside it. The count includes `follows`, branch successors,
+and `recovery.follows`. Construction counts these references before it builds
+predecessor sets, cycle indexes, or plan structures. `foe plan` reports the
+count and the fixed ceiling for an accepted graph.
 
 A cycle needs a node outside it to start it. Because a branch edge makes
 its target a successor, a label that points back at the graph's only
@@ -478,10 +489,12 @@ reservation and spawn events that launch the child.
 
 ## Identity
 
-The following participate in identity: every node's name and kind, the
-edge set, every `branches` declaration, every tool node's `args` with
-bindings, every model node's program identity, `verify`, `retries`,
-`max_fires`, `terminal`, `empty`, every `recovery.follows` widening,
+Every node's name, kind, and edge references participate in identity. The
+identity document also records the edge-reference ceiling and the fields
+that the count covers. The other inputs are every `branches` declaration,
+every tool node's `args` with bindings, and every model node's program
+identity. They also include `verify`, `retries`, `max_fires`, `terminal`,
+`empty`, every `recovery.follows` widening,
 `recovery.max_interventions`, and the runtime's recovery instruction.
 
 ## Relationship to the rest of foe

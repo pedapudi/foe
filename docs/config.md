@@ -568,7 +568,11 @@ grants, spawn grants with their descendant programs, and spend limits all
 lie within the document's own. A child program may carry a `workflow` of
 its own. A model node may declare `empty` so that a blocked or exhausted
 child contributes that value and downstream work continues. The graph
-participates in identity as workflow.md "Identity" lists.
+may contain at most 4,096 edge references across all nested workflows. The
+count includes every `follows` entry, branch successor, and
+`recovery.follows` entry. Construction checks this count before building
+graph indexes. The graph participates in identity as workflow.md "Identity"
+lists.
 
 ### `task`
 

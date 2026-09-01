@@ -367,8 +367,8 @@ fn load(config: &Path) -> Result<foe_program::document::ResolvedProgram, String>
 /// `program`, which the Python package parses, `context` with the
 /// compaction policy in one line
 /// when the program compacts, and `workflow` when the program declares one:
-/// its cycles, the nodes sharing write roots, its terminal nodes, and how
-/// many firings it can perform against the bound the runtime enforces. Both
+/// its cycles, the nodes sharing write roots, its terminal nodes, and its
+/// declared edge references and firings against their fixed bounds. Both
 /// forms report the resolved tools with the source each name resolved in
 /// and the tool authority reachable from the root. `ancestry` carries the
 /// `--states` and `--evidence` directories: given, the program's ancestry
@@ -397,6 +397,8 @@ fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>)
             serde_json::json!({
                 "cycles": plan::cycles(wf), "write_overlaps": overlaps,
                 "terminal": wf.nodes.iter().filter(|(_, n)| n.terminal).map(|(k, _)| k).collect::<Vec<_>>(),
+                "edge_references": wf.edge_references(),
+                "max_edge_references": foe_program::workflow::MAX_EDGE_REFERENCES,
                 "possible_firings": wf.possible_firings(),
                 "max_possible_firings": foe_program::workflow::MAX_POSSIBLE_FIRINGS,
             })

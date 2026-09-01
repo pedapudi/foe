@@ -940,7 +940,7 @@ sandbox, and spawning — and its Rust source stays under 5,275 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/program`, which is budgeted
-apart under 1,400 lines. The two are separate because a program
+apart under 1,450 lines. The two are separate because a program
 document that gains a key must not buy room in the loop, and because the
 claim the kernel's number supports is about the machine that runs a program
 rather than about the data model it runs.
