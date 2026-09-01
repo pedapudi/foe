@@ -297,7 +297,7 @@ An error result written by the runtime has `is_error: true` and a
 ```json
 {
   "code": "capability-denied",
-  "message": "read: /private: outside every granted root",
+  "message": "read: /private is outside this tool's filesystem permissions; review grants.read and grants.write",
   "retryable": false,
   "details": { "path": "/private" }
 }

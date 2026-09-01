@@ -108,7 +108,7 @@ impl Tool for Bash {
             (false, Some(code)) => format!("exit {code} in {secs:.2}s"),
             (false, None) => format!("killed by a signal after {secs:.2}s"),
         };
-        let output = process_output::render(ctx, &status, &res.stdout, &res.stderr, "bash");
+        let output = process_output::render(ctx, &status, res.exit_code, &res.stdout, &res.stderr, "bash");
         ToolValue::ok(
             json!({
                 "command": a.command,
@@ -118,7 +118,7 @@ impl Tool for Bash {
                 "stdout": output.stdout,
                 "stderr": output.stderr,
                 "truncated": output.truncated,
-                "spill": output.spill,
+                "spill": output.spill, "permission_denial": output.permission_denial.then_some("possible"),
             }),
             output.rendered,
         )

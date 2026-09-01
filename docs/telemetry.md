@@ -309,6 +309,7 @@ A field that answers no question is not emitted. This table is the gate.
 | `foe.tool.seq` | where in the log a span's tool call is |
 | `foe.tool.duration_ms` | which tools dominate wall-clock time |
 | `foe.tool.is_error` | which tools fail most |
+| `foe.tool.permission_denial` | which tool calls encountered an enforced or possible permission denial |
 | `foe.tool.subject` | what a failing tool acted on |
 
 Input, output, and cache-read tokens are separate throughout, following the
@@ -320,6 +321,12 @@ from a cold cache.
 
 Span status is `OK` for a completed episode and a tool call that did not
 error, and `ERROR` otherwise.
+
+`foe.tool.permission_denial` is absent when the log contains no denial
+evidence. `enforced` means the runtime returned the typed
+`capability-denied` failure. `possible` means a shell exited with status 126
+and wrote `Permission denied` to standard error. The possible classification
+does not assert that the kernel sandbox caused the exit.
 
 ### Completion provenance
 

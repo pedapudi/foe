@@ -7,7 +7,7 @@
 //! workflow model node is reachable because firing it starts that node's
 //! resolved episode contract.
 
-use crate::document::ResolvedContract;
+use crate::document::{ContractTreeSelection, ResolvedContract};
 use crate::tools::{resolve_sources, resolve_specs, Source};
 use crate::workflow::WorkflowConfig;
 use crate::{Effect, ToolSpec};
@@ -25,6 +25,39 @@ pub struct ReachableTool {
     pub effect: Effect,
     pub definition: Value,
     pub contract_paths: BTreeSet<String>,
+}
+
+/// One statically known configuration condition that may prevent useful
+/// work. Warnings do not make an execution contract invalid.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub struct ConfigurationWarning {
+    pub contract: String,
+    pub code: &'static str,
+    pub configuration_key: String,
+    pub message: String,
+}
+
+/// Warnings derived from the resolved contract tree without running a
+/// process. A shell tool with no delegated executable can use shell built-ins.
+/// Kernel-enforced runs deny every external command.
+pub fn configuration_warnings(root: &ResolvedContract) -> Vec<ConfigurationWarning> {
+    root.contract_tree(ContractTreeSelection::ExecutableReachable)
+        .into_iter()
+        .filter(|(_, contract)| {
+            contract.sandbox.mode != foe_log::SandboxMode::Off
+                && contract.grants.execute.is_empty()
+                && contract.tools.iter().any(|tool| tool == "bash" || tool == "session")
+        })
+        .map(|(contract, _)| ConfigurationWarning {
+            configuration_key: format!("{contract}.grants.execute"),
+            message: format!(
+                "{contract}.tools selects a shell tool while {contract}.grants.execute is empty. \
+                 Shell built-ins remain available. Kernel-enforced runs require each external command's absolute file or directory in that key."
+            ),
+            contract,
+            code: "external-commands-unavailable",
+        })
+        .collect()
 }
 
 /// A row is keyed by name, source, definition body, and effect together, so

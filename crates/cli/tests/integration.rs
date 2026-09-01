@@ -1284,6 +1284,34 @@ fn plan_reports_reachable_tools_and_resolved_permissions() {
     }));
 }
 
+/// docs/config.md grants.execute: plan warns before a kernel-enforced shell
+/// contract spends a model request when it delegates no external command.
+#[test]
+fn plan_warns_when_shell_tools_cannot_start_external_commands() {
+    let dir = scratch("plan-shell-permissions");
+    let value = config(&dir, |contract| {
+        contract["tools"] = json!(["bash"]);
+        contract["grants"]["execute"] = json!([]);
+    });
+    let path = dir.join("config.json");
+    std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let report = plan(&path);
+    assert_eq!(
+        report["warnings"],
+        json!([{
+            "contract": "contract",
+            "code": "external-commands-unavailable",
+            "configuration_key": "contract.grants.execute",
+            "message": "contract.tools selects a shell tool while contract.grants.execute is empty. Shell built-ins remain available. Kernel-enforced runs require each external command's absolute file or directory in that key."
+        }])
+    );
+
+    let mut value = value;
+    value["grants"]["execute"] = json!(["/usr/bin/python3"]);
+    std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    assert_eq!(plan(&path)["warnings"], json!([]));
+}
+
 /// docs/workflow.md "The flow guarantee, stated exactly": plan reports
 /// overlaps for model nodes and effectful tool nodes at every graph depth.
 #[test]

@@ -35,6 +35,20 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert_eq!(req.env["HOME"], fx.root().display().to_string());
 }
 
+/// docs/tools.md `bash`: exit 126 with the shell's permission diagnostic
+/// remains an ordinary result and explains the relevant configuration key.
+#[tokio::test]
+async fn possible_external_command_denial_is_recorded_and_explained() {
+    let fx = Fixture::new();
+    let exec = Arc::new(FakeExecutor::new(result(126, "", "/bin/bash: line 1: /usr/bin/python3: Permission denied\n")));
+    let v = Bash::new().call(json!({"command": "/usr/bin/python3 test.py"}), &ctx_with_executor(&fx, exec)).await;
+    assert!(!v.is_error, "{v:?}");
+    assert_eq!(v.value["permission_denial"], "possible");
+    let rendered = v.rendered.unwrap();
+    assert!(rendered.contains("possible permission denial"), "{rendered}");
+    assert!(rendered.contains("grants.execute"), "{rendered}");
+}
+
 #[tokio::test]
 async fn timeout_argument_and_deadline_bound_the_request() {
     let fx = Fixture::new();

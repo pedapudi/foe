@@ -202,13 +202,14 @@ impl Tool for Session {
 /// truncation the whole text is saved and a notice names the file.
 fn render_poll(ctx: &CallCtx, status: &SessionStatus, output: &SessionOutput) -> ToolValue {
     let line = subject(status);
-    let output = process_output::render(ctx, &line, &output.stdout, &output.stderr, "session");
+    let output = process_output::render(ctx, &line, status.exit_code, &output.stdout, &output.stderr, "session");
     ToolValue::ok(
         json!({
             "session": status.id, "name": status.name, "alive": status.alive,
             "exit_code": status.exit_code, "seconds": status.seconds,
             "stdout": output.stdout, "stderr": output.stderr,
             "truncated": output.truncated, "spill": output.spill,
+            "permission_denial": output.permission_denial.then_some("possible"),
         }),
         output.rendered,
     )

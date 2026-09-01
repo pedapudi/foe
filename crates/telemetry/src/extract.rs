@@ -4,7 +4,7 @@
 //! log fields telemetry can reach is exactly what this file names. Adding a
 //! field here is the decision to consider emitting it.
 
-use foe_log::{Event, EventData, Outcome, StopReason, Usage, VerificationStatus, WorkflowNodeEnd};
+use foe_log::{Event, EventData, Outcome, StopReason, ToolFailureCode, Usage, VerificationStatus, WorkflowNodeEnd};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One model call and the response that closed it.
@@ -26,6 +26,7 @@ pub struct Call {
     pub duration_ms: u64,
     pub is_error: bool,
     pub subject: String,
+    pub permission_denial: Option<&'static str>,
 }
 
 /// Structural signals the classifier votes on. Counts, never text bodies.
@@ -135,15 +136,22 @@ pub fn extract(events: &[Event], log_dir: &str) -> Facts {
                     call_evidence(&call.name, &call.args, &mut facts.evidence);
                 }
             }
-            EventData::ToolResult(result) => facts.calls.push(Call {
-                seq: event.seq,
-                name: result.name.clone(),
-                start_ms: event.time - result.duration_ms as i64,
-                end_ms: event.time,
-                duration_ms: result.duration_ms,
-                is_error: result.is_error,
-                subject: result.subject.clone().unwrap_or_default(),
-            }),
+            EventData::ToolResult(result) => {
+                let enforced =
+                    result.failure.as_ref().map(|failure| failure.code) == Some(ToolFailureCode::CapabilityDenied);
+                let possible = result.value["permission_denial"] == "possible";
+                let permission_denial = enforced.then_some("enforced").or(possible.then_some("possible"));
+                facts.calls.push(Call {
+                    seq: event.seq,
+                    name: result.name.clone(),
+                    start_ms: event.time - result.duration_ms as i64,
+                    end_ms: event.time,
+                    duration_ms: result.duration_ms,
+                    is_error: result.is_error,
+                    subject: result.subject.clone().unwrap_or_default(),
+                    permission_denial,
+                });
+            }
             EventData::SpawnStart { .. } => facts.evidence.spawns += 1,
             EventData::SpawnEnd { child_id, outcome: Outcome::Blocked { .. } | Outcome::Exhausted { .. } } => {
                 partial_children.insert(child_id.clone());

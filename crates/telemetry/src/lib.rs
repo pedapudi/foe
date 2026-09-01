@@ -1,18 +1,7 @@
 //! Categorized, scrubbed, OTLP-encoded telemetry derived from episode logs.
 //!
-//! Telemetry is a pure function of an episode log, the rules compiled into
-//! this crate, and a local key. It does not instrument the runtime: it
-//! reads `episode.jsonl` after the episode ended. Three consequences carry
-//! the design.
-//!
-//! The loop pays nothing, and the kernel needs no telemetry code at all.
-//! Nothing here depends on `foe-core`.
-//!
-//! The same inputs produce the same bytes. Nothing draws on a random source
-//! or on the wall clock: span and trace ids are derived from the episode id
-//! and times come from the log's own event times. Determinism is what makes
-//! the preview command trustworthy — it runs the emission and prints it,
-//! rather than simulating what an emission would do.
+//! Telemetry deterministically derives scrubbed OTLP from an ended episode log,
+//! compiled rules, and a local key. It does not instrument or depend on the runtime.
 //!
 //! Running the binary is the opt-in. There is no configuration key, no
 //! fingerprint change, and no environment variable, and this crate opens no
@@ -35,7 +24,7 @@ use std::path::{Path, PathBuf};
 
 /// Changes whenever an emitted field is added, removed, renamed, or given a
 /// different meaning. Every payload carries it as a resource attribute.
-pub const SCHEMA_VERSION: &str = "5";
+pub const SCHEMA_VERSION: &str = "6";
 
 /// The fraction of the input tokens the cache served, absent when no input
 /// token was recorded: an unmeasured spend has no fraction rather than a
@@ -107,16 +96,15 @@ pub fn emission(events: &[Event], log_dir: &str, key: Vec<u8>) -> Result<Emissio
     for call in &facts.calls {
         let id = otlp::span_id(&facts.id, "tool", call.seq);
         let name = format!("tool {}", call.name);
-        spans.push(span(&trace, id, root.clone(), name, call.start_ms, call.end_ms).with(
-            vec![
-                text("foe.tool.name", call.name.clone()),
-                number("foe.tool.seq", call.seq),
-                number("foe.tool.duration_ms", call.duration_ms),
-                Attribute { key: "foe.tool.is_error".into(), value: AnyValue::BoolValue(call.is_error) },
-                text("foe.tool.subject", clean(format!("tool/result.subject seq {}", call.seq), &call.subject)),
-            ],
-            !call.is_error,
-        ));
+        let mut attributes = vec![
+            text("foe.tool.name", call.name.clone()),
+            number("foe.tool.seq", call.seq),
+            number("foe.tool.duration_ms", call.duration_ms),
+            Attribute { key: "foe.tool.is_error".into(), value: AnyValue::BoolValue(call.is_error) },
+            text("foe.tool.subject", clean(format!("tool/result.subject seq {}", call.seq), &call.subject)),
+        ];
+        attributes.extend(call.permission_denial.map(|value| text("foe.tool.permission_denial", value)));
+        spans.push(span(&trace, id, root.clone(), name, call.start_ms, call.end_ms).with(attributes, !call.is_error));
     }
 
     let (kind, exit_class, detail) = extract::outcome_terms(facts.outcome.as_ref());

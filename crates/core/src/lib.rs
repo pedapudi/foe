@@ -115,7 +115,13 @@ impl ToolValue {
         Self::failed(ToolFailureCode::Unavailable, message, false, serde_json::json!({}))
     }
     pub fn from_cap_error(context: &str, error: CapError) -> Self {
-        let message = format!("{context}: {error}");
+        let message = match &error {
+            CapError::Denied { path } => format!(
+                "{context}: {} is outside this tool's filesystem permissions; review grants.read and grants.write",
+                path.display()
+            ),
+            _ => format!("{context}: {error}"),
+        };
         match error {
             CapError::Denied { path } => {
                 Self::failed(ToolFailureCode::CapabilityDenied, message, false, serde_json::json!({ "path": path }))

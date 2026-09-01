@@ -173,7 +173,9 @@ async fn paths_outside_the_roots_are_denied() {
     let fx = Fixture::new();
     let v = read(&fx, json!({"path": "/etc/hostname"})).await;
     assert!(v.is_error);
-    assert!(v.rendered.unwrap().contains("outside every granted root"));
+    let rendered = v.rendered.unwrap();
+    assert!(rendered.contains("outside this tool's filesystem permissions"));
+    assert!(rendered.contains("grants.read and grants.write"));
 }
 
 /// docs/tools.md "read": the file is consumed as a stream, so the tool

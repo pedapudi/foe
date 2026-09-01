@@ -92,7 +92,11 @@ def _base(
             check,
             "Runs the visible repository test. It prints findings when the test fails and prints nothing when the test passes.",
         ),
-        "grants": {"read": [str(workspace)], "write": [str(workspace / "src")]},
+        "grants": {
+            "read": [str(workspace)],
+            "write": [str(workspace / "src")],
+            "execute": ["/usr/bin/python3"],
+        },
         "budget": {
             "model_calls": calls,
             "input_tokens": input_tokens,

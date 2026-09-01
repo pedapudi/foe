@@ -371,6 +371,7 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
     let context = run::context_policy(&contract)?.map(|policy| policy.describe());
     let reachable_tools = plan::reachable_tools(&contract)?;
     let resolved_permissions = plan::resolved_permissions(&contract)?;
+    let warnings = plan::configuration_warnings(&contract);
     if json {
         let overlaps = plan::write_overlaps(&contract)?;
         let workflow = contract.workflow.as_ref().map(|wf| {
@@ -386,7 +387,7 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
         let report = serde_json::json!({
             "contract_fingerprint": fingerprint.hash, "fingerprint_document": fingerprint.document, "contract": value,
             "transport": transport, "workflow": workflow, "context": context,
-            "reachable_tools": reachable_tools, "resolved_permissions": resolved_permissions,
+            "reachable_tools": reachable_tools, "resolved_permissions": resolved_permissions, "warnings": warnings,
         });
         println!("{report}");
     } else {
@@ -402,6 +403,7 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
         print!("tools\n{}", tool_rows(config, &contract)?);
         print!("{}", plan::reachable_tools_report(&reachable_tools));
         print!("{}", plan::permissions_report(&resolved_permissions));
+        print!("{}", plan::warnings_report(&warnings));
     }
     Ok(ExitCode::SUCCESS)
 }

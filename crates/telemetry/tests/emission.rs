@@ -94,6 +94,25 @@ fn the_golden_payload_carries_the_versions_a_consumer_needs_to_compare_two_of_th
 }
 
 #[test]
+fn permission_denial_classification_reaches_the_tool_span() {
+    let mut recorded = events(&fixtures().join("clean/episode.jsonl"));
+    let result = recorded.iter_mut().find_map(|event| match &mut event.data {
+        foe_log::EventData::ToolResult(result) if result.name == "bash" => Some(result),
+        _ => None,
+    });
+    result.unwrap().value = serde_json::json!({"permission_denial": "possible"});
+    let derived = foe_telemetry::emission(&recorded, "/logs/ep", key()).unwrap();
+    let denial = derived
+        .spans
+        .iter()
+        .flat_map(|span| &span.attributes)
+        .find(|attribute| attribute.key == "foe.tool.permission_denial");
+    assert!(
+        matches!(denial.map(|a| &a.value), Some(foe_telemetry::otlp::AnyValue::StringValue(value)) if value == "possible")
+    );
+}
+
+#[test]
 fn no_free_text_beyond_the_two_permitted_fields_reaches_the_payload() {
     let derived = foe_telemetry::emission(&events(&fixtures().join("clean/episode.jsonl")), "/logs/ep", key())
         .expect("the clean fixture emits");

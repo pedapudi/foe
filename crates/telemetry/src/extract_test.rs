@@ -1,7 +1,7 @@
 use super::*;
 use foe_log::{
     AssistantMessage, EpisodeStart, ModelRoute, Outcome, RequestHeader, RuntimeInfo, SandboxInfo, StopReason, ToolCall,
-    ToolResult, Usage, WorkflowNodeEnd, WorkflowNodeStart, WorkflowRecovery,
+    ToolFailure, ToolFailureCode, ToolResult, Usage, WorkflowNodeEnd, WorkflowNodeStart, WorkflowRecovery,
 };
 
 fn event(seq: u64, time: i64, data: EventData) -> Event {
@@ -183,6 +183,47 @@ fn steps_and_calls_carry_their_own_times_and_usage() {
     assert_eq!((facts.calls[0].start_ms, facts.calls[0].end_ms), (1060, 1100));
     assert!(facts.calls[0].is_error);
     assert_eq!(outcome_terms(facts.outcome.as_ref()), ("failed", "none".into(), "no".into()));
+}
+
+/// docs/telemetry.md `foe.tool.permission_denial`: typed denials are
+/// enforced; shell exit evidence is possible because the shell owns it.
+#[test]
+fn tool_calls_classify_permission_denial_evidence() {
+    let result = |value: serde_json::Value, failure: Option<ToolFailure>| {
+        EventData::ToolResult(ToolResult {
+            step: 1,
+            call_id: "tc".into(),
+            name: "bash".into(),
+            value,
+            rendered: String::new(),
+            is_error: failure.is_some(),
+            failure,
+            spill: None,
+            subject: None,
+            duration_ms: 1,
+            synthetic: false,
+        })
+    };
+    let events = vec![
+        event(0, 1000, start(serde_json::json!({}))),
+        event(1, 1001, result(serde_json::json!({"permission_denial": "possible"}), None)),
+        event(
+            2,
+            1002,
+            result(
+                serde_json::json!({}),
+                Some(ToolFailure {
+                    code: ToolFailureCode::CapabilityDenied,
+                    message: "denied".into(),
+                    retryable: false,
+                    details: serde_json::json!({}),
+                }),
+            ),
+        ),
+    ];
+    let facts = extract(&events, "/logs");
+    assert_eq!(facts.calls[0].permission_denial, Some("possible"));
+    assert_eq!(facts.calls[1].permission_denial, Some("enforced"));
 }
 
 #[test]

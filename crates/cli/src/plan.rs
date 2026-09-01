@@ -20,7 +20,7 @@ pub struct ContractPermissions {
     pub permissions: ResolvedPermissions,
 }
 
-pub use foe_contract::inspect::{cycles, tool_sources, ReachableTool};
+pub use foe_contract::inspect::{configuration_warnings, cycles, tool_sources, ConfigurationWarning, ReachableTool};
 
 /// Every distinct tool definition reachable from `root`, with the binary's
 /// extra built-in packs supplied. See `foe_contract::inspect`.
@@ -68,6 +68,14 @@ pub fn permissions_report(contracts: &[ContractPermissions]) -> String {
         for reason in &contract.permissions.connect_tcp {
             writeln!(out, "    connect tcp  {reason}").ok();
         }
+    }
+    out
+}
+
+pub fn warnings_report(warnings: &[ConfigurationWarning]) -> String {
+    let mut out = String::new();
+    for warning in warnings {
+        writeln!(out, "warning {}: {}", warning.code, warning.message).ok();
     }
     out
 }

@@ -198,8 +198,8 @@ participates in fingerprint.
 
 A name resolves against three sources, checked in this order:
 
-1. Built-in tools: `read`, `grep`, `edit`, `bash`, `retrieve`, `block`,
-   `spawn`, `wait`, `steer`, `notify`, `send`, `team`.
+1. Built-in tools: `read`, `grep`, `edit`, `bash`, `session`, `python`,
+   `retrieve`, `block`, `spawn`, `wait`, `steer`, `notify`, `send`, `team`.
 2. Entries in `tool_defs`.
 3. Entries in `host_tools`.
 
@@ -275,6 +275,12 @@ Object. Required. Names what the episode may reach.
 
 Paths are prefixes. A grant on `/home/user/project` covers every path below
 it. There is no pattern syntax.
+
+`foe plan` warns when a reachable contract selects `bash` or `session`, uses
+a sandbox mode, and leaves `grants.execute` empty. The warning does not make
+the contract invalid because shell built-ins remain useful. On a host that
+enforces the sandbox, an external command needs its absolute file or an
+enclosing directory in `grants.execute`.
 
 A `bind` grant lets a server the episode starts listen on the named ports;
 [sandbox.md](sandbox.md) states how the kernel enforces it. It grants no

@@ -78,6 +78,8 @@ class MicroTaskTests(unittest.TestCase):
                 external_grader = Path(metadata.get("grade", metadata["check"]))
                 self.assertNotIn(str(external_grader), json.dumps(config))
                 self.assertEqual(config["model"], route)
+                if "python3" in config["task"]:
+                    self.assertIn("/usr/bin/python3", config["grants"]["execute"])
 
     def test_delegated_task_exposes_wait_and_bounds_child_reports(self) -> None:
         task = task_by_name("delegated-order-quotation")

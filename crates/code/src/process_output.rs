@@ -11,11 +11,19 @@ pub(crate) struct ProcessOutput {
     pub(crate) truncated: bool,
     pub(crate) spill: Option<String>,
     pub(crate) line_count: usize,
+    pub(crate) permission_denial: bool,
 }
 
 /// Leads with `status` and keeps the tail, where process verdicts normally
 /// appear. A cut rendering names an archive containing the complete output.
-pub(crate) fn render(ctx: &CallCtx, status: &str, stdout: &[u8], stderr: &[u8], spill_name: &str) -> ProcessOutput {
+pub(crate) fn render(
+    ctx: &CallCtx,
+    status: &str,
+    exit_code: Option<i32>,
+    stdout: &[u8],
+    stderr: &[u8],
+    spill_name: &str,
+) -> ProcessOutput {
     let stdout = String::from_utf8_lossy(stdout).into_owned();
     let stderr = String::from_utf8_lossy(stderr).into_owned();
     let mut combined = stdout.clone();
@@ -55,6 +63,10 @@ pub(crate) fn render(ctx: &CallCtx, status: &str, stdout: &[u8], stderr: &[u8], 
     for line in &lines[lines.len() - kept..] {
         let _ = writeln!(rendered, "{line}");
     }
+    let permission_denial = exit_code == Some(126) && stderr.contains("Permission denied");
+    if permission_denial {
+        rendered.push_str("[permission guidance] The shell reported a possible permission denial. Add the external command's absolute file or directory to grants.execute, or expose it as a configured tool.\n");
+    }
     let line_count = stdout.lines().count() + stderr.lines().count();
-    ProcessOutput { stdout, stderr, rendered, truncated, spill, line_count }
+    ProcessOutput { stdout, stderr, rendered, truncated, spill, line_count, permission_denial }
 }

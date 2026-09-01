@@ -212,8 +212,8 @@ the first `read` root, and paths in results are shown relative to it.
 | `read` | reads | `path`; `offset`, the first line or directory entry to show, 1-indexed, default 1; `limit`, the maximum lines or entries to show | 2,000 lines or entries, or 51,200 characters per call, whichever comes first; binary files are refused; a file streams through a 64 KiB buffer; a directory lists sorted immediate entries | `path`, `offset`, `shown`, `truncated`; a file adds `total_lines`, `content`, `version`; a directory adds `total_entries`, `entries` with `path` and `type` |
 | `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `traversal_failures`, `first_failure`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
 | `edit` | writes | `path`; optional `expected_version` from `read`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; an expected version must match the current bytes; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff`, `previous_version`, `version` |
-| `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
-| `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `lifetime`, `episode` by default or `task`; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule; task lifetime requires `grants.task_session` | `session`, `name`, `lifetime`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`; `bytes`; `signal` |
+| `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill`, `permission_denial` |
+| `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `lifetime`, `episode` by default or `task`; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule; task lifetime requires `grants.task_session` | `session`, `name`, `lifetime`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`, `permission_denial`; `bytes`; `signal` |
 | `python` | execs | `source`, Python source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
 
 The limits in the table are constants in the crate, and every tool
@@ -413,6 +413,14 @@ that file.
 A non-zero exit is a result. The call is an error only when the arguments
 are invalid, the executor refuses the request, or the tool was dispatched
 without the handles it needs.
+
+An exit code of 126 whose standard error contains `Permission denied` may
+mean that the sandbox refused an external command. Foe cannot prove the
+cause because the shell owns that exit status and diagnostic. The canonical
+value sets `permission_denial` to `possible`, and the rendering explains
+that `grants.execute` must contain the command's absolute file or an enclosing
+directory. Other results set the field to null. A `session` poll applies the
+same rule after the session shell exits.
 
 ### `session`
 
