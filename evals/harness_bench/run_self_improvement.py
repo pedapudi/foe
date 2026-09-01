@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from foe_source_identity import clean_source_tree, require_evaluated_foe, sha256_file
 
 

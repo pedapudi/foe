@@ -219,7 +219,7 @@ sh_binary(
     data = [
         "//:Cargo.toml",
         "//:foe-portable",
-        "//evals/harness_bench:foe_source_identity.py",
+        "//evals:foe_source_identity.py",
         "cases.json",
         "run.py",
         "workflow_candidate.py",
@@ -238,7 +238,7 @@ sh_binary(
     ],
     data = [
         "//:foe-portable",
-        "//evals/harness_bench:foe_source_identity.py",
+        "//evals:foe_source_identity.py",
         "cases.json",
         "foe_agent_support.py",
         "instruction_candidate.py",
@@ -262,7 +262,7 @@ sh_test(
         "capability_probe_support_test.py",
         "collect_diagnostics.py",
         "collect_diagnostics_test.py",
-        "//evals/harness_bench:foe_source_identity.py",
+        "//evals:foe_source_identity.py",
         "foe_agent.py",
         "foe_agent_support.py",
         "foe_agent_support_test.py",

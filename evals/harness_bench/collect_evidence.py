@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from foe_source_identity import require_evaluated_foe
 
 MAX_EVIDENCE_BYTES = 20_000

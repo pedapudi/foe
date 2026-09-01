@@ -1,6 +1,11 @@
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
+exports_files(
+    ["foe_source_identity.py"],
+    visibility = ["//visibility:public"],
+)
+
 sh_binary(
     name = "score-trace",
     srcs = ["trace_quality.py"],
@@ -32,7 +37,7 @@ sh_binary(
         "trace_quality.py",
         "//:Cargo.toml",
         "//:foe",
-        "//evals/harness_bench:foe_source_identity.py",
+        "foe_source_identity.py",
     ],
 )
 
@@ -40,6 +45,8 @@ sh_test(
     name = "trace_quality_test",
     srcs = ["run_unit_tests.sh"],
     data = [
+        "foe_source_identity.py",
+        "foe_source_identity_test.py",
         "trace_quality.py",
         "trace_quality_test.py",
     ],

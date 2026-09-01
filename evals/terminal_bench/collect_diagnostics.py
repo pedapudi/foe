@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-sys.path.append(str(Path(__file__).resolve().parent.parent / "harness_bench"))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from foe_source_identity import evaluated_foe, require_evaluated_foe
 from run import read_cases
 
