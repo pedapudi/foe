@@ -68,6 +68,13 @@ sh_binary(
 )
 
 sh_binary(
+    name = "foe-trajectory-corpus",
+    srcs = ["trajectory_corpus.py"],
+    data = ["//evals:foe_source_identity.py"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
     name = "foe-capability-probes",
     srcs = ["run_capability_probes.py"],
     args = [
@@ -222,6 +229,7 @@ sh_binary(
         "//evals:foe_source_identity.py",
         "cases.json",
         "run.py",
+        "trajectory_corpus.py",
         "workflow_candidate.py",
     ],
     visibility = ["//visibility:public"],
@@ -240,10 +248,12 @@ sh_binary(
         "//:foe-portable",
         "//evals:foe_source_identity.py",
         "cases.json",
+        "collect_diagnostics.py",
         "foe_agent_support.py",
         "instruction_candidate.py",
         "run.py",
         "tool_candidate.py",
+        "trajectory_corpus.py",
         "trajectory_diagnostics.py",
         "workflow_candidate.py",
     ],
@@ -277,6 +287,8 @@ sh_test(
         "run_verifier_controls_test.py",
         "tool_candidate.py",
         "tool_candidate_test.py",
+        "trajectory_corpus.py",
+        "trajectory_corpus_test.py",
         "trajectory_diagnostics.py",
         "trajectory_diagnostics_test.py",
         "workflow_candidate.py",

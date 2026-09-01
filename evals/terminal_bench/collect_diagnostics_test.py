@@ -10,13 +10,59 @@ from pathlib import Path
 from collect_diagnostics import (
     EVALUATION_FIELDS,
     collect,
+    collect_from_corpus,
+    development_tasks,
     evaluation_metadata,
     evaluation_summary,
     input_growth_landmarks,
 )
+from trajectory_corpus import snapshot_corpus
 
 
 class CollectDiagnosticsTest(unittest.TestCase):
+    def test_development_tasks_excludes_protected_groups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cases = Path(directory) / "cases.json"
+            cases.write_text(
+                json.dumps(
+                    {
+                        "groups": {
+                            "development": ["develop"],
+                            "capability_search": ["probe"],
+                            "confirmation": ["confirm"],
+                            "calibration_holdout": ["sealed"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(development_tasks(cases), {"develop", "probe"})
+
+    def test_summary_excludes_errored_and_boolean_reward_trials(self):
+        configuration = {
+            "service_tier": "default",
+            "token_policy": "measurement_only",
+            "task_execution": {
+                "requested_workers": 1,
+                "scheduled_concurrency": 1,
+            },
+            "implementation": {"model": "provider/model", "reasoning_effort": "low"},
+        }
+        base = {
+            "task": "terminal-bench/example",
+            "evaluation": {
+                "model": "provider/model",
+                "reasoning_effort": "low",
+                "execution_configuration": configuration,
+            },
+            "usage": {},
+        }
+        reports = [
+            {**base, "verifier_reward": 1.0, "trial_error": {"type": "timeout"}},
+            {**base, "verifier_reward": True, "trial_error": None},
+        ]
+        self.assertEqual(evaluation_summary(reports), [])
+
     def fixture(self, root: Path) -> tuple[Path, Path, Path, dict[str, str]]:
         source = root / "source"
         source.mkdir()
@@ -122,7 +168,7 @@ class CollectDiagnosticsTest(unittest.TestCase):
             source, binary, run, identity = self.fixture(Path(directory))
             report = collect(source, binary, [run], {"example"})
         self.assertEqual(report["evaluated_foe"], identity)
-        self.assertEqual(report["schema_version"], 3)
+        self.assertEqual(report["schema_version"], 4)
         diagnosis = report["trajectory_diagnostics"][0]
         self.assertEqual(diagnosis["task"], "terminal-bench/example")
         self.assertEqual(diagnosis["evaluation"]["label"], "development")
@@ -175,6 +221,59 @@ class CollectDiagnosticsTest(unittest.TestCase):
             path.write_text(json.dumps(report), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "different runtime identity"):
                 collect(source, binary, [run], {"example"})
+
+    def test_corpus_collection_matches_direct_collection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, binary, run, identity = self.fixture(root)
+            campaign_path = run / "campaign.json"
+            campaign = json.loads(campaign_path.read_text(encoding="utf-8"))
+            campaign["tasks"] = [{"name": "example"}]
+            campaign_path.write_text(json.dumps(campaign), encoding="utf-8")
+            trial = run / "task" / "trial"
+            (trial / "result.json").write_text(
+                json.dumps(
+                    {
+                        "task_name": "terminal-bench/example",
+                        "agent_result": {
+                            "metadata": {"foe_credential_exposed": False}
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            episode = trial / "agent" / "foe-episode"
+            episode.mkdir()
+            (episode / "episode.jsonl").write_text(
+                json.dumps(
+                    {
+                        "seq": 1,
+                        "type": "episode/start",
+                        "data": {"runtime": {"build": identity["runtime_binary"]}},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            cases = root / "cases.json"
+            cases.write_text(
+                json.dumps(
+                    {
+                        "dataset": "terminal-bench/example@1",
+                        "groups": {
+                            "development": ["example"],
+                            "capability_search": [],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest = snapshot_corpus(
+                source, binary, [run], cases, root / "corpus"
+            )
+            direct = collect(source, binary, [run], {"example"})
+            from_corpus = collect_from_corpus(manifest, cases, identity)
+        self.assertEqual(from_corpus, direct)
 
     def test_input_growth_resets_when_a_second_child_starts_lower(self):
         rows = [

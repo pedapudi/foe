@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import Any
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from foe_source_identity import evaluated_foe, require_evaluated_foe
-from run import read_cases
+from trajectory_corpus import load_manifest, read_object
 
 MAX_DIAGNOSES = 24
 MAX_EVIDENCE_BYTES = 64 * 1024
@@ -24,6 +25,25 @@ EVALUATION_FIELDS = (
     "service_tier",
     "token_limits",
 )
+
+
+def development_tasks(cases: Path) -> set[str]:
+    """Return task names admitted into self-improvement evidence."""
+    value = json.loads(cases.read_text(encoding="utf-8"))
+    groups = value.get("groups") if isinstance(value, dict) else None
+    if not isinstance(groups, dict):
+        raise ValueError(f"Terminal-Bench cases file has no `groups` object: {cases}")
+    answer: set[str] = set()
+    for group in ("development", "capability_search"):
+        tasks = groups.get(group)
+        if not isinstance(tasks, list) or not all(
+            isinstance(task, str) and task for task in tasks
+        ):
+            raise ValueError(
+                f"Terminal-Bench cases file has no string `{group}` task list: {cases}"
+            )
+        answer.update(tasks)
+    return answer
 
 
 def input_growth_landmarks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -191,6 +211,9 @@ def evaluation_summary(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Summarize outcomes by task and complete execution configuration."""
     groups: dict[tuple[str, str], dict[str, Any]] = {}
     for report in reports:
+        reward = eligible_trial_reward(report)
+        if reward is None:
+            continue
         evaluation = report["evaluation"]
         task = report.get("task")
         configuration = evaluation["execution_configuration"]
@@ -213,13 +236,20 @@ def evaluation_summary(reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
             },
         )
         group["attempts"] += 1
-        reward = report.get("verifier_reward")
-        group["verified_successes"] += int(isinstance(reward, (int, float)) and reward > 0)
+        group["verified_successes"] += int(reward > 0)
         group["artifact_outcome_mismatches"] += int(report.get("artifact_outcome_mismatch") is True)
         usage = report.get("usage", {})
         group["model_calls"] += usage.get("model_calls", 0) or 0
         group["estimated_cost_usd"] += usage.get("estimated_cost_usd", 0.0) or 0.0
     return [groups[key] for key in sorted(groups)]
+
+
+def eligible_trial_reward(report: dict[str, Any]) -> int | float | None:
+    """Return a numeric reward for a trial without an infrastructure error."""
+    if report.get("trial_error") is not None:
+        return None
+    reward = report.get("verifier_reward")
+    return reward if type(reward) in (int, float) else None
 
 
 def collect(
@@ -231,11 +261,33 @@ def collect(
     if not run_dirs:
         raise ValueError("at least one retained Terminal-Bench run is required")
     identity = evaluated_foe(source_root, binary)
-    reports = []
-    runs = []
+    documents = []
     for run_dir in run_dirs:
         manifest_path = run_dir / "campaign.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        diagnostic_paths = sorted(run_dir.glob("*/*/agent/foe-diagnostics.json"))
+        documents.append(
+            (
+                manifest_path,
+                manifest,
+                [
+                    (path, json.loads(path.read_text(encoding="utf-8")))
+                    for path in diagnostic_paths
+                ],
+            )
+        )
+    return collect_documents(identity, documents, eligible_tasks)
+
+
+def collect_documents(
+    identity: dict[str, str],
+    documents: list[tuple[Path, dict[str, Any], list[tuple[Path, dict[str, Any]]]]],
+    eligible_tasks: set[str],
+) -> dict[str, Any]:
+    """Build one bounded report from verified trajectory documents."""
+    reports = []
+    runs = []
+    for manifest_path, manifest, diagnostics in documents:
         manifest_identity = require_evaluated_foe(
             manifest.get("evaluated_foe"), f"Terminal-Bench manifest {manifest_path}"
         )
@@ -243,12 +295,12 @@ def collect(
             raise ValueError(
                 f"Terminal-Bench manifest {manifest_path} evaluates a different Foe source or binary"
             )
-        diagnostic_paths = sorted(run_dir.glob("*/*/agent/foe-diagnostics.json"))
-        if not diagnostic_paths:
-            raise ValueError(f"Terminal-Bench run has no Foe diagnostics: {run_dir}")
+        if not diagnostics:
+            raise ValueError(
+                f"Terminal-Bench run has no Foe diagnostics: {manifest_path.parent}"
+            )
         evaluation = evaluation_metadata(manifest, manifest_path)
-        for path in diagnostic_paths:
-            report = json.loads(path.read_text(encoding="utf-8"))
+        for path, report in diagnostics:
             task = report.get("task")
             task_name = task.rsplit("/", 1)[-1] if isinstance(task, str) else None
             if task_name not in eligible_tasks:
@@ -261,15 +313,15 @@ def collect(
             reports.append(compact_diagnosis(report, evaluation))
             if len(reports) > MAX_DIAGNOSES:
                 raise ValueError(f"self-improvement evidence exceeds {MAX_DIAGNOSES} trajectory diagnoses")
-        runs.append({**evaluation, "diagnoses": len(diagnostic_paths)})
+        runs.append({**evaluation, "diagnoses": len(diagnostics)})
     answer = {
-        "schema_version": 3,
+        "schema_version": 4,
         "evaluated_foe": identity,
         "runs": runs,
         "evaluation_summary": evaluation_summary(reports),
         "trajectory_diagnostics": reports,
     }
-    size = len(json.dumps(answer, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    size = len(encoded_evidence(answer).encode("utf-8"))
     if size > MAX_EVIDENCE_BYTES:
         raise ValueError(
             f"self-improvement evidence is {size} bytes; select fewer runs to stay within {MAX_EVIDENCE_BYTES} bytes"
@@ -277,36 +329,124 @@ def collect(
     return answer
 
 
+def encoded_evidence(report: dict[str, Any]) -> str:
+    """Encode one diagnostic report in its recorded representation."""
+    return json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
+
+
+def collect_from_corpus(
+    corpus_manifest: Path,
+    cases: Path,
+    expected_identity: dict[str, str],
+) -> dict[str, Any]:
+    """Collect diagnostics from an immutable trajectory corpus."""
+    manifest, corpus_root = load_manifest(corpus_manifest)
+    if read_object(corpus_root, manifest.get("cases")) != cases.read_bytes():
+        raise ValueError("trajectory corpus was selected by a different cases file")
+    identity = require_evaluated_foe(
+        manifest.get("evaluated_foe"), f"trajectory corpus {corpus_manifest}"
+    )
+    if identity != expected_identity:
+        raise ValueError("trajectory corpus evaluates a different Foe source or binary")
+    runs = manifest.get("runs")
+    if not isinstance(runs, list) or not runs:
+        raise ValueError(f"trajectory corpus has no runs: {corpus_manifest}")
+    documents = []
+    for index, run in enumerate(runs):
+        entries = run.get("files") if isinstance(run, dict) else None
+        if not isinstance(entries, list):
+            raise ValueError(f"trajectory corpus run {index} has no files")
+        campaign_entries = [
+            entry for entry in entries if entry.get("path") == "campaign.json"
+        ]
+        if len(campaign_entries) != 1:
+            raise ValueError(f"trajectory corpus run {index} has no campaign.json")
+        diagnostics = []
+        for entry in entries:
+            name = entry.get("path")
+            if isinstance(name, str) and name.endswith(
+                "/agent/foe-diagnostics.json"
+            ):
+                diagnostics.append(
+                    (
+                        Path(f"corpus-run-{index}") / name,
+                        json.loads(read_object(corpus_root, entry)),
+                    )
+                )
+        documents.append(
+            (
+                Path(f"corpus-run-{index}/campaign.json"),
+                json.loads(read_object(corpus_root, campaign_entries[0])),
+                diagnostics,
+            )
+        )
+    return collect_documents(identity, documents, development_tasks(cases))
+
+
 def parser() -> argparse.ArgumentParser:
     answer = argparse.ArgumentParser(description=__doc__)
-    answer.add_argument("--source-root", type=Path, required=True)
-    answer.add_argument("--foe", type=Path, required=True)
-    answer.add_argument("--run-dir", type=Path, action="append", required=True)
+    answer.add_argument("--source-root", type=Path)
+    answer.add_argument("--foe", type=Path)
+    answer.add_argument("--run-dir", type=Path, action="append")
+    answer.add_argument("--corpus", type=Path)
+    answer.add_argument("--expected-source-tree")
+    answer.add_argument("--expected-runtime-binary")
+    answer.add_argument("--expected-report-sha256")
     answer.add_argument("--cases", type=Path, required=True)
-    answer.add_argument("--output", type=Path, required=True)
+    answer.add_argument("--output", type=Path)
     return answer
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        _, groups, _, _ = read_cases(args.cases.resolve(strict=True))
-        eligible_tasks = set(groups["development"]) | set(groups["capability_search"])
-        report = collect(
-            args.source_root.resolve(strict=True),
-            args.foe.resolve(strict=True),
-            [path.resolve(strict=True) for path in args.run_dir],
-            eligible_tasks,
-        )
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(report, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        cases = args.cases.resolve(strict=True)
+        if args.corpus is not None:
+            if args.run_dir or args.source_root or args.foe:
+                raise ValueError(
+                    "--corpus cannot be combined with --run-dir, --source-root, or --foe"
+                )
+            if not args.expected_source_tree or not args.expected_runtime_binary:
+                raise ValueError(
+                    "--corpus requires --expected-source-tree and --expected-runtime-binary"
+                )
+            report = collect_from_corpus(
+                args.corpus.resolve(strict=True),
+                cases,
+                {
+                    "source_tree": args.expected_source_tree,
+                    "runtime_binary": args.expected_runtime_binary,
+                },
+            )
+        else:
+            if not args.run_dir or args.source_root is None or args.foe is None:
+                raise ValueError(
+                    "run-directory collection requires --run-dir, --source-root, and --foe"
+                )
+            report = collect(
+                args.source_root.resolve(strict=True),
+                args.foe.resolve(strict=True),
+                [path.resolve(strict=True) for path in args.run_dir],
+                development_tasks(cases),
+            )
+        encoded = encoded_evidence(report)
+        if args.expected_report_sha256 is not None:
+            expected = args.expected_report_sha256.removeprefix("sha256:")
+            observed = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+            if expected != observed:
+                raise ValueError(
+                    "collected diagnostics differ from the preflight report digest"
+                )
+        if args.output is None:
+            sys.stdout.write(encoded)
+        else:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(encoded, encoding="utf-8")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"collect diagnostics: {error}", file=sys.stderr)
         return 2
-    print(f"Self-improvement evidence: {args.output}")
+    if args.output is not None:
+        print(f"Self-improvement evidence: {args.output}")
     return 0
 
 

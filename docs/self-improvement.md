@@ -29,6 +29,27 @@ repeatability for the stated task. Automatic selection of an improvement,
 invention of an evaluator, promotion into the checkout, and general
 reliability across unrelated tasks remain unsupported.
 
+## Cross-trajectory quality feedback
+
+The runtime keeps each episode tree independent. A local trajectory corpus
+preserves selected episode trees and external verifier artifacts across runs.
+The corpus stores immutable content-addressed objects and a canonical
+manifest. The manifest identifies the source tree and runtime binary that
+produced every admitted trajectory.
+
+The Terminal-Bench self-improvement workflow invokes a declared deterministic
+collector as its first tool node. The collector reads the corpus and produces
+a bounded diagnostic digest. Its executable identity binds the collector
+modules, corpus manifest, and task-selection file. A preflight derivation must
+produce the same bytes as the recorded workflow result. The diagnosis child
+receives only that result and has no authority to read the raw corpus.
+
+The corpus accepts development and opened capability-search tasks. It rejects
+confirmation, calibration, and holdout tasks. The workflow binds every
+candidate to the source tree and runtime binary that produced its evidence.
+Task execution, corpus snapshotting, and promotion remain separate operations.
+Autonomous cross-run promotion remains unsupported.
+
 ## Workflow structure
 
 The [workflow configuration](../examples/self-extension/workflow-config.json)

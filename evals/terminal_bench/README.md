@@ -434,20 +434,32 @@ request growth, replayed tool results, repeated calls, failures, verifier
 outcomes, final post-edit tool results, bounded verifier failure classes, and
 log sequence numbers across the episode tree.
 
-Collect diagnoses from one or more retained development runs. The command
-requires a clean source tree and the exact evaluated binary:
+Snapshot one or more retained development runs into a local trajectory
+corpus. The command requires a clean source tree and the exact evaluated
+binary:
 
 ```sh
-bazel run //evals/terminal_bench:collect-diagnostics -- \
-  --run-dir "$PWD/target/terminal-bench-jobs/development-20260823T120000Z" \
-  --output "$PWD/target/foe-trajectory-evidence.json"
+bazel run //evals/terminal_bench:foe-trajectory-corpus -- snapshot \
+  --source-root "$PWD" \
+  --binary /absolute/path/to/evaluated/foe \
+  --cases "$PWD/evals/terminal_bench/cases.json" \
+  --corpus "$PWD/target/terminal-bench-corpus" \
+  "$PWD/target/terminal-bench-jobs/development-20260823T120000Z"
 ```
 
-The collector labels every diagnosis with its dataset, run label, token
-policy, service tier, and complete execution configuration. The configuration
-identifies diagnosis, unresolved-diagnosis, implementation, independent-audit,
-and completion-verifier stages when present. It groups verified results by
-task and complete configuration so a diagnosis node can
+The corpus stores retained files as immutable SHA-256-addressed objects. Its
+canonical manifest uses relative logical paths and contains no source-run
+absolute paths. Repeated snapshots reuse identical objects. Snapshotting
+refuses protected task groups, identity mismatches, reported credential
+exposure, and trajectories produced by a different runtime binary. Keep the
+corpus under an ignored local directory. Git retains its implementation and
+reviewed aggregate results rather than raw runs.
+
+The deterministic collector labels every diagnosis with its dataset, run
+label, token policy, service tier, and complete execution configuration. The
+configuration identifies diagnosis, unresolved-diagnosis, implementation,
+independent-audit, and completion-verifier stages when present. It groups
+verified results by task and complete configuration so a diagnosis node can
 compare failed and successful mechanisms. The file keeps up to four
 input-growth landmarks and three entries from each ranked result list. Input
 growth resets at each episode boundary. The four-landmark limit applies to the
@@ -456,20 +468,26 @@ of encoded evidence. It accepts only development and opened capability-search
 tasks from `cases.json`. Confirmation, calibration, and calibration-holdout
 evidence remains unavailable to self-improvement.
 
+The self-improvement workflow derives this digest from the corpus through its
+declared `collect-trajectory-diagnostics` tool node. The tool identity binds
+the collector source, imported modules, `cases.json`, and the corpus manifest.
+The runner derives the same report before model spend and requires the
+workflow result to match it byte for byte.
+
 Create a clean candidate worktree at the evaluated commit. Run the
-self-improvement workflow from that worktree:
+self-improvement workflow with the manifest printed by the snapshot command:
 
 ```sh
 bazel run //evals/terminal_bench:self-improve -- \
   --candidate /path/to/clean/foe-candidate \
-  --evidence "$PWD/target/foe-trajectory-evidence.json" \
+  --corpus "$PWD/target/terminal-bench-corpus/manifests/manifest-digest.json" \
   --cargo /absolute/path/to/toolchain/bin/cargo \
   --cargo-home /absolute/path/to/cargo-home \
   --keep "$PWD/target/foe-self-improvement" \
   --confirm-spend
 ```
 
-Luna produces the bounded diagnosis from the supplied digest. Its ordinary
+Luna produces the bounded diagnosis from the collected digest. Its ordinary
 tools are `block` and the generated candidate validator, so it cannot inspect
 the candidate source or retained run directories. Its typed result contains
 one causal contrast, one intervention, and the controls and falsification
@@ -660,3 +678,15 @@ Keep raw jobs under ignored `target/` directories. Keep the private credential
 state under `~/.cache/foe/terminal-bench/`. Git tracks the adapter, case
 selection, allowances, documentation, and reviewed aggregate results. Git does
 not track task containers, raw trajectories, credentials, or build output.
+
+A trajectory corpus is also local evidence. Keep it under an ignored
+directory with enough space for complete episode spill values and verifier
+artifacts. The `verify` subcommand checks canonical encoding, every object
+address, and every recorded byte count. The `inspect` subcommand reports the
+corpus identity, tasks, runs, file count, object count, and storage size
+without materializing a run directory:
+
+```sh
+bazel run //evals/terminal_bench:foe-trajectory-corpus -- verify \
+  "$PWD/target/terminal-bench-corpus/manifests/manifest-digest.json"
+```
