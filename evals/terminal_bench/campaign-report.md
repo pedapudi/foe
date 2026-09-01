@@ -67,8 +67,7 @@ This report uses three evidence collections.
    is in [cross-trajectory-analysis.md](cross-trajectory-analysis.md).
 2. The later campaign record follows candidate selection, rejection,
    correction, self-improvement, and release qualification. The
-   [complete record at commit `641ccd5`](https://github.com/pedapudi/foe/blob/641ccd5d2916e911ed8d944393f6e0605ed6cdb9/evals/terminal_bench/campaign.md)
-   is retained in Git.
+   [complete record](campaign.md) is retained in this directory.
 3. The frozen-release analysis reads every retained diagnostic report from
    the 16 confirmation attempts, 20 calibration attempts, and 8 valid fresh
    holdout attempts. These 44 attempts contain 215 root and child episode

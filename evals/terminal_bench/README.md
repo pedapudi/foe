@@ -4,8 +4,10 @@ This package runs Foe through Harbor against a small, pinned subset of
 Terminal-Bench 2.1. The subset supports development and confirmation before a
 full benchmark run. It does not constitute an official Terminal-Bench score.
 The [development evaluation record](evaluation-record.md) reports retained
-aggregate results and promotion decisions. The [capability campaign
-record](campaign.md) defines the staged evaluation and its success criteria.
+aggregate results and promotion decisions. The [campaign record](campaign.md)
+preserves the staged evaluation and its decisions. The [technical
+report](campaign-report.md) explains Foe, its advantages, and the measured
+campaign results.
 The [cross-trajectory capability analysis](cross-trajectory-analysis.md)
 maps retained failures to product changes and promotion gates.
 The [campaign report](campaign-report.md) explains Foe's architecture,
