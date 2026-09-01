@@ -60,8 +60,9 @@ One `model` block per provider, each the smallest that runs after
 ```
 
 `foe plan --config FILE` prints a `model` line naming the resolved wire
-format and credential path, or says that the provider is unknown to this
-build and lists the known names.
+format and credential path. For the `exec` provider it also prints the
+absolute source path and the SHA-256 digest of the retained executable
+bytes. An unknown provider produces an error that lists the known names.
 
 ## The `model` block
 
@@ -100,8 +101,11 @@ OpenAI-shaped providers it includes the version prefix,
 `https://chatgpt.com/backend-api` and `/codex/responses` is appended. For
 `vertex` it is the regional origin, derived from `location` when absent.
 
-The `model` block does not participate in identity. A system that needs to
-record which model ran reads it from the log.
+Model selection does not participate in identity. A system that needs to
+record which model ran reads it from the log. The executable bytes of an
+`exec` transport are an exception because they implement runtime behavior.
+Their digest and configured basename participate in the runtime portion of
+program identity.
 
 ### Context windows
 
@@ -255,6 +259,11 @@ read roots and the loader directories, it may open TCP connections, it
 reads the resolver configuration that turns a host name into an address,
 and it starts with an empty environment. A credential file it reads must
 therefore lie under a read root.
+
+Construction reads the transport executable once and retains the exact
+bytes. Each request runs a descriptor for a private image of those bytes.
+The source path is never reopened after construction, so replacement,
+in-place modification, and deletion cannot change the transport mid-episode.
 
 The chunks reach the episode when the program exits, because the executor
 captures output whole. A program that exits without a final `done` or

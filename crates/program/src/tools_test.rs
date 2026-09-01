@@ -13,6 +13,7 @@ fn every_runtime_written_parameter_schema_stays_inside_the_implemented_subset() 
     let root = tmp("tools-own-schemas");
     let exec = root.join("t.sh");
     std::fs::write(&exec, "").unwrap();
+    std::fs::set_permissions(&exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let program = program_with(&root, |v| {
         v["tools"] = json!(["t", "block"]);
         v["tool_defs"] = json!({ "t": { "exec": exec, "description": "configured" } });

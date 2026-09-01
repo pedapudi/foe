@@ -60,6 +60,7 @@ fn identity_hashes_harness_text_exec_content_and_children() {
     let root = tmp("identity-hash");
     let exec = root.join("tool.sh");
     std::fs::write(&exec, "v1").unwrap();
+    std::fs::set_permissions(&exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let with_tool = |v: &mut serde_json::Value| {
         v["tools"] = json!(["block", "t", "spawn"]);
         v["tool_defs"] = json!({ "t": { "exec": exec, "description": "d" } });
@@ -79,6 +80,7 @@ fn identity_hashes_harness_text_exec_content_and_children() {
         "identity records the block schema selected by child-program permission"
     );
     assert_eq!(first.document["tools"][1]["exec_sha256"], json!(super::sha256_hex(b"v1")));
+    assert_eq!(first.document["tools"][1]["exec_name"], json!("tool.sh"));
     assert!(first.document["programs"]["kid"].as_str().unwrap().starts_with("sha256:"));
     std::fs::write(&exec, "v2").unwrap();
     assert_eq!(
@@ -88,4 +90,43 @@ fn identity_hashes_harness_text_exec_content_and_children() {
     );
     let second = compute(&program_with(&root, with_tool).unwrap(), &spawn, &runtime()).unwrap();
     assert_ne!(second.hash, first.hash, "replacing the executable changes identity");
+}
+
+#[test]
+fn identity_hashes_the_exec_transport_bytes_retained_at_construction() {
+    let root = tmp("identity-exec-transport");
+    let executable = root.join("transport");
+    std::fs::write(&executable, "first").unwrap();
+    std::fs::set_permissions(&executable, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let configure = |value: &mut serde_json::Value| {
+        value["model"] = json!({"provider": "exec", "model": "local", "exec": executable.clone()});
+    };
+    let constructed = program_with(&root, configure).unwrap();
+    let first = compute(&constructed, &[], &runtime()).unwrap();
+    assert_eq!(first.document["runtime"]["exec_transport_sha256"], json!(super::sha256_hex(b"first")));
+    assert_eq!(first.document["runtime"]["exec_transport_name"], json!("transport"));
+    std::fs::write(&executable, "second").unwrap();
+    assert_eq!(compute(&constructed, &[], &runtime()).unwrap().hash, first.hash);
+    let reconstructed = program_with(&root, configure).unwrap();
+    assert_ne!(compute(&reconstructed, &[], &runtime()).unwrap().hash, first.hash);
+}
+
+#[test]
+fn identity_distinguishes_configured_names_for_the_same_executable() {
+    let root = tmp("identity-executable-name");
+    let target = root.join("multicall");
+    std::fs::write(&target, "same bytes").unwrap();
+    std::fs::set_permissions(&target, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    std::os::unix::fs::symlink(&target, root.join("first")).unwrap();
+    std::os::unix::fs::symlink(&target, root.join("second")).unwrap();
+    let configured = |name: &str| {
+        program_with(&root, |value| {
+            value["tools"] = json!(["tool"]);
+            value["tool_defs"] = json!({"tool": {"exec": root.join(name), "description": "multicall executable"}});
+        })
+        .unwrap()
+    };
+    let first = compute(&configured("first"), &[], &runtime()).unwrap();
+    let second = compute(&configured("second"), &[], &runtime()).unwrap();
+    assert_ne!(first.hash, second.hash, "the configured basename selects multicall behavior");
 }

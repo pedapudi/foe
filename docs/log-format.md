@@ -396,10 +396,10 @@ messages; the model sees findings only through the `verify` inbox item.
 the same strings the `verify` inbox item carries, and is empty for
 `accepted` and for `failed`. `error` is present only for `failed` and
 states why the verifier could not judge; the episode then ends as
-`failed`. `verifier_identity` is what ran: for a `tool_defs` executable,
-the SHA-256 of its file content read at invocation, so a binary replaced
-mid-episode is visible per invocation; for a built-in or host tool, the
-runtime build hash from `episode/start.runtime.build`.
+`failed`. `verifier_identity` identifies what ran. For a `tool_defs`
+executable it is the SHA-256 digest committed during program construction.
+Every invocation uses those committed bytes. For a built-in or host tool it
+is the runtime build hash from `episode/start.runtime.build`.
 
 ### Inbox
 

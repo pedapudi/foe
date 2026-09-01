@@ -2,6 +2,7 @@ use super::*;
 use crate::test_util::ScratchDir;
 use foe_log::SandboxMode;
 use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 /// A uniquely owned directory for one test.
@@ -20,6 +21,7 @@ fn executor(name: &str, read: Vec<PathBuf>, exec: Vec<PathBuf>) -> (LocalExecuto
 fn request(program: &str, args: &[&str], cwd: &Path) -> ExecRequest {
     ExecRequest {
         program: program.into(),
+        executable: None,
         args: args.iter().map(|s| s.to_string()).collect(),
         cwd: cwd.to_path_buf(),
         env: BTreeMap::new(),
@@ -29,6 +31,224 @@ fn request(program: &str, args: &[&str], cwd: &Path) -> ExecRequest {
         policy: None,
         pass_fds: Vec::new(),
     }
+}
+
+fn configured_executor(
+    name: &str,
+    source: &Path,
+    mode: SandboxMode,
+    write: Vec<PathBuf>,
+) -> (LocalExecutor, ExecRequest, crate::executable::ExecutableTree) {
+    let dir = source.parent().unwrap();
+    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3,
+        "name": "immutable executable test",
+        "instructions": {"role": "test"},
+        "tools": ["configured"],
+        "tool_defs": {"configured": {"exec": source, "description": "test executable"}},
+        "grants": {"read": [dir], "write": write},
+        "budget": {"model_calls": 1},
+        "sandbox": {"mode": mode},
+        "task": "test"
+    }))
+    .unwrap();
+    let program = foe_program::document::resolve(&config).unwrap();
+    let executables = crate::executable::ExecutableTree::materialize(&program, dir).unwrap();
+    let policy = Policy::for_episode(&program, &executables, dir);
+    let sandbox = Arc::new(Sandbox::new(mode).unwrap());
+    let executor =
+        LocalExecutor::new(sandbox, policy, dir.join(format!("spill-{name}")), Arc::new(AtomicBool::new(false)));
+    let mut req = request(source.to_str().unwrap(), &[], dir);
+    req.executable = Some(executables.tools["configured"].clone());
+    (executor, req, executables)
+}
+
+#[test]
+fn a_committed_script_survives_mutation_replacement_deletion_and_repeated_calls_under_landlock() {
+    let dir = scratch("exec", "immutable-script");
+    let source = dir.join("tool");
+    std::fs::write(dir.join("resource"), "original\n").unwrap();
+    std::fs::write(&source, "#!/bin/sh\nread value < resource\nprintf '%s\\n' \"$value\"\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (executor, req, executables) = configured_executor("script", &source, SandboxMode::Required, Vec::new());
+    let image_link =
+        std::fs::read_link(crate::executable::parent_fd_path(executables.tools["configured"].fd())).unwrap();
+    assert_eq!(image_link.file_name().unwrap(), "tool");
+    assert_eq!(executor.run(req.clone()).unwrap().stdout, b"original\n");
+    std::fs::write(&source, "#!/bin/sh\nprintf 'mutated\\n'\n").unwrap();
+    assert_eq!(executor.run(req.clone()).unwrap().stdout, b"original\n");
+    let replacement = dir.join("replacement");
+    std::fs::write(&replacement, "#!/bin/sh\nprintf 'replacement\\n'\n").unwrap();
+    std::fs::set_permissions(&replacement, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::rename(&replacement, &source).unwrap();
+    assert_eq!(executor.run(req.clone()).unwrap().stdout, b"original\n");
+    std::fs::remove_file(&source).unwrap();
+    assert_eq!(executor.run(req.clone()).unwrap().stdout, b"original\n");
+    let executable = &executables.tools["configured"];
+    let write = std::fs::OpenOptions::new().write(true).open(crate::executable::parent_fd_path(executable.fd()));
+    assert!(write.is_err(), "the committed executable descriptor rejects writes");
+    assert_eq!(executor.run(req).unwrap().stdout, b"original\n");
+}
+
+#[test]
+fn a_committed_elf_runs_after_its_source_is_replaced_under_landlock() {
+    let dir = scratch("exec", "immutable-elf");
+    let source = dir.join("echo");
+    std::fs::copy("/bin/echo", &source).unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (executor, mut req, _) = configured_executor("elf", &source, SandboxMode::Required, Vec::new());
+    req.args = vec!["committed".into()];
+    std::fs::write(&source, b"not an executable anymore").unwrap();
+    let result = executor.run(req).unwrap();
+    assert_eq!(result.exit_code, Some(0), "{}", String::from_utf8_lossy(&result.stderr));
+    assert_eq!(result.stdout, b"committed\n");
+}
+
+#[test]
+fn a_configured_multicall_executable_keeps_its_configured_name() {
+    let dir = scratch("exec", "multicall-name");
+    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3,
+        "name": "multicall executable test",
+        "instructions": {"role": "test"},
+        "tools": ["configured"],
+        "tool_defs": {"configured": {"exec": "/bin/echo", "description": "test executable"}},
+        "grants": {"read": [dir]},
+        "budget": {"model_calls": 1},
+        "sandbox": {"mode": "required"},
+        "task": "test"
+    }))
+    .unwrap();
+    let program = foe_program::document::resolve(&config).unwrap();
+    let executables = crate::executable::ExecutableTree::materialize(&program, &dir.join("episode")).unwrap();
+    let executable = executables.tools["configured"].clone();
+    assert_eq!(executable.basename(), "echo");
+    let policy = Policy::for_episode(&program, &executables, &dir);
+    let executor = LocalExecutor::new(
+        Arc::new(Sandbox::new(SandboxMode::Required).unwrap()),
+        policy,
+        dir.join("spill"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let mut req = request(program.tool_defs["configured"].exec.to_str().unwrap(), &["committed"], &dir);
+    req.executable = Some(executable);
+    let result = executor.run(req).unwrap();
+    assert_eq!(result.exit_code, Some(0), "{}", String::from_utf8_lossy(&result.stderr));
+    assert_eq!(result.stdout, b"committed\n");
+}
+
+#[test]
+fn construction_rejects_a_source_without_an_execute_bit() {
+    let dir = scratch("exec", "non-executable");
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let error = crate::executable::Executable::load(&source).unwrap_err();
+    assert!(error.contains("executable file"), "{error}");
+}
+
+#[test]
+fn a_declared_write_root_does_not_expose_private_executable_storage() {
+    let dir = scratch("exec", "write-root-around-log");
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nprintf 'safe\\n'\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (executor, req, executables) =
+        configured_executor("write-root", &source, SandboxMode::Required, vec![dir.to_path_buf()]);
+    assert!(!executables.tools["configured"].stored_path().starts_with(&dir));
+    std::fs::write(&source, "#!/bin/sh\nprintf 'changed\\n'\n").unwrap();
+    assert_eq!(executor.run(req).unwrap().stdout, b"safe\n");
+}
+
+#[test]
+fn the_last_runtime_owner_removes_private_executable_storage() {
+    let dir = scratch("exec", "runtime-storage-cleanup");
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let executable = crate::executable::Executable::load(&source).unwrap();
+    let stored_path = executable.stored_path().to_path_buf();
+    assert!(stored_path.exists());
+    drop(executable);
+    assert!(!stored_path.exists());
+}
+
+#[test]
+fn a_confined_episode_removes_private_executable_storage() {
+    let dir = scratch("exec", "confined-storage-cleanup");
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (_, _, executables) =
+        configured_executor("confined-cleanup", &source, SandboxMode::BestEffort, vec![dir.to_path_buf()]);
+    let stored_path = executables.tools["configured"].stored_path().to_path_buf();
+    let policy = Policy { runtime_storage: executables.cleanup_roots(), ..Policy::default() };
+    let sandbox = Sandbox::new(SandboxMode::BestEffort).unwrap();
+    if sandbox.abi() == 0 {
+        return;
+    }
+    let removed = sandbox.run_narrowed(&policy, move || {
+        drop(executables);
+        !stored_path.exists()
+    });
+    assert!(removed.unwrap(), "the episode cleanup authority removes the private store");
+}
+
+#[test]
+fn executable_storage_skips_a_noexec_preferred_filesystem() {
+    let noexec = Path::new("/dev/shm");
+    let Ok(info) = nix::sys::statvfs::statvfs(noexec) else { return };
+    if !info.flags().contains(nix::sys::statvfs::FsFlags::ST_NOEXEC) {
+        return;
+    }
+    let preferred = noexec.join(format!("foe-executable-test-{}", std::process::id()));
+    if std::fs::create_dir(&preferred).is_err() {
+        return;
+    }
+    let dir = scratch("exec", "noexec-fallback");
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3, "name": "noexec fallback", "instructions": {"role": "test"},
+        "tools": ["configured"],
+        "tool_defs": {"configured": {"exec": source, "description": "test executable"}},
+        "grants": {"read": [dir]}, "budget": {"model_calls": 1}, "task": "test"
+    }))
+    .unwrap();
+    let program = foe_program::document::resolve(&config).unwrap();
+    let executables = crate::executable::ExecutableTree::materialize(&program, &preferred.join("episode")).unwrap();
+    let link = std::fs::read_link(crate::executable::parent_fd_path(executables.tools["configured"].fd())).unwrap();
+    assert!(!link.starts_with(noexec), "the selected image came from noexec storage: {link:?}");
+    std::fs::remove_dir(preferred).unwrap();
+}
+
+#[test]
+fn declared_tree_snapshots_share_one_stable_image() {
+    let dir = scratch("exec", "declared-tree-dedup");
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let declared = |name: &str| {
+        serde_json::json!({
+            "name": name, "instructions": {"role": "test"}, "tools": ["configured"],
+            "tool_defs": {"configured": {"exec": source.clone(), "description": "same executable"}},
+            "grants": {"read": [dir.to_path_buf()]}, "budget": {"model_calls": 1}
+        })
+    };
+    let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3, "name": "declared tree", "instructions": {"role": "test"},
+        "tools": ["configured"],
+        "tool_defs": {"configured": {"exec": source, "description": "same executable"}},
+        "grants": {"read": [dir.to_path_buf()]}, "budget": {"model_calls": 1},
+        "programs": {"first": declared("first"), "second": declared("second")}, "task": "test"
+    }))
+    .unwrap();
+    let program = foe_program::document::resolve(&config).unwrap();
+    let executables = crate::executable::ExecutableTree::materialize(&program, &dir).unwrap();
+    assert_eq!(executables.reachable_entries().len(), 1, "ungranted programs carry no execute authority");
+    assert_eq!(executables.identity_entries().len(), 3, "every declaration can be reconstructed");
+    assert_eq!(executables.child_descriptors("ep_child").unwrap().len(), 2, "one image plus one manifest");
 }
 
 #[test]
@@ -139,6 +359,40 @@ fn a_passed_descriptor_reaches_the_child_at_its_number() {
     let mut received = String::new();
     parent.read_to_string(&mut received).unwrap();
     assert_eq!(received, "over-three\n");
+}
+
+#[test]
+fn descriptor_remapping_preserves_crossed_sources_and_reserves_no_stdio_number() {
+    use command_fds::{CommandFdExt, FdMapping};
+    use std::os::fd::{AsRawFd, OwnedFd};
+    let dir = scratch("exec", "fd-collision");
+    let left_path = dir.join("left");
+    let right_path = dir.join("right");
+    std::fs::write(&left_path, "left").unwrap();
+    std::fs::write(&right_path, "right").unwrap();
+    let left = std::fs::File::open(&left_path).unwrap();
+    let right = std::fs::File::open(&right_path).unwrap();
+    let (left_fd, right_fd) = (left.as_raw_fd(), right.as_raw_fd());
+    let mut command = std::process::Command::new("/bin/cat");
+    command
+        .arg(format!("/proc/self/fd/{left_fd}"))
+        .arg(format!("/proc/self/fd/{right_fd}"))
+        .fd_mappings(vec![
+            FdMapping { parent_fd: OwnedFd::from(left), child_fd: right_fd },
+            FdMapping { parent_fd: OwnedFd::from(right), child_fd: left_fd },
+        ])
+        .unwrap();
+    let output = command.output().unwrap();
+    assert_eq!(output.stdout, b"rightleft");
+
+    let source = dir.join("tool");
+    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (_, _, executables) = configured_executor("manifest-fds", &source, SandboxMode::Off, Vec::new());
+    let mappings = executables.child_descriptors("ep_child").unwrap();
+    let targets: Vec<i32> = mappings.iter().map(|(fd, _)| *fd).collect();
+    assert!(targets.contains(&63) && targets.contains(&64), "{targets:?}");
+    assert!(targets.iter().all(|fd| *fd > 2));
 }
 
 /// A request naming a policy of its own runs under that policy in place of

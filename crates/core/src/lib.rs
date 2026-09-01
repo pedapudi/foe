@@ -28,6 +28,7 @@ pub mod budget;
 pub mod confine;
 pub mod context;
 pub mod exec;
+pub mod executable;
 pub mod grants;
 pub mod identity;
 pub mod inbox;
@@ -232,6 +233,9 @@ pub trait Executor: Send + Sync {
 #[derive(Debug, Clone)]
 pub struct ExecRequest {
     pub program: PathBuf,
+    /// Construction-committed bytes for configured tools and executable
+    /// transports. Ordinary subprocess calls leave this unset.
+    pub executable: Option<Arc<executable::Executable>>,
     pub args: Vec<String>,
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,

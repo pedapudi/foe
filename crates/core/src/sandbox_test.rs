@@ -16,7 +16,10 @@ fn temp_dir(name: &str) -> crate::test_util::ScratchDir {
 }
 
 fn policy(config: &ProgramDocument, log_dir: &Path) -> Policy {
-    Policy::for_episode(&foe_program::document::resolve(config).unwrap(), log_dir)
+    let program = foe_program::document::resolve(config).unwrap();
+    let executables =
+        crate::executable::ExecutableTree::materialize(&program, Path::new("/tmp/foe-sandbox-episode")).unwrap();
+    Policy::for_episode(&program, &executables, log_dir)
 }
 
 #[test]
@@ -221,11 +224,9 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert_eq!(p.write, vec![out]);
     let shell = std::fs::canonicalize("/bin/sh").unwrap();
     assert_eq!(p.delegated_exec, vec![shell.clone()]);
-    assert_eq!(
-        p.exec,
-        vec![tool, shell],
-        "the configured tool and explicit subprocess grant; no child program to start"
-    );
+    assert_eq!(p.exec, vec![shell], "configured executables are authorized by their committed inode");
+    assert_eq!(p.exec_files.len(), 1);
+    assert_eq!(p.runtime_storage.len(), 1, "the episode owns private executable cleanup");
     assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
     assert_eq!(p.bind_tcp, vec![8080], "the episode may bind the granted port");
     assert!(!p.connect_tcp, "an episode without a model block holds no transport");
@@ -250,6 +251,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert!(p.connect_tcp);
     p.read_files.push(PathBuf::from("/keys/anthropic"));
     let offline = p.for_executable(Path::new("/bin/sh"), false);
+    assert!(offline.runtime_storage.is_empty(), "a configured executable cannot reach runtime storage");
     assert!(offline.read_files.is_empty(), "an executable without network reads no resolver file");
     let online = p.for_executable(Path::new("/bin/sh"), true);
     assert_eq!(online.read_files, resolver, "an executable with network keeps the resolver file");
@@ -299,13 +301,21 @@ fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
     }))
     .unwrap();
     let resolved = foe_program::document::resolve(&config).unwrap();
-    let p = Policy::for_episode(&resolved, Path::new("/logs/ep"));
-    for named in &paths {
-        assert!(p.exec.contains(named), "{} is missing from {:?}", named.display(), p.exec);
-    }
-    let mut below = Vec::new();
-    resolved.spawned_program("kid").unwrap().collect_executables(&mut below);
-    assert!(!below.contains(&paths[0]), "a child's own ruleset holds its own executables, never its parent's");
+    let executables = crate::executable::ExecutableTree::materialize(&resolved, &dir).unwrap();
+    let p = Policy::for_episode(&resolved, &executables, Path::new("/logs/ep"));
+    assert_eq!(p.exec_files.len(), paths.len(), "the ancestor reserves every reachable committed executable");
+    let keys: Vec<_> = executables.reachable_entries().into_iter().map(|(key, _)| key).collect();
+    assert_eq!(
+        keys,
+        [
+            "program.tool_defs.nodes.exec",
+            "program.tool_defs.own.exec",
+            "program.programs.kid.tool_defs.childs.exec",
+            "program.programs.kid.programs.grandkid.tool_defs.grandchilds.exec",
+            "program.workflow.nodes.draft.model.tool_defs.nodes.exec",
+        ]
+    );
+    assert_eq!(executables.child("kid").unwrap().reachable().len(), 2);
 }
 
 /// docs/sandbox.md "Executables": the reservation is what lets a descendant
@@ -328,11 +338,36 @@ fn a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved() {
         "task": "t"
     }))
     .unwrap();
-    let ancestor = policy(&config, &dir);
-    let started = s
-        .run_narrowed(&ancestor, || {
-            Command::new(&tool).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status()
+    let program = foe_program::document::resolve(&config).unwrap();
+    let executables = crate::executable::ExecutableTree::materialize(&program, &dir).unwrap();
+    let ancestor = Policy::for_episode(&program, &executables, &dir);
+    let executable = executables.child("kid").unwrap().tools["t"].clone();
+    let outer = ancestor.clone();
+    let result = s
+        .run_narrowed(&ancestor, move || {
+            let executor = crate::exec::LocalExecutor::new(
+                std::sync::Arc::new(s),
+                outer,
+                dir.join("spill"),
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            );
+            crate::Executor::run(
+                &executor,
+                crate::ExecRequest {
+                    program: tool,
+                    executable: Some(executable),
+                    args: Vec::new(),
+                    cwd: dir.to_path_buf(),
+                    env: std::collections::BTreeMap::new(),
+                    timeout: std::time::Duration::from_secs(5),
+                    network: false,
+                    stdin: None,
+                    policy: None,
+                    pass_fds: Vec::new(),
+                },
+            )
         })
+        .unwrap()
         .unwrap();
-    assert!(started.is_ok(), "the reserved executable starts under the ancestor's domain: {started:?}");
+    assert_eq!(result.exit_code, Some(0));
 }

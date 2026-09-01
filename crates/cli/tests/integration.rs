@@ -545,6 +545,103 @@ fn a_spawned_child_can_run_its_workflow_model_node() {
     assert_eq!(released["data"]["spent"]["episodes"], 2, "the reconstructed subtree count includes the model node");
 }
 
+/// docs/protocol.md "Children": a child replaces inherited executable
+/// descriptors with close-on-exec copies before it starts any tool.
+#[test]
+fn a_child_tool_inherits_no_program_tree_descriptor() {
+    let dir = scratch("child-executable-descriptors");
+    let probe = dir.join("probe");
+    std::fs::write(
+        &probe,
+        "#!/bin/sh\nfor fd in 63 64 65 66; do [ ! -e /proc/self/fd/$fd ] || exit 9; done\nprintf 'clean\\n'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&probe, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["spawn", "wait"]);
+        c["grants"]["spawn"] = json!(["worker"]);
+        c["budget"] = json!({ "model_calls": 4, "max_depth": 1, "max_episodes": 2 });
+        c["programs"] = json!({ "worker": {
+            "name": "worker", "instructions": { "role": "Run the probe." }, "tools": ["probe"],
+            "tool_defs": { "probe": { "exec": probe, "description": "Checks inherited descriptors." } },
+            "grants": { "read": [dir] }, "budget": { "model_calls": 2, "max_depth": 0 }
+        } });
+    });
+    let mut delegate = call("tc_spawn", "spawn", r#"{"program":"worker","task":"run the probe"}"#);
+    delegate.extend(call("tc_wait", "wait", "{}"));
+    delegate.push(done("tool"));
+    let mut run_probe = call("tc_probe", "probe", r#"{"args":[]}"#);
+    run_probe.push(done("tool"));
+    let responses =
+        vec![delegate, run_probe, vec![text("probe finished"), done("end")], vec![text("done"), done("end")]];
+    let (events, code) = host_run(&dir, &config, responses, |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+    let child_id =
+        events.iter().find(|event| event["type"] == "spawn/start").unwrap()["data"]["child_id"].as_str().unwrap();
+    let child = child_events(&dir, child_id);
+    let result = child.iter().find(|event| event["type"] == "tool/result" && event["data"]["name"] == "probe").unwrap();
+    assert_eq!(result["data"]["value"]["exit_code"], 0, "{result}");
+    assert!(
+        std::fs::read_dir(&dir).unwrap().all(|entry| !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("foe-executables-")),
+        "the confined root removes its private executable directory"
+    );
+}
+
+/// docs/design.md "Program construction": a child receives the executable
+/// snapshots needed to reconstruct its full declared identity, including an
+/// ungranted descendant that the child cannot start.
+#[test]
+fn a_child_starts_after_an_ungranted_descendant_executable_source_is_deleted() {
+    let dir = scratch("child-declared-executable-identity");
+    let latent = dir.join("latent-tool");
+    std::fs::write(&latent, "#!/bin/sh\nprintf 'latent\\n'\n").unwrap();
+    std::fs::set_permissions(&latent, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let config = config(&dir, |config| {
+        config["tools"] = json!(["delete", "spawn", "wait"]);
+        config["host_tools"] = json!({
+            "delete": {"description": "Deletes the latent executable.", "params": {"type": "object"}, "effect": "writes"}
+        });
+        config["grants"] = json!({"read": [dir], "write": [dir], "spawn": ["worker"]});
+        config["budget"] = json!({"model_calls": 6, "max_depth": 2, "max_episodes": 2});
+        config["programs"] = json!({"worker": {
+            "name": "worker", "instructions": {"role": "Complete without spawning."}, "tools": ["block"],
+            "grants": {"read": [dir]}, "budget": {"model_calls": 2, "max_depth": 1},
+            "programs": {"ungranted": {
+                "name": "ungranted", "instructions": {"role": "Remain unreachable."}, "tools": ["latent"],
+                "tool_defs": {"latent": {"exec": latent, "description": "A declared executable."}},
+                "grants": {"read": [dir]}, "budget": {"model_calls": 1, "max_depth": 0}
+            }}
+        }});
+    });
+    let mut delete = call("tc_delete", "delete", "{}");
+    delete.push(done("tool"));
+    let mut delegate = call("tc_spawn", "spawn", r#"{"program":"worker","task":"start"}"#);
+    delegate.extend(call("tc_wait", "wait", "{}"));
+    delegate.push(done("tool"));
+    let responses =
+        vec![delete, delegate, vec![text("child ready"), done("end")], vec![text("root ready"), done("end")]];
+    let source = latent.clone();
+    let (events, code) = host_run(&dir, &config, responses, move |name, _| {
+        assert_eq!(name, "delete");
+        std::fs::remove_file(&source).unwrap();
+        json!({"removed": true})
+    });
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert!(!latent.exists());
+    let child_id =
+        events.iter().find(|event| event["type"] == "spawn/start").unwrap()["data"]["child_id"].as_str().unwrap();
+    let child = child_events(&dir, child_id);
+    assert_eq!(child.last().unwrap()["data"]["outcome"], json!({"kind": "completed", "value": "child ready"}));
+    let lineage: Value =
+        serde_json::from_slice(&std::fs::read(dir.join("log/children").join(child_id).join("lineage.json")).unwrap())
+            .unwrap();
+    assert_eq!(child[0]["data"]["identity"], lineage["expected_program_identity"]);
+}
+
 /// docs/workflow.md "Recovery" and "Tool nodes": a configured executable
 /// that exits non-zero fails its node; the host's `retry` re-fires it and
 /// the workflow completes when it succeeds.
@@ -554,7 +651,7 @@ fn a_failed_tool_node_is_retried_through_recovery() {
     let script = dir.join("flaky");
     std::fs::write(
         &script,
-        "#!/bin/sh\nstate=\"$(dirname \"$0\")/state\"\nif [ ! -f \"$state\" ]; then touch \"$state\"; echo failing; exit 1; fi\necho fine\n",
+        "#!/bin/sh\nstate=state\nif [ ! -f \"$state\" ]; then touch \"$state\"; echo failing; exit 1; fi\necho fine\n",
     )
     .unwrap();
     std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
@@ -1096,6 +1193,8 @@ fn plan_reports_effective_authority_across_nested_descendants() {
     let child_exec = dir.join("child-tool");
     std::fs::write(&root_exec, "").unwrap();
     std::fs::write(&child_exec, "").unwrap();
+    std::fs::set_permissions(&root_exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    std::fs::set_permissions(&child_exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let grand = json!({
         "name": "grand", "instructions": { "role": "inspect" }, "tools": ["inspect"],
         "host_tools": { "inspect": { "description": "Inspect through the host", "params": {}, "effect": "reads" } },
@@ -1207,18 +1306,18 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
 /// model sees, never a side effect of moving code between crates.
 #[rustfmt::skip]
 const RECORDED_IDENTITIES: [(&str, &str); 12] = [
-    ("budget-exhausted", "sha256:32ab7955c4efec14ce6b010a7d6e3059cc380c4f8fd4821a2d11880552c8d7ef"),
-    ("exec-transport", "sha256:06387f755130b0b2548bb973c15eb7979d111c31e63ace8dd6c49c5303d7bf63"),
+    ("budget-exhausted", "sha256:c6ca3b541a4637f7e25e52b25ccb94462dda318dbda2155047802bb666815240"),
+    ("exec-transport", "sha256:ff47e459b5026cf5d2e91dbaa349b4437c5aa261ebd24edf18cf0fa9cdd59a90"),
     ("host-transport", "sha256:dc33b63a0dd2bb9653f1062e0e9910b79bfb9ae492bb2a90bf1789a1dd42164c"),
-    ("minimal", "sha256:71ba78ad35f19426380b56e15d0cb56bb9b04ea13a93008829a4e108f1a7cecd"),
-    ("recovery-exhausted", "sha256:9f30fc8bff29890c9dcd34ab78af56b82fd4730dc063729d5532df8426a4fcfd"),
-    ("sandbox", "sha256:af9e111ff74c666f5c6cfd607567bd03202db18bb752c179b562a32665bf79dd"),
-    ("self-extension", "sha256:dd84695d082863b724d7f545cd3b540d12466cd8a4f09320a94839d3475dcdfe"),
-    ("subagents", "sha256:a06b99f1756c0e7875aee3929805a1fdf84dbd52e2848509da1c9bc00e012266"),
-    ("team", "sha256:707e936f2b81df2e3d9bb30c73b99110fda402095bfcfa42404047162691dfe7"),
-    ("verification-unsatisfiable", "sha256:4d33b5b864bea74f565876ae9d9343f27f82d27306d9e75566e732657450fad2"),
-    ("workflow", "sha256:2414db262e5ef65d2a61af13f92f22c4f7d184d66074ee5a1b32f687984a5394"),
-    ("wrap-a-binary", "sha256:d84587490eb4f1238309b6bf77ace3f57e201f5f82372c24be6a04308ba21638"),
+    ("minimal", "sha256:4f8de356836d7456e983ef8b868a00ba22993c98f2006605e10c898fd55d8357"),
+    ("recovery-exhausted", "sha256:2315d0df2ad7d2781a376d15dc0d95914c1cb15e2a59377840acccab9ccb7560"),
+    ("sandbox", "sha256:87cf50348282418aadf96945b7cd364debb82507b7e17a71c02df0c5451dfc65"),
+    ("self-extension", "sha256:45a14593f75aecf755b671229bad02f8d2133efdf24fdf8fcc24ceda94a79945"),
+    ("subagents", "sha256:a09cc36a55e6376119d040fbf7845cecbccd79f18d7597332955903a0f2d3856"),
+    ("team", "sha256:572e37bf546fc3d82a90ba0f9894280f40d51add8d95514108b07b5e5858030a"),
+    ("verification-unsatisfiable", "sha256:98473873ca4f098fe9010f2a245039bedea59ededa4ef5285a4f77f88ad15815"),
+    ("workflow", "sha256:fcb1c8527ccc32a9bd83b9300fde5967aec14b81200ef29bd0396ee1f890f5da"),
+    ("wrap-a-binary", "sha256:54b73926c18e649ee6e57c591e5f8bdbe2940b037e52b699a4ff88b5959ac1a5"),
 ];
 
 /// The runtime the recorded identities were computed under. The real one

@@ -119,12 +119,12 @@ boundary in its launch metadata. It checks the expected identity before
 seeding the source prefix. The seeded `episode/start` therefore records the
 child program and its effective allowance.
 
-The check covers executable replacement through child construction. The
-parent checks the retained executable digests before launch, and the child
-identity comparison closes the interval between that check and child startup.
-The runtime does not yet pin an open executable descriptor for a later tool
-invocation. A deployment must prevent writes to configured executables after
-the child starts until descriptor-pinned execution is implemented.
+The check covers executable replacement through execution. The parent passes
+the executable images from the selected child's full declared program tree.
+A sealed manifest maps every configuration key to a retained image. The child
+constructs identity from those inherited bytes and later invokes the reachable
+images through the same descriptors. A changed or deleted source path cannot
+alter either identity or execution.
 
 ## Configuration representation
 
@@ -264,12 +264,12 @@ string. The other two statuses omit `error`. The event carries no digest of
 the verifier's input; the adoption record of the evidence bundle carries
 the candidate's identity members instead.
 
-`verifier_identity` identifies the verifier that the parent program declared
-and the runtime invoked. It hashes the complete tool specification and its
-implementation identity. A configured executable uses its content hash at
-invocation time. A built-in verifier uses the runtime build. The first
-implementation excludes host tools because the current host-tool contract
-does not identify their implementations.
+`verifier_identity` binds the execution to the verifier that the parent
+program declared. It hashes the complete tool specification and its
+implementation identity. A configured executable uses the content hash
+retained during program construction. A built-in verifier uses the runtime
+build. The first implementation excludes host tools because the current
+host-tool contract does not identify their implementations.
 
 The event does not enter the model's derived messages. Verifier findings
 continue to reach the model through the existing `verify` inbox item.

@@ -11,10 +11,31 @@ use crate::{
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// The program-document format version this crate accepts.
 pub const PROGRAM_FORMAT_VERSION: u32 = 3;
+
+/// Executable bytes read through one open file during program construction.
+/// Identity and execution use this same snapshot.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExecutableImage {
+    pub path: PathBuf,
+    pub basename: std::ffi::OsString,
+    pub sha256: String,
+    pub bytes: Arc<[u8]>,
+}
+
+/// Which declared programs a recursive program-tree walk includes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgramTreeSelection {
+    /// Every declaration that contributes to program identity.
+    AllDeclared,
+    /// The programs an episode can start through a spawn grant or workflow.
+    ExecutableReachable,
+}
 
 /// Whether the completion schema makes the standard `learned` observation
 /// channel an evidence requirement.
@@ -31,10 +52,9 @@ pub struct ResolvedProgram {
     pub instructions: BTreeMap<String, String>,
     pub tools: Vec<String>,
     pub tool_defs: BTreeMap<String, ToolDef>,
-    /// Content digests read while the program is constructed. Identity
-    /// uses this snapshot instead of reopening executable paths.
+    /// Executable snapshots read while the program is constructed.
     #[serde(skip)]
-    pub executable_sha256: BTreeMap<String, String>,
+    pub executable_images: BTreeMap<String, ExecutableImage>,
     pub host_tools: BTreeMap<String, HostToolDef>,
     pub grants: Grants,
     pub budget: Budget,
@@ -45,6 +65,9 @@ pub struct ResolvedProgram {
     /// Inherited by every child program.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelConfig>,
+    /// The executable transport snapshot when `model.provider` is `exec`.
+    #[serde(skip)]
+    pub transport_executable: Option<ExecutableImage>,
     /// Inherited by every child program.
     pub sandbox: SandboxConfig,
     /// The root document's ancestry claim, kept so that
@@ -77,15 +100,28 @@ impl ResolvedProgram {
         self.grants.spawn.iter().any(|granted| granted == name) || self.workflow_programs.contains_key(name)
     }
 
-    /// Every program whose process may run directly below this one.
-    pub fn spawned_programs(&self) -> impl Iterator<Item = &ResolvedProgram> {
-        self.programs.values().chain(self.workflow_programs.values())
-    }
-
-    /// Adds every configured executable in this tree to `paths`.
-    pub fn collect_executables(&self, paths: &mut Vec<PathBuf>) {
-        paths.extend(self.tool_defs.values().map(|definition| definition.exec.clone()));
-        self.spawned_programs().for_each(|child| child.collect_executables(paths));
+    /// The root and its recursively declared programs, with stable paths.
+    pub fn program_tree(&self, selection: ProgramTreeSelection) -> Vec<(String, &ResolvedProgram)> {
+        fn walk<'a>(
+            program: &'a ResolvedProgram,
+            path: String,
+            selection: ProgramTreeSelection,
+            out: &mut Vec<(String, &'a ResolvedProgram)>,
+        ) {
+            out.push((path.clone(), program));
+            for (name, child) in &program.programs {
+                if selection == ProgramTreeSelection::AllDeclared || program.grants.spawn.contains(name) {
+                    walk(child, format!("{path}.programs.{name}"), selection, out);
+                }
+            }
+            for (node_path, child) in &program.workflow_programs {
+                let nodes = node_path.replace('/', ".workflow.nodes.");
+                walk(child, format!("{path}.workflow.nodes.{nodes}.model"), selection, out);
+            }
+        }
+        let mut out = Vec::new();
+        walk(self, "program".into(), selection, &mut out);
+        out
     }
 }
 
@@ -255,12 +291,22 @@ fn validate_section(prefix: &str, s: &ChildProgramDocument) -> Result<(), Progra
 /// and resolves child programs. A child's read roots must lie within the
 /// parent's read roots and its write roots within the parent's write roots.
 pub fn resolve(config: &ProgramDocument) -> Result<ResolvedProgram, ProgramError> {
+    resolve_with_executables(config, &BTreeMap::new())
+}
+
+/// Resolves a document using inherited executable bytes for the dotted keys
+/// present in `inherited`. A spawned child receives these bytes through
+/// inherited descriptors, so it never reopens those paths.
+pub fn resolve_with_executables(
+    config: &ProgramDocument,
+    inherited: &BTreeMap<String, (Arc<[u8]>, std::ffi::OsString)>,
+) -> Result<ResolvedProgram, ProgramError> {
     validate(config)?;
-    let inherited = (config.model.clone(), config.sandbox.clone());
+    let settings = (config.model.clone(), config.sandbox.clone());
     let lineage = config.program_lineage.clone();
     Ok(ResolvedProgram {
         program_lineage: lineage,
-        ..resolve_section("", &ChildProgramDocument::from(config), &inherited, None)?
+        ..resolve_section("", &ChildProgramDocument::from(config), &settings, None, inherited)?
     })
 }
 
@@ -269,6 +315,7 @@ fn resolve_section(
     s: &ChildProgramDocument,
     inherited: &(Option<ModelConfig>, SandboxConfig),
     parent: Option<&Grants>,
+    inherited_executables: &BTreeMap<String, (Arc<[u8]>, std::ffi::OsString)>,
 ) -> Result<ResolvedProgram, ProgramError> {
     let key = |k: &str| key_at(prefix, k);
     let model = s.model.clone().or_else(|| inherited.0.clone());
@@ -305,29 +352,70 @@ fn resolve_section(
         }
         require(!grants.task_session || parent.task_session, key("grants.task_session"), "is granted by the parent")?;
     }
+    let image = |key: String, path: &Path, configured: &Path| -> Result<ExecutableImage, ProgramError> {
+        let (bytes, basename): (Arc<[u8]>, std::ffi::OsString) = match inherited_executables.get(&key) {
+            Some((bytes, basename)) => (bytes.clone(), basename.clone()),
+            None => {
+                let mut file = std::fs::File::open(path)
+                    .map_err(|e| invalid(&key, format!("is readable for construction: {e}")))?;
+                let metadata = file.metadata().map_err(|e| invalid(&key, format!("has readable metadata: {e}")))?;
+                require(metadata.is_file(), &key, "names a file")?;
+                require(metadata.permissions().mode() & 0o111 != 0, &key, "names an executable file")?;
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut file, &mut bytes)
+                    .map_err(|e| invalid(&key, format!("is readable for construction: {e}")))?;
+                let basename = configured.file_name().unwrap_or_else(|| std::ffi::OsStr::new("executable")).to_owned();
+                (Arc::from(bytes), basename)
+            }
+        };
+        Ok(ExecutableImage { path: path.to_path_buf(), basename, sha256: crate::identity::sha256_hex(&bytes), bytes })
+    };
     let mut tool_defs = BTreeMap::new();
     for (name, def) in &s.tool_defs {
         let k = |field: &str| key(&format!("tool_defs.{name}.{field}"));
-        let exec = canonical(k("exec"), &def.exec)?;
-        require(exec.is_file(), k("exec"), "names a file")?;
+        let exec_key = k("exec");
+        let exec = if inherited_executables.contains_key(&exec_key) {
+            def.exec.clone()
+        } else {
+            canonical(exec_key, &def.exec)?
+        };
         let cwd = match &def.cwd {
             Some(cwd) => canonical(k("cwd"), cwd)?,
             None => grants.read[0].clone(),
         };
         tool_defs.insert(name.clone(), ToolDef { exec, cwd: Some(cwd), ..def.clone() });
     }
-    let executable_sha256 = tool_defs
+    let executable_images = tool_defs
         .iter()
+        .filter(|(name, _)| s.tools.contains(name))
         .map(|(name, def)| {
-            let bytes = std::fs::read(&def.exec).map_err(|e| {
-                invalid(key(&format!("tool_defs.{name}.exec")), format!("is readable for hashing: {e}"))
-            })?;
-            Ok((name.clone(), crate::identity::sha256_hex(&bytes)))
+            let image = image(key(&format!("tool_defs.{name}.exec")), &def.exec, &s.tool_defs[name].exec)?;
+            Ok((name.clone(), image))
         })
         .collect::<Result<_, ProgramError>>()?;
+    let transport_executable = model
+        .as_ref()
+        .filter(|model| model.provider == "exec")
+        .map(|model| {
+            let key = key("model.exec");
+            let path = PathBuf::from(model.option("exec").unwrap_or_default());
+            require_absolute(&key, &path)?;
+            let path = match inherited_executables.contains_key(&key) {
+                true => path,
+                false => canonical(key.clone(), &path)?,
+            };
+            image(key, &path, &PathBuf::from(model.option("exec").unwrap_or_default()))
+        })
+        .transpose()?;
     let mut programs = BTreeMap::new();
     for (name, child) in &s.programs {
-        let program = resolve_section(&key(&format!("programs.{name}")), child, &descendants, Some(&grants))?;
+        let program = resolve_section(
+            &key(&format!("programs.{name}")),
+            child,
+            &descendants,
+            Some(&grants),
+            inherited_executables,
+        )?;
         programs.insert(name.clone(), program);
     }
     let mut program = ResolvedProgram {
@@ -335,13 +423,14 @@ fn resolve_section(
         instructions: s.instructions.clone(),
         tools: s.tools.clone(),
         tool_defs,
-        executable_sha256,
+        executable_images,
         host_tools: s.host_tools.clone(),
         grants,
         budget: s.budget.clone(),
         done_when: s.done_when.clone(),
         context: s.context.clone(),
         model,
+        transport_executable,
         sandbox: inherited.1.clone(),
         program_lineage: None,
         programs,
@@ -353,7 +442,13 @@ fn resolve_section(
         for (path, node) in workflow::model_nodes(wf, "") {
             let dotted = path.replace('/', ".workflow.nodes.");
             let k = key(&format!("workflow.nodes.{dotted}.model"));
-            let node = resolve_section(&k, &workflow::node_program(node), &descendants, Some(&program.grants))?;
+            let node = resolve_section(
+                &k,
+                &workflow::node_program(node),
+                &descendants,
+                Some(&program.grants),
+                inherited_executables,
+            )?;
             within_ceiling(&k, &node, &program)?;
             resolved.insert(path, node);
         }

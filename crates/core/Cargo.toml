@@ -19,7 +19,7 @@ async-trait.workspace = true
 ignore.workspace = true
 cap-std.workspace = true
 landlock = "0.4"
-nix = { version = "0.31", features = ["signal", "process"] }
+nix = { version = "0.31", features = ["signal", "process", "fs"] }
 # Maps a caller-supplied descriptor to a fixed number in a child, between
 # fork and exec. This crate forbids unsafe code, so the mapping cannot be a
 # `pre_exec` hook written here.

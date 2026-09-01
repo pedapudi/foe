@@ -226,8 +226,12 @@ without a shell. Standard input is `/dev/null`. Standard output and standard
 error are captured. The exit code is reported as part of the result. An exit
 code other than zero is a result rather than an error.
 
-The executable is hashed into identity by content. A replaced binary at the
-same path changes identity.
+Construction reads the executable once, verifies that its source file is
+executable, and retains those exact bytes. Their SHA-256 digest participates
+in identity. The configured basename also participates because multicall
+executables use it to select behavior. Every invocation uses a descriptor for
+a private image of the retained bytes. Replacing, modifying, or deleting the
+configured path after construction cannot change what runs.
 
 Declaring an entry in `tool_defs` permits the episode to execute that file.
 The file does not need a `grants.execute` entry. An explicit execute grant

@@ -220,6 +220,14 @@ host, tagged with the child's id. The root host therefore sees every request
 in the tree and answers each one. Answers carry the same tag so that the root
 parent can route them down.
 
+The parent also passes read-only descriptors for every configured
+executable reachable from the selected child program. A sealed manifest
+associates each descriptor with its configuration key and digest. The child
+constructs its identity and executor from those descriptors, so it never
+reopens the parent's configured executable paths. It retains close-on-exec
+copies and closes the inherited descriptor numbers before starting any model
+transport, tool, verifier, or descendant.
+
 ```json
 {"type": "model/chunk", "request_id": "rq_01", "episode_id": "ep_9c21", "chunk": {}}
 ```

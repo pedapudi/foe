@@ -1,4 +1,4 @@
-use super::{completion_evidence_required, parse, resolve, validate};
+use super::{completion_evidence_required, parse, resolve, validate, ProgramTreeSelection};
 use crate::test_util::{config, config_value, program_with, tmp};
 use crate::ProgramError;
 use serde_json::{json, Value};
@@ -21,6 +21,7 @@ fn a_valid_document_resolves_with_canonical_paths_and_defaults() {
     std::os::unix::fs::symlink(root.join("sub"), root.join("link")).unwrap();
     let exec = root.join("tool.sh");
     std::fs::write(&exec, "#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let program = program_with(&root, |v| {
         v["grants"]["read"] = json!([root.join("link")]);
         v["grants"]["execute"] = json!([root.join("link")]);
@@ -376,6 +377,8 @@ fn a_workflow_model_node_stays_within_its_ceiling() {
     let tool_home = root.join("tool-home");
     std::fs::write(&exec, "").unwrap();
     std::fs::write(&other, "").unwrap();
+    std::fs::set_permissions(&exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    std::fs::set_permissions(&other, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     std::fs::create_dir(&tool_home).unwrap();
     let base = || {
         let mut value = config_value(&root);
@@ -496,6 +499,27 @@ fn an_ordinary_child_may_hold_tools_the_parent_does_not_use() {
     .unwrap();
     assert_eq!(program.tools, vec!["spawn"]);
     assert_eq!(program.programs["kid"].tools, vec!["block"]);
+}
+
+#[test]
+fn program_tree_separates_declared_identity_from_executable_reachability() {
+    let root = tmp("program-tree-selections");
+    let program = program_with(&root, |value| {
+        value["tools"] = json!(["spawn", "block"]);
+        value["grants"]["spawn"] = json!(["used"]);
+        value["programs"] = json!({"used": node("used", &root), "unused": node("unused", &root)});
+        value["workflow"] = json!({"nodes": {"review": {"model": node("review", &root), "terminal": true}}});
+    })
+    .unwrap();
+    let paths = |selection| program.program_tree(selection).into_iter().map(|(path, _)| path).collect::<Vec<_>>();
+    assert_eq!(
+        paths(ProgramTreeSelection::AllDeclared),
+        ["program", "program.programs.unused", "program.programs.used", "program.workflow.nodes.review.model",]
+    );
+    assert_eq!(
+        paths(ProgramTreeSelection::ExecutableReachable),
+        ["program", "program.programs.used", "program.workflow.nodes.review.model"]
+    );
 }
 
 // ---- program_lineage ------------------------------------------------------

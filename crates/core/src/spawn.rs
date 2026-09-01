@@ -21,7 +21,9 @@
 //! `budget/release` are the loop's to write around a call to
 //! [`Spawner::spawn`] and a wait on [`ChildRun`].
 
+use crate::executable::ExecutableTree;
 use crate::{CapError, SpawnHandle, SpawnRequest, Spawner, ToolValue};
+use command_fds::{CommandFdExt, FdMapping};
 use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
 use foe_program::document::{ResolvedProgram, PROGRAM_FORMAT_VERSION};
 use foe_program::{Budget, ProgramDocument, ToolSpec};
@@ -29,6 +31,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, Write};
+use std::os::fd::AsFd;
 use std::path::PathBuf;
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -194,6 +197,7 @@ pub struct ProcessSpawner {
     episode_id: String,
     log_dir: PathBuf,
     program: ResolvedProgram,
+    executables: ExecutableTree,
     limits: Budget,
     builtin_specs: Vec<ToolSpec>,
     /// The child's argument vector prefix; the running `foe` binary.
@@ -230,11 +234,25 @@ impl ProcessSpawner {
         builtin_specs: Vec<ToolSpec>,
         connections: ProcessConnections,
     ) -> Result<Self, CapError> {
+        let executables = ExecutableTree::materialize(&program, &log_dir).map_err(CapError::Invalid)?;
+        Self::new_with_executables(episode_id, log_dir, program, executables, limits, builtin_specs, connections)
+    }
+
+    pub fn new_with_executables(
+        episode_id: String,
+        log_dir: PathBuf,
+        program: ResolvedProgram,
+        executables: ExecutableTree,
+        limits: Budget,
+        builtin_specs: Vec<ToolSpec>,
+        connections: ProcessConnections,
+    ) -> Result<Self, CapError> {
         let exe = std::env::current_exe()?;
         Ok(ProcessSpawner {
             episode_id,
             log_dir,
             program,
+            executables,
             limits,
             builtin_specs,
             launcher: vec![exe.into_os_string()],
@@ -326,8 +344,6 @@ impl Spawner for ProcessSpawner {
             .program
             .spawned_program(&req.program)
             .ok_or_else(|| CapError::Invalid(format!("programs has no entry named {}", req.program)))?;
-        foe_program::identity::verify_executables(program)
-            .map_err(|e| CapError::Invalid(format!("program {} changed after construction: {e}", req.program)))?;
         let expected = foe_program::identity::compute(program, &self.builtin_specs, &crate::identity::runtime_info())
             .map_err(|e| CapError::Invalid(e.to_string()))?;
         let limits = effective_budget(&self.limits, &program.budget, req.reserve);
@@ -365,6 +381,25 @@ impl Spawner for ProcessSpawner {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        let executable_tree = self
+            .executables
+            .child(&req.program)
+            .ok_or_else(|| CapError::Invalid(format!("program {} has no committed executable tree", req.program)))?;
+        let mappings = executable_tree
+            .child_descriptors(&child_id)
+            .map_err(CapError::Invalid)?
+            .into_iter()
+            .map(|(child_fd, fd)| {
+                fd.as_fd()
+                    .try_clone_to_owned()
+                    .map(|parent_fd| FdMapping { parent_fd, child_fd })
+                    .map_err(|e| {
+                        CapError::ProcessStart(format!("child {child_id}: cannot duplicate executable fd: {e}"))
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        cmd.fd_mappings(mappings)
+            .map_err(|e| CapError::ProcessStart(format!("child {child_id}: fd mapping: {e:?}")))?;
         let mut child = cmd.spawn().map_err(|e| CapError::ProcessStart(e.to_string()))?;
         let stdin = child.stdin.take().ok_or_else(|| CapError::Invalid("child has no stdin".into()))?;
         let stdout = child.stdout.take().ok_or_else(|| CapError::Invalid("child has no stdout".into()))?;

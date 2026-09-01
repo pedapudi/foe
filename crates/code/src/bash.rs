@@ -88,6 +88,7 @@ impl Tool for Bash {
         }
         let req = ExecRequest {
             program: PathBuf::from(SHELL),
+            executable: None,
             args: vec!["-c".into(), a.command.clone()],
             env: shell_environment(&cwd),
             cwd,

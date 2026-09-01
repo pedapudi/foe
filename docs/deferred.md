@@ -192,6 +192,22 @@ grants into such a profile. macOS sandboxing is not implemented; on macOS
 `landlock_abi: 0`, and `sandbox.mode: "required"` refuses to start. No event
 type or configuration key is reserved.
 
+## Anonymous executable images
+
+Linux `O_TMPFILE` can hold construction-committed executable bytes in an
+unnamed regular inode. The inode can be granted through Landlock and invoked
+through `/proc/self/fd`, unlike a memfd, which Landlock rejects as a rule
+target. Tests with a shell script and a copied dynamically linked shell
+succeeded under Landlock ABI 7. A copied coreutils executable rejected the
+anonymous form because it compares its requested utility name with
+`/proc/self/exe`, whose target has no configured basename. Opening a named
+image and unlinking it before execution also adds a deleted-path suffix to
+that target. BusyBox and other self-path-dependent executables have the same
+class of requirement. Foe uses a named private image that preserves the
+configured basename.
+Anonymous images remain deferred until they can preserve self-path semantics
+for common executables. No event type or configuration key is reserved.
+
 ## Unicode normalization in the scrubber
 
 The scrubber removes invisible characters (zero-width spaces and joiners,

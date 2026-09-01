@@ -10,6 +10,7 @@ use foe_program::ProgramDocument;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::ops::Deref;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 // ---- fixtures -----------------------------------------------------------
@@ -182,6 +183,7 @@ fn fixture(name: &str) -> Fixture {
     let root = tmp(name);
     let exec = root.join("check.sh");
     std::fs::write(&exec, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&exec, std::fs::Permissions::from_mode(0o700)).unwrap();
     let parent_program = verified_config(&root, |_| {});
     let parent = compute(&parent_program, &[], &runtime()).unwrap();
     let exec_identity = digest_of(&std::fs::read(&exec).unwrap());
@@ -505,6 +507,7 @@ fn a_verifier_result_in_a_spawned_child_log_is_reached_by_provenance() {
     let root = tmp("child-verifier");
     let exec = root.join("check.sh");
     std::fs::write(&exec, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&exec, std::fs::Permissions::from_mode(0o700)).unwrap();
     let kid = json!({
         "name": "kid", "instructions": { "a": "verify the candidate" },
         "tools": ["block", "check"],

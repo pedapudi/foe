@@ -69,6 +69,35 @@ pub(crate) fn process_spawner(
     .unwrap()
 }
 
+#[test]
+fn inherited_executable_name_preserves_child_program_identity() {
+    let dir = scratch("spawn", "inherited-executable-name");
+    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3,
+        "name": "child",
+        "instructions": {"role": "test"},
+        "tools": ["configured"],
+        "tool_defs": {"configured": {"exec": "/bin/echo", "description": "multicall executable"}},
+        "grants": {"read": [dir]},
+        "budget": {"model_calls": 1},
+        "sandbox": {"mode": "off"},
+        "task": "test"
+    }))
+    .unwrap();
+    let parent = foe_program::document::resolve(&config).unwrap();
+    let document = child_document(&parent, "child task".into());
+    let image = parent.executable_images["configured"].clone();
+    let inherited = std::collections::BTreeMap::from([(
+        "tool_defs.configured.exec".into(),
+        (image.bytes.clone(), image.basename.clone()),
+    )]);
+    let child = foe_program::document::resolve_with_executables(&document, &inherited).unwrap();
+    let runtime = crate::identity::runtime_info();
+    let expected = foe_program::identity::compute(&parent, &[], &runtime).unwrap();
+    let actual = foe_program::identity::compute(&child, &[], &runtime).unwrap();
+    assert_eq!(actual.hash, expected.hash);
+}
+
 /// A stand-in child: writes a start event, a request, waits for one
 /// routed answer, calls the host tool `notify`, waits for its result,
 /// then ends with both answers as its value. A first pre-tagged request
@@ -239,13 +268,14 @@ fn child_identity_is_stable_across_different_runtime_allowances() {
     }
 }
 
-/// docs/design.md "Program construction": a configured executable that
-/// changes after construction is rejected before the child can start.
+/// docs/design.md "Program construction": a child receives the executable
+/// bytes committed before its source changes.
 #[test]
-fn launch_refuses_a_descendant_executable_changed_after_construction() {
+fn launch_does_not_reopen_a_descendant_executable_after_construction() {
     let dir = scratch("spawn", "changed-executable");
     let tool = dir.join("tool");
     std::fs::write(&tool, "first").unwrap();
+    std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
     let mut config = parent_config();
     config.grants.read = vec![dir.to_path_buf()];
     let worker = config.programs.get_mut("worker").unwrap();
@@ -278,9 +308,8 @@ fn launch_refuses_a_descendant_executable_changed_after_construction() {
         reserve: BudgetAmount::default(),
         call_id: "tc".into(),
     };
-    let error = spawner.spawn(request).err().unwrap().to_string();
-    assert!(error.contains("changed after construction"), "{error}");
-    assert!(!dir.join("children").exists(), "the child directory is not created before the check");
+    let handle = spawner.spawn(request).unwrap();
+    assert!(handle.dir.is_dir());
 }
 
 /// docs/design.md "Subagents and teams": a spawned fork leaves seeding to

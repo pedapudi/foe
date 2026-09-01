@@ -11,6 +11,7 @@
 //! itself rather than through a `pre_exec` hook. The effect is the same: the
 //! child inherits the narrower domain before it executes anything.
 
+use crate::executable::{Executable, ExecutableTree};
 use crate::RuntimeError;
 use foe_log::{SandboxInfo, SandboxMode};
 use foe_program::document::ResolvedProgram;
@@ -18,8 +19,10 @@ use landlock::{
     Access, AccessFs, AccessNet, BitFlags, CompatLevel, Compatible, LandlockStatus, NetPort, PathBeneath, PathFd,
     Ruleset, RulesetAttr, RulesetCreated, RulesetCreatedAttr, RulesetStatus, Scope, ABI,
 };
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::Arc;
 
 /// The highest Landlock ABI this module makes use of. A newer kernel is
 /// used at this level and recorded as this level.
@@ -48,7 +51,7 @@ pub const SYSTEM_READ_DIRS: &[&str] = &["/etc", "/usr/share", "/proc", "/sys"];
 pub const DEVICE_FILES: &[&str] = &["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty"];
 
 /// What one process may reach. Compiled into a ruleset by [`Sandbox`].
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default)]
 pub struct Policy {
     /// Directories readable in full.
     pub read: Vec<PathBuf>,
@@ -56,6 +59,10 @@ pub struct Policy {
     pub write: Vec<PathBuf>,
     /// Files that may be executed.
     pub exec: Vec<PathBuf>,
+    /// Executable inodes committed during program construction.
+    pub exec_files: Vec<Arc<Executable>>,
+    /// Storage parents available only to the episode process during cleanup.
+    pub runtime_storage: Vec<PathBuf>,
     /// Explicit program grants that remain available to subprocesses after
     /// the executable that starts them receives its narrower policy.
     pub delegated_exec: Vec<PathBuf>,
@@ -87,12 +94,8 @@ impl Policy {
     /// transport. The credential file the transport reads is not known
     /// here; the binary appends it to `read_files` after resolving the
     /// `model` block.
-    pub fn for_episode(config: &ResolvedProgram, log_dir: &Path) -> Policy {
+    pub fn for_episode(config: &ResolvedProgram, executables: &ExecutableTree, log_dir: &Path) -> Policy {
         let mut exec = Vec::new();
-        // An ancestor reserves every descendant executable because a
-        // Landlock ruleset may only narrow. Each descendant's ruleset then
-        // keeps its own surface, so no sibling gains access.
-        config.collect_executables(&mut exec);
         if !config.grants.spawn.is_empty() || !config.workflow_programs.is_empty() {
             exec.extend(std::env::current_exe().ok());
         }
@@ -102,6 +105,8 @@ impl Policy {
             read: config.grants.read.clone(),
             write: config.grants.write.clone(),
             exec,
+            exec_files: executables.reachable(),
+            runtime_storage: executables.cleanup_roots(),
             delegated_exec: config.grants.execute.clone(),
             read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
             log_dir: Some(log_dir.to_path_buf()),
@@ -121,6 +126,25 @@ impl Policy {
             read: self.read.clone(),
             write: self.write.clone(),
             exec: allowed,
+            exec_files: Vec::new(),
+            runtime_storage: Vec::new(),
+            delegated_exec: self.delegated_exec.clone(),
+            read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
+            log_dir: None,
+            bind_tcp: self.bind_tcp.clone(),
+            connect_tcp: network,
+        }
+    }
+
+    /// Narrows a configured executable to its committed inode and the
+    /// execute paths explicitly delegated by the enclosing program.
+    pub fn for_immutable_executable(&self, executable: Arc<Executable>, network: bool) -> Policy {
+        Policy {
+            read: self.read.clone(),
+            write: self.write.clone(),
+            exec: self.delegated_exec.clone(),
+            exec_files: vec![executable],
+            runtime_storage: Vec::new(),
             delegated_exec: self.delegated_exec.clone(),
             read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
             log_dir: None,
@@ -229,6 +253,7 @@ impl Sandbox {
             (policy.read.clone(), read),
             (policy.write.clone(), write),
             (policy.exec.clone(), AccessFs::Execute | AccessFs::ReadFile),
+            (policy.runtime_storage.clone(), read | write),
             (policy.read_files.clone(), BitFlags::from(AccessFs::ReadFile)),
             (policy.log_dir.iter().cloned().collect(), read | write),
             (paths(LOADER_DIRS), read | AccessFs::Execute),
@@ -243,6 +268,11 @@ impl Sandbox {
                     created = created.add_rule(PathBeneath::new(fd, access)).map_err(err)?;
                 }
             }
+        }
+        for executable in &policy.exec_files {
+            let path = PathBuf::from(format!("/proc/self/fd/{}", executable.fd().as_raw_fd()));
+            let fd = PathFd::new(&path).map_err(|e| RuntimeError::Sandbox(format!("{}: {e}", path.display())))?;
+            created = created.add_rule(PathBeneath::new(fd, AccessFs::Execute | AccessFs::ReadFile)).map_err(err)?;
         }
         if self.abi >= 4 {
             for port in &policy.bind_tcp {

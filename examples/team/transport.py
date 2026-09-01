@@ -18,7 +18,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "support"))
+sys.path.insert(0, str(Path.cwd().parent / "support"))
 from chunks import call, done, error, read_request, step, text, tool_names
 
 QUESTION = "Which checks cover src/cli.py?"

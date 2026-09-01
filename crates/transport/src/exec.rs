@@ -31,6 +31,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use foe_core::executable::Executable;
 use foe_core::{Chunk, ExecRequest, Executor, ModelRequestBody, Transport};
 use foe_program::ModelConfig;
 use serde::Deserialize;
@@ -51,10 +52,22 @@ pub struct ExecTransport {
     max_output_tokens: Option<u32>,
     options: BTreeMap<String, String>,
     executor: Arc<dyn Executor>,
+    executable: Arc<Executable>,
 }
 
 impl ExecTransport {
     pub fn new(config: &ModelConfig, executor: Arc<dyn Executor>) -> Result<ExecTransport, TransportError> {
+        let path = PathBuf::from(config.option("exec").unwrap_or_default());
+        let executable =
+            Executable::load(&path).map_err(|reason| TransportError::Exec { path: path.clone(), reason })?;
+        Self::new_with_executable(config, executor, executable)
+    }
+
+    pub fn new_with_executable(
+        config: &ModelConfig,
+        executor: Arc<dyn Executor>,
+        executable: Arc<Executable>,
+    ) -> Result<ExecTransport, TransportError> {
         let program = PathBuf::from(config.option("exec").unwrap_or_default());
         if !program.is_absolute() {
             return Err(TransportError::Exec { path: program, reason: "is not an absolute path".into() });
@@ -67,6 +80,7 @@ impl ExecTransport {
             max_output_tokens: config.max_output_tokens,
             options,
             executor,
+            executable,
         })
     }
 
@@ -104,6 +118,7 @@ impl Transport for ExecTransport {
     async fn stream(&self, req: ModelRequestBody, sink: &mut (dyn foe_core::ChunkSink + Send)) {
         let request = ExecRequest {
             program: self.program.clone(),
+            executable: Some(self.executable.clone()),
             args: vec![self.model.clone()],
             cwd: self.program.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/")),
             env: BTreeMap::new(),
@@ -158,38 +173,27 @@ fn fail(message: String, retryable: bool) -> Chunk {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{scratch, ScratchFile};
+    use crate::test_support::{scratch, scratch_dir, ScratchFile};
+    use foe_core::exec::LocalExecutor;
+    use foe_core::sandbox::{Policy, Sandbox};
     use foe_core::{CapError, ContentBlock, ExecResult, Message, StopReason, ToolSchema, Usage};
+    use foe_log::SandboxMode;
     use std::os::unix::fs::PermissionsExt;
 
-    /// Runs the request as a plain process, the way the episode's executor
-    /// does under its sandbox.
+    /// Runs through the production descriptor-pinned executor.
     struct PlainExecutor;
 
     impl Executor for PlainExecutor {
         fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError> {
-            use std::io::Write;
-            use std::process::{Command, Stdio};
-            let start = std::time::Instant::now();
-            let mut child = Command::new(&req.program)
-                .args(&req.args)
-                .current_dir(&req.cwd)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()?;
-            if let Some(bytes) = req.stdin {
-                // A child may exit before reading; production still settles it after the closed pipe.
-                let _ = child.stdin.take().unwrap().write_all(&bytes);
-            }
-            let output = child.wait_with_output()?;
-            Ok(ExecResult {
-                exit_code: output.status.code(),
-                stdout: output.stdout,
-                stderr: output.stderr,
-                timed_out: false,
-                duration: start.elapsed(),
-            })
+            let policy = Policy { exec_files: req.executable.iter().cloned().collect(), ..Policy::default() };
+            let spill = scratch_dir("exec-spill");
+            let executor = LocalExecutor::new(
+                Arc::new(Sandbox::new(SandboxMode::Off).unwrap()),
+                policy,
+                spill.to_path_buf(),
+                Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            );
+            executor.run(req)
         }
     }
 
@@ -244,6 +248,7 @@ echo ignored after the final chunk"#,
         assert_eq!(value["messages"][0]["role"], "user");
         assert_eq!(value["max_output_tokens"], 100);
         assert_eq!(value["options"], serde_json::json!({ "api_key_file": "/keys/x" }), "exec is not an option");
+        std::fs::write(&program, "#!/bin/sh\nexit 99\n").unwrap();
         let mut chunks = Vec::new();
         transport.stream(request(), &mut chunks).await;
         assert_eq!(
