@@ -191,6 +191,33 @@ comes first when the node follows `task`. The child runs the
 ordinary agent loop with the ordinary tools, and its outcome value is the
 node's output.
 
+#### Bounded model handoffs
+
+The rendered predecessor sections of one model node share the 50,000-character
+bound used for one turn of tool results. The measurement includes section
+headings and separators. The invocation task does not count toward this bound
+because it is the episode's objective rather than a predecessor result.
+
+An oversized handoff fails before the runtime allocates or starts the child.
+When recovery runs, its recorded cause is `limit-exceeded`. The failure error
+names each predecessor, the sequence number of its producing event, and its
+rendered size. A completed producer's `workflow/node-end` retains its complete
+canonical value and rendered text. A skipped producer remains reconstructable
+from its declared `empty` value and the producing `workflow/recovery` event.
+
+Recovery receives the predecessor names, producing event sequence numbers,
+and rendered sizes. The rejected bodies do not enter the recovery request.
+Recovery may amend an input-producing model node or one of its model ancestors
+when `max_fires` leaves another firing. When no such model node can fire, the
+failure settles without a recovery request. A deterministic tool producer with
+no amendable model ancestor therefore cannot consume interventions by repeating
+the same oversized result.
+
+The bound applies when rendered predecessor text would enter a model child's
+context. A tool node continues to bind complete canonical predecessor values.
+Large canonical values can therefore pass through a deterministic tool
+pipeline without incurring model-context cost.
+
 Inside the node the agent has everything the loop gives it: it reads, edits,
 runs commands, calls subagents if granted, and decides when it is done. The
 graph bounds what enters the node and what leaves it. It does not bound what
@@ -365,6 +392,7 @@ proceed, and it is the second place agency lives.
 | a model node ended `failed` | yes |
 | the workflow's `done_when` findings remain | yes, at the terminal node |
 | a tool node's bound argument is absent from its predecessor's value | yes |
+| a model node's predecessor sections exceed the model-handoff bound | yes when an amendable model producer can fire; otherwise the failure settles |
 | the node's tool call returned a typed failure with `retryable: false` | no; the episode ends with the outcome named by its code and details |
 
 The producer sets `retryable` from facts available where the failure occurs.
@@ -389,6 +417,11 @@ of nodes the failed node does not follow.
 A node may widen what its recovery decision sees by declaring a `recovery`
 block with its own `follows`. The widening is a declaration in the graph,
 so an audit sees that the reach was granted.
+
+An oversized model handoff is the exception to carrying complete input bodies
+in the recovery request. Its failure section carries the predecessor names,
+producing event sequence numbers, and rendered sizes. The complete values and
+renderings remain in the producing events.
 
 The instruction that frames the failure and the permitted actions belongs
 to the runtime. An author does not write it and cannot change it. It is
@@ -475,9 +508,9 @@ gives each event's fields.
 | event | data |
 |---|---|
 | `workflow/node-start` | `{ node, fire, inputs: [seq of the producing node-end events], child_id? }` |
-| `workflow/node-end` | `{ node, fire, value, rendered, error?, duration_ms }` |
+| `workflow/node-end` | `{ node, fire, value, rendered, error?, failure?, duration_ms }` |
 | `workflow/branch` | `{ node, fire, label, successors }` |
-| `workflow/recovery` | `{ node, fire, cause, action, target?, note?, intervention }` |
+| `workflow/recovery` | `{ node, fire, cause, action, target?, note?, failure?, intervention }` |
 | `verification/result` | `{ step, tool, verifier_identity, status, findings, error?, duration_ms }` |
 
 A node's `verify` and the episode's `done_when.verify` each record every

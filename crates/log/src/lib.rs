@@ -784,6 +784,8 @@ pub struct WorkflowNodeEnd {
     pub rendered: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<ToolFailure>,
     pub duration_ms: u64,
 }
 
@@ -809,6 +811,8 @@ pub struct WorkflowRecovery {
     pub target: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<ToolFailure>,
     pub intervention: u32,
 }
 

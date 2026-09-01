@@ -5,7 +5,7 @@
 # product claim; 1,450 over program, the other contract, which is the
 # program document, its resolution, and identity; 1,800
 # over tools, which is code — the tool surface, which grows a tool at a time
-# without touching the kernel; 1,000 over workflow; 500 over context; 600
+# without touching the kernel; 1,050 over workflow; 500 over context; 600
 # over view; 1,300 over cli; 1,000
 # over telemetry; 500 over lineage, which reads finished evidence about how
 # program states relate and is part of neither contract. The kernel is budgeted apart
@@ -35,7 +35,7 @@ printf '%-8s %6d  (budget 1450)\n' program "$program"
 tools=$(count code)
 printf '%-8s %6d  (budget 1800)\n' tools "$tools"
 workflow=$(count workflow)
-printf '%-8s %6d  (budget 1000)\n' workflow "$workflow"
+printf '%-8s %6d  (budget 1050)\n' workflow "$workflow"
 context=$(count context)
 printf '%-8s %6d  (budget 500)\n' context "$context"
 view=$(count view)
@@ -46,5 +46,5 @@ telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 lineage=$(count lineage)
 printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
-[ "$kernel" -le 5425 ] && [ "$program" -le 1450 ] && [ "$tools" -le 1800 ] && [ "$workflow" -le 1000 ] \
+[ "$kernel" -le 5425 ] && [ "$program" -le 1450 ] && [ "$tools" -le 1800 ] && [ "$workflow" -le 1050 ] \
   && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]

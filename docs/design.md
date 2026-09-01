@@ -766,6 +766,13 @@ validation observations, and unresolved risks. The assessment receives that
 value and the original task in a fresh context. A repair receives both prior
 values and the original task. The shared directory carries the artifacts.
 
+Rendered predecessor sections entering one model node share the same
+50,000-character bound as one model turn's tool results. The runtime rejects an
+oversized handoff before starting the child and records `limit-exceeded` for
+workflow recovery. The producer's complete value and rendering remain in the
+workflow log. Tool nodes continue to bind complete canonical predecessor
+values because that binding does not enter model context.
+
 The task text and repository-defined checks govern all three stages. Their
 allowed mutation scope is current filesystem state unless the task authorizes
 changes to history, prior versions, archives, encoded representations, or
@@ -953,13 +960,13 @@ The tool surface in `crates/code` is budgeted apart, under 1,800 lines on
 the same terms. It is separate because it grows a tool at a time: a new
 tool adds capability without touching the kernel, so room for tools must
 not become room for the loop. The workflow executor in `crates/workflow`
-stays under 1,000 lines: it carries the executor and nothing else, now that
-the inspection of a configured program tree that `foe plan` reports has
-reached `foe_program::inspect`, beside the model it analyses. What the two
-crates still share is one rule — firing a model node starts that node's
-episode — which `spawner_document` realizes in the executor as an ordinary
-spawn and the inspection reads as reachability. The compaction policy in
-`crates/context` stays under 500.
+stays under 1,050 lines. It schedules the graph, bounds text entering model
+nodes, and routes failures through recovery. Inspection of a configured
+program tree remains in `foe_program::inspect`, beside the model it analyses.
+Both crates implement one shared rule: firing a model node starts that node's
+episode. The executor realizes the rule as an ordinary spawn. Inspection reads
+the same rule as reachability. The compaction policy in `crates/context` stays
+under 500.
 
 The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
 and the browser bundle it serves under 150 KB compressed. It is separate

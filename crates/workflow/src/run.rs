@@ -124,18 +124,32 @@ struct Shared {
 struct Trouble {
     cause: String,
     detail: String,
-    findings: Vec<String>,
+    findings: Box<[String]>,
     outcome: Outcome,
     settled: bool,
+    include_inputs: bool,
+    failure: Option<Box<ToolFailure>>,
 }
 
 impl Trouble {
     fn recoverable(cause: &str, detail: impl Into<String>, outcome: Outcome) -> Self {
-        Self { cause: cause.into(), detail: detail.into(), findings: Vec::new(), outcome, settled: false }
+        Self {
+            cause: cause.into(),
+            detail: detail.into(),
+            findings: Box::default(),
+            outcome,
+            settled: false,
+            include_inputs: true,
+            failure: None,
+        }
     }
 
     fn findings(cause: &str, findings: Vec<String>, outcome: Outcome) -> Self {
-        Self { detail: findings.join("\n"), findings, ..Self::recoverable(cause, "", outcome) }
+        Self {
+            detail: findings.join("\n"),
+            findings: findings.into_boxed_slice(),
+            ..Self::recoverable(cause, "", outcome)
+        }
     }
 
     /// A failure a second attempt cannot change.
@@ -144,7 +158,15 @@ impl Trouble {
             Outcome::Failed { error } => error.clone(),
             other => serde_json::to_value(other).map(|v| v.to_string()).unwrap_or_default(),
         };
-        Self { cause: "settled".into(), detail, findings: Vec::new(), outcome, settled: true }
+        Self {
+            cause: "settled".into(),
+            detail,
+            findings: Box::default(),
+            outcome,
+            settled: true,
+            include_inputs: true,
+            failure: None,
+        }
     }
 }
 
@@ -199,10 +221,12 @@ fn trouble_from_failure(failure: ToolFailure) -> Trouble {
         }
         _ => Outcome::Failed { error: failure.message.clone() },
     };
-    match failure.retryable {
-        true => Trouble::recoverable(&cause, failure.message, outcome),
+    let mut trouble = match failure.retryable {
+        true => Trouble::recoverable(&cause, failure.message.clone(), outcome),
         false => Trouble::settled(outcome),
-    }
+    };
+    trouble.failure = Some(Box::new(failure));
+    trouble
 }
 
 /// A tool result as a node value, or the trouble it represents. For a
@@ -240,6 +264,43 @@ pub fn render(value: &Value) -> String {
 
 fn section(name: &str, body: &str) -> String {
     text::fill(text::WORKFLOW_SECTION, &[("name", name), ("body", body)])
+}
+
+/// Refuses predecessor sections that exceed one model turn's result-text
+/// bound. The complete values remain in their producing node-end events.
+fn handoff_failure(inputs: &[(String, Produced)], retryable: bool) -> Option<Trouble> {
+    let (mut characters, mut seen, mut sources, mut evidence) = (0usize, false, Vec::new(), Vec::new());
+    for (name, produced) in inputs {
+        if name != foe_program::workflow::TASK_SOURCE {
+            characters = characters
+                .saturating_add(section(name, &produced.rendered).chars().count())
+                .saturating_add(usize::from(seen) * 2);
+            let size = produced.rendered.chars().count();
+            sources.push(format!("`{name}` at seq {}: {size} rendered characters", produced.seq));
+            evidence.push(json!({ "name": name, "seq": produced.seq, "rendered_characters": size }));
+        }
+        seen = true;
+    }
+    if characters <= foe_core::result_budget::TURN_BUDGET_CHARS {
+        return None;
+    }
+    let maximum = foe_core::result_budget::TURN_BUDGET_CHARS;
+    let remedy = match retryable {
+        true => "A producing model node can fire again with a narrower value.",
+        false => "No input-producing model node can fire again under its max_fires declaration.",
+    };
+    let message = format!(
+        "workflow handoff has {characters} characters across {}; the limit is {maximum}. {remedy}",
+        sources.join(", ")
+    );
+    let mut trouble = trouble_from_failure(ToolFailure {
+        code: ToolFailureCode::LimitExceeded,
+        message: message.clone(),
+        retryable,
+        details: json!({ "limit": "workflow-handoff-characters", "maximum": maximum, "actual": characters, "inputs": evidence }),
+    });
+    trouble.include_inputs = false;
+    Some(trouble)
 }
 
 struct Fired {
@@ -343,6 +404,17 @@ impl Executor {
 
     fn next_step(&self) -> u32 {
         self.shared.step.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    fn handoff_can_narrow(&self, inputs: &[(String, Produced)]) -> bool {
+        inputs.iter().filter(|(name, _)| name != foe_program::workflow::TASK_SOURCE).any(|(name, _)| {
+            let mut candidates = ancestors(&self.sched.preds, name);
+            candidates.insert(name.clone());
+            candidates.iter().any(|name| {
+                self.sched.nodes[name].model.is_some()
+                    && self.sched.state[name].fires < self.sched.nodes[name].max_fires.unwrap_or(1)
+            })
+        })
     }
 
     /// Drives the graph to an outcome, then waits for every firing still
@@ -461,11 +533,12 @@ impl Executor {
         let sh = self.shared.clone();
         let node: Node = self.sched.nodes[name].clone();
         let full = self.full(name);
-        let (fire, findings, note) = self.sched.begin(name);
         let inputs: Vec<(String, Produced)> = self.sched.inputs[name]
             .iter()
             .filter_map(|i| self.sched.state[i].value.as_ref().map(|p| (i.clone(), p.clone())))
             .collect();
+        let mut handoff = node.model.as_ref().and_then(|_| handoff_failure(&inputs, self.handoff_can_narrow(&inputs)));
+        let (fire, findings, note) = self.sched.begin(name);
         let input_seqs: Vec<u64> = inputs.iter().map(|(_, p)| p.seq).collect();
         let call_id = format!("{full}#{fire}");
         let step = self.next_step();
@@ -474,7 +547,7 @@ impl Executor {
         sections.extend((!findings.is_empty()).then(|| section("findings", &findings.join("\n"))));
         sections.extend(note.as_deref().map(|n| section("recovery", n)));
         let lookup = |n: &str| inputs.iter().find(|(i, _)| i == n).map(|(_, p)| p.value.clone());
-        let child_id = node.model.as_ref().map(|_| sh.spawner.allocate_id());
+        let child_id = node.model.as_ref().filter(|_| handoff.is_none()).map(|_| sh.spawner.allocate_id());
         self.sched.state.get_mut(name).expect("a known node").child_id = child_id.clone();
         self.log(EventData::WorkflowNodeStart(WorkflowNodeStart {
             node: full.clone(),
@@ -482,7 +555,9 @@ impl Executor {
             inputs: input_seqs,
             child_id: child_id.clone(),
         }))?;
-        let task: Firing = if let Some(tool) = &node.tool {
+        let task: Firing = if let Some(trouble) = handoff.take() {
+            Box::pin(async move { Err(trouble) })
+        } else if let Some(tool) = &node.tool {
             match bind::resolve(node.args.as_ref().unwrap_or(&serde_json::Map::new()), &lookup) {
                 Err(reason) => {
                     let outcome = Outcome::Failed { error: format!("node `{full}` {reason}") };
@@ -542,12 +617,14 @@ impl Executor {
         result: &Output,
         error: Option<String>,
     ) -> Result<Event, RuntimeError> {
-        let (value, rendered, error) = match result {
-            Ok((value, rendered)) => (value.clone(), rendered.clone(), error),
-            Err(trouble) => (Value::Null, String::new(), Some(trouble.detail.clone())),
+        let (value, rendered, error, failure) = match result {
+            Ok((value, rendered)) => (value.clone(), rendered.clone(), error, None),
+            Err(trouble) => {
+                (Value::Null, String::new(), Some(trouble.detail.clone()), trouble.failure.as_deref().cloned())
+            }
         };
         let duration_ms = started.elapsed().as_millis() as u64;
-        let end = WorkflowNodeEnd { node: self.full(name), fire, value, rendered, error, duration_ms };
+        let end = WorkflowNodeEnd { node: self.full(name), fire, value, rendered, error, failure, duration_ms };
         self.log(EventData::WorkflowNodeEnd(end))
     }
 
@@ -749,6 +826,7 @@ impl Executor {
             action: action_name.into(),
             target,
             note,
+            failure: trouble.failure.map(|failure| *failure),
             intervention: self.interventions,
         }))?;
         match action {
@@ -773,9 +851,11 @@ impl Executor {
         let mut seen = BTreeSet::new();
         let widened = node.recovery.iter().flat_map(|r| &r.follows);
         let mut sections = Vec::new();
-        for input in self.sched.inputs[name].iter().chain(widened).filter(|i| seen.insert((*i).clone())) {
-            let body = self.sched.state[input].value.as_ref().map_or("(no value yet)", |p| p.rendered.as_str());
-            sections.push(section(input, body));
+        if trouble.include_inputs {
+            for input in self.sched.inputs[name].iter().chain(widened).filter(|i| seen.insert((*i).clone())) {
+                let body = self.sched.state[input].value.as_ref().map_or("(no value yet)", |p| p.rendered.as_str());
+                sections.push(section(input, body));
+            }
         }
         let detail = match trouble.findings.is_empty() {
             true => trouble.detail.clone(),

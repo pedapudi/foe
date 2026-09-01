@@ -525,7 +525,10 @@ counts the node's firings from 1. `inputs` lists the `seq` of the events
 that produced the values the node receives: the `workflow/node-end` of
 each predecessor, the `workflow/recovery` that skipped one, or the
 `inbox/item` at seq 1 for the built-in `task` source. `child_id`
-names the child episode of a model node and is absent otherwise.
+names the child episode of a model node. It is absent when the model node's
+predecessor sections exceed the 50,000-character rendered-predecessor bound in
+[workflow.md](workflow.md#bounded-model-handoffs). That firing ends before a
+child is allocated.
 
 ```json
 { "node": "survey", "fire": 1, "inputs": [4], "child_id": "ep_9c21" }
@@ -533,10 +536,17 @@ names the child episode of a model node and is absent otherwise.
 
 `workflow/node-end` — implemented. The firing ended. `value` is the node's
 canonical output and `rendered` the text its successors receive. When the
-firing failed, `error` states why and `value` is null. An optional model
-node whose child ended blocked or exhausted is the one exception: `error`
-states the child outcome, and `value` and `rendered` carry the node's
-declared `empty` output.
+firing failed, `error` states why and `value` is null. A typed failure also
+appears in `failure`, using the structure specified for `tool/result`. An
+optional model node whose child ended blocked or exhausted is the one
+exception: `error` states the child outcome, and `value` and `rendered` carry
+the node's declared `empty` output.
+
+An oversized model handoff records a failed end for the receiving model node.
+The log retains complete predecessor values and renderings. A completed
+predecessor carries them in its node-end event. A skipped predecessor derives
+them from the program's declared `empty` value and its recovery event. The
+receiving end's error names the producing events and their rendered sizes.
 
 ```json
 { "node": "survey", "fire": 1, "value": {}, "rendered": "…", "duration_ms": 1200 }
@@ -552,7 +562,8 @@ declared `empty` output.
 `cause` names what failed, `action` is `retry`, `amend`, `skip`, or
 `abort`, `target` names the node a retry or amend re-fires, `note` carries
 the text an amend appends, and `intervention` counts decisions in this
-episode from 1.
+episode from 1. When a typed failure triggered recovery, `failure` retains
+its code, message, retryability, and structured details.
 
 ```json
 { "node": "derive", "fire": 1, "cause": "operation-failed", "action": "retry", "target": "survey", "intervention": 1 }
