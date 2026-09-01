@@ -1,7 +1,6 @@
 use super::*;
 use crate::exec::tests::scratch;
-use crate::spawn::tests::{fake_child, parent_config, wait_for, Lines};
-use crate::spawn::ProcessSpawner;
+use crate::spawn::tests::{fake_child, parent_config, process_spawner, wait_for, Lines};
 
 #[derive(Default)]
 struct MemLog(Mutex<Vec<Event>>);
@@ -175,16 +174,8 @@ async fn spawn_tool_runs_a_child_whose_notify_and_end_reach_the_lead() {
     let (team, log, inbox, router) = team();
     let uplink = Arc::new(Lines::default());
     let spawner: Arc<dyn Spawner> = Arc::new(
-        ProcessSpawner::new(
-            "ep_lead".into(),
-            dir.clone(),
-            parent_config(),
-            uplink.clone(),
-            router.clone(),
-            team.clone(),
-        )
-        .unwrap()
-        .with_launcher(fake_child(&dir)),
+        process_spawner("ep_lead", dir.clone(), parent_config(), uplink.clone(), router.clone(), team.clone())
+            .with_launcher(fake_child(&dir)),
     );
     let tools = tools(team.clone(), None);
     let spawn = tools.iter().find(|t| t.spec().name == "spawn").unwrap();

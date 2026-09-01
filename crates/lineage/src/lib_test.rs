@@ -164,6 +164,7 @@ fn start(id: &str, parent: Option<&str>, identity: &str, program: Value) -> Even
         task: "propose a descendant".into(),
         runtime: runtime(),
         sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        effective_budget: None,
     })
 }
 

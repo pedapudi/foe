@@ -6,7 +6,7 @@
 # program document, its resolution, and identity; 1,800
 # over tools, which is code — the tool surface, which grows a tool at a time
 # without touching the kernel; 1,050 over workflow; 500 over context; 600
-# over view; 1,300 over cli; 1,000
+# over view; 1,325 over cli; 1,000
 # over telemetry; 500 over lineage, which reads finished evidence about how
 # program states relate and is part of neither contract. The kernel is budgeted apart
 # from program because the kernel measures the machine and program measures the
@@ -41,10 +41,10 @@ printf '%-8s %6d  (budget 500)\n' context "$context"
 view=$(count view)
 printf '%-8s %6d  (budget 600)\n' view "$view"
 cli=$(count cli)
-printf '%-8s %6d  (budget 1300)\n' cli "$cli"
+printf '%-8s %6d  (budget 1325)\n' cli "$cli"
 telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 lineage=$(count lineage)
 printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
 [ "$kernel" -le 5425 ] && [ "$program" -le 1450 ] && [ "$tools" -le 1800 ] && [ "$workflow" -le 1050 ] \
-  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1300 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]
+  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1325 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]

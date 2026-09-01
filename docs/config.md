@@ -23,6 +23,12 @@ reachable tree can invoke, without running anything.
 there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a
 document into the program `episode/start.program` records.
 
+Resolution constructs the complete program tree once. The tree contains
+every nested program and every workflow model node with inherited settings,
+canonical paths, and configured-executable content digests. Planning,
+identity, sandbox construction, reservation, and spawning use that same
+tree. A later filesystem lookup cannot redefine the program.
+
 ## JSON Schema subset
 
 Two keys hold a schema written by the document's author: `host_tools.*.params`
@@ -331,6 +337,13 @@ Object. Required.
 is reserved from its parent's remainder. The child reports what its whole
 subtree used. A child program that declares a larger limit runs under its
 reserved share.
+
+The declared budget participates in program identity. A child reservation is
+an episode input and leaves that declaration unchanged. The parent records
+the reservation in `budget/reserve`. The child records the complete effective
+allowance in `episode/start.effective_budget` and enforces that allowance.
+Two executions of one declared child retain one program identity when their
+available shares differ.
 
 The runtime charges provider-reported input after each completed response.
 It starts another request only while cumulative spend remains below the

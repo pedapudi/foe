@@ -106,6 +106,26 @@ Program lineage is distinct from episode lineage. Episode lineage connects a
 running parent episode to the children that it spawned. Program lineage
 connects immutable program states across separate launches.
 
+A child launch also carries an expected program identity. The parent derives
+it from the same resolved child program used by the parent identity document.
+The child compares the expected identity with its own constructed identity
+before writing its first log event. Its runtime allowance travels separately
+and appears as `episode/start.effective_budget`. This launch check associates
+the two episode logs with one declared child program. It creates no
+program-lineage transition.
+
+A child launched with forked context also receives the source log path and
+boundary in its launch metadata. It checks the expected identity before
+seeding the source prefix. The seeded `episode/start` therefore records the
+child program and its effective allowance.
+
+The check covers executable replacement through child construction. The
+parent checks the retained executable digests before launch, and the child
+identity comparison closes the interval between that check and child startup.
+The runtime does not yet pin an open executable descriptor for a later tool
+invocation. A deployment must prevent writes to configured executables after
+the child starts until descriptor-pinned execution is implemented.
+
 ## Configuration representation
 
 A root configuration for a descendant state carries one optional object.

@@ -13,7 +13,7 @@
 use crate::bind;
 use crate::graph::{Produced, Scheduler};
 use foe_core::budget::Pool;
-use foe_core::loop_::{lock, settle, until, verify_recorded, wait_stop, Log, Params, Recorder};
+use foe_core::loop_::{initialize, lock, settle, until, verify_recorded, wait_stop, Log, Params, Recorder};
 use foe_core::registry::{Handles, Registry};
 use foe_core::{
     CapError, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolFailure, ToolFailureCode, ToolValue, Transport,
@@ -53,13 +53,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
     let log = p.log.clone();
     let text = p.start.task.clone();
     let runtime_build = p.start.runtime.build.clone();
-    if log.next_seq() == 0 {
-        log.append(EventData::EpisodeStart(p.start))?;
-        let content = vec![ContentBlock::Text { text: text.clone() }];
-        let item = InboxItem { source: InboxSource::Task, content, from: None, message_id: None };
-        log.append(EventData::InboxItem(item))?;
-        log.sync()?;
-    }
+    initialize(&log, &p.start)?;
     // The task item is at seq 1 in every log (docs/log-format.md), so a
     // firing that follows `task` names that event among its inputs.
     let task = Produced { value: Value::String(text.clone()), rendered: text, seq: 1 };
@@ -574,7 +568,8 @@ impl Executor {
                     })
                 }
             }
-        } else if let Some(program) = &node.model {
+        } else if node.model.is_some() {
+            let program = &sh.program.workflow_programs[&full];
             let reserve = BudgetAmount {
                 model_calls: Some(program.budget.model_calls),
                 input_tokens: program.budget.input_tokens,

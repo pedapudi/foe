@@ -67,7 +67,8 @@ fn identity_hashes_harness_text_exec_content_and_children() {
         v["programs"] = json!({ "kid": { "name": "kid", "instructions": { "a": "b" }, "tools": ["block"], "grants": { "read": [root] }, "budget": { "model_calls": 1 } } });
     };
     let spawn = [spec("spawn", Effect::Spawns)];
-    let first = compute(&program_with(&root, with_tool).unwrap(), &spawn, &runtime()).unwrap();
+    let resolved = program_with(&root, with_tool).unwrap();
+    let first = compute(&resolved, &spawn, &runtime()).unwrap();
     let texts = &first.document["harness_text"]["texts"];
     for (key, value) in harness_text::all() {
         assert_eq!(texts[key], json!(value));
@@ -80,6 +81,11 @@ fn identity_hashes_harness_text_exec_content_and_children() {
     assert_eq!(first.document["tools"][1]["exec_sha256"], json!(super::sha256_hex(b"v1")));
     assert!(first.document["programs"]["kid"].as_str().unwrap().starts_with("sha256:"));
     std::fs::write(&exec, "v2").unwrap();
+    assert_eq!(
+        compute(&resolved, &spawn, &runtime()).unwrap().hash,
+        first.hash,
+        "identity remains a function of the program constructed before the executable changed"
+    );
     let second = compute(&program_with(&root, with_tool).unwrap(), &spawn, &runtime()).unwrap();
     assert_ne!(second.hash, first.hash, "replacing the executable changes identity");
 }

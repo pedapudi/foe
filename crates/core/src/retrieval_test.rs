@@ -17,6 +17,7 @@ fn start(root: &Path) -> EpisodeStart {
         task: "test retrieval".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        effective_budget: None,
     }
 }
 
@@ -184,7 +185,7 @@ async fn retrieval_from_a_seed_does_not_open_the_source_episode() {
         &source_dir,
         source.events().len() as u64,
         &dest,
-        foe_log::seed::SeedHeader { new_id: "ep_seeded".into(), parent_id: None, team_id: None },
+        foe_log::seed::SeedHeader { new_id: "ep_seeded".into(), parent_id: None, team_id: None, program: None },
     )
     .unwrap();
     drop(source);

@@ -24,6 +24,16 @@ pub struct SeedHeader {
     pub new_id: String,
     pub parent_id: Option<String>,
     pub team_id: Option<String>,
+    /// Child program evidence that replaces the source program evidence.
+    /// Ordinary forks preserve the source by leaving this absent.
+    pub program: Option<SeedProgram>,
+}
+
+/// Program evidence supplied by a spawned child that forks source context.
+pub struct SeedProgram {
+    pub program: serde_json::Value,
+    pub identity: String,
+    pub effective_budget: crate::Budget,
 }
 
 /// Copies events `[1, until_seq)` of the source log into a new log under
@@ -51,6 +61,11 @@ pub fn seed(source: &Path, until_seq: u64, dest: &Path, header: SeedHeader) -> R
     fresh.parent_id = header.parent_id;
     fresh.team_id = header.team_id;
     fresh.fork_origin = Some(ForkOrigin { episode_id: start.id.clone(), seq: until_seq });
+    if let Some(program) = header.program {
+        fresh.program = program.program;
+        fresh.identity = program.identity;
+        fresh.effective_budget = Some(program.effective_budget);
+    }
     written.push(writer.append(EventData::EpisodeStart(fresh))?);
 
     // A `request/retry` the boundary separated from the attempt it

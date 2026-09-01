@@ -31,6 +31,10 @@ pub struct ResolvedProgram {
     pub instructions: BTreeMap<String, String>,
     pub tools: Vec<String>,
     pub tool_defs: BTreeMap<String, ToolDef>,
+    /// Content digests read while the program is constructed. Identity
+    /// uses this snapshot instead of reopening executable paths.
+    #[serde(skip)]
+    pub executable_sha256: BTreeMap<String, String>,
     pub host_tools: BTreeMap<String, HostToolDef>,
     pub grants: Grants,
     pub budget: Budget,
@@ -48,6 +52,10 @@ pub struct ResolvedProgram {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub program_lineage: Option<crate::ProgramLineage>,
     pub programs: BTreeMap<String, ResolvedProgram>,
+    /// Resolved programs of workflow model nodes, keyed by node path.
+    /// Their declarations remain under `workflow` in the serialized program.
+    #[serde(skip)]
+    pub workflow_programs: BTreeMap<String, ResolvedProgram>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow: Option<WorkflowConfig>,
 }
@@ -56,6 +64,28 @@ impl ResolvedProgram {
     /// The JSON recorded in `episode/start.program`.
     pub fn to_value(&self) -> serde_json::Value {
         serde_json::to_value(self).expect("a program serializes")
+    }
+
+    /// A child program available to an explicit spawn or a workflow model
+    /// firing. Workflow paths use `/` between nested node names.
+    pub fn spawned_program(&self, name: &str) -> Option<&ResolvedProgram> {
+        self.workflow_programs.get(name).or_else(|| self.programs.get(name))
+    }
+
+    /// Whether this episode may launch the named child program.
+    pub fn permits_spawn(&self, name: &str) -> bool {
+        self.grants.spawn.iter().any(|granted| granted == name) || self.workflow_programs.contains_key(name)
+    }
+
+    /// Every program whose process may run directly below this one.
+    pub fn spawned_programs(&self) -> impl Iterator<Item = &ResolvedProgram> {
+        self.programs.values().chain(self.workflow_programs.values())
+    }
+
+    /// Adds every configured executable in this tree to `paths`.
+    pub fn collect_executables(&self, paths: &mut Vec<PathBuf>) {
+        paths.extend(self.tool_defs.values().map(|definition| definition.exec.clone()));
+        self.spawned_programs().for_each(|child| child.collect_executables(paths));
     }
 }
 
@@ -286,16 +316,26 @@ fn resolve_section(
         };
         tool_defs.insert(name.clone(), ToolDef { exec, cwd: Some(cwd), ..def.clone() });
     }
+    let executable_sha256 = tool_defs
+        .iter()
+        .map(|(name, def)| {
+            let bytes = std::fs::read(&def.exec).map_err(|e| {
+                invalid(key(&format!("tool_defs.{name}.exec")), format!("is readable for hashing: {e}"))
+            })?;
+            Ok((name.clone(), crate::identity::sha256_hex(&bytes)))
+        })
+        .collect::<Result<_, ProgramError>>()?;
     let mut programs = BTreeMap::new();
     for (name, child) in &s.programs {
         let program = resolve_section(&key(&format!("programs.{name}")), child, &descendants, Some(&grants))?;
         programs.insert(name.clone(), program);
     }
-    let program = ResolvedProgram {
+    let mut program = ResolvedProgram {
         name: s.name.clone(),
         instructions: s.instructions.clone(),
         tools: s.tools.clone(),
         tool_defs,
+        executable_sha256,
         host_tools: s.host_tools.clone(),
         grants,
         budget: s.budget.clone(),
@@ -305,14 +345,19 @@ fn resolve_section(
         sandbox: inherited.1.clone(),
         program_lineage: None,
         programs,
+        workflow_programs: BTreeMap::new(),
         workflow: s.workflow.clone(),
     };
     if let Some(wf) = &s.workflow {
-        let mut subset = |k: &str, p: &ChildProgramDocument| {
-            let node = resolve_section(k, p, &descendants, Some(&program.grants))?;
-            within_ceiling(k, &node, &program)
-        };
-        workflow::check(&key("workflow"), wf, &s.tools, &mut subset)?;
+        let mut resolved = BTreeMap::new();
+        for (path, node) in workflow::model_nodes(wf, "") {
+            let dotted = path.replace('/', ".workflow.nodes.");
+            let k = key(&format!("workflow.nodes.{dotted}.model"));
+            let node = resolve_section(&k, &workflow::node_program(node), &descendants, Some(&program.grants))?;
+            within_ceiling(&k, &node, &program)?;
+            resolved.insert(path, node);
+        }
+        program.workflow_programs = resolved;
     }
     Ok(program)
 }
@@ -373,17 +418,6 @@ fn within_ceiling(prefix: &str, node: &ResolvedProgram, ceiling: &ResolvedProgra
         within_ceiling(&key(&format!("programs.{name}")), child, cap)?;
     }
     Ok(())
-}
-
-/// Resolves a workflow model node's program against the resolved program
-/// that declares it, for identity. Keyed as `validate` keys it.
-pub fn resolve_node_program(
-    key: &str,
-    parent: &ResolvedProgram,
-    child: &ChildProgramDocument,
-) -> Result<ResolvedProgram, ProgramError> {
-    let inherited = (parent.model.clone(), parent.sandbox.clone());
-    resolve_section(key, child, &inherited, Some(&parent.grants))
 }
 
 #[cfg(test)]

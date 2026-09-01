@@ -396,6 +396,13 @@ instructions, tools, grants, budget, termination condition, and child
 programs. Two episodes of the same program differ only in their task and in
 the model's responses.
 
+Construction resolves the root, every entry under `programs`, and every
+workflow model node into one immutable program tree. It canonicalizes paths,
+inherits model and sandbox settings, validates descendant ceilings, and reads
+each configured executable once to retain its content digest. Identity,
+planning, budget reservation, sandbox construction, and spawning all read
+this tree.
+
 `identity(program)` is a SHA-256 over a canonical serialization of:
 
 - the instruction sections, by key and text;
@@ -415,10 +422,11 @@ different directory yields the same identity. Runtime-contributed strings are
 included so that upgrading foe changes identity when and only when the model
 would see different text.
 
-`identity` reads files named in the configuration in order to hash them. It
-executes nothing and opens no socket. A system that records which program
-produced which result, such as an evaluation harness, can therefore compute
-identity on a machine that never runs the program.
+Construction reads files named in the configuration so identity can hash the
+retained executable digests. Identity itself opens no file, executes nothing,
+and opens no socket. A system that records which program produced which
+result can therefore compute identity from the constructed tree without
+reopening its executable paths.
 
 ## Tools
 
@@ -509,6 +517,25 @@ An episode with a `spawn` grant may start child episodes. A child is a
 separate process with its own log, its own grants, and a budget reserved from
 its parent's remaining budget. The child's log header names the parent.
 The child may select a model or inherit the nearest ancestor's selection.
+
+The parent writes the declared child program unchanged. It writes the
+effective runtime allowance and the expected declared-program identity in
+the child's launch metadata. The child resolves that document and compares
+its identity before writing `episode/start` or executing a tool. A mismatch
+fails the launch. The successful `episode/start` records the expected identity
+and the effective allowance. Different reservations for one declared child
+therefore change its runtime allowance while preserving its program identity.
+For forked context, the launch metadata also names the source log and boundary.
+The child validates its identity before it seeds that prefix under its own
+program evidence.
+
+Before launch, the parent also compares every descendant executable with the
+digest retained during construction. This check and the child's identity
+comparison reject changes through child construction, including a change
+between the parent check and child startup. Configured executable paths remain
+ordinary paths after a child starts. Descriptor-pinned execution is required
+to close a replacement race between successful child construction and a later
+tool invocation.
 
 Child creation separates identifier allocation from launch. Allocating an
 identifier reserves no budget and starts no process. A parent appends the
@@ -700,11 +727,19 @@ boundary into a fresh directory beside it, named on standard error, which
 the run then continues. Resuming requires the program that ran: a
 configuration whose identity differs from the log's `episode/start.identity`
 is refused with both identities named. A log ending at `seed/end` is
-exempt from that comparison, because a seeded `episode/start` records its
-source's program rather than its own. A finished log — one with
+exempt from the resume comparison. An ordinary seeded `episode/start`
+records its source's program. A spawned child instead checks the expected
+identity in its launch metadata before reaching resume. A finished log — one with
 `episode/end` — accepts nothing and is forked instead. A `lineage.json`
 beside the log, which a parent writes for a child, supplies the child's
-id, its parent, and its team lead.
+id, its parent, its team lead, its expected program identity, and its
+effective runtime allowance.
+
+On resume, the `episode/start` identity and effective allowance take
+precedence over launch metadata. A prepared spawned fork records its child
+program in that event, so resume compares the recorded child identity before
+continuing it. An ordinary command-line fork preserves its source program in
+the start event and remains exempt from that comparison at `seed/end`.
 
 `--fork SOURCE_DIR --at SEQ` runs a fresh episode seeded from the source
 log's events below SEQ under the seeding rules of
@@ -976,7 +1011,7 @@ TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,300 lines. It is separate because it serves a person at a terminal
+under 1,325 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and

@@ -26,6 +26,7 @@ fn start(program: &ResolvedProgram) -> EpisodeStart {
         task: "do the thing".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        effective_budget: None,
     }
 }
 
@@ -148,6 +149,14 @@ async fn a_turn_without_tool_calls_completes_with_its_text() {
     let fx = Fixture::new("loop-complete", |_| {}, vec![turn("all done", vec![])]);
     let (outcome, events) = fx.run().await;
     assert_eq!(outcome, Outcome::Completed { value: json!("all done") });
+    assert_eq!(events.iter().filter(|event| matches!(event.data, EventData::EpisodeStart(_))).count(), 1);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(&event.data, EventData::InboxItem(item) if item.source == InboxSource::Task))
+            .count(),
+        1
+    );
     assert_eq!(
         types(&events),
         vec![
@@ -882,7 +891,7 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
         &src,
         11,
         &dest,
-        foe_log::seed::SeedHeader { new_id: "ep_fork".into(), parent_id: None, team_id: None },
+        foe_log::seed::SeedHeader { new_id: "ep_fork".into(), parent_id: None, team_id: None, program: None },
     )
     .unwrap();
     let root = src.parent().unwrap().to_path_buf();

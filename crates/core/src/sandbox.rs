@@ -13,7 +13,7 @@
 
 use crate::RuntimeError;
 use foe_log::{SandboxInfo, SandboxMode};
-use foe_program::ProgramDocument;
+use foe_program::document::ResolvedProgram;
 use landlock::{
     Access, AccessFs, AccessNet, BitFlags, CompatLevel, Compatible, LandlockStatus, NetPort, PathBeneath, PathFd,
     Ruleset, RulesetAttr, RulesetCreated, RulesetCreatedAttr, RulesetStatus, Scope, ABI,
@@ -87,10 +87,13 @@ impl Policy {
     /// transport. The credential file the transport reads is not known
     /// here; the binary appends it to `read_files` after resolving the
     /// `model` block.
-    pub fn for_episode(config: &ProgramDocument, log_dir: &Path) -> Policy {
+    pub fn for_episode(config: &ResolvedProgram, log_dir: &Path) -> Policy {
         let mut exec = Vec::new();
-        configured_executables(&foe_program::ChildProgramDocument::from(config), &mut exec);
-        if !config.grants.spawn.is_empty() {
+        // An ancestor reserves every descendant executable because a
+        // Landlock ruleset may only narrow. Each descendant's ruleset then
+        // keeps its own surface, so no sibling gains access.
+        config.collect_executables(&mut exec);
+        if !config.grants.spawn.is_empty() || !config.workflow_programs.is_empty() {
             exec.extend(std::env::current_exe().ok());
         }
         exec.extend(config.grants.execute.iter().cloned());
@@ -123,41 +126,6 @@ impl Policy {
             log_dir: None,
             bind_tcp: self.bind_tcp.clone(),
             connect_tcp: network,
-        }
-    }
-}
-
-/// Every `tool_defs` executable `program` declares, followed by those of the
-/// programs below it: its child programs, the model nodes of its workflow,
-/// and so on to the leaves.
-///
-/// A ruleset only narrows, so a descendant episode cannot add an execute rule
-/// its ancestors withheld. An ancestor that reserved only its own executables
-/// would leave a descendant unable to run the tool its own configuration
-/// names. Reserving is what makes the descendant's own narrowing possible;
-/// the descendant's ruleset still holds its own executables alone, so no
-/// episode gains reach over a sibling's tool.
-fn configured_executables(program: &foe_program::ChildProgramDocument, into: &mut Vec<PathBuf>) {
-    into.extend(program.tool_defs.values().map(|d| d.exec.clone()));
-    let mut models = Vec::new();
-    if let Some(graph) = &program.workflow {
-        model_programs(graph, &mut models);
-    }
-    for below in program.programs.values().chain(models) {
-        configured_executables(below, into);
-    }
-}
-
-/// Every model node's program in `graph`, including those of the workflows
-/// its nodes nest.
-fn model_programs<'a>(
-    graph: &'a foe_program::workflow::WorkflowConfig,
-    into: &mut Vec<&'a foe_program::ChildProgramDocument>,
-) {
-    for node in graph.nodes.values() {
-        into.extend(node.model.as_ref());
-        if let Some(nested) = &node.workflow {
-            model_programs(nested, into);
         }
     }
 }

@@ -29,8 +29,8 @@ fn count_len(len: usize) -> u64 {
     u64::try_from(len).unwrap_or(u64::MAX)
 }
 
-/// A declared graph. Model node programs are kept as written; the spawner
-/// resolves each when the node fires, as it does for `programs`.
+/// A declared graph. Construction resolves every model node into the
+/// enclosing program's immutable child-program tree.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowConfig {

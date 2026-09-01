@@ -11,7 +11,8 @@
 //! `config.json` is the configuration the child is launched with, derived
 //! from the parent's `programs` entry with `version`, `model`, and
 //! `sandbox` inherited. `lineage.json` names the child's own id, its parent,
-//! and its team lead, for the child's `episode/start`; a child that reads it
+//! its team lead, its expected program identity, and its effective allowance.
+//! A child that reads it
 //! sends its `notify`, `send`, and `team` calls to this process, which
 //! answers them through the [`ChildObserver`].
 //!
@@ -21,9 +22,9 @@
 //! [`Spawner::spawn`] and a wait on [`ChildRun`].
 
 use crate::{CapError, SpawnHandle, SpawnRequest, Spawner, ToolValue};
-use foe_log::seed::SeedHeader;
 use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
-use foe_program::{Budget, ChildProgramDocument, ProgramDocument};
+use foe_program::document::{ResolvedProgram, PROGRAM_FORMAT_VERSION};
+use foe_program::{Budget, ProgramDocument, ToolSpec};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -192,33 +193,54 @@ impl ChildRun {
 pub struct ProcessSpawner {
     episode_id: String,
     log_dir: PathBuf,
-    config: ProgramDocument,
+    program: ResolvedProgram,
+    limits: Budget,
+    builtin_specs: Vec<ToolSpec>,
     /// The child's argument vector prefix; the running `foe` binary.
     launcher: Vec<OsString>,
-    uplink: Arc<dyn Uplink>,
-    router: Arc<Router>,
-    observer: Arc<dyn ChildObserver>,
+    connections: ProcessConnections,
     next: AtomicU64,
+}
+
+/// The three process-boundary channels a child launch uses.
+pub struct ProcessConnections {
+    pub uplink: Arc<dyn Uplink>,
+    pub router: Arc<Router>,
+    pub observer: Arc<dyn ChildObserver>,
+}
+
+/// Launch metadata written by a parent and consumed by its child process.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct ChildLaunch {
+    pub episode_id: String,
+    pub parent_id: Option<String>,
+    pub team_id: Option<String>,
+    pub expected_program_identity: Option<String>,
+    pub effective_budget: Option<Budget>,
+    pub fork_source: Option<PathBuf>,
+    pub fork_at: Option<u64>,
 }
 
 impl ProcessSpawner {
     pub fn new(
         episode_id: String,
         log_dir: PathBuf,
-        config: ProgramDocument,
-        uplink: Arc<dyn Uplink>,
-        router: Arc<Router>,
-        observer: Arc<dyn ChildObserver>,
+        program: ResolvedProgram,
+        limits: Budget,
+        builtin_specs: Vec<ToolSpec>,
+        connections: ProcessConnections,
     ) -> Result<Self, CapError> {
         let exe = std::env::current_exe()?;
-        let launcher = vec![exe.into_os_string()];
-        Ok(ProcessSpawner { episode_id, log_dir, config, launcher, uplink, router, observer, next: AtomicU64::new(0) })
-    }
-
-    /// Replaces the binary that runs children. Tests use a script.
-    pub fn with_launcher(mut self, argv: Vec<OsString>) -> Self {
-        self.launcher = argv;
-        self
+        Ok(ProcessSpawner {
+            episode_id,
+            log_dir,
+            program,
+            limits,
+            builtin_specs,
+            launcher: vec![exe.into_os_string()],
+            connections,
+            next: AtomicU64::new(0),
+        })
     }
 
     /// What to reserve for a request: the amount the caller named, and the
@@ -234,71 +256,58 @@ impl ProcessSpawner {
             seconds: b.seconds,
             episodes: None,
         };
-        let program = self.config.programs.get(&req.program);
+        let program = self.program.spawned_program(&req.program);
         let declared = program.filter(|_| req.reserve.model_calls.is_none());
         let mut amount = declared.map_or(req.reserve, |p| all(&p.budget));
         // A child that can start no children of its own holds exactly one
         // episode, whatever allowance its program declares. Asking for the
         // declared allowance would hold the parent's whole remainder
         // against a leaf and starve the leaf's siblings.
-        amount.episodes = program.map(|p| match self.spawns_below(p) {
-            true => u64::from(p.budget.max_episodes),
-            false => 1,
+        amount.episodes = program.map(|p| {
+            let descends = self.limits.max_depth > 1
+                && p.budget.max_depth > 0
+                && (!p.grants.spawn.is_empty() || !p.workflow_programs.is_empty());
+            if descends {
+                u64::from(p.budget.max_episodes)
+            } else {
+                1
+            }
         });
         amount
     }
-
-    /// Whether a child running `program` could start children in turn. A
-    /// spawn grant and a workflow model node are the two sources of
-    /// descendants, and the model node may sit at any workflow depth.
-    fn spawns_below(&self, program: &ChildProgramDocument) -> bool {
-        let workflow_spawns = program.workflow.as_ref().is_some_and(|wf| wf.contains_model_node());
-        self.config.budget.max_depth > 1
-            && program.budget.max_depth > 0
-            && (!program.grants.spawn.is_empty() || workflow_spawns)
-    }
 }
 
-/// The configuration a child is launched with. Budget dimensions the parent
-/// reserved replace the program's own when they are tighter, the episode
-/// allowance is the share the parent granted, and the depth below the child
-/// is one less than below the parent.
-pub fn child_document(
-    parent: &ProgramDocument,
-    program: &ChildProgramDocument,
-    task: String,
-    reserve: BudgetAmount,
-) -> ProgramDocument {
-    let mut budget = program.budget.clone();
+/// A child launch document preserves the declared program. The effective
+/// reservation travels beside it in `lineage.json`.
+pub fn child_document(program: &ResolvedProgram, task: String) -> ProgramDocument {
+    let mut value = program.to_value();
+    fn child_sections(section: &mut serde_json::Value) {
+        let Some(children) = section.get_mut("programs").and_then(serde_json::Value::as_object_mut) else { return };
+        for child in children.values_mut() {
+            let object = child.as_object_mut().expect("a resolved child is an object");
+            object.remove("sandbox");
+            object.remove("program_lineage");
+            child_sections(child);
+        }
+    }
+    child_sections(&mut value);
+    value["version"] = PROGRAM_FORMAT_VERSION.into();
+    value["task"] = task.into();
+    serde_json::from_value(value).expect("a resolved child is a program document")
+}
+
+fn effective_budget(parent: &Budget, program: &Budget, reserve: BudgetAmount) -> Budget {
+    let mut budget = program.clone();
     let tighter = |own: Option<u64>, reserved: Option<u64>| reserved.map_or(own, |n| Some(own.map_or(n, |t| t.min(n))));
     budget.model_calls = tighter(Some(budget.model_calls), reserve.model_calls).unwrap_or(budget.model_calls);
     budget.input_tokens = tighter(budget.input_tokens, reserve.input_tokens);
     budget.output_tokens = tighter(budget.output_tokens, reserve.output_tokens);
     budget.seconds = tighter(budget.seconds, reserve.seconds);
-    budget.max_depth = budget.max_depth.min(parent.budget.max_depth.saturating_sub(1));
+    budget.max_depth = budget.max_depth.min(parent.max_depth.saturating_sub(1));
     if let Some(episodes) = reserve.episodes {
         budget.max_episodes = budget.max_episodes.min(episodes.try_into().unwrap_or(u32::MAX));
     }
-    ProgramDocument {
-        version: parent.version,
-        name: program.name.clone(),
-        instructions: program.instructions.clone(),
-        tools: program.tools.clone(),
-        tool_defs: program.tool_defs.clone(),
-        host_tools: program.host_tools.clone(),
-        grants: program.grants.clone(),
-        budget,
-        done_when: program.done_when.clone(),
-        context: program.context.clone(),
-        model: program.model.clone().or_else(|| parent.model.clone()),
-        sandbox: parent.sandbox.clone(),
-        // An ancestry claim belongs to a root state; a spawned child is
-        // part of its parent's episode tree, not a new program state.
-        program_lineage: None,
-        programs: program.programs.clone(),
-        workflow: program.workflow.clone(),
-        task,
-    }
+    budget
 }
 
 impl Spawner for ProcessSpawner {
@@ -310,32 +319,40 @@ impl Spawner for ProcessSpawner {
     }
 
     fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
-        if !self.config.grants.spawn.contains(&req.program) {
+        if !self.program.permits_spawn(&req.program) {
             return Err(CapError::CapabilityDenied(format!("grants.spawn does not list program {}", req.program)));
         }
         let program = self
-            .config
-            .programs
-            .get(&req.program)
+            .program
+            .spawned_program(&req.program)
             .ok_or_else(|| CapError::Invalid(format!("programs has no entry named {}", req.program)))?;
+        foe_program::identity::verify_executables(program)
+            .map_err(|e| CapError::Invalid(format!("program {} changed after construction: {e}", req.program)))?;
+        let expected = foe_program::identity::compute(program, &self.builtin_specs, &crate::identity::runtime_info())
+            .map_err(|e| CapError::Invalid(e.to_string()))?;
+        let limits = effective_budget(&self.limits, &program.budget, req.reserve);
         let dir = self.log_dir.join("children").join(&child_id);
         std::fs::create_dir_all(&dir)?;
         let invalid = |e: serde_json::Error| CapError::Invalid(e.to_string());
-        let config = child_document(&self.config, program, req.task, req.reserve);
+        let config = child_document(program, req.task);
         let config_path = dir.join("config.json");
         std::fs::write(&config_path, serde_json::to_vec_pretty(&config).map_err(invalid)?)?;
-        let lineage = serde_json::json!({
-            "episode_id": child_id, "parent_id": self.episode_id, "team_id": self.episode_id,
-        });
-        std::fs::write(dir.join("lineage.json"), serde_json::to_vec_pretty(&lineage).map_err(invalid)?)?;
+        let mut lineage = ChildLaunch {
+            episode_id: child_id.clone(),
+            parent_id: Some(self.episode_id.clone()),
+            team_id: Some(self.episode_id.clone()),
+            expected_program_identity: Some(expected.hash),
+            effective_budget: Some(limits),
+            ..ChildLaunch::default()
+        };
         if req.context == SpawnContext::Fork {
             let log_error =
                 |e: foe_log::LogError| CapError::Invalid(format!("seed from {}: {e}", self.log_dir.display()));
             let until = foe_log::fold::read_all(&self.log_dir).map_err(log_error)?.len() as u64;
-            let lead = Some(self.episode_id.clone());
-            let header = SeedHeader { new_id: child_id.clone(), parent_id: lead.clone(), team_id: lead };
-            foe_log::seed::seed(&self.log_dir, until, &dir, header).map_err(log_error)?;
+            lineage.fork_source = Some(self.log_dir.clone());
+            lineage.fork_at = Some(until);
         }
+        std::fs::write(dir.join("lineage.json"), serde_json::to_vec_pretty(&lineage).map_err(invalid)?)?;
         let mut cmd = Command::new(&self.launcher[0]);
         cmd.args(&self.launcher[1..])
             .arg("--config")
@@ -352,14 +369,14 @@ impl Spawner for ProcessSpawner {
         let stdin = child.stdin.take().ok_or_else(|| CapError::Invalid("child has no stdin".into()))?;
         let stdout = child.stdout.take().ok_or_else(|| CapError::Invalid("child has no stdout".into()))?;
         let stderr = child.stderr.take().ok_or_else(|| CapError::Invalid("child has no stderr".into()))?;
-        self.router.inner.lock().unwrap().children.insert(child_id.clone(), stdin);
+        self.connections.router.inner.lock().unwrap().children.insert(child_id.clone(), stdin);
         relay_stderr(child_id.clone(), stderr);
         let (tx, run) = ChildRun::pending();
         let reader = Reader {
             child_id: child_id.clone(),
-            uplink: self.uplink.clone(),
-            router: self.router.clone(),
-            observer: self.observer.clone(),
+            uplink: self.connections.uplink.clone(),
+            router: self.connections.router.clone(),
+            observer: self.connections.observer.clone(),
         };
         std::thread::spawn(move || {
             let settled = reader.run(stdout);
