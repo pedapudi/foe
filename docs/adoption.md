@@ -151,13 +151,18 @@ Successful standalone verification returns these facts:
 }
 ```
 
-`predecessor_contract_fingerprint` is `null` when the record omits it. The
-other fields are established from retained bytes rather than supplied by the
-caller.
+`predecessor_contract_fingerprint` is `null` when the record omits it.
+Verification establishes that `contract_fingerprint` digests the retained
+fingerprint document, that the verifier result at `verification_seq` is an
+accepted event inside the retained proposal tree, and that the provenance
+rule below holds. The association between the candidate and that verifier
+result is the record author's claim: the verification event does not record
+what it judged, so no retained byte ties the two together.
 
-An external adoption policy selects the permitted verifier fingerprints. It
-may also require an expected predecessor fingerprint. Bundle verification
-establishes facts and does not decide that policy.
+An external adoption policy selects the permitted verifier fingerprints,
+may require an expected predecessor fingerprint, and decides whether to
+accept the record's candidate-to-verification association. Bundle
+verification establishes facts and does not decide that policy.
 
 ## Proposal provenance
 

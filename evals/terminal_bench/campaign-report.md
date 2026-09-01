@@ -105,9 +105,8 @@ A program names the directories, executables, child programs, and network
 access it can use. Built-in tools enforce path grants. On supported Linux
 hosts, the sandbox can compile grants into Landlock restrictions. Tool
 effects and the kinds and counts of grants participate in program identity.
-[Program lineage and transition
-evidence](../../docs/lineage-identity.md#definitions) defines Foe's broader
-term, authority, as the complete set of effects a program may exercise.
+Foe's broader term, authority, means the complete set of effects a program
+may exercise.
 
 The Terminal-Bench adapter ran Foe with `sandbox.mode` set to `off`. Docker
 was the isolation boundary. The campaign therefore tested behavior inside a

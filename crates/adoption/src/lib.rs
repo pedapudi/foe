@@ -165,6 +165,9 @@ pub fn record_bytes(record: &AdoptionRecord) -> Result<Vec<u8>, AdoptionError> {
 
 /// Facts established by standalone adoption verification. The caller's
 /// adoption policy decides whether `verifier_fingerprint` is permitted.
+/// `contract_fingerprint` is checked against the retained fingerprint
+/// document alone; its association with the accepted verifier result is
+/// the record author's claim, left to that policy.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VerifiedAdoption {
     pub bundle_address: String,

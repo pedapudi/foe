@@ -47,9 +47,8 @@ DIAGNOSIS_VALIDATOR_MODULES = (
     "tool_candidate.py",
     "workflow_candidate.py",
 )
-# The campaign's per-task floor allowances; docs/adoption.md
-# "Harness adoptions" declares them as the fixed members of a workflow
-# adoption's development contract document.
+# The campaign's per-task floor allowances: the fixed members of every
+# development contract document a workflow adoption produces here.
 DEVELOPMENT_TASK_MODEL_CALLS = 60
 DEVELOPMENT_TASK_SECONDS = 1_800
 DEVELOPMENT_TASK_INSTRUCTION = "The development run supplies the task instruction at launch."

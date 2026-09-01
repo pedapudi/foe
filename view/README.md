@@ -162,7 +162,7 @@ element with id `app`. When that element is absent the bundle mounts into
 with `seq`, `time`, `type`, and `data`. `tree` is optional in static mode and
 gives the display order; it has the shape returned by `GET /episodes`. When
 it is absent, episodes appear in the order of the `episodes` object.
-Lineage itself is always derived from each log's `episode/start` event.
+Episode ancestry is always derived from each log's `episode/start` event.
 
 ### Static mode
 
