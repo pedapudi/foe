@@ -82,6 +82,17 @@ async fn start_runs_the_command_under_the_bash_contract() {
 }
 
 #[tokio::test]
+async fn start_rejects_a_literal_nul_before_opening_a_session() {
+    let fx = Fixture::new();
+    let fake = Arc::new(FakeSessions::new(alive(1, "server")));
+    let c = ctx_with_sessions(&fx, fake.clone());
+    let v = Session::new().call(json!({"action": "start", "command": "server\0arg"}), &c).await;
+    assert!(v.is_error);
+    assert!(v.rendered.unwrap().contains("printf '\\0'"));
+    assert!(fake.started.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn start_passes_the_explicit_task_lifetime_to_the_capability() {
     let fx = Fixture::new();
     let fake = Arc::new(FakeSessions::new(alive(1, "server")));

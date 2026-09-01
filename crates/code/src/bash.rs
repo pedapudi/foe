@@ -7,7 +7,8 @@
 //! rather than as a tool error.
 
 use crate::{
-    parse_args, process_output, shell_environment, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES, SHELL,
+    parse_args, process_output, shell_environment, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES,
+    SHELL, SHELL_COMMAND_NUL_ERROR,
 };
 use foe_core::{CallCtx, ExecRequest, Tool, ToolValue, SUBJECT_MAX};
 use foe_program::{Effect, ToolSpec};
@@ -72,6 +73,9 @@ impl Tool for Bash {
             Ok(a) => a,
             Err(e) => return e,
         };
+        if a.command.contains('\0') {
+            return ToolValue::error(format!("bash: {SHELL_COMMAND_NUL_ERROR}"));
+        }
         let Some(executor) = ctx.executor.as_ref() else {
             return ToolValue::error("bash: dispatched without an executor handle");
         };
