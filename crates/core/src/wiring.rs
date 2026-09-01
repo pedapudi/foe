@@ -85,33 +85,51 @@ impl BudgetedSpawner {
     }
 
     fn record(&self, event: EventData) -> Result<(), CapError> {
-        self.log.append(event).map(|_| ()).map_err(|e| CapError::Invalid(format!("log: {e}")))
+        self.log.append(event)?;
+        Ok(())
     }
 }
 
 impl Spawner for BudgetedSpawner {
-    fn spawn(&self, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
-        let child_id = self.inner.child_id();
+    fn allocate_id(&self) -> String {
+        self.inner.allocate_id()
+    }
+
+    fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
         let reserved = lock(&self.pool).reserve(&child_id, self.inner.reserve_for(&req)).map_err(|limit| {
             let limit = serde_json::to_value(limit).ok().and_then(|v| v.as_str().map(str::to_string));
             CapError::Invalid(format!("budget: the {} limit leaves no room for a child", limit.unwrap_or_default()))
         })?;
-        self.record(EventData::BudgetReserve { child_id: child_id.clone(), reserved })?;
+        if let Err(e) = self.record(EventData::BudgetReserve { child_id: child_id.clone(), reserved }) {
+            lock(&self.pool).release(&child_id, BudgetAmount::default());
+            return Err(e);
+        }
+        let start = EventData::SpawnStart {
+            child_id: child_id.clone(),
+            program: req.program.clone(),
+            context: req.context,
+            call_id: req.call_id.clone(),
+        };
+        if let Err(e) = self.record(start) {
+            lock(&self.pool).release(&child_id, BudgetAmount::default());
+            return Err(e);
+        }
         let started = SpawnRequest { reserve: reserved, ..req.clone() };
-        let handle = match self.inner.spawn_as(child_id.clone(), started) {
+        let handle = match self.inner.launch(child_id.clone(), started) {
             Ok(handle) => handle,
             Err(e) => {
+                let end = EventData::SpawnEnd {
+                    child_id: child_id.clone(),
+                    outcome: foe_log::Outcome::Failed { error: e.to_string() },
+                };
+                let recorded = self.record(end).and_then(|_| {
+                    self.record(EventData::BudgetRelease { child_id: child_id.clone(), spent: BudgetAmount::default() })
+                });
                 lock(&self.pool).release(&child_id, BudgetAmount::default());
-                self.record(EventData::BudgetRelease { child_id, spent: BudgetAmount::default() })?;
+                recorded?;
                 return Err(e);
             }
         };
-        self.record(EventData::SpawnStart {
-            child_id: child_id.clone(),
-            program: req.program,
-            context: req.context,
-            call_id: req.call_id,
-        })?;
         // The handle this returns settles only after the task below has
         // recorded the child's end and returned its reservation, so no
         // holder of the handle can observe a settled child while the
