@@ -4,28 +4,38 @@ use foe_program::identity::canonical;
 use std::ops::Deref;
 use std::path::Path;
 
-struct ScratchDir(tempfile::TempDir);
+struct ScratchDir(Option<tempfile::TempDir>);
+
+impl ScratchDir {
+    fn path(&self) -> &Path {
+        self.0.as_ref().unwrap().path()
+    }
+}
 
 impl Deref for ScratchDir {
     type Target = Path;
 
     fn deref(&self) -> &Self::Target {
-        self.0.path()
+        self.path()
     }
 }
 
 impl Drop for ScratchDir {
     fn drop(&mut self) {
+        let Some(mut dir) = self.0.take() else { return };
         if std::thread::panicking() {
-            eprintln!("retained failed test directory: {}", self.0.path().display());
-            self.0.disable_cleanup(true);
+            eprintln!("retained failed test directory: {}", dir.path().display());
+            dir.disable_cleanup(true);
+            return;
         }
+        let path = dir.path().to_path_buf();
+        dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
     }
 }
 
 fn tmp(name: &str) -> ScratchDir {
     assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
-    ScratchDir(tempfile::Builder::new().prefix(&format!("foe-build-bundle-{name}-")).tempdir().unwrap())
+    ScratchDir(Some(tempfile::Builder::new().prefix(&format!("foe-build-bundle-{name}-")).tempdir().unwrap()))
 }
 
 /// A bundle directory holding a proposal log, a candidate identity

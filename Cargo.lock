@@ -392,6 +392,7 @@ dependencies = [
  "foe-log",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
 ]

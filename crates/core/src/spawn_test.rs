@@ -119,7 +119,7 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     config.grants.spawn.push("nested".into());
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
-        dir,
+        dir.to_path_buf(),
         config.clone(),
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
@@ -180,7 +180,7 @@ fn a_workflow_bearing_child_asks_for_its_subtree_episodes() {
     assert!(child.grants.spawn.is_empty(), "the workflow is the child's only source of descendants");
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
-        dir,
+        dir.to_path_buf(),
         config,
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
@@ -205,7 +205,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     let seen = Arc::new(Seen::default());
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
-        dir.clone(),
+        dir.to_path_buf(),
         parent_config(),
         uplink.clone(),
         router.clone(),
@@ -275,7 +275,7 @@ fn spawn_refuses_programs_outside_the_grant() {
     let dir = scratch("spawn", "refuse");
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
-        dir.clone(),
+        dir.to_path_buf(),
         parent_config(),
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
@@ -330,7 +330,7 @@ async fn a_host_call_no_host_can_answer_is_refused_at_once() {
     let uplink = Arc::new(NoHost::default());
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
-        dir.clone(),
+        dir.to_path_buf(),
         parent_config(),
         uplink.clone(),
         Arc::new(Router::new()),

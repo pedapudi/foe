@@ -623,28 +623,38 @@ pub(crate) mod test_support {
     use std::ops::Deref;
     use std::path::{Path, PathBuf};
 
-    pub struct ScratchDir(tempfile::TempDir);
+    pub struct ScratchDir(Option<tempfile::TempDir>);
+
+    impl ScratchDir {
+        fn path(&self) -> &Path {
+            self.0.as_ref().unwrap().path()
+        }
+    }
 
     impl Deref for ScratchDir {
         type Target = Path;
 
         fn deref(&self) -> &Self::Target {
-            self.0.path()
+            self.path()
         }
     }
 
     impl AsRef<Path> for ScratchDir {
         fn as_ref(&self) -> &Path {
-            self.0.path()
+            self.path()
         }
     }
 
     impl Drop for ScratchDir {
         fn drop(&mut self) {
+            let Some(mut dir) = self.0.take() else { return };
             if std::thread::panicking() {
-                eprintln!("retained failed test directory: {}", self.0.path().display());
-                self.0.disable_cleanup(true);
+                eprintln!("retained failed test directory: {}", dir.path().display());
+                dir.disable_cleanup(true);
+                return;
             }
+            let path = dir.path().to_path_buf();
+            dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
         }
     }
 
@@ -671,7 +681,7 @@ pub(crate) mod test_support {
     /// test and retained when its owner is dropped during unwinding.
     pub fn scratch_dir(name: &str) -> ScratchDir {
         assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
-        ScratchDir(tempfile::Builder::new().prefix(&format!("foe-transport-{name}-")).tempdir().unwrap())
+        ScratchDir(Some(tempfile::Builder::new().prefix(&format!("foe-transport-{name}-")).tempdir().unwrap()))
     }
 
     /// A scratch file path; the parent directory exists, the file may not.

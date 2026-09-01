@@ -14,19 +14,24 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 pub struct ScratchDir {
-    dir: tempfile::TempDir,
+    dir: Option<tempfile::TempDir>,
 }
 
 impl ScratchDir {
     fn new(prefix: &str, name: &str) -> Self {
         assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
         let dir = tempfile::Builder::new().prefix(&format!("{prefix}-{name}-")).tempdir().unwrap();
-        Self { dir }
+        Self { dir: Some(dir) }
     }
 
     fn keep(mut self) -> PathBuf {
-        self.dir.disable_cleanup(true);
-        self.dir.path().to_path_buf()
+        let mut dir = self.dir.take().unwrap();
+        dir.disable_cleanup(true);
+        dir.path().to_path_buf()
+    }
+
+    fn path(&self) -> &Path {
+        self.dir.as_ref().unwrap().path()
     }
 }
 
@@ -34,22 +39,32 @@ impl Deref for ScratchDir {
     type Target = Path;
 
     fn deref(&self) -> &Self::Target {
-        self.dir.path()
+        self.path()
     }
 }
 
 impl AsRef<Path> for ScratchDir {
     fn as_ref(&self) -> &Path {
-        self.dir.path()
+        self.path()
+    }
+}
+
+impl serde::Serialize for ScratchDir {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(self.path(), serializer)
     }
 }
 
 impl Drop for ScratchDir {
     fn drop(&mut self) {
+        let Some(mut dir) = self.dir.take() else { return };
         if std::thread::panicking() {
-            eprintln!("retained failed test directory: {}", self.dir.path().display());
-            self.dir.disable_cleanup(true);
+            eprintln!("retained failed test directory: {}", dir.path().display());
+            dir.disable_cleanup(true);
+            return;
         }
+        let path = dir.path().to_path_buf();
+        dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
     }
 }
 

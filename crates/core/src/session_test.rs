@@ -3,10 +3,11 @@ use crate::budget::Pool;
 use crate::exec::tests::scratch;
 use crate::loop_::Log;
 use crate::spawn::tests::{parent_config, wait_for};
+use crate::test_util::ScratchDir;
 use foe_log::{EpisodeStart, EventData, Outcome, RuntimeInfo, SandboxInfo, SandboxMode};
 use std::path::Path;
 
-fn sessions(name: &str, limit: usize) -> (LocalSessions, PathBuf) {
+fn sessions(name: &str, limit: usize) -> (LocalSessions, ScratchDir) {
     let dir = scratch("session", name);
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
     let policy = Policy { exec: vec!["/bin/bash".into()], ..Policy::default() };
@@ -92,8 +93,12 @@ fn a_session_serves_a_granted_bind_port_across_calls() {
     );
     std::fs::write(dir.join("server.py"), server).unwrap();
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
-    let policy =
-        Policy { read: vec![dir.clone()], exec: vec!["/bin/bash".into()], bind_tcp: vec![port], ..Policy::default() };
+    let policy = Policy {
+        read: vec![dir.to_path_buf()],
+        exec: vec!["/bin/bash".into()],
+        bind_tcp: vec![port],
+        ..Policy::default()
+    };
     let s = LocalSessions::new(sandbox, policy, dir.join("spill"), 4, false);
     s.start(shell(&dir, "/usr/bin/python3 server.py")).unwrap();
     wait_for(|| {

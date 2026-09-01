@@ -39,8 +39,8 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
 
 #[test]
 fn builtin_key_file_uses_the_providers_credential_option() {
-    let credential = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/test-scratch/builtin-credential.json");
-    std::fs::create_dir_all(credential.parent().unwrap()).unwrap();
+    let dir = crate::tests::scratch("foe-cli-run", "builtin-credential");
+    let credential = dir.join("credential.json");
     std::fs::write(&credential, "{}\n").unwrap();
     let canonical = credential.canonicalize().unwrap().to_string_lossy().into_owned();
 

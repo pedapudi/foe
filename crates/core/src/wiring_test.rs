@@ -43,7 +43,7 @@ async fn a_spawn_reserves_records_and_releases_budget() {
     let router = Arc::new(Router::new());
     let inner = ProcessSpawner::new(
         "ep_root".into(),
-        dir.clone(),
+        dir.to_path_buf(),
         config,
         Arc::new(Lines::default()),
         router.clone(),
@@ -89,7 +89,7 @@ async fn a_process_start_failure_closes_the_spawn_and_reservation() {
     let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
     let inner = ProcessSpawner::new(
         "ep_root".into(),
-        dir,
+        dir.to_path_buf(),
         config,
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
@@ -137,7 +137,7 @@ async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
     let router = Arc::new(Router::new());
     let inner = ProcessSpawner::new(
         "ep_root".into(),
-        dir.clone(),
+        dir.to_path_buf(),
         config,
         Arc::new(Lines::default()),
         router.clone(),
@@ -181,7 +181,7 @@ async fn a_grandchild_counts_against_the_root_episode_allowance() {
     let router = Arc::new(Router::new());
     let inner = ProcessSpawner::new(
         "ep_root".into(),
-        dir.clone(),
+        dir.to_path_buf(),
         config,
         Arc::new(Lines::default()),
         router.clone(),
@@ -219,7 +219,7 @@ async fn ending_an_episode_settles_a_child_that_is_still_running() {
     let router = Arc::new(Router::new());
     let inner = ProcessSpawner::new(
         "ep_root".into(),
-        dir.clone(),
+        dir.to_path_buf(),
         config,
         Arc::new(Lines::default()),
         router.clone(),

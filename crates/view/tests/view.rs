@@ -6,8 +6,43 @@
 use foe_log::{Event, ExhaustedLimit, Outcome};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+struct ScratchDir(Option<tempfile::TempDir>);
+
+impl ScratchDir {
+    fn new(name: &str) -> Self {
+        assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+        Self(Some(tempfile::Builder::new().prefix(&format!("foe-view-{name}-")).tempdir().unwrap()))
+    }
+
+    fn path(&self) -> &Path {
+        self.0.as_ref().unwrap().path()
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.path()
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let Some(mut dir) = self.0.take() else { return };
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", dir.path().display());
+            dir.disable_cleanup(true);
+            return;
+        }
+        let path = dir.path().to_path_buf();
+        dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
+    }
+}
 
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/run")
@@ -171,12 +206,10 @@ fn a_directory_with_no_log_anywhere_names_the_log_it_lacks() {
     // episode directory nor a collection is read as an episode directory,
     // so the failure names the file it could not open rather than
     // reporting an empty tree.
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/foe-view-empty-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = ScratchDir::new("empty");
     std::fs::create_dir_all(dir.join("notes")).unwrap();
     let err = foe_view::project(&dir).unwrap_err().to_string();
     assert!(err.contains(&format!("{}/episode.jsonl", dir.display())), "{err}");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -238,9 +271,7 @@ fn sse_resumes_from_last_event_id() {
 
 #[test]
 fn sse_delivers_events_appended_while_connected() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/foe-view-tail-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = ScratchDir::new("tail");
     let lines: Vec<String> =
         std::fs::read_to_string(fixture().join("episode.jsonl")).unwrap().lines().map(str::to_string).collect();
     let log = dir.join("episode.jsonl");
@@ -263,7 +294,6 @@ fn sse_delivers_events_appended_while_connected() {
     let (id, data) = next_event(&mut reader);
     assert_eq!(id, 2);
     assert!(data.contains("\"type\":\"request/header\""), "{data}");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

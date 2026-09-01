@@ -177,7 +177,7 @@ async fn spawn_tool_runs_a_child_whose_notify_and_end_reach_the_lead() {
     let spawner: Arc<dyn Spawner> = Arc::new(
         ProcessSpawner::new(
             "ep_lead".into(),
-            dir.clone(),
+            dir.to_path_buf(),
             parent_config(),
             uplink.clone(),
             router.clone(),

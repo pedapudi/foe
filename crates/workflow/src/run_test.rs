@@ -23,12 +23,16 @@ use std::time::{Duration, Instant};
 /// Every call of one tool: its arguments and when it ran.
 type Calls = Arc<Mutex<Vec<(Value, Instant, Instant)>>>;
 
-struct ScratchDir(tempfile::TempDir);
+struct ScratchDir(Option<tempfile::TempDir>);
 
 impl ScratchDir {
     fn new(name: &str) -> Self {
         assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
-        Self(tempfile::Builder::new().prefix(&format!("foe-workflow-{name}-")).tempdir().unwrap())
+        Self(Some(tempfile::Builder::new().prefix(&format!("foe-workflow-{name}-")).tempdir().unwrap()))
+    }
+
+    fn path(&self) -> &Path {
+        self.0.as_ref().unwrap().path()
     }
 }
 
@@ -36,22 +40,26 @@ impl Deref for ScratchDir {
     type Target = Path;
 
     fn deref(&self) -> &Self::Target {
-        self.0.path()
+        self.path()
     }
 }
 
 impl serde::Serialize for ScratchDir {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serde::Serialize::serialize(self.0.path(), serializer)
+        serde::Serialize::serialize(self.path(), serializer)
     }
 }
 
 impl Drop for ScratchDir {
     fn drop(&mut self) {
+        let Some(mut dir) = self.0.take() else { return };
         if std::thread::panicking() {
-            eprintln!("retained failed test directory: {}", self.0.path().display());
-            self.0.disable_cleanup(true);
+            eprintln!("retained failed test directory: {}", dir.path().display());
+            dir.disable_cleanup(true);
+            return;
         }
+        let path = dir.path().to_path_buf();
+        dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
     }
 }
 

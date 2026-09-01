@@ -4,6 +4,7 @@
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -11,11 +12,55 @@ const FOE: &str = env!("CARGO_BIN_EXE_foe");
 use foe_program::SCHEMA;
 const EXAMPLES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples");
 
-fn scratch(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("cli-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.canonicalize().unwrap()
+struct ScratchDir {
+    dir: Option<tempfile::TempDir>,
+    path: PathBuf,
+}
+
+impl ScratchDir {
+    fn new(name: &str) -> Self {
+        assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+        let dir =
+            tempfile::Builder::new().prefix(&format!("cli-{name}-")).tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+        let path = dir.path().canonicalize().unwrap();
+        Self { dir: Some(dir), path }
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.path
+    }
+}
+
+impl AsRef<Path> for ScratchDir {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl serde::Serialize for ScratchDir {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(&self.path, serializer)
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let Some(mut dir) = self.dir.take() else { return };
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", self.path.display());
+            dir.disable_cleanup(true);
+            return;
+        }
+        dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", self.path.display()));
+    }
+}
+
+fn scratch(name: &str) -> ScratchDir {
+    ScratchDir::new(name)
 }
 
 fn text(delta: &str) -> Value {
