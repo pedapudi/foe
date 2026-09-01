@@ -27,7 +27,7 @@ fn source(dir: &std::path::Path) -> Vec<Event> {
 }
 
 fn header() -> SeedHeader {
-    SeedHeader { new_id: "ep_new".into(), parent_id: Some("ep_parent".into()), team_id: None }
+    SeedHeader { new_id: "ep_new".into(), parent_id: Some("ep_parent".into()), team_id: None, program: None }
 }
 
 #[test]

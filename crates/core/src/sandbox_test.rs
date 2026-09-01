@@ -1,4 +1,5 @@
 use super::*;
+use foe_program::ProgramDocument;
 use std::io::Write;
 
 fn sandbox() -> Option<Sandbox> {
@@ -15,6 +16,10 @@ fn temp_dir(name: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+fn policy(config: &ProgramDocument, log_dir: &Path) -> Policy {
+    Policy::for_episode(&foe_program::document::resolve(config).unwrap(), log_dir)
 }
 
 #[test]
@@ -136,12 +141,12 @@ fn tcp_connect_is_denied_from_abi_4() {
 fn network_policy_can_read_resolver_configuration() {
     let Some(s) = sandbox() else { return };
     let config: ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "network", "instructions": {"role": "x"}, "tools": [],
-        "grants": {"read": [], "write": []}, "budget": {"model_calls": 1},
+        "version": 3, "name": "network", "instructions": {"role": "x"}, "tools": ["block"],
+        "grants": {"read": ["/tmp"], "write": []}, "budget": {"model_calls": 1},
         "model": {"provider": "openai", "model": "m"}, "task": "t"
     }))
     .unwrap();
-    let policy = Policy::for_episode(&config, Path::new("/logs/ep"));
+    let policy = policy(&config, Path::new("/logs/ep"));
     let read = s.run_narrowed(&policy, || std::fs::read_to_string("/etc/resolv.conf")).unwrap();
     assert!(read.is_ok(), "/etc/resolv.conf is readable under the network policy: {read:?}");
 }
@@ -179,11 +184,11 @@ fn a_bind_grant_reaches_a_narrowed_executable() {
     let port = probe.local_addr().unwrap().port();
     drop(probe);
     let config: ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "server", "instructions": {"role": "x"}, "tools": [],
-        "grants": {"read": [], "bind": [port]}, "budget": {"model_calls": 1}, "task": "t"
+        "version": 3, "name": "server", "instructions": {"role": "x"}, "tools": ["block"],
+        "grants": {"read": ["/tmp"], "bind": [port]}, "budget": {"model_calls": 1}, "task": "t"
     }))
     .unwrap();
-    let tool = Policy::for_episode(&config, Path::new("/logs/ep")).for_executable(Path::new("/bin/sh"), false);
+    let tool = policy(&config, Path::new("/logs/ep")).for_executable(Path::new("/bin/sh"), false);
     assert_eq!(tool.bind_tcp, vec![port]);
     let (granted, other) = s
         .run_narrowed(&tool, || {
@@ -201,20 +206,26 @@ fn a_bind_grant_reaches_a_narrowed_executable() {
 
 #[test]
 fn episode_policy_follows_grants_and_tool_defs() {
+    let dir = temp_dir("episode-policy");
+    let tool = dir.join("ruff");
+    std::fs::copy("/bin/true", &tool).unwrap();
+    let out = dir.join("out");
+    std::fs::create_dir(&out).unwrap();
     let config: ProgramDocument = serde_json::from_value(serde_json::json!({
         "version": 3, "name": "p", "instructions": {"r": "x"}, "tools": ["ruff"],
-        "tool_defs": {"ruff": {"exec": "/usr/bin/ruff", "description": "d"}},
-        "grants": {"read": ["/src"], "write": ["/src/out"], "execute": ["/opt/toolchain"], "bind": [8080]},
+        "tool_defs": {"ruff": {"exec": tool, "description": "d"}},
+        "grants": {"read": [dir], "write": [out], "execute": ["/bin/sh"], "bind": [8080]},
         "budget": {"model_calls": 1}, "task": "t"
     }))
     .unwrap();
-    let p = Policy::for_episode(&config, Path::new("/logs/ep"));
-    assert_eq!(p.read, vec![PathBuf::from("/src")]);
-    assert_eq!(p.write, vec![PathBuf::from("/src/out")]);
-    assert_eq!(p.delegated_exec, vec![PathBuf::from("/opt/toolchain")]);
+    let p = policy(&config, Path::new("/logs/ep"));
+    assert_eq!(p.read, vec![dir.clone()]);
+    assert_eq!(p.write, vec![out]);
+    let shell = std::fs::canonicalize("/bin/sh").unwrap();
+    assert_eq!(p.delegated_exec, vec![shell.clone()]);
     assert_eq!(
         p.exec,
-        vec![PathBuf::from("/usr/bin/ruff"), PathBuf::from("/opt/toolchain")],
+        vec![tool, shell],
         "the configured tool and explicit subprocess grant; no child program to start"
     );
     assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
@@ -224,8 +235,16 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert!(p.read_files.is_empty(), "an episode that opens no connection reads no resolver file");
     let mut with_children = config.clone();
     with_children.grants.spawn = vec!["survey".into()];
+    with_children.programs.insert(
+        "survey".into(),
+        serde_json::from_value(serde_json::json!({
+            "name": "survey", "instructions": {"r": "x"}, "tools": ["block"],
+            "grants": {"read": [dir]}, "budget": {"model_calls": 1}
+        }))
+        .unwrap(),
+    );
     with_children.model = Some(foe_program::ModelConfig::new("anthropic", "m"));
-    let mut p = Policy::for_episode(&with_children, Path::new("/logs/ep"));
+    let mut p = policy(&with_children, Path::new("/logs/ep"));
     assert_eq!(p.read_files, resolver, "the credential file is appended by the binary after resolution");
     if let Ok(binary) = std::env::current_exe() {
         assert!(p.exec.contains(&binary), "the binary starts children");
@@ -246,39 +265,49 @@ fn episode_policy_follows_grants_and_tool_defs() {
 /// cannot run the tool its own configuration names.
 #[test]
 fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
+    let dir = temp_dir("descendant-policies");
+    let paths: Vec<PathBuf> = ["own", "childs", "grandchilds", "nodes"]
+        .into_iter()
+        .map(|name| {
+            let path = dir.join(name);
+            std::fs::copy("/bin/true", &path).unwrap();
+            path
+        })
+        .collect();
     let config: ProgramDocument = serde_json::from_value(serde_json::json!({
-        "version": 3, "name": "p", "instructions": {"r": "x"}, "tools": ["own"],
-        "tool_defs": {"own": {"exec": "/usr/bin/own", "description": "d"}},
-        "grants": {"read": ["/src"], "spawn": ["kid"]},
+        "version": 3, "name": "p", "instructions": {"r": "x"}, "tools": ["own", "nodes"],
+        "tool_defs": {
+            "own": {"exec": paths[0], "description": "d"},
+            "nodes": {"exec": paths[3], "description": "d"}
+        },
+        "grants": {"read": [dir], "spawn": ["kid"]},
         "budget": {"model_calls": 1},
         "programs": {"kid": {
             "name": "kid", "instructions": {"r": "x"}, "tools": ["childs"],
-            "tool_defs": {"childs": {"exec": "/usr/bin/childs", "description": "d"}},
-            "grants": {"read": ["/src"], "spawn": ["grandkid"]}, "budget": {"model_calls": 1},
+            "tool_defs": {"childs": {"exec": paths[1], "description": "d"}},
+            "grants": {"read": [dir], "spawn": ["grandkid"]}, "budget": {"model_calls": 1},
             "programs": {"grandkid": {
                 "name": "grandkid", "instructions": {"r": "x"}, "tools": ["grandchilds"],
-                "tool_defs": {"grandchilds": {"exec": "/usr/bin/grandchilds", "description": "d"}},
-                "grants": {"read": ["/src"]}, "budget": {"model_calls": 1}
+                "tool_defs": {"grandchilds": {"exec": paths[2], "description": "d"}},
+                "grants": {"read": [dir]}, "budget": {"model_calls": 1}
             }}
         }},
         "workflow": {"nodes": {"draft": {"terminal": true, "model": {
             "name": "draft", "instructions": {"r": "x"}, "tools": ["nodes"],
-            "tool_defs": {"nodes": {"exec": "/usr/bin/nodes", "description": "d"}},
-            "grants": {"read": ["/src"]}, "budget": {"model_calls": 1}
+            "tool_defs": {"nodes": {"exec": paths[3], "description": "d"}},
+            "grants": {"read": [dir]}, "budget": {"model_calls": 1}
         }}}},
         "task": "t"
     }))
     .unwrap();
-    let p = Policy::for_episode(&config, Path::new("/logs/ep"));
-    for named in ["/usr/bin/own", "/usr/bin/childs", "/usr/bin/grandchilds", "/usr/bin/nodes"] {
-        assert!(p.exec.contains(&PathBuf::from(named)), "{named} is missing from {:?}", p.exec);
+    let resolved = foe_program::document::resolve(&config).unwrap();
+    let p = Policy::for_episode(&resolved, Path::new("/logs/ep"));
+    for named in &paths {
+        assert!(p.exec.contains(named), "{} is missing from {:?}", named.display(), p.exec);
     }
     let mut below = Vec::new();
-    super::configured_executables(&config.programs["kid"], &mut below);
-    assert!(
-        !below.contains(&PathBuf::from("/usr/bin/own")),
-        "a child's own ruleset holds its own executables, never its parent's"
-    );
+    resolved.spawned_program("kid").unwrap().collect_executables(&mut below);
+    assert!(!below.contains(&paths[0]), "a child's own ruleset holds its own executables, never its parent's");
 }
 
 /// docs/sandbox.md "Executables": the reservation is what lets a descendant
@@ -301,7 +330,7 @@ fn a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved() {
         "task": "t"
     }))
     .unwrap();
-    let ancestor = Policy::for_episode(&config, &dir);
+    let ancestor = policy(&config, &dir);
     let started = s
         .run_narrowed(&ancestor, || {
             Command::new(&tool).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status()

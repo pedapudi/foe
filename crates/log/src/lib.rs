@@ -247,6 +247,9 @@ pub struct EpisodeStart {
     pub task: String,
     pub runtime: RuntimeInfo,
     pub sandbox: SandboxInfo,
+    /// The allowance enforced for this episode. Older logs omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_budget: Option<Budget>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -617,6 +620,31 @@ pub enum InboxSource {
 }
 
 // ---- budget, spawn, team payloads ------------------------------------------
+
+fn u32_default<const N: u32>() -> u32 {
+    N
+}
+
+/// The limits enforced for one episode and its descendant work.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Budget {
+    pub model_calls: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seconds: Option<u64>,
+    #[serde(default = "u32_default::<1>")]
+    pub max_depth: u32,
+    #[serde(default = "u32_default::<8>")]
+    pub max_episodes: u32,
+    #[serde(default = "u32_default::<4>")]
+    pub max_concurrent: u32,
+    #[serde(default = "u32_default::<8>")]
+    pub loop_threshold: u32,
+}
 
 /// An amount of budget. Absent fields mean unlimited for that dimension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

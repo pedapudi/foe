@@ -21,8 +21,8 @@ pub const TASK_SOURCE: &str = "task";
 /// contributes at least one firing.
 pub const MAX_POSSIBLE_FIRINGS: u64 = 4096;
 
-/// A declared graph. Model node programs are kept as written; the spawner
-/// resolves each when the node fires, as it does for `programs`.
+/// A declared graph. Construction resolves every model node into the
+/// enclosing program's immutable child-program tree.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowConfig {

@@ -296,6 +296,7 @@ mod episode {
             task: "count the lines".into(),
             runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
             sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+            effective_budget: None,
         };
         let outcome = run(Params {
             log: log.clone(),

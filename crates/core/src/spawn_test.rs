@@ -26,18 +26,46 @@ impl ChildObserver for Seen {
     }
 }
 
+impl ProcessSpawner {
+    pub(crate) fn with_launcher(mut self, argv: Vec<OsString>) -> Self {
+        self.launcher = argv;
+        self
+    }
+}
+
 pub(crate) fn parent_config() -> ProgramDocument {
     serde_json::from_value(serde_json::json!({
         "version": 3, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
-        "grants": {"read": ["/src"], "spawn": ["worker"]},
+        "grants": {"read": ["/tmp"], "spawn": ["worker"]},
         "budget": {"model_calls": 20, "max_depth": 2},
         "sandbox": {"mode": "off"},
         "programs": {"worker": {
             "name": "worker", "instructions": {"r": "work"}, "tools": ["notify"],
-            "grants": {"read": ["/src"]}, "budget": {"model_calls": 50, "max_depth": 3}
+            "grants": {"read": ["/tmp"]}, "budget": {"model_calls": 50, "max_depth": 3}
         }},
         "task": "lead task"
     }))
+    .unwrap()
+}
+
+pub(crate) fn process_spawner(
+    episode_id: &str,
+    log_dir: PathBuf,
+    config: ProgramDocument,
+    uplink: Arc<dyn Uplink>,
+    router: Arc<Router>,
+    observer: Arc<dyn ChildObserver>,
+) -> ProcessSpawner {
+    let program = foe_program::document::resolve(&config).unwrap();
+    let limits = program.budget.clone();
+    ProcessSpawner::new(
+        episode_id.into(),
+        log_dir,
+        program,
+        limits,
+        crate::team::builtin_specs(),
+        ProcessConnections { uplink, router, observer },
+    )
     .unwrap()
 }
 
@@ -117,15 +145,15 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     nested.budget.max_episodes = 5;
     config.programs.insert("nested".into(), nested);
     config.grants.spawn.push("nested".into());
-    let spawner = ProcessSpawner::new(
-        "ep_root".into(),
+    let program = foe_program::document::resolve(&config).unwrap();
+    let spawner = process_spawner(
+        "ep_root",
         dir,
         config.clone(),
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
         Arc::new(Seen::default()),
-    )
-    .unwrap();
+    );
     let ask = |program: &str| {
         let req = SpawnRequest {
             program: program.into(),
@@ -140,8 +168,8 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     assert_eq!(ask("nested"), Some(5), "a child that may spawn asks for the allowance it declares");
 
     let granted = BudgetAmount { model_calls: Some(5), episodes: Some(2), ..Default::default() };
-    let child = child_document(&config, &config.programs["nested"], "t".into(), granted);
-    assert_eq!(child.budget.max_episodes, 2, "the granted share caps the child's own allowance");
+    let child = program.spawned_program("nested").unwrap();
+    assert_eq!(effective_budget(&program.budget, &child.budget, granted).max_episodes, 2);
 }
 
 /// docs/config.md `model`: a spawned child's declared model replaces the
@@ -152,9 +180,163 @@ fn child_document_preserves_a_model_override() {
     config.model = Some(foe_program::ModelConfig::new("openai-codex", "gpt-5.6-sol"));
     let worker = config.programs.get_mut("worker").unwrap();
     worker.model = Some(foe_program::ModelConfig::new("openai-codex", "gpt-5.6-luna"));
-    let worker = worker.clone();
-    let child = child_document(&config, &worker, "t".into(), BudgetAmount::default());
+    let program = foe_program::document::resolve(&config).unwrap();
+    let child = child_document(program.spawned_program("worker").unwrap(), "t".into());
     assert_eq!(child.model.unwrap().model, "gpt-5.6-luna");
+}
+
+/// docs/config.md `budget`: runtime reservations limit execution without
+/// changing the declared child program or its identity.
+#[test]
+fn child_identity_is_stable_across_different_runtime_allowances() {
+    let mut config = parent_config();
+    config.budget.max_depth = 4;
+    let worker = config.programs.get_mut("worker").unwrap();
+    worker.budget.input_tokens = Some(1_000);
+    worker.budget.output_tokens = Some(500);
+    worker.budget.seconds = Some(90);
+    worker.budget.max_episodes = 6;
+    let resolved = foe_program::document::resolve(&config).unwrap();
+    let worker = resolved.spawned_program("worker").unwrap();
+    let specs = crate::team::builtin_specs();
+    let declared = foe_program::identity::compute(worker, &specs, &crate::identity::runtime_info()).unwrap();
+    let first = effective_budget(
+        &resolved.budget,
+        &worker.budget,
+        BudgetAmount {
+            model_calls: Some(8),
+            input_tokens: Some(800),
+            output_tokens: Some(400),
+            seconds: Some(60),
+            episodes: Some(4),
+        },
+    );
+    let mut shallower_parent = resolved.budget.clone();
+    shallower_parent.max_depth = 2;
+    let second = effective_budget(
+        &shallower_parent,
+        &worker.budget,
+        BudgetAmount {
+            model_calls: Some(3),
+            input_tokens: Some(300),
+            output_tokens: Some(100),
+            seconds: Some(20),
+            episodes: Some(2),
+        },
+    );
+    assert_ne!(first.model_calls, second.model_calls);
+    assert_ne!(first.input_tokens, second.input_tokens);
+    assert_ne!(first.output_tokens, second.output_tokens);
+    assert_ne!(first.seconds, second.seconds);
+    assert_ne!(first.max_depth, second.max_depth);
+    assert_ne!(first.max_episodes, second.max_episodes);
+    for task in ["first", "second"] {
+        let child = foe_program::document::resolve(&child_document(worker, task.into())).unwrap();
+        assert_eq!(
+            foe_program::identity::compute(&child, &specs, &crate::identity::runtime_info()).unwrap().hash,
+            declared.hash
+        );
+    }
+}
+
+/// docs/design.md "Program construction": a configured executable that
+/// changes after construction is rejected before the child can start.
+#[test]
+fn launch_refuses_a_descendant_executable_changed_after_construction() {
+    let dir = scratch("spawn", "changed-executable");
+    let tool = dir.join("tool");
+    std::fs::write(&tool, "first").unwrap();
+    let mut config = parent_config();
+    config.grants.read = vec![dir.clone()];
+    let worker = config.programs.get_mut("worker").unwrap();
+    worker.grants.read = vec![dir.clone()];
+    worker.tools = vec!["t".into()];
+    worker.tool_defs.insert(
+        "t".into(),
+        serde_json::from_value(serde_json::json!({ "exec": tool, "description": "test" })).unwrap(),
+    );
+    let program = foe_program::document::resolve(&config).unwrap();
+    std::fs::write(&tool, "second").unwrap();
+    let spawner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir.clone(),
+        program.clone(),
+        program.budget.clone(),
+        crate::team::builtin_specs(),
+        ProcessConnections {
+            uplink: Arc::new(Lines::default()),
+            router: Arc::new(Router::new()),
+            observer: Arc::new(Seen::default()),
+        },
+    )
+    .unwrap()
+    .with_launcher(fake_child(&dir));
+    let request = SpawnRequest {
+        program: "worker".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        call_id: "tc".into(),
+    };
+    let error = spawner.spawn(request).err().unwrap().to_string();
+    assert!(error.contains("changed after construction"), "{error}");
+    assert!(!dir.join("children").exists(), "the child directory is not created before the check");
+}
+
+/// docs/design.md "Subagents and teams": a spawned fork leaves seeding to
+/// the child so that the child can validate its identity first.
+#[tokio::test]
+async fn forked_child_launch_records_the_source_and_boundary() {
+    let dir = scratch("spawn", "fork-program-evidence");
+    let config = parent_config();
+    let program = foe_program::document::resolve(&config).unwrap();
+    let mut writer = foe_log::append::Writer::create(&dir, None).unwrap();
+    writer
+        .append(foe_log::EventData::EpisodeStart(foe_log::EpisodeStart {
+            id: "ep_root".into(),
+            parent_id: None,
+            fork_origin: None,
+            team_id: None,
+            program: program.to_value(),
+            identity: "sha256:parent".into(),
+            task: "lead task".into(),
+            runtime: crate::identity::runtime_info(),
+            sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+            effective_budget: Some(program.budget.clone()),
+        }))
+        .unwrap();
+    writer.sync().unwrap();
+    let router = Arc::new(Router::new());
+    let spawner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir.clone(),
+        program.clone(),
+        program.budget.clone(),
+        crate::team::builtin_specs(),
+        ProcessConnections {
+            uplink: Arc::new(Lines::default()),
+            router: router.clone(),
+            observer: Arc::new(Seen::default()),
+        },
+    )
+    .unwrap()
+    .with_launcher(waiting_child(&dir));
+    let request = SpawnRequest {
+        program: "worker".into(),
+        task: "work".into(),
+        context: SpawnContext::Fork,
+        reserve: BudgetAmount { model_calls: Some(5), ..Default::default() },
+        call_id: "tc".into(),
+    };
+    let handle = spawner.spawn(request).unwrap();
+    assert!(!handle.dir.join(foe_log::fold::LOG_FILE).exists());
+    let lineage: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(handle.dir.join("lineage.json")).unwrap()).unwrap();
+    assert_eq!(lineage["fork_source"], dir.to_string_lossy().as_ref());
+    assert_eq!(lineage["fork_at"], 1);
+    assert_eq!(lineage["effective_budget"]["model_calls"], 5);
+    router.cancel_all();
+    handle.run.settle().await;
 }
 
 /// docs/config.md `budget` and docs/workflow.md "Model nodes": a model node
@@ -171,22 +353,21 @@ fn a_workflow_bearing_child_asks_for_its_subtree_episodes() {
             "outer": { "workflow": { "nodes": {
                 "model": { "model": {
                     "name": "model", "instructions": { "r": "work" }, "tools": ["notify"],
-                    "grants": { "read": ["/src"] }, "budget": { "model_calls": 1 }
+                    "grants": { "read": ["/tmp"] }, "budget": { "model_calls": 1 }
                 }, "terminal": true }
             } } }
         } }))
         .unwrap(),
     );
     assert!(child.grants.spawn.is_empty(), "the workflow is the child's only source of descendants");
-    let spawner = ProcessSpawner::new(
-        "ep_root".into(),
+    let spawner = process_spawner(
+        "ep_root",
         dir,
         config,
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
         Arc::new(Seen::default()),
-    )
-    .unwrap();
+    );
     let req = SpawnRequest {
         program: "worker".into(),
         task: "t".into(),
@@ -203,16 +384,9 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     let uplink = Arc::new(Lines::default());
     let router = Arc::new(Router::new());
     let seen = Arc::new(Seen::default());
-    let spawner = ProcessSpawner::new(
-        "ep_root".into(),
-        dir.clone(),
-        parent_config(),
-        uplink.clone(),
-        router.clone(),
-        seen.clone(),
-    )
-    .unwrap()
-    .with_launcher(fake_child(&dir));
+    let spawner =
+        process_spawner("ep_root", dir.clone(), parent_config(), uplink.clone(), router.clone(), seen.clone())
+            .with_launcher(fake_child(&dir));
     let req = SpawnRequest {
         program: "worker".into(),
         task: "do it".into(),
@@ -226,13 +400,20 @@ async fn child_requests_are_forwarded_and_answers_routed() {
         serde_json::from_slice(&std::fs::read(child_dir.join("config.json")).unwrap()).unwrap();
     assert_eq!(written.name, "worker");
     assert_eq!(written.task, "do it");
-    assert_eq!(written.budget.model_calls, 5, "the reservation caps the program's budget");
-    assert_eq!(written.budget.max_depth, 1, "depth below the child is one less than below the parent");
+    assert_eq!(written.budget.model_calls, 50, "the declared child budget is stable");
+    assert_eq!(written.budget.max_depth, 3, "runtime reservations do not rewrite the declaration");
     assert_eq!(written.sandbox.mode, foe_log::SandboxMode::Off, "sandbox is inherited");
     let lineage: serde_json::Value =
         serde_json::from_slice(&std::fs::read(child_dir.join("lineage.json")).unwrap()).unwrap();
     assert_eq!(lineage["parent_id"], "ep_root");
     assert_eq!(lineage["episode_id"], handle.child_id.as_str());
+    assert_eq!(lineage["effective_budget"]["model_calls"], 5);
+    assert_eq!(lineage["effective_budget"]["max_depth"], 1);
+    let parent = foe_program::document::resolve(&parent_config()).unwrap();
+    let child = parent.spawned_program("worker").unwrap();
+    let expected =
+        foe_program::identity::compute(child, &crate::team::builtin_specs(), &crate::identity::runtime_info()).unwrap();
+    assert_eq!(lineage["expected_program_identity"], expected.hash);
 
     let forwarded = wait_for(|| {
         let lines = uplink.0.lock().unwrap();
@@ -273,15 +454,14 @@ async fn child_requests_are_forwarded_and_answers_routed() {
 #[test]
 fn spawn_refuses_programs_outside_the_grant() {
     let dir = scratch("spawn", "refuse");
-    let spawner = ProcessSpawner::new(
-        "ep_root".into(),
+    let spawner = process_spawner(
+        "ep_root",
         dir.clone(),
         parent_config(),
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
         Arc::new(Seen::default()),
     )
-    .unwrap()
     .with_launcher(fake_child(&dir));
     let req = SpawnRequest {
         program: "other".into(),
@@ -328,15 +508,14 @@ impl Uplink for NoHost {
 async fn a_host_call_no_host_can_answer_is_refused_at_once() {
     let dir = scratch("spawn", "no-host");
     let uplink = Arc::new(NoHost::default());
-    let spawner = ProcessSpawner::new(
-        "ep_root".into(),
+    let spawner = process_spawner(
+        "ep_root",
         dir.clone(),
         parent_config(),
         uplink.clone(),
         Arc::new(Router::new()),
         Arc::new(Seen::default()),
     )
-    .unwrap()
     .with_launcher(script(&dir, "asking-foe.sh", ASKING_CHILD));
     let req = SpawnRequest {
         program: "worker".into(),

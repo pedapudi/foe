@@ -351,16 +351,14 @@ fn a_workflow_model_node_can_select_its_model() {
     let root = tmp("config-workflow-model");
     let parent = program_with(&root, |v| {
         v["model"] = json!({ "provider": "openai-codex", "model": "gpt-5.6-sol" });
+        v["workflow"] = json!({ "nodes": { "diagnose": { "terminal": true, "model": {
+            "name": "diagnose", "instructions": { "role": "diagnose" }, "tools": ["block"],
+            "grants": { "read": [root] }, "budget": { "model_calls": 1 },
+            "model": { "provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "high" }
+        } } } });
     })
     .unwrap();
-    let child = serde_json::from_value(json!({
-        "name": "diagnose", "instructions": { "role": "diagnose" }, "tools": ["block"],
-        "grants": { "read": [root] }, "budget": { "model_calls": 1 },
-        "model": { "provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "high" }
-    }))
-    .unwrap();
-    let resolved = super::resolve_node_program("workflow.nodes.diagnose.model", &parent, &child).unwrap();
-    assert_eq!(resolved.model.unwrap().model, "gpt-5.6-luna");
+    assert_eq!(parent.workflow_programs["diagnose"].model.as_ref().unwrap().model, "gpt-5.6-luna");
 }
 
 fn node(name: &str, root: &std::path::Path) -> Value {

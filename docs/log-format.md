@@ -82,7 +82,17 @@ nothing emits it.
   "identity": "sha256:…",
   "task": "Fix the failing parser test.",
   "runtime": { "version": "0.1.0", "build": "sha256:…" },
-  "sandbox": { "mode": "best-effort", "landlock_abi": 7 }
+  "sandbox": { "mode": "best-effort", "landlock_abi": 7 },
+  "effective_budget": {
+    "model_calls": 20,
+    "input_tokens": 160000,
+    "output_tokens": 40000,
+    "seconds": 900,
+    "max_depth": 1,
+    "max_episodes": 4,
+    "max_concurrent": 2,
+    "loop_threshold": 8
+  }
 }
 ```
 
@@ -90,7 +100,11 @@ nothing emits it.
 `{ "episode_id": "…", "seq": N }` when the log was seeded from a prefix of
 another log. `team_id` names the lead episode when this episode is a team
 member. `program` is the resolved configuration with `task` removed.
-`landlock_abi` is 0 when Landlock was unavailable.
+`landlock_abi` is 0 when Landlock was unavailable. `effective_budget` is the
+allowance the episode enforces. Its fields have the meanings and defaults in
+[config.md](config.md#budget). A spawned episode can have an effective
+allowance below `program.budget`; this leaves `identity` unchanged. Logs
+written before this field was implemented omit it and remain readable.
 
 `episode/end` — implemented. Always the last event.
 
@@ -707,8 +721,10 @@ replay both use this.
 
 Given a source log and a boundary `seq` N:
 
-1. Write a fresh `episode/start` at `seq` 0 with a new `id`, `fork_origin`
-   set to the source episode and N, and all other fields copied.
+1. Write a fresh `episode/start` at `seq` 0 with a new `id` and `fork_origin`
+   set to the source episode and N. An ordinary fork copies the other fields.
+   A spawned fork records the spawned child's declared program, program
+   identity, and effective runtime allowance. It copies the remaining fields.
 2. Copy source events with `seq` in `[1, N)`, renumbering `seq` to be
    contiguous.
 3. Drop a copied `request/retry` that the boundary separated from the

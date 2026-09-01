@@ -480,7 +480,8 @@ impl Executor {
                     })
                 }
             }
-        } else if let Some(program) = &node.model {
+        } else if node.model.is_some() {
+            let program = &sh.program.workflow_programs[&full];
             let reserve = BudgetAmount {
                 model_calls: Some(program.budget.model_calls),
                 input_tokens: program.budget.input_tokens,

@@ -26,6 +26,7 @@ fn start(program: &ResolvedProgram) -> EpisodeStart {
         task: "do the thing".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        effective_budget: None,
     }
 }
 
@@ -858,7 +859,7 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
         &src,
         11,
         &dest,
-        foe_log::seed::SeedHeader { new_id: "ep_fork".into(), parent_id: None, team_id: None },
+        foe_log::seed::SeedHeader { new_id: "ep_fork".into(), parent_id: None, team_id: None, program: None },
     )
     .unwrap();
     let root = src.parent().unwrap().to_path_buf();

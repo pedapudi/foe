@@ -79,6 +79,7 @@ fn episode() -> Vec<Event> {
         task: "fix the parser".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        effective_budget: None,
     };
     number(vec![
         EventData::EpisodeStart(start),                                          // 0

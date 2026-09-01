@@ -35,6 +35,7 @@ fn log(name: &str) -> (Arc<Log>, std::path::PathBuf) {
         task: "t".into(),
         runtime: foe_log::RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+        effective_budget: None,
     }))
     .unwrap();
     (log, root)

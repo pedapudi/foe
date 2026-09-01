@@ -255,3 +255,52 @@ fn builtin_coding_can_retrieve_shortened_tool_results() {
     }
     assert!(extra_builtin_specs().iter().any(|spec| spec.name == foe_core::retrieval::NAME));
 }
+
+/// docs/design.md "Program construction": a child validates the identity
+/// committed by its parent before it writes an event or executes a tool.
+#[test]
+fn child_rejects_an_executable_changed_between_parent_check_and_child_construction() {
+    let dir = std::env::temp_dir().join(format!("foe-cli-launch-gap-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let tool = dir.join("tool");
+    std::fs::write(&tool, "first").unwrap();
+    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3,
+        "name": "child",
+        "instructions": {"role": "test"},
+        "tools": ["probe"],
+        "tool_defs": {"probe": {"exec": tool, "description": "test"}},
+        "grants": {"read": [dir]},
+        "budget": {"model_calls": 4},
+        "sandbox": {"mode": "off"},
+        "task": "test"
+    }))
+    .unwrap();
+    let expected = identity(&resolve(&config).unwrap()).unwrap().hash;
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec(&config).unwrap()).unwrap();
+    std::fs::write(
+        dir.join("lineage.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "episode_id": "ep_child",
+            "parent_id": "ep_parent",
+            "team_id": "ep_parent",
+            "expected_program_identity": expected,
+            "effective_budget": {"model_calls": 2}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::write(&tool, "second").unwrap();
+    let error = run(Options {
+        config: Some(config_path),
+        log_dir: Some(dir.clone()),
+        host: true,
+        headless: true,
+        ..Options::default()
+    })
+    .unwrap_err();
+    assert!(error.contains("expected program identity"), "{error}");
+    assert!(!dir.join(foe_log::fold::LOG_FILE).exists(), "identity is checked before episode/start");
+}

@@ -3,11 +3,11 @@
 //! call it, every elementary workflow cycle, and every pair of nodes whose
 //! write roots overlap. Each is read from the document and its resolution
 //! alone, which is what makes them reportable before anything runs. They
-//! encode one rule the executor in `foe-workflow` realizes as well, and
-//! which `spawner_document` there realizes from the same walk: a workflow
-//! model node is reachable because firing it starts that node's episode.
+//! encode one rule the executor in `foe-workflow` realizes as well: a
+//! workflow model node is reachable because firing it starts that node's
+//! resolved episode program.
 
-use crate::document::{resolve_node_program, ResolvedProgram};
+use crate::document::ResolvedProgram;
 use crate::tools::{resolve_sources, resolve_specs, Source};
 use crate::workflow::WorkflowConfig;
 use crate::{Effect, ToolSpec};
@@ -75,11 +75,10 @@ fn collect_authority(
         }
     }
     if let Some(wf) = &program.workflow {
-        for (node, node_program) in crate::workflow::model_nodes(wf, "") {
+        for (node, _) in crate::workflow::model_nodes(wf, "") {
             let child_path = format!("{path}.workflow.nodes.{}.model", node.replace('/', ".workflow.nodes."));
-            let child = resolve_node_program(&child_path, program, &crate::workflow::node_program(node_program))
-                .map_err(|e| e.to_string())?;
-            collect_authority(&child, &child_path, extra, found)?;
+            let child = &program.workflow_programs[&node];
+            collect_authority(child, &child_path, extra, found)?;
         }
     }
     Ok(())
@@ -159,10 +158,8 @@ fn collect_writers(
         .collect();
     for (name, node) in &wf.nodes {
         let full = format!("{prefix}{name}");
-        if let Some(model) = &node.model {
-            let resolved = resolve_node_program(&format!("workflow.nodes.{full}.model"), program, model)
-                .map_err(|e| e.to_string())?;
-            out.push((full, resolved.grants.write));
+        if node.model.is_some() {
+            out.push((full.clone(), program.workflow_programs[&full].grants.write.clone()));
         } else if node.tool.as_ref().and_then(|tool| effects.get(tool)).is_some_and(|e| !e.concurrent()) {
             out.push((full, program.grants.write.clone()));
         } else if let Some(inner) = &node.workflow {

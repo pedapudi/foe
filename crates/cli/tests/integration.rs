@@ -216,6 +216,35 @@ fn a_spent_model_call_budget_exhausts_the_episode() {
     assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "exhausted", "limit": "model_calls" }));
 }
 
+/// docs/log-format.md `episode/start`: a spawned episode records and
+/// enforces the effective allowance supplied beside its declared program.
+#[test]
+fn a_child_records_and_enforces_its_effective_budget() {
+    let dir = scratch("effective-child-budget");
+    std::fs::write(dir.join("f.txt"), "line\n").unwrap();
+    let config = config(&dir, |c| c["budget"] = json!({ "model_calls": 4 }));
+    let log_dir = dir.join("log");
+    std::fs::create_dir(&log_dir).unwrap();
+    std::fs::write(
+        log_dir.join("lineage.json"),
+        serde_json::to_vec(&json!({
+            "episode_id": "ep_child",
+            "parent_id": "ep_parent",
+            "team_id": "ep_parent",
+            "effective_budget": {"model_calls": 1}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let mut first = vec![text("reading")];
+    first.extend(call("tc_1", "read", r#"{"path": "f.txt"}"#));
+    first.push(done("tool"));
+    let (events, code) = host_run(&dir, &config, vec![first], |_, _| Value::Null);
+    assert_eq!(code, 3);
+    assert_eq!(events[0]["data"]["effective_budget"]["model_calls"], 1);
+    assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "exhausted", "limit": "model_calls" }));
+}
+
 /// A model transport for a headless run: one shell script for the whole
 /// tree, which tells the episodes apart by the marker each program's
 /// instructions carry. The root spawns the middle episode and waits, the
@@ -412,6 +441,10 @@ fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
     let child_log = dir.join("log/children").join(child_id).join("episode.jsonl");
     let child: Vec<Value> =
         std::fs::read_to_string(&child_log).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let lineage: Value =
+        serde_json::from_slice(&std::fs::read(child_log.parent().unwrap().join("lineage.json")).unwrap()).unwrap();
+    assert_eq!(child[0]["data"]["identity"], lineage["expected_program_identity"]);
+    assert_eq!(child[0]["data"]["effective_budget"], lineage["effective_budget"]);
     assert_eq!(child[1]["type"], "inbox/item");
     let task = child[1]["data"]["content"][0]["text"].as_str().unwrap();
     assert_eq!(task, "## task\n\ndo the thing\n\n## manifest\n\n{\"targets\":[\"a\",\"b\"]}", "one section per input");
@@ -1137,7 +1170,7 @@ const RECORDED_IDENTITIES: [(&str, &str); 12] = [
     ("subagents", "sha256:a06b99f1756c0e7875aee3929805a1fdf84dbd52e2848509da1c9bc00e012266"),
     ("team", "sha256:707e936f2b81df2e3d9bb30c73b99110fda402095bfcfa42404047162691dfe7"),
     ("verification-unsatisfiable", "sha256:4d33b5b864bea74f565876ae9d9343f27f82d27306d9e75566e732657450fad2"),
-    ("workflow", "sha256:429d035ab0e0d28df88db956a25ac8381b288bf82aeff13096d9eb4b0c09e3cd"),
+    ("workflow", "sha256:38ee62d9be7fd49f0125cf5f972aa9dc34d841a443731bb7137a7ba96d2139a7"),
     ("wrap-a-binary", "sha256:d84587490eb4f1238309b6bf77ace3f57e201f5f82372c24be6a04308ba21638"),
 ];
 
@@ -1500,6 +1533,48 @@ fn a_fork_runs_a_new_task_over_the_prior_context() {
         events.last().unwrap()["data"]["outcome"],
         json!({ "kind": "completed", "value": "the fork's outcome" })
     );
+}
+
+/// docs/design.md "Subagents and teams": a spawned fork validates the
+/// declared child identity before it writes the seeded child start.
+#[test]
+fn a_spawned_fork_records_child_program_evidence() {
+    let dir = scratch("spawned-fork-program");
+    let config = config(&dir, |_| {});
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let planned = plan(&config_path);
+    let source = dir.join("source");
+    std::fs::create_dir(&source).unwrap();
+    let source_start = json!({ "seq": 0, "time": 1, "type": "episode/start", "data": {
+        "id": "ep_source", "parent_id": null, "fork_origin": null, "team_id": null,
+        "program": {}, "identity": "sha256:source", "task": "source task",
+        "runtime": { "version": "0", "build": "unknown" },
+        "sandbox": { "mode": "off", "landlock_abi": 0 } } });
+    let source_task = json!({ "seq": 1, "time": 1, "type": "inbox/item", "data": {
+        "source": "task", "content": [{ "type": "text", "text": "source task" }],
+        "from": null, "message_id": null } });
+    std::fs::write(source.join("episode.jsonl"), format!("{source_start}\n{source_task}\n")).unwrap();
+    let log_dir = dir.join("log");
+    std::fs::create_dir(&log_dir).unwrap();
+    std::fs::write(
+        log_dir.join("lineage.json"),
+        serde_json::to_vec_pretty(&json!({
+            "episode_id": "ep_child", "parent_id": "ep_parent", "team_id": "ep_parent",
+            "expected_program_identity": planned["identity"], "effective_budget": {"model_calls": 2},
+            "fork_source": source, "fork_at": 2
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
+    let responses = vec![vec![text("finished"), done("end")]];
+    let (events, code, error) = drive(&config_path, &extra, responses, None, false);
+    assert_eq!(code, Some(0), "{error}");
+    assert_eq!(events[0]["data"]["identity"], planned["identity"]);
+    assert_eq!(events[0]["data"]["program"], planned["program"]);
+    assert_eq!(events[0]["data"]["effective_budget"]["model_calls"], 2);
+    assert_eq!(events[0]["data"]["fork_origin"], json!({"episode_id": "ep_source", "seq": 2}));
 }
 
 /// The seeding API's boundary rule is surfaced verbatim when `--at` names

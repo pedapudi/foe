@@ -20,14 +20,15 @@ use foe_core::protocol::{stdout_mirror, Host};
 use foe_core::registry::{Handles, Registry};
 use foe_core::sandbox::{Policy, Sandbox};
 use foe_core::session::LocalSessions;
-use foe_core::spawn::{ProcessSpawner, Router, Uplink};
+use foe_core::spawn::{ChildLaunch as Lineage, ProcessConnections, ProcessSpawner, Router, Uplink};
 use foe_core::team::{self, Team};
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
-use foe_log::{seed::SeedHeader, ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
+use foe_log::seed::{SeedHeader, SeedProgram};
+use foe_log::{ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
 use foe_program::document::{resolve, ResolvedProgram};
 use foe_program::identity::{compute, Identity};
-use foe_program::{ModelConfig, ProgramDocument, ToolSpec};
+use foe_program::{Budget, ModelConfig, ProgramDocument, ToolSpec};
 use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -150,24 +151,13 @@ fn known_window(_model: &ModelConfig) -> Option<u64> {
     None
 }
 
-/// Who this episode is. A child reads its ids from the `lineage.json` its
-/// parent wrote beside the log; a root draws a fresh id.
-#[derive(serde::Deserialize)]
-struct Lineage {
-    episode_id: String,
-    #[serde(default)]
-    parent_id: Option<String>,
-    #[serde(default)]
-    team_id: Option<String>,
-}
-
-impl Lineage {
-    fn read(log_dir: Option<&Path>) -> Result<Lineage, String> {
-        let file = log_dir.map(|d| d.join("lineage.json")).filter(|f| f.is_file());
-        let Some(file) = file else { return Ok(Lineage { episode_id: fresh_id(), parent_id: None, team_id: None }) };
-        let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-        serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", file.display()))
-    }
+/// Who this episode is. A child reads the launch metadata its parent wrote;
+/// a root draws a fresh id.
+fn read_lineage(log_dir: Option<&Path>) -> Result<Lineage, String> {
+    let file = log_dir.map(|d| d.join("lineage.json")).filter(|f| f.is_file());
+    let Some(file) = file else { return Ok(Lineage { episode_id: fresh_id(), ..Lineage::default() }) };
+    let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", file.display()))
 }
 
 fn fresh_id() -> String {
@@ -187,7 +177,7 @@ fn episode_directory(options: &Options, identity: &str, task: &str) -> Result<(P
     if let Some(dir) = options.log_dir.as_deref().filter(|dir| dir.join(foe_log::fold::LOG_FILE).is_file()) {
         return resume(dir, identity);
     }
-    let lineage = Lineage::read(options.log_dir.as_deref())?;
+    let lineage = read_lineage(options.log_dir.as_deref())?;
     let dir = options.log_dir.clone().unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
     Ok((dir, lineage))
 }
@@ -197,14 +187,14 @@ fn episode_directory(options: &Options, identity: &str, task: &str) -> Result<(P
 /// per log is the copied one at seq 1, and `system` is the runtime's
 /// channel for text the model must see.
 fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(PathBuf, Lineage), String> {
-    let lineage = Lineage { episode_id: fresh_id(), parent_id: None, team_id: None };
+    let lineage = Lineage { episode_id: fresh_id(), ..Lineage::default() };
     let dest = dest.unwrap_or_else(|| PathBuf::from(".foe").join(&lineage.episode_id));
     let in_dest = |e: LogError| format!("{}: {e}", dest.display());
     if dest.join(foe_log::fold::LOG_FILE).is_file() {
         return Err(format!("{} already holds a log; a fork starts a fresh one", dest.display()));
     }
     std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
-    let header = SeedHeader { new_id: lineage.episode_id.clone(), parent_id: None, team_id: None };
+    let header = SeedHeader { new_id: lineage.episode_id.clone(), parent_id: None, team_id: None, program: None };
     foe_log::seed::seed(source, at, &dest, header).map_err(|e| format!("--fork {}: {e}", source.display()))?;
     let mut writer = foe_log::append::Writer::open(&dest, None).map_err(in_dest)?;
     let content = vec![ContentBlock::Text { text: task.to_string() }];
@@ -231,7 +221,8 @@ fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
         let (dir, id) = (dir.display(), &start.id);
         return Err(format!("{dir}: episode {id} already ended; a finished log is forked, not resumed: foe \"task\" --fork {dir} --at SEQ"));
     }
-    let lineage = Lineage { episode_id: start.id, parent_id: start.parent_id, team_id: start.team_id };
+    let launch = read_lineage(Some(&dir))?;
+    let lineage = Lineage { episode_id: start.id, parent_id: start.parent_id, team_id: start.team_id, ..launch };
     let torn = std::fs::metadata(dir.join(foe_log::fold::LOG_FILE)).is_ok_and(|m| m.len() > consumed);
     if !torn && events.last().is_some_and(|e| matches!(e.data, EventData::SeedEnd {})) {
         return Ok((dir, lineage));
@@ -246,8 +237,12 @@ fn resume(dir: &Path, identity: &str) -> Result<(PathBuf, Lineage), String> {
     let new_id = fresh_id();
     let dest = dir.parent().unwrap_or(Path::new(".")).join(&new_id);
     std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
-    let header =
-        SeedHeader { new_id: new_id.clone(), parent_id: lineage.parent_id.clone(), team_id: lineage.team_id.clone() };
+    let header = SeedHeader {
+        new_id: new_id.clone(),
+        parent_id: lineage.parent_id.clone(),
+        team_id: lineage.team_id.clone(),
+        program: None,
+    };
     foe_log::seed::seed(&dir, events.len() as u64, &dest, header).map_err(in_dir)?;
     eprintln!(
         "foe: {} stopped mid-line or mid-obligation; episode {new_id} continues it in {}",
@@ -436,14 +431,28 @@ pub fn describe_transport(model: &ModelConfig) -> String {
     format!("{}/{}: this binary was built without the transport feature", model.provider, model.model)
 }
 
-/// Resolves the `model` block into a transport before the process restricts
-/// itself. The block is rewritten with the credential path it resolved to,
-/// so the record names the credential that ran; the path joins the sandbox
-/// policy as a readable file; and an `exec` provider's program joins it as
-/// an executable, run through the episode's own executor.
+/// Fills provider defaults before program construction, including the
+/// credential path that `episode/start.program` records.
+#[cfg(feature = "transport")]
+fn prepare_model(config: &mut ProgramDocument) -> Result<(), String> {
+    if let Some(model) = &mut config.model {
+        *model = foe_transport::plan(model).map_err(|e| e.to_string())?.model;
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "transport"))]
+fn prepare_model(_config: &mut ProgramDocument) -> Result<(), String> {
+    Ok(())
+}
+
+/// Resolves the constructed `model` block into a transport before the
+/// process restricts itself. The credential path joins the sandbox policy
+/// as a readable file. An `exec` provider's program joins it as an
+/// executable, run through the episode's own executor.
 #[cfg(feature = "transport")]
 fn built_in_transport(
-    model: &mut ModelConfig,
+    model: &ModelConfig,
     unconfined: &mut Unconfined,
     log_dir: &Path,
 ) -> Result<Arc<dyn Transport>, String> {
@@ -457,13 +466,12 @@ fn built_in_transport(
         Arc::new(LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel))
             as Arc<dyn foe_core::Executor>
     });
-    *model = plan.model.clone();
     foe_transport::build_planned(&plan, executor).map_err(|e| e.to_string())
 }
 
 #[cfg(not(feature = "transport"))]
 fn built_in_transport(
-    _model: &mut ModelConfig,
+    _model: &ModelConfig,
     _unconfined: &mut Unconfined,
     _log_dir: &Path,
 ) -> Result<Arc<dyn Transport>, String> {
@@ -471,17 +479,40 @@ fn built_in_transport(
 }
 
 pub fn run(options: Options) -> Result<ExitCode, String> {
-    let config = load_program_document(&options)?;
-    let mut program = resolve(&config).map_err(|e| format!("config: {e}"))?;
+    let mut config = load_program_document(&options)?;
+    prepare_model(&mut config)?;
+    let task = config.task.clone();
+    let program = resolve(&config).map_err(|e| format!("config: {e}"))?;
     let identity = identity(&program)?;
-    let (log_dir, lineage) = episode_directory(&options, &identity.hash, &config.task)?;
+    let (log_dir, lineage) = episode_directory(&options, &identity.hash, &task)?;
+    if let Some(expected) = &lineage.expected_program_identity {
+        if expected != &identity.hash {
+            return Err(format!(
+                "lineage.json: expected program identity {expected}, but the child document resolves to {}",
+                identity.hash
+            ));
+        }
+    }
+    let limits = lineage.effective_budget.clone().unwrap_or_else(|| program.budget.clone());
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
+    if let Some(source) = lineage.fork_source.as_ref().filter(|_| !log_dir.join(foe_log::fold::LOG_FILE).is_file()) {
+        let at = lineage.fork_at.ok_or("lineage.json: fork_source requires fork_at")?;
+        let header = SeedHeader {
+            new_id: lineage.episode_id.clone(),
+            parent_id: lineage.parent_id.clone(),
+            team_id: lineage.team_id.clone(),
+            program: Some(SeedProgram {
+                program: program.to_value(),
+                identity: identity.hash.clone(),
+                effective_budget: limits.clone(),
+            }),
+        };
+        foe_log::seed::seed(source, at, &log_dir, header)
+            .map_err(|e| format!("lineage.json fork_source {}: {e}", source.display()))?;
+    }
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let sandbox = Arc::new(Sandbox::new(program.sandbox.mode).map_err(|e| e.to_string())?);
-    // Every model node of a workflow is a child program of the spawner, so
-    // the policy and the spawner see the same program document.
-    let config = foe_workflow::spawner_document(&config);
-    let mut unconfined = Unconfined::new(sandbox, Policy::for_episode(&config, &log_dir));
+    let mut unconfined = Unconfined::new(sandbox, Policy::for_episode(&program, &log_dir));
     // Telemetry is resolved before confinement: the capture directory must
     // be writable after the sandbox closes, so it is created now and
     // granted like any other write root. A broken enablement file warns
@@ -507,7 +538,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let context = context_policy(&program)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
     let runtime_info = runtime_info();
-    let transport = match &mut program.model {
+    let transport = match &program.model {
         Some(model) => Some(built_in_transport(model, &mut unconfined, &log_dir)?),
         None if options.host => None,
         None => return Err("no model: give --model and --key-file, add a `model` block, or run under --host".into()),
@@ -520,12 +551,13 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         team_id: lineage.team_id,
         program: program.to_value(),
         identity: identity.hash,
-        task: config.task.clone(),
+        task,
         runtime: runtime_info,
         sandbox: confined.parts().0.info(),
+        effective_budget: Some(limits.clone()),
     };
     let telemetry_log_dir = log_dir.clone();
-    let setup = Setup { config, program, log_dir, confined, viewer, transport, context, start, host: options.host };
+    let setup = Setup { program, limits, log_dir, confined, viewer, transport, context, start, host: options.host };
     let outcome = runtime()?.block_on(episode(setup))?;
     if let Some(settings) = &telemetry {
         crate::telemetry::after_run(settings, &telemetry_log_dir);
@@ -545,8 +577,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
 /// itself. It carries a [`Confined`] rather than a policy, so nothing
 /// assembled here can widen what the kernel already holds.
 struct Setup {
-    config: ProgramDocument,
     program: ResolvedProgram,
+    limits: Budget,
     log_dir: PathBuf,
     confined: Confined,
     viewer: Option<foe_view::Bound>,
@@ -557,7 +589,7 @@ struct Setup {
 }
 
 async fn episode(setup: Setup) -> Result<Outcome, String> {
-    let Setup { config, program, log_dir, confined, viewer, transport, host, context, start } = setup;
+    let Setup { program, limits, log_dir, confined, viewer, transport, host, context, start } = setup;
     let id = start.id.clone();
     let mirror = host.then(stdout_mirror);
     let log = Arc::new(Log::create_or_open(&log_dir, mirror).map_err(|e| format!("{}: {e}", log_dir.display()))?);
@@ -578,12 +610,13 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         });
     }
     let transport = transport.unwrap_or_else(|| protocol.transport());
-    let pool = Arc::new(Mutex::new(Pool::new(program.budget.clone())));
+    let pool = Arc::new(Mutex::new(Pool::new(limits.clone())));
     let inbox = Arc::new(protocol.clone());
     let team = Arc::new(Team::new(id.clone(), log.clone(), inbox, router.clone(), pool.clone()));
     let uplink: Arc<dyn Uplink> = if host { Arc::new(StdoutUplink) } else { Arc::new(NoHostUplink) };
+    let connections = ProcessConnections { uplink, router: router.clone(), observer: team.clone() };
     let spawner =
-        ProcessSpawner::new(id.clone(), log_dir.clone(), config.clone(), uplink, router.clone(), team.clone())
+        ProcessSpawner::new(id.clone(), log_dir.clone(), program.clone(), limits, extra_builtin_specs(), connections)
             .map_err(|e| format!("spawner: {e}"))?;
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
     let (sandbox, policy) = confined.parts();

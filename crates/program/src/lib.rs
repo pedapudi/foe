@@ -15,6 +15,7 @@
 
 #![forbid(unsafe_code)]
 
+pub use foe_log::Budget;
 use foe_log::ToolSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -182,26 +183,6 @@ pub struct Grants {
 /// checked against its parent's this way, before any directory is opened.
 pub fn contains(roots: &[PathBuf], path: &Path) -> bool {
     roots.iter().any(|root| path.starts_with(root))
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Budget {
-    pub model_calls: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub input_tokens: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_tokens: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seconds: Option<u64>,
-    #[serde(default = "u32_default::<1>")]
-    pub max_depth: u32,
-    #[serde(default = "u32_default::<8>")]
-    pub max_episodes: u32,
-    #[serde(default = "u32_default::<4>")]
-    pub max_concurrent: u32,
-    #[serde(default = "u32_default::<8>")]
-    pub loop_threshold: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

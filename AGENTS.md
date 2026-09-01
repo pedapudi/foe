@@ -51,9 +51,9 @@ sentence on first reading.
   built binary. Continuous integration runs both. See docs/build.md
   "The two tiers of the test suite".
 - Rust line budgets exclude tests, generated code, blank lines, and
-  comment-only lines. `log` and `core` form the kernel and stay under 5,275
-  lines together. `program` stays under 1,400, `code` under 1,800, `workflow`
-  under 1,000, `context` under 500, `view` under 600, `cli` under 1,300,
+  comment-only lines. `log` and `core` form the kernel and stay under 5,325
+  lines together. `program` stays under 1,425, `code` under 1,800, `workflow`
+  under 1,000, `context` under 500, `view` under 600, `cli` under 1,325,
   `telemetry` under 1,000, and `lineage` under 500. The viewer HTML,
   TypeScript, and CSS use the compressed bundle limit in `docs/design.md`.
   `scripts/loc.sh` enforces every Rust line budget.

@@ -1,6 +1,6 @@
 use super::*;
 use crate::exec::tests::scratch;
-use crate::spawn::tests::{fake_child, parent_config, wait_for, waiting_child, Lines, Seen};
+use crate::spawn::tests::{fake_child, parent_config, process_spawner, wait_for, waiting_child, Lines, Seen};
 use foe_log::{EpisodeStart, Outcome, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
 
 fn start() -> EpisodeStart {
@@ -14,6 +14,7 @@ fn start() -> EpisodeStart {
         task: "t".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
         sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        effective_budget: None,
     }
 }
 
@@ -41,15 +42,14 @@ async fn a_spawn_reserves_records_and_releases_budget() {
     let config = parent_config();
     let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
     let router = Arc::new(Router::new());
-    let inner = ProcessSpawner::new(
-        "ep_root".into(),
+    let inner = process_spawner(
+        "ep_root",
         dir.clone(),
         config,
         Arc::new(Lines::default()),
         router.clone(),
         Arc::new(Seen::default()),
     )
-    .unwrap()
     .with_launcher(fake_child(&dir));
     let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
 
@@ -87,15 +87,14 @@ async fn a_process_start_failure_closes_the_spawn_and_reservation() {
     log.append(EventData::EpisodeStart(start())).unwrap();
     let config = parent_config();
     let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
-    let inner = ProcessSpawner::new(
-        "ep_root".into(),
+    let inner = process_spawner(
+        "ep_root",
         dir,
         config,
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
         Arc::new(Seen::default()),
     )
-    .unwrap()
     .with_launcher(vec!["/no-such-foe-child".into()]);
     let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
 
@@ -122,12 +121,12 @@ async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
     log.append(EventData::EpisodeStart(start())).unwrap();
     let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
         "version": 3, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
-        "grants": {"read": ["/src"], "spawn": ["worker"]},
+        "grants": {"read": ["/tmp"], "spawn": ["worker"]},
         "budget": {"model_calls": 20, "input_tokens": 1000, "output_tokens": 500},
         "sandbox": {"mode": "off"},
         "programs": {"worker": {
             "name": "worker", "instructions": {"r": "work"}, "tools": ["notify"],
-            "grants": {"read": ["/src"]},
+            "grants": {"read": ["/tmp"]},
             "budget": {"model_calls": 5, "input_tokens": 100, "output_tokens": 50}
         }},
         "task": "lead task"
@@ -135,15 +134,14 @@ async fn a_spawn_without_an_amount_reserves_what_the_program_declares() {
     .unwrap();
     let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
     let router = Arc::new(Router::new());
-    let inner = ProcessSpawner::new(
-        "ep_root".into(),
+    let inner = process_spawner(
+        "ep_root",
         dir.clone(),
         config,
         Arc::new(Lines::default()),
         router.clone(),
         Arc::new(Seen::default()),
     )
-    .unwrap()
     .with_launcher(fake_child(&dir));
     let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
 
@@ -173,21 +171,21 @@ async fn a_grandchild_counts_against_the_root_episode_allowance() {
     // The child may spawn in turn, so its reservation is the allowance it
     // declares rather than a single episode.
     config.programs.get_mut("worker").unwrap().grants.spawn = vec!["worker".into()];
-    let worker = config.programs["worker"].clone();
-    config.programs.get_mut("worker").unwrap().programs.insert("worker".into(), worker);
+    let mut leaf = config.programs["worker"].clone();
+    leaf.grants.spawn.clear();
+    config.programs.get_mut("worker").unwrap().programs.insert("worker".into(), leaf);
     config.programs.get_mut("worker").unwrap().budget.max_episodes = 3;
     config.programs.get_mut("worker").unwrap().budget.model_calls = 5;
     let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
     let router = Arc::new(Router::new());
-    let inner = ProcessSpawner::new(
-        "ep_root".into(),
+    let inner = process_spawner(
+        "ep_root",
         dir.clone(),
         config,
         Arc::new(Lines::default()),
         router.clone(),
         Arc::new(Seen::default()),
     )
-    .unwrap()
     .with_launcher(crate::spawn::tests::nesting_child(&dir));
     let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
 
@@ -217,15 +215,14 @@ async fn ending_an_episode_settles_a_child_that_is_still_running() {
     let config = parent_config();
     let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
     let router = Arc::new(Router::new());
-    let inner = ProcessSpawner::new(
-        "ep_root".into(),
+    let inner = process_spawner(
+        "ep_root",
         dir.clone(),
         config,
         Arc::new(Lines::default()),
         router.clone(),
         Arc::new(Seen::default()),
     )
-    .unwrap()
     .with_launcher(waiting_child(&dir));
     let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
 

@@ -20,7 +20,17 @@ pub fn start(id: &str) -> EpisodeStart {
         task: "do it".into(),
         runtime: RuntimeInfo { version: "0.1.0".into(), build: "unknown".into() },
         sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        effective_budget: None,
     }
+}
+
+#[test]
+fn episode_start_reads_logs_written_before_effective_budget_evidence() {
+    let expected = start("ep");
+    let mut value = serde_json::to_value(&expected).unwrap();
+    value.as_object_mut().unwrap().remove("effective_budget");
+    let decoded: EpisodeStart = serde_json::from_value(value).unwrap();
+    assert_eq!(decoded, expected);
 }
 
 pub fn text(s: &str) -> Vec<ContentBlock> {
