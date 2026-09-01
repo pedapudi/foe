@@ -5,22 +5,62 @@
 #![allow(dead_code)]
 
 use foe_core::{CallCtx, CapError, ExecRequest, ExecResult, Executor, ReadEntry, Reader, Writer};
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+pub struct ScratchDir(Option<tempfile::TempDir>);
+
+impl ScratchDir {
+    pub fn new(name: &str) -> Self {
+        Self(Some(tempfile::Builder::new().prefix(&format!("foe-code-{name}-")).tempdir().unwrap()))
+    }
+
+    fn path(&self) -> &Path {
+        self.0.as_ref().unwrap().path()
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.path()
+    }
+}
+
+impl serde::Serialize for ScratchDir {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(self.path(), serializer)
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let Some(mut dir) = self.0.take() else { return };
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", dir.path().display());
+            dir.disable_cleanup(true);
+            return;
+        }
+        let path = dir.path().to_path_buf();
+        dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
+    }
+}
+
 pub struct Fixture {
-    dir: tempfile::TempDir,
+    dir: ScratchDir,
     root: PathBuf,
     writes: Arc<AtomicUsize>,
 }
 
 impl Fixture {
     pub fn new() -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().canonicalize().unwrap().join("root");
+        let dir = ScratchDir::new("handles");
+        let root = dir.canonicalize().unwrap().join("root");
         std::fs::create_dir(&root).unwrap();
         Self { dir, root, writes: Arc::new(AtomicUsize::new(0)) }
     }
@@ -115,7 +155,7 @@ pub fn ctx(fx: &Fixture) -> CallCtx {
         spawner: None,
         sessions: None,
         composer: None,
-        spill_dir: fx.dir.path().join("spill"),
+        spill_dir: fx.dir.join("spill"),
         deadline: None,
     }
 }

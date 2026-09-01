@@ -8,15 +8,111 @@ use foe_program::document::{resolve, ResolvedProgram};
 use foe_program::{Effect, ProgramDocument, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
-pub fn tmp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("foe-core-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+pub struct ScratchDir {
+    dir: Option<tempfile::TempDir>,
+}
+
+impl ScratchDir {
+    fn new(prefix: &str, name: &str) -> Self {
+        assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+        let dir = tempfile::Builder::new().prefix(&format!("{prefix}-{name}-")).tempdir().unwrap();
+        Self { dir: Some(dir) }
+    }
+
+    fn keep(mut self) -> PathBuf {
+        let mut dir = self.dir.take().unwrap();
+        dir.disable_cleanup(true);
+        dir.path().to_path_buf()
+    }
+
+    fn path(&self) -> &Path {
+        self.dir.as_ref().unwrap().path()
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.path()
+    }
+}
+
+impl AsRef<Path> for ScratchDir {
+    fn as_ref(&self) -> &Path {
+        self.path()
+    }
+}
+
+impl serde::Serialize for ScratchDir {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(self.path(), serializer)
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let Some(mut dir) = self.dir.take() else { return };
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", dir.path().display());
+            dir.disable_cleanup(true);
+            return;
+        }
+        let path = dir.path().to_path_buf();
+        dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
+    }
+}
+
+pub fn tmp(name: &str) -> ScratchDir {
+    ScratchDir::new("foe-core", name)
+}
+
+#[test]
+fn scratch_directories_are_unique_and_removed_after_success() {
+    let first = tmp("scratch-cleanup");
+    let first_path = first.to_path_buf();
+    let second = tmp("scratch-cleanup");
+    assert_ne!(first.as_ref(), second.as_ref());
+    drop(first);
+    assert!(!first_path.exists());
+}
+
+#[test]
+fn scratch_directories_are_retained_during_unwinding_and_when_requested() {
+    let (send, receive) = std::sync::mpsc::channel();
+    assert!(std::thread::spawn(move || {
+        let dir = tmp("scratch-failure");
+        send.send(dir.to_path_buf()).unwrap();
+        panic!("injected failure");
+    })
+    .join()
+    .is_err());
+    let failed = receive.recv().unwrap();
+    assert!(failed.is_dir());
+    std::fs::remove_dir_all(failed).unwrap();
+
+    let kept = tmp("scratch-kept").keep();
+    assert!(kept.is_dir());
+    std::fs::remove_dir_all(kept).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn scratch_cleanup_does_not_follow_a_replacement_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let target = tmp("scratch-symlink-target");
+    std::fs::write(target.join("marker"), "present").unwrap();
+    let owned = tmp("scratch-symlink-owned");
+    std::fs::remove_dir_all(&*owned).unwrap();
+    symlink(&*target, &*owned).unwrap();
+    drop(owned);
+    assert_eq!(std::fs::read_to_string(target.join("marker")).unwrap(), "present");
 }
 
 /// A valid document granting read and write on `root`, with `block` as its

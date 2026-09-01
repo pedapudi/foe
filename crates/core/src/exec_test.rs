@@ -1,18 +1,15 @@
 use super::*;
+use crate::test_util::ScratchDir;
 use foe_log::SandboxMode;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-/// A fresh directory under the build tree for one test.
-pub(crate) fn scratch(module: &str, name: &str) -> PathBuf {
-    let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/test-scratch"))
-        .join(format!("{module}-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.canonicalize().unwrap()
+/// A uniquely owned directory for one test.
+pub(crate) fn scratch(module: &str, name: &str) -> ScratchDir {
+    crate::test_util::tmp(&format!("{module}-{name}"))
 }
 
-fn executor(name: &str, read: Vec<PathBuf>, exec: Vec<PathBuf>) -> (LocalExecutor, PathBuf, Arc<AtomicBool>) {
+fn executor(name: &str, read: Vec<PathBuf>, exec: Vec<PathBuf>) -> (LocalExecutor, ScratchDir, Arc<AtomicBool>) {
     let dir = scratch("exec", name);
     let cancel = Arc::new(AtomicBool::new(false));
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
@@ -115,7 +112,7 @@ fn reads_outside_the_roots_are_denied_under_landlock() {
     let outside = scratch("exec", "outside");
     std::fs::write(inside.join("a"), "a").unwrap();
     std::fs::write(outside.join("b"), "b").unwrap();
-    let (ex, dir, _) = executor("landlock", vec![inside.clone()], vec!["/bin/cat".into()]);
+    let (ex, dir, _) = executor("landlock", vec![inside.to_path_buf()], vec!["/bin/cat".into()]);
     if ex.sandbox.abi() == 0 {
         eprintln!("skipped: the kernel offers no Landlock");
         return;

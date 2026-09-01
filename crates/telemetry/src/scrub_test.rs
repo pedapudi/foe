@@ -1,4 +1,35 @@
 use super::*;
+use std::ops::Deref;
+use std::path::Path;
+
+struct ScratchDir(Option<tempfile::TempDir>);
+
+impl ScratchDir {
+    fn path(&self) -> &Path {
+        self.0.as_ref().unwrap().path()
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.path()
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let Some(mut dir) = self.0.take() else { return };
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", dir.path().display());
+            dir.disable_cleanup(true);
+            return;
+        }
+        let path = dir.path().to_path_buf();
+        dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
+    }
+}
 
 /// A fixed key. The scrubber's output must be a function of its inputs, so
 /// a test key produces the same pseudonyms on every machine.
@@ -208,15 +239,14 @@ fn the_self_check_names_every_detector_that_still_fires() {
 
 #[test]
 fn the_key_is_generated_once_and_kept_private() {
-    let dir = std::env::temp_dir().join(format!("foe-telemetry-key-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let scratch = ScratchDir(Some(tempfile::Builder::new().prefix("foe-telemetry-key-").tempdir().unwrap()));
+    let dir = scratch.join("credentials");
     let first = local_key(&dir).unwrap();
     assert_eq!(first.len(), 32);
     assert_eq!(local_key(&dir).unwrap(), first, "a second run must reuse the key, or joins break");
     use std::os::unix::fs::PermissionsExt;
     let mode = std::fs::metadata(dir.join(KEY_FILE)).unwrap().permissions().mode();
     assert_eq!(mode & 0o777, 0o600);
-    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]

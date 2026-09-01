@@ -9,6 +9,7 @@ use foe_program::identity::{canonical, compute, sha256_hex, Identity};
 use foe_program::ProgramDocument;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 // ---- fixtures -----------------------------------------------------------
@@ -17,11 +18,50 @@ fn runtime() -> RuntimeInfo {
     RuntimeInfo { version: "0.1.0".into(), build: "sha256:test".into() }
 }
 
-fn tmp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("foe-lineage-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+struct ScratchDir(Option<tempfile::TempDir>);
+
+impl ScratchDir {
+    fn path(&self) -> &Path {
+        self.0.as_ref().unwrap().path()
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.path()
+    }
+}
+
+impl AsRef<Path> for ScratchDir {
+    fn as_ref(&self) -> &Path {
+        self.path()
+    }
+}
+
+impl serde::Serialize for ScratchDir {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde::Serialize::serialize(self.path(), serializer)
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let Some(mut dir) = self.0.take() else { return };
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", dir.path().display());
+            dir.disable_cleanup(true);
+            return;
+        }
+        let path = dir.path().to_path_buf();
+        dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
+    }
+}
+
+fn tmp(name: &str) -> ScratchDir {
+    assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+    ScratchDir(Some(tempfile::Builder::new().prefix(&format!("foe-lineage-{name}-")).tempdir().unwrap()))
 }
 
 /// A valid root document granting read and write on `root`, with `block`
@@ -121,6 +161,7 @@ fn only_the_command_line_depends_on_this_crate() {
 /// A parent program declaring a configured verifier `check`, its identity,
 /// and the verifier executable's content hash.
 struct Fixture {
+    _scratch: ScratchDir,
     root: PathBuf,
     parent_program: ResolvedProgram,
     parent: Identity,
@@ -144,7 +185,7 @@ fn fixture(name: &str) -> Fixture {
     let parent_program = verified_config(&root, |_| {});
     let parent = compute(&parent_program, &[], &runtime()).unwrap();
     let exec_identity = digest_of(&std::fs::read(&exec).unwrap());
-    Fixture { root, parent_program, parent, exec_identity }
+    Fixture { root: root.to_path_buf(), _scratch: root, parent_program, parent, exec_identity }
 }
 
 /// A distinct program sharing the fixture's verifier, named by `marker`.
@@ -477,13 +518,14 @@ fn a_verifier_result_in_a_spawned_child_log_is_reached_by_provenance() {
     });
     let parent = compute(&parent_program, &[], &runtime()).unwrap();
     let f = Fixture {
-        root: root.clone(),
+        root: root.to_path_buf(),
+        _scratch: root,
         parent_program: parent_program.clone(),
         parent: parent.clone(),
         exec_identity: digest_of(&std::fs::read(&exec).unwrap()),
     };
     let child = child_of(&f, "descendant");
-    let dir = root.join("bundle");
+    let dir = f.root.join("bundle");
     std::fs::create_dir_all(&dir).unwrap();
     let kid_identity = parent.document["programs"]["kid"].as_str().unwrap().to_string();
     write_log(

@@ -39,8 +39,8 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
 
 #[test]
 fn builtin_key_file_uses_the_providers_credential_option() {
-    let credential = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/test-scratch/builtin-credential.json");
-    std::fs::create_dir_all(credential.parent().unwrap()).unwrap();
+    let dir = crate::tests::scratch("foe-cli-run", "builtin-credential");
+    let credential = dir.join("credential.json");
     std::fs::write(&credential, "{}\n").unwrap();
     let canonical = credential.canonicalize().unwrap().to_string_lossy().into_owned();
 
@@ -146,9 +146,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
 #[test]
 fn builtin_coding_with_verify_gates_both_assessment_branches() {
     use std::os::unix::fs::PermissionsExt;
-    let dir = std::env::temp_dir().join(format!("foe-cli-verify-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = crate::tests::scratch("foe-cli-verify", "built-in-checker");
     let script = dir.join("check");
     std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();

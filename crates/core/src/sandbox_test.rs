@@ -11,11 +11,8 @@ fn sandbox() -> Option<Sandbox> {
     Some(s)
 }
 
-fn temp_dir(name: &str) -> PathBuf {
-    let dir = crate::exec::tests::scratch("sandbox", name);
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+fn temp_dir(name: &str) -> crate::test_util::ScratchDir {
+    crate::exec::tests::scratch("sandbox", name)
 }
 
 fn policy(config: &ProgramDocument, log_dir: &Path) -> Policy {
@@ -47,7 +44,7 @@ fn read_roots_are_readable_and_other_paths_are_not() {
     let outside = temp_dir("outside");
     std::fs::write(inside.join("a"), b"a").unwrap();
     std::fs::write(outside.join("b"), b"b").unwrap();
-    let policy = Policy { read: vec![inside.clone()], ..Policy::default() };
+    let policy = Policy { read: vec![inside.to_path_buf()], ..Policy::default() };
     let (a, b, w) = s
         .run_narrowed(&policy, || {
             (
@@ -68,7 +65,7 @@ fn read_roots_are_readable_and_other_paths_are_not() {
 fn write_roots_allow_create_and_remove() {
     let Some(s) = sandbox() else { return };
     let dir = temp_dir("write");
-    let policy = Policy { write: vec![dir.clone()], ..Policy::default() };
+    let policy = Policy { write: vec![dir.to_path_buf()], ..Policy::default() };
     let ok = s
         .run_narrowed(&policy, || {
             std::fs::File::create(dir.join("f")).and_then(|mut f| f.write_all(b"x")).is_ok()
@@ -85,7 +82,8 @@ fn executable_policy_keeps_only_its_own_file() {
     let dir = temp_dir("exec");
     let other = dir.join("true");
     std::fs::copy("/bin/true", &other).unwrap();
-    let episode = Policy { read: vec![dir.clone()], exec: vec!["/bin/sh".into(), other.clone()], ..Policy::default() };
+    let episode =
+        Policy { read: vec![dir.to_path_buf()], exec: vec!["/bin/sh".into(), other.clone()], ..Policy::default() };
     let tool = episode.for_executable(Path::new("/bin/sh"), false);
     assert_eq!(tool.exec, vec![PathBuf::from("/bin/sh")]);
     assert!(tool.log_dir.is_none());
@@ -219,7 +217,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
     }))
     .unwrap();
     let p = policy(&config, Path::new("/logs/ep"));
-    assert_eq!(p.read, vec![dir.clone()]);
+    assert_eq!(p.read, vec![dir.to_path_buf()]);
     assert_eq!(p.write, vec![out]);
     let shell = std::fs::canonicalize("/bin/sh").unwrap();
     assert_eq!(p.delegated_exec, vec![shell.clone()]);

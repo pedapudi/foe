@@ -40,3 +40,6 @@ webpki-roots = "1"
 # RS256 for service-account assertions; already in the tree through rustls.
 ring = { version = "0.17", optional = true }
 base64 = { version = "0.22", optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true

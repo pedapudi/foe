@@ -109,7 +109,7 @@ fn every_rule_names_its_key() {
         (
             "tool_defs.t.exec",
             Box::new({
-                let root = root.clone();
+                let root = root.to_path_buf();
                 move |v| {
                     v["tools"] = json!(["t"]);
                     v["tool_defs"] = json!({ "t": { "exec": root.join("absent"), "description": "d" } });
@@ -157,7 +157,7 @@ fn every_rule_names_its_key() {
         (
             "grants.read[0]",
             Box::new({
-                let root = root.clone();
+                let root = root.to_path_buf();
                 move |v| v["grants"]["read"] = json!([root.join("nope")])
             }),
         ),
@@ -179,7 +179,7 @@ fn every_rule_names_its_key() {
         (
             "programs.kid.model.provider",
             Box::new({
-                let root = root.clone();
+                let root = root.to_path_buf();
                 move |v| {
                     v["programs"] = json!({ "kid": {
                         "name": "kid", "instructions": { "a": "b" }, "tools": ["block"],
@@ -192,14 +192,14 @@ fn every_rule_names_its_key() {
         (
             "programs.kid.instructions",
             Box::new({
-                let root = root.clone();
+                let root = root.to_path_buf();
                 move |v| v["programs"] = json!({ "kid": { "name": "kid", "instructions": {}, "tools": ["block"], "grants": { "read": [root] }, "budget": { "model_calls": 1 } } })
             }),
         ),
         (
             "programs.kid.grants.read[0]",
             Box::new({
-                let root = root.clone();
+                let root = root.to_path_buf();
                 move |v| {
                     v["grants"]["read"] = json!([root.join("child")]);
                     v["programs"] = json!({ "kid": { "name": "kid", "instructions": { "a": "b" }, "tools": ["block"], "grants": { "read": [root] }, "budget": { "model_calls": 1 } } });

@@ -148,7 +148,7 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     let program = foe_program::document::resolve(&config).unwrap();
     let spawner = process_spawner(
         "ep_root",
-        dir,
+        dir.to_path_buf(),
         config.clone(),
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
@@ -247,9 +247,9 @@ fn launch_refuses_a_descendant_executable_changed_after_construction() {
     let tool = dir.join("tool");
     std::fs::write(&tool, "first").unwrap();
     let mut config = parent_config();
-    config.grants.read = vec![dir.clone()];
+    config.grants.read = vec![dir.to_path_buf()];
     let worker = config.programs.get_mut("worker").unwrap();
-    worker.grants.read = vec![dir.clone()];
+    worker.grants.read = vec![dir.to_path_buf()];
     worker.tools = vec!["t".into()];
     worker.tool_defs.insert(
         "t".into(),
@@ -259,7 +259,7 @@ fn launch_refuses_a_descendant_executable_changed_after_construction() {
     std::fs::write(&tool, "second").unwrap();
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
-        dir.clone(),
+        dir.to_path_buf(),
         program.clone(),
         program.budget.clone(),
         crate::team::builtin_specs(),
@@ -309,7 +309,7 @@ async fn forked_child_launch_records_the_source_and_boundary() {
     let router = Arc::new(Router::new());
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
-        dir.clone(),
+        dir.to_path_buf(),
         program.clone(),
         program.budget.clone(),
         crate::team::builtin_specs(),
@@ -362,7 +362,7 @@ fn a_workflow_bearing_child_asks_for_its_subtree_episodes() {
     assert!(child.grants.spawn.is_empty(), "the workflow is the child's only source of descendants");
     let spawner = process_spawner(
         "ep_root",
-        dir,
+        dir.to_path_buf(),
         config,
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
@@ -385,7 +385,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     let router = Arc::new(Router::new());
     let seen = Arc::new(Seen::default());
     let spawner =
-        process_spawner("ep_root", dir.clone(), parent_config(), uplink.clone(), router.clone(), seen.clone())
+        process_spawner("ep_root", dir.to_path_buf(), parent_config(), uplink.clone(), router.clone(), seen.clone())
             .with_launcher(fake_child(&dir));
     let req = SpawnRequest {
         program: "worker".into(),
@@ -456,7 +456,7 @@ fn spawn_refuses_programs_outside_the_grant() {
     let dir = scratch("spawn", "refuse");
     let spawner = process_spawner(
         "ep_root",
-        dir.clone(),
+        dir.to_path_buf(),
         parent_config(),
         Arc::new(Lines::default()),
         Arc::new(Router::new()),
@@ -510,7 +510,7 @@ async fn a_host_call_no_host_can_answer_is_refused_at_once() {
     let uplink = Arc::new(NoHost::default());
     let spawner = process_spawner(
         "ep_root",
-        dir.clone(),
+        dir.to_path_buf(),
         parent_config(),
         uplink.clone(),
         Arc::new(Router::new()),

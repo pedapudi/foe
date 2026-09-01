@@ -123,7 +123,7 @@ async fn dispatch_passes_only_the_handles_the_effect_entitles() {
         let (registry, handles, root) = (&registry, &handles, &root);
         let call = call(name, json!({}));
         async move {
-            let v = registry.dispatch(handles, &call, 1, root.clone(), None, None).await.value;
+            let v = registry.dispatch(handles, &call, 1, root.to_path_buf(), None, None).await.value;
             (v["reader"].as_bool().unwrap(), v["writer"].as_bool().unwrap(), v["executor"].as_bool().unwrap())
         }
     };
@@ -131,9 +131,9 @@ async fn dispatch_passes_only_the_handles_the_effect_entitles() {
     assert_eq!(received("reads").await, (true, false, false));
     assert_eq!(received("writes").await, (true, true, false));
     assert_eq!(received("execs").await, (true, false, true));
-    let unknown = registry.dispatch(&handles, &call("ghost", json!({})), 1, root.clone(), None, None).await;
+    let unknown = registry.dispatch(&handles, &call("ghost", json!({})), 1, root.to_path_buf(), None, None).await;
     assert!(unknown.is_error && unknown.rendered.unwrap().contains("`ghost`"));
-    let bad = registry.dispatch(&handles, &call("pure", json!([1])), 1, root.clone(), None, None).await;
+    let bad = registry.dispatch(&handles, &call("pure", json!([1])), 1, root.to_path_buf(), None, None).await;
     assert!(bad.is_error);
 }
 
@@ -154,7 +154,7 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
             &handles,
             &call("block", json!({ "code": "ambiguous-task", "message": "which test?" })),
             1,
-            root.clone(),
+            root.to_path_buf(),
             None,
             None,
         )
@@ -165,7 +165,7 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
             &handles,
             &call("block", json!({ "code": "looping-tool-call", "message": "m" })),
             1,
-            root.clone(),
+            root.to_path_buf(),
             None,
             None,
         )
@@ -187,17 +187,18 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
             &handles,
             &call("block", json!({ "code": "child-blocked", "message": "every child is blocked" })),
             1,
-            root.clone(),
+            root.to_path_buf(),
             None,
             None,
         )
         .await;
     assert!(!child_blocked.is_error && child_blocked.value["code"] == "child-blocked");
-    let returned =
-        registry.dispatch(&handles, &call("return", json!({ "value": { "n": 3 } })), 1, root.clone(), None, None).await;
+    let returned = registry
+        .dispatch(&handles, &call("return", json!({ "value": { "n": 3 } })), 1, root.to_path_buf(), None, None)
+        .await;
     assert!(!returned.is_error && returned.value["value"]["n"] == 3);
     let rejected = registry
-        .dispatch(&handles, &call("return", json!({ "value": { "n": "three" } })), 1, root.clone(), None, None)
+        .dispatch(&handles, &call("return", json!({ "value": { "n": "three" } })), 1, root.to_path_buf(), None, None)
         .await;
     assert!(rejected.is_error && rejected.rendered.unwrap().contains("value.n"));
 }
@@ -222,16 +223,23 @@ async fn dispatch_checks_host_tool_arguments_against_the_declared_schema() {
     let registry = Registry::new(&program, vec![probe("lookup", Effect::Pure)], vec![]).unwrap();
     let handles = Handles::default();
     let ok = registry
-        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 2 })), 1, root.clone(), None, None)
+        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 2 })), 1, root.to_path_buf(), None, None)
         .await;
     assert!(!ok.is_error, "{:?}", ok.rendered);
     let bad = registry
-        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 0 })), 1, root.clone(), None, None)
+        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 0 })), 1, root.to_path_buf(), None, None)
         .await;
     assert!(bad.is_error);
     assert!(bad.rendered.unwrap().contains("limit"));
     let extra = registry
-        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 1, "x": 1 })), 1, root.clone(), None, None)
+        .dispatch(
+            &handles,
+            &call("lookup", json!({ "key": "k", "limit": 1, "x": 1 })),
+            1,
+            root.to_path_buf(),
+            None,
+            None,
+        )
         .await;
     assert!(extra.is_error && extra.rendered.unwrap().contains("`x`"));
 }
@@ -249,8 +257,9 @@ async fn configured_executables_receive_args_as_argv_and_report_exit_as_data() {
     let registry = Registry::new(&program, vec![], vec![]).unwrap();
     let executor = Arc::new(FakeExecutor::default());
     let handles = Handles { executor: Some(executor.clone()), ..Default::default() };
-    let value =
-        registry.dispatch(&handles, &call("t", json!({ "args": ["check", "."] })), 2, root.clone(), None, None).await;
+    let value = registry
+        .dispatch(&handles, &call("t", json!({ "args": ["check", "."] })), 2, root.to_path_buf(), None, None)
+        .await;
     assert!(!value.is_error);
     assert_eq!(value.value["exit_code"], 0);
     assert_eq!(value.value["stderr"], "check .");
@@ -259,7 +268,8 @@ async fn configured_executables_receive_args_as_argv_and_report_exit_as_data() {
     assert_eq!(req.args, vec!["check", "."]);
     assert_eq!((req.timeout.as_secs(), req.network, req.stdin), (7, true, None));
     assert_eq!(req.cwd, program.grants.read[0]);
-    let bad = registry.dispatch(&handles, &call("t", json!({ "args": "check" })), 2, root, None, None).await;
+    let bad =
+        registry.dispatch(&handles, &call("t", json!({ "args": "check" })), 2, root.to_path_buf(), None, None).await;
     assert!(bad.is_error);
     assert_eq!(bad.failure.unwrap().code, ToolFailureCode::InvalidCall);
 }
@@ -278,7 +288,8 @@ async fn configured_executable_start_failure_is_typed() {
     .unwrap();
     let registry = Registry::new(&program, vec![], vec![]).unwrap();
     let handles = Handles { executor: Some(Arc::new(StartFailure)), ..Default::default() };
-    let result = registry.dispatch(&handles, &call("t", json!({ "args": [] })), 1, root, None, None).await;
+    let result =
+        registry.dispatch(&handles, &call("t", json!({ "args": [] })), 1, root.to_path_buf(), None, None).await;
     let failure = result.failure.expect("the failed start has a typed failure");
     assert_eq!(failure.code, ToolFailureCode::ProcessStartFailed);
     assert!(!failure.retryable);
@@ -301,7 +312,7 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     let registry = Registry::new(&program, vec![], vec![]).unwrap();
     let executor = Arc::new(FakeExecutor::default());
     let handles = Handles { executor: Some(executor.clone()), ..Default::default() };
-    let findings = registry.verify_with("v", &handles, &json!("candidate"), 1, root.clone(), None).await.unwrap();
+    let findings = registry.verify_with("v", &handles, &json!("candidate"), 1, root.to_path_buf(), None).await.unwrap();
     assert_eq!(findings, vec![r#""candidate""#], "stdout is a finding; this executor echoed stdin");
     let req = executor.requests.lock().unwrap().pop().unwrap();
     assert!(req.args.is_empty(), "a verifier receives an empty argument vector");
@@ -312,19 +323,19 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     let reporting =
         Arc::new(FakeExecutor { stdout: Some("first finding\n\n  \nsecond finding\n".into()), ..Default::default() });
     let handles = Handles { executor: Some(reporting), ..Default::default() };
-    let findings = registry.verify_with("v", &handles, &json!("candidate"), 1, root.clone(), None).await.unwrap();
+    let findings = registry.verify_with("v", &handles, &json!("candidate"), 1, root.to_path_buf(), None).await.unwrap();
     assert_eq!(findings, vec!["first finding", "second finding"]);
 
     let accepting = Arc::new(FakeExecutor { stdout: Some(String::new()), ..Default::default() });
     let handles = Handles { executor: Some(accepting), ..Default::default() };
-    let accepted = registry.verify_with("v", &handles, &json!("candidate"), 1, root.clone(), None).await.unwrap();
+    let accepted = registry.verify_with("v", &handles, &json!("candidate"), 1, root.to_path_buf(), None).await.unwrap();
     assert!(accepted.is_empty(), "empty standard output with exit 0 accepts the candidate");
 
     let crashing = Arc::new(FakeExecutor { exit_code: 1, ..Default::default() });
     let handles = Handles { executor: Some(crashing), ..Default::default() };
-    let error = registry.verify_with("v", &handles, &json!(""), 1, root.clone(), None).await.unwrap_err();
+    let error = registry.verify_with("v", &handles, &json!(""), 1, root.to_path_buf(), None).await.unwrap_err();
     assert!(error.contains("verifier `v` failed") && error.contains("[exit code 1]"), "{error}");
-    let error = registry.verify_with("v", &handles, &json!("out"), 1, root.clone(), None).await.unwrap_err();
+    let error = registry.verify_with("v", &handles, &json!("out"), 1, root.to_path_buf(), None).await.unwrap_err();
     assert!(error.contains(r#""out""#), "the diagnostic carries standard output: {error}");
 
     let program = program_with(&root, |v| {
@@ -337,6 +348,13 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
         findings: std::sync::Mutex::new(vec![vec!["f1".into()], vec![]].into()),
     };
     let registry = Registry::new(&program, vec![], vec![Box::new(verifier)]).unwrap();
-    assert_eq!(registry.verify_with("check", &handles, &json!("c"), 1, root.clone(), None).await.unwrap(), vec!["f1"]);
-    assert!(registry.verify_with("check", &handles, &json!("c"), 1, root, None).await.unwrap().is_empty());
+    assert_eq!(
+        registry.verify_with("check", &handles, &json!("c"), 1, root.to_path_buf(), None).await.unwrap(),
+        vec!["f1"]
+    );
+    assert!(registry
+        .verify_with("check", &handles, &json!("c"), 1, root.to_path_buf(), None)
+        .await
+        .unwrap()
+        .is_empty());
 }

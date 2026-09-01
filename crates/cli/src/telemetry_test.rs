@@ -1,11 +1,8 @@
 use super::{settings_in, Settings};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("foe-cli-telemetry-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+fn scratch(name: &str) -> crate::tests::ScratchDir {
+    crate::tests::scratch("foe-cli-telemetry", name)
 }
 
 fn enable(home: &Path, body: &str) {

@@ -1,3 +1,5 @@
+use crate::testing::ScratchDir;
+
 #[test]
 fn all_lists_each_tool_once_and_readonly_lists_the_reads_tools() {
     let names: Vec<String> = super::all().iter().map(|t| t.spec().name.clone()).collect();
@@ -56,8 +58,7 @@ fn nothing_about_the_subject_reaches_the_model() {
 /// which is the instruction sections followed by every tool's instruction.
 #[test]
 fn the_assembled_system_prompt_never_mentions_the_subject() {
-    let root = std::env::temp_dir().join("foe-subject-prompt");
-    std::fs::create_dir_all(&root).unwrap();
+    let root = ScratchDir::new("subject-prompt");
     let config: foe_program::ProgramDocument = serde_json::from_value(serde_json::json!({
         "version": 3,
         "name": "subject-prohibition",

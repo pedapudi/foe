@@ -125,3 +125,11 @@ scripts/examples.sh target/debug/foe
 
 Continuous integration runs both tiers, along with `scripts/loc.sh`, the
 browser suite in `view/`, and the Python suite in `python/`.
+
+Repository-owned Rust test helpers create a unique working directory for each
+test invocation. A successful test removes its directory when its owner leaves
+scope, and a cleanup error fails the test. A panicking test retains the
+directory and prints its path so that its files can be inspected without a
+second panic hiding the original failure. Runnable examples retain their
+directories under `target/` because the final output gives the operator a
+command for viewing the recorded episode.

@@ -1,19 +1,47 @@
 use super::{run, RECORD_FILE};
 use foe_lineage::{digest_of, verify_bundle, AdoptionRecord, MANIFEST_FILE};
 use foe_program::identity::canonical;
-use std::path::{Path, PathBuf};
+use std::ops::Deref;
+use std::path::Path;
 
-fn tmp(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("foe-build-bundle-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+struct ScratchDir(Option<tempfile::TempDir>);
+
+impl ScratchDir {
+    fn path(&self) -> &Path {
+        self.0.as_ref().unwrap().path()
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        self.path()
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let Some(mut dir) = self.0.take() else { return };
+        if std::thread::panicking() {
+            eprintln!("retained failed test directory: {}", dir.path().display());
+            dir.disable_cleanup(true);
+            return;
+        }
+        let path = dir.path().to_path_buf();
+        dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
+    }
+}
+
+fn tmp(name: &str) -> ScratchDir {
+    assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+    ScratchDir(Some(tempfile::Builder::new().prefix(&format!("foe-build-bundle-{name}-")).tempdir().unwrap()))
 }
 
 /// A bundle directory holding a proposal log, a candidate identity
 /// document, and an artifact manifest, the files a caller retains before
 /// invoking the binary.
-fn bundle(name: &str) -> PathBuf {
+fn bundle(name: &str) -> ScratchDir {
     let dir = tmp(name);
     std::fs::create_dir_all(dir.join("episode")).unwrap();
     std::fs::write(dir.join("episode/episode.jsonl"), b"{}\n").unwrap();

@@ -620,26 +620,78 @@ pub(crate) fn describe_error_body(text: &str) -> String {
 /// Shared helpers for the tests of this crate.
 #[cfg(test)]
 pub(crate) mod test_support {
+    use std::ops::Deref;
     use std::path::{Path, PathBuf};
 
-    /// A scratch directory under the workspace target directory, so that no
-    /// environment variable decides where test files go.
-    pub fn scratch_dir(name: &str) -> PathBuf {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/foe-transport-tests").join(name);
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    pub struct ScratchDir(Option<tempfile::TempDir>);
+
+    impl ScratchDir {
+        fn path(&self) -> &Path {
+            self.0.as_ref().unwrap().path()
+        }
+    }
+
+    impl Deref for ScratchDir {
+        type Target = Path;
+
+        fn deref(&self) -> &Self::Target {
+            self.path()
+        }
+    }
+
+    impl AsRef<Path> for ScratchDir {
+        fn as_ref(&self) -> &Path {
+            self.path()
+        }
+    }
+
+    impl Drop for ScratchDir {
+        fn drop(&mut self) {
+            let Some(mut dir) = self.0.take() else { return };
+            if std::thread::panicking() {
+                eprintln!("retained failed test directory: {}", dir.path().display());
+                dir.disable_cleanup(true);
+                return;
+            }
+            let path = dir.path().to_path_buf();
+            dir.close().unwrap_or_else(|error| panic!("failed to remove test directory {}: {error}", path.display()));
+        }
+    }
+
+    pub struct ScratchFile {
+        path: PathBuf,
+        _dir: ScratchDir,
+    }
+
+    impl Deref for ScratchFile {
+        type Target = PathBuf;
+
+        fn deref(&self) -> &Self::Target {
+            &self.path
+        }
+    }
+
+    impl AsRef<Path> for ScratchFile {
+        fn as_ref(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    /// A uniquely owned scratch directory that is removed after a successful
+    /// test and retained when its owner is dropped during unwinding.
+    pub fn scratch_dir(name: &str) -> ScratchDir {
+        assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
+        ScratchDir(Some(tempfile::Builder::new().prefix(&format!("foe-transport-{name}-")).tempdir().unwrap()))
     }
 
     /// A scratch file path; the parent directory exists, the file may not.
-    pub fn scratch(name: &str) -> PathBuf {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/foe-transport-tests");
-        std::fs::create_dir_all(&dir).unwrap();
-        dir.join(name)
+    pub fn scratch(name: &str) -> ScratchFile {
+        let dir = scratch_dir(&format!("file-{name}"));
+        ScratchFile { path: dir.join(name), _dir: dir }
     }
 
     /// A fake home directory with nothing under it.
-    pub fn fake_home(name: &str) -> PathBuf {
+    pub fn fake_home(name: &str) -> ScratchDir {
         scratch_dir(&format!("home-{name}"))
     }
 }

@@ -261,6 +261,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "tokio",
 ]
 
@@ -311,6 +312,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
 ]
@@ -323,6 +325,7 @@ dependencies = [
  "foe-program",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
 ]
 
@@ -344,6 +347,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "thiserror",
 ]
 
@@ -357,6 +361,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
 ]
 
 [[package]]
@@ -374,6 +379,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
  "webpki-roots",
@@ -386,6 +392,7 @@ dependencies = [
  "foe-log",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
 ]
@@ -400,6 +407,7 @@ dependencies = [
  "foe-program",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 

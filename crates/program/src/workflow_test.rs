@@ -123,7 +123,7 @@ fn every_workflow_rule_names_its_node() {
         (
             "workflow.nodes.propose.model.grants.read[0]",
             Box::new({
-                let root = root.clone();
+                let root = root.to_path_buf();
                 move |v| v["grants"]["read"] = json!([root.join("child")])
             }),
         ),
