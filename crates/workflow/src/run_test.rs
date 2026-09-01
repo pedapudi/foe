@@ -1,4 +1,4 @@
-use super::{empty_after_child, run, Trouble, WorkflowParams};
+use super::{classify_tool, empty_after_child, run, Trouble, WorkflowParams};
 use foe_core::budget::Pool;
 use foe_core::loop_::{Log, Params};
 use foe_core::registry::{Handles, Registry};
@@ -7,7 +7,7 @@ use foe_core::{
 };
 use foe_log::{
     BlockedCode, Chunk, EpisodeStart, Event, EventData, ModelRoute, Outcome, RuntimeInfo, SandboxInfo, SandboxMode,
-    StopReason, Usage,
+    StopReason, ToolFailureCode, Usage,
 };
 use foe_program::document::resolve;
 use foe_program::workflow::Node;
@@ -58,7 +58,7 @@ impl Spawner for NoSpawner {
 
     fn launch(&self, _child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
         self.0.lock().unwrap().1.push(req.task);
-        Err(CapError::Invalid("this test spawns nothing".into()))
+        Err(CapError::ProcessStart("this test spawns nothing".into()))
     }
 }
 
@@ -552,7 +552,7 @@ async fn a_tool_error_is_recovered_by_retry() {
     let recovery = recoveries(&events);
     assert_eq!(recovery.len(), 1);
     assert_eq!((recovery[0].action.as_str(), recovery[0].target.as_deref()), ("retry", Some("first")));
-    assert_eq!((recovery[0].cause.as_str(), recovery[0].intervention), ("tool-error", 1));
+    assert_eq!((recovery[0].cause.as_str(), recovery[0].intervention), ("operation-failed", 1));
     assert_eq!(starts(&events), [("first".into(), 1), ("first".into(), 2), ("second".into(), 1)]);
     let kinds: Vec<String> = events.iter().map(|e| e.data.type_name()).collect();
     assert!(kinds.iter().any(|k| k == "request/header") && kinds.iter().any(|k| k == "model/request"));
@@ -639,24 +639,66 @@ async fn recovery_reaches_ancestors_only_and_skip_needs_empty() {
     assert!(matches!(outcome, Outcome::Completed { .. }), "the second firing of `bad` echoes its arguments");
 }
 
-/// docs/workflow.md "When it fires": a denied path and a spent budget are
-/// settled; the episode ends with the matching outcome and no model call.
+/// docs/workflow.md "When it fires": recovery depends on a failure's code
+/// and retryable field. Its prose does not change the route.
 #[tokio::test]
-async fn settled_failures_end_the_episode_without_a_decision() {
+async fn typed_settled_failures_end_without_a_decision() {
+    for (index, message) in ["access refused", "completely different wording"].into_iter().enumerate() {
+        let failure =
+            ToolValue::failed(ToolFailureCode::CapabilityDenied, message, false, json!({ "path": "/etc/shadow" }));
+        let mut fx = Fixture::new(
+            &format!("settled-{index}"),
+            &["denied"],
+            json!({ "nodes": { "only": { "tool": "denied", "terminal": true } } }),
+        )
+        .tool("denied", vec![failure], 0);
+        let (outcome, events) = fx.run().await;
+        assert!(matches!(outcome, Outcome::Failed { error } if error == message));
+        assert_eq!(count(&events, "model/request"), 0);
+    }
     let mut fx =
-        Fixture::new("settled", &["denied"], json!({ "nodes": { "only": { "tool": "denied", "terminal": true } } }))
-            .tool("denied", vec![ToolValue::error("/etc/shadow: outside every granted root")], 0);
-    let (outcome, events) = fx.run().await;
-    assert!(matches!(outcome, Outcome::Failed { error } if error.contains("outside every granted root")));
-    assert_eq!(count(&events, "model/request"), 0);
-    let mut fx = Fixture::new(
-        "spent",
-        &["spent"],
-        json!({ "nodes": { "only": { "tool": "spent", "terminal": true } } }),
-    )
-    .tool("spent", vec![ToolValue::error("budget: the episodes limit leaves no room for a child")], 0);
+        Fixture::new("spent", &["spent"], json!({ "nodes": { "only": { "tool": "spent", "terminal": true } } })).tool(
+            "spent",
+            vec![ToolValue::failed(
+                ToolFailureCode::BudgetExhausted,
+                "no child can be admitted",
+                false,
+                json!({ "limit": "episodes" }),
+            )],
+            0,
+        );
     let (outcome, _) = fx.run().await;
     assert_eq!(outcome, Outcome::Exhausted { limit: foe_log::ExhaustedLimit::Episodes });
+}
+
+/// docs/workflow.md "Tool-node failures": configured process outcomes and
+/// ordinary tool failures have typed recovery causes.
+#[test]
+fn tool_failure_codes_drive_recovery() {
+    let retryable = |message| {
+        classify_tool(
+            ToolValue::failed(ToolFailureCode::OperationFailed, message, true, json!({ "attempt": 1 })),
+            false,
+        )
+        .unwrap_err()
+    };
+    let first = retryable("could not start and outside every granted root");
+    let second = retryable("wording with no historical markers");
+    assert_eq!((&first.cause, first.settled), (&second.cause, second.settled));
+    assert_eq!(first.cause, "operation-failed");
+
+    let exited =
+        classify_tool(ToolValue::ok(json!({ "exit_code": 9, "timed_out": false, "duration_ms": 12 }), "exit 9"), true)
+            .unwrap_err();
+    assert_eq!(exited.cause, "process-exit");
+    assert!(!exited.settled);
+    let timed_out = classify_tool(
+        ToolValue::ok(json!({ "exit_code": null, "timed_out": true, "duration_ms": 50 }), "timed out"),
+        true,
+    )
+    .unwrap_err();
+    assert_eq!(timed_out.cause, "timed-out");
+    assert!(!timed_out.settled);
 }
 
 /// docs/workflow.md "What bounds it": the intervention cap and `max_fires`

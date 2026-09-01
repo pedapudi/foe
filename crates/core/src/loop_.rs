@@ -237,6 +237,7 @@ pub async fn settle(
                 value,
                 rendered: subject.clone(),
                 is_error: false,
+                failure: None,
                 spill: None,
                 subject: Some(subject),
                 duration_ms: 0,
@@ -808,7 +809,7 @@ fn append_result(
     synthetic: bool,
     cite_seq: bool,
 ) -> Result<ToolResult, RuntimeError> {
-    let (subject, is_error) = (value.subject.clone(), value.is_error);
+    let (subject, is_error, failure) = (value.subject.clone(), value.is_error, value.failure.as_deref().cloned());
     if let Some(archive) = archive {
         let archive = crate::retrieval::retain(spill_dir, step, &call.id, &archive)?;
         log.append(EventData::ToolRenderingArchive(archive))?;
@@ -825,6 +826,7 @@ fn append_result(
         value,
         rendered,
         is_error,
+        failure,
         spill,
         subject,
         duration_ms,

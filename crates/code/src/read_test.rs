@@ -90,6 +90,18 @@ async fn binary_files_and_bad_offsets_are_errors() {
     assert!(v.is_error);
 }
 
+/// docs/tools.md "Failures": a built-in reports a denied filesystem
+/// capability as a non-retryable typed failure at the point of refusal.
+#[tokio::test]
+async fn a_denied_path_has_a_typed_capability_failure() {
+    let fx = Fixture::new();
+    let value = read(&fx, json!({ "path": "/outside-foe-test-root" })).await;
+    let failure = value.failure.expect("the denied read has a failure");
+    assert_eq!(failure.code, foe_core::ToolFailureCode::CapabilityDenied);
+    assert!(!failure.retryable);
+    assert_eq!(failure.details["path"], "/outside-foe-test-root");
+}
+
 #[tokio::test]
 async fn empty_files_and_crlf_files_render() {
     let fx = Fixture::new();

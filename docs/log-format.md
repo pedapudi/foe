@@ -6,9 +6,10 @@ budget accounting, and team state are all derived from it. This document
 specifies the log completely. Nothing that reaches a model request may exist
 outside it.
 
-Stability: the event envelope, the event types marked implemented, and the
-seeding rules are frozen at version 2. Adding an event type is compatible.
-Changing an existing type's data requires a new log version.
+Stability: the event envelope, the required fields of implemented event
+types, and the seeding rules are frozen at version 2. Adding an event type
+or an optional field with a reader default is compatible. Removing or
+changing a required field requires a new log version.
 
 ## Directory layout
 
@@ -240,6 +241,24 @@ the notice. The cut is applied before the event is appended, so the
 rendering in the log is the rendering every request carries, and no earlier
 event is ever rewritten. A reader that wants the whole result reads
 `value`.
+
+An error result written by the runtime has `is_error: true` and a
+`failure` object:
+
+```json
+{
+  "code": "capability-denied",
+  "message": "read: /private: outside every granted root",
+  "retryable": false,
+  "details": { "path": "/private" }
+}
+```
+
+The code vocabulary and retry rule are specified in
+[tools.md](tools.md#failures). The message is explanatory text. Runtime
+decisions use the other fields. Successful results omit `failure`. The
+field is optional when reading so logs written before typed failures remain
+valid. An older error without the field retains its `is_error` value.
 
 When `done_when.returns` requires `learned`, `rendered` starts with
 `[seq N]`, where N is this event's `seq`. A `learned` observation cites that
@@ -536,7 +555,7 @@ the text an amend appends, and `intervention` counts decisions in this
 episode from 1.
 
 ```json
-{ "node": "derive", "fire": 1, "cause": "tool-error", "action": "retry", "target": "survey", "intervention": 1 }
+{ "node": "derive", "fire": 1, "cause": "operation-failed", "action": "retry", "target": "survey", "intervention": 1 }
 ```
 
 ### Compaction

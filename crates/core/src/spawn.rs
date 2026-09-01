@@ -311,7 +311,7 @@ impl Spawner for ProcessSpawner {
 
     fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
         if !self.config.grants.spawn.contains(&req.program) {
-            return Err(CapError::Invalid(format!("grants.spawn does not list program {}", req.program)));
+            return Err(CapError::CapabilityDenied(format!("grants.spawn does not list program {}", req.program)));
         }
         let program = self
             .config
@@ -348,7 +348,7 @@ impl Spawner for ProcessSpawner {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut child = cmd.spawn()?;
+        let mut child = cmd.spawn().map_err(|e| CapError::ProcessStart(e.to_string()))?;
         let stdin = child.stdin.take().ok_or_else(|| CapError::Invalid("child has no stdin".into()))?;
         let stdout = child.stdout.take().ok_or_else(|| CapError::Invalid("child has no stdout".into()))?;
         let stderr = child.stderr.take().ok_or_else(|| CapError::Invalid("child has no stderr".into()))?;
@@ -394,7 +394,7 @@ fn host_call_of(value: &serde_json::Map<String, serde_json::Value>) -> Option<(S
 /// than waiting for an answer that cannot come; see docs/protocol.md
 /// "Children".
 fn no_host(episode_id: &str, name: &str) -> ToolValue {
-    ToolValue::error(format!("`{name}`: no host above episode {episode_id} can answer a host tool call"))
+    ToolValue::unavailable(format!("`{name}`: no host above episode {episode_id} can answer a host tool call"))
 }
 
 /// Reads one child's standard output to its end.
@@ -418,7 +418,7 @@ impl Reader {
     fn answer(&self, episode_id: Option<&str>, call_id: &str, result: ToolValue) {
         let mut line = serde_json::json!({
             "type": "tool/result", "call_id": call_id, "value": result.value,
-            "rendered": result.rendered, "is_error": result.is_error,
+            "rendered": result.rendered, "is_error": result.is_error, "failure": result.failure,
         });
         if let Some(id) = episode_id {
             line["episode_id"] = id.into();

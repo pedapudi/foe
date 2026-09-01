@@ -514,6 +514,10 @@ pub struct ToolResult {
     /// What the model received.
     pub rendered: String,
     pub is_error: bool,
+    /// Machine-readable failure classification. Absent for successful
+    /// results and for error results written before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<ToolFailure>,
     /// File name under `spill/` when the canonical value was too large to inline.
     pub spill: Option<String>,
     /// One line the tool wrote naming what it acted on and what came of
@@ -524,6 +528,32 @@ pub struct ToolResult {
     /// True when written by seeding or by request-failure recovery rather
     /// than by running the tool.
     pub synthetic: bool,
+}
+
+/// Why a tool call failed. `message` is for the model and a person;
+/// scheduling reads `code`, `retryable`, and `details` instead.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolFailure {
+    pub code: ToolFailureCode,
+    pub message: String,
+    pub retryable: bool,
+    pub details: serde_json::Value,
+}
+
+/// Stable failure classes shared by every tool source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ToolFailureCode {
+    InvalidCall,
+    CapabilityDenied,
+    Unavailable,
+    ProcessStartFailed,
+    ProcessExit,
+    TimedOut,
+    BudgetExhausted,
+    LimitExceeded,
+    OperationFailed,
+    Interrupted,
 }
 
 /// Payload of `tool/inner-call`: one tool call a composing tool, such as

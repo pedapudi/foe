@@ -73,6 +73,7 @@ pub fn result(step: u32, call_id: &str, rendered: &str) -> EventData {
         value: serde_json::json!({ "ok": true }),
         rendered: rendered.into(),
         is_error: false,
+        failure: None,
         spill: None,
         subject: None,
         duration_ms: 1,
@@ -710,7 +711,7 @@ fn every_event_variant_round_trips() {
         EventData::WorkflowRecovery(WorkflowRecovery {
             node: "derive".into(),
             fire: 1,
-            cause: "tool-error".into(),
+            cause: "operation-failed".into(),
             action: "retry".into(),
             target: Some("survey".into()),
             note: None,
@@ -749,4 +750,46 @@ fn every_event_variant_round_trips() {
         .collect();
     assert!(declared.len() > 20, "the declaration of EventData was not found");
     assert_eq!(seen, declared, "one of each event type, reserved ones included");
+}
+
+/// docs/log-format.md "Tool calls": logs written before typed failures
+/// remain readable, and a typed failure survives serialization exactly.
+#[test]
+fn tool_failure_is_additive_and_round_trips() {
+    let old = serde_json::json!({
+        "seq": 0, "time": 1, "type": "tool/result", "data": {
+            "step": 1, "call_id": "tc_1", "name": "read",
+            "value": { "error": "denied" }, "rendered": "denied", "is_error": true,
+            "spill": null, "subject": "denied", "duration_ms": 1, "synthetic": false
+        }
+    });
+    let parsed: Event = serde_json::from_value(old.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&parsed).unwrap(), old);
+    let EventData::ToolResult(result) = parsed.data else { panic!() };
+    assert!(result.failure.is_none());
+
+    let failure = ToolFailure {
+        code: ToolFailureCode::CapabilityDenied,
+        message: "access refused".into(),
+        retryable: false,
+        details: serde_json::json!({ "path": "/private" }),
+    };
+    let event =
+        Event { seq: 0, time: 1, data: EventData::ToolResult(ToolResult { failure: Some(failure.clone()), ..result }) };
+    let back: Event = serde_json::from_str(&serde_json::to_string(&event).unwrap()).unwrap();
+    let EventData::ToolResult(result) = back.data else { panic!() };
+    assert_eq!(result.failure, Some(failure));
+}
+
+#[test]
+fn a_failure_marks_the_tool_result_as_an_error() {
+    let mut events = fixture();
+    let EventData::ToolResult(result) = &mut events[6].data else { panic!() };
+    result.failure = Some(ToolFailure {
+        code: ToolFailureCode::OperationFailed,
+        message: "failed".into(),
+        retryable: true,
+        details: serde_json::json!({}),
+    });
+    assert!(matches!(fold(&events), Err(LogError::Invalid { seq: 6, rule }) if rule.contains("is_error")));
 }

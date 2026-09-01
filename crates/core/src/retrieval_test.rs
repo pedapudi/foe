@@ -45,6 +45,7 @@ fn result(step: u32, id: &str, rendered: &str) -> ToolResult {
         value: json!({ "ok": true }),
         rendered: rendered.into(),
         is_error: false,
+        failure: None,
         spill: None,
         subject: None,
         duration_ms: 0,

@@ -172,14 +172,14 @@ impl Registry {
         composer: Option<Arc<dyn crate::Composer>>,
     ) -> ToolValue {
         let Some(entry) = self.entry(&call.name) else {
-            return ToolValue::error(text::fill(text::UNKNOWN_TOOL, &[("name", &call.name)]));
+            return ToolValue::invalid(text::fill(text::UNKNOWN_TOOL, &[("name", &call.name)]));
         };
         let reason = match call.args.is_object() {
             false => Some("arguments are a JSON object".to_string()),
             true => schema::arguments_conform(&entry.spec.params, &call.args).err(),
         };
         if let Some(reason) = reason {
-            return ToolValue::error(text::fill(text::INVALID_ARGS, &[("name", &call.name), ("reason", &reason)]));
+            return ToolValue::invalid(text::fill(text::INVALID_ARGS, &[("name", &call.name), ("reason", &reason)]));
         }
         let mut ctx = self.ctx(entry.spec.effect, handles, call.id.clone(), step, spill_dir, deadline);
         ctx.composer = composer;
@@ -306,13 +306,13 @@ impl Tool for ExecTool {
             .and_then(Value::as_array)
             .and_then(|a| a.iter().map(|v| v.as_str().map(str::to_string)).collect::<Option<Vec<_>>>())
         else {
-            return ToolValue::error(text::fill(
+            return ToolValue::invalid(text::fill(
                 text::INVALID_ARGS,
                 &[("name", &self.spec.name), ("reason", "`args` is a list of strings")],
             ));
         };
         let Some(executor) = ctx.executor.clone() else {
-            return ToolValue::error(format!("`{}` has no executor", self.spec.name));
+            return ToolValue::unavailable(format!("`{}` has no executor", self.spec.name));
         };
         match run_blocking(executor, self.request(argv)).await {
             Ok(result) => {
@@ -321,9 +321,9 @@ impl Tool for ExecTool {
                     "stderr": String::from_utf8_lossy(&result.stderr), "timed_out": result.timed_out,
                     "duration_ms": result.duration.as_millis() as u64,
                 });
-                ToolValue { value, rendered: Some(self.render(&result)), is_error: false, subject: None }
+                ToolValue { value, rendered: Some(self.render(&result)), is_error: false, failure: None, subject: None }
             }
-            Err(e) => ToolValue::error(format!("`{}` could not start: {e}", self.spec.name)),
+            Err(e) => ToolValue::from_cap_error(&format!("tool `{}`", self.spec.name), e),
         }
     }
 }

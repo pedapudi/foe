@@ -207,7 +207,7 @@ impl Tool for RetrieveTool {
 
     async fn call(&self, args: Value, ctx: &CallCtx) -> ToolValue {
         let Some(raw) = args.get("cursor").and_then(Value::as_str) else {
-            return ToolValue::error(text::RETRIEVE_INVALID);
+            return ToolValue::invalid(text::RETRIEVE_INVALID);
         };
         let parsed = match parse_cursor(raw) {
             Ok(parsed) => parsed,

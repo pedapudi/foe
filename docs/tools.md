@@ -51,6 +51,42 @@ receives the rendered string when present and a compact rendering of the
 value otherwise. The rendering, and only the rendering, is bounded by the
 turn budget specified below.
 
+## Failures
+
+A failed call returns its canonical value and rendering with one typed
+`failure` object. The object has four fields: `code`, `message`, `retryable`,
+and `details`. `message` is the explanation shown to the model. Workflow
+recovery uses `code`, `retryable`, and `details`; changing the message does
+not change recovery behavior.
+
+`retryable: true` means another firing, possibly after an amended input, can
+produce a different result. It does not cause an automatic retry. A
+non-retryable failure ends a workflow without asking a model to repeat an
+operation that the runtime knows cannot succeed. `details` is a JSON value
+for machine-readable facts such as a denied path, exit code, or budget
+limit. Runtime producers use an object when the failure has named facts.
+
+The failure-code vocabulary is closed:
+
+| code | meaning |
+|---|---|
+| `invalid-call` | the tool name or arguments do not satisfy the declared call contract |
+| `capability-denied` | the call requested an effect outside its granted capabilities |
+| `unavailable` | the declared implementation or service cannot answer the call |
+| `process-start-failed` | the runtime could not start the process |
+| `process-exit` | a process ended with a status that fails the calling contract |
+| `timed-out` | the operation exceeded its time limit |
+| `budget-exhausted` | an exact episode budget limit prevents the operation; `details.limit` names the limit |
+| `limit-exceeded` | a result or operation exceeded a non-budget structural limit |
+| `operation-failed` | the operation ran but failed for a reason without a narrower code |
+| `interrupted` | episode settlement or cancellation ended the operation |
+
+A runtime-written error result always carries `failure`. The log retains
+`is_error` so existing readers and existing logs remain compatible. A log
+reader accepts an older error result without `failure`. An older host may
+also omit it; the receiving runtime assigns `operation-failed` with
+`retryable: true` so recovery remains available.
+
 ## Archived result retrieval
 
 The `retrieve` built-in reads a bounded segment from the complete rendering
@@ -125,7 +161,9 @@ under this contract.
   so.
 - **Exit code.** Reported in the result as data. A non-zero exit is a
   result rather than a tool error. The model decides what a failing linter or a
-  failing test run means.
+  failing test run means. A workflow tool node has no model to make that
+  judgment, so its node boundary classifies a non-zero exit as
+  `process-exit` and a timeout as `timed-out`.
 - **Output.** Standard output and standard error are captured separately,
   each up to 1 MiB. Output beyond that limit is written to a file under the
   episode's `spill/` directory, and the captured text ends with a line

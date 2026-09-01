@@ -249,6 +249,12 @@ fn orphan_result(step: u32, call: &ToolCall) -> ToolResult {
         value: serde_json::json!({ "error": ORPHAN_RENDERED }),
         rendered: ORPHAN_RENDERED.to_string(),
         is_error: true,
+        failure: Some(crate::ToolFailure {
+            code: crate::ToolFailureCode::Interrupted,
+            message: ORPHAN_RENDERED.to_string(),
+            retryable: false,
+            details: serde_json::json!({}),
+        }),
         spill: None,
         subject: Some(ORPHAN_RENDERED.to_string()),
         duration_ms: 0,

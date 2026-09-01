@@ -290,6 +290,9 @@ pub fn validate_next(prior: &State, event: &Event) -> Result<(), LogError> {
         _ => {}
     }
     match &event.data {
+        EventData::ToolResult(result) if result.failure.is_some() && !result.is_error => {
+            return invalid("tool/result.failure requires is_error true");
+        }
         EventData::InboxItem(item)
             if item.source == InboxSource::Task
                 && (seq != 1 || prior.inbox.values().any(|(i, _)| i.source == InboxSource::Task)) =>

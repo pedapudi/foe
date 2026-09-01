@@ -123,6 +123,7 @@ async fn fail_ends_the_call_as_an_error() {
     assert!(value.is_error);
     assert_eq!(value.value["error"]["message"], json!("not enough evidence"));
     assert_eq!(value.value["error"]["derivation"]["complete"], json!(false));
+    assert_eq!(value.failure.unwrap().code, foe_core::ToolFailureCode::OperationFailed);
 }
 
 #[tokio::test]
@@ -178,6 +179,7 @@ async fn the_timeout_kills_the_interpreter() {
     assert!(value.is_error);
     let message = value.value["error"]["message"].as_str().unwrap();
     assert!(message.contains("timed out"), "{message}");
+    assert_eq!(value.failure.unwrap().code, foe_core::ToolFailureCode::TimedOut);
 }
 
 #[tokio::test]
