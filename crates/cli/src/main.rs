@@ -377,7 +377,7 @@ fn load(config: &Path) -> Result<foe_program::document::ResolvedProgram, String>
 /// report docs/workflow.md "Firing" describes.
 fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>) -> Result<ExitCode, String> {
     let Some(config) = config else {
-        let builtins = std::iter::once(block_spec()).chain(run::extra_builtin_specs());
+        let builtins = std::iter::once(block_spec(false)).chain(run::extra_builtin_specs());
         return printed(&builtins.map(|spec| tool_row(&spec, "built-in")).collect::<String>());
     };
     let program = load(config)?;

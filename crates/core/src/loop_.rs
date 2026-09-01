@@ -662,8 +662,8 @@ impl Episode {
     ) -> Result<Option<Outcome>, RuntimeError> {
         let succeeded = |name: &str| results.iter().find(|r| r.name == name && !r.is_error && !r.synthetic);
         if let Some(blocked) = succeeded(text::BLOCK_NAME) {
-            let code = serde_json::from_value(blocked.value["code"].clone()).unwrap_or(BlockedCode::GoalUnreachable);
-            let message = blocked.value["message"].as_str().unwrap_or_default().to_string();
+            let code = serde_json::from_value(blocked.value["code"].clone()).expect("block schema validates the code");
+            let message = blocked.value["message"].as_str().expect("block schema validates the message").to_string();
             return Ok(Some(Outcome::Blocked { code, message }));
         }
         let threshold = self.p.program.budget.loop_threshold as usize;

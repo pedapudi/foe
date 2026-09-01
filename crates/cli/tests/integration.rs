@@ -1174,7 +1174,7 @@ fn builtin_specs() -> Vec<foe_program::ToolSpec> {
 fn the_recorded_builtins_are_the_ones_the_binary_links() {
     let effect =
         |spec: &foe_program::ToolSpec| serde_json::to_value(spec.effect).unwrap().as_str().unwrap().to_string();
-    let mine: Vec<(String, String)> = std::iter::once(foe_program::tools::block_spec())
+    let mine: Vec<(String, String)> = std::iter::once(foe_program::tools::block_spec(false))
         .chain(builtin_specs())
         .map(|spec| (spec.name.clone(), effect(&spec)))
         .collect();

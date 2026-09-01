@@ -170,7 +170,28 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
             None,
         )
         .await;
-    assert!(bad.is_error, "codes the runtime detects are not reportable");
+    assert_eq!(bad.failure.unwrap().code, ToolFailureCode::InvalidCall, "other runtime codes are not reportable");
+
+    let parent = program_with(&root, |v| {
+        v["grants"]["spawn"] = json!(["worker"]);
+        v["programs"] = json!({ "worker": {
+            "name": "worker", "instructions": { "role": "work" }, "tools": ["block"],
+            "grants": { "read": [root] }, "budget": { "model_calls": 1 }
+        }});
+    })
+    .unwrap();
+    let parent_registry = Registry::new(&parent, vec![], vec![]).unwrap();
+    let child_blocked = parent_registry
+        .dispatch(
+            &handles,
+            &call("block", json!({ "code": "child-blocked", "message": "every child is blocked" })),
+            1,
+            root.clone(),
+            None,
+            None,
+        )
+        .await;
+    assert!(!child_blocked.is_error && child_blocked.value["code"] == "child-blocked");
     let returned =
         registry.dispatch(&handles, &call("return", json!({ "value": { "n": 3 } })), 1, root.clone(), None, None).await;
     assert!(!returned.is_error && returned.value["value"]["n"] == 3);

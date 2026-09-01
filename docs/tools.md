@@ -87,6 +87,19 @@ reader accepts an older error result without `failure`. An older host may
 also omit it; the receiving runtime assigns `operation-failed` with
 `retryable: true` so recovery remains available.
 
+## Reporting a blocked episode
+
+The `block` built-in lets the model end an episode with a typed blocked
+outcome. Every program receives `goal-unreachable`, `ambiguous-task`, and
+`missing-capability` in the tool's `code` enum. A program with a non-empty
+`grants.spawn` also receives `child-blocked`, which states that its child
+episodes prevent further progress. Programs without child-program permission
+cannot report that condition.
+
+The resolved parameter schema is shared by the request header and dispatch
+validation. A call outside that schema returns an `invalid-call` failure.
+The schema participates in program identity.
+
 ## Archived result retrieval
 
 The `retrieve` built-in reads a bounded segment from the complete rendering

@@ -385,7 +385,9 @@ The runtime recognizes two forms of lack of progress without model judgment.
 Both thresholds are configurable in `budget`. The model reports the
 conditions it can recognize and the runtime cannot, such as an ambiguous task
 or a missing capability, by calling the built-in `block` tool with a code
-from the closed vocabulary.
+from the closed vocabulary. A program with a non-empty `grants.spawn` may also
+report `child-blocked` when its children prevent further progress. The tool
+schema omits that code from programs that cannot start children.
 
 ## Programs and identity
 
