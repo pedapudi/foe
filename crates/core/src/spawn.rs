@@ -257,15 +257,6 @@ impl ProcessSpawner {
             && program.budget.max_depth > 0
             && (!program.grants.spawn.is_empty() || workflow_spawns)
     }
-
-    /// A fresh child id. A caller that reserves budget under the id before
-    /// the child starts passes it to [`ProcessSpawner::spawn_as`].
-    pub fn child_id(&self) -> String {
-        let n = self.next.fetch_add(1, Ordering::SeqCst);
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        let digest = Sha256::digest(format!("{}:{n}:{now}:{}", self.episode_id, std::process::id()));
-        format!("ep_{}", hex::encode(&digest[..4]))
-    }
 }
 
 /// The configuration a child is launched with. Budget dimensions the parent
@@ -311,14 +302,14 @@ pub fn child_document(
 }
 
 impl Spawner for ProcessSpawner {
-    fn spawn(&self, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
-        self.spawn_as(self.child_id(), req)
+    fn allocate_id(&self) -> String {
+        let n = self.next.fetch_add(1, Ordering::SeqCst);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let digest = Sha256::digest(format!("{}:{n}:{now}:{}", self.episode_id, std::process::id()));
+        format!("ep_{}", hex::encode(&digest[..4]))
     }
-}
 
-impl ProcessSpawner {
-    /// Starts a child under a given id.
-    pub fn spawn_as(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
+    fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
         if !self.config.grants.spawn.contains(&req.program) {
             return Err(CapError::Invalid(format!("grants.spawn does not list program {}", req.program)));
         }

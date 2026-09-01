@@ -39,6 +39,11 @@ other than `pure` or `reads`, and before `episode/end`. A crash between
 those points loses at most the events since the last forced write, and the
 seeding rules repair whatever the lost events would have closed.
 
+An append error can occur after the file or its mirror received the bytes.
+The caller therefore treats the log as interrupted. Child launch ordering
+ensures that an append error before an owning event returns leaves no child
+process or budget reservation to settle.
+
 ## Envelope
 
 One JSON object per line.
@@ -435,7 +440,9 @@ returns to the pool. This is how one `max_episodes` bounds a whole tree.
 ```
 
 `context` is `fresh` or `fork`. `call_id` names the tool call that spawned the
-child.
+child. The parent appends this event before creating the child process. A
+process-creation failure is recorded as a failed `spawn/end`, followed by the
+matching `budget/release`.
 
 `spawn/end` — implemented.
 
