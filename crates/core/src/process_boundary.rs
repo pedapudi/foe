@@ -18,6 +18,8 @@ use std::sync::Arc;
 
 const CGROUP_MOUNT: &str = "/sys/fs/cgroup";
 const ENTER_SCRIPT: &str = "printf '%s\\n' \"$$\" > \"$1\" || exit 125; shift; exec \"$@\"";
+/// Fixed executable used to enter a cgroup before the requested program.
+pub const PROCESS_BOUNDARY_LAUNCHER: &str = "/bin/sh";
 
 /// Runtime launch metadata that a parent writes for a child. These paths
 /// describe host state and do not participate in program identity.
@@ -218,7 +220,7 @@ impl Drop for ChildBoundary {
 /// Builds a command whose shell joins `cgroup.procs` before it executes the
 /// fixed argument vector. The shell uses only built-ins before `exec`.
 pub fn command_in(procs: &Path, argv: &[OsString]) -> Command {
-    let mut command = Command::new("/bin/sh");
+    let mut command = Command::new(PROCESS_BOUNDARY_LAUNCHER);
     command.arg("-c").arg(ENTER_SCRIPT).arg("foe-cgroup-enter").arg(procs).args(argv);
     command
 }
