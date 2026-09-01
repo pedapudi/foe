@@ -2,7 +2,7 @@ use super::{model_nodes, node_program};
 use crate::document::resolve;
 use crate::identity::compute;
 use crate::test_util::{config_value, program_with, tmp};
-use crate::workflow::MAX_POSSIBLE_FIRINGS;
+use crate::workflow::{MAX_EDGE_REFERENCES, MAX_POSSIBLE_FIRINGS};
 use crate::{ProgramDocument, ProgramError};
 use foe_log::RuntimeInfo;
 use serde_json::{json, Value};
@@ -64,14 +64,17 @@ fn follows_and_branches_define_inputs_and_cycles() {
     let root = tmp("workflow-edges");
     let config: ProgramDocument = serde_json::from_value(with_graph(&root, |v| {
         v["workflow"]["nodes"]["derive"]["follows"] = json!(["propose", "manifest"]);
+        v["workflow"]["nodes"]["derive"]["recovery"] = json!({ "follows": ["survey"] });
     }))
     .unwrap();
     let wf = config.workflow.as_ref().unwrap();
+    assert_eq!(wf.edge_references(), 9, "every declared reference is counted before edges are collapsed");
     let inputs = wf.inputs();
     assert_eq!(inputs["survey"], vec!["manifest"]);
     assert_eq!(inputs["derive"], vec!["propose", "manifest"]);
     assert_eq!(inputs["propose"], vec!["task", "manifest", "survey"], "the task source is an input, listed first");
     let preds = wf.predecessors();
+    assert_eq!(preds["derive"].len(), 2, "the follows and branch references from propose form one predecessor");
     assert!(preds["survey"].contains("propose"), "a branch target is a successor");
     assert!(!preds["propose"].contains("task"), "the task source orders nothing");
     let cyclic: BTreeSet<String> = ["propose", "survey"].into_iter().map(String::from).collect();
@@ -153,6 +156,10 @@ fn identity_hashes_the_graph_and_the_recovery_texts() {
     let base = hash(&|_| {});
     let plain = compute(&program_with(&root, |_| {}).unwrap(), &[], &runtime).unwrap();
     assert_ne!(base.hash, plain.hash, "a workflow participates");
+    let edge_limit = &base.document["workflow"]["edge_reference_limit"];
+    assert_eq!(edge_limit["maximum"], json!(MAX_EDGE_REFERENCES));
+    assert_eq!(edge_limit["fields"], json!(["follows", "branches", "recovery.follows"]));
+    assert_eq!(edge_limit["nested"], json!(true));
     let texts = &base.document["workflow"]["texts"];
     for (key, text) in crate::harness_text::workflow_texts() {
         assert_eq!(texts[key], json!(text));
@@ -166,6 +173,8 @@ fn identity_hashes_the_graph_and_the_recovery_texts() {
     assert_ne!(rebound.hash, base.hash, "bindings participate");
     let widened = hash(&|v| v["workflow"]["nodes"]["propose"]["recovery"] = json!({ "follows": ["manifest"] }));
     assert_ne!(widened.hash, base.hash, "recovery widening participates");
+    let repeated = hash(&|v| v["workflow"]["nodes"]["derive"]["follows"] = json!(["propose", "propose"]));
+    assert_ne!(repeated.hash, base.hash, "each declared edge reference participates");
     let capped = hash(&|v| v["workflow"]["recovery"] = json!({ "max_interventions": 1 }));
     assert_ne!(capped.hash, base.hash, "max_interventions participates");
     let reprogrammed = hash(&|v| v["workflow"]["nodes"]["propose"]["model"]["instructions"]["r"] = json!("Other."));
@@ -208,6 +217,50 @@ fn a_graph_declares_how_many_firings_it_can_perform() {
     assert_eq!(key, "workflow");
     assert!(rule.contains("8192 possible firings"), "{rule}");
     assert!(rule.contains(&MAX_POSSIBLE_FIRINGS.to_string()), "{rule}");
+}
+
+/// docs/workflow.md "The graph": construction counts every declared edge
+/// reference before it builds predecessor sets or cycle indexes. The dense
+/// graph deliberately lacks the `max_fires` required by its cycles; reaching
+/// cycle validation before the ceiling check would report that later rule.
+#[test]
+fn dense_edge_references_are_refused_before_graph_indexing() {
+    let root = tmp("workflow-edge-bound-dense");
+    let names: Vec<String> = (0..65).map(|n| format!("node-{n:02}")).collect();
+    let nodes: serde_json::Map<String, Value> =
+        names.iter().map(|name| (name.clone(), json!({ "tool": "list", "follows": names }))).collect();
+    let over = with_graph(&root, |value| value["workflow"] = json!({ "nodes": nodes }));
+    let (key, rule) = rejection(over);
+    assert_eq!(key, "workflow");
+    assert!(rule.contains("4225 workflow edge references"), "{rule}");
+    assert!(rule.contains(&MAX_EDGE_REFERENCES.to_string()), "{rule}");
+}
+
+/// docs/workflow.md "The graph": the edge-reference ceiling covers every
+/// nested workflow before any graph at any depth is indexed. Thirty-three
+/// shallow-firing layers prove that nesting does not reset the count. The
+/// deepest reference is also invalid, so reaching nested validation would
+/// report that later rule.
+#[test]
+fn nested_edge_references_share_one_construction_ceiling() {
+    let root = tmp("workflow-edge-bound-nested");
+    let follows = vec!["task"; 129];
+    let mut leaf_follows = vec!["task"; 128];
+    leaf_follows.push("absent");
+    let mut workflow = json!({ "nodes": {
+        "leaf": { "tool": "list", "follows": leaf_follows, "terminal": true }
+    } });
+    for depth in 0..32 {
+        let mut nodes = serde_json::Map::new();
+        nodes
+            .insert(format!("level-{depth:02}"), json!({ "workflow": workflow, "follows": follows, "terminal": true }));
+        workflow = json!({ "nodes": nodes });
+    }
+    let over = with_graph(&root, |value| value["workflow"] = workflow);
+    let (key, rule) = rejection(over);
+    assert_eq!(key, "workflow");
+    assert!(rule.contains("4257 workflow edge references"), "{rule}");
+    assert!(rule.contains(&MAX_EDGE_REFERENCES.to_string()), "{rule}");
 }
 
 /// A graph whose nodes declare branches, at the top level and inside a

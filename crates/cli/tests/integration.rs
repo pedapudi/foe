@@ -1104,6 +1104,8 @@ fn plan_reports_an_identity_that_ignores_task_and_paths() {
         if name == "workflow" {
             assert_eq!(first["workflow"]["terminal"], json!(["apply"]), "plan reports the workflow's terminal node");
             assert_eq!(first["workflow"]["cycles"], json!([]));
+            assert_eq!(first["workflow"]["edge_references"], json!(4));
+            assert_eq!(first["workflow"]["max_edge_references"], json!(4096));
             assert_eq!(first["workflow"]["possible_firings"], json!(4), "survey once, propose once, apply twice");
             assert_eq!(first["workflow"]["max_possible_firings"], json!(4096));
             assert!(first["program"]["workflow"]["nodes"]["propose"]["model"].is_object());
@@ -1137,7 +1139,7 @@ const RECORDED_IDENTITIES: [(&str, &str); 12] = [
     ("subagents", "sha256:a06b99f1756c0e7875aee3929805a1fdf84dbd52e2848509da1c9bc00e012266"),
     ("team", "sha256:707e936f2b81df2e3d9bb30c73b99110fda402095bfcfa42404047162691dfe7"),
     ("verification-unsatisfiable", "sha256:4d33b5b864bea74f565876ae9d9343f27f82d27306d9e75566e732657450fad2"),
-    ("workflow", "sha256:429d035ab0e0d28df88db956a25ac8381b288bf82aeff13096d9eb4b0c09e3cd"),
+    ("workflow", "sha256:2414db262e5ef65d2a61af13f92f22c4f7d184d66074ee5a1b32f687984a5394"),
     ("wrap-a-binary", "sha256:d84587490eb4f1238309b6bf77ace3f57e201f5f82372c24be6a04308ba21638"),
 ];
 

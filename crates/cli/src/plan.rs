@@ -7,7 +7,7 @@
 
 use crate::run;
 use foe_program::document::ResolvedProgram;
-use foe_program::workflow::{MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
+use foe_program::workflow::{MAX_EDGE_REFERENCES, MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
 use std::fmt::Write;
 
 pub use foe_program::inspect::{cycles, tool_sources, Authority};
@@ -113,6 +113,7 @@ pub fn workflow_report(program: &ResolvedProgram) -> Result<String, String> {
         (true, false) => "no terminal node and no empty branch: runs until the budget is spent".to_string(),
     };
     writeln!(out, "workflow completion  {completion}").ok();
+    writeln!(out, "workflow references  {} declared, at most {MAX_EDGE_REFERENCES}", wf.edge_references()).ok();
     writeln!(out, "workflow firings     {} possible, at most {MAX_POSSIBLE_FIRINGS}", wf.possible_firings()).ok();
     Ok(out)
 }

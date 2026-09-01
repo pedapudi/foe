@@ -21,6 +21,14 @@ pub const TASK_SOURCE: &str = "task";
 /// contributes at least one firing.
 pub const MAX_POSSIBLE_FIRINGS: u64 = 4096;
 
+/// The most data-flow, control-flow, and recovery edge references that a
+/// declared workflow tree may contain.
+pub const MAX_EDGE_REFERENCES: u64 = 4096;
+
+fn count_len(len: usize) -> u64 {
+    u64::try_from(len).unwrap_or(u64::MAX)
+}
+
 /// A declared graph. Model node programs are kept as written; the spawner
 /// resolves each when the node fires, as it does for `programs`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -116,6 +124,26 @@ impl WorkflowConfig {
         })
     }
 
+    /// The node-name entries that declare data flow, control flow, or
+    /// recovery context, summed across this graph and nested workflows.
+    pub fn edge_references(&self) -> u64 {
+        let mut total = 0u64;
+        let mut pending = vec![self];
+        while let Some(workflow) = pending.pop() {
+            for node in workflow.nodes.values() {
+                total = total.saturating_add(count_len(node.follows.len()));
+                total =
+                    node.branches.values().fold(total, |count, targets| count.saturating_add(count_len(targets.len())));
+                total = node
+                    .recovery
+                    .iter()
+                    .fold(total, |count, recovery| count.saturating_add(count_len(recovery.follows.len())));
+                pending.extend(node.workflow.iter());
+            }
+        }
+        total
+    }
+
     /// The data inputs of every node, with the `task` source first.
     pub fn inputs(&self) -> BTreeMap<String, Vec<String>> {
         let mut inputs: BTreeMap<String, Vec<String>> =
@@ -182,11 +210,28 @@ pub fn check(
     program: &mut dyn FnMut(&str, &ChildProgramDocument) -> Result<(), ProgramError>,
 ) -> Result<(), ProgramError> {
     let invalid = |key: String, rule: String| ProgramError::Invalid { key, rule };
+    let edges = wf.edge_references();
+    if edges > MAX_EDGE_REFERENCES {
+        let rule =
+            format!("describes {edges} workflow edge references; the runtime permits at most {MAX_EDGE_REFERENCES}");
+        return Err(invalid(prefix.into(), rule));
+    }
     let firings = wf.possible_firings();
     if firings > MAX_POSSIBLE_FIRINGS {
         let rule = format!("describes {firings} possible firings; the runtime permits at most {MAX_POSSIBLE_FIRINGS}");
         return Err(invalid(prefix.into(), rule));
     }
+    check_graph(prefix, wf, tools, program)
+}
+
+/// Checks a workflow tree after its aggregate construction bounds hold.
+fn check_graph(
+    prefix: &str,
+    wf: &WorkflowConfig,
+    tools: &[String],
+    program: &mut dyn FnMut(&str, &ChildProgramDocument) -> Result<(), ProgramError>,
+) -> Result<(), ProgramError> {
+    let invalid = |key: String, rule: String| ProgramError::Invalid { key, rule };
     let (inputs, cyclic) = (wf.inputs(), wf.on_cycles());
     for (name, node) in &wf.nodes {
         let key = |field: &str| format!("{prefix}.nodes.{name}.{field}");
@@ -218,7 +263,7 @@ pub fn check(
             return Err(invalid(key("args"), format!("binds `{bound}`, which is not an input of this node")));
         }
         node.model.iter().try_for_each(|p| program(&key("model"), p))?;
-        node.workflow.iter().try_for_each(|inner| check(&key("workflow"), inner, tools, program))?;
+        node.workflow.iter().try_for_each(|inner| check_graph(&key("workflow"), inner, tools, program))?;
         if node.max_fires == Some(0) {
             return Err(invalid(key("max_fires"), "is greater than 0".into()));
         }

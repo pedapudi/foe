@@ -10,7 +10,7 @@
 //! configuration's; `foe_core::identity::runtime_info` does it.
 
 use crate::document::{resolve_node_program, ResolvedProgram};
-use crate::workflow::WorkflowConfig;
+use crate::workflow::{WorkflowConfig, MAX_EDGE_REFERENCES};
 use crate::{harness_text, tools, ProgramError, ToolSpec};
 use foe_log::RuntimeInfo;
 use serde_json::{json, Value};
@@ -119,7 +119,16 @@ fn workflow_document(
         nodes.insert(name.clone(), entry);
     }
     let texts = texts(harness_text::workflow_texts());
-    Ok(json!({ "nodes": nodes, "max_interventions": wf.recovery.max_interventions, "texts": texts }))
+    Ok(json!({
+        "nodes": nodes,
+        "max_interventions": wf.recovery.max_interventions,
+        "edge_reference_limit": {
+            "maximum": MAX_EDGE_REFERENCES,
+            "fields": ["follows", "branches", "recovery.follows"],
+            "nested": true,
+        },
+        "texts": texts,
+    }))
 }
 
 fn texts(list: Vec<(&str, &str)>) -> serde_json::Map<String, Value> {

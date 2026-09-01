@@ -202,7 +202,7 @@
       }
     },
     "workflow": {
-      "description": "A declared graph of nodes that replaces the free loop for this episode. docs/workflow.md specifies it. The episode's tools, grants, budget, and done_when are the ceiling every node draws from. A graph whose possible firings exceed 4096 is refused at construction.",
+      "description": "A declared graph of nodes that replaces the free loop for this episode. docs/workflow.md specifies it. The episode's tools, grants, budget, and done_when are the ceiling every node draws from. Construction refuses more than 4096 edge references or possible firings across this graph and every nested workflow.",
       "type": "object",
       "additionalProperties": false,
       "required": ["nodes"],
