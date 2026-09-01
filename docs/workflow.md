@@ -282,6 +282,14 @@ a nested workflow waits for an effectful node of the graph containing it.
 This is the effect rule the agent loop applies to one turn's tool calls,
 applied to one episode's firings.
 
+A model firing allocates its child identifier before recording
+`workflow/node-start`. Identifier allocation reserves no budget and starts no
+process. The executor launches the child only after the node-start append
+succeeds. The spawner then records `budget/reserve` and `spawn/start` before
+creating the process. A failed node-start append therefore leaves no child or
+reservation. The log remains interrupted because an append error does not
+establish whether every destination received the event.
+
 ### Completion
 
 The workflow completes when a terminal node completes, or when a chosen
@@ -464,9 +472,10 @@ with the verification's step as its context. A model node's program that
 declares its own `done_when.verify` records its invocations in that child
 episode's log instead, because the child's loop runs them.
 
-A model node's firing also produces the ordinary `spawn/start`,
-`budget/reserve`, `spawn/end`, and `budget/release` events, because it is
-a child episode and nothing else.
+A model node's firing also produces the ordinary `budget/reserve`,
+`spawn/start`, `spawn/end`, and `budget/release` events, because it is
+a child episode and nothing else. Its `workflow/node-start` precedes the
+reservation and spawn events that launch the child.
 
 ## Identity
 

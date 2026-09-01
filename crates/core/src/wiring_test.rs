@@ -77,6 +77,40 @@ async fn a_spawn_reserves_records_and_releases_budget() {
     assert_eq!(lock(&pool).active_children(), 0, "the handle settles after its reservation is returned");
 }
 
+/// docs/log-format.md "Budget and spawn": the parent records a reservation
+/// and spawn before process creation. A process-start failure closes both
+/// obligations and returns the reservation without leaving a child.
+#[tokio::test]
+async fn a_process_start_failure_closes_the_spawn_and_reservation() {
+    let dir = scratch("wiring", "start-failure");
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
+    log.append(EventData::EpisodeStart(start())).unwrap();
+    let config = parent_config();
+    let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
+    let inner = ProcessSpawner::new(
+        "ep_root".into(),
+        dir,
+        config,
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        Arc::new(Seen::default()),
+    )
+    .unwrap()
+    .with_launcher(vec!["/no-such-foe-child".into()]);
+    let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
+
+    let reserve = BudgetAmount { model_calls: Some(5), ..Default::default() };
+    let error = spawner.spawn(request("worker", reserve)).err().expect("the process cannot start");
+    let error = error.to_string();
+    assert!(error.contains("No such file") || error.contains("not found"), "{error}");
+    assert_eq!(types(&log), ["episode/start", "budget/reserve", "spawn/start", "spawn/end", "budget/release"]);
+    let EventData::SpawnEnd { outcome: Outcome::Failed { error }, .. } = &log.events()[3].data else { panic!() };
+    assert!(!error.is_empty(), "the failed spawn records the process error");
+    assert_eq!(lock(&pool).active_children(), 0);
+    assert_eq!(lock(&pool).remaining().model_calls, Some(20));
+    foe_log::fold::fold(&log.events()).expect("the interrupted log has no open obligation");
+}
+
 /// docs/config.md "budget": a child's budget is reserved from its parent's
 /// remainder. A `spawn` tool call names no amount, so the reservation is
 /// the amount the child program declares, which leaves the parent its own

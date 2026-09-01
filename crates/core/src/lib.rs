@@ -284,7 +284,12 @@ pub struct SessionOutput {
 
 /// Starts child episodes bounded to the declared child programs.
 pub trait Spawner: Send + Sync {
-    fn spawn(&self, req: SpawnRequest) -> Result<SpawnHandle, CapError>;
+    /// Allocates an identifier without reserving budget or starting work.
+    fn allocate_id(&self) -> String;
+    fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError>;
+    fn spawn(&self, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
+        self.launch(self.allocate_id(), req)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -316,6 +321,8 @@ pub enum CapError {
     Denied { path: PathBuf },
     #[error("{0}")]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Log(#[from] foe_log::LogError),
     #[error("{0}")]
     Invalid(String),
 }
