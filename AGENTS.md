@@ -51,7 +51,7 @@ sentence on first reading.
   built binary. Continuous integration runs both. See docs/build.md
   "The two tiers of the test suite".
 - Rust line budgets exclude tests, generated code, blank lines, and
-  comment-only lines. `log` and `core` form the kernel and stay under 5,825
+  comment-only lines. `log` and `core` form the kernel and stay under 5,875
   lines together. `program` stays under 1,500, `code` under 1,800, `workflow`
   under 1,000, `context` under 500, `view` under 600, `cli` under 1,400,
   `telemetry` under 1,000, and `lineage` under 500. The viewer HTML,

@@ -28,6 +28,15 @@ pub struct ExecutableImage {
     pub bytes: Arc<[u8]>,
 }
 
+/// Which declared programs a recursive program-tree walk includes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgramTreeSelection {
+    /// Every declaration that contributes to program identity.
+    AllDeclared,
+    /// The programs an episode can start through a spawn grant or workflow.
+    ExecutableReachable,
+}
+
 /// Whether the completion schema makes the standard `learned` observation
 /// channel an evidence requirement.
 pub fn completion_evidence_required(done: Option<&DoneWhen>) -> bool {
@@ -91,13 +100,28 @@ impl ResolvedProgram {
         self.grants.spawn.iter().any(|granted| granted == name) || self.workflow_programs.contains_key(name)
     }
 
-    /// Every program whose process may run directly below this one.
-    pub fn reachable_programs(&self) -> impl Iterator<Item = &ResolvedProgram> {
-        self.programs
-            .iter()
-            .filter(|(name, _)| self.grants.spawn.contains(name))
-            .map(|(_, program)| program)
-            .chain(self.workflow_programs.values())
+    /// The root and its recursively declared programs, with stable paths.
+    pub fn program_tree(&self, selection: ProgramTreeSelection) -> Vec<(String, &ResolvedProgram)> {
+        fn walk<'a>(
+            program: &'a ResolvedProgram,
+            path: String,
+            selection: ProgramTreeSelection,
+            out: &mut Vec<(String, &'a ResolvedProgram)>,
+        ) {
+            out.push((path.clone(), program));
+            for (name, child) in &program.programs {
+                if selection == ProgramTreeSelection::AllDeclared || program.grants.spawn.contains(name) {
+                    walk(child, format!("{path}.programs.{name}"), selection, out);
+                }
+            }
+            for (node_path, child) in &program.workflow_programs {
+                let nodes = node_path.replace('/', ".workflow.nodes.");
+                walk(child, format!("{path}.workflow.nodes.{nodes}.model"), selection, out);
+            }
+        }
+        let mut out = Vec::new();
+        walk(self, "program".into(), selection, &mut out);
+        out
     }
 }
 

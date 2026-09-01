@@ -69,10 +69,11 @@ seeding the source prefix. The seeded `episode/start` therefore records the
 child program and its effective allowance.
 
 The check covers executable replacement through execution. The parent passes
-the selected child's reachable executable descriptors with a sealed manifest.
-The child constructs its identity from those inherited bytes and later invokes
-the same descriptors. A changed or deleted source path cannot alter either
-identity or execution.
+the executable images from the selected child's full declared program tree.
+A sealed manifest maps every configuration key to a retained image. The child
+constructs identity from those inherited bytes and later invokes the reachable
+images through the same descriptors. A changed or deleted source path cannot
+alter either identity or execution.
 
 ## Configuration representation
 

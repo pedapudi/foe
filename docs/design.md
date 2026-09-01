@@ -397,7 +397,10 @@ workflow model node into one immutable program tree. It canonicalizes paths,
 inherits model and sandbox settings, validates descendant ceilings, and reads
 each configured executable once to retain its content digest. Identity,
 planning, budget reservation, sandbox construction, and spawning all read
-this tree.
+this tree. Recursive consumers select either every declared program or only
+programs reachable through spawn grants and workflow nodes. Identity and child
+launches use every declaration. Planning and sandbox authority use the
+executable-reachable selection.
 
 `identity(program)` is a SHA-256 over a canonical serialization of:
 
@@ -422,15 +425,19 @@ would see different text.
 
 Construction reads files named in the configuration so identity can hash the
 retained executable bytes. Identity itself opens no file, executes nothing,
-and opens no socket. Construction materializes each reachable configured
-executable as a private, content-addressed regular file outside the program's
-declared write roots. The episode process alone receives internal read and
+and opens no socket. Construction materializes each configured executable in
+the declared program tree as a private regular file outside the program's
+declared write roots. Images with the same digest and configured basename
+share one held inode. The episode process alone receives internal read and
 write access to the storage parent for cleanup. Every tool and session policy
 omits that access.
 Construction checks the private image against the retained bytes. A child
 episode repeats the check when it accepts an inherited descriptor. Invocation
 executes the held inode through its descriptor. The digest in identity and the
 bytes that run therefore come from one observation of the source file.
+`episode/start` records the composite program identity rather than every
+executable digest. `foe plan --json` exposes the identity document that
+contains the individual digests and configured basenames.
 
 ## Tools
 
@@ -533,12 +540,14 @@ For forked context, the launch metadata also names the source log and boundary.
 The child validates its identity before it seeds that prefix under its own
 program evidence.
 
-Before launch, the parent passes the selected child's reachable executable
-descriptors and a sealed manifest that names their configuration keys and
-digests. The child constructs its program from those retained bytes and
-checks the expected identity before writing an event. It invokes those same
-descriptors later. Source-path replacement, in-place modification, and
-deletion therefore cannot change child identity or execution.
+Before launch, the parent passes the executable images from the selected
+child's full declared program tree. A sealed manifest maps every configuration
+key to a deduplicated descriptor, digest, and configured basename. The child
+constructs its program from those retained bytes and checks the expected
+identity before writing an event. Sandbox authority separately includes only
+executables reachable through the child's spawn grants and workflow nodes.
+Source-path replacement, in-place modification, and deletion therefore cannot
+change child identity or execution.
 
 Child creation separates identifier allocation from launch. Allocating an
 identifier reserves no budget and starts no process. A parent appends the
@@ -978,7 +987,7 @@ supplies only the two directory-backed resolvers `foe plan` builds for its
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 5,825 lines,
+sandbox, and spawning — and its Rust source stays under 5,875 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/program`, which is budgeted
