@@ -108,6 +108,10 @@ fn every_workflow_rule_names_its_node() {
             Box::new(|v| v["workflow"]["nodes"]["derive"]["args"] = json!({ "e": { "$node": "survey" } })),
         ),
         (
+            "workflow.nodes.derive.args",
+            Box::new(|v| v["workflow"]["nodes"]["derive"]["args"] = json!({ "e": [{ "$node": "survey" }] })),
+        ),
+        (
             "workflow.nodes.manifest.",
             Box::new(|v| v["workflow"]["nodes"]["manifest"]["workflow"] = json!({ "nodes": {} })),
         ),
