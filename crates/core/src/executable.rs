@@ -25,6 +25,7 @@ pub struct Executable {
     pub source: PathBuf,
     pub sha256: String,
     image: Arc<[u8]>,
+    basename: std::ffi::OsString,
     stored_path: PathBuf,
     fd: Arc<OwnedFd>,
     _store: Option<Arc<StoreRoot>>,
@@ -37,6 +38,7 @@ impl Executable {
             source: image.path.clone(),
             sha256: image.sha256.clone(),
             image: image.bytes.clone(),
+            basename: image.basename.clone(),
             stored_path,
             fd,
             _store: Some(store.root.clone()),
@@ -51,6 +53,7 @@ impl Executable {
             source: image.path.clone(),
             sha256: image.sha256.clone(),
             image: image.bytes.clone(),
+            basename: inherited.basename.clone(),
             stored_path: inherited.stored_path.clone(),
             fd: inherited.fd.clone(),
             _store: None,
@@ -69,30 +72,12 @@ impl Executable {
         &self.stored_path
     }
 
-    fn cleanup_root(&self) -> Option<&Path> {
-        self._store.as_ref().and_then(|root| root.0.parent())
+    pub fn basename(&self) -> &std::ffi::OsStr {
+        &self.basename
     }
 
-    /// Confirms that the held inode still contains the construction bytes
-    /// and remains executable before an authority-bearing process starts.
-    pub fn verify(&self) -> Result<(), String> {
-        let path = parent_fd_path(&self.fd);
-        let mut file = File::open(&path)
-            .map_err(|e| format!("{}: cannot read committed executable: {e}", self.source.display()))?;
-        let metadata = file
-            .metadata()
-            .map_err(|e| format!("{}: cannot inspect committed executable: {e}", self.source.display()))?;
-        let mode = metadata.permissions().mode();
-        if mode & 0o222 != 0 || mode & 0o111 == 0 {
-            return Err(format!("{}: committed executable is writable or not executable", self.source.display()));
-        }
-        let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes)
-            .map_err(|e| format!("{}: cannot read committed executable: {e}", self.source.display()))?;
-        if bytes.as_slice() != self.image.as_ref() || foe_program::identity::sha256_hex(&bytes) != self.sha256 {
-            return Err(format!("{}: committed executable differs from sha256 {}", self.source.display(), self.sha256));
-        }
-        Ok(())
+    fn cleanup_root(&self) -> Option<&Path> {
+        self._store.as_ref().and_then(|root| root.0.parent())
     }
 
     /// Commits an executable for callers that construct an exec transport
@@ -102,6 +87,7 @@ impl Executable {
         if !path.is_absolute() {
             return Err("is not an absolute path".into());
         }
+        let basename = path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("executable")).to_owned();
         let path = std::fs::canonicalize(path).map_err(|e| format!("names an existing path: {e}"))?;
         let mut file = File::open(&path).map_err(|e| format!("is readable for construction: {e}"))?;
         let metadata = file.metadata().map_err(|e| format!("has readable metadata: {e}"))?;
@@ -110,8 +96,12 @@ impl Executable {
         }
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes).map_err(|e| format!("is readable for construction: {e}"))?;
-        let image =
-            ExecutableImage { path, sha256: foe_program::identity::sha256_hex(&bytes), bytes: Arc::from(bytes) };
+        let image = ExecutableImage {
+            path,
+            basename,
+            sha256: foe_program::identity::sha256_hex(&bytes),
+            bytes: Arc::from(bytes),
+        };
         let mut store = Store::create(Path::new("/tmp"))?;
         Self::store(&image, &mut store)
     }
@@ -214,7 +204,12 @@ impl ExecutableTree {
         for (offset, (key, executable)) in found.into_iter().enumerate() {
             let offset: i32 = offset.try_into().map_err(|_| "too many inherited executables".to_string())?;
             let fd = FIRST_EXECUTABLE_FD.checked_add(offset).ok_or("too many inherited executables")?;
-            entries.push(ManifestEntry { key, fd, sha256: executable.sha256.clone() });
+            entries.push(ManifestEntry {
+                key,
+                fd,
+                sha256: executable.sha256.clone(),
+                basename: executable.basename.clone(),
+            });
             mappings.push((fd, executable.fd.clone()));
         }
         let manifest = Manifest { kind: MANIFEST_KIND.into(), episode_id: child_id.into(), entries };
@@ -318,8 +313,7 @@ impl Store {
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(format!("{}: create executable digest directory: {error}", directory.display())),
         }
-        let name = image.path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("executable"));
-        let path = directory.join(name);
+        let path = directory.join(&image.basename);
         if !path.exists() {
             let mut file = std::fs::OpenOptions::new()
                 .write(true)
@@ -345,6 +339,7 @@ impl Store {
 struct InheritedExecutable {
     sha256: String,
     bytes: Arc<[u8]>,
+    basename: std::ffi::OsString,
     stored_path: PathBuf,
     fd: Arc<OwnedFd>,
 }
@@ -400,6 +395,7 @@ impl InheritedExecutables {
                 InheritedExecutable {
                     sha256: entry.sha256,
                     bytes: Arc::from(bytes),
+                    basename: entry.basename,
                     stored_path: std::fs::read_link(&fd_path).unwrap_or(fd_path),
                     fd: Arc::new(OwnedFd::from(file)),
                 },
@@ -408,8 +404,11 @@ impl InheritedExecutables {
         Ok(Some(Self { entries }))
     }
 
-    pub fn bytes(&self) -> BTreeMap<String, Arc<[u8]>> {
-        self.entries.iter().map(|(key, executable)| (key.clone(), executable.bytes.clone())).collect()
+    pub fn images(&self) -> BTreeMap<String, (Arc<[u8]>, std::ffi::OsString)> {
+        self.entries
+            .iter()
+            .map(|(key, executable)| (key.clone(), (executable.bytes.clone(), executable.basename.clone())))
+            .collect()
     }
 }
 
@@ -433,6 +432,7 @@ struct ManifestEntry {
     key: String,
     fd: i32,
     sha256: String,
+    basename: std::ffi::OsString,
 }
 
 /// `/proc` path used only to invoke an already-held executable descriptor.

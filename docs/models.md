@@ -104,7 +104,8 @@ OpenAI-shaped providers it includes the version prefix,
 Model selection does not participate in identity. A system that needs to
 record which model ran reads it from the log. The executable bytes of an
 `exec` transport are an exception because they implement runtime behavior.
-Their digest participates in the runtime portion of program identity.
+Their digest and configured basename participate in the runtime portion of
+program identity.
 
 ### Context windows
 

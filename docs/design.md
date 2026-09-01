@@ -411,7 +411,8 @@ this tree.
 
 - the instruction sections, by key and text;
 - each tool's name, description, instruction, and parameter schema, in the
-  order listed;
+  order listed; a configured tool also contributes its executable digest and
+  configured basename;
 - the grant policy, meaning the kinds and counts of grants, and never the
   resolved paths;
 - the budget and termination condition;
@@ -420,7 +421,7 @@ this tree.
   description of the synthesized `return` tool and the text that frames
   verification findings;
 - the runtime's version and build hash, plus the executable transport's
-  content digest when the model provider is `exec`.
+  content digest and configured basename when the model provider is `exec`.
 
 Resolved paths are excluded so that running the same program against a
 different directory yields the same identity. Runtime-contributed strings are
@@ -434,9 +435,10 @@ executable as a private, content-addressed regular file outside the program's
 declared write roots. The episode process alone receives internal read and
 write access to the storage parent for cleanup. Every tool and session policy
 omits that access.
-Invocation checks the held image against the construction bytes, then executes
-the inode through its descriptor. The digest in identity and the bytes that run
-therefore come from one observation of the source file.
+Construction checks the private image against the retained bytes. A child
+episode repeats the check when it accepts an inherited descriptor. Invocation
+executes the held inode through its descriptor. The digest in identity and the
+bytes that run therefore come from one observation of the source file.
 
 ## Tools
 
@@ -1028,7 +1030,7 @@ budget at all.
 The ceilings reserve 500 kernel lines, 75 program lines, and 75 command-line
 lines for construction-committed executable images and their headroom. The
 program contract reads one snapshot for each reachable configured executable.
-The kernel materializes, confines, invokes, verifies, and transfers those
+The kernel materializes, confines, invokes, checks, and transfers those
 snapshots across child process boundaries. The command line constructs the
 root image tree before confinement. This mechanism adds no program-document
 key or log event.

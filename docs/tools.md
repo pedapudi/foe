@@ -133,8 +133,10 @@ under this contract.
 
 Construction reads a configured executable once. Its retained bytes supply
 both the digest in program identity and the private executable image used by
-every call. The configured pathname remains the name reported to the model
-and in errors. It is never reopened for execution.
+every call. The basename from the configured pathname also participates in
+identity and becomes argument zero for multicall dispatch. The configured
+pathname remains the name reported to the model and in errors. It is never
+reopened for execution.
 
 ## Built-in coding tools
 

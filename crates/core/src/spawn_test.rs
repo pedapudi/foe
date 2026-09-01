@@ -69,6 +69,35 @@ pub(crate) fn process_spawner(
     .unwrap()
 }
 
+#[test]
+fn inherited_executable_name_preserves_child_program_identity() {
+    let dir = scratch("spawn", "inherited-executable-name");
+    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3,
+        "name": "child",
+        "instructions": {"role": "test"},
+        "tools": ["configured"],
+        "tool_defs": {"configured": {"exec": "/bin/echo", "description": "multicall executable"}},
+        "grants": {"read": [dir]},
+        "budget": {"model_calls": 1},
+        "sandbox": {"mode": "off"},
+        "task": "test"
+    }))
+    .unwrap();
+    let parent = foe_program::document::resolve(&config).unwrap();
+    let document = child_document(&parent, "child task".into());
+    let image = parent.executable_images["configured"].clone();
+    let inherited = std::collections::BTreeMap::from([(
+        "tool_defs.configured.exec".into(),
+        (image.bytes.clone(), image.basename.clone()),
+    )]);
+    let child = foe_program::document::resolve_with_executables(&document, &inherited).unwrap();
+    let runtime = crate::identity::runtime_info();
+    let expected = foe_program::identity::compute(&parent, &[], &runtime).unwrap();
+    let actual = foe_program::identity::compute(&child, &[], &runtime).unwrap();
+    assert_eq!(actual.hash, expected.hash);
+}
+
 /// A stand-in child: writes a start event, a request, waits for one
 /// routed answer, calls the host tool `notify`, waits for its result,
 /// then ends with both answers as its value. A first pre-tagged request

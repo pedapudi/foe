@@ -23,6 +23,7 @@ pub const PROGRAM_FORMAT_VERSION: u32 = 3;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExecutableImage {
     pub path: PathBuf,
+    pub basename: std::ffi::OsString,
     pub sha256: String,
     pub bytes: Arc<[u8]>,
 }
@@ -274,7 +275,7 @@ pub fn resolve(config: &ProgramDocument) -> Result<ResolvedProgram, ProgramError
 /// inherited descriptors, so it never reopens those paths.
 pub fn resolve_with_executables(
     config: &ProgramDocument,
-    inherited: &BTreeMap<String, Arc<[u8]>>,
+    inherited: &BTreeMap<String, (Arc<[u8]>, std::ffi::OsString)>,
 ) -> Result<ResolvedProgram, ProgramError> {
     validate(config)?;
     let settings = (config.model.clone(), config.sandbox.clone());
@@ -290,7 +291,7 @@ fn resolve_section(
     s: &ChildProgramDocument,
     inherited: &(Option<ModelConfig>, SandboxConfig),
     parent: Option<&Grants>,
-    inherited_executables: &BTreeMap<String, Arc<[u8]>>,
+    inherited_executables: &BTreeMap<String, (Arc<[u8]>, std::ffi::OsString)>,
 ) -> Result<ResolvedProgram, ProgramError> {
     let key = |k: &str| key_at(prefix, k);
     let model = s.model.clone().or_else(|| inherited.0.clone());
@@ -327,9 +328,9 @@ fn resolve_section(
         }
         require(!grants.task_session || parent.task_session, key("grants.task_session"), "is granted by the parent")?;
     }
-    let image = |key: String, path: &Path| -> Result<ExecutableImage, ProgramError> {
-        let bytes: Arc<[u8]> = match inherited_executables.get(&key) {
-            Some(bytes) => bytes.clone(),
+    let image = |key: String, path: &Path, configured: &Path| -> Result<ExecutableImage, ProgramError> {
+        let (bytes, basename): (Arc<[u8]>, std::ffi::OsString) = match inherited_executables.get(&key) {
+            Some((bytes, basename)) => (bytes.clone(), basename.clone()),
             None => {
                 let mut file = std::fs::File::open(path)
                     .map_err(|e| invalid(&key, format!("is readable for construction: {e}")))?;
@@ -339,10 +340,11 @@ fn resolve_section(
                 let mut bytes = Vec::new();
                 std::io::Read::read_to_end(&mut file, &mut bytes)
                     .map_err(|e| invalid(&key, format!("is readable for construction: {e}")))?;
-                Arc::from(bytes)
+                let basename = configured.file_name().unwrap_or_else(|| std::ffi::OsStr::new("executable")).to_owned();
+                (Arc::from(bytes), basename)
             }
         };
-        Ok(ExecutableImage { path: path.to_path_buf(), sha256: crate::identity::sha256_hex(&bytes), bytes })
+        Ok(ExecutableImage { path: path.to_path_buf(), basename, sha256: crate::identity::sha256_hex(&bytes), bytes })
     };
     let mut tool_defs = BTreeMap::new();
     for (name, def) in &s.tool_defs {
@@ -363,7 +365,7 @@ fn resolve_section(
         .iter()
         .filter(|(name, _)| s.tools.contains(name))
         .map(|(name, def)| {
-            let image = image(key(&format!("tool_defs.{name}.exec")), &def.exec)?;
+            let image = image(key(&format!("tool_defs.{name}.exec")), &def.exec, &s.tool_defs[name].exec)?;
             Ok((name.clone(), image))
         })
         .collect::<Result<_, ProgramError>>()?;
@@ -378,7 +380,7 @@ fn resolve_section(
                 true => path,
                 false => canonical(key.clone(), &path)?,
             };
-            image(key, &path)
+            image(key, &path, &PathBuf::from(model.option("exec").unwrap_or_default()))
         })
         .transpose()?;
     let mut programs = BTreeMap::new();

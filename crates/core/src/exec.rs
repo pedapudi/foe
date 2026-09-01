@@ -54,14 +54,11 @@ impl Executor for LocalExecutor {
     fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError> {
         let start = Instant::now();
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
-        if let Some(executable) = &req.executable {
-            executable.verify().map_err(CapError::Invalid)?;
-        }
         let executable_fd = req.executable.as_ref().map(|_| next_child_fd(req.pass_fds.iter().map(|(fd, _)| *fd)));
         let invoked = executable_fd.map(process_fd_path).unwrap_or_else(|| req.program.clone());
         let mut cmd = Command::new(&invoked);
-        if req.executable.is_some() {
-            cmd.arg0(&req.program);
+        if let Some(executable) = &req.executable {
+            cmd.arg0(executable.basename());
         }
         cmd.args(&req.args)
             .current_dir(&req.cwd)

@@ -228,12 +228,10 @@ code other than zero is a result rather than an error.
 
 Construction reads the executable once, verifies that its source file is
 executable, and retains those exact bytes. Their SHA-256 digest participates
-in identity. Every invocation uses a descriptor for a private image of the
-retained bytes. Replacing, modifying, or deleting the configured path after
-construction cannot change what runs. An ELF image may name one exact dynamic
-loader. A script shebang must
-name one absolute interpreter directly. A script that starts other programs
-requires those paths in `grants.execute`.
+in identity. The configured basename also participates because multicall
+executables use it to select behavior. Every invocation uses a descriptor for
+a private image of the retained bytes. Replacing, modifying, or deleting the
+configured path after construction cannot change what runs.
 
 Declaring an entry in `tool_defs` permits the episode to execute that file.
 The file does not need a `grants.execute` entry. An explicit execute grant
@@ -280,10 +278,9 @@ tool definition's `network` field.
 
 A `task_session` grant permits a session process group to survive episode
 settlement. The `session` call must also request `lifetime: "task"`. At
-start, the runtime places the session in the invocation-owned task cgroup
-when cgroup v2 enforcement is available. At settlement the runtime transfers
-cleanup responsibility to the environment that owns the foe invocation.
-[tools.md](tools.md#session) specifies the lifecycle and cleanup requirement.
+settlement the runtime transfers cleanup responsibility to the environment
+that owns the foe invocation. [tools.md](tools.md#session) specifies the
+lifecycle and the cleanup requirement.
 
 The runtime opens each granted directory once when the episode starts, and
 every read and write below it names a path relative to that open directory.
@@ -526,22 +523,12 @@ Object. Optional.
 |---|---|---|---|
 | `mode` | string | `best-effort` | `best-effort`, `required`, or `off` |
 
-`best-effort` applies the available Landlock features. `required` refuses to
-start unless Landlock is available. Both modes attempt a delegated cgroup v2
-process boundary and record whether subtree cleanup is enforced or
-observational. `off` applies no Landlock restriction, uses process-group
-cleanup, and records observational subtree cleanup.
+`best-effort` applies whatever the kernel supports and records the Landlock
+version obtained. `required` refuses to start when Landlock is unavailable.
+`off` applies no kernel restriction and records that fact.
 
 The rules themselves are compiled from `grants` and `tool_defs`; there is
 nothing else to declare.
-
-`foe plan` reports the effective sandbox access of the root and every
-reachable descendant. Each filesystem entry states why the runtime adds it.
-Exact executable entries carry the content digest used during construction.
-The report includes descendant execute paths and configured-tool network
-requirements because an ancestor must reserve them before Landlock narrows
-the process tree. [sandbox.md](sandbox.md#effective-access-report) specifies
-the report and the corresponding `episode/start` evidence.
 
 ### `program_lineage`
 
